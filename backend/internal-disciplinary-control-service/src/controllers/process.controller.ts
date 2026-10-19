@@ -16,6 +16,7 @@ import {
   HttpException,
   UseGuards,
   ParseUUIDPipe,
+  Optional,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -27,6 +28,7 @@ import {
 import { ProcessService } from '../services/process.service';
 import { NewsService } from '../services/news.service';
 import { AutoService } from '../services/auto.service';
+import { DocumentConversionService } from '../services/document-conversion.service';
 import { ProcessExportService } from '../services/process-export.service';
 import {
   IndiceElectronicoExportService,
@@ -68,7 +70,6 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 import { PermissionsService } from '../auth/services/permissions.service';
-import JSZip from 'jszip';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -126,6 +127,7 @@ export class ProcessController {
     private processExportService: ProcessExportService,
     private indiceElectronicoExportService: IndiceElectronicoExportService,
     private fuidExportService: FuidExportService,
+    @Optional() private documentConversionService?: DocumentConversionService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -1689,15 +1691,10 @@ export class ProcessController {
       const subject = `Remisión por Competencia - Proceso/Noticia Disciplinaria ${radicadoIdentificador}`;
 
       let subjectFinal = subject;
-      let attachmentName: string | undefined;
-      let attachmentBase64: string | undefined;
-      let attachmentContentType = 'application/zip';
-
-      // 4. Recopilar todos los archivos del expediente para el ZIP y la remisión:
-      // - Autos generados del proceso (Auto de Remisión por Competencia y demás autos)
-      // - Actas y evidencias documentales
-      // - Soportes iniciales de la queja / noticia
-      // - Pruebas registradas
+      // 4. Recopilar todos los archivos del expediente como adjuntos individuales:
+      // - Auto(s) aprobado(s) de remisión: obligatoriamente en formato PDF.
+      // - El resto de archivos (queja inicial/noticia, actas, evidencias, pruebas): en su formato original.
+      // - Sin empaquetar en ZIP, ya que las entidades de control devuelven el trámite si viene en ZIP.
       const uploadFolderRadicado = noticia?.radicado || proceso?.radicadoProceso || radicadoIdentificador;
       const resolverRuta = (referencia?: string | null): string | null => {
         if (!referencia) return null;
@@ -1722,6 +1719,60 @@ export class ProcessController {
         return null;
       };
 
+      const getMimeType = (filename: string): string => {
+        const ext = path.extname(filename).toLowerCase().replace(/^\./, '');
+        const map: Record<string, string> = {
+          pdf: 'application/pdf',
+          doc: 'application/msword',
+          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          xls: 'application/vnd.ms-excel',
+          xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          ppt: 'application/vnd.ms-powerpoint',
+          pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          png: 'image/png',
+          gif: 'image/gif',
+          bmp: 'image/bmp',
+          webp: 'image/webp',
+          txt: 'text/plain',
+          csv: 'text/csv',
+          rtf: 'application/rtf',
+          mp3: 'audio/mpeg',
+          wav: 'audio/wav',
+          mp4: 'video/mp4',
+          avi: 'video/x-msvideo',
+          zip: 'application/zip',
+        };
+        return map[ext] || 'application/octet-stream';
+      };
+
+      const sanitizeFilename = (name: string): string => {
+        return path.basename(name).replace(/[\/\\?%*:|"<>]/g, '_').trim();
+      };
+
+      const usedFilenames = new Set<string>();
+      const getUniqueFilename = (proposed: string): string => {
+        let clean = sanitizeFilename(proposed);
+        if (!clean) clean = 'documento';
+
+        if (!usedFilenames.has(clean.toLowerCase())) {
+          usedFilenames.add(clean.toLowerCase());
+          return clean;
+        }
+
+        const ext = path.extname(clean);
+        const base = path.basename(clean, ext);
+        let counter = 1;
+        let candidate = `${base}_(${counter})${ext}`;
+        while (usedFilenames.has(candidate.toLowerCase())) {
+          counter++;
+          candidate = `${base}_(${counter})${ext}`;
+        }
+        usedFilenames.add(candidate.toLowerCase());
+        return candidate;
+      };
+
       const autosProceso = proceso?.id ? await this.autoService.findByProcessId(proceso.id) : [];
       let evidenciasProceso: any[] = [];
       try {
@@ -1735,92 +1786,176 @@ export class ProcessController {
       const adjuntosNoticia = Array.isArray(noticia?.adjuntos) ? noticia.adjuntos : [];
       const pruebasProceso = Array.isArray(proceso?.pruebas) ? proceso.pruebas : [];
 
-      const archivosParaZip: Array<{ nombre: string; rutaODatos: Buffer }> = [];
+      const emailAttachments: Array<{ filename: string; contentBase64: string; contentType: string }> = [];
+      const attachedRutas = new Set<string>();
 
-      // A. Autos del proceso (incluyendo el Auto de Remisión por Competencia)
+      // A. Autos del proceso (incluyendo el Auto de Remisión por Competencia aprobado)
+      // Requisito normativo: El auto aprobado debe llegar estrictamente en formato PDF.
       for (const auto of autosProceso) {
         let agregado = false;
         const ref = auto.firmaUrl || auto.documentUrl;
         if (ref) {
           const ruta = resolverRuta(ref);
-          if (ruta) {
+          if (ruta && !attachedRutas.has(ruta)) {
             try {
-              const buf = await fsPromises.readFile(ruta);
-              const ext = path.extname(ruta) || '.pdf';
-              const cleanName = auto.documentName || `Auto_${auto.tipo || 'Auto'}_${auto.numero || auto.id}${ext}`;
-              archivosParaZip.push({ nombre: `Autos/${cleanName}`, rutaODatos: buf });
-              agregado = true;
+              const ext = path.extname(ruta).toLowerCase();
+              if (ext === '.pdf') {
+                const buf = await fsPromises.readFile(ruta);
+                const nombreSugerido = auto.documentName?.toLowerCase().endsWith('.pdf')
+                  ? auto.documentName
+                  : (auto.numero ? `${auto.numero}.pdf` : `Auto_${auto.tipo || 'Auto'}_${auto.id}.pdf`);
+                emailAttachments.push({
+                  filename: getUniqueFilename(nombreSugerido),
+                  contentBase64: buf.toString('base64'),
+                  contentType: 'application/pdf',
+                });
+                attachedRutas.add(ruta);
+                agregado = true;
+              } else if ((ext === '.docx' || ext === '.doc') && this.documentConversionService) {
+                try {
+                  const nombrePdf = auto.numero ? `${auto.numero}.pdf` : `Auto_${auto.tipo || 'Auto'}_${auto.id}.pdf`;
+                  const converted = await this.documentConversionService.convertWordToPdf(ref, nombrePdf);
+                  const rutaConverted = this.storageService.getFullPath(converted.documentUrl);
+                  if (fs.existsSync(rutaConverted)) {
+                    const buf = await fsPromises.readFile(rutaConverted);
+                    emailAttachments.push({
+                      filename: getUniqueFilename(nombrePdf),
+                      contentBase64: buf.toString('base64'),
+                      contentType: 'application/pdf',
+                    });
+                    attachedRutas.add(ruta);
+                    attachedRutas.add(rutaConverted);
+                    agregado = true;
+                  }
+                } catch (convErr) {
+                  console.warn('[RemitirCompetencia] No se pudo convertir auto Word a PDF:', convErr);
+                }
+              }
             } catch (err) {
               console.warn('[RemitirCompetencia] Error leyendo archivo de auto:', ref, err);
             }
           }
         }
-        if (!agregado && auto.contenido && auto.contenido.trim().length > 0) {
-          const autoHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${auto.tipo || 'Auto'}</title></head><body>${auto.contenido}</body></html>`;
-          const cleanName = `Auto_${auto.tipo || 'Auto'}_${auto.numero || auto.id}.html`;
-          archivosParaZip.push({ nombre: `Autos/${cleanName}`, rutaODatos: Buffer.from(autoHtml, 'utf-8') });
-        }
-      }
 
-      // B. Actas y Evidencias del proceso
-      for (const ev of evidenciasProceso) {
-        const ref = ev.archivoUrl || ev.url || ev.filename;
-        if (ref) {
-          const ruta = resolverRuta(ref);
-          if (ruta) {
+        // Si no se encontró archivo en disco pero hay contenido HTML del auto,
+        // generar PDF a partir del contenido para cumplir la exigencia de que el auto sea PDF
+        if (!agregado && auto.contenido && auto.contenido.trim().length > 0) {
+          const nombrePdf = auto.numero ? `${auto.numero}.pdf` : `Auto_${auto.tipo || 'Auto'}_${auto.id}.pdf`;
+          let pdfBuffer: Buffer | null = null;
+          try {
+            const autoHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${auto.tipo || 'Auto'}</title><style>body{font-family:Arial,sans-serif;margin:40px;line-height:1.6;color:#1e293b;}</style></head><body>${auto.contenido}</body></html>`;
+            const puppeteer = await import('puppeteer');
+            const browser = await puppeteer.default.launch({
+              headless: 'new' as any,
+              args: ['--no-sandbox', '--disable-setuid-sandbox'],
+              executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            });
+            const page = await browser.newPage();
+            await page.setContent(autoHtml, { waitUntil: 'networkidle0' });
+            pdfBuffer = Buffer.from(await page.pdf({ format: 'A4', printBackground: true }));
+            await browser.close();
+          } catch (pupErr) {
+            console.warn('[RemitirCompetencia] Falló conversión con Puppeteer, intentando PDFDocument:', pupErr);
             try {
-              const buf = await fsPromises.readFile(ruta);
-              const esActa = (ev.tipoDocumento || ev.tipo || '').toUpperCase().includes('ACTA');
-              const categoria = esActa ? 'Actas' : 'Evidencias';
-              const nombreDoc = ev.nombreArchivo || ev.nombreDocumento || path.basename(ruta);
-              archivosParaZip.push({ nombre: `${categoria}/${nombreDoc}`, rutaODatos: buf });
-            } catch (err) {
-              console.warn('[RemitirCompetencia] Error leyendo evidencia:', ref, err);
+              const PDFDocument = require('pdfkit');
+              const doc = new PDFDocument({ margin: 50 });
+              const chunks: Buffer[] = [];
+              doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+              doc.fontSize(16).text(auto.tipo || 'Auto', { align: 'center' });
+              doc.moveDown();
+              const plainText = auto.contenido.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              doc.fontSize(11).text(plainText, { align: 'justify' });
+              doc.end();
+              pdfBuffer = await new Promise<Buffer>((resolve) => {
+                doc.on('end', () => resolve(Buffer.concat(chunks)));
+              });
+            } catch (pdfKitErr) {
+              console.error('[RemitirCompetencia] Falló fallback PDFKit:', pdfKitErr);
             }
+          }
+
+          if (pdfBuffer) {
+            emailAttachments.push({
+              filename: getUniqueFilename(nombrePdf),
+              contentBase64: pdfBuffer.toString('base64'),
+              contentType: 'application/pdf',
+            });
+            agregado = true;
           }
         }
       }
 
-      // C. Soportes iniciales de la queja / noticia
+      // B. Soportes iniciales de la queja / noticia (en su formato original)
       for (const adj of adjuntosNoticia) {
-        const ruta = resolverRuta(adj);
-        if (ruta) {
+        const ref = typeof adj === 'string' ? adj : (adj?.url || adj?.path || adj?.filename || null);
+        if (!ref) continue;
+        const ruta = resolverRuta(ref);
+        if (ruta && !attachedRutas.has(ruta)) {
           try {
             const buf = await fsPromises.readFile(ruta);
-            const nombreDoc = path.basename(ruta);
-            archivosParaZip.push({ nombre: `Soportes_Queja/${nombreDoc}`, rutaODatos: buf });
+            const nombreOriginal = typeof adj === 'object' && adj?.nombre
+              ? adj.nombre
+              : path.basename(ruta);
+            const mime = (typeof adj === 'object' && (adj?.tipo || adj?.contentType)) || getMimeType(nombreOriginal);
+            emailAttachments.push({
+              filename: getUniqueFilename(nombreOriginal),
+              contentBase64: buf.toString('base64'),
+              contentType: mime,
+            });
+            attachedRutas.add(ruta);
           } catch (err) {
             console.warn('[RemitirCompetencia] Error leyendo soporte queja:', adj, err);
           }
         }
       }
 
-      // D. Pruebas del proceso
-      for (const p of pruebasProceso) {
-        const ruta = resolverRuta(p);
-        if (ruta) {
+      // C. Actas y Evidencias del proceso (en su formato original)
+      for (const ev of evidenciasProceso) {
+        const ref = ev.archivoUrl || ev.url || ev.filename;
+        if (!ref) continue;
+        const ruta = resolverRuta(ref);
+        if (ruta && !attachedRutas.has(ruta)) {
           try {
             const buf = await fsPromises.readFile(ruta);
-            const nombreDoc = path.basename(ruta);
-            archivosParaZip.push({ nombre: `Pruebas/${nombreDoc}`, rutaODatos: buf });
+            const nombreOriginal = ev.nombreArchivo || ev.nombreDocumento || path.basename(ruta);
+            const mime = ev.fileType || getMimeType(nombreOriginal);
+            emailAttachments.push({
+              filename: getUniqueFilename(nombreOriginal),
+              contentBase64: buf.toString('base64'),
+              contentType: mime,
+            });
+            attachedRutas.add(ruta);
+          } catch (err) {
+            console.warn('[RemitirCompetencia] Error leyendo evidencia:', ref, err);
+          }
+        }
+      }
+
+      // D. Pruebas del proceso (en su formato original)
+      for (const p of pruebasProceso) {
+        const ref = typeof p === 'string' ? p : (p?.url || p?.archivoUrl || p?.filename || null);
+        if (!ref) continue;
+        const ruta = resolverRuta(ref);
+        if (ruta && !attachedRutas.has(ruta)) {
+          try {
+            const buf = await fsPromises.readFile(ruta);
+            const nombreOriginal = typeof p === 'object' && p?.nombre
+              ? p.nombre
+              : path.basename(ruta);
+            const mime = (typeof p === 'object' && (p?.tipo || p?.contentType)) || getMimeType(nombreOriginal);
+            emailAttachments.push({
+              filename: getUniqueFilename(nombreOriginal),
+              contentBase64: buf.toString('base64'),
+              contentType: mime,
+            });
+            attachedRutas.add(ruta);
           } catch (_) {}
         }
       }
 
-      if (archivosParaZip.length > 0) {
-        try {
-          const zip = new JSZip();
-          for (const item of archivosParaZip) {
-            zip.file(item.nombre, item.rutaODatos);
-          }
-          const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-          attachmentName = `Expediente_Remision_${radicadoIdentificador}.zip`;
-          attachmentBase64 = zipBuffer.toString('base64');
-          subjectFinal = `${subject} (${archivosParaZip.length} archivos adjuntos)`;
-          console.log(`📎 [RemitirCompetencia] ZIP creado con ${archivosParaZip.length} archivo(s) del expediente`);
-        } catch (zipError) {
-          console.error(`⚠️ [RemitirCompetencia] Error creando ZIP:`, zipError);
-        }
+      if (emailAttachments.length > 0) {
+        subjectFinal = `${subject} (${emailAttachments.length} archivos adjuntos)`;
+        console.log(`📎 [RemitirCompetencia] Preparados ${emailAttachments.length} archivo(s) adjunto(s) directo(s) (Auto en PDF, demás en formato original):`, emailAttachments.map(a => a.filename));
       }
 
       let emailEnviado = false;
@@ -1828,32 +1963,17 @@ export class ProcessController {
 
       for (const remindersBaseUrl of uniqueBases) {
         try {
-          if (attachmentBase64 && attachmentName) {
-            const emailPayload: any = {
-              to: dto.emailDestinatario,
-              subject: subjectFinal,
-              text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-              html: emailHtml,
-              attachmentName,
-              attachmentBase64,
-              attachmentContentType,
-            };
-            const responseWithAttachment = await firstValueFrom(
-              this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send-with-attachment`, emailPayload, { timeout: 8000 }),
-            );
-            console.log('📧 [RemitirCompetencia] Correo con ZIP enviado vía', remindersBaseUrl, responseWithAttachment?.data);
-          } else {
-            const emailPayload = {
-              to: dto.emailDestinatario,
-              subject: subjectFinal,
-              text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-              html: emailHtml,
-            };
-            const response = await firstValueFrom(
-              this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload, { timeout: 8000 }),
-            );
-            console.log('📧 [RemitirCompetencia] Correo enviado vía', remindersBaseUrl, response?.data);
-          }
+          const emailPayload: any = {
+            to: dto.emailDestinatario,
+            subject: subjectFinal,
+            text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+            html: emailHtml,
+            attachments: emailAttachments,
+          };
+          const response = await firstValueFrom(
+            this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload, { timeout: 15000 }),
+          );
+          console.log(`📧 [RemitirCompetencia] Correo con ${emailAttachments.length} adjunto(s) enviado vía ${remindersBaseUrl}:`, response?.data);
           emailEnviado = true;
           break;
         } catch (postErr: any) {
@@ -1876,8 +1996,8 @@ export class ProcessController {
         console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
         const descConArchivos = {
           ...descripcionRemision,
-          totalArchivos: archivosParaZip.length,
-          archivosRemitidos: archivosParaZip.map(a => a.nombre),
+          totalArchivos: emailAttachments.length,
+          archivosRemitidos: emailAttachments.map(a => a.filename),
           autos: autosProceso.map(a => ({
             id: a.id,
             tipo: a.tipo,
@@ -1929,7 +2049,7 @@ export class ProcessController {
           tipo: 'remision_competencia',
           usuario: dto.usuarioRemision || 'Sistema',
           fecha: new Date().toISOString(),
-          observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Archivos adjuntos en expediente: ${archivosParaZip.length}. Justificación: ${dto.justificacion}`,
+          observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Archivos adjuntos en expediente: ${emailAttachments.length}. Justificación: ${dto.justificacion}`,
           resultado: 'enviado',
           descripcion: descConArchivos,
         };
