@@ -23,6 +23,7 @@ export function DocenciaConcertada({
   vistaPrevia = false,
   ptaVigente = null,
   onIrAMisPtas,
+  crucesIds,
 }: {
   asignaturas: AsignaturaConcertadaVista[];
   aprobaciones: AprobacionDocenciaVista[];
@@ -32,6 +33,7 @@ export function DocenciaConcertada({
   /** PTA del docente ya existente en este periodo: se continúa ese, no se crea otro. */
   ptaVigente?: { id: string; estado: string } | null;
   onIrAMisPtas?: () => void;
+  crucesIds?: Set<number>;
 }) {
   const concertadas = asignaturas.filter((asignatura) => asignatura.origen === 'programacion');
   const totalHoras = concertadas.reduce((total, asignatura) => total + Number(asignatura.total_horas || 0), 0);
@@ -85,6 +87,9 @@ export function DocenciaConcertada({
                 className="flex items-start justify-between gap-4 py-3 text-sm">
                 <div>
                   <p className="font-semibold text-slate-800">{asignatura.asignatura_nombre || asignatura.asignatura_codigo || 'Asignatura'}</p>
+                  {asignatura.id != null && crucesIds?.has(asignatura.id) && (
+                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">CRUCE DE FECHAS</span>
+                  )}
                   {asignatura.asignatura_codigo && <p className="text-xs text-slate-500">{asignatura.asignatura_codigo}</p>}
                 </div>
                 <span className="shrink-0 font-bold text-[#003DA5]">{Number(asignatura.total_horas || 0)} h</span>

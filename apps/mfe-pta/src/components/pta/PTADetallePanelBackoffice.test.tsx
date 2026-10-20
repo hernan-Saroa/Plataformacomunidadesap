@@ -25,6 +25,22 @@ vi.mock('./FirmaDigitalPTA', () => ({
 }));
 
 describe('tarjetas del detalle administrativo', () => {
+  it('muestra al aprobador los cruces guardados sin impedir su decisión', async () => {
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [
+      { componente: 'academica_pregrado', estado: 'pendiente', estado_visual: 'pendiente', aplica: true, horas: 192 },
+    ] } as any);
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: basePta({
+      asignaturas: ['Historia', 'Economía'].map(nombre => ({ nombre, componente_docencia: 'academica_pregrado',
+        total_horas: 96, cruce_fechas: true })),
+      docencia_cruces_fechas: [{ indices: [0, 1], descripcion: 'Historia y Economía tienen fechas cruzadas.' }],
+    }) })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    expect(await screen.findByText(/el PTA podrá enviarse a aprobación con esta alerta/)).toBeTruthy();
+    expect(screen.getByText('Historia y Economía tienen fechas cruzadas.')).toBeTruthy();
+    expect(screen.getAllByText('CRUCE DE FECHAS')).toHaveLength(2);
+    expect((await screen.findByRole('button', { name: /^Aprobar$/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('usa No aplica aun cuando los permisos incluyen todos los componentes', () => {
     const componentesEstado = ['academica', 'investigacion', 'extension', 'complementarias'].map(key => ({
       key, horas: key === 'extension' ? 0 : 100, estado: key === 'extension' ? 'no_aplica' : 'aprobado',

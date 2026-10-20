@@ -22,6 +22,7 @@ import { canDecidePtaComponent } from './shared/ptaDecisionPermissions';
 import { scopedTerritorialProgress, territorialProgressStatus, mergeTerritorialProgress } from './shared/ptaTerritorialProgress';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { getPtaResearchData } from '../../utils/ptaResearch';
+import { DocenciaCrucesAlert } from './shared/DocenciaCrucesAlert';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../utils/officePreview';
 import { createPortal } from 'react-dom';
@@ -4139,6 +4140,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               {/* Docencia — detalle y aprobar/devolver agrupados por nivel (Posgrado,
                   luego Pregrado son componentes independientes, igual que las 4
                   direcciones de Extensión) */}
+              <DocenciaCrucesAlert warnings={(pta.docencia_cruces_fechas || []).map((cruce: any) => cruce.descripcion)} />
               {docenciaCards.map(item => {
                 const nivelLabel = item.label.split(' - ')[1];
                 return (
@@ -4174,6 +4176,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                                     <div style={{ minWidth: 0 }}>
                                       <div style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {a.nombre || a.asignatura_nombre}
+                                        {a.cruce_fechas && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">CRUCE DE FECHAS</span>}
                                       </div>
                                       {a.nucleo_tematico && (
                                         <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>

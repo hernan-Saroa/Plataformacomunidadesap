@@ -53,6 +53,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('Docencia del PTA según el régimen del backend', () => {
+  it('conserva las marcas de cruce y todas las horas de Docencia concertada', async () => {
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: {
+      ...pta, asignaturas: asignaturas.map(asignatura => ({ ...asignatura,
+        modalidad: 'PRESENCIAL', fecha_inicio: '2050-08-01', fecha_fin: '2050-08-31',
+      })),
+    } } as any);
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
+    expect(await screen.findByText(/el PTA podrá enviarse a aprobación con esta alerta/)).toBeTruthy();
+    expect(screen.getAllByText('CRUCE DE FECHAS')).toHaveLength(2);
+    expect(screen.getByText('172 h')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(savePTA).toHaveBeenCalled());
+  });
+
   it('muestra la concertación aprobada, sus horas y total sin controles manuales', async () => {
     render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
     expect(await screen.findByText('Aprobada en la concertación')).toBeTruthy();

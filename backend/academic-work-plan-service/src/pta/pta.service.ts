@@ -1953,14 +1953,16 @@ export class PtaService {
     }
   }
 
-  private validateDocenciaDateOverlaps(asignaturas: any[]): void {
+  private getDocenciaDateOverlaps(asignaturas: any[]): Array<{ indices: number[]; descripcion: string }> {
+    const overlaps: Array<{ indices: number[]; descripcion: string }> = [];
     const candidates = (Array.isArray(asignaturas) ? asignaturas : [])
-      .filter((asig: any) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
+      .map((asig: any, index: number) => ({ asig, index }))
+      .filter(({ asig }) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
 
     for (let i = 0; i < candidates.length; i += 1) {
       for (let j = i + 1; j < candidates.length; j += 1) {
-        const first = candidates[i];
-        const second = candidates[j];
+        const first = candidates[i].asig;
+        const second = candidates[j].asig;
 
         // Una modalidad pendiente proviene del catálogo institucional y no debe
         // bloquear al docente. Tampoco se presume presencial o remota para
@@ -1981,16 +1983,26 @@ export class PtaService {
           .some(date => Number.isNaN(date.getTime()))) continue;
 
         if (firstStart <= secondEnd && secondStart <= firstEnd) {
-          const firstLabel = first?.asignatura_nombre || 'Asignatura 1';
-          const secondLabel = second?.asignatura_nombre || 'Asignatura 2';
-          throw new BadRequestException(
-            `No se puede enviar el PTA: las asignaturas presenciales "${firstLabel}" y "${secondLabel}" `
-            + `tienen fechas cruzadas (${first.fecha_inicio}-${first.fecha_fin} / ${second.fecha_inicio}-${second.fecha_fin}). `
-            + 'La territorial no cambia esta validacion.',
-          );
+          const firstLabel = first?.asignatura_nombre || first?.nombre || `Asignatura ${candidates[i].index + 1}`;
+          const secondLabel = second?.asignatura_nombre || second?.nombre || `Asignatura ${candidates[j].index + 1}`;
+          overlaps.push({ indices: [candidates[i].index, candidates[j].index],
+            descripcion: `"${firstLabel}" y "${secondLabel}" tienen fechas cruzadas `
+              + `(${first.fecha_inicio}–${first.fecha_fin} / ${second.fecha_inicio}–${second.fecha_fin}).`,
+          });
         }
       }
     }
+    return overlaps;
+  }
+
+  /** Metadatos informativos calculados desde las fechas, nunca desde flags del cliente. */
+  private annotateDocenciaDateOverlaps(asignaturas: any[]) {
+    const cruces = this.getDocenciaDateOverlaps(asignaturas);
+    const indices = new Set(cruces.flatMap(cruce => cruce.indices));
+    return {
+      asignaturas: asignaturas.map((asig, index) => ({ ...asig, cruce_fechas: indices.has(index) })),
+      docencia_cruces_fechas: cruces,
+    };
   }
 
   private validateGlobalPtaHours(totalHours: number, horasAProgramar: number): void {
@@ -2532,7 +2544,6 @@ export class PtaService {
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
       : [];
-    this.validateDocenciaDateOverlaps(asignaturas);
 
     const maxExtension = this.getScaledRuleLimit(
       rules,
@@ -2696,6 +2707,7 @@ export class PtaService {
       tipo_vinculacion: (entity as any).tipoVinculacion,
       semanas_vinculacion: (entity as any).semanasVinculacion,
       ...extra,
+      ...this.annotateDocenciaDateOverlaps(asignaturas),
       createdAt: entity.createdAt,
       created_at: entity.createdAt,
       updatedAt: entity.updatedAt,
@@ -4580,6 +4592,7 @@ export class PtaService {
       this.validatePtaForSubmission(input, horas, horasAProgramar, ptaRules);
     }
 
+    input = { ...input, ...this.annotateDocenciaDateOverlaps(Array.isArray(input.asignaturas) ? input.asignaturas : []) };
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
       docenteId,
       periodo,
