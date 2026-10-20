@@ -349,13 +349,19 @@ function DashboardHtmlViewer({ templateName, title, description, canEdit = false
               if (doc) {
                 const btnEdicion = doc.querySelector<HTMLElement>('[data-tab="edicion"]');
                 const editLinks = doc.querySelectorAll<HTMLElement>('.edit-link');
+                const btnUploadExcel = doc.querySelector<HTMLElement>('#btnUploadExcel');
+                const btnSaveHtml = doc.querySelector<HTMLElement>('#btnSaveHtml');
                 if (!canEdit) {
                   doc.body.classList.add('no-edit');
                   if (btnEdicion) btnEdicion.style.display = 'none';
+                  if (btnUploadExcel) btnUploadExcel.style.display = 'none';
+                  if (btnSaveHtml) btnSaveHtml.style.display = 'none';
                   editLinks.forEach(el => el.style.display = 'none');
                 } else {
                   doc.body.classList.remove('no-edit');
                   if (btnEdicion) btnEdicion.style.display = '';
+                  if (btnUploadExcel) btnUploadExcel.style.display = '';
+                  if (btnSaveHtml) btnSaveHtml.style.display = '';
                   editLinks.forEach(el => el.style.display = '');
                 }
               }
@@ -805,6 +811,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
           templateName="desarrollo_otic"
           title="Portafolio BI de Desarrollo OTIC"
           description="Trazabilidad de procesos, desarrollos e iniciativas institucionales"
+          canEdit={canEditDesarrolloOtic}
         />
       )}
     </div>

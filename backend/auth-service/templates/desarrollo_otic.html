@@ -670,7 +670,7 @@
     /* PRINT / PDF EXECUTIVE STYLES */
     @media print {
       body { background: #FFFFFF !important; color: #000000 !important; }
-      header, .header-actions, .filters-bar, .tabs-header, footer, #btnUploadExcel, #btnExportExcel, #btnExportPdf, #btnResetData, #btnThemeToggle { display: none !important; }
+      header, .header-actions, .filters-bar, .tabs-header, footer, #btnUploadExcel, #btnSaveHtml, #btnExportExcel, #btnExportPdf, #btnResetData, #btnThemeToggle { display: none !important; }
       .app-container { min-height: auto; }
       .main-wrap { padding: 0; margin: 0; max-width: 100%; }
       .section-card, .chart-card, .table-container, .modal-box { border: none !important; box-shadow: none !important; }
@@ -695,6 +695,13 @@
       text-align: center;
       font-size: 12.5px;
       color: var(--text-muted);
+    }
+
+    /* CONTROL DE EDICIÓN SEGÚN PERMISOS */
+    body.no-edit #btnUploadExcel,
+    body.no-edit #btnSaveHtml,
+    body.no-edit #fileInputExcel {
+      display: none !important;
     }
   </style>
 </head>
@@ -752,8 +759,11 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="btn btn-accent" id="btnUploadExcel">
+        <button class="btn btn-accent" id="btnUploadExcel" style="display: none;">
           📁 Cargar Excel
+        </button>
+        <button class="btn btn-outline" id="btnSaveHtml" style="display: none;" title="Generar y descargar archivo HTML actualizado con los datos actuales">
+          💾 Guardar HTML
         </button>
         <button class="btn btn-outline" id="btnExportExcel">
           📥 Exportar Excel
@@ -1010,6 +1020,85 @@
 </script>
 
 <script>
+const ORIGINAL_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+/* -------- Control de permisos de edición -------- */
+let canEditCurrent = false;
+
+function applyEditPermissions(allowed) {
+  canEditCurrent = Boolean(allowed);
+  const btnUpload = document.getElementById('btnUploadExcel');
+  const btnSave = document.getElementById('btnSaveHtml');
+  const fileInput = document.getElementById('fileInputExcel');
+
+  if (!canEditCurrent) {
+    document.body.classList.add('no-edit');
+    if (btnUpload) btnUpload.style.display = 'none';
+    if (btnSave) btnSave.style.display = 'none';
+    if (fileInput) fileInput.style.display = 'none';
+  } else {
+    document.body.classList.remove('no-edit');
+    if (btnUpload) btnUpload.style.display = '';
+    if (btnSave) btnSave.style.display = '';
+  }
+}
+
+// 1. Detección por URL query parameter (?canEdit=true o ?edit=true)
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  const p = urlParams.get('canEdit') || urlParams.get('edit');
+  applyEditPermissions(p === 'true' || p === '1');
+} catch (e) {
+  applyEditPermissions(false);
+}
+
+// 2. Detección por mensaje postMessage desde el contenedor Shell
+window.addEventListener('message', (ev) => {
+  if (ev && ev.data && ev.data.type === 'SET_PERMISSIONS') {
+    applyEditPermissions(Boolean(ev.data.canEdit));
+  }
+});
+
+/* -------- Exportar / Guardar HTML actualizado -------- */
+function pad2(n) { return String(n).padStart(2, '0'); }
+function timestampAhora() {
+  const d = new Date();
+  return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
+}
+
+function exportarHTMLActualizado() {
+  if (!canEditCurrent) {
+    alert('No tienes permisos de edición para exportar o generar este HTML.');
+    return;
+  }
+  let html = ORIGINAL_HTML;
+  const jsonStr = JSON.stringify(currentData, null, 2);
+  const regex = /<script\s+id=["']data-block["']\s+type=["']application\/json["']>[\s\S]*?<\/script>/;
+  if (!regex.test(html)) {
+    const fallbackRegex = /<script[^>]*id=["']data-block["'][^>]*>[\s\S]*?<\/script>/;
+    if (fallbackRegex.test(html)) {
+      html = html.replace(fallbackRegex, `<script id="data-block" type="application/json">\n${jsonStr}\n<\/script>`);
+    } else {
+      alert('Error: No se encontró el bloque de datos para generar el nuevo archivo HTML.');
+      return;
+    }
+  } else {
+    html = html.replace(regex, `<script id="data-block" type="application/json">\n${jsonStr}\n<\/script>`);
+  }
+
+  const stamp = timestampAhora();
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Portafolio_Desarrollo_OTIC_${stamp}.html`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }, 100);
+}
+
 // SAFE ICON CREATOR
 function safeCreateIcons() {
   try {
@@ -1155,11 +1244,18 @@ function setupEventListeners() {
   const btnUpload = document.getElementById('btnUploadExcel');
   if (btnUpload) {
     btnUpload.addEventListener('click', () => {
+      if (!canEditCurrent) {
+        alert('No tienes permisos para modificar los datos de este portafolio.');
+        return;
+      }
       document.getElementById('fileInputExcel').click();
     });
   }
   const fileInput = document.getElementById('fileInputExcel');
   if (fileInput) fileInput.addEventListener('change', handleExcelUpload);
+
+  const btnSave = document.getElementById('btnSaveHtml');
+  if (btnSave) btnSave.addEventListener('click', exportarHTMLActualizado);
 
   const btnExport = document.getElementById('btnExportExcel');
   if (btnExport) btnExport.addEventListener('click', exportToExcel);
@@ -1700,6 +1796,11 @@ function triggerPdfPrint() {
 
 // EXCEL UPLOAD & STRICT COLUMN MAPPING ENGINE
 function handleExcelUpload(e) {
+  if (!canEditCurrent) {
+    alert('No tienes permisos para modificar los datos de este portafolio.');
+    if (e.target) e.target.value = '';
+    return;
+  }
   if (typeof XLSX === 'undefined') {
     alert('❌ Error: La librería SheetJS no está cargada. Verifica tu conexión a internet.');
     return;
@@ -1906,9 +2007,14 @@ function confirmExcelImport() {
   if (pendingImportData) {
     currentData = pendingImportData;
     localStorage.setItem('otic_dashboard_data', JSON.stringify(currentData));
+    const dataBlock = document.getElementById('data-block');
+    if (dataBlock) {
+      dataBlock.textContent = JSON.stringify(currentData);
+    }
     closeModal('modalDiff');
     renderApp();
-    alert('✅ ¡Tablero actualizado exitosamente con los nuevos datos de Trazabilidad!');
+    exportarHTMLActualizado();
+    alert('✅ ¡Tablero actualizado exitosamente con los nuevos datos de Trazabilidad!\n\nSe ha generado y descargado el archivo HTML actualizado. Para guardar los cambios permanentemente en la plataforma, cárgalo usando el botón "Cargar" en la barra superior del visor.');
   }
 }
 
