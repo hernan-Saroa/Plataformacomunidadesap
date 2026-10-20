@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PTAForm } from './PTAForm';
 import { getDocenciaAprobada, getRegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
-import { getActivePeriodoAcademico, getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
+import { getActivePeriodoAcademico, getCatalogoAsignaturas, getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
 import { docentePtaAlert } from './DocentePtaAlert';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ getBaseURL: () => 'http://localhost' }));
@@ -11,7 +11,7 @@ vi.mock('../../../services/api/ptaApi', () => {
   const empty = () => Promise.resolve({ success: true, data: [] });
   return {
     getPTAById: vi.fn(), savePTA: vi.fn(),
-    getCatalogoProgramas: empty, getCatalogoAsignaturas: empty,
+    getCatalogoProgramas: empty, getCatalogoAsignaturas: vi.fn().mockImplementation(empty),
     getCatalogoTerritoriales: empty, getCatalogoCetaps: empty,
     getCatalogoActividadesInvestigacion: empty, getCatalogoActividadesExtension: empty,
     getCatalogoActividadesComplementarias: empty, getCatalogoActividadesAcademicoAdmin: empty,
@@ -40,6 +40,7 @@ const pta = { id: 'pta-1', estado: 'Borrador', periodo: '2050-2', horas_a_progra
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getCatalogoAsignaturas).mockResolvedValue({ success: true, data: [] });
   vi.mocked(getRegimenDocencia).mockResolvedValue('programacion');
   vi.mocked(getDocenciaAprobada).mockResolvedValue({ asignaturas: [], horas: 0, ptaVigente: null });
   vi.mocked(getActivePeriodoAcademico).mockResolvedValue({ codigo: '2050-2' } as any);
@@ -53,6 +54,40 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('Docencia del PTA según el régimen del backend', () => {
+  it.each([true, false])('respeta el catálogo del programa aunque la carga general llegue antes=%s', async generalPrimero => {
+    vi.mocked(getRegimenDocencia).mockResolvedValue('actual');
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: { ...pta, asignaturas: [
+      { id: 1, programa_id: 'diurno', territorial_id: 'central', cetap_id: 'central', asignatura_id: '', pensum: '', total_horas: 0 },
+    ] } } as any);
+    let resolverGeneral!: (result: any) => void;
+    let resolverPrograma!: (result: any) => void;
+    const general = new Promise<any>(resolve => { resolverGeneral = resolve; });
+    const programa = new Promise<any>(resolve => { resolverPrograma = resolve; });
+    vi.mocked(getCatalogoAsignaturas).mockImplementation(id => id ? programa : general);
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
+    await waitFor(() => expect(getCatalogoAsignaturas).toHaveBeenCalledWith('diurno'));
+    const select = screen.getByRole('combobox', { name: /Pensum/ }) as HTMLSelectElement;
+    await waitFor(() => expect(select.disabled).toBe(true));
+    const resolverCopiaGeneral = async () => {
+      await act(async () => resolverGeneral({ success: true, data: ['AP_33', 'AP_34', 'AP_35', 'AP_36'].map((pensum, index) =>
+        ({ id: String(index + 1), programaId: 'diurno', pensum })) }));
+    };
+    if (generalPrimero) {
+      await resolverCopiaGeneral();
+      expect(select.disabled).toBe(true);
+    }
+    await act(async () => resolverPrograma({ success: true, data: [
+      { id: '1', programaId: 'diurno', pensum: 'AP_33' },
+      { id: '3', programaId: 'diurno', pensum: 'AP_35' },
+      { id: '5', programaId: 'nocturno', pensum: 'AP_34' },
+    ] }));
+    if (!generalPrimero) await resolverCopiaGeneral();
+    await waitFor(() => expect(select.disabled).toBe(false));
+    expect(Array.from(select.options).map(option => option.value).filter(Boolean)).toEqual(['AP_33', 'AP_35']);
+    fireEvent.change(select, { target: { value: 'AP_35' } });
+    expect(select.value).toBe('AP_35');
+  });
+
   it('conserva las marcas de cruce y todas las horas de Docencia concertada', async () => {
     vi.mocked(getPTAById).mockResolvedValue({ success: true, data: {
       ...pta, asignaturas: asignaturas.map(asignatura => ({ ...asignatura,

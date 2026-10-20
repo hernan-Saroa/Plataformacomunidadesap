@@ -178,7 +178,8 @@ export class AsignaturasImportService {
       if (!existing) {
         newProgs.push(p);
       } else {
-        const diffs = this.diffProgramFields(existing, p, resolvedFacId);
+        const diffs = this.diffProgramFields(existing, p, resolvedFacId)
+          || (existing.deleted_at ? ['Restaurar programa retirado del catálogo'] : null);
         if (diffs) {
           modifiedProgs.push({ ...p, _cambios: diffs, dbId: existing.id });
         } else {
@@ -289,7 +290,7 @@ export class AsignaturasImportService {
 
     let ofertasExistentes: Set<string> | null = null;
     if (periodIdTemp) {
-      const dbOfertas = await this.dataSource.query('SELECT id_cetap, id_programa FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = $1', [periodIdTemp]);
+      const dbOfertas = await this.dataSource.query('SELECT id_cetap, id_programa FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = $1 AND activa = TRUE', [periodIdTemp]);
       ofertasExistentes = new Set<string>();
       for (const o of dbOfertas) {
         ofertasExistentes.add(`${o.id_cetap}::${o.id_programa}`);
@@ -800,6 +801,7 @@ export class AsignaturasImportService {
           horas_base_por_credito = EXCLUDED.horas_base_por_credito,
           horas_pregrado_central = EXCLUDED.horas_pregrado_central,
           activo = EXCLUDED.activo,
+          deleted_at = NULL,
           categoria_horas_circular003 = COALESCE(EXCLUDED.categoria_horas_circular003, p.categoria_horas_circular003),
           descripcion_categoria_circular003 = COALESCE(EXCLUDED.descripcion_categoria_circular003, p.descripcion_categoria_circular003),
           horas_pta_referencia_circular003 = COALESCE(EXCLUDED.horas_pta_referencia_circular003, p.horas_pta_referencia_circular003),
@@ -1116,7 +1118,7 @@ export class AsignaturasImportService {
           INSERT INTO academic_work_plan.oferta_cetap_programa (
             id_cetap, id_programa, id_periodo_academico, cupos_estimados, activa
           ) VALUES ($1, $2, $3, 100, TRUE)
-          ON CONFLICT (id_cetap, id_programa, id_periodo_academico) DO NOTHING;
+          ON CONFLICT (id_cetap, id_programa, id_periodo_academico) DO UPDATE SET activa = TRUE;
         `, [cetapId, progId, periodId]);
 
         countDto.creados++;

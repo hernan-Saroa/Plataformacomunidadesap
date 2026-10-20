@@ -121,6 +121,18 @@ function buildWorkbook(marker = 'X', includeCircularColumns = true): Buffer {
 describe('ExcelParserService', () => {
   const parser = new ExcelParserService();
 
+  it('conserva la asociación Programa-Pensum de la segunda hoja sin mezclar jornadas', () => {
+    const workbook = xlsx.read(buildWorkbook(), { type: 'buffer' });
+    const rows = xlsx.utils.sheet_to_json<any>(workbook.Sheets.ASIGNATURAS, { defval: null });
+    workbook.Sheets.ASIGNATURAS = xlsx.utils.json_to_sheet([
+      ['AP_33', 'PRO-001'], ['AP_35', 'PRO-001'], ['AP_34', 'PRO-002'], ['AP_36', 'PRO-002'],
+    ].map(([pensum, codigoPrograma], index) => ({ ...rows[0], codigo_asignatura: `ASIG-${index + 1}`,
+      Pensum: pensum, codigo_programa: codigoPrograma })));
+    const parsed = parser.parseExcel(xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+    expect(parsed.asignaturas.filter(row => row.codigo_programa === 'PRO-001').map(row => row.pensum)).toEqual(['AP_33', 'AP_35']);
+    expect(parsed.asignaturas.filter(row => row.codigo_programa === 'PRO-002').map(row => row.pensum)).toEqual(['AP_34', 'AP_36']);
+  });
+
   it('acepta la estructura descargable y normaliza booleanos de Excel', () => {
     const parsed = parser.parseExcel(buildWorkbook());
     const validation = ImportValidator.validarPreInsert(
@@ -139,6 +151,26 @@ describe('ExcelParserService', () => {
     expect(parsed.matrizOferta[0].programas_ofertados).toEqual([
       'PRO-EJEMPLO-001',
     ]);
+  });
+
+  it.each([1, 427, 492])('valida %i asignaturas por su contenido sin comparar con un catálogo de tamaño fijo', count => {
+    const parsed = parser.parseExcel(buildWorkbook());
+    const asignaturas = Array.from({ length: count }, (_, index) => ({
+      ...parsed.asignaturas[0], codigo_asignatura: `ASIG-${index + 1}`,
+    }));
+    const validation = ImportValidator.validarPreInsert(asignaturas, parsed.programas, parsed.matrizProgramCodes);
+    expect(validation.errors).toEqual([]);
+    expect(validation.warnings.some(warning => warning.includes('La hoja ASIGNATURAS contiene'))).toBe(false);
+  });
+
+  it.each([0, 2001])('mantiene la validación de límites con %i asignaturas', count => {
+    const parsed = parser.parseExcel(buildWorkbook());
+    const asignaturas = Array.from({ length: count }, (_, index) => ({
+      ...parsed.asignaturas[0], codigo_asignatura: `ASIG-${index + 1}`,
+    }));
+    const validation = ImportValidator.validarPreInsert(asignaturas, parsed.programas, parsed.matrizProgramCodes);
+    expect(validation.isValid).toBe(false);
+    expect(validation.errors.some(error => error.startsWith('R1:'))).toBe(true);
   });
 
   it('acepta columnas informativas de Circular 003 cuando vienen en la plantilla nueva', () => {

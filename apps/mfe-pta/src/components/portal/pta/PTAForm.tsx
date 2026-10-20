@@ -61,11 +61,13 @@ import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/
 import { getDocenciaAprobada, getRegimenDocencia, type RegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
 import { DocenciaConcertada } from './DocenciaConcertada';
 import {
+  catalogProgramId,
   filterAssignmentsByPensum,
   formatPtaAssignmentName,
   inferLegacyPensum,
   listPensumsForProgram,
   mergeAssignmentCatalog,
+  replaceProgramAssignmentCatalog,
   reconcileLegacyAssignment,
   SIN_PENSUM_KEY,
 } from '../../../utils/ptaPensumCompatibility';
@@ -2337,7 +2339,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     ]).then(([progs, asigs, actInv, actExt, actComp, actAcad, roles, config, secciones, periodos]) => {
       if (progs.success) setProgramas(progs.data);
       if (asigs.success) {
-        setAsignaturasCat(current => mergeAssignmentCatalog(current, asigs.data));
+        setAsignaturasCat(current => mergeAssignmentCatalog(current, asigs.data.filter(
+          item => !loadedAsignaturasProgramasRef.current.has(catalogProgramId(item)),
+        )));
       }
       if (actInv.success) setActInvestigacion(actInv.data);
       if (actExt.success && actExt.data) {
@@ -2780,7 +2784,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     try {
       const result = await getCatalogoAsignaturas(programKey);
       if (result.success) {
-        setAsignaturasCat(current => mergeAssignmentCatalog(current, result.data, programKey));
+        setAsignaturasCat(current => replaceProgramAssignmentCatalog(current, result.data, programKey));
         loadedAsignaturasProgramasRef.current.add(programKey);
       }
     } finally {
@@ -6316,8 +6320,8 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                         const asignaturasOptionsKey = asignaturasDisponibles
                           .map(item => String(item.id))
                           .join('|');
-                        const cargandoAsignaturas = programasCargandoAsignaturas.has(String(asig.programa_id))
-                          && asignaturasDisponibles.length === 0;
+                        const cargandoPensums = programasCargandoAsignaturas.has(String(asig.programa_id));
+                        const cargandoAsignaturas = cargandoPensums && asignaturasDisponibles.length === 0;
 
                         return (
                           <div key={asig.id}
@@ -6450,13 +6454,13 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                                   return lista.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }));
                                 })()}
                                 placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />
-                              <FormSelect label="Pensum" value={asig.pensum} disabled={!rowEditable || !asig.programa_id}
+                              <FormSelect label="Pensum" value={asig.pensum} disabled={!rowEditable || cargandoPensums || !asig.programa_id}
                                 required
                                 fieldKey={ptaFieldKey.docencia(asig.id, 'pensum')}
                                 error={requiredFieldErrors[ptaFieldKey.docencia(asig.id, 'pensum')]}
                                 onChange={v => handleAsigChange(asig.id, 'pensum', v)}
                                 options={getPensumsFiltrados(asig.programa_id)}
-                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
+                                placeholder={cargandoPensums ? 'Cargando pensums...' : asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
                               <FormSelect key={`asignatura-${asig.id}-${asig.programa_id}-${asig.pensum}-${asignaturasOptionsKey}`}
                                 label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || cargandoAsignaturas || !asig.programa_id || (!asig.pensum && !asig.asignatura_id)}
                                 required

@@ -3208,7 +3208,7 @@ export class PtaService {
     let tipoPorPrograma = new Map<string, string>();
     if (programaIds.length > 0) {
       try {
-        const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+        const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any, withDeleted: true });
         tipoPorPrograma = new Map(programas.map(p => [String(p.id), p.tipo]));
       } catch (err: any) {
         this.logger.warn(`No se pudo resolver el tipo de programa para Docencia: ${err?.message || err}`);
@@ -7887,7 +7887,7 @@ export class PtaService {
   // Catálogos (migración legacy)
   // ─────────────────────────────
   async getCatalogoProgramas() {
-    const progs = await this.programaRepo.find({ order: { nombre: 'ASC' } });
+    const progs = await this.programaRepo.find({ where: { activo: true }, order: { nombre: 'ASC' } });
     const nivelFormacionMap: Record<string, string> = {
       pregrado: 'Pregrado',
       especializacion: 'Especialización',
@@ -7905,12 +7905,14 @@ export class PtaService {
     const completo = String(q.completo || '').toLowerCase() === 'true';
 
     const params: any[] = [];
-    const where = !completo && programaId
-      ? (() => {
-          params.push(programaId);
-          return `WHERE a.id_programa::text = $1 OR p.id::text = $1 OR p.codigo = $1`;
-        })()
-      : '';
+    // El formulario consume el catálogo vigente. El catálogo completo conserva
+    // las referencias históricas que necesitan administración y reportes.
+    const conditions = completo ? [] : ['a.activa = TRUE', 'a.deleted_at IS NULL', 'p.activo = TRUE', 'p.deleted_at IS NULL'];
+    if (!completo && programaId) {
+      params.push(programaId);
+      conditions.push('(a.id_programa::text = $1 OR p.id::text = $1 OR p.codigo = $1)');
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = await this.asignaturaRepo.query(
       `
@@ -7920,6 +7922,8 @@ export class PtaService {
         a.nombre,
         a.codigo,
         a.pensum,
+        a.activa,
+        a.deleted_at AS "deletedAt",
         a.nombre_base AS "nombreBase",
         a.creditos,
         a.horas_fijas_pta AS horas,
@@ -7963,6 +7967,8 @@ export class PtaService {
       codigo: a.codigo,
       pensum: a.pensum,
       pensumKey: a.pensum || '__SIN_PENSUM__',
+      activa: a.activa,
+      deletedAt: a.deletedAt,
       nombreBase: a.nombreBase,
       creditos: a.creditos,
       horas: a.horas,
@@ -9449,7 +9455,7 @@ export class PtaService {
     ));
     let tipoPorId = new Map<string, string>();
     if (programaIds.length > 0) {
-      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any, withDeleted: true });
       tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
     }
 
@@ -9602,7 +9608,7 @@ export class PtaService {
     ));
     let tipoPorId = new Map<string, string>();
     if (programaIds.length > 0) {
-      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any, withDeleted: true });
       tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
     }
 
