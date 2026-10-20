@@ -56,6 +56,12 @@ export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
   'SUBDIRECCION_GESTION_CORPORATIVA',
   'SUBDIRECTOR_GESTION_CORPORATIVA',
   'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+  'SUBDIRECTOR_NACIONAL',
+  'SUBDIRECTOR',
+  'SUBDIRECCION_NACIONAL',
+  'SUBDIRECTOR_ACADEMICO',
+  'SUBDIRECTOR_PROYECCION',
+  'SUBDIRECTOR_ALTO_GOBIERNO',
 ] as const;
 
 export const ROLES_DIRECCION_NACIONAL = [
@@ -449,7 +455,38 @@ export class AuthService {
     }
     return user.roles.some((r) =>
       (ROLES_SUBDIRECCION_GESTION_CORPORATIVA as readonly string[]).includes(r) ||
-      r.includes('SUBDIRECCION_GESTION_CORPORATIVA'),
+      r.includes('SUBDIRECCION_GESTION_CORPORATIVA') ||
+      ((r.includes('SUBDIRECTOR') || r.includes('SUBDIRECCION')) && !r.includes('TERRITORIAL')),
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene función de Ordenador del Gasto
+   * (Subdirección de Gestión Corporativa, Dirección Nacional o roles afines de Ordenación).
+   */
+  isOrdenadorGasto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin || this.isSuperAdmin()) return true;
+    if (this.isSubdireccionGestionCorporativa() || this.isDireccionNacional()) return true;
+    return user.roles.some((r) =>
+      r.includes('ORDENADOR') ||
+      r.includes('SUBDIRECCION') ||
+      r.includes('DIRECCION_GENERAL') ||
+      r.includes('DIRECTOR_GENERAL'),
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el cargo o rol de Dirección Territorial.
+   */
+  isDirectorTerritorial(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    return user.roles.some(
+      (r) =>
+        ['DIRECTOR_TERRITORIAL', 'DIRECCION_TERRITORIAL'].includes(r) ||
+        (r.includes('TERRITORIAL') && (r.includes('DIRECTOR') || r.includes('JEFE'))),
     );
   }
 

@@ -37,6 +37,10 @@ import {
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
 import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import {
+  RegistrarRevocatoriaSiifDto,
+  AplicarReduccionRpDto,
+} from '../../dto/revocatoria.dto';
 import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
 import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
@@ -51,6 +55,7 @@ import {
   SolicitarOtpFirmaDto,
   VerificarOtpFirmaDto,
   SolicitarFirmasDto,
+  RegistrarVoBoDuracionDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import {
@@ -381,6 +386,326 @@ export class TravelExpensesService implements OnModuleInit {
         this.SUPER_ADMIN_ROLES.includes(r.toUpperCase())
       );
     });
+  }
+
+  private readonly ROLES_DIRECCION_NACIONAL = [
+    'DIRECCION_NACIONAL',
+    'DIRECTOR_NACIONAL',
+    'DELEGADO_DIRECCION_NACIONAL',
+    'DIRECCION_GENERAL',
+    'DIRECTOR_GENERAL',
+  ];
+
+  private readonly ROLES_SUBDIRECCION_NACIONAL = [
+    'SUBDIRECCION_GESTION_CORPORATIVA',
+    'SUBDIRECTOR_GESTION_CORPORATIVA',
+    'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+    'SUBDIRECTOR_NACIONAL',
+    'SUBDIRECTOR',
+    'SUBDIRECCION_NACIONAL',
+    'SUBDIRECTOR_ACADEMICO',
+    'SUBDIRECTOR_PROYECCION',
+    'SUBDIRECTOR_ALTO_GOBIERNO',
+  ];
+
+  esDirectorNacional(rolesUsuario: string[] = [], cargoFirmante?: string): boolean {
+    if (cargoFirmante) {
+      const c = cargoFirmante.toLowerCase();
+      if (
+        (c.includes('director') || c.includes('directora')) &&
+        (c.includes('nacional') || c.includes('general')) &&
+        !c.includes('territorial')
+      ) {
+        return true;
+      }
+    }
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_DIRECCION_NACIONAL.includes(normalized) ||
+        normalized.includes('DIRECTOR_NACIONAL') ||
+        normalized.includes('DIRECCION_NACIONAL') ||
+        normalized.includes('DIRECTOR_GENERAL') ||
+        normalized.includes('DIRECCION_GENERAL') ||
+        r === 'travel_expenses.general.es_direccion_nacional' ||
+        r === 'travel_expenses.general.es_director' ||
+        r === 'general.es_director'
+      );
+    });
+  }
+
+  esSubdirectorNacional(rolesUsuario: string[] = [], cargoFirmante?: string): boolean {
+    if (cargoFirmante) {
+      const c = cargoFirmante.toLowerCase();
+      if (
+        (c.includes('subdirector') ||
+          c.includes('subdirectora') ||
+          c.includes('subdireccion') ||
+          c.includes('subdirección')) &&
+        !c.includes('territorial')
+      ) {
+        return true;
+      }
+    }
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_SUBDIRECCION_NACIONAL.includes(normalized) ||
+        (normalized.includes('SUBDIRECTOR') && !normalized.includes('TERRITORIAL')) ||
+        (normalized.includes('SUBDIRECCION') && !normalized.includes('TERRITORIAL')) ||
+        r === 'travel_expenses.general.es_subdireccion_corporativa' ||
+        r === 'travel_expenses.general.es_subdirector' ||
+        r === 'general.es_subdirector'
+      );
+    });
+  }
+
+  private readonly ROLES_DIRECTOR_TERRITORIAL = [
+    'DIRECTOR_TERRITORIAL',
+    'DIRECCION_TERRITORIAL',
+    'DIRECTORA_TERRITORIAL',
+  ];
+
+  esDirectorTerritorial(rolesUsuario: string[] = [], cargoFirmante?: string): boolean {
+    if (cargoFirmante) {
+      const c = cargoFirmante.toLowerCase();
+      if (
+        (c.includes('director') || c.includes('directora')) &&
+        (c.includes('territorial') || c.includes('seccional'))
+      ) {
+        return true;
+      }
+    }
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_DIRECTOR_TERRITORIAL.includes(normalized) ||
+        normalized.includes('DIRECTOR_TERRITORIAL') ||
+        normalized.includes('DIRECCION_TERRITORIAL') ||
+        (normalized.includes('TERRITORIAL') && normalized.includes('DIRECTOR')) ||
+        r === 'travel_expenses.general.es_director_territorial'
+      );
+    });
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol o atribución de Ordenador del Gasto
+   * (Subdirección de Gestión Corporativa, Dirección Nacional o Dirección General).
+   */
+  esOrdenadorGasto(rolesUsuario: string[] = []): boolean {
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    if (this.esSuperAdmin(rolesUsuario)) return true;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        normalized.includes('ORDENADOR') ||
+        normalized.includes('SUBDIRECCION_GESTION_CORPORATIVA') ||
+        normalized.includes('SUBDIRECTOR_GESTION_CORPORATIVA') ||
+        normalized.includes('SUBDIRECCION_CORPORATIVA') ||
+        normalized.includes('DIRECCION_NACIONAL') ||
+        normalized.includes('DIRECTOR_NACIONAL') ||
+        normalized.includes('DIRECCION_GENERAL') ||
+        normalized.includes('DIRECTOR_GENERAL') ||
+        r === 'travel_expenses.general.es_subdireccion_corporativa' ||
+        r === 'travel_expenses.general.es_subdirector' ||
+        r === 'travel_expenses.general.es_direccion_nacional' ||
+        r === 'travel_expenses:authorize_expense'
+      );
+    });
+  }
+
+  /**
+   * Determina si el usuario autenticado pertenece al Grupo de Presupuesto.
+   */
+  esGrupoPresupuesto(rolesUsuario: string[] = []): boolean {
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    if (this.esSuperAdmin(rolesUsuario)) return true;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        normalized.includes('PRESUPUESTO') ||
+        r === 'travel_expenses.general.es_presupuesto' ||
+        r === 'travel_expenses:register_rp' ||
+        r === 'travel_expenses:read_budget'
+      );
+    });
+  }
+
+  /**
+   * Evalúa si una solicitud de comisión al interior del país requiere justificación y visto bueno institucional
+   * por superar los tres (3) días calendario (3.5 días de valor):
+   * - Aplica a: Funcionarios administrativos (FUNCIONARIO), Contratistas (gastos desplazamiento) y Estudiantes (auxilios económicos).
+   * - Exime a: Docentes y docentes capacitadores siempre y cuando su actividad sea dictar clase
+   *   o se presente en la agenda la justificación correspondiente.
+   * - Instancia de VoBo:
+   *   * Sede Central: Dirección Nacional.
+   *   * Territoriales: Director Territorial.
+   */
+  evaluarRequisitoVoBoDuracion(
+    solicitud: Partial<SolicitudComisionEntity>,
+    dependenciaNombre?: string,
+  ): {
+    aplica: boolean;
+    diasCalendario: number;
+    diasValor: number;
+    instanciaVoBo: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL';
+    tituloInstancia: string;
+    esEximidoDocente: boolean;
+    motivo: string;
+  } {
+    const esInternacional = Boolean(
+      solicitud.esInternacional ||
+      solicitud.tipoComision === 'INTERNACIONAL' ||
+      solicitud.camposAdicionales?.esInternacional,
+    );
+    if (esInternacional) {
+      return {
+        aplica: false,
+        diasCalendario: 0,
+        diasValor: 0,
+        instanciaVoBo: 'DIRECCION_NACIONAL',
+        tituloInstancia: 'Dirección Nacional',
+        esEximidoDocente: false,
+        motivo: 'Comisión internacional (la regla aplica exclusivamente a comisiones al interior del país).',
+      };
+    }
+
+    let diasValor = Number(solicitud.diasComision || 0);
+    const pernoctados = Number(solicitud.diasPernoctados ?? 0);
+    const noPernoctados = Number(solicitud.diasNoPernoctados ?? 0);
+    if (pernoctados > 0 || noPernoctados > 0) {
+      const valorCalculado = pernoctados + noPernoctados * 0.5;
+      if (valorCalculado > 0) diasValor = valorCalculado;
+    }
+
+    let diasCalendario = 0;
+    if (solicitud.fechaInicio && solicitud.fechaFin) {
+      const ini = new Date(solicitud.fechaInicio);
+      const fin = new Date(solicitud.fechaFin);
+      if (!Number.isNaN(ini.getTime()) && !Number.isNaN(fin.getTime())) {
+        const diff = Math.round((fin.getTime() - ini.getTime()) / 86400000);
+        diasCalendario = diff >= 0 ? diff + 1 : 1;
+        if (diasValor <= 0) {
+          diasValor = diff <= 0 ? 0.5 : diff + 0.5;
+        }
+      }
+    }
+
+    const superaDuracion = diasCalendario > 3 || diasValor >= 3.5;
+
+    const comisionado = solicitud.comisionado;
+    const tipoCom = (
+      comisionado?.tipoComisionado ||
+      solicitud.camposAdicionales?.tipoComisionado ||
+      ''
+    ).toUpperCase().trim();
+
+    const cargoComisionado = (
+      solicitud.cargo ||
+      solicitud.camposAdicionales?.cargo ||
+      (comisionado as any)?.cargo ||
+      ''
+    ).toLowerCase();
+
+    const dep = (
+      dependenciaNombre ||
+      solicitud.camposAdicionales?.dependenciaSolicitante ||
+      solicitud.camposAdicionales?.dependencia ||
+      solicitud.camposAdicionales?.nombreDependencia ||
+      solicitud.camposAdicionales?.sede ||
+      ''
+    ).toLowerCase();
+
+    const esTerritorial = dep.includes('territorial') || cargoComisionado.includes('territorial');
+    const instanciaVoBo: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL' = esTerritorial
+      ? 'DIRECTOR_TERRITORIAL'
+      : 'DIRECCION_NACIONAL';
+    const tituloInstancia = esTerritorial ? 'Director Territorial' : 'Dirección Nacional';
+
+    if (!superaDuracion) {
+      return {
+        aplica: false,
+        diasCalendario,
+        diasValor,
+        instanciaVoBo,
+        tituloInstancia,
+        esEximidoDocente: false,
+        motivo: `La duración no supera tres (3) días calendario (${diasCalendario} días calendario / ${diasValor} días de valor).`,
+      };
+    }
+
+    // Exención para docentes y docentes capacitadores
+    const esDocente =
+      tipoCom === 'DOCENTE' ||
+      cargoComisionado.includes('docente') ||
+      cargoComisionado.includes('profesor') ||
+      cargoComisionado.includes('capacitador');
+
+    if (esDocente) {
+      const textoActividad = (
+        (solicitud.objetoComision || '') + ' ' +
+        (solicitud.camposAdicionales?.agenda || '') + ' ' +
+        (solicitud.camposAdicionales?.actividadDocente || '') + ' ' +
+        (solicitud.camposAdicionales?.justificacionAgenda || '') + ' ' +
+        (solicitud.camposAdicionales?.justificacionDocente || '')
+      ).toLowerCase();
+
+      const terminosDocencia = [
+        'clase',
+        'catedra',
+        'cátedra',
+        'docenc',
+        'capacita',
+        'capacitador',
+        'modulo',
+        'módulo',
+        'asignatura',
+        'academ',
+        'académ',
+        'lectiv',
+        'pregrado',
+        'posgrado',
+        'taller academico',
+        'taller académico',
+      ];
+
+      const dictaClase = terminosDocencia.some((t) => textoActividad.includes(t));
+      const tieneAgendaJustificada = Boolean(
+        (solicitud.camposAdicionales?.agenda && String(solicitud.camposAdicionales.agenda).trim().length >= 10) ||
+        (solicitud.camposAdicionales?.justificacionAgenda && String(solicitud.camposAdicionales.justificacionAgenda).trim().length >= 10) ||
+        (solicitud.camposAdicionales?.justificacionDocente && String(solicitud.camposAdicionales.justificacionDocente).trim().length >= 10)
+      );
+
+      if (dictaClase || tieneAgendaJustificada) {
+        return {
+          aplica: false,
+          diasCalendario,
+          diasValor,
+          instanciaVoBo,
+          tituloInstancia,
+          esEximidoDocente: true,
+          motivo: 'Docente o docente capacitador eximido por actividad de dictar clase o justificación presentada en la agenda.',
+        };
+      }
+    }
+
+    return {
+      aplica: true,
+      diasCalendario,
+      diasValor,
+      instanciaVoBo,
+      tituloInstancia,
+      esEximidoDocente: false,
+      motivo: `Comisión al interior del país con duración superior a tres (3) días calendario (${diasCalendario} días calendario / ${diasValor} días de valor) para ${tipoCom || 'comisionado'}. Requiere justificación y visto bueno obligatorio de ${tituloInstancia}.`,
+    };
   }
 
   private dependenciasMapCache: Map<string, string> = new Map();
@@ -3290,6 +3615,53 @@ export class TravelExpensesService implements OnModuleInit {
       }
     }
 
+    let depNombre = camposAdicionalesCompletos.dependenciaSolicitante || '';
+    if (!depNombre && (dto.idDependencia || (comisionado as any)?.idDependencia)) {
+      const depMap = await this.obtenerMapDependencias();
+      depNombre = depMap.get(String(dto.idDependencia || (comisionado as any)?.idDependencia)) || '';
+    }
+
+    const evaluacionVoBo = this.evaluarRequisitoVoBoDuracion(
+      {
+        esInternacional: dto.esInternacional,
+        tipoComision: dto.tipoComision,
+        fechaInicio: new Date(sincronizacion.fechaInicio),
+        fechaFin: new Date(sincronizacion.fechaFin),
+        diasComision: sincronizacion.diasComision,
+        diasPernoctados,
+        diasNoPernoctados,
+        objetoComision: objetoSanitizado,
+        cargo: rawCargo,
+        comisionado,
+        camposAdicionales: camposAdicionalesCompletos,
+      },
+      depNombre,
+    );
+
+    if (evaluacionVoBo.aplica) {
+      camposAdicionalesCompletos.requiereVoBoDuracion = true;
+      camposAdicionalesCompletos.instanciaVoBoDuracion = evaluacionVoBo.instanciaVoBo;
+      camposAdicionalesCompletos.tituloVoBoDuracion = evaluacionVoBo.tituloInstancia;
+      camposAdicionalesCompletos.motivoVoBoDuracion = evaluacionVoBo.motivo;
+      camposAdicionalesCompletos.diasCalendario = evaluacionVoBo.diasCalendario;
+      camposAdicionalesCompletos.diasValor = evaluacionVoBo.diasValor;
+      if (dto.justificacionDuracion || camposAdicionalesCompletos.justificacionDuracion) {
+        camposAdicionalesCompletos.justificacionDuracion =
+          dto.justificacionDuracion || camposAdicionalesCompletos.justificacionDuracion;
+      }
+      camposAdicionalesCompletos.voboDuracion = camposAdicionalesCompletos.voboDuracion || {
+        estado: 'PENDIENTE',
+        instancia: evaluacionVoBo.instanciaVoBo,
+        tituloInstancia: evaluacionVoBo.tituloInstancia,
+      };
+    } else {
+      camposAdicionalesCompletos.requiereVoBoDuracion = false;
+      if (evaluacionVoBo.esEximidoDocente) {
+        camposAdicionalesCompletos.eximidoVoBoDocente = true;
+        camposAdicionalesCompletos.motivoExencionDocente = evaluacionVoBo.motivo;
+      }
+    }
+
     const solicitud = this.solicitudRepo.create({
       comisionadoId: dto.comisionadoId,
       idDependencia:
@@ -3618,6 +3990,36 @@ if (dto.costoEstimadoTiquete !== undefined) {
           .split('T')[0];
       }
     }
+
+    // Recalcular requisito de VoBo de duración extendida (>3 días calendario / 3.5 días valor)
+    let depNombreAct = mergedCampos.dependenciaSolicitante || '';
+    if (!depNombreAct && (solicitud.idDependencia || (solicitud.comisionado as any)?.idDependencia)) {
+      const depMap = await this.obtenerMapDependencias();
+      depNombreAct = depMap.get(String(solicitud.idDependencia || (solicitud.comisionado as any)?.idDependencia)) || '';
+    }
+    const evalVoBoAct = this.evaluarRequisitoVoBoDuracion(solicitud, depNombreAct);
+    if (evalVoBoAct.aplica) {
+      mergedCampos.requiereVoBoDuracion = true;
+      mergedCampos.instanciaVoBoDuracion = evalVoBoAct.instanciaVoBo;
+      mergedCampos.tituloVoBoDuracion = evalVoBoAct.tituloInstancia;
+      mergedCampos.motivoVoBoDuracion = evalVoBoAct.motivo;
+      mergedCampos.diasCalendario = evalVoBoAct.diasCalendario;
+      mergedCampos.diasValor = evalVoBoAct.diasValor;
+      if (dto.justificacionDuracion || mergedCampos.justificacionDuracion) {
+        mergedCampos.justificacionDuracion = (dto.justificacionDuracion || mergedCampos.justificacionDuracion || '').trim();
+      }
+      mergedCampos.voboDuracion = mergedCampos.voboDuracion || {
+        estado: 'PENDIENTE',
+        instancia: evalVoBoAct.instanciaVoBo,
+        tituloInstancia: evalVoBoAct.tituloInstancia,
+      };
+    } else {
+      mergedCampos.requiereVoBoDuracion = false;
+      if (evalVoBoAct.esEximidoDocente) {
+        mergedCampos.eximidoVoBoDocente = true;
+        mergedCampos.motivoExencionDocente = evalVoBoAct.motivo;
+      }
+    }
     solicitud.camposAdicionales = mergedCampos;
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -3944,6 +4346,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const cargoComisionado = (
       solicitud.camposAdicionales?.cargo ||
       solicitud.camposAdicionales?.cargoEsap ||
+      solicitud.camposAdicionales?.cargoInstitucional ||
+      solicitud.camposAdicionales?.cargoComisionado ||
       (comisionado as any)?.cargo ||
       ''
     )
@@ -3954,6 +4358,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       dependenciaNombre ||
       solicitud.camposAdicionales?.dependenciaSolicitante ||
       solicitud.camposAdicionales?.dependencia ||
+      solicitud.camposAdicionales?.nombreDependencia ||
       ''
     )
       .toLowerCase()
@@ -3965,29 +4370,82 @@ if (dto.costoEstimadoTiquete !== undefined) {
       ''
     ).toUpperCase();
 
-    // 1) Si se desplaza el subdirector Nacional de G.C., firma el director nacional.
-    const esSubdirectorGC =
-      cargoComisionado.includes('subdirector') &&
-      (cargoComisionado.includes('g.c') ||
-        cargoComisionado.includes('gc') ||
-        cargoComisionado.includes('corporativa') ||
-        cargoComisionado.includes('conocimiento') ||
-        dep.includes('corporativa') ||
-        dep.includes('conocimiento'));
+    // Recopilar cargos posibles del comisionado (JSONB cargos, campos adicionales, etc.)
+    const todosLosCargos: string[] = [
+      cargoComisionado,
+      ...(Array.isArray((comisionado as any)?.cargos)
+        ? (comisionado as any).cargos.map((c: any) => String(c?.cargo || '').toLowerCase().trim())
+        : []),
+    ];
 
-    // 2) Si se desplaza el director nacional, firma el subdirector Nacional de G.C.
+    // Recopilar roles posibles del comisionado (campos adicionales, usuario, etc.)
+    const rolesComisionadoList: string[] = [
+      ...(Array.isArray(solicitud.camposAdicionales?.roles) ? solicitud.camposAdicionales.roles : []),
+      ...(Array.isArray(solicitud.camposAdicionales?.rolesComisionado) ? solicitud.camposAdicionales.rolesComisionado : []),
+      ...(typeof solicitud.camposAdicionales?.rol === 'string' ? [solicitud.camposAdicionales.rol] : []),
+      ...(typeof solicitud.camposAdicionales?.rolComisionado === 'string' ? [solicitud.camposAdicionales.rolComisionado] : []),
+      ...(Array.isArray((comisionado as any)?.rolesUsuario) ? (comisionado as any).rolesUsuario : []),
+      ...(Array.isArray((comisionado as any)?.roles) ? (comisionado as any).roles : []),
+    ].map((r: any) => String(r || '').toLowerCase().replace(/\s+/g, '_').trim());
+
+    // 1) Si el comisionado es subdirector nacional (rol o cargo), firma el director nacional.
+    const esSubdirectorNacional =
+      todosLosCargos.some(
+        (c) =>
+          (c.includes('subdirector') ||
+            c.includes('subdirectora') ||
+            c.includes('subdireccion') ||
+            c.includes('subdirección')) &&
+          !c.includes('territorial'),
+      ) ||
+      rolesComisionadoList.some(
+        (r) =>
+          (r.includes('subdirector') || r.includes('subdireccion')) &&
+          !r.includes('territorial'),
+      ) ||
+      (dep.includes('subdirecci') &&
+        (cargoComisionado.includes('director') || cargoComisionado.includes('jefe')));
+
+    // 2) Si se desplaza el director nacional (rol o cargo), firma el subdirector nacional.
     const esDirectorNacional =
       !cargoComisionado.includes('territorial') &&
       !dep.includes('territorial') &&
-      (cargoComisionado.includes('director nacional') ||
-        cargoComisionado.includes('director general') ||
-        (cargoComisionado === 'director' && dep.includes('nacional')));
+      !esSubdirectorNacional &&
+      (todosLosCargos.some(
+        (c) =>
+          c.includes('director nacional') ||
+          c.includes('directora nacional') ||
+          c.includes('director general') ||
+          c.includes('directora general') ||
+          (c.includes('director') && (dep.includes('nacional') || dep.includes('general'))),
+      ) ||
+        rolesComisionadoList.some(
+          (r) =>
+            r.includes('director_nacional') ||
+            r.includes('direccion_nacional') ||
+            r.includes('director_general') ||
+            r.includes('direccion_general'),
+        ));
 
-    // 3) Si se desplaza el director territorial, firma el director nacional.
+    // 3) Si el comisionado tiene cargo o rol de dirección territorial, firma el director nacional.
     const esDirectorTerritorial =
-      cargoComisionado.includes('director territorial') ||
-      (cargoComisionado.includes('director') &&
-        (cargoComisionado.includes('territorial') || dep.includes('territorial')));
+      !esSubdirectorNacional &&
+      !esDirectorNacional &&
+      (todosLosCargos.some(
+        (c) =>
+          c.includes('director territorial') ||
+          c.includes('directora territorial') ||
+          c.includes('direccion territorial') ||
+          c.includes('dirección territorial') ||
+          (c.includes('director') && (c.includes('territorial') || dep.includes('territorial'))) ||
+          (c.includes('territorial') && (dep.includes('territorial') || c.includes('director'))),
+      ) ||
+        rolesComisionadoList.some(
+          (r) =>
+            r.includes('director_territorial') ||
+            r.includes('direccion_territorial') ||
+            (r.includes('territorial') && r.includes('director')),
+        ));
 
     let reglaDesplazamiento = 'REGULAR';
     let descripcionRegla =
@@ -3997,10 +4455,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.camposAdicionales?.cargoJefe ||
       (dep ? `Jefe ${dep}` : 'Jefe de Dependencia Solicitante');
 
-    if (esSubdirectorGC) {
+    if (esSubdirectorNacional) {
       reglaDesplazamiento = 'DESPLAZAMIENTO_SUBDIRECTOR_GC';
       descripcionRegla =
-        'Por desplazamiento del Subdirector Nacional de G.C., firma el Director Nacional.';
+        'Por desplazamiento del Subdirector Nacional, firma el Director Nacional.';
       tituloFirmante1 = 'Director Nacional';
       cargoFirmante1 = 'Director Nacional';
     } else if (esDirectorNacional) {
@@ -4012,7 +4470,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
     } else if (esDirectorTerritorial) {
       reglaDesplazamiento = 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
       descripcionRegla =
-        'Por desplazamiento del Director Territorial, firma el Director Nacional.';
+        'Por desplazamiento de Dirección Territorial, firma el Director Nacional.';
       tituloFirmante1 = 'Director Nacional';
       cargoFirmante1 = 'Director Nacional';
     } else if (tipoCom === 'CONTRATISTA' || tipoCom === 'DOCENTE') {
@@ -4034,7 +4492,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         titulo: tituloFirmante1,
         cargo: cargoFirmante1,
         descripcion:
-          esSubdirectorGC || esDirectorNacional || esDirectorTerritorial
+          esSubdirectorNacional || esDirectorNacional || esDirectorTerritorial
             ? descripcionRegla
             : 'Firma de aprobación de la solicitud: Jefe de Dependencia o Supervisor.',
         esRequerido: true,
@@ -4165,8 +4623,38 @@ if (dto.costoEstimadoTiquete !== undefined) {
         firma: firmaAnalista || null,
       },
     ];
+    const requiereVoBoDuracion = Boolean(solicitud.camposAdicionales?.requiereVoBoDuracion);
+    const instanciaVoBoDuracion = solicitud.camposAdicionales?.instanciaVoBoDuracion || null;
+    const tituloVoBoDuracion = solicitud.camposAdicionales?.tituloVoBoDuracion || 'Dirección Nacional / Territorial';
+    const motivoVoBoDuracion = solicitud.camposAdicionales?.motivoVoBoDuracion || null;
+    const justificacionDuracion = solicitud.camposAdicionales?.justificacionDuracion || null;
+    const diasCalendario = solicitud.camposAdicionales?.diasCalendario || null;
+    const diasValor = solicitud.camposAdicionales?.diasValor || null;
+    const eximidoVoBoDocente = Boolean(solicitud.camposAdicionales?.eximidoVoBoDocente);
+    const voboDuracion = solicitud.camposAdicionales?.voboDuracion || null;
+    const voboAprobado = voboDuracion?.estado === 'APROBADO';
 
-    const completado = Boolean(firmaJefe && firmaGerente);
+    if (requiereVoBoDuracion) {
+      firmantes.push({
+        tipo: TipoFirmaAprobacion.VOBO_DURACION,
+        titulo: `Visto Bueno (${tituloVoBoDuracion})`,
+        cargo: tituloVoBoDuracion,
+        descripcion: `Visto bueno institucional obligatorio por duración superior a tres (3) días calendario (${diasCalendario || 'N/D'} días cal. / ${diasValor || 'N/D'} días valor).`,
+        esRequerido: true,
+        firmado: Boolean(voboAprobado),
+        nombreFirmante: voboDuracion?.nombreFirmante || null,
+        cargoFirmante: voboDuracion?.cargoFirmante || tituloVoBoDuracion,
+        documentoIdentidad: voboDuracion?.documentoIdentidad || null,
+        fechaFirma: voboDuracion?.fechaVoBo || null,
+        certificadoId: voboDuracion?.certificadoId || null,
+        hashSha256: voboDuracion?.hashSha256 || null,
+        firma: voboDuracion,
+      });
+    }
+
+    const completado = Boolean(
+      firmaJefe && firmaGerente && (!requiereVoBoDuracion || voboAprobado),
+    );
 
     return {
       solicitudId: solicitud.id,
@@ -4179,8 +4667,19 @@ if (dto.costoEstimadoTiquete !== undefined) {
       elaboro: solicitud.camposAdicionales?.elaboro || null,
       completado,
       requiereFirmasParaRadicar: true,
+      requiereVoBoDuracion,
+      instanciaVoBoDuracion,
+      tituloVoBoDuracion,
+      motivoVoBoDuracion,
+      justificacionDuracion,
+      diasCalendario,
+      diasValor,
+      eximidoVoBoDocente,
+      voboDuracion,
       mensaje: completado
         ? 'Flujo de firmas de aprobación surtido completamente.'
+        : (requiereVoBoDuracion && !voboAprobado)
+        ? `La comisión supera los 3 días calendario y exige justificación detallada y el visto bueno de ${tituloVoBoDuracion} antes de continuar.`
         : 'La solicitud incorpora el flujo de firmas de aprobación previo a su radicación: sin las firmas de aprobación la solicitud no se radica.',
     };
   }
@@ -4550,6 +5049,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    // Evaluar y exigir justificación de duración extendida (>3 días calendario / 3.5 días de valor)
+    let depNombreFirmas = solicitud.camposAdicionales?.dependenciaSolicitante || '';
+    if (!depNombreFirmas && (solicitud.idDependencia || (solicitud.comisionado as any)?.idDependencia)) {
+      const depMap = await this.obtenerMapDependencias();
+      depNombreFirmas = depMap.get(String(solicitud.idDependencia || (solicitud.comisionado as any)?.idDependencia)) || '';
+    }
+    const evalVoBo = this.evaluarRequisitoVoBoDuracion(solicitud, depNombreFirmas);
+    const justificacionIngresada = (
+      dto?.justificacionDuracion ||
+      solicitud.camposAdicionales?.justificacionDuracion ||
+      ''
+    ).trim();
+
+    if (evalVoBo.aplica) {
+      if (!justificacionIngresada || justificacionIngresada.length < 10) {
+        throw new BadRequestException(
+          `La comisión supera los tres (3) días calendario (${evalVoBo.diasCalendario} días calendario / ${evalVoBo.diasValor} días de valor) y requiere obligatoriamente una justificación detallada y el visto bueno de ${evalVoBo.tituloInstancia} antes de continuar.`,
+        );
+      }
+    }
+
     const estadoAnterior = solicitud.estadoSolicitud;
     solicitud.estadoSolicitud = EstadoSolicitud.PENDIENTE_FIRMAS;
     solicitud.motivoDevolucion = null;
@@ -4598,6 +5118,32 @@ if (dto.costoEstimadoTiquete !== undefined) {
       firmasCompletadas: false,
       firmaElaboro,
       elaboro: `Elaboró: ${nombreEnlace}${docStr} (Certificado: ${certIdElaboro})`,
+      ...(evalVoBo.aplica
+        ? {
+            requiereVoBoDuracion: true,
+            instanciaVoBoDuracion: evalVoBo.instanciaVoBo,
+            tituloVoBoDuracion: evalVoBo.tituloInstancia,
+            motivoVoBoDuracion: evalVoBo.motivo,
+            diasCalendario: evalVoBo.diasCalendario,
+            diasValor: evalVoBo.diasValor,
+            justificacionDuracion: justificacionIngresada,
+            voboDuracion: solicitud.camposAdicionales?.voboDuracion?.estado === 'APROBADO'
+              ? solicitud.camposAdicionales.voboDuracion
+              : {
+                  estado: 'PENDIENTE',
+                  instancia: evalVoBo.instanciaVoBo,
+                  tituloInstancia: evalVoBo.tituloInstancia,
+                },
+          }
+        : {
+            requiereVoBoDuracion: false,
+            ...(evalVoBo.esEximidoDocente
+              ? {
+                  eximidoVoBoDocente: true,
+                  motivoExencionDocente: evalVoBo.motivo,
+                }
+              : {}),
+          }),
     };
 
     // Sincronizar en el comisionado: cargo si es diferente al actual, e información bancaria si el número de cuenta es diferente
@@ -4732,15 +5278,47 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
-    // Validación de pertenencia a la misma dependencia para Jefe y Gerente
+    if (dto.tipoFirma === TipoFirmaAprobacion.VOBO_DURACION) {
+      return this.registrarVoBoDuracion(
+        solicitudId,
+        {
+          decision: 'APROBADO',
+          comentarios: dto.comentarios || '',
+          firmaImagen: dto.firmaImagen,
+          otp: dto.otp,
+          verificationId: dto.verificationId,
+          cargoFirmante: dto.cargoFirmante,
+          nombreFirmante: dto.nombreFirmante,
+          documentoIdentidad: dto.documentoIdentidad,
+          certificadoId: dto.certificadoId,
+        },
+        usuarioId,
+        userRoles,
+      );
+    }
+
+    // Validación de autorización jerárquica y pertenencia a la dependencia para Jefe y Gerente
     const tipoFirmaStr = String(dto.tipoFirma || '').toUpperCase();
     const esFirmaJefeOGerente =
       tipoFirmaStr === 'JEFE_DEPENDENCIA' ||
       tipoFirmaStr === 'GERENTE_PROYECTO';
 
+    if (esFirmaJefeOGerente) {
+      const requiereVoBo = Boolean(solicitud.camposAdicionales?.requiereVoBoDuracion);
+      const voboAprobado = solicitud.camposAdicionales?.voboDuracion?.estado === 'APROBADO';
+      if (requiereVoBo && !voboAprobado) {
+        const tituloVoBo =
+          solicitud.camposAdicionales?.tituloVoBoDuracion ||
+          'Dirección Nacional / Director Territorial';
+        throw new BadRequestException(
+          `Esta comisión tiene una duración superior a tres (3) días calendario (≥ 3.5 días de valor). Antes de que el Jefe de Dependencia y el Gerente de Proyecto puedan firmar la aprobación, la solicitud debe contar con el Visto Bueno (VoBo) previo aprobado por ${tituloVoBo}.`,
+        );
+      }
+    }
+
     const esSuperAdmin = this.esSuperAdmin(userRoles);
 
-    if (esFirmaJefeOGerente && !esSuperAdmin && usuarioId) {
+    if (esFirmaJefeOGerente && !esSuperAdmin) {
       const depSolicitud =
         solicitud.idDependencia != null
           ? Number(solicitud.idDependencia)
@@ -4748,13 +5326,53 @@ if (dto.costoEstimadoTiquete !== undefined) {
           ? Number(solicitud.comisionado.idDependencia)
           : null;
 
-      if (depSolicitud != null) {
-        const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
-        const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
-        const esReglaEspecial =
-          firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
+      const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
+      const esReglaEspecial =
+        firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
 
-        if (!esReglaEspecial) {
+      if (tipoFirmaStr === 'JEFE_DEPENDENCIA') {
+        const requiereDirectorNacional =
+          firmantesAprobacion.reglaDesplazamiento === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+          firmantesAprobacion.reglaDesplazamiento === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL' ||
+          firmantesAprobacion.firmante1.titulo === 'Director Nacional';
+
+        const requiereSubdirectorNacional =
+          firmantesAprobacion.reglaDesplazamiento === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL' ||
+          firmantesAprobacion.firmante1.titulo.includes('Subdirector');
+
+        if (requiereDirectorNacional) {
+          let esDirNacFirmante = this.esDirectorNacional(userRoles, dto.cargoFirmante);
+          if (!esDirNacFirmante && usuarioId) {
+            const datosUsuarioFirmante = await this.resolverDatosUsuario(usuarioId);
+            esDirNacFirmante = this.esDirectorNacional([], datosUsuarioFirmante.cargo);
+          }
+          if (!esDirNacFirmante) {
+            throw new BadRequestException(
+              'No es posible firmar la aprobación: el comisionado es Subdirector Nacional o tiene cargo de Dirección Territorial. Esta aprobación como jefe de dependencia corresponde exclusivamente al Director Nacional.',
+            );
+          }
+        } else if (requiereSubdirectorNacional) {
+          let esSubdirFirmante = this.esSubdirectorNacional(userRoles, dto.cargoFirmante);
+          if (!esSubdirFirmante && usuarioId) {
+            const datosUsuarioFirmante = await this.resolverDatosUsuario(usuarioId);
+            esSubdirFirmante = this.esSubdirectorNacional([], datosUsuarioFirmante.cargo);
+          }
+          if (!esSubdirFirmante) {
+            throw new BadRequestException(
+              'No es posible firmar la aprobación: el comisionado es el Director Nacional. Esta aprobación como jefe de dependencia corresponde exclusivamente al Subdirector Nacional.',
+            );
+          }
+        } else if (usuarioId && depSolicitud != null) {
+          const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depFirmante == null || depFirmante !== depSolicitud) {
+            throw new BadRequestException(
+              `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
+            );
+          }
+        }
+      } else if (tipoFirmaStr === 'GERENTE_PROYECTO') {
+        if (!esReglaEspecial && usuarioId && depSolicitud != null) {
+          const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
           if (depFirmante == null || depFirmante !== depSolicitud) {
             throw new BadRequestException(
               `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
@@ -4842,7 +5460,11 @@ if (dto.costoEstimadoTiquete !== undefined) {
         f.estado === 'FIRMADO',
     );
 
-    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente;
+    const voboAprobado =
+      !solicitud.camposAdicionales?.requiereVoBoDuracion ||
+      solicitud.camposAdicionales?.voboDuracion?.estado === 'APROBADO';
+
+    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente && voboAprobado;
 
     solicitud.camposAdicionales = {
       ...(solicitud.camposAdicionales || {}),
@@ -4864,6 +5486,9 @@ if (dto.costoEstimadoTiquete !== undefined) {
         ? 'Gerente de Proyecto'
         : 'Analista de Viáticos';
     let mensaje = `Firma digital registrada para ${nombreRolFirmante} (Certificado: ${certId}).`;
+    if (tieneFirmaJefe && tieneFirmaGerente && !voboAprobado) {
+      mensaje += ` La solicitud aún requiere el Visto Bueno obligatorio de ${solicitud.camposAdicionales?.tituloVoBoDuracion || 'Dirección Nacional / Territorial'} por comisión superior a 3 días calendario.`;
+    }
 
     if (todasFirmasCompletadas) {
       // Surtido el flujo de firmas de aprobación (Jefe de Dependencia y Gerente de Proyecto),
@@ -5265,6 +5890,185 @@ if (dto.costoEstimadoTiquete !== undefined) {
   }
 
   /**
+   * Registra el Visto Bueno (VoBo) institucional o rechazo de una comisión que supere los 3 días calendario (3.5 días valor)
+   * por parte de la Dirección Nacional (Sede Central) o del Director Territorial (Territoriales).
+   * La decisión y los certificados quedan registrados inmutablemente en la trazabilidad.
+   */
+  async registrarVoBoDuracion(
+    solicitudId: string,
+    dto: RegistrarVoBoDuracionDto,
+    usuarioId?: string,
+    userRoles: string[] = [],
+  ): Promise<any> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const campos = { ...(solicitud.camposAdicionales || {}) };
+    if (!campos.requiereVoBoDuracion) {
+      let depNombre = campos.dependenciaSolicitante || '';
+      if (!depNombre && (solicitud.idDependencia || (solicitud.comisionado as any)?.idDependencia)) {
+        const depMap = await this.obtenerMapDependencias();
+        depNombre = depMap.get(String(solicitud.idDependencia || (solicitud.comisionado as any)?.idDependencia)) || '';
+      }
+      const evalVoBo = this.evaluarRequisitoVoBoDuracion(solicitud, depNombre);
+      if (!evalVoBo.aplica) {
+        throw new BadRequestException('Esta solicitud no requiere visto bueno de duración extendida.');
+      }
+      campos.requiereVoBoDuracion = true;
+      campos.instanciaVoBoDuracion = evalVoBo.instanciaVoBo;
+      campos.tituloVoBoDuracion = evalVoBo.tituloInstancia;
+      campos.motivoVoBoDuracion = evalVoBo.motivo;
+      campos.diasCalendario = evalVoBo.diasCalendario;
+      campos.diasValor = evalVoBo.diasValor;
+    }
+
+    const instanciaRequerida = campos.instanciaVoBoDuracion || 'DIRECCION_NACIONAL';
+    const esSuperAdmin = this.esSuperAdmin(userRoles);
+
+    if (!esSuperAdmin) {
+      if (instanciaRequerida === 'DIRECTOR_TERRITORIAL') {
+        const puedeFirmarTerritorial = this.esDirectorTerritorial(userRoles, dto.cargoFirmante);
+        if (!puedeFirmarTerritorial) {
+          throw new ForbiddenException(
+            'El visto bueno para esta comisión de sede territorial debe ser otorgado por el Director Territorial correspondiente.',
+          );
+        }
+      } else {
+        const puedeFirmarNacional = this.esDirectorNacional(userRoles, dto.cargoFirmante);
+        if (!puedeFirmarNacional) {
+          throw new ForbiddenException(
+            'El visto bueno para esta comisión de Sede Central debe ser otorgado por la Dirección Nacional.',
+          );
+        }
+      }
+    }
+
+    if (dto.otp && dto.verificationId) {
+      this.verificarOtpFirma({
+        verificationId: dto.verificationId,
+        code: dto.otp,
+        consume: true,
+      });
+    }
+
+    const certId = dto.certificadoId || this.generarCertificadoId();
+    const tituloInstancia = campos.tituloVoBoDuracion || (instanciaRequerida === 'DIRECTOR_TERRITORIAL' ? 'Director Territorial' : 'Dirección Nacional');
+    const datosUsuario = usuarioId
+      ? await this.resolverDatosUsuario(usuarioId, tituloInstancia)
+      : { nombre: '', documento: '', cargo: '' };
+
+    let nombreFirmante = dto.nombreFirmante?.trim() || '';
+    if (!nombreFirmante || nombreFirmante.includes('@')) {
+      nombreFirmante = datosUsuario.nombre && !datosUsuario.nombre.includes('@')
+        ? datosUsuario.nombre
+        : tituloInstancia;
+    }
+    const cargoFirmante = dto.cargoFirmante || datosUsuario.cargo || tituloInstancia;
+    const docFirmante = dto.documentoIdentidad?.trim() || datosUsuario.documento || '';
+    const fechaFirma = new Date().toISOString();
+    const hashVoBo =
+      dto.hashSha256 ||
+      this.generarHashDocumento(
+        `${solicitud.id}|VOBO_DURACION|${dto.decision}|${nombreFirmante}|${docFirmante}|${fechaFirma}`,
+      );
+
+    const registroVoBo = {
+      estado: dto.decision, // 'APROBADO' | 'RECHAZADO'
+      instancia: instanciaRequerida,
+      tituloInstancia,
+      nombreFirmante,
+      cargoFirmante,
+      documentoIdentidad: docFirmante,
+      fechaVoBo: fechaFirma,
+      certificadoId: certId,
+      hashSha256: hashVoBo,
+      comentarios: dto.comentarios || '',
+      firmaImagen: dto.firmaImagen || null,
+      usuarioId: usuarioId || null,
+      otpVerificado: Boolean(dto.otp),
+    };
+
+    campos.voboDuracion = registroVoBo;
+    solicitud.camposAdicionales = campos;
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    const accionTexto = dto.decision === 'APROBADO' ? 'APROBADO' : 'RECHAZADO';
+    const comentarioTrazabilidad = `[VoBo Duración > 3 días] ${accionTexto} por ${tituloInstancia}: ${nombreFirmante} (${cargoFirmante}). Días calendario: ${campos.diasCalendario || 'N/D'}, Días valor: ${campos.diasValor || 'N/D'}. Certificado digital: ${certId}. Observaciones: ${dto.comentarios || 'Sin observaciones adicionales'}.`;
+
+    if (dto.decision === 'RECHAZADO') {
+      solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
+      solicitud.motivoDevolucion = `Visto Bueno de duración extendida rechazado por ${tituloInstancia}: ${dto.comentarios || 'No se avala la duración extendida solicitada'}`;
+    }
+
+    // Verificar si tras aprobar el VoBo ya están firmados Jefe y Gerente y puede pasar a SOLICITADO
+    const firmasRegistradas: any[] = Array.isArray(campos.firmasAprobacion) ? campos.firmasAprobacion : [];
+    const tieneFirmaJefe = firmasRegistradas.some((f) => f.tipo === TipoFirmaAprobacion.JEFE_DEPENDENCIA && f.estado === 'FIRMADO');
+    const tieneFirmaGerente = firmasRegistradas.some((f) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado === 'FIRMADO');
+
+    let radicada = false;
+    if (dto.decision === 'APROBADO' && tieneFirmaJefe && tieneFirmaGerente && solicitud.estadoSolicitud === EstadoSolicitud.PENDIENTE_FIRMAS) {
+      const ahora = new Date();
+      const festivosSet = await cargarFestivosAuth(this.dataSource);
+      const configJornada = typeof this.configService?.obtenerJornadaLaboralActiva === 'function'
+        ? await this.configService.obtenerJornadaLaboralActiva()
+        : null;
+      const radicadoFueraJornada = esRadicacionFueraDeJornada(ahora, festivosSet, configJornada);
+      const diasHabilesAnticipacion = contarDiasHabiles(
+        fechaEfectivaRadicacion(ahora, festivosSet, configJornada),
+        solicitud.fechaInicio,
+        festivosSet,
+        'previos',
+        configJornada?.diasLaborales,
+      );
+      const anticipacionMinima = configJornada?.diasAnticipacionMinima ?? 14;
+      const esExtemporanea = diasHabilesAnticipacion < anticipacionMinima;
+      const nuevoEstado = EstadoSolicitud.SOLICITADO;
+
+      solicitud.estadoSolicitud = nuevoEstado;
+      solicitud.extemporanea = esExtemporanea;
+      solicitud.radicadoFueraJornada = radicadoFueraJornada;
+      solicitud.motivoDevolucion = null;
+      if (!solicitud.fechaRadicacion) {
+        solicitud.fechaRadicacion = ahora;
+      }
+      campos.firmasCompletadas = true;
+      radicada = true;
+    }
+
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    try {
+      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: solicitud.estadoSolicitud,
+        usuarioId: usuarioId || solicitud.creadoPorUsuarioId || '00000000-0000-0000-0000-000000000000',
+        comentarios: comentarioTrazabilidad,
+      });
+    } catch (histErr: any) {
+      this.logger.warn(`[registrarVoBoDuracion] Error al guardar historial de estado: ${histErr?.message}`);
+    }
+
+    return {
+      success: true,
+      decision: dto.decision,
+      mensaje: dto.decision === 'APROBADO'
+        ? `Visto bueno de duración registrado satisfactoriamente por ${tituloInstancia} (Certificado: ${certId}).${radicada ? ' El flujo de firmas se ha completado y la solicitud avanzó a Secretaría de Viáticos.' : ''}`
+        : `Visto bueno de duración rechazado. La solicitud ha sido devuelta para ajuste de duración o justificación.`,
+      solicitud: saved,
+      certificadoId: certId,
+      hashSha256: hashVoBo,
+      radicada,
+    };
+  }
+
+  /**
    * Obtiene la bandeja de solicitudes que requieren firma de aprobación previa a la radicación.
    * Lista comisiones en estado PENDIENTE_FIRMAS con información de comisionado y firmas.
    */
@@ -5274,6 +6078,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
     busqueda?: string,
     usuarioId?: string,
     isSuperAdmin = false,
+    userRoles: string[] = [],
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
@@ -5284,7 +6089,44 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     if (!isSuperAdmin && usuarioId) {
       const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
-      if (depUsuario != null) {
+      const esDirNac = this.esDirectorNacional(userRoles);
+      const esSubdir = this.esSubdirectorNacional(userRoles);
+      const esDirTerr = this.esDirectorTerritorial(userRoles);
+
+      if (esDirNac) {
+        if (depUsuario != null) {
+          query.andWhere(
+            `(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario) OR s.campos_adicionales->>'reglaDesplazamiento' IN ('DESPLAZAMIENTO_SUBDIRECTOR_GC', 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL') OR (s.campos_adicionales->>'requiereVoBoDuracion' = 'true' AND s.campos_adicionales->>'instanciaVoBoDuracion' = 'DIRECCION_NACIONAL'))`,
+            { depUsuario },
+          );
+        } else {
+          query.andWhere(
+            `(s.campos_adicionales->>'reglaDesplazamiento' IN ('DESPLAZAMIENTO_SUBDIRECTOR_GC', 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL') OR (s.campos_adicionales->>'requiereVoBoDuracion' = 'true' AND s.campos_adicionales->>'instanciaVoBoDuracion' = 'DIRECCION_NACIONAL'))`,
+          );
+        }
+      } else if (esSubdir) {
+        if (depUsuario != null) {
+          query.andWhere(
+            `(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario) OR s.campos_adicionales->>'reglaDesplazamiento' = 'DESPLAZAMIENTO_DIRECTOR_NACIONAL')`,
+            { depUsuario },
+          );
+        } else {
+          query.andWhere(
+            `s.campos_adicionales->>'reglaDesplazamiento' = 'DESPLAZAMIENTO_DIRECTOR_NACIONAL'`,
+          );
+        }
+      } else if (esDirTerr) {
+        if (depUsuario != null) {
+          query.andWhere(
+            `(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario) OR (s.campos_adicionales->>'requiereVoBoDuracion' = 'true' AND s.campos_adicionales->>'instanciaVoBoDuracion' = 'DIRECTOR_TERRITORIAL'))`,
+            { depUsuario },
+          );
+        } else {
+          query.andWhere(
+            `(s.campos_adicionales->>'requiereVoBoDuracion' = 'true' AND s.campos_adicionales->>'instanciaVoBoDuracion' = 'DIRECTOR_TERRITORIAL')`,
+          );
+        }
+      } else if (depUsuario != null) {
         query.andWhere(
           '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
           { depUsuario },
@@ -11059,6 +11901,14 @@ if (itinerarioGeneral) {
         throw new BadRequestException('La comisión ya se encuentra cancelada.');
       }
 
+      if (solicitud.estadoSolicitud === EstadoSolicitud.REVOCADA) {
+        throw new BadRequestException('La comisión ya se encuentra revocada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA) {
+        throw new BadRequestException('La comisión ya se encuentra en proceso de revocatoria.');
+      }
+
       if (solicitud.estadoSolicitud === EstadoSolicitud.LEGALIZADO) {
         throw new BadRequestException(
           'No es posible cancelar una comisión que ya ha sido legalizada.',
@@ -11069,6 +11919,8 @@ if (itinerarioGeneral) {
       const estadosRecursosComprometidos: EstadoSolicitud[] = [
         EstadoSolicitud.SOLICITADA_SIIF,
         EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
         EstadoSolicitud.RESOLUCION_EMITIDA,
         EstadoSolicitud.TIQUETES_COMPRADOS,
         EstadoSolicitud.EN_COMISION,
@@ -11078,10 +11930,71 @@ if (itinerarioGeneral) {
       const tieneRecursosComprometidos =
         dto.recursosComprometidos === true ||
         solicitud.siifExportado === true ||
+        Boolean(solicitud.numeroRp || solicitud.codigoRp || Number(solicitud.valorComprometido || 0) > 0) ||
         estadosRecursosComprometidos.includes(solicitud.estadoSolicitud);
 
       const estadoAnterior = solicitud.estadoSolicitud;
       const fechaCancelacion = new Date();
+
+      // Proceso de Revocatoria: Surge cuando ya fue la comisión AUTORIZADA y es cancelada por el jefe de dependencia
+      const estadosRevocatoria: EstadoSolicitud[] = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
+      ];
+
+      const esComisionAutorizada = estadosRevocatoria.includes(solicitud.estadoSolicitud);
+
+      const tieneRp = Boolean(
+        solicitud.numeroRp ||
+        solicitud.codigoRp ||
+        solicitud.estadoSolicitud === EstadoSolicitud.COMPROMETIDA ||
+        Number(solicitud.valorComprometido || 0) > 0,
+      );
+
+      if (esComisionAutorizada) {
+        solicitud.estadoSolicitud = EstadoSolicitud.EN_REVOCATORIA;
+        solicitud.motivoCancelacion = motivo.slice(0, 2000);
+        solicitud.fechaCancelacion = fechaCancelacion;
+        solicitud.canceladoPorUsuarioId = usuarioId;
+        solicitud.responsableCancelacion = responsable.slice(0, 255);
+        solicitud.pendienteReintegro = tieneRecursosComprometidos;
+
+        const camposAdicionalesActuales = (solicitud.camposAdicionales as Record<string, any>) || {};
+        solicitud.camposAdicionales = {
+          ...camposAdicionalesActuales,
+          procesoRevocatoria: {
+            fase: 'PENDIENTE_REGISTRO_ORDENADOR',
+            solicitadoPor: {
+              usuarioId,
+              nombre: responsable,
+              motivo,
+              fecha: fechaCancelacion.toISOString(),
+            },
+            tieneRp,
+            numeroRp: solicitud.numeroRp || solicitud.codigoRp || null,
+            valorComprometido: solicitud.valorComprometido ? Number(solicitud.valorComprometido) : null,
+          },
+        };
+
+        const saved = await manager
+          .getRepository(SolicitudComisionEntity)
+          .save(solicitud);
+
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.EN_REVOCATORIA,
+          usuarioId,
+          comentarios: `Proceso de Revocatoria iniciado por ${responsable}: ${motivo.slice(0, 100)}. Pendiente de registro en SIIF Nación por Ordenador del Gasto.${tieneRp ? ' [Tiene RP: requiere posterior reducción de RP por Presupuesto]' : ' [Sin RP]'}`.slice(0, 255),
+        });
+
+        this.logger.log(
+          `[REVOCATORIA] Solicitud ${solicitud.consecutivoUnico} entra en EN_REVOCATORIA por ${responsable}. Tiene RP: ${tieneRp}`,
+        );
+
+        return saved;
+      }
 
       solicitud.estadoSolicitud = EstadoSolicitud.CANCELADA;
       solicitud.motivoCancelacion = motivo.slice(0, 2000);
@@ -11139,6 +12052,16 @@ if (itinerarioGeneral) {
       return saved;
     });
 
+    if (result.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA) {
+      await this.despacharNotificacionesInicioRevocatoria(
+        result,
+        motivo,
+        responsable,
+        Boolean((result.camposAdicionales as any)?.procesoRevocatoria?.tieneRp),
+      );
+      return result;
+    }
+
     await this.despacharNotificacionesCancelacion(
       result,
       motivo,
@@ -11147,6 +12070,491 @@ if (itinerarioGeneral) {
     );
 
     return result;
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación con reporte PDF obligatorio (Ordenador del Gasto).
+   * Si la comisión tiene RP expedido, transiciona a solicitud de reducción de RP para Presupuesto.
+   * Si no tiene RP, formaliza el cierre y transiciona a estado REVOCADA.
+   */
+  async registrarRevocatoriaSiif(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: RegistrarRevocatoriaSiifDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    if (!this.esSuperAdmin(rolesUsuario) && !this.esOrdenadorGasto(rolesUsuario)) {
+      throw new ForbiddenException(
+        'Solo el Ordenador del Gasto o un Administrador está autorizado para registrar la revocatoria en SIIF Nación.',
+      );
+    }
+
+    if (!dto.numeroActoRevocatoria || !dto.numeroActoRevocatoria.trim()) {
+      throw new BadRequestException('El número de acto o consecutivo de revocatoria en SIIF Nación es obligatorio.');
+    }
+
+    if (!dto.fechaActoRevocatoria) {
+      throw new BadRequestException('La fecha del acto de revocatoria en SIIF Nación es obligatoria.');
+    }
+
+    if (!dto.reporteRevocatoriaPdfBase64) {
+      throw new BadRequestException(
+        'Es obligatorio cargar en PDF el reporte de la revocatoria registrada en SIIF Nación.',
+      );
+    }
+
+    const justificacion = (dto.justificacion || '').trim();
+    if (justificacion.length < 5) {
+      throw new BadRequestException('La justificación de la revocatoria debe tener al menos 5 caracteres.');
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud !== EstadoSolicitud.EN_REVOCATORIA) {
+        throw new BadRequestException(
+          `La comisión no se encuentra en proceso de revocatoria. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      const camposAdicionales = (solicitud.camposAdicionales as Record<string, any>) || {};
+      const procesoRevocatoria = camposAdicionales.procesoRevocatoria || {};
+
+      if (procesoRevocatoria.fase !== 'PENDIENTE_REGISTRO_ORDENADOR') {
+        throw new BadRequestException(
+          `La comisión ya cuenta con registro en SIIF Nación. Fase actual: ${procesoRevocatoria.fase}`,
+        );
+      }
+
+      // Guardar el documento PDF del reporte de revocatoria de SIIF Nación
+      const nombreArchivoOriginal =
+        dto.nombreArchivoPdf || `Reporte_Revocatoria_SIIF_${solicitud.consecutivoUnico || solicitud.id}.pdf`;
+      const docRepo = manager.getRepository(DocumentoSoporteEntity);
+      const docReporte = docRepo.create({
+        solicitudId: solicitud.id,
+        tipoDocumento: 'REPORTE_REVOCATORIA_SIIF',
+        nombreArchivoOriginal,
+        nombreArchivoSeguro: `revocatoria_siif_${solicitud.id}_${Date.now()}.pdf`,
+        urlRepositorio: dto.reporteRevocatoriaPdfBase64,
+        tipoMime: 'application/pdf',
+      });
+      const docGuardado = await docRepo.save(docReporte);
+
+      const fechaRegistro = new Date().toISOString();
+      const registroSiif = {
+        numeroActo: dto.numeroActoRevocatoria.trim(),
+        fechaActo: dto.fechaActoRevocatoria,
+        justificacion,
+        registradoPorId: usuarioId,
+        fechaRegistro,
+        reportePdfId: docGuardado.id,
+        reportePdfNombre: nombreArchivoOriginal,
+        reportePdfUrl: docGuardado.urlRepositorio,
+      };
+
+      const tieneRp = Boolean(
+        solicitud.numeroRp ||
+        solicitud.codigoRp ||
+        procesoRevocatoria.tieneRp ||
+        Number(solicitud.valorComprometido || 0) > 0,
+      );
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+
+      if (!tieneRp) {
+        // CASO SIN RP: Concluye inmediatamente la revocatoria
+        solicitud.estadoSolicitud = EstadoSolicitud.REVOCADA;
+        solicitud.pendienteReintegro = false;
+        solicitud.camposAdicionales = {
+          ...camposAdicionales,
+          procesoRevocatoria: {
+            ...procesoRevocatoria,
+            fase: 'REVOCADA',
+            tieneRp: false,
+            registroSiif,
+            fechaFinalizacion: fechaRegistro,
+          },
+        };
+
+        const saved = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.REVOCADA,
+          usuarioId,
+          comentarios: `Revocatoria formalizada en SIIF Nación por el Ordenador del Gasto (Sin RP). Acto: ${dto.numeroActoRevocatoria.trim()}`.slice(0, 255),
+        });
+
+        // Liberar cupo de tiquetes si aplica
+        if (
+          solicitud.requiereTiquetes &&
+          Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+          this.ticketsService?.liberarSaldo
+        ) {
+          try {
+            const depId = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+            await this.ticketsService.liberarSaldo({
+              dependenciaId: String(depId),
+              solicitudId: solicitud.id,
+              montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+            });
+          } catch (err: any) {
+            this.logger.warn(`No se pudo liberar tiquetes en revocatoria: ${err?.message}`);
+          }
+        }
+
+        return saved;
+      } else {
+        // CASO CON RP: Requiere reducción por el Grupo de Presupuesto
+        solicitud.camposAdicionales = {
+          ...camposAdicionales,
+          procesoRevocatoria: {
+            ...procesoRevocatoria,
+            fase: 'PENDIENTE_REDUCCION_PRESUPUESTO',
+            tieneRp: true,
+            registroSiif,
+          },
+        };
+
+        const saved = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.EN_REVOCATORIA,
+          usuarioId,
+          comentarios: `Revocatoria registrada en SIIF Nación por Ordenador (Acto ${dto.numeroActoRevocatoria.trim()}). Solicitud de reducción de RP enviada al Grupo de Presupuesto con reporte PDF adjunto.`
+            .slice(0, 255),
+        });
+
+        return saved;
+      }
+    });
+
+    const campos = (result.camposAdicionales as any) || {};
+    const proc = campos.procesoRevocatoria || {};
+    if (proc.tieneRp) {
+      await this.despacharNotificacionesSolicitudReduccionRp(
+        result,
+        dto.numeroActoRevocatoria,
+        justificacion,
+      );
+    } else {
+      await this.despacharNotificacionesRevocatoriaCompletada(
+        result,
+        `Revocada formalmente en SIIF Nación bajo acto ${dto.numeroActoRevocatoria} (Sin RP)`,
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción de RP por Revocatoria en SIIF Nación (Grupo de Presupuesto).
+   * Registra el número de operación de reducción en SIIF, fecha, valor reducido y soporte.
+   * Concluye el proceso transicionando la comisión a REVOCADA y liberando los recursos.
+   */
+  async aplicarReduccionRpRevocatoria(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: AplicarReduccionRpDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    if (!this.esSuperAdmin(rolesUsuario) && !this.esGrupoPresupuesto(rolesUsuario)) {
+      throw new ForbiddenException(
+        'Solo el personal del Grupo de Presupuesto o Super Administrador puede aplicar la reducción de RP.',
+      );
+    }
+
+    if (!dto.numeroOperacionReduccion || !dto.numeroOperacionReduccion.trim()) {
+      throw new BadRequestException('El número de operación de reducción en SIIF Nación es obligatorio.');
+    }
+
+    if (!dto.fechaReduccion) {
+      throw new BadRequestException('La fecha de la reducción presupuestal es obligatoria.');
+    }
+
+    if (dto.valorReducido == null || Number(dto.valorReducido) <= 0) {
+      throw new BadRequestException('El valor reducido debe ser un monto mayor a cero.');
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud !== EstadoSolicitud.EN_REVOCATORIA) {
+        throw new BadRequestException(
+          `La comisión no está en proceso de revocatoria. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      const camposAdicionales = (solicitud.camposAdicionales as Record<string, any>) || {};
+      const procesoRevocatoria = camposAdicionales.procesoRevocatoria || {};
+
+      if (procesoRevocatoria.fase !== 'PENDIENTE_REDUCCION_PRESUPUESTO') {
+        throw new BadRequestException(
+          `La comisión no está pendiente de reducción de RP. Fase actual: ${procesoRevocatoria.fase}`,
+        );
+      }
+
+      let soporteId: string | undefined = undefined;
+      let soporteUrl: string | undefined = undefined;
+      let soporteNombre: string | undefined = undefined;
+
+      if (dto.soporteReduccionPdfBase64) {
+        soporteNombre =
+          dto.nombreArchivoSoporte || `Soporte_Reduccion_RP_${solicitud.consecutivoUnico || solicitud.id}.pdf`;
+        const docRepo = manager.getRepository(DocumentoSoporteEntity);
+        const docSoporte = docRepo.create({
+          solicitudId: solicitud.id,
+          tipoDocumento: 'SOPORTE_REDUCCION_RP',
+          nombreArchivoOriginal: soporteNombre,
+          nombreArchivoSeguro: `reduccion_rp_${solicitud.id}_${Date.now()}.pdf`,
+          urlRepositorio: dto.soporteReduccionPdfBase64,
+          tipoMime: 'application/pdf',
+        });
+        const docGuardado = await docRepo.save(docSoporte);
+        soporteId = docGuardado.id;
+        soporteUrl = docGuardado.urlRepositorio;
+      }
+
+      const fechaAplicacion = new Date().toISOString();
+      const reduccionPresupuesto = {
+        numeroOperacionReduccion: dto.numeroOperacionReduccion.trim(),
+        fechaReduccion: dto.fechaReduccion,
+        valorReducido: Number(dto.valorReducido),
+        observaciones: dto.observaciones?.trim() || null,
+        aplicadoPorId: usuarioId,
+        fechaAplicacion,
+        soportePdfId: soporteId,
+        soportePdfNombre: soporteNombre,
+        soportePdfUrl: soporteUrl,
+      };
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.REVOCADA;
+      solicitud.pendienteReintegro = false;
+
+      // Descontar o liberar el valor comprometido
+      const valorComprometidoAnterior = Number(solicitud.valorComprometido || 0);
+      const nuevoValorComprometido = Math.max(0, valorComprometidoAnterior - Number(dto.valorReducido));
+      solicitud.valorComprometido = nuevoValorComprometido;
+
+      solicitud.camposAdicionales = {
+        ...camposAdicionales,
+        procesoRevocatoria: {
+          ...procesoRevocatoria,
+          fase: 'REVOCADA',
+          reduccionPresupuesto,
+          fechaFinalizacion: fechaAplicacion,
+        },
+      };
+
+      const saved = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.REVOCADA,
+        usuarioId,
+        comentarios: `Reducción presupuestal de RP aplicada en SIIF Nación por Presupuesto (Operación: ${dto.numeroOperacionReduccion.trim()}, Valor Reducido: $${Number(dto.valorReducido).toLocaleString('es-CO')}). Comisión revocada.`
+          .slice(0, 255),
+      });
+
+      // Liberar cupo de tiquetes si aplica
+      if (
+        solicitud.requiereTiquetes &&
+        Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+        this.ticketsService?.liberarSaldo
+      ) {
+        try {
+          const depId = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+          await this.ticketsService.liberarSaldo({
+            dependenciaId: String(depId),
+            solicitudId: solicitud.id,
+            montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+          });
+        } catch (err: any) {
+          this.logger.warn(`No se pudo liberar tiquetes tras reducción RP: ${err?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[REVOCATORIA] Solicitud ${solicitud.consecutivoUnico} REVOCADA exitosamente con reducción de RP de $${dto.valorReducido}`,
+      );
+
+      return saved;
+    });
+
+    await this.despacharNotificacionesRevocatoriaCompletada(
+      result,
+      `Reducción de RP aplicada en SIIF Nación (Operación ${dto.numeroOperacionReduccion}) por valor de $${Number(dto.valorReducido).toLocaleString('es-CO')}`,
+    );
+
+    return result;
+  }
+
+  /**
+   * Notificaciones cuando se inicia el proceso de revocatoria para una comisión autorizada.
+   */
+  private async despacharNotificacionesInicioRevocatoria(
+    solicitud: SolicitudComisionEntity,
+    motivo: string,
+    responsable: string,
+    tieneRp: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+      const notifOrdenador = {
+        tipo_notificacion: 'VIATICOS_REVOCATORIA_INICIADA',
+        titulo: `Revocatoria en SIIF Nación requerida: ${consecutivo}`,
+        mensaje: `La comisión autorizada ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}. Se requiere registro formal de revocatoria en SIIF Nación y carga del reporte en PDF.`,
+        descripcion_corta: `Revocatoria SIIF · ${consecutivo}`,
+        icono: 'RotateCcw',
+        color: '#D97706',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Registrar en SIIF Nación',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo,
+          responsable,
+          tieneRp,
+          fase: 'PENDIENTE_REGISTRO_ORDENADOR',
+        },
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_subdireccion_corporativa',
+        notifOrdenador,
+        undefined,
+        'SUBDIRECCION',
+      );
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_direccion_nacional',
+        notifOrdenador,
+        undefined,
+        'DIRECCION_NACIONAL',
+      );
+    } catch (err: any) {
+      this.logger.warn(`Error despachando notificaciones de inicio de revocatoria: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notificaciones cuando el Ordenador del Gasto registra la revocatoria en SIIF Nación y se solicita reducción de RP a Presupuesto.
+   */
+  private async despacharNotificacionesSolicitudReduccionRp(
+    solicitud: SolicitudComisionEntity,
+    numeroActo: string,
+    justificacion: string,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const notifPresupuesto = {
+        tipo_notificacion: 'VIATICOS_REDUCCION_RP_REVOCATORIA',
+        titulo: `Solicitud de Reducción RP por Revocatoria: ${consecutivo}`,
+        mensaje: `El Ordenador del Gasto registró la revocatoria en SIIF Nación (Acto ${numeroActo}) con reporte PDF adjunto para ${consecutivo}. Proceda con la reducción del RP ${solicitud.codigoRp || solicitud.numeroRp}.`,
+        descripcion_corta: `Reducción RP · ${consecutivo}`,
+        icono: 'DollarSign',
+        color: '#DC2626',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Aplicar Reducción de RP',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          numeroActo,
+          numeroRp: solicitud.numeroRp,
+          codigoRp: solicitud.codigoRp,
+          valorComprometido: solicitud.valorComprometido,
+          fase: 'PENDIENTE_REDUCCION_PRESUPUESTO',
+        },
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_presupuesto',
+        notifPresupuesto,
+        undefined,
+        'PRESUPUESTO',
+      );
+    } catch (err: any) {
+      this.logger.warn(`Error despachando notificación de reducción RP: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notificaciones cuando el proceso de revocatoria finaliza completamente (estado REVOCADA).
+   */
+  private async despacharNotificacionesRevocatoriaCompletada(
+    solicitud: SolicitudComisionEntity,
+    detalle: string,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+      const notifCierre = {
+        tipo_notificacion: 'VIATICOS_REVOCATORIA_FINALIZADA',
+        titulo: `Comisión revocada formalmente: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} ha finalizado su proceso de revocatoria. ${detalle}.`,
+        descripcion_corta: `Revocada · ${consecutivo}`,
+        icono: 'CheckCircle2',
+        color: '#059669',
+        prioridad: 'Media' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver expediente',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          estado: EstadoSolicitud.REVOCADA,
+        },
+      };
+
+      if (solicitud.comisionadoId) {
+        await this.notificationClient.notifyUser(solicitud.comisionadoId, notifCierre);
+      }
+      if (solicitud.creadoPorUsuarioId && solicitud.creadoPorUsuarioId !== solicitud.comisionadoId) {
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifCierre);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Error despachando notificaciones de revocatoria completada: ${err?.message}`);
+    }
   }
 
   /**
@@ -11878,6 +13286,7 @@ if (itinerarioGeneral) {
     kpis: {
       pendientesRp: number;
       comprometidas: number;
+      pendientesReduccion: number;
       totalComprometido: number;
     };
   }> {
@@ -11896,6 +13305,8 @@ if (itinerarioGeneral) {
             enPresupuesto: EstadoSolicitud.EN_PRESUPUESTO,
           },
         );
+      } else if (estado === 'REDUCCION_RP' || estado === 'EN_REVOCATORIA' || estado === 'REVOCATORIA') {
+        qb.where('sol.estadoSolicitud = :revocatoria', { revocatoria: EstadoSolicitud.EN_REVOCATORIA });
       } else {
         qb.where('sol.estadoSolicitud = :estado', { estado });
       }
@@ -11903,7 +13314,12 @@ if (itinerarioGeneral) {
       qb.where(
         '(sol.estadoSolicitud IN (:...estados) OR (sol.estadoSolicitud = :autorizada AND sol.enviadoPresupuesto = true))',
         {
-          estados: [EstadoSolicitud.AUTORIZADA, EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
+          estados: [
+            EstadoSolicitud.AUTORIZADA,
+            EstadoSolicitud.EN_PRESUPUESTO,
+            EstadoSolicitud.COMPROMETIDA,
+            EstadoSolicitud.EN_REVOCATORIA,
+          ],
           autorizada: EstadoSolicitud.AUTORIZADA,
         },
       );
@@ -11936,6 +13352,10 @@ if (itinerarioGeneral) {
       where: { estadoSolicitud: EstadoSolicitud.COMPROMETIDA },
     });
 
+    const pendientesReduccionCount = await this.solicitudRepo.count({
+      where: { estadoSolicitud: EstadoSolicitud.EN_REVOCATORIA },
+    });
+
     const sumResult = await this.solicitudRepo
       .createQueryBuilder('sol')
       .select('SUM(sol.valorComprometido)', 'total')
@@ -11952,6 +13372,7 @@ if (itinerarioGeneral) {
       kpis: {
         pendientesRp: pendientesRpCount,
         comprometidas: comprometidasCount,
+        pendientesReduccion: pendientesReduccionCount,
         totalComprometido,
       },
     };

@@ -194,4 +194,60 @@ describe('PresupuestoInbox — [Etapa 7] RF-PRE-001', () => {
       expect(screen.getByText(/7 días hábiles disponibles/i)).toBeDefined();
     });
   });
+
+  it('RF-REV-002: permite filtrar por Reducciones por Revocatoria y abre el modal de reducción de RP', async () => {
+    (viaticosService.obtenerBandejaPresupuesto as any).mockResolvedValue({
+      ...mockPresupuestoData,
+      data: [
+        {
+          id: 'sol-003',
+          codigo: 'COM-2026-0003',
+          consecutivoUnico: 'COM-2026-0003',
+          estado: 'EN_REVOCATORIA',
+          nombreComisionado: 'Fernando Ruiz',
+          cedulaComisionado: '80123456',
+          ciudadDestino: 'Medellín',
+          valorComprometido: 900000,
+          montoTotal: 900000,
+          numeroRp: '77788',
+          codigoRp: '2026-10-28_RP_77788',
+          procesoRevocatoria: {
+            fase: 'PENDIENTE_REDUCCION_PRESUPUESTO',
+            tieneRp: true,
+            registroSiif: {
+              numeroActo: 'REV-2026-012',
+              fechaActo: '2026-10-28',
+              justificacion: 'Revocatoria institucional',
+            },
+          },
+        },
+      ],
+      kpis: {
+        ...mockPresupuestoData.kpis,
+        pendientesReduccion: 1,
+      },
+    });
+
+    render(<PresupuestoInbox />);
+
+    const botonReducciones = screen.getByRole('button', { name: /Reducciones por Revocatoria/i });
+    fireEvent.click(botonReducciones);
+
+    await waitFor(() => {
+      expect(viaticosService.obtenerBandejaPresupuesto).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estado: 'REDUCCION_RP',
+        }),
+      );
+      expect(screen.getByText('COM-2026-0003')).toBeDefined();
+      expect(screen.getByText('EN REVOCATORIA')).toBeDefined();
+    });
+
+    const botonReducir = screen.getByRole('button', { name: /Aplicar Reducción/i });
+    fireEvent.click(botonReducir);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Reducción de RP por Revocatoria/i)).toBeDefined();
+    });
+  });
 });

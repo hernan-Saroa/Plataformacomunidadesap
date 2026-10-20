@@ -68,6 +68,10 @@ import {
   SolicitarOtpFirmaResponse,
   VerificarOtpFirmaPayload,
   SolicitarFirmasPayload,
+  RegistrarVoBoDuracionPayload,
+  RegistrarRevocatoriaSiifPayload,
+  AplicarReduccionRpPayload,
+  ProcesoRevocatoriaData,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia, Cargo } from '../../../../shell/src/services/api/dependencias.service';
@@ -340,6 +344,11 @@ export class ViaticosService {
       soportePagoPath: (s as any).soportePagoPath || (s as any).soporte_pago_path || null,
       observacionesPago: (s as any).observacionesPago || (s as any).observaciones_pago || null,
       pagadoPorId: (s as any).pagadoPorId || (s as any).pagado_por_id || null,
+      camposAdicionales: (s as any).camposAdicionales || null,
+      procesoRevocatoria:
+        (s as any).procesoRevocatoria ||
+        (s as any).camposAdicionales?.procesoRevocatoria ||
+        null,
     };
   }
 
@@ -1148,6 +1157,31 @@ export class ViaticosService {
       return res?.data || res;
     } catch (error) {
       console.error('Error registrando firma de aprobación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Registra el Visto Bueno (VoBo) obligatorio por duración superior a 3 días calendario (3.5 días de valor).
+   * Emitido por la Dirección Nacional (Sede Central) o el Director Territorial (Territoriales).
+   */
+  async registrarVoBoDuracion(
+    solicitudId: string,
+    payload: RegistrarVoBoDuracionPayload,
+  ): Promise<{
+    solicitud: SolicitudComisionResponse;
+    mensaje: string;
+    vobo: any;
+    certificadoId?: string;
+  }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/vobo-duracion`,
+        payload,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('Error registrando visto bueno de duración:', error);
       throw error;
     }
   }
@@ -2209,6 +2243,42 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('[viaticos] Error cancelando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación por Ordenador del Gasto con PDF adjunto.
+   */
+  async registrarRevocatoriaSiif(
+    solicitudId: string,
+    payload: RegistrarRevocatoriaSiifPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/revocatoria/registrar-siif`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error registrando revocatoria en SIIF:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción presupuestal de RP en SIIF Nación por Grupo de Presupuesto.
+   */
+  async aplicarReduccionRpRevocatoria(
+    solicitudId: string,
+    payload: AplicarReduccionRpPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/revocatoria/aplicar-reduccion-rp`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error aplicando reducción de RP por revocatoria:', error);
       throw error;
     }
   }
