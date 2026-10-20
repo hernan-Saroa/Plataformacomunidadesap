@@ -64,8 +64,16 @@ const formatearTamano = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
+const normalizarTextoFiltro = (valor: unknown): string =>
+  String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9@._-]+/g, '')
+    .toLowerCase();
+
 const FALLBACK_CLASE_ESTADO = 'bg-slate-100 text-slate-800 border border-slate-200';
 const FALLBACK_CLASE_PRIORIDAD = 'bg-slate-100 text-slate-700 border border-slate-200';
+const PAGE_SIZE_SOLICITUDES = 10;
 
 export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProps> = ({
   mantenimientos,
@@ -194,6 +202,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
+  const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
+  const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
+  const [filtroResponsable, setFiltroResponsable] = useState<string>('TODOS');
+  const [paginaActual, setPaginaActual] = useState<number>(1);
 
   useEffect(() => {
     let cancelado = false;
@@ -236,6 +248,9 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   };
 
   const clasePrioridad = (prioridad: string): string => {
+    if ((prioridad || '').toUpperCase() === 'URGENTE') {
+      return 'inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border bg-red-100 text-rose-800 border-rose-200';
+    }
     const it = mapPrioridad.get((prioridad || '').toUpperCase());
     return it?.metadata?.color || FALLBACK_CLASE_PRIORIDAD;
   };
@@ -257,6 +272,73 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     const it = mapEstado.get((estado || '').toUpperCase());
     return renderIcono(it?.metadata?.icon, size, 'clock');
   };
+
+  const opcionesResponsable = useMemo(() => {
+    return catalogoTecnicos
+      .filter((it) => String(it.codigo || '').trim() && String(it.nombre || '').trim())
+      .map((it) => ({
+        value: String(it.codigo || '').trim().toUpperCase(),
+        label: `${it.nombre}${it.codigo ? ` (${it.codigo})` : ''}`,
+        codigo: String(it.codigo || '').trim(),
+        nombre: String(it.nombre || '').trim(),
+        email: String(it.metadata?.email || '').trim(),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [catalogoTecnicos]);
+
+  const opcionesResponsableMap = useMemo(() => {
+    const mapa = new Map<string, (typeof opcionesResponsable)[number]>();
+    for (const opcion of opcionesResponsable) mapa.set(opcion.value, opcion);
+    return mapa;
+  }, [opcionesResponsable]);
+
+  const listaFiltrada = useMemo(() => {
+    return lista.filter((m) => {
+      const estadoOk =
+        filtroEstado === 'TODOS' ||
+        String(m.estado || '').trim().toUpperCase() === filtroEstado;
+      const prioridadOk =
+        filtroPrioridad === 'TODAS' ||
+        String(m.prioridad || 'MEDIA').trim().toUpperCase() === filtroPrioridad;
+      const responsable = String(m.responsableAsignado || '').trim();
+      let asignacionOk = true;
+      if (filtroResponsable === 'SIN_ASIGNAR') {
+        asignacionOk = !responsable;
+      } else if (filtroResponsable !== 'TODOS') {
+        const tecnico = opcionesResponsableMap.get(filtroResponsable);
+        const responsableNorm = normalizarTextoFiltro(responsable);
+        const candidatos = [
+          tecnico?.codigo,
+          tecnico?.nombre,
+          tecnico?.email,
+        ]
+          .map((it) => normalizarTextoFiltro(it))
+          .filter(Boolean);
+        asignacionOk = !!responsable && candidatos.some((it) => responsableNorm.includes(it));
+      }
+      return estadoOk && prioridadOk && asignacionOk;
+    });
+  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, opcionesResponsableMap]);
+
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, lista.length]);
+
+  const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / PAGE_SIZE_SOLICITUDES));
+
+  useEffect(() => {
+    if (paginaActual > totalPaginas) setPaginaActual(totalPaginas);
+  }, [paginaActual, totalPaginas]);
+
+  const listaPaginaActual = useMemo(() => {
+    const inicio = (paginaActual - 1) * PAGE_SIZE_SOLICITUDES;
+    return listaFiltrada.slice(inicio, inicio + PAGE_SIZE_SOLICITUDES);
+  }, [listaFiltrada, paginaActual]);
+
+  const hayFiltrosActivos =
+    filtroEstado !== 'TODOS' ||
+    filtroPrioridad !== 'TODAS' ||
+    filtroResponsable !== 'TODOS';
 
   const toggleExpandir = (id: string) => {
     setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -430,6 +512,78 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
+        {!vistaLoading && lista.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label className="block">
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Estado</span>
+                  <select
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  >
+                    <option value="TODOS">Todos los estados</option>
+                    {catalogoEstado.map((it) => (
+                      <option key={it.codigo} value={String(it.codigo || '').trim().toUpperCase()}>
+                        {it.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Prioridad</span>
+                  <select
+                    value={filtroPrioridad}
+                    onChange={(e) => setFiltroPrioridad(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  >
+                    <option value="TODAS">Todas las prioridades</option>
+                    {catalogoPrioridad.map((it) => (
+                      <option key={it.codigo} value={String(it.codigo || '').trim().toUpperCase()}>
+                        {it.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Responsable</span>
+                  <select
+                    value={filtroResponsable}
+                    onChange={(e) => setFiltroResponsable(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  >
+                    <option value="TODOS">Todos los responsables</option>
+                    <option value="SIN_ASIGNAR">Sin asignar</option>
+                    {opcionesResponsable.map((it) => (
+                      <option key={it.value} value={it.value}>
+                        {it.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center justify-between lg:justify-end gap-2">
+                <span className="text-xs text-slate-500">
+                  Mostrando <strong className="text-slate-700">{listaPaginaActual.length}</strong> de <strong className="text-slate-700">{listaFiltrada.length}</strong>
+                </span>
+                {hayFiltrosActivos && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroEstado('TODOS');
+                      setFiltroPrioridad('TODAS');
+                      setFiltroResponsable('TODOS');
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {!vistaLoading && lista.length === 0 && (
           <div className="py-16 text-center space-y-3">
             <div className="inline-flex w-14 h-14 rounded-2xl bg-slate-100 items-center justify-center text-slate-400">
@@ -467,8 +621,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             )}
           </div>
         )}
+        {!vistaLoading && lista.length > 0 && listaFiltrada.length === 0 && (
+          <div className="py-12 text-center space-y-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+            <p className="text-sm font-semibold text-slate-700">No hay solicitudes que coincidan con los filtros aplicados</p>
+            <p className="text-xs text-slate-500">Ajusta estado, prioridad o el filtro de sin asignar para ampliar la búsqueda.</p>
+          </div>
+        )}
 
-        {lista.map((m) => {
+        {listaPaginaActual.map((m) => {
           const numEvidencias = (m.evidencias && m.evidencias.length) || 0;
           const expandido = !!expandidos[m.idSolicitud];
           const estadoRechazada = String(m.estado || '').toUpperCase() === 'RECHAZADA';
@@ -484,7 +644,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                 <div className="space-y-1.5 flex-1 w-full">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono font-bold text-xs bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded inline-flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-xl bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded inline-flex items-center gap-1.5">
                       {m.consecutivo}
                       {/* EFDS-1738 RF-INF-009 Badge mini calificación ⭐X/5 (OQ3 default SÍ) */}
                       {m.resultadoConformidad === 'CONFIRMADA' &&
@@ -667,6 +827,31 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             </div>
           );
         })}
+        {!vistaLoading && listaFiltrada.length > PAGE_SIZE_SOLICITUDES && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+            <span className="text-xs text-slate-500">
+              Página <strong className="text-slate-700">{paginaActual}</strong> de <strong className="text-slate-700">{totalPaginas}</strong>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPaginaActual((prev) => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaginaActual((prev) => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual >= totalPaginas}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

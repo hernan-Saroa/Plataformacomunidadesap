@@ -20,6 +20,26 @@ import { ModalNuevoTipoOficio } from './ModalNuevoTipoOficio';
 import { ModalGestionarPlantillasOficio } from './ModalGestionarPlantillasOficio';
 import { ModalConfirmacion } from './ModalConfirmacion';
 
+// Función para resolver el nombre real del archivo de plantilla
+export const resolverNombreArchivo = (url?: string, nombrePlantilla?: string): string => {
+  if (url) {
+    const raw = url.split(/[/\\]/).pop()?.split('?')[0] || '';
+    if (raw) {
+      const match = raw.match(/^plantilla-(?:oficio|acta|auto)-[^-]+-\d+-(.+)$/);
+      if (match && match[1]) {
+        return decodeURIComponent(match[1]);
+      }
+      return raw;
+    }
+  }
+  if (nombrePlantilla) {
+    return /\.(docx|doc|pdf|rtf)$/i.test(nombrePlantilla)
+      ? nombrePlantilla
+      : `${nombrePlantilla}.docx`;
+  }
+  return 'plantilla.docx';
+};
+
 // Función para convertir OficioConfiguration del backend al formato TipoOficio del frontend
 const mapBackendToFrontend = (config: OficioConfiguration): TipoOficio => {
   // Mapear el tipo del backend a la categoría del frontend
@@ -43,23 +63,30 @@ const mapBackendToFrontend = (config: OficioConfiguration): TipoOficio => {
     categoria = 'TRAMITE';
   }
   
+  const tienePlantilla = Boolean(config.plantilla || config.nombre_plantilla);
+  const nombreArchivo = resolverNombreArchivo(config.plantilla, config.nombre_plantilla);
+  const plantillaData: PlantillaArchivo | null = tienePlantilla ? {
+    id: `plt-${config.id}`,
+    nombre: config.nombre_plantilla || nombreArchivo,
+    nombreArchivo: nombreArchivo,
+    descripcion: config.descripcion_plantilla || '',
+    url: config.plantilla || '',
+    tamano: 0,
+    version: config.version_plantilla || '1.0',
+    fechaCreacion: config.createdAt,
+    fechaModificacion: config.updatedAt,
+    activo: config.estado_plantilla !== 'inactivo'
+  } : null;
+
   return {
     id: config.id,
     nombre: config.nombre,
     descripcion: config.descripcion || '',
     categoria,
-    plantilla: config.nombre_plantilla ? {
-      id: config.id,
-      nombre: config.nombre_plantilla,
-      nombreArchivo: config.nombre_plantilla,
-      descripcion: config.descripcion_plantilla || '',
-      url: config.plantilla || '',
-      tamano: 0,
-      version: config.version_plantilla || '1.0',
-      fechaCreacion: config.createdAt,
-      fechaModificacion: config.updatedAt,
-      activo: config.estado_plantilla !== 'inactivo'
-    } : null,
+    tipoBackend: config.tipo,
+    codigo: config.codigo,
+    plantilla: plantillaData,
+    plantillas: plantillaData ? [plantillaData] : [],
     activo: config.estado === 'activo',
     orden: config.orden || 0,
     fechaCreacion: config.createdAt,
@@ -163,7 +190,6 @@ export function ConfiguracionPlantillasOficios() {
         const targetId = tipoOficioEdicion.id;
         const updateDto: UpdateOficioConfigurationDto = {
           nombre: nuevoTipo.nombre,
-          tipo: nuevoTipo.categoria,
           descripcion: nuevoTipo.descripcion,
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
           orden: nuevoTipo.orden
@@ -341,7 +367,7 @@ export function ConfiguracionPlantillasOficios() {
             console.error('❌ Error subiendo plantilla:', error);
             toast.error('Error al subir la plantilla');
           }
-        } else if (!plantilla.url?.startsWith('blob:')) {
+        } else if (!(plantilla as any)?.yaSincronizado && !plantilla.url?.startsWith('blob:')) {
           try {
             const updateDto: UpdateOficioConfigurationDto = {
               nombre_plantilla: plantilla.nombre,

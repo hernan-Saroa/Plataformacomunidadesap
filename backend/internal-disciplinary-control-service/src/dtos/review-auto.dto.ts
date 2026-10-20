@@ -16,4 +16,12 @@ export class ReviewAutoDto {
     @IsOptional()
     @IsString()
     radicadorAsignadoId?: string;
+
+    @IsOptional()
+    @IsString()
+    entidadDestino?: string;
+
+    @IsOptional()
+    @IsString()
+    entidadDestinoEmail?: string;
 }

@@ -244,4 +244,55 @@ describe('diasHabilesUtils — Cómputo estándar de Días Hábiles y Tiempo Lí
       expect(festivos.size).toBe(0);
     });
   });
+
+  describe('6. Jornada Laboral Paramétrica y Días Hábiles Configurables', () => {
+    it('permite cambiar la hora de corte de radicación de forma paramétrica', () => {
+      // Viernes 2026-09-04 a las 16:45
+      const fechaRadicacion = new Date(2026, 8, 4, 16, 45, 0);
+
+      // Con horario estándar (16:30): fuera de jornada
+      const resDefecto = validarAnticipacionRadicacion('2026-09-28', FESTIVOS_COLOMBIA_2026, fechaRadicacion);
+      expect(resDefecto?.radicadoFueraJornada).toBe(true);
+
+      // Con horario extendido a las 17:00: dentro de jornada
+      const resParam = validarAnticipacionRadicacion('2026-09-28', FESTIVOS_COLOMBIA_2026, fechaRadicacion, {
+        horaFin: '17:00',
+        diasAnticipacionMinima: 14,
+        diasLaborales: [1, 2, 3, 4, 5],
+      });
+      expect(resParam?.radicadoFueraJornada).toBe(false);
+      expect(resParam?.horaCorteAplicada).toBe('17:00');
+    });
+
+    it('permite parametrizar los días laborales de la semana (ej. Sábado laboral)', () => {
+      // Viernes 17:00 salta al siguiente día hábil
+      const viernesTarde = new Date(2026, 8, 4, 17, 0, 0);
+
+      // Con Sábado como día laboral ([1, 2, 3, 4, 5, 6])
+      const resConSabado = validarAnticipacionRadicacion('2026-09-28', FESTIVOS_COLOMBIA_2026, viernesTarde, {
+        horaFin: '16:30',
+        diasLaborales: [1, 2, 3, 4, 5, 6],
+      });
+      // La fecha efectiva debe ser el Sábado 2026-09-05
+      expect(resConSabado?.fechaEfectivaRadicacion).toBe('2026-09-05');
+    });
+
+    it('aplica el umbral de anticipación mínima configurado dinámicamente', () => {
+      const fechaRadicacion = new Date(2026, 8, 4, 10, 0, 0); // Viernes en jornada
+      // Si el viaje inicia el 2026-09-18 (faltan 9 días hábiles):
+      // Con umbral de 14 días: es extemporánea
+      const res14 = validarAnticipacionRadicacion('2026-09-18', FESTIVOS_COLOMBIA_2026, fechaRadicacion, {
+        diasAnticipacionMinima: 14,
+      });
+      expect(res14?.extemporanea).toBe(true);
+
+      // Con umbral parametrizado en 8 días: NO es extemporánea
+      const res8 = validarAnticipacionRadicacion('2026-09-18', FESTIVOS_COLOMBIA_2026, fechaRadicacion, {
+        diasAnticipacionMinima: 8,
+      });
+      expect(res8?.extemporanea).toBe(false);
+      expect(res8?.anticipacionMinimaRequerida).toBe(8);
+    });
+  });
 });
+

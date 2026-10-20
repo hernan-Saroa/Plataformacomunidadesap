@@ -1,10 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Plus,
-  Pencil,
   Trash2,
-  ToggleLeft,
-  ToggleRight,
   RefreshCw,
   X,
   Save,
@@ -54,7 +50,9 @@ const cssBadgeSLA = (clase: string): string => {
   return 'bg-slate-100 text-slate-600 border border-slate-200';
 };
 
-export const AdminParametrosUMI: React.FC = () => {
+export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
+  readOnly = false,
+}) => {
   const [tab, setTab] = useState<TabActiva>('tiempo');
   const [toast, setToast] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
 
@@ -157,6 +155,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const guardarTiempoPorCategoria = async (idCategoria: number) => {
+    if (readOnly) return;
     if (guardandoTiempoIds.has(idCategoria)) return;
     const dias = Math.max(1, Math.min(3, Math.trunc(diasPorCategoria[idCategoria] ?? 2)));
     const nextSet = new Set(guardandoTiempoIds);
@@ -207,6 +206,7 @@ export const AdminParametrosUMI: React.FC = () => {
   useEffect(() => { if (tab === 'reglas') cargarReglas(); }, [tab]);
 
   const patchRegla = async (r: CatalogoItem, tecnicoCodigo: string | null) => {
+    if (readOnly) return;
     setGuardandoRegla(r.idCatalogo);
     try {
       await infraestructuraService.actualizarReglaEscalamiento(r.idCatalogo, { tecnicoCodigo });
@@ -250,6 +250,7 @@ export const AdminParametrosUMI: React.FC = () => {
   useEffect(() => { if (tab === 'tecnicos') cargarTecnicos({ incluirInactivos: true }); }, [tab]);
 
   const abrirCrearTec = () => {
+    if (readOnly) return;
     setModoTec('crear');
     setIdTecEdit(null);
     setFormTec({ ...TEC_VACIO, orden: String(((tecnicos.at(-1)?.orden) ?? 0) + 1) });
@@ -258,6 +259,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const abrirEditarTec = (t: CatalogoItem) => {
+    if (readOnly) return;
     const esp = Array.isArray(t.metadata?.especialidades)
       ? (t.metadata.especialidades as string[]).join(', ')
       : '';
@@ -310,6 +312,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const guardarTec = async () => {
+    if (readOnly) return;
     if (!validarTec()) return;
     setGuardandoTec(true);
     setErrFormTec(null);
@@ -333,6 +336,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const toggleTec = async (t: CatalogoItem) => {
+    if (readOnly) return;
     try {
       await infraestructuraService.toggleTecnico(t.idCatalogo);
       setToast({ tipo: 'ok', texto: t.isActivo ? 'Técnico desactivado.' : 'Técnico activado.' });
@@ -343,6 +347,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const confirmEliminarTec = async () => {
+    if (readOnly) return;
     if (!confirmElimTec || eliminandoTec) return;
     setEliminandoTec(true);
     try {
@@ -396,6 +401,15 @@ export const AdminParametrosUMI: React.FC = () => {
         </div>
       </div>
 
+      {readOnly && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Modo consulta. Este perfil puede revisar la parametrización para aprobación funcional, pero no hacer cambios.
+          </span>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
         {tabs.map((t) => {
@@ -432,9 +446,7 @@ export const AdminParametrosUMI: React.FC = () => {
                 <h3 className="font-black text-slate-900 tracking-tight">
                   Tiempo máximo de atención SLA
                 </h3>
-                <p className="text-[13px] mt-1 text-slate-600 leading-relaxed">
-                  <span className="font-bold text-indigo-700">RF-INF-004 L104 · EFDS-1733-bis (HUECO1):</span> Define días naturales independientes POR CATEGORÍA (47..54 · CS_001..CS_008) para el SLA de atención UMI desde radicación. Rango permitido por categoría: <span className="font-mono font-bold">1, 2 ó 3 días</span> (24, 48 ó 72 h).
-                </p>
+                
               </div>
             </div>
 
@@ -449,7 +461,7 @@ export const AdminParametrosUMI: React.FC = () => {
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs font-bold flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  No se cargaron parámetros de tiempo por categoría. Asegúrate de ejecutar la migración 010_02 (EFDS-1733-bis) en la base de datos.
+                  No se cargaron parámetros de tiempo por categoría.
                 </span>
               </div>
             )}
@@ -502,9 +514,7 @@ export const AdminParametrosUMI: React.FC = () => {
                               <div className="font-black text-slate-900 mt-1 text-sm md:text-base">
                                 {nombreCS}
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 font-semibold">
-                                Default seed: <span className="font-mono">{String(meta.default ?? 2)} día(s)</span> · Rango permitido: <span className="font-mono">{String(meta.min ?? 1)}..{String(meta.max ?? 3)}</span> · Unidad: <span className="font-mono">{String(meta.unidad ?? 'DIAS_NATURALES')}</span>
-                              </div>
+                             
                             </div>
                           </div>
 
@@ -532,14 +542,8 @@ export const AdminParametrosUMI: React.FC = () => {
                                 setDiasPorCategoria({ ...diasPorCategoria, [idCat]: v });
                               }}
                               className={`w-full ${esElectrica ? 'accent-purple-600' : 'accent-indigo-600'}`}
-                              disabled={guardando}
+                              disabled={readOnly || guardando}
                             />
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
-                              <span>Valor actual en BD: <span className="font-mono font-bold text-slate-800">{String(meta.actual ?? '—')} día(s)</span></span>
-                              <span className="font-mono font-bold">
-                                {dias} día{dias === 1 ? '' : 's'} · {dias * 24} h
-                              </span>
-                            </div>
                           </div>
 
                           <div className="flex items-center gap-2 justify-end md:flex-col md:items-stretch">
@@ -557,7 +561,7 @@ export const AdminParametrosUMI: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => guardarTiempoPorCategoria(idCat)}
-                              disabled={guardando}
+                              disabled={readOnly || guardando}
                               className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm transition-all disabled:opacity-60 ${
                                 esElectrica
                                   ? 'bg-purple-600 hover:bg-purple-700 text-white ring-1 ring-purple-500'
@@ -687,7 +691,7 @@ export const AdminParametrosUMI: React.FC = () => {
                               <select
                                 className={inputBase + 'border-slate-200'}
                                 value={valorSel}
-                                disabled={guardandoRegla === r.idCatalogo}
+                                disabled={readOnly || guardandoRegla === r.idCatalogo}
                                 onChange={(e) => setEditandoRegla({ ...editandoRegla, [r.idCatalogo]: e.target.value })}
                               >
                                 <option value="">— Sin técnico especialista asignado —</option>
@@ -728,7 +732,7 @@ export const AdminParametrosUMI: React.FC = () => {
                           {reglaTipo === 'ESPECIALIZACION' && (
                             <button
                               type="button"
-                              disabled={guardandoRegla === r.idCatalogo}
+                              disabled={readOnly || guardandoRegla === r.idCatalogo}
                               onClick={() => {
                                 const fin = valorSel === '' ? null : valorSel;
                                 patchRegla(r, fin);
@@ -758,38 +762,7 @@ export const AdminParametrosUMI: React.FC = () => {
                 <div className="w-9 h-9 shrink-0 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-sm ring-1 ring-indigo-500">
                   <Users className="w-4 h-4" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-black text-sm text-slate-900 tracking-tight">
-                    Source of Truth: auth-service · Roles P3 / P4
-                  </h4>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Los técnicos UMI ya no se crean ni editan en este módulo. Para <span className="font-bold text-indigo-800">designar un técnico</span>,
-                    ir a <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-[11px]">MFE Gestión Personas</span> y
-                    asignar rol <span className="font-bold text-purple-800">P3 (Técnico Eléctrico Especializado · CS_002)</span> o
-                    <span className="font-bold text-blue-800 ml-1">P4 (Técnico Multipropósito · resto categorías)</span> sobre la persona.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-2 text-xs font-bold">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                    P3/P4 activos: {tecnicos.filter((x) => x.isActivo).length}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />
-                    Inactivos auth: {tecnicos.filter((x) => !x.isActivo).length}
-                  </span>
-                </div>
-                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-colors select-none">
-                  <input
-                    type="checkbox"
-                    className="w-3.5 h-3.5 rounded border-slate-400 text-blue-600 focus:ring-blue-500"
-                    checked={mostrarInactivos}
-                    onChange={(e) => setMostrarInactivos(e.target.checked)}
-                  />
-                  Mostrar inactivos
-                </label>
+                
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -802,15 +775,17 @@ export const AdminParametrosUMI: React.FC = () => {
                 <RefreshCw className={`w-4 h-4 ${cargandoTecnicos ? 'animate-spin' : ''}`} />
                 Recargar
               </button>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { tab: 'usuarios' } }))}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white text-sm font-bold shadow-md ring-1 ring-indigo-500"
-                title="Abrir Gestión Personas para designar roles P3/P4 UMI"
-              >
-                <Users className="w-4 h-4" />
-                Abrir Gestión Personas
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { tab: 'usuarios' } }))}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white text-sm font-bold shadow-md ring-1 ring-indigo-500"
+                  title="Abrir Gestión Personas para designar roles P3/P4 UMI"
+                >
+                  <Users className="w-4 h-4" />
+                  Abrir Gestión Personas
+                </button>
+              )}
             </div>
           </div>
 
@@ -1000,15 +975,6 @@ export const AdminParametrosUMI: React.FC = () => {
                               ⚠  catálogo legacy
                             </span>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { idPerson: md.idPersonAuth, idUser: md.idUserAuth, tab: 'usuarios' } }))}
-                            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 transition-colors"
-                            title="Abrir esta persona en Gestión Personas para ver roles/editar"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            Gestionar en Personas
-                          </button>
                         </div>
                       </td>
                     </tr>

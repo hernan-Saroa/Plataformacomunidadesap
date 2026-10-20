@@ -24,17 +24,14 @@ export interface DesgloseCalculoDto {
 export class CreateSolicitudDto {
   @IsOptional()
   @IsString()
-  @Length(0, 250)
   objetoComision?: string;
 
   @IsOptional()
   @IsString()
-  @Length(0, 100)
   destinoCiudad?: string;
 
   @IsOptional()
   @IsString()
-  @Length(0, 100)
   destinoDepartamento?: string;
 
   @IsOptional()
@@ -47,17 +44,14 @@ export class CreateSolicitudDto {
 
   @IsOptional()
   @IsString()
-  @Length(0, 100)
   rubroPresupuestal?: string;
 
   @IsOptional()
   @IsString()
-  @Length(0, 100)
   numeroCdp?: string;
 
   @IsOptional()
   @IsString()
-  @Length(0, 50)
   fechaCdp?: string;
 
   @IsOptional()

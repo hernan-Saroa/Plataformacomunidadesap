@@ -63,14 +63,14 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
  *
  * @example sanitizeObjetoComision('Comisión de gestión @#$%') // 'Comision de gestion '
  */
-export function sanitizeObjetoComision(texto: string): string {
-  return texto
+export function sanitizeObjetoComision(texto: string, maxLength?: number): string {
+  const sanitized = texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/ñ/gi, 'n')
     .replace(/[^a-zA-Z0-9 ]/g, '')
-    .replace(/ {2,}/g, ' ')
-    .slice(0, 250);
+    .replace(/ {2,}/g, ' ');
+  return maxLength && maxLength > 0 ? sanitized.slice(0, maxLength) : sanitized;
 }
 
 /**
@@ -371,6 +371,9 @@ export function sincronizarItinerarioFormulario(
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
+      .replace(/[\.,\-_/]/g, ' ')
+      .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+      .replace(/[^a-z0-9]/g, '')
       .trim();
 
   const esViajeIdaVuelta =
@@ -456,8 +459,9 @@ export function contarDiasHabilesEntre(
 export function validarAnticipacionRadicacion(
   fechaInicio: string,
   festivos?: ReadonlySet<string> | string[],
+  configJornada?: any,
 ) {
-  return validarAnticipacionRadicacionStd(fechaInicio, festivos);
+  return validarAnticipacionRadicacionStd(fechaInicio, festivos, new Date(), configJornada);
 }
 
 /**

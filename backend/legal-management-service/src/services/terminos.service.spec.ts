@@ -287,7 +287,7 @@ describe('TerminosService', () => {
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
         });
 
-        it('debe notificar la creación del término (a Jefe/Resuelve) incluso sin responsableId asignado', async () => {
+        it('debe notificar la creación del término (al Jefe) incluso sin responsableId asignado', async () => {
             const result = await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
 
             expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(

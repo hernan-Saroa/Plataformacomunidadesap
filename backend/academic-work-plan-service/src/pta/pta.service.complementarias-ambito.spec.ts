@@ -10,7 +10,7 @@ import {
  * EFDS-1353 — Complementarias deja de compartir los permisos de Docencia y gana
  * los ámbitos Territorial (Decanatura) y Gestión Profesoral.
  */
-describe('PtaService - ámbitos de Complementarias (EFDS-1353)', () => {
+describe('PtaService - compatibilidad de ámbitos históricos de Complementarias (EFDS-1353)', () => {
   // El catálogo define el ámbito por TIPO de actividad, no por instancia.
   const conCatalogo = (actividades: any[]) => {
     const service = Object.create(PtaService.prototype) as any;
@@ -20,7 +20,7 @@ describe('PtaService - ámbitos de Complementarias (EFDS-1353)', () => {
   };
 
   const clasificar = (service: any, complementarias: any[]) =>
-    service.clasificarComplementarias({ complementarias });
+    service.clasificarComplementarias({ complementarias }, true);
 
   it('enruta cada actividad al componente de su ámbito', async () => {
     const service = conCatalogo([
@@ -103,6 +103,7 @@ describe('PtaService - ámbitos de Complementarias (EFDS-1353)', () => {
     const dtos: any[] = [{
       id: 'pta-1',
       estado: 'Pendiente Jefatura',
+      complementarias_flujo_version: 'legacy',
       horas_investigacion: 0,
       extension_actividades: [],
       asignaturas: [],

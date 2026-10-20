@@ -30,7 +30,7 @@ describe('PtaService - Complementarias de Gestión Profesoral en el flujo de rev
     // El catálogo no declara ámbito: normalizeTipoAprobacionComplementaria lo
     // resuelve como 'gestion_profesoral' (default).
     service.getCatalogoActividadesComplementarias = jest.fn().mockResolvedValue([{ id: 'ACT_GP' }]);
-    service.getCatalogoActividadesAcademicoAdmin = jest.fn().mockResolvedValue([]);
+    service.getCatalogoActividadesAcademicoAdmin = jest.fn().mockResolvedValue([{ id: 'ACT_GP' }]);
     service.getExtMultiplicadores = jest.fn().mockResolvedValue({ capacitacion: 2 });
     return service;
   }
@@ -106,6 +106,7 @@ describe('PtaService - Complementarias de Gestión Profesoral en el flujo de rev
         { ...COMPLEMENTARIA_GP, horas: 10, seccion: 'academico_administrativas' }], },
     });
     service.ptaRepo.save = jest.fn(async (row: any) => row);
+    service.ptaRepo.update = jest.fn();
     service.solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) };
     service.historialRepo = { create: jest.fn((row: any) => row), save: jest.fn(async (row: any) => row) };
     service.logEvento = jest.fn().mockResolvedValue(undefined);

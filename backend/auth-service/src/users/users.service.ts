@@ -740,6 +740,7 @@ export class UsersService {
           email: normalizedEmail,
           phone: dto.phone,
           gender: 'N',
+          idDependencia: dto.idDependencia != null ? Number(dto.idDependencia) : null,
         });
 
         const userRepo = manager.getRepository(User);
@@ -754,17 +755,22 @@ export class UsersService {
         );
 
         if (dto.roles && dto.roles.length > 0) {
+          const roleCriteria = dto.roles.flatMap((name) => [
+            { name },
+            { code: name },
+            { code: name.toUpperCase() },
+          ]);
           const roles = await manager.getRepository(Role).find({
-            where: dto.roles.map((name) => ({ name })),
+            where: roleCriteria,
           });
-          if (roles.length !== dto.roles.length) {
+          if (roles.length === 0) {
             throw new BadRequestException(
               'Uno o mas roles seleccionados no existen.',
             );
           }
-           savedUser.roles = roles;
-           await userRepo.save(savedUser);
-         }
+          savedUser.roles = roles;
+          await userRepo.save(savedUser);
+        }
 
          await this.syncAnalistaViaticos(manager, savedUser);
 

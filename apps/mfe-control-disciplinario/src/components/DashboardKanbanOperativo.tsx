@@ -119,6 +119,7 @@ import {
   KanbanCardInfoSection,
   KanbanCardProfesional,
 } from '../design-system/KanbanDesignStandard';
+import { auth } from 'services/api';
 
 // ==================== UTILIDAD: Normalización de texto (sin tildes, minúsculas) ====================
 function normalizeText(text: string): string {
@@ -126,6 +127,75 @@ function normalizeText(text: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+// ==================== UTILIDAD: Normalización y mapeo de Origen de Noticia ====================
+export const MAP_ORIGEN_TO_BACKEND_ENUM: Record<string, string> = {
+  'ANONIMO': 'ANONIMO',
+  'QUEJOSO': 'QUEJOSO',
+  'OFICIO': 'OFICIO',
+  'REMISION': 'REMISION',
+  'POR_DETERMINAR': 'POR_DETERMINAR',
+  'Anónimo': 'ANONIMO',
+  'Anonimo': 'ANONIMO',
+  'Quejoso': 'QUEJOSO',
+  'Queja ciudadana': 'QUEJOSO',
+  'Denuncia Ciudadana': 'QUEJOSO',
+  'Informante': 'QUEJOSO',
+  'De oficio': 'OFICIO',
+  'Oficio': 'OFICIO',
+  'Informe servidor público': 'OFICIO',
+  'Remisión por competencia': 'REMISION',
+  'Remision por competencia': 'REMISION',
+  'Remisión': 'REMISION',
+  'Remision': 'REMISION',
+  'Por determinar': 'POR_DETERMINAR',
+  'Por Determinar': 'POR_DETERMINAR',
+};
+
+export const ORIGEN_DB_A_LABEL: Record<string, string> = {
+  ANONIMO: 'Anónimo',
+  QUEJOSO: 'Quejoso',
+  OFICIO: 'De oficio',
+  REMISION: 'Remisión por competencia',
+  POR_DETERMINAR: 'Por determinar',
+  'Anónimo': 'Anónimo',
+  'Quejoso': 'Quejoso',
+  'Informante': 'Informante',
+  'De oficio': 'De oficio',
+  'Remisión por competencia': 'Remisión por competencia',
+  'Por determinar': 'Por determinar',
+};
+
+export function normalizeOrigenToEnum(origen?: string | null): string {
+  if (!origen) return 'POR_DETERMINAR';
+  const clean = String(origen).trim();
+  if (MAP_ORIGEN_TO_BACKEND_ENUM[clean]) {
+    return MAP_ORIGEN_TO_BACKEND_ENUM[clean];
+  }
+  const s = clean.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (s.includes('ANONIM')) return 'ANONIMO';
+  if (s.includes('QUEJ') || s.includes('INFORMANT') || s.includes('CIUDADAN')) return 'QUEJOSO';
+  if (s.includes('OFICIO') || s.includes('SERVIDOR')) return 'OFICIO';
+  if (s.includes('REMISI') || s.includes('COMPETENC')) return 'REMISION';
+  if (s.includes('DETERMINAR')) return 'POR_DETERMINAR';
+  return 'POR_DETERMINAR';
+}
+
+export function formatOrigenLabel(origen?: string | null): string {
+  if (!origen) return 'Por determinar';
+  const clean = String(origen).trim();
+  if (ORIGEN_DB_A_LABEL[clean]) return ORIGEN_DB_A_LABEL[clean];
+  const s = clean.toUpperCase();
+  if (ORIGEN_DB_A_LABEL[s]) return ORIGEN_DB_A_LABEL[s];
+  const norm = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('REMISI') || norm.includes('COMPETENC')) return 'Remisión por competencia';
+  if (norm.includes('ANONIM')) return 'Anónimo';
+  if (norm.includes('QUEJ')) return 'Quejoso';
+  if (norm.includes('INFORMANT')) return 'Informante';
+  if (norm.includes('OFICIO')) return 'De oficio';
+  if (norm.includes('DETERMINAR')) return 'Por determinar';
+  return clean;
 }
 
 // ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
@@ -224,6 +294,7 @@ interface Noticia {
   id: string;
   numero: string;
   fechaRecepcion: string; 
+  fechaQueja?: string;
   fechaHechos?: string;
   origen: string;
   hechos: string;
@@ -247,6 +318,7 @@ interface Noticia {
   justificacionRemision?: string;
   // ═══ Campos extendidos de creación ═══
   territorial?: string;
+  dependenciaDenunciado?: string;
   cargo?: string;
   dependencia?: string;
   conductaSeleccionada?: string;
@@ -353,7 +425,34 @@ interface Proceso {
     disciplinable: any;
   };
   news?: any;
+  enProcesoRemision?: boolean;
+  remisionAprobada?: boolean;
+  numeroRC?: string;
+  entidadRemision?: string;
+  correoEntidadRemision?: string;
+  fechaRemision?: string;
+  tipoRemision?: string;
+  justificacionRemision?: string;
 }
+
+export const checkEsEnProcesoRemision = (proc: any): boolean => {
+  if (!proc) return false;
+  const origen = String(proc.origenNoticia || proc.news?.origen || proc.origen || '').toUpperCase().trim();
+  const esOrigenRemision = origen === 'REMISION' || origen === 'REMISIÓN' || origen.includes('REMISI');
+  return (
+    Boolean(proc.enProcesoRemision) ||
+    Boolean(proc.en_proceso_remision) ||
+    esOrigenRemision ||
+    Boolean(proc.remisionAprobada) ||
+    Boolean(proc.remision_aprobada) ||
+    Boolean(proc.numeroRC) ||
+    Boolean(proc.numero_rc) ||
+    Boolean(proc.entidadRemision) ||
+    Boolean(proc.entidad_remision) ||
+    Boolean(proc.tipoRemision) ||
+    Boolean(proc.tipo_remision)
+  );
+};
 
 
 
@@ -417,6 +516,7 @@ interface TarjetaNoticiaProps {
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, onEliminarNoticia, onReenviar, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
   const [hoverReenviar, setHoverReenviar] = useState(false);
   const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
+  const esRadicador = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDelete = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -424,7 +524,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
   const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
   const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
-  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR);
 
   const isRadicadorNoticia = isSecretarioRadicadorUser();
 
@@ -463,7 +563,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             icon={<FileText className={`w-4 h-4 ${tieneRemision ? 'text-purple-600' : 'text-orange-600'}`} />}
             iconBg={tieneRemision ? '#EDE9FE' : '#FEF3C7'}
             title={noticia.numero}
-            subtitle={noticia.origen}
+            subtitle={formatOrigenLabel(noticia.origen)}
             rightContent={
               <div className="flex items-center gap-1">
                 {noticia.estado === 'devuelta' && esJefe && (
@@ -721,8 +821,21 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                     <KanbanButtonTertiary onClick={() => onAsociarNoticiaProceso(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
                   )}
                   {canDevolve && <KanbanButtonTertiary onClick={() => onDevolver(noticia)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />}
-                  {canRedimir && <KanbanButtonTertiary onClick={() => onDevolverCompetencia(noticia)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />}
                   {canArchive && <KanbanButtonDestructive onClick={() => onArchivar(noticia)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />}
+                </KanbanActionRowTertiary>
+              )}
+
+              {/* Botones secundarios del Jefe */}
+              {esRadicador && (
+                <KanbanActionRowTertiary>
+                  
+                  {!noticia.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && (
+                    <KanbanButtonTertiary onClick={() => onAsociarNoticiaNoticia(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otra noticia" />
+                  )}
+                  {noticia.estado !== 'devuelta' && !noticia.procesoAsociado && onAsociarNoticiaProceso && canAssociate && (
+                    <KanbanButtonTertiary onClick={() => onAsociarNoticiaProceso(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
+                  )}
+                  
                 </KanbanActionRowTertiary>
               )}
 
@@ -787,6 +900,7 @@ interface TarjetaProcesoProps {
   onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onVerDetallesAsociacion?: (proceso: Proceso) => void; // ✅ NUEVO: Ver detalles de asociación
+  onRemitirProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Remitir por competencia
 }
 
 function TarjetaProceso({
@@ -809,7 +923,8 @@ function TarjetaProceso({
   isMobile,
   colapsada,
   onToggleColapso,
-  onEditarProceso // ✅ NUEVO: Editar proceso
+  onEditarProceso, // ✅ NUEVO: Editar proceso
+  onRemitirProceso,
 }: TarjetaProcesoProps) {
   const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_DETAIL);
   const canViewExpediente = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE);
@@ -817,6 +932,10 @@ function TarjetaProceso({
   const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+  const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REDIMIR) || isSecretarioRadicadorUser();
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) || authService.isSuperAdmin();
+  const tieneRemision = checkEsEnProcesoRemision(proceso);
+  const yaRemitido = !!proceso.numeroRC || proceso.estadoActual === 'ARCHIVADO' || proceso.estadoActual === 'REMITIDO';
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
@@ -891,20 +1010,40 @@ function TarjetaProceso({
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       >
-        <KanbanCard accentColor="#003DA5">
+        <KanbanCard
+          accentColor={tieneRemision ? '#7C3AED' : '#003DA5'}
+          className={tieneRemision ? 'border-purple-300 hover:shadow-purple-100 border-l-4' : ''}
+          style={tieneRemision ? { borderLeftColor: '#7C3AED' } : undefined}
+        >
           {/* Header — KanbanCardHeader */}
           <KanbanCardHeader
-            icon={<Scale className="w-4 h-4" style={{ color: '#003DA5' }} />}
-            iconBg="#E0EDFF"
+            icon={<Scale className={`w-4 h-4 ${tieneRemision ? 'text-purple-600' : 'text-[#003DA5]'}`} style={!tieneRemision ? { color: '#003DA5' } : undefined} />}
+            iconBg={tieneRemision ? '#EDE9FE' : '#E0EDFF'}
             title={proceso.numeroProceso}
-            titleColor="#003DA5"
+            titleColor={tieneRemision ? '#6B21A8' : '#003DA5'}
             subtitle={`Noticia: ${proceso.noticiaOrigen}`}
             rightContent={
-              <div
-                className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-offset-1"
-                style={{ background: semaforo.color, ringColor: semaforo.color + '40' }}
-                title={`${semaforo.label} · ${formatDiasRestantes(proceso.diasRestantes)}`}
-              />
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {proceso.numeroRC ? (
+                  <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-purple-100 border border-purple-300 text-purple-700 text-[10px] font-bold" title="Remitido por competencia">
+                    RC: {proceso.numeroRC}
+                  </span>
+                ) : proceso.remisionAprobada ? (
+                  <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-purple-100 border border-purple-300 text-purple-700 text-[10px] font-bold" title="Auto de remisión aprobado">
+                    Auto Remisión OK
+                  </span>
+                ) : tieneRemision ? (
+                  <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-purple-100 border border-purple-300 text-purple-700 text-[10px] font-bold flex items-center gap-1" title="En proceso de remisión por competencia">
+                    <Send className="w-2.5 h-2.5 text-purple-600" />
+                    En proceso de remisión
+                  </span>
+                ) : null}
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-offset-1"
+                  style={{ background: semaforo.color, ringColor: semaforo.color + '40' }}
+                  title={`${semaforo.label} · ${formatDiasRestantes(proceso.diasRestantes)}`}
+                />
+              </div>
             }
           />
 
@@ -1009,6 +1148,31 @@ function TarjetaProceso({
               )}
             </div>
           </KanbanCardInfoSection>
+
+          {/* Banner Remisión por Competencia */}
+          {tieneRemision && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 my-1">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1">
+                    <Send className="w-2.5 h-2.5 text-purple-600 flex-shrink-0" />
+                    {proceso.numeroRC
+                      ? 'Proceso Remitido por Competencia'
+                      : proceso.remisionAprobada
+                        ? 'Auto de Remisión Aprobado'
+                        : 'En proceso de remisión'}
+                  </p>
+                  {proceso.numeroRC && <p className="text-xs font-bold text-purple-900 truncate">RC: {proceso.numeroRC}</p>}
+                  {proceso.entidadRemision && (
+                    <p className="text-[10px] font-semibold text-purple-800 truncate">→ {proceso.entidadRemision}</p>
+                  )}
+                  {!proceso.numeroRC && !proceso.remisionAprobada && (
+                    <p className="text-[10px] text-purple-600 mt-0.5">Pendiente Auto de Remisión por Competencia</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Profesional Asignado — KanbanCardProfesional */}
           {proceso.profesionalAsignado && (
@@ -1221,6 +1385,18 @@ function TarjetaProceso({
                 Enviar a Jurídica
               </KanbanButtonSemantic>
             )}
+
+            {Boolean(proceso.remisionAprobada) && !yaRemitido && (isRadicador || canRedimir || esJefe) && onRemitirProceso && (
+              <KanbanButtonSemantic
+                variant="info"
+                onClick={(e) => { e.stopPropagation(); onRemitirProceso(proceso); }}
+                icon={<Send className="w-3.5 h-3.5" />}
+                title="Remitir por competencia a la entidad correspondiente"
+                className="w-full !border-[#7C3AED] !bg-[#F3E8FF] !text-[#6B21A8] hover:!bg-[#E9D5FF] font-bold shadow-sm"
+              >
+                Remitir por competencia
+              </KanbanButtonSemantic>
+            )}
           </KanbanActionSection>
         </KanbanCard>
       </motion.div>
@@ -1255,6 +1431,7 @@ interface VistaListaProps {
   onEliminarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Eliminar noticia
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onCambiarEtapa?: (proceso: Proceso, nuevaEtapa: string) => void; // ✅ NUEVO: Handler para cambiar etapa
+  onRemitirProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Remitir por competencia
   etapasConfig?: any[]; // ✅ NUEVO: Configuración de etapas desde backend
   isMobile?: boolean;
 }
@@ -1285,24 +1462,27 @@ function VistaLista({
   onEliminarNoticia, // ✅ NUEVO: Eliminar noticia
   onEditarProceso, // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onCambiarEtapa, // ✅ NUEVO: Handler para cambiar etapa
+  onRemitirProceso,
   etapasConfig,
   isMobile
 }: VistaListaProps) {
   // Permission and role checks for list view (same as kanban)
   const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
+  const isRadicador = isSecretarioRadicadorUser();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEditNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDeleteNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
   const canViewDetailNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
   const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
   const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
+  const canRedimirProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REDIMIR) || isRadicador;
   const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
-  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR);
   const canViewDetailProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_DETAIL);
   const canViewExpediente = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE);
   const canEditProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EDIT);
   const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
-  const canAssociateProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
+  const canAssociateProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
@@ -1409,13 +1589,18 @@ function VistaLista({
             const noticia = isNoticia ? (item as Noticia) : null;
             const proceso = !isNoticia ? (item as Proceso) : null;
             const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
+            const esRemisionProceso = proceso ? checkEsEnProcesoRemision(proceso) : false;
 
             return (
-              <Card key={item.id} className="overflow-hidden border-2" style={{ borderColor: '#E5E7EB' }}>
+              <Card
+                key={item.id}
+                className="overflow-hidden border-2"
+                style={{ borderColor: esRemisionProceso ? '#C4B5FD' : '#E5E7EB' }}
+              >
                 {/* Barra superior con color de tipo */}
                 <div
                   className="h-1"
-                  style={{ background: isNoticia ? '#F59E0B' : '#003DA5' }}
+                  style={{ background: isNoticia ? '#F59E0B' : (esRemisionProceso ? '#7C3AED' : '#003DA5') }}
                 />
 
                 <div className="p-3 space-y-3">
@@ -1427,17 +1612,25 @@ function VistaLista({
                           <FileText className="w-4 h-4 text-orange-600" />
                         </div>
                       ) : (
-                        <div className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#E0EDFF' }}>
-                          <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
+                        <div className="p-1.5 rounded-lg flex-shrink-0" style={{ background: esRemisionProceso ? '#EDE9FE' : '#E0EDFF' }}>
+                          <FolderOpen className="w-4 h-4" style={{ color: esRemisionProceso ? '#7C3AED' : '#003DA5' }} />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-sm truncate" style={{ color: isNoticia ? '#F59E0B' : '#003DA5' }}>
+                        <p className="font-bold text-sm truncate" style={{ color: isNoticia ? '#F59E0B' : (esRemisionProceso ? '#6B21A8' : '#003DA5') }}>
                           {isNoticia ? noticia!.numero : proceso!.numeroProceso}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {isNoticia ? 'Noticia' : 'Proceso'}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <p className="text-xs text-gray-500">
+                            {isNoticia ? 'Noticia' : 'Proceso'}
+                          </p>
+                          {esRemisionProceso && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-300">
+                              <Send className="w-2.5 h-2.5 text-purple-600" />
+                              {proceso!.numeroRC ? `RC: ${proceso!.numeroRC}` : proceso!.remisionAprobada ? 'Auto Remisión OK' : 'En proceso de remisión'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1655,9 +1848,6 @@ function VistaLista({
                           {onDevolverNoticia && canDevolve && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3 h-3" />} title="Devolver" />
                           )}
-                          {onDevolverCompetencia && canRedimir && esJefe && (
-                            <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3 h-3" />} title="Remitir por competencia" />
-                          )}
                           {canArchive && esJefe && (
                             <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3 h-3" />} title="Archivar" />
                           )}
@@ -1712,6 +1902,17 @@ function VistaLista({
                             className="!border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
                           >
                             Enviar a Jurídica
+                          </KanbanButtonSemantic>
+                        )}
+                        {Boolean(proceso!.remisionAprobada) && !proceso!.numeroRC && proceso!.estadoActual !== 'ARCHIVADO' && (isRadicador || canRedimirProceso || esJefe) && onRemitirProceso && (
+                          <KanbanButtonSemantic
+                            variant="info"
+                            onClick={() => onRemitirProceso(proceso!)}
+                            icon={<Send className="w-3 h-3" />}
+                            title="Remitir por competencia"
+                            className="w-full !border-[#7C3AED] !bg-[#F3E8FF] !text-[#6B21A8] hover:!bg-[#E9D5FF] font-bold"
+                          >
+                            Remitir por competencia
                           </KanbanButtonSemantic>
                         )}
                       </>
@@ -1792,12 +1993,20 @@ function VistaLista({
                             </div>
                           )}
                           <div>
-                            <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                            <p className="font-bold text-sm" style={{ color: !isNoticia && checkEsEnProcesoRemision(proceso) ? '#6B21A8' : '#1F2937' }}>
                               {isNoticia ? noticia!.numero : proceso!.numeroProceso}
                             </p>
-                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                              {isNoticia ? 'Noticia' : 'Proceso'}
-                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                                {isNoticia ? 'Noticia' : 'Proceso'}
+                              </p>
+                              {!isNoticia && checkEsEnProcesoRemision(proceso) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-300" title="Proceso en trámite de remisión por competencia">
+                                  <Send className="w-2.5 h-2.5 text-purple-600" />
+                                  {proceso!.numeroRC ? `RC: ${proceso!.numeroRC}` : proceso!.remisionAprobada ? 'Auto Remisión OK' : 'En proceso de remisión'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1955,9 +2164,6 @@ function VistaLista({
                                 {onDevolverNoticia && canDevolve && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
                                 )}
-                                {onDevolverCompetencia && canRedimir && esJefe && (
-                                  <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
-                                )}
                                 {canArchive && esJefe && (
                                   <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
                                 )}
@@ -2005,6 +2211,17 @@ function VistaLista({
                                   className="!border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
                                 >
                                   Enviar a Jurídica
+                                </KanbanButtonSemantic>
+                              )}
+                              {Boolean(proceso!.remisionAprobada) && !proceso!.numeroRC && proceso!.estadoActual !== 'ARCHIVADO' && (isRadicador || canRedimirProceso || esJefe) && onRemitirProceso && (
+                                <KanbanButtonSemantic
+                                  variant="info"
+                                  onClick={() => onRemitirProceso(proceso!)}
+                                  icon={<Send className="w-3.5 h-3.5" />}
+                                  title="Remitir por competencia a la entidad correspondiente"
+                                  className="w-full !border-[#7C3AED] !bg-[#F3E8FF] !text-[#6B21A8] hover:!bg-[#E9D5FF] font-bold"
+                                >
+                                  Remitir por competencia
                                 </KanbanButtonSemantic>
                               )}
                             </>
@@ -2070,6 +2287,7 @@ interface ColumnaKanbanProps {
   onAsociarProcesoProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Asociar proceso a otro proceso (post-Recepción)
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onVerDetallesAsociacion?: (proceso: Proceso) => void; // ✅ NUEVO: Ver detalles de asociación
+  onRemitirProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Remitir proceso por competencia
   vistaCompacta: boolean;
   isMobile?: boolean;
   colapsada?: boolean;
@@ -2113,6 +2331,7 @@ function ColumnaKanban({
   onAsociarProcesoProceso, // ✅ NUEVO: Asociar proceso a proceso
   onEditarProceso, // ✅ NUEVO: Editar proceso
   onVerDetallesAsociacion, // ✅ NUEVO: Ver detalles de asociación
+  onRemitirProceso,
   vistaCompacta,
   isMobile,
   colapsada = false,
@@ -2517,6 +2736,7 @@ function ColumnaKanban({
               isMobile={isMobile}
               colapsada={tarjetasColapsadas?.has(proceso.id)}
               onToggleColapso={() => onToggleColapsoTarjeta?.(proceso.id)}
+              onRemitirProceso={onRemitirProceso}
             />
           ))}
 
@@ -3326,6 +3546,13 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     }
   };
 
+  const normalizeDateStr = (val: any): string | undefined => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return val.split('T')[0].split(' ')[0];
+    if (val instanceof Date && !isNaN(val.getTime())) return val.toISOString().split('T')[0];
+    return undefined;
+  };
+
   // Transformar noticia desde API al formato interno
   export const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
     const fechaRecepcion = (noticia as any)?.fechaRecepcion;
@@ -3342,9 +3569,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     const denuncianteRaw: any = denuncianteList[0] || {};
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
-    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
     const fechaHechosRaw = (noticia as any).fechaHechos;
-    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -3377,10 +3602,10 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     return {
       id: (noticia as any).id || `n${Date.now()}`,
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
-      fechaRecepcion: fecha.toISOString().split('T')[0],
-      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
-      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
-      origen: (noticia as any).origen || 'Noticia',
+      fechaRecepcion: normalizeDateStr(fechaRecepcion) || fecha.toISOString().split('T')[0],
+      fechaQueja: normalizeDateStr(fechaQuejaRaw),
+      fechaHechos: normalizeDateStr(fechaHechosRaw),
+      origen: formatOrigenLabel((noticia as any).origen),
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
       
@@ -3401,7 +3626,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
         cargo: d.cargo || '',
-        lugarHechos: d.lugarHechos || d.dependencia || '',
+        lugarHechos: d.lugarHechos || d.dependencia || (noticia as any).dependenciaDenunciado || '',
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
@@ -3588,7 +3813,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         }));
       })(),
       hechosSeparados: [],
-      origenNoticia: proceso.news?.origen || '',
+      origenNoticia: proceso.news?.origen || (proceso as any).origenNoticia || (proceso as any).origen || '',
       fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
       prioridadNoticia: proceso.news?.prioridad || 'media',
       procesoAsociadoId: proceso.procesoAsociadoId,
@@ -3599,6 +3824,14 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       procesosConsolidados: proceso.procesosConsolidados,
       informacionConsolidada: proceso.informacionConsolidada,
       profesionalAsignadoId: proceso.abogadoAsignadoId,
+      enProcesoRemision: (proceso as any).enProcesoRemision || (proceso as any).en_proceso_remision || (proceso.news?.origen ? String(proceso.news.origen).toUpperCase().includes('REMISI') : false),
+      remisionAprobada: (proceso as any).remisionAprobada || (proceso as any).remision_aprobada || false,
+      numeroRC: (proceso as any).numeroRC || (proceso as any).numero_rc || undefined,
+      entidadRemision: (proceso as any).entidadRemision || (proceso as any).entidad_remision || (proceso as any).legalAutos?.find((a: any) => a.entidadDestino)?.entidadDestino || undefined,
+      correoEntidadRemision: (proceso as any).correoEntidadRemision || (proceso as any).correo_entidad_remision || (proceso as any).legalAutos?.find((a: any) => a.entidadDestinoEmail)?.entidadDestinoEmail || undefined,
+      fechaRemision: (proceso as any).fechaRemision || (proceso as any).fecha_remision || undefined,
+      tipoRemision: (proceso as any).tipoRemision || (proceso as any).tipo_remision || undefined,
+      justificacionRemision: (proceso as any).justificacionRemision || (proceso as any).justificacion_remision || undefined,
     };
   };
 
@@ -4143,9 +4376,7 @@ export function DashboardKanbanOperativo({
     const denuncianteRaw: any = denuncianteList[0] || {};
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
-    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
     const fechaHechosRaw = (noticia as any).fechaHechos;
-    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -4178,10 +4409,10 @@ export function DashboardKanbanOperativo({
     return {
       id: (noticia as any).id || `n${Date.now()}`,
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
-      fechaRecepcion: fecha.toISOString().split('T')[0],
-      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
-      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
-      origen: (noticia as any).origen || 'Noticia',
+      fechaRecepcion: normalizeDateStr((noticia as any)?.fechaRecepcion) || fecha.toISOString().split('T')[0],
+      fechaQueja: normalizeDateStr(fechaQuejaRaw),
+      fechaHechos: normalizeDateStr(fechaHechosRaw),
+      origen: formatOrigenLabel((noticia as any).origen),
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
       
@@ -4202,7 +4433,7 @@ export function DashboardKanbanOperativo({
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
         cargo: d.cargo || '',
-        lugarHechos: d.lugarHechos || d.dependencia || '',
+        lugarHechos: d.lugarHechos || d.dependencia || (noticia as any).dependenciaDenunciado || '',
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
@@ -4443,7 +4674,7 @@ export function DashboardKanbanOperativo({
         }));
       })(),
       hechosSeparados: [],
-      origenNoticia: proceso.news?.origen || '',
+      origenNoticia: proceso.news?.origen || (proceso as any).origenNoticia || (proceso as any).origen || '',
       fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
       prioridadNoticia: proceso.news?.prioridad || 'media',
       procesoAsociadoId: proceso.procesoAsociadoId,
@@ -4454,6 +4685,14 @@ export function DashboardKanbanOperativo({
       procesosConsolidados: proceso.procesosConsolidados,
       informacionConsolidada: proceso.informacionConsolidada,
       profesionalAsignadoId: proceso.abogadoAsignadoId,
+      enProcesoRemision: (proceso as any).enProcesoRemision || (proceso as any).en_proceso_remision || (proceso.news?.origen ? String(proceso.news.origen).toUpperCase().includes('REMISI') : false),
+      remisionAprobada: (proceso as any).remisionAprobada || (proceso as any).remision_aprobada || false,
+      numeroRC: (proceso as any).numeroRC || (proceso as any).numero_rc || undefined,
+      entidadRemision: (proceso as any).entidadRemision || (proceso as any).entidad_remision || (proceso as any).legalAutos?.find((a: any) => a.entidadDestino)?.entidadDestino || undefined,
+      correoEntidadRemision: (proceso as any).correoEntidadRemision || (proceso as any).correo_entidad_remision || (proceso as any).legalAutos?.find((a: any) => a.entidadDestinoEmail)?.entidadDestinoEmail || undefined,
+      fechaRemision: (proceso as any).fechaRemision || (proceso as any).fecha_remision || undefined,
+      tipoRemision: (proceso as any).tipoRemision || (proceso as any).tipo_remision || undefined,
+      justificacionRemision: (proceso as any).justificacionRemision || (proceso as any).justificacion_remision || undefined,
     };
   };
 
@@ -4767,20 +5006,7 @@ export function DashboardKanbanOperativo({
     }));
 
     // ✅ MAPEO DE VALORES AL FORMATO DEL BACKEND
-    // origen: debe ser uno de ANONIMO, QUEJOSO, OFICIO, REMISION, POR_DETERMINAR
-    const origenMap: Record<string, string> = {
-      'Anónimo': 'ANONIMO',
-      'Anonimo': 'ANONIMO',
-      'Denuncia Ciudadana': 'QUEJOSO',
-      'Quejoso': 'QUEJOSO',
-      'Oficio': 'OFICIO',
-      'Remisión': 'REMISION',
-      'Remision': 'REMISION',
-      'Por Determinar': 'POR_DETERMINAR',
-      'Por determinar': 'POR_DETERMINAR'
-    };
-
-    const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
+    const origenNormalizado = normalizeOrigenToEnum(data.origen);
 
     console.log('Origen normalizado:', origenNormalizado);
 
@@ -4812,7 +5038,7 @@ export function DashboardKanbanOperativo({
       const newsData: CreateNewsDto = {
         origen: origenNormalizado || 'POR_DETERMINAR',
         territorial: data.territorial,
-        dependenciaDenunciado: data.dependencia || data.dependenciaDenunciado || '',
+        dependenciaDenunciado: data.dependencia || data.dependenciaDenunciado || denunciadosTransformed?.[0]?.dependencia || data.denunciados?.[0]?.lugarHechos || '',
         // ✅ UNIFICAR TODO EN CAMPOS SINGULARES - Arrays cuando múltiples, objeto cuando uno solo
         denunciante: denunciantesTransformed,
         disciplinable: denunciadosTransformed,
@@ -4822,7 +5048,9 @@ export function DashboardKanbanOperativo({
         fechaHechos: data.fechaHechos ? (data.fechaHechos.length > 10 ? data.fechaHechos.split('T')[0] : data.fechaHechos) : undefined,
         fechaQueja: data.fechaQueja ? (data.fechaQueja.length > 10 ? data.fechaQueja.split('T')[0] : data.fechaQueja) : undefined,
         conducta: data.conducta || data.conductaSeleccionada || '',
-        conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
+        conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+          ? data.conductas
+          : (data.conducta || data.conductaSeleccionada ? [data.conducta || data.conductaSeleccionada] : []),
         radicadorId: currentUser.id
       };
 
@@ -4910,14 +5138,14 @@ export function DashboardKanbanOperativo({
       cargo: d.cargo,
       entidad: d.entidad,
       tipo: d.tipo,
-      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
+      apoderado: d.apoderado
     }));
     const denunciadosPayload = denunciadosEdit.map((d: any) => ({
       nombre: d.nombre,
       cedula: d.identificacion || d.cedula,
       cargo: d.cargo,
       dependencia: d.lugarHechos || d.dependencia,
-      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
+      apoderado: d.apoderado
     }));
 
     // ✅ Lógica 1 o N: objeto si es uno, array si son varios (para campos singulares)
@@ -4927,6 +5155,7 @@ export function DashboardKanbanOperativo({
     const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
 
     let finalAdjuntos: any[] | null = null;
+    let updatedNoticia: any = null;
 
     try {
       if (esProceso) {
@@ -4936,32 +5165,21 @@ export function DashboardKanbanOperativo({
           if (newsId) {
             console.log('🔄 Actualizando noticia asociada ID:', newsId);
             console.log('[KANBAN] Llamando updateNoticia para NEWS (asociada) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
-            const origenMap: Record<string, string> = {
-            'AnÃ³nimo': 'ANONIMO',
-            'Anonimo': 'ANONIMO',
-            'Quejoso': 'QUE_JOSO',
-            'De oficio': 'OFICIO',
-            'Oficio': 'OFICIO',
-            'RemisiÃ³n': 'REMISION',
-            'Remision': 'REMISION',
-            'Por determinar': 'POR_DETERMINAR'
-          };
-
           const updatedAssociatedNews = await disciplinaryService.updateNoticia(newsId, {
-            origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+            origen: normalizeOrigenToEnum(data.origen),
             territorial: data.territorial,
-            dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+            dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || (noticiaAEditar as any).dependenciaDenunciado || data.dependencia || '',
             hechos: hechosEdit,
             conducta: conductaEdit,
             conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
               ? data.conductas
               : (conductaEdit ? [conductaEdit] : []),
             denunciante: denuncianteSingular,
-            denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
+            denunciantes: denunciantesPayload, // ✅ Enviar plural también
             disciplinable: disciplinableSingular,
-            disciplinables: denunciadosPayload, // ✅ Enviar plural tambiÃ©n
-            fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
-            fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+            disciplinables: denunciadosPayload, // ✅ Enviar plural también
+            fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : null,
+            fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : undefined,
             // ✅ Documentos adjuntos (si hay cambios)
             adjuntosParaEliminar: data.adjuntosParaEliminar || [],
             archivosAdjuntos: data.archivosAdjuntos || []
@@ -4980,24 +5198,11 @@ export function DashboardKanbanOperativo({
           disciplinable: Array.isArray(disciplinableSingular) ? disciplinableSingular[0] : disciplinableSingular
         } as any);
       } else {
-        const origenMap: Record<string, string> = {
-          'AnÃ³nimo': 'ANONIMO',
-          'Anonimo': 'ANONIMO',
-          'Quejoso': 'QUEJOSO',
-          'De oficio': 'OFICIO',
-          'Oficio': 'OFICIO',
-          'RemisiÃ³n por competencia': 'REMISION',
-          'RemisiÃ³n': 'REMISION',
-          'Remision': 'REMISION',
-          'Por determinar': 'POR_DETERMINAR',
-          'Por Determinar': 'POR_DETERMINAR'
-        };
-
         console.log('[KANBAN] Llamando updateNoticia DIRECTA (noticia) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
-        const updatedNoticia = await disciplinaryService.updateNoticia(noticiaAEditar.id, {
-          origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+        updatedNoticia = await disciplinaryService.updateNoticia(noticiaAEditar.id, {
+          origen: normalizeOrigenToEnum(data.origen),
           territorial: data.territorial,
-          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || (noticiaAEditar as any).dependenciaDenunciado || data.dependencia || '',
           hechos: hechosEdit,
           conducta: conductaEdit,
           conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
@@ -5007,8 +5212,8 @@ export function DashboardKanbanOperativo({
           denunciantes: denunciantesPayload,
           disciplinable: disciplinableSingular,
           disciplinables: denunciadosPayload,
-          fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
-          fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+          fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : null,
+          fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : undefined,
           // ✅ Documentos adjuntos (si hay cambios)
           adjuntosParaEliminar: data.adjuntosParaEliminar || [],
           archivosAdjuntos: data.archivosAdjuntos || []
@@ -5019,7 +5224,7 @@ export function DashboardKanbanOperativo({
         (noticiaAEditar as any).adjuntos = finalAdjuntos;
       }
     } catch (error: any) {
-      console.error('Error al guardar ediciÃ³n:', error);
+      console.error('Error al guardar edición:', error);
       toast.error(esProceso ? 'Error al actualizar proceso' : 'Error al actualizar noticia', {
         id: toastId,
         description: error?.message || 'No se pudo guardar en la base de datos'
@@ -5059,12 +5264,23 @@ export function DashboardKanbanOperativo({
           url: path,
           fullUrl: disciplinaryService.getFileUrl(path),
         }));
+
+        const fechaQuejaUpdated = data.fechaQueja
+          ? String(data.fechaQueja).split('T')[0]
+          : ((updatedNoticia as any)?.fechaQueja ? String((updatedNoticia as any).fechaQueja).split('T')[0] : (item as any).fechaQueja);
+        const fechaRecepcionUpdated = data.fechaQueja
+          ? String(data.fechaQueja).split('T')[0]
+          : (data.fechaRecepcion ? String(data.fechaRecepcion).split('T')[0] : item.fechaRecepcion);
+
         return {
           ...item,
-          origen: data.origen,
-          fechaRecepcion: data.fechaQueja || data.fechaRecepcion,
-          fechaHechos: data.fechaHechos,
-          territorial: data.territorial,
+          ...((updatedNoticia as any) || {}),
+          origen: formatOrigenLabel(data.origen),
+          fechaRecepcion: fechaRecepcionUpdated,
+          fechaQueja: fechaQuejaUpdated,
+          fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : item.fechaHechos,
+          territorial: data.territorial || item.territorial,
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependenciaDenunciado || (item as any).dependenciaDenunciado,
           denunciado: denunciadosEdit,
           denunciados: denunciadosEdit,
           denunciante: denunciantesEdit,
@@ -5076,14 +5292,36 @@ export function DashboardKanbanOperativo({
           conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
             ? data.conductas
             : (conductaEdit ? [conductaEdit] : []),
-          cargo: primerDenunciadoEdit?.cargo,
-          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
+          cargo: primerDenunciadoEdit?.cargo || item.cargo,
+          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos || item.dependencia,
           adjuntos: adjToUse,
           archivosAdjuntos: mappedArchivos
         };
       }
       return item;
     }));
+
+    // Mantener itemSeleccionado sincronizado si estaba abierto
+    setItemSeleccionado((prev: any) => {
+      if (prev && prev.id === noticiaAEditar.id) {
+        return {
+          ...prev,
+          ...((updatedNoticia as any) || {}),
+          origen: formatOrigenLabel(data.origen),
+          fechaRecepcion: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : (prev.fechaRecepcion),
+          fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : (prev.fechaQueja),
+          fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : (prev.fechaHechos),
+          territorial: data.territorial || prev.territorial,
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || prev.dependenciaDenunciado,
+          denunciado: denunciadosEdit,
+          denunciante: denunciantesEdit,
+          hechos: hechosEdit,
+          conducta: conductaEdit,
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0) ? data.conductas : (conductaEdit ? [conductaEdit] : []),
+        };
+      }
+      return prev;
+    });
 
     setMostrarModalEditar(false);
     setNoticiaAEditar(null);
@@ -5364,28 +5602,40 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-competencia');
   };
 
+  const handleRemitirProceso = (proceso: Proceso) => {
+    setItemSeleccionado(proceso);
+    setObservaciones('');
+    setAreaDestinoRemision('');
+    setModalActivo('devolver-competencia');
+  };
+
   const handleConfirmarDevolucionCompetencia = async (datos: {
     entidadId: string; entidadNombre: string; entidadCorreo: string;
-    tipoRemision: string; justificacion: string; fundamentoLegal: string; numeroRC: string;
+    tipoRemision: string; justificacion: string; fundamentoLegal?: string; numeroRC: string;
   }) => {
-    // ✅ NUEVO: Llamar al backend API para remitir por competencia
-    const toastId = toast.loading('Remitiendo noticia por competencia...');
+    const isProceso = itemSeleccionado?.tipo === 'proceso';
+    const toastId = toast.loading(isProceso ? 'Remitiendo proceso por competencia...' : 'Remitiendo noticia por competencia...');
 
     try {
+      const currentUser = authService.getCurrentUser();
+      const userName = currentUser?.fullName || currentUser?.name || 'Sistema';
+
       await disciplinaryService.remitirPorCompetencia({
-        newsId: itemSeleccionado.id,
-        radicado: itemSeleccionado.numero,
+        newsId: isProceso ? ((itemSeleccionado as Proceso).originalNewsId || undefined) : itemSeleccionado.id,
+        processId: isProceso ? itemSeleccionado.id : undefined,
+        radicado: isProceso ? (itemSeleccionado as Proceso).numeroProceso : itemSeleccionado.numero,
         emailDestinatario: datos.entidadCorreo,
         entidadDestino: datos.entidadNombre,
-        justificacion: `${datos.numeroRC} — Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
-        usuarioRemision: 'Sistema'
+        tipoRemision: datos.tipoRemision,
+        justificacion: `${datos.numeroRC} — ${datos.justificacion}`,
+        usuarioRemision: userName
       });
 
-      toast.success('Remitida por Competencia', {
+      toast.success('Remitido por Competencia', {
         id: toastId,
         description: datos.entidadCorreo
-          ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
-          : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
+          ? `${isProceso ? (itemSeleccionado as Proceso).numeroProceso : itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
+          : `${isProceso ? (itemSeleccionado as Proceso).numeroProceso : itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
       });
     } catch (error: any) {
       console.error('Error al remitir por competencia:', error);
@@ -5393,28 +5643,40 @@ export function DashboardKanbanOperativo({
         id: toastId,
         description: error?.message || 'No se pudo completar la remisión'
       });
-      // Continuar con la actualización local aunque haya error en el backend
     }
 
-    // Actualizar estado de la noticia a 'remitida' pero mantenerla visible en el Kanban
+    // Actualizar estado local
     setItems(prev => prev.map(item => {
-      if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
+      if (item.id === itemSeleccionado.id) {
+        if (item.tipo === 'proceso') {
+          return {
+            ...item,
+            estadoActual: 'ARCHIVADO' as any,
+            remisionAprobada: true,
+            numeroRC: datos.numeroRC,
+            entidadRemision: datos.entidadNombre,
+            correoEntidadRemision: datos.entidadCorreo,
+            tipoRemision: datos.tipoRemision,
+            fechaRemision: new Date().toISOString(),
+            justificacionRemision: datos.justificacion,
+            ultimaActuacion: `Remitido por competencia a ${datos.entidadNombre} (${datos.numeroRC})`
+          };
+        }
         return {
           ...item,
           estado: 'remitida' as any,
-          // ✅ NUEVO: Guardar información de remisión en la noticia
           numeroRC: datos.numeroRC,
           entidadRemision: datos.entidadNombre,
+          correoEntidadRemision: datos.entidadCorreo,
           tipoRemision: datos.tipoRemision,
           fechaRemision: new Date().toISOString(),
-          fundamentoLegalRemision: datos.fundamentoLegal,
           justificacionRemision: datos.justificacion,
           bitacora: [
             ...(item as any).bitacora || [],
             {
               fecha: new Date().toISOString(),
               accion: 'Remision por Competencia',
-              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
+              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. ${datos.justificacion}`,
               usuario: 'Usuario Actual',
             }
           ],
@@ -5422,9 +5684,10 @@ export function DashboardKanbanOperativo({
       }
       return item;
     }));
-    // ✅ NOTA: La noticia ya no se elimina del Kanban - se mantiene visible con indicador de remisión
+
     setModalActivo(null);
     setItemSeleccionado(null);
+    cargarDatos();
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
@@ -7134,6 +7397,7 @@ export function DashboardKanbanOperativo({
                           etapasConfig={etapasConfig}
                           tarjetasColapsadas={tarjetasColapsadas}
                           onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                          onRemitirProceso={handleRemitirProceso}
                           currentUserId={currentUserId}
                         />
                       </div>
@@ -7204,6 +7468,7 @@ export function DashboardKanbanOperativo({
             onEliminarNoticia={handleEliminarNoticia}
             onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
             onCambiarEtapa={handleCambiarEtapaLista} // ✅ NUEVO: Handler específico para cambio de etapa en lista
+            onRemitirProceso={handleRemitirProceso}
             etapasConfig={etapasConfig}
             isMobile={isMobile}
           />
@@ -7452,7 +7717,7 @@ export function DashboardKanbanOperativo({
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div>
                                 <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
+                                <p className="font-bold text-gray-900">{formatOrigenLabel((itemSeleccionado as Noticia).origen)}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Fecha Recepción:</p>
@@ -8130,6 +8395,10 @@ export function DashboardKanbanOperativo({
               ));
             }}
             onEnviarARevision={onEnviarARevision}
+            onRemitirCompetencia={(proc) => {
+              setModalActivo(null);
+              handleRemitirProceso(proc);
+            }}
             onNavigateToRevision={onNavigateToRevision ? () => {
               setModalActivo(null);
               setItemSeleccionado(null);
@@ -8138,18 +8407,6 @@ export function DashboardKanbanOperativo({
           />
         )}
 
-        {/* ══ DETALLES DE NOTICIA — World Class Completo ══ */}
-        {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (
-          <ModalDetallesNoticia
-            noticia={itemSeleccionado as Noticia}
-            onClose={() => setModalActivo(null)}
-            onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
-            onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
-            onDownload={async (url, filename) => {
-              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
-            }}
-          />
-        )}
 
         {/* NUEVO: MODAL DETALLES ASOCIACION - Ver detalles de asociacion entre procesos */}
         {modalActivo === 'ver-detalles-asociacion' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (() => {
@@ -8278,6 +8535,36 @@ export function DashboardKanbanOperativo({
             </motion.div>
           </div>
         )}
+
+        {/* ✅ MODAL REMITIR POR COMPETENCIA — Radicador o roles autorizados */}
+        <AnimatePresence>
+          {modalActivo === 'devolver-competencia' && itemSeleccionado && (
+            <ModalRemitirCompetencia
+              noticia={{
+                id: itemSeleccionado.id,
+                numero: itemSeleccionado.tipo === 'proceso' ? (itemSeleccionado as Proceso).numeroProceso : itemSeleccionado.numero,
+                radicado: itemSeleccionado.tipo === 'proceso' ? (itemSeleccionado as Proceso).numeroProceso : ((itemSeleccionado as any).radicado || itemSeleccionado.numero),
+                denunciante: itemSeleccionado.denunciante,
+                denunciado: itemSeleccionado.denunciado,
+                hechos: itemSeleccionado.hechos || (itemSeleccionado as any).descripcionHechos,
+                origen: (itemSeleccionado as any).origen || 'OFICIO',
+                processId: itemSeleccionado.tipo === 'proceso' ? itemSeleccionado.id : undefined,
+                entidadDestinoPredefinida: itemSeleccionado.tipo === 'proceso'
+                  ? ((itemSeleccionado as Proceso).entidadRemision || (itemSeleccionado as any).entidad_remision)
+                  : ((itemSeleccionado as any).entidadRemision || (itemSeleccionado as any).entidad_remision),
+                entidadDestinoEmailPredefinida: itemSeleccionado.tipo === 'proceso'
+                  ? ((itemSeleccionado as Proceso).correoEntidadRemision || (itemSeleccionado as any).correo_entidad_remision)
+                  : ((itemSeleccionado as any).correoEntidadRemision || (itemSeleccionado as any).correo_entidad_remision),
+              } as any}
+              entidadesConfiguradas={[]}
+              onClose={() => {
+                setModalActivo(null);
+                setItemSeleccionado(null);
+              }}
+              onConfirm={handleConfirmarDevolucionCompetencia}
+            />
+          )}
+        </AnimatePresence>
 
         {/* ══ DETALLES DE NOTICIA — World Class Completo ══ */}
         {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (

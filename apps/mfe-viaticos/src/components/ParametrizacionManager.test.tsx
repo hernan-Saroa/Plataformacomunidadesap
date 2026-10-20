@@ -363,6 +363,26 @@ describe('ParametrizacionManager — Pruebas de Configuración de Campos', () =>
         );
       });
     });
+
+    it('renderiza la pestaña unificada Formulario y Soportes y permite acceder a Soportes de Legalización', async () => {
+      vi.mocked(viaticosService.obtenerCamposFormulario).mockResolvedValue(camposMock);
+      vi.mocked(viaticosService.obtenerTiposDocumentoSoporte).mockResolvedValue(docsMock);
+
+      render(<ParametrizacionManager />);
+
+      // Pestaña unificada
+      expect(screen.getByRole('button', { name: /Formulario y Soportes/i })).toBeInTheDocument();
+
+      // Pestaña Soportes de Legalización
+      const btnLegalizacion = screen.getByRole('button', { name: /Soportes de Legalización/i });
+      expect(btnLegalizacion).toBeInTheDocument();
+
+      fireEvent.click(btnLegalizacion);
+
+      // Ahora muestra la vista de soportes de legalización
+      expect(await screen.findByRole('heading', { name: /Soportes de legalización/i })).toBeInTheDocument();
+    });
   });
 });
+
 

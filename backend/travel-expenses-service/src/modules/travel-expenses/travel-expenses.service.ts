@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Logger,
   Optional,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager, In, Brackets } from 'typeorm';
@@ -177,7 +178,7 @@ function etiquetaEstadoHumana(estado?: string): string {
 }
 
 @Injectable()
-export class TravelExpensesService {
+export class TravelExpensesService implements OnModuleInit {
   private readonly logger = new Logger(TravelExpensesService.name);
 
   constructor(
@@ -201,6 +202,12 @@ export class TravelExpensesService {
     @Optional()
     private readonly pendientesService?: PendientesService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.asegurarRolYPermisosComisionado().catch((err) =>
+      this.logger.warn(`[onModuleInit] No se pudo asegurar rol COMISIONADO: ${err?.message}`),
+    );
+  }
 
   private sincronizarItinerario(dto: {
     itinerario?: any[];
@@ -270,6 +277,9 @@ export class TravelExpensesService {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
         .trim();
 
     const esViajeIdaVuelta =
@@ -331,11 +341,36 @@ export class TravelExpensesService {
     'ADMIN',
     'SUPER_ADMIN',
     'ADMINISTRATIVO',
+    'ADMINISTRADOR',
+    'ADMINISTRADOR_SISTEMA',
     'SUPER_ADMINISTRADOR',
     'super_administrador',
     'SUPERUSER',
     'superuser',
   ];
+
+  private readonly ROLES_COORDINADOR_COMISIONES = [
+    'COORDINADOR_COMISIONES_VIATICOS',
+    'COORDINADOR_GRUPO_COMISIONES',
+    'COORDINADOR_COMISIONES',
+    'COORDINADORA_GRUPO_COMISIONES',
+    'COORDINADORA_COMISIONES_VIATICOS',
+    'COORDINADOR_DE_COMISIONES',
+  ];
+
+  private esCoordinadorComisiones(rolesUsuario: string[]): boolean {
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_COORDINADOR_COMISIONES.includes(normalized) ||
+        normalized.includes('COORDINADOR_COMISIONES') ||
+        normalized.includes('COORDINADOR_GRUPO_COMISIONES') ||
+        r === 'travel_expenses.general.es_coordinador_comisiones'
+      );
+    });
+  }
 
   private esSuperAdmin(rolesUsuario: string[]): boolean {
     return rolesUsuario.some((r) => {
@@ -358,7 +393,7 @@ export class TravelExpensesService {
     }
     try {
       const rows = await this.solicitudRepo.query(
-        `SELECT id_dependencia, cod_dependencia, nom_dependencia FROM auth.dependencias WHERE activo = true OR estado = 'ACTIVO'`,
+        `SELECT id_dependencia, cod_dependencia, nom_dependencia FROM auth.dependencias WHERE activo = true`,
       );
       this.dependenciasMapCache.clear();
       for (const r of rows) {
@@ -375,11 +410,11 @@ export class TravelExpensesService {
 
   async obtenerDatosPersonaPorUsuarioId(
     usuarioId: string,
-  ): Promise<{ numIdentificacion?: string; dirEmail?: string; username?: string } | null> {
+  ): Promise<{ idPerson?: string; numIdentificacion?: string; dirEmail?: string; username?: string } | null> {
     if (!usuarioId) return null;
     try {
       const rows = await this.solicitudRepo.query(
-        `SELECT p.num_identificacion, p.dir_email, u.username
+        `SELECT p.id_person, p.num_identificacion, p.dir_email, u.username
          FROM auth."user" u
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.id_user::text = $1
@@ -388,6 +423,7 @@ export class TravelExpensesService {
       );
       if (rows && rows.length > 0) {
         return {
+          idPerson: rows[0].id_person || undefined,
           numIdentificacion: rows[0].num_identificacion || undefined,
           dirEmail: rows[0].dir_email || undefined,
           username: rows[0].username || undefined,
@@ -396,6 +432,35 @@ export class TravelExpensesService {
     } catch (e: any) {
       this.logger.warn(
         `[obtenerDatosPersonaPorUsuarioId] Error consultando persona para usuario ${usuarioId}: ${e?.message}`,
+      );
+    }
+    return null;
+  }
+
+  async obtenerDependenciaUsuario(usuarioId?: string): Promise<number | null> {
+    if (!usuarioId) return null;
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT p.id_dependencia
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [usuarioId],
+      );
+      if (rows?.[0]?.id_dependencia != null) {
+        return Number(rows[0].id_dependencia);
+      }
+      const aRows = await this.solicitudRepo.query(
+        `SELECT dependencia_id FROM travel_expenses.analistas_viaticos WHERE usuario_id = $1 LIMIT 1`,
+        [usuarioId],
+      );
+      if (aRows?.[0]?.dependencia_id != null) {
+        return Number(aRows[0].dependencia_id);
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[obtenerDependenciaUsuario] Error consultando dependencia para ${usuarioId}: ${e?.message}`,
       );
     }
     return null;
@@ -412,6 +477,9 @@ export class TravelExpensesService {
     isTesoreria = false,
     isSst = false,
     isComisionado = false,
+    soloComisionado = false,
+    isJefe = false,
+    isGerente = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -430,6 +498,12 @@ export class TravelExpensesService {
       isSst,
       'isComisionado=',
       isComisionado,
+      'soloComisionado=',
+      soloComisionado,
+      'isJefe=',
+      isJefe,
+      'isGerente=',
+      isGerente,
       'page=',
       page,
       'limit=',
@@ -439,8 +513,55 @@ export class TravelExpensesService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if (!isSuperAdmin && !isSecretario) {
-      if (isTesoreria) {
+    if (!isSuperAdmin || soloComisionado) {
+      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista && !isSecretario && !isJefe && !isGerente)) {
+        if (usuarioId) {
+          const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
+          const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
+          if (datosPersona?.username && /^\d+$/.test(datosPersona.username.trim())) {
+            docs.push(datosPersona.username.trim());
+          }
+          const emails = [datosPersona?.dirEmail, datosPersona?.username]
+            .filter(Boolean)
+            .map((e) => (e as string).toLowerCase().trim()) as string[];
+
+          query.andWhere(
+            new Brackets((qb) => {
+              qb.where('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+              if (docs.length > 0) {
+                qb.orWhere('comisionado.numero_documento IN (:...docs)', { docs });
+              }
+              if (emails.length > 0) {
+                qb.orWhere('LOWER(comisionado.email) IN (:...emails)', { emails });
+              }
+            }),
+          );
+        }
+      } else if (isSecretario) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :secDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :secDepId))',
+              { secDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
+        }
+      } else if (isJefe || isGerente) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :dirDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :dirDepId))',
+              { dirDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
+        }
+      } else if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
           estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'],
         });
@@ -457,6 +578,9 @@ export class TravelExpensesService {
       } else if (isComisionado && usuarioId) {
         const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
         const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
+        if (datosPersona?.username && /^\d+$/.test(datosPersona.username.trim())) {
+          docs.push(datosPersona.username.trim());
+        }
         const emails = [datosPersona?.dirEmail, datosPersona?.username]
           .filter(Boolean)
           .map((e) => (e as string).toLowerCase().trim()) as string[];
@@ -1018,13 +1142,21 @@ export class TravelExpensesService {
    *      * Si está vigente: se materializa en la tabla `travel_expenses.comisionados` y se retorna.
    *    - Si NO existe tampoco en Talento Humano: arroja NotFoundException ("no es un comisionado").
    */
-  async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: string | number,
+  ): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
       throw new BadRequestException(
         'Debe proporcionar el número de documento del comisionado.',
       );
     }
+
+    const depEsperada =
+      idDependencia != null && idDependencia !== ''
+        ? Number(idDependencia)
+        : null;
 
     const adjuntarSolicitudesPendientes = async (com: ComisionadoEntity) => {
       try {
@@ -1130,6 +1262,18 @@ export class TravelExpensesService {
         );
       }
 
+      // Validar restricción de dependencia si se solicita como enlace de dependencia
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
+        if (comisionadoLocal.idDependencia != null && Number(comisionadoLocal.idDependencia) !== depEsperada) {
+          throw new BadRequestException(
+            `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+          );
+        } else if (comisionadoLocal.idDependencia == null) {
+          comisionadoLocal.idDependencia = depEsperada;
+          comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
+        }
+      }
+
       return await adjuntarSolicitudesPendientes(comisionadoLocal);
     }
 
@@ -1163,6 +1307,14 @@ export class TravelExpensesService {
         );
       }
 
+      const idDepAsignar = idDependenciaFnc != null ? idDependenciaFnc : depEsperada;
+
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDependenciaFnc != null && Number(idDependenciaFnc) !== depEsperada) {
+        throw new BadRequestException(
+          `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+        );
+      }
+
       this.logger.log(
         `[consultarComisionado] Registrando nuevo comisionado ${doc} desde Talento Humano con contrato vigente`,
       );
@@ -1177,7 +1329,7 @@ export class TravelExpensesService {
         tipoComisionado: 'FUNCIONARIO',
         origenDatos: 'HUMANO',
         autorizacionHabeasData: false,
-        idDependencia: idDependenciaFnc,
+        idDependencia: idDepAsignar,
         cuentasBancarias: [],
         cargos: cargo
           ? [
@@ -1185,7 +1337,7 @@ export class TravelExpensesService {
                 id: `crg-${Date.now()}`,
                 cargo,
                 salario: salario || 0,
-                idDependencia: idDependenciaFnc,
+                idDependencia: idDepAsignar,
                 esPrincipal: true,
               },
             ]
@@ -1239,8 +1391,15 @@ export class TravelExpensesService {
       apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
     const segundoApellido = apellidos.join(' ') || null;
 
-    const idDependencia =
+    const idDepPersona =
       persona.id_dependencia != null ? Number(persona.id_dependencia) : null;
+    const idDependenciaFinal = idDepPersona != null ? idDepPersona : depEsperada;
+
+    if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDepPersona != null && Number(idDepPersona) !== depEsperada) {
+      throw new BadRequestException(
+        `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+      );
+    }
 
     const nuevo = this.comisionadoRepo.create({
       numeroDocumento: doc,
@@ -1253,11 +1412,43 @@ export class TravelExpensesService {
       tipoComisionado: 'FUNCIONARIO',
       origenDatos: 'ESAP',
       autorizacionHabeasData: false,
-      idDependencia,
+      idDependencia: idDependenciaFinal,
     } as Partial<ComisionadoEntity>);
 
     const guardado = await this.comisionadoRepo.save(nuevo);
     return await adjuntarSolicitudesPendientes(guardado);
+  }
+
+  /**
+   * Lista los comisionados registrados en la base local, opcionalmente filtrados
+   * por dependencia y/o texto de búsqueda (nombre, apellido, cédula, cargo).
+   */
+  async listarComisionados(
+    idDependencia?: string | number,
+    search?: string,
+  ): Promise<ComisionadoEntity[]> {
+    const qb = this.comisionadoRepo.createQueryBuilder('c');
+
+    if (idDependencia != null && idDependencia !== '') {
+      const depNum = Number(idDependencia);
+      if (!isNaN(depNum) && depNum > 0) {
+        qb.andWhere('c.idDependencia = :depNum', { depNum });
+      }
+    }
+
+    if (search && search.trim().length > 0) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(c.numeroDocumento) LIKE :term OR LOWER(c.primerNombre) LIKE :term OR LOWER(c.primerApellido) LIKE :term OR LOWER(c.cargo) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('c.primerApellido', 'ASC')
+      .addOrderBy('c.primerNombre', 'ASC')
+      .limit(100);
+
+    return await qb.getMany();
   }
 
 
@@ -1813,6 +2004,53 @@ export class TravelExpensesService {
   }
 
 
+  private resolverItinerarioCiudades(
+    itinerario?: any[],
+    destinoFallback?: string,
+    origenFallback?: string,
+  ): {
+    origenCiudad: string;
+    destinoCiudad: string;
+    esViajeIdaVuelta: boolean;
+  } {
+    if (!Array.isArray(itinerario) || itinerario.length === 0) {
+      return {
+        origenCiudad: origenFallback || 'Bogotá',
+        destinoCiudad: destinoFallback || 'Bogotá',
+        esViajeIdaVuelta: false,
+      };
+    }
+    const primerTramo = itinerario[0] || {};
+    const ultimoTramo = itinerario[itinerario.length - 1] || {};
+
+    const normalizarCiudad = (txt?: string) =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+
+    const esViajeIdaVuelta =
+      itinerario.length > 1 &&
+      normalizarCiudad(ultimoTramo.destinoCiudad) ===
+        normalizarCiudad(primerTramo.origenCiudad) &&
+      (ultimoTramo.destinoCiudad || '') !== '';
+
+    const origenCiudad = primerTramo.origenCiudad || origenFallback || 'Bogotá';
+    const destinoCiudad = esViajeIdaVuelta
+      ? ultimoTramo.origenCiudad || destinoFallback || ''
+      : ultimoTramo.destinoCiudad || destinoFallback || '';
+
+    return {
+      origenCiudad,
+      destinoCiudad: destinoCiudad || origenCiudad,
+      esViajeIdaVuelta,
+    };
+  }
+
   async obtenerSolicitudCompleta(
     solicitudId: string,
   ): Promise<
@@ -1832,6 +2070,7 @@ export class TravelExpensesService {
       fechaVerificacionPrimerNivel?: string | null;
       liquidacion?: any;
       validacionTiquete?: any;
+      tarifaEstimada?: any;
     }
   > {
     const solicitud = await this.solicitudRepo.findOne({
@@ -1966,15 +2205,34 @@ export class TravelExpensesService {
     }
 
     let validacionTiquete: any = undefined;
+    let tarifaEstimada: any = undefined;
+
     if (solicitud.requiereTiquetes && this.ticketsService) {
       try {
         const idDep = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+        const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+          this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+        let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
+        try {
+          const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+          if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+            tarifaEstimada = respTarifa;
+            if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+              montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+            }
+          }
+        } catch (err: any) {
+          this.logger.warn(`[travel-expenses] No se pudo consultar tarifa estimada: ${err?.message}`);
+        }
+
         const resTiquete = await this.ticketsService.validarTiquete({
           dependenciaId: String(idDep),
-          origenCiudad: 'Bogotá',
-          destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
+          origenCiudad,
+          destinoCiudad,
           tipoTransporte: 'AEREO',
-          montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
+          montoEstimadoTiquete,
         });
         if (resTiquete) {
           validacionTiquete = resTiquete;
@@ -1996,6 +2254,7 @@ export class TravelExpensesService {
         solicitud.fechaExportacionSiif?.toISOString() ?? null,
       liquidacion,
       validacionTiquete,
+      tarifaEstimada,
     };
   }
 
@@ -2138,6 +2397,473 @@ export class TravelExpensesService {
     };
   }
 
+  /**
+   * Identifica si un comisionado está registrado como usuario en auth."user",
+   * sus roles asignados, id_person y si ya cuenta con el rol COMISIONADO.
+   */
+  async identificarUsuarioComisionado(
+    documento: string,
+    email?: string,
+  ): Promise<{
+    esUsuario: boolean;
+    usuarioId: string | null;
+    rolesUsuario: string[];
+    idPersona: string | null;
+    tieneRolComisionado: boolean;
+  }> {
+    const doc = (documento || '').trim();
+    const mail = (email || '').trim().toLowerCase();
+
+    let esUsuario = false;
+    let usuarioId: string | null = null;
+    let rolesUsuario: string[] = [];
+    let idPersona: string | null = null;
+    let tieneRolComisionado = false;
+
+    try {
+      if (this.dataSource && typeof this.dataSource.query === 'function') {
+        const userRows = await this.dataSource.query(
+          `SELECT
+             u.id_user,
+             u.username,
+             u.is_active,
+             p.id_person,
+             COALESCE(
+               array_agg(r.code) FILTER (WHERE r.code IS NOT NULL),
+               '{}'
+             ) AS roles
+           FROM auth.personas p
+           INNER JOIN auth."user" u ON u.id_person = p.id_person
+           LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+           LEFT JOIN auth.role r ON r.id = ur.id_rol
+           WHERE p.num_identificacion = $1
+           GROUP BY u.id_user, u.username, u.is_active, p.id_person
+           LIMIT 1`,
+          [doc],
+        );
+
+        let userRow = userRows?.[0];
+        if (!userRow && mail && mail !== 'sin-correo@esap.edu.co') {
+          const userByEmail = await this.dataSource.query(
+            `SELECT
+               u.id_user,
+               u.username,
+               u.is_active,
+               u.id_person,
+               COALESCE(
+                 array_agg(r.code) FILTER (WHERE r.code IS NOT NULL),
+                 '{}'
+               ) AS roles
+             FROM auth."user" u
+             LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+             LEFT JOIN auth.role r ON r.id = ur.id_rol
+             WHERE LOWER(u.username) = LOWER($1)
+             GROUP BY u.id_user, u.username, u.is_active, u.id_person
+             LIMIT 1`,
+            [mail],
+          );
+          userRow = userByEmail?.[0];
+        }
+
+        if (userRow?.id_user) {
+          esUsuario = true;
+          usuarioId = userRow.id_user;
+          rolesUsuario = Array.isArray(userRow.roles) ? userRow.roles : [];
+          idPersona = userRow.id_person || null;
+          tieneRolComisionado = rolesUsuario.some(
+            (r) => r === 'COMISIONADO' || r.toUpperCase().includes('COMISIONADO'),
+          );
+        } else {
+          const pRow = await this.dataSource.query(
+            `SELECT id_person FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
+            [doc],
+          );
+          idPersona = pRow?.[0]?.id_person || null;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[identificarUsuarioComisionado] Error identificando usuario en auth para doc ${doc}: ${err?.message}`,
+      );
+    }
+
+    return {
+      esUsuario,
+      usuarioId,
+      rolesUsuario,
+      idPersona,
+      tieneRolComisionado,
+    };
+  }
+
+  /**
+   * Asegura la existencia idempotente del rol COMISIONADO y sus permisos
+   * (travel_expenses.general.es_comisionado, es_comisionado, travel_expenses:read_own_requests).
+   */
+  async asegurarRolYPermisosComisionado(): Promise<void> {
+    try {
+      if (!this.dataSource || typeof this.dataSource.query !== 'function') return;
+
+      // 1. Obtener ID del módulo viáticos en auth.module
+      let moduleId: string | null = null;
+      try {
+        const modRows = await this.dataSource.query(
+          `SELECT id_module FROM auth.module WHERE code = 'viaticos' OR code ILIKE '%viatico%' LIMIT 1`,
+        );
+        moduleId = modRows?.[0]?.id_module || null;
+      } catch {}
+
+      // 2. Asegurar Rol COMISIONADO en auth.role
+      let roleId: string | null = null;
+      try {
+        const roleRows = await this.dataSource.query(
+          `SELECT id FROM auth.role WHERE UPPER(code) = 'COMISIONADO' LIMIT 1`,
+        );
+        if (roleRows && roleRows.length > 0) {
+          roleId = roleRows[0].id;
+        } else {
+          const insertRole = await this.dataSource.query(
+            `INSERT INTO auth.role (
+               id, code, name, description, category, icon, color, type, is_active, created_at, updated_at
+             ) VALUES (
+               gen_random_uuid(), 'COMISIONADO', 'Comisionado',
+               'Servidor público o contratista que cumple comisiones de servicios institucionales y consulta sus solicitudes (Formato GF-FO-023).',
+               'operativo', 'UserCheck', '#003DA5', 'sistema', true, NOW(), NOW()
+             ) RETURNING id`,
+          );
+          roleId = insertRole?.[0]?.id || null;
+        }
+      } catch (err: any) {
+        this.logger.warn(`[asegurarRolYPermisosComisionado] No se pudo asegurar auth.role COMISIONADO: ${err?.message}`);
+      }
+
+      // 3. Asegurar Permisos en auth.permission
+      const permisosDeseados = [
+        {
+          code: 'travel_expenses.general.es_comisionado',
+          name: 'Es Comisionado (General)',
+          desc: 'Identificador inmutable general para funcionarios y contratistas en calidad de comisionados dentro de la plataforma.',
+        },
+        {
+          code: 'es_comisionado',
+          name: 'Es Comisionado',
+          desc: 'Permiso general de comisionado institucional para consultar sus solicitudes radicadas y estado de firmas.',
+        },
+        {
+          code: 'travel_expenses:read_own_requests',
+          name: 'Consultar solicitudes radicadas para el comisionado',
+          desc: 'Permite al comisionado consultar en la plataforma el estado, itinerario, liquidación y firmas de las solicitudes radicadas a su nombre (Formato GF-FO-023).',
+        },
+      ];
+
+      const permIds: string[] = [];
+      for (const p of permisosDeseados) {
+        try {
+          const pRows = await this.dataSource.query(
+            `SELECT id_permission FROM auth.permission WHERE code = $1 LIMIT 1`,
+            [p.code],
+          );
+          if (pRows && pRows.length > 0) {
+            permIds.push(pRows[0].id_permission);
+          } else {
+            const insP = await this.dataSource.query(
+              `INSERT INTO auth.permission (
+                 id_permission, code, name, description, id_module, is_active, created_at, updated_at
+               ) VALUES (
+                 gen_random_uuid(), $1, $2, $3, $4, true, NOW(), NOW()
+               ) RETURNING id_permission`,
+              [p.code, p.name, p.desc, moduleId],
+            );
+            if (insP?.[0]?.id_permission) {
+              permIds.push(insP[0].id_permission);
+            }
+          }
+        } catch {}
+      }
+
+      // 4. Asociar permisos al rol COMISIONADO y SUPER_ADMIN
+      if (roleId && permIds.length > 0) {
+        for (const pid of permIds) {
+          try {
+            await this.dataSource.query(
+              `INSERT INTO auth.role_permissions (id_rol, id_permission)
+               VALUES ($1, $2)
+               ON CONFLICT (id_rol, id_permission) DO NOTHING`,
+              [roleId, pid],
+            );
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[asegurarRolYPermisosComisionado] Error general asegurando rol: ${e?.message}`);
+    }
+  }
+
+  /**
+   * Garantiza que el comisionado tenga un usuario en el sistema con el rol COMISIONADO:
+   * 1. Si ya es un usuario con roles: Se le asigna el nuevo rol COMISIONADO manteniendo intactos todos sus roles previos.
+   * 2. Si no está creado: Se crea el usuario usando el servicio de auth (POST /new-person) o fallback directo en BD,
+   *    con los datos mínimos requeridos (incluyendo idDependencia que radica el enlace) y rol COMISIONADO.
+   */
+  async garantizarUsuarioYRolComisionado(
+    comisionado: ComisionadoEntity,
+    idDependenciaRadica?: number | null,
+    creadorUsuarioId?: string | null,
+  ): Promise<void> {
+    try {
+      if (!this.dataSource || typeof this.dataSource.query !== 'function') return;
+
+      await this.asegurarRolYPermisosComisionado();
+
+      const doc = (comisionado.numeroDocumento || '').trim();
+      const email = (comisionado.email || '').trim().toLowerCase();
+
+      // Resolver el idDependencia: 1) idDependencia radicado en la solicitud,
+      // 2) id_dependencia de la persona enlace que radica (creadorUsuarioId),
+      // 3) id_dependencia preexistente en comisionado
+      let idDependenciaFinal: number | null =
+        idDependenciaRadica != null && Number.isFinite(Number(idDependenciaRadica))
+          ? Number(idDependenciaRadica)
+          : null;
+
+      if (idDependenciaFinal == null && creadorUsuarioId) {
+        try {
+          const enlaceRows = await this.dataSource.query(
+            `SELECT p.id_dependencia
+             FROM auth."user" u
+             LEFT JOIN auth.personas p ON p.id_person = u.id_person
+             WHERE u.id_user = $1
+             LIMIT 1`,
+            [creadorUsuarioId],
+          );
+          if (enlaceRows?.[0]?.id_dependencia != null) {
+            idDependenciaFinal = Number(enlaceRows[0].id_dependencia);
+          }
+        } catch {}
+      }
+
+      if (idDependenciaFinal == null && comisionado.idDependencia != null) {
+        idDependenciaFinal = Number(comisionado.idDependencia);
+      }
+
+      // Si el comisionado local no tenía idDependencia registrada, asignarla
+      if (idDependenciaFinal != null && comisionado.idDependencia == null) {
+        try {
+          comisionado.idDependencia = idDependenciaFinal;
+          await this.comisionadoRepo.update(comisionado.id, { idDependencia: idDependenciaFinal });
+        } catch {}
+      }
+
+      // 1. Buscar si ya existe un usuario asociado en auth."user"
+      const existingUser = await this.dataSource.query(
+        `SELECT u.id_user, u.username, u.id_person
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE p.num_identificacion = $1 OR (u.username IS NOT NULL AND LOWER(u.username) = $2)
+         LIMIT 1`,
+        [doc, email],
+      );
+
+      const roleRow = await this.dataSource.query(
+        `SELECT id FROM auth.role WHERE UPPER(code) = 'COMISIONADO' LIMIT 1`,
+      );
+      const roleComisionadoId = roleRow?.[0]?.id;
+
+      if (existingUser && existingUser.length > 0 && existingUser[0]?.id_user) {
+        const userId = existingUser[0].id_user;
+        const personId = existingUser[0].id_person;
+        this.logger.log(`[garantizarUsuarioYRolComisionado] Comisionado ${doc} ya es usuario (${userId}). Asignando rol COMISIONADO manteniendo roles previos...`);
+
+        // Si la persona asociada no tiene id_dependencia y tenemos el idDependencia que radica el enlace, sincronizarlo
+        if (personId && idDependenciaFinal != null) {
+          try {
+            await this.dataSource.query(
+              `UPDATE auth.personas
+               SET id_dependencia = $1, fec_modificacion = CURRENT_DATE
+               WHERE id_person = $2 AND id_dependencia IS NULL`,
+              [idDependenciaFinal, personId],
+            );
+          } catch {}
+        }
+
+        if (roleComisionadoId) {
+          // Asignar el nuevo rol COMISIONADO SIN eliminar roles existentes
+          await this.dataSource.query(
+            `INSERT INTO auth.user_roles (id_user, id_rol, is_active)
+             VALUES ($1, $2, true)
+             ON CONFLICT (id_user, id_rol) DO UPDATE SET is_active = true`,
+            [userId, roleComisionadoId],
+          );
+          this.logger.log(`[garantizarUsuarioYRolComisionado] Rol COMISIONADO asignado exitosamente al usuario ${userId}`);
+        }
+        return;
+      }
+
+      // 2. No está creado como usuario: crear el usuario usando el servicio de auth
+      this.logger.log(`[garantizarUsuarioYRolComisionado] Comisionado ${doc} no tiene usuario. Creando usuario mediante auth-service...`);
+
+      const nombres = [comisionado.primerNombre, comisionado.segundoNombre].filter(Boolean).join(' ').trim() || 'Funcionario';
+      const apellidos = [comisionado.primerApellido, comisionado.segundoApellido].filter(Boolean).join(' ').trim() || 'Comisionado';
+      const emailValido = email && email !== 'sin-correo@esap.edu.co' ? email : `${doc}@esap.edu.co`;
+      const telefonoValido = comisionado.telefonoContacto && comisionado.telefonoContacto !== '0000000000'
+        ? comisionado.telefonoContacto
+        : undefined;
+
+      const payloadAuth = {
+        firstName: comisionado.primerNombre || nombres,
+        lastName: apellidos,
+        documentNumber: doc,
+        email: emailValido,
+        phone: telefonoValido,
+        username: emailValido,
+        password: '123456',
+        roles: ['Comisionado'],
+        idDependencia: idDependenciaFinal != null ? Number(idDependenciaFinal) : undefined,
+      };
+
+      let creadoViaHttp = false;
+      let authServiceUrl = (process.env.AUTH_SERVICE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      if (authServiceUrl.includes('auth-service') && process.platform === 'win32') {
+        authServiceUrl = authServiceUrl.replace('auth-service', '127.0.0.1');
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const resp = await fetch(`${authServiceUrl}/new-person`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payloadAuth),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          creadoViaHttp = true;
+          this.logger.log(`[garantizarUsuarioYRolComisionado] Usuario creado exitosamente vía HTTP en auth-service para comisionado ${doc} con dependencia ${idDependenciaFinal}`);
+        } else {
+          const errText = await resp.text();
+          this.logger.warn(`[garantizarUsuarioYRolComisionado] Falló creación HTTP en auth-service (${resp.status}): ${errText}. Procediendo a sincronización directa en BD...`);
+        }
+      } catch (errHttp: any) {
+        this.logger.warn(`[garantizarUsuarioYRolComisionado] Error conectando con auth-service (${errHttp?.message}). Procediendo a sincronización directa en BD...`);
+      }
+
+      // Si no se pudo vía HTTP (ej: servicio apagado o timeout en tests), asegurar directamente en BD compartida
+      if (!creadoViaHttp) {
+        await this.crearUsuarioComisionadoDirectoEnBd({
+          documento: doc,
+          nombres,
+          apellidos,
+          email: emailValido,
+          telefono: telefonoValido,
+          idDependencia: idDependenciaFinal,
+          roleComisionadoId,
+        });
+      }
+    } catch (err: any) {
+      this.logger.error(`[garantizarUsuarioYRolComisionado] Error garantizando usuario/rol para comisionado: ${err?.message}`);
+    }
+  }
+
+  private async crearUsuarioComisionadoDirectoEnBd(params: {
+    documento: string;
+    nombres: string;
+    apellidos: string;
+    email: string;
+    telefono?: string;
+    idDependencia?: number | null;
+    roleComisionadoId?: string;
+  }): Promise<void> {
+    const { documento, nombres, apellidos, email, telefono, idDependencia, roleComisionadoId } = params;
+
+    // 1. Asegurar persona en auth.personas
+    const personasExistentes = await this.dataSource.query(
+      `SELECT id_person FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
+      [documento],
+    );
+
+    let idPerson = personasExistentes?.[0]?.id_person;
+    if (!idPerson) {
+      const nuevaPersona = await this.dataSource.query(
+        `INSERT INTO auth.personas (
+           id_person,
+           num_identificacion,
+           tip_identificacion,
+           nom_tercero,
+           pri_apellido,
+           nom_largo,
+           dir_email,
+           tel_celular,
+           id_dependencia,
+           fec_creacion,
+           fec_modificacion
+         ) VALUES (
+           gen_random_uuid(),
+           $1,
+           'CC',
+           $2,
+           $3,
+           $4,
+           $5,
+           $6,
+           $7,
+           NOW(),
+           NOW()
+         ) RETURNING id_person`,
+        [documento, nombres, apellidos, `${nombres} ${apellidos}`, email, telefono || null, idDependencia || null],
+      );
+      idPerson = nuevaPersona?.[0]?.id_person;
+    }
+
+    // 2. Asegurar usuario en auth."user"
+    const usuariosExistentes = await this.dataSource.query(
+      `SELECT id_user FROM auth."user" WHERE id_person = $1 OR LOWER(username) = LOWER($2) LIMIT 1`,
+      [idPerson, email],
+    );
+
+    let idUser = usuariosExistentes?.[0]?.id_user;
+    if (!idUser) {
+      const hashDefault = '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.'; // bcrypt hash para '123456' (estándar auth-service)
+      const nuevoUsuario = await this.dataSource.query(
+        `INSERT INTO auth."user" (
+           id_user,
+           public_id,
+           username,
+           password_hash,
+           id_person,
+           is_active,
+           created_at,
+           updated_at
+         ) VALUES (
+           gen_random_uuid(),
+           gen_random_uuid(),
+           $1,
+           $2,
+           $3,
+           true,
+           NOW(),
+           NOW()
+         ) RETURNING id_user`,
+        [email, hashDefault, idPerson],
+      );
+      idUser = nuevoUsuario?.[0]?.id_user;
+    }
+
+    // 3. Asignar rol COMISIONADO
+    if (idUser && roleComisionadoId) {
+      await this.dataSource.query(
+        `INSERT INTO auth.user_roles (id_user, id_rol, is_active)
+         VALUES ($1, $2, true)
+         ON CONFLICT (id_user, id_rol) DO UPDATE SET is_active = true`,
+        [idUser, roleComisionadoId],
+      );
+      this.logger.log(`[crearUsuarioComisionadoDirectoEnBd] Usuario ${idUser} y rol COMISIONADO asegurados directamente en BD.`);
+    }
+  }
+
   async crearSolicitud(
     dto: CreateSolicitudDto,
   ): Promise<SolicitudComisionEntity> {
@@ -2148,6 +2874,14 @@ export class TravelExpensesService {
     if (!comisionado) {
       throw new BadRequestException('Comisionado no encontrado.');
     }
+
+    // 1. Si el comisionado es un usuario con roles, asignarle el nuevo rol comisionado (manteniendo roles previos).
+    // 2. Si no está creado, crear el usuario usando el servicio de auth (o fallback DB) con idDependencia que radica el enlace.
+    await this.garantizarUsuarioYRolComisionado(
+      comisionado,
+      dto.idDependencia,
+      dto.creadoPorUsuarioId,
+    );
 
     if (!comisionado.autorizacionHabeasData && !dto.aceptaHabeasData) {
       throw new BadRequestException(
@@ -2189,6 +2923,12 @@ export class TravelExpensesService {
       throw new BadRequestException(
         `Faltan los siguientes campos obligatorios para el tipo de comisionado ${comisionado.tipoComisionado}: ${camposFaltantes.join(', ')}`,
       );
+    }
+
+    const { errores: erroresLimite } =
+      await this.validarLimitesCaracteres(datosFormulario);
+    if (erroresLimite.length > 0) {
+      throw new BadRequestException(erroresLimite.join('. '));
     }
 
     const config = await this.configService.obtenerConfiguracionPorTipo(
@@ -2254,9 +2994,14 @@ export class TravelExpensesService {
         );
       }
 
+      const configJornada =
+        typeof this.configService?.obtenerJornadaLaboralActiva === 'function'
+          ? await this.configService.obtenerJornadaLaboralActiva()
+          : null;
       radicadoFueraJornada = esRadicacionFueraDeJornada(
         new Date(),
         await cargarFestivosAuth(this.dataSource),
+        configJornada,
       );
 
       estadoSolicitud = EstadoSolicitud.RADICADA;
@@ -2672,6 +3417,16 @@ export class TravelExpensesService {
       throw new BadRequestException(
         'La fecha fin no puede ser anterior a la fecha inicio.',
       );
+    }
+
+    const datosActualizacion = {
+      ...(dto as any),
+      ...(dto.camposAdicionales || {}),
+    };
+    const { errores: erroresLimite } =
+      await this.validarLimitesCaracteres(datosActualizacion);
+    if (erroresLimite.length > 0) {
+      throw new BadRequestException(erroresLimite.join('. '));
     }
 
     if (dto.objetoComision !== undefined) {
@@ -3735,6 +4490,15 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     await this.validarLegalizacionesPendientes(solicitud.comisionadoId);
 
+    // Garantizar que el comisionado tenga usuario y rol COMISIONADO (idempotente)
+    if (solicitud.comisionado) {
+      await this.garantizarUsuarioYRolComisionado(
+        solicitud.comisionado,
+        solicitud.idDependencia,
+        solicitud.creadoPorUsuarioId,
+      );
+    }
+
     // Si viene código OTP del enlace, verificarlo
     if (dto?.otp && dto?.verificationId) {
       this.verificarOtpFirma({
@@ -3968,6 +4732,38 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    // Validación de pertenencia a la misma dependencia para Jefe y Gerente
+    const tipoFirmaStr = String(dto.tipoFirma || '').toUpperCase();
+    const esFirmaJefeOGerente =
+      tipoFirmaStr === 'JEFE_DEPENDENCIA' ||
+      tipoFirmaStr === 'GERENTE_PROYECTO';
+
+    const esSuperAdmin = this.esSuperAdmin(userRoles);
+
+    if (esFirmaJefeOGerente && !esSuperAdmin && usuarioId) {
+      const depSolicitud =
+        solicitud.idDependencia != null
+          ? Number(solicitud.idDependencia)
+          : solicitud.comisionado?.idDependencia != null
+          ? Number(solicitud.comisionado.idDependencia)
+          : null;
+
+      if (depSolicitud != null) {
+        const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
+        const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
+        const esReglaEspecial =
+          firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
+
+        if (!esReglaEspecial) {
+          if (depFirmante == null || depFirmante !== depSolicitud) {
+            throw new BadRequestException(
+              `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
+            );
+          }
+        }
+      }
+    }
+
     // Validación de código OTP si fue suministrado o requerido
     if (dto.otp && dto.verificationId) {
       this.verificarOtpFirma({
@@ -4076,18 +4872,25 @@ if (dto.costoEstimadoTiquete !== undefined) {
       // para fijar su estado en SOLICITADO (ordinaria) o EXTEMPORANEA.
       const ahora = new Date();
       const festivosSet = await cargarFestivosAuth(this.dataSource);
+      const configJornada =
+        typeof this.configService?.obtenerJornadaLaboralActiva === 'function'
+          ? await this.configService.obtenerJornadaLaboralActiva()
+          : null;
       const radicadoFueraJornada = esRadicacionFueraDeJornada(
         ahora,
         festivosSet,
+        configJornada,
       );
 
       const diasHabilesAnticipacion = contarDiasHabiles(
-        fechaEfectivaRadicacion(ahora, festivosSet),
+        fechaEfectivaRadicacion(ahora, festivosSet, configJornada),
         solicitud.fechaInicio,
         festivosSet,
         'previos',
+        configJornada?.diasLaborales,
       );
-      const esExtemporanea = diasHabilesAnticipacion < 14;
+      const anticipacionMinima = configJornada?.diasAnticipacionMinima ?? 14;
+      const esExtemporanea = diasHabilesAnticipacion < anticipacionMinima;
       const nuevoEstado = EstadoSolicitud.SOLICITADO;
 
       const estadoAnterior = solicitud.estadoSolicitud;
@@ -4227,10 +5030,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const depSolicitud =
+      solicitud.idDependencia != null
+        ? Number(solicitud.idDependencia)
+        : solicitud.comisionado?.idDependencia != null
+        ? Number(solicitud.comisionado.idDependencia)
+        : null;
+
+    if (depSolicitud != null && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null && depUsuario !== depSolicitud) {
+        throw new BadRequestException(
+          `No es posible devolver la solicitud: su dependencia (${depUsuario}) no coincide con la dependencia de la solicitud (${depSolicitud}).`,
+        );
+      }
     }
 
     const estadoAnterior = solicitud.estadoSolicitud;
@@ -4452,6 +5272,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
     page = 1,
     limit = 20,
     busqueda?: string,
+    usuarioId?: string,
+    isSuperAdmin = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
@@ -4459,6 +5281,18 @@ if (dto.costoEstimadoTiquete !== undefined) {
       .where('s.estado_solicitud = :estado', {
         estado: EstadoSolicitud.PENDIENTE_FIRMAS,
       });
+
+    if (!isSuperAdmin && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null) {
+        query.andWhere(
+          '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
+          { depUsuario },
+        );
+      } else {
+        query.andWhere('1 = 0');
+      }
+    }
 
     if (busqueda && busqueda.trim()) {
       const term = `%${busqueda.trim().toLowerCase()}%`;
@@ -4813,6 +5647,34 @@ if (dto.costoEstimadoTiquete !== undefined) {
     });
 
     return { camposFaltantes };
+  }
+
+  async validarLimitesCaracteres(
+    datosFormulario: Record<string, any>,
+  ): Promise<{ errores: string[] }> {
+    if (!this.configService || typeof this.configService.obtenerCamposFormulario !== 'function') {
+      return { errores: [] };
+    }
+    const camposCatalogo = await this.configService.obtenerCamposFormulario();
+    const errores: string[] = [];
+
+    for (const campo of camposCatalogo) {
+      if (!campo.activo) continue;
+      const valor = datosFormulario[campo.clave];
+      if (typeof valor === 'string' && valor.length > 0) {
+        const limite =
+          campo.limiteCaracteres !== undefined && campo.limiteCaracteres !== null
+            ? campo.limiteCaracteres
+            : 250;
+        if (limite > 0 && valor.length > limite) {
+          errores.push(
+            `El campo "${campo.etiqueta}" (${campo.clave}) supera el límite permitido de ${limite} caracteres (actual: ${valor.length})`,
+          );
+        }
+      }
+    }
+
+    return { errores };
   }
 
   /**
@@ -7872,6 +8734,7 @@ if (itinerarioGeneral) {
        fechaVerificacionPrimerNivel?: string | null;
        liquidacion?: any;
        validacionTiquete?: any;
+       tarifaEstimada?: any;
      }
    > {
      const solicitud = await this.solicitudRepo.findOne({
@@ -7980,21 +8843,44 @@ if (itinerarioGeneral) {
        };
      }
 
-     // Validación proactiva de tiquete aéreo si la solicitud lo requiere
+     // Validación proactiva y consulta de tarifa estimada de tiquete aéreo si la solicitud lo requiere
      let validacionTiquete: any = null;
-     if (solicitud.requiereTiquetes && this.ticketsService && idDependencia != null) {
+     let tarifaEstimada: any = null;
+
+     if (solicitud.requiereTiquetes && this.ticketsService) {
+       const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+         this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+       let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
        try {
-         validacionTiquete = await this.ticketsService.validarTiquete({
-           dependenciaId: String(idDependencia),
-           montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
-           origenCiudad: 'Bogotá',
-           destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
-           tipoTransporte: 'AEREO',
-         });
+         const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+         if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+           tarifaEstimada = respTarifa;
+           if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+             montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+           }
+         }
        } catch (err: any) {
          this.logger.warn(
-           `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           `[obtenerSolicitudControlViaticos] No se pudo consultar tarifa estimada: ${err?.message}`,
          );
+       }
+
+       if (idDependencia != null) {
+         try {
+           validacionTiquete = await this.ticketsService.validarTiquete({
+             dependenciaId: String(idDependencia),
+             montoEstimadoTiquete,
+             origenCiudad,
+             destinoCiudad,
+             tipoTransporte: 'AEREO',
+           });
+         } catch (err: any) {
+           this.logger.warn(
+             `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           );
+         }
        }
      }
 
@@ -8007,6 +8893,7 @@ if (itinerarioGeneral) {
          solicitud.fechaExportacionSiif?.toISOString() ?? null,
        liquidacion,
        validacionTiquete,
+       tarifaEstimada,
      };
    }
 
@@ -8279,6 +9166,10 @@ if (itinerarioGeneral) {
         firmaControlViaticos: firmaControlData,
         firmasAprobacion: prevFirmas,
       };
+
+      if (dto.costoEstimadoTiquete != null && Number(dto.costoEstimadoTiquete) >= 0) {
+        solicitud.costoEstimadoTiquete = Number(dto.costoEstimadoTiquete);
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
@@ -8686,6 +9577,58 @@ if (itinerarioGeneral) {
     ) {
       throw new ForbiddenException(
         'Violación de Segregación de Funciones: El autorizador corporativo debe ser diferente del comisionado y del enlace solicitante',
+      );
+    }
+  }
+
+  /**
+   * RF-AUT-003 — Valida que el usuario tenga rol de Jefe de Dependencia o Super Administrador
+   * para proceder con la cancelación de la comisión de viáticos.
+   */
+  private validarAutorizacionCancelacion(rolesUsuario: string[]): void {
+    if (!rolesUsuario || rolesUsuario.length === 0) {
+      return;
+    }
+
+    if (this.esSuperAdmin(rolesUsuario) || this.esCoordinadorComisiones(rolesUsuario)) {
+      return;
+    }
+
+    const rolesPermitidosJefe = [
+      'JEFE_DEPENDENCIA',
+      'ROL_JEFE_DEPENDENCIA',
+      'SUPERVISOR',
+      'JEFE',
+      'DIRECTOR_TERRITORIAL',
+      'LIDER_DEPENDENCIA',
+      'LIDER_DE_DEPENDENCIA',
+      'JEFE_DE_DEPENDENCIA',
+      'COORDINADOR_COMISIONES_VIATICOS',
+      'COORDINADOR_GRUPO_COMISIONES',
+      'COORDINADOR_COMISIONES',
+      'COORDINADORA_GRUPO_COMISIONES',
+      'COORDINADORA_COMISIONES_VIATICOS',
+      'COORDINADOR_DE_COMISIONES',
+    ];
+
+    const esAutorizado = rolesUsuario.some((r: any) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        rolesPermitidosJefe.includes(normalized) ||
+        normalized.includes('JEFE_DEPENDENCIA') ||
+        normalized.includes('COORDINADOR_COMISIONES') ||
+        normalized.includes('COORDINADOR_GRUPO_COMISIONES') ||
+        normalized === 'SUPERVISOR' ||
+        r === 'travel_expenses:cancel_request' ||
+        r === 'travel_expenses.general.es_coordinador_comisiones' ||
+        r === 'travel_expenses.general.es_jefe_dependencia'
+      );
+    });
+
+    if (!esAutorizado) {
+      throw new ForbiddenException(
+        'Solo el Jefe de Dependencia o un administrador está autorizado para cancelar solicitudes de comisiones de viáticos.',
       );
     }
   }
@@ -10087,6 +11030,8 @@ if (itinerarioGeneral) {
       throw new BadRequestException('solicitudId es obligatorio.');
     }
 
+    this.validarAutorizacionCancelacion(rolesUsuario);
+
     const motivo = (dto?.motivoCancelacion || '').trim();
     if (motivo.length < 5) {
       throw new BadRequestException(
@@ -10095,7 +11040,7 @@ if (itinerarioGeneral) {
     }
 
     const responsable =
-      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+      (dto?.responsableCancelacion || '').trim() || 'Jefe de Dependencia / Dirección Territorial';
 
     const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager

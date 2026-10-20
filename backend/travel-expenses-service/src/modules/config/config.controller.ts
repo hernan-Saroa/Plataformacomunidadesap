@@ -27,6 +27,10 @@ import {
   CreateTipoDocumentoSoporteDto,
   UpdateTipoDocumentoSoporteDto,
 } from '../../dto/config/tipo-documento-soporte.dto';
+import {
+  CreateConfigJornadaLaboralDto,
+  UpdateConfigJornadaLaboralDto,
+} from '../../dto/config/config-jornada-laboral.dto';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -195,5 +199,71 @@ export class ConfigController {
   @Get('resumen')
   obtenerResumen() {
     return this.configService.obtenerResumenParametrizacion();
+  }
+
+  // ==================== JORNADA LABORAL Y DÍAS HÁBILES ====================
+
+  @Get('jornada-laboral')
+  obtenerConfiguracionesJornada() {
+    return this.configService.obtenerConfiguracionesJornada();
+  }
+
+  @Get('jornada-laboral/activa')
+  obtenerJornadaLaboralActiva() {
+    return this.configService.obtenerJornadaLaboralActiva();
+  }
+
+  @Get('jornada-laboral/:id')
+  async obtenerJornadaPorId(@Param('id') id: string) {
+    const numId = parseInt(id, 10);
+    const jornada = await this.configService.obtenerJornadaPorId(numId);
+    if (!jornada) {
+      return { message: 'Jornada laboral no encontrada', jornada: null };
+    }
+    return jornada;
+  }
+
+  @Post('jornada-laboral')
+  @Permissions('travel_expenses:manage_config')
+  crearJornada(
+    @Body() dto: CreateConfigJornadaLaboralDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearJornada(dto, usuario);
+  }
+
+  @Put('jornada-laboral/:id')
+  @Permissions('travel_expenses:manage_config')
+  actualizarJornada(
+    @Param('id') id: string,
+    @Body() dto: UpdateConfigJornadaLaboralDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const numId = parseInt(id, 10);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarJornada(numId, dto, usuario);
+  }
+
+  @Put('jornada-laboral/:id/activar')
+  @Permissions('travel_expenses:manage_config')
+  activarJornada(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const numId = parseInt(id, 10);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.activarJornada(numId, usuario);
+  }
+
+  @Delete('jornada-laboral/:id')
+  @Permissions('travel_expenses:manage_config')
+  eliminarJornada(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const numId = parseInt(id, 10);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.eliminarJornada(numId, usuario);
   }
 }

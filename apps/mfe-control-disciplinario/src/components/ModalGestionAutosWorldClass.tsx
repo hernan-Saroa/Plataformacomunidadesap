@@ -40,6 +40,8 @@ const TIPOS_CON_ACCION_ESTATICOS = [
   'AUTO_FORMULACION_PLIEGO',
   'PLIEGO_CARGOS',
   'AUTO_PRORROGA',
+  'AUTO_REMISION_COMPETENCIA',
+  'AUTO_REMISION',
 ];
 const tieneAccion = (tipo: string): boolean =>
   tipo?.startsWith('AUTO_APERTURA_') || TIPOS_CON_ACCION_ESTATICOS.includes(tipo);
@@ -390,7 +392,7 @@ export function ModalGestionAutosWorldClass({
                           variant="outline"
                           onClick={() => setVisorDocumento({ show: true, documento: auto })}
                           title="Ver documento"
-                          className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                          className="border-blue-600 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -400,7 +402,7 @@ export function ModalGestionAutosWorldClass({
                           variant="outline"
                           onClick={() => handleDescargarAuto(auto)}
                           title="Descargar documento"
-                          className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                          className="border-blue-600 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                         >
                           <Download className="w-4 h-4" />
                         </Button>

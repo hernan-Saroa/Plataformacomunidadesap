@@ -9,6 +9,7 @@
 import { controlInternoService } from '../../services/api/controlInternoService';
 import type { FilaProgramaAnual } from '../../services/api/controlInternoService';
 import { exportarAuditoriasTemplate } from './exportarAuditoriasTemplate';
+import { unidadesParaExportar } from '../utils/unidadesAuditables';
 
 /** Convierte las filas versionadas al formato que consume la plantilla Excel. */
 export function filasParaDocumento(filas: FilaProgramaAnual[]) {
@@ -17,6 +18,8 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
     titulo: f.areaObjetivo ? `${f.nombre}\n(${f.areaObjetivo})` : f.nombre,
     tipo: f.tipo,
     territorial: f.territorial || 'Sede Central',
+    // Columna "Unidad Auditable" (EFDS-2316)
+    unidadesAuditables: unidadesParaExportar(f.nombre, f.unidadesAuditables),
     responsable: f.responsableArea,
     // Columnas "Responsable" (Auditor Líder) y "Equipo Auditor" (EFDS-2257)
     // undefined en versiones guardadas antes de EFDS-2257: la plantilla usa lo que traían
@@ -39,13 +42,14 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
  * si hay cambios sin versionar, como el borrador de la siguiente. La V1 nace con la
  * aprobación del plan y las demás con "Generar versión".
  */
-export async function exportarProgramaAnualVersionado(vigencia: number) {
+export async function exportarProgramaAnualVersionado(vigencia: number, { soloArchivo = false } = {}) {
   const version = await controlInternoService.resolverVersionProgramaAnual(vigencia);
   const resultado = await exportarAuditoriasTemplate(filasParaDocumento(version.filas), String(vigencia), {
     version: version.borrador || version.pendiente ? undefined : version.version,
     fechaVersion: version.borrador || version.pendiente ? undefined : version.fecha,
     borrador: !!version.borrador,
     borradorDe: version.pendiente ? version.version + 1 : undefined,
+    soloArchivo,
   });
   return {
     ...resultado,

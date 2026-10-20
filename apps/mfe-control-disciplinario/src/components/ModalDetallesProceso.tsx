@@ -126,6 +126,14 @@ interface Proceso {
   // Campos del mock enriquecido
   origen?: string;
   prioridad?: string;
+  enProcesoRemision?: boolean;
+  remisionAprobada?: boolean;
+  numeroRC?: string;
+  entidadRemision?: string;
+  correoEntidadRemision?: string;
+  fechaRemision?: string;
+  tipoRemision?: string;
+  justificacionRemision?: string;
 }
 
 type Tab = 'general' | 'archivos' | 'actuaciones' | 'tareas' | 'notas';
@@ -229,6 +237,7 @@ interface ModalDetallesProcesoProps {
   onNavigateToRevision?: () => void;
   /** Abre directamente el modal de confirmación de Envío a Jurídica */
   abrirEnvioJuridicaDirecto?: boolean;
+  onRemitirCompetencia?: (proceso: Proceso) => void;
 }
 
 
@@ -247,6 +256,87 @@ function getApoderadoCorreo(apoderado?: Apoderado): string {
 }
 function getApoderadoCelular(apoderado?: Apoderado): string {
   return apoderado?.celular || apoderado?.telefono || '';
+}
+
+export const checkEsEnProcesoRemision = (proc: any): boolean => {
+  if (!proc) return false;
+  const origen = String(proc.origenNoticia || proc.news?.origen || proc.origen || '').toUpperCase().trim();
+  const esOrigenRemision = origen === 'REMISION' || origen === 'REMISIÓN' || origen.includes('REMISI');
+  return (
+    Boolean(proc.enProcesoRemision) ||
+    Boolean(proc.en_proceso_remision) ||
+    esOrigenRemision ||
+    Boolean(proc.remisionAprobada) ||
+    Boolean(proc.remision_aprobada) ||
+    Boolean(proc.numeroRC) ||
+    Boolean(proc.numero_rc) ||
+    Boolean(proc.entidadRemision) ||
+    Boolean(proc.entidad_remision) ||
+    Boolean(proc.tipoRemision) ||
+    Boolean(proc.tipo_remision)
+  );
+};
+
+interface ParsedPerson {
+  id?: string;
+  nombre: string;
+  identificacion: string;
+  tipoIdentificacion?: string;
+  cargo?: string;
+  dependencia?: string;
+  entidad?: string;
+  correo?: string;
+  telefono?: string;
+  tipo?: string;
+  apoderado?: {
+    nombre: string;
+    cedula?: string;
+    correo?: string;
+    celular?: string;
+    telefono?: string;
+    direccion?: string;
+  };
+}
+
+function extractPersonList(source: any): ParsedPerson[] {
+  if (!source) return [];
+  let parsed = source;
+  if (typeof source === 'string') {
+    try {
+      parsed = JSON.parse(source);
+    } catch {
+      return [{ nombre: source, identificacion: '' }];
+    }
+  }
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  return arr.filter(Boolean).map((p: any, idx: number) => {
+    if (typeof p === 'string') {
+      return { nombre: p, identificacion: '' };
+    }
+    const idVal = p.identificacion || p.cedula || p.numeroIdentificacion || p.documento || '';
+    const tipoIdVal = p.tipoIdentificacion || p.tipoDocumento || '';
+    const nombreVal = p.nombre || p.nombreCompleto || p.full_name || '';
+    return {
+      id: p.id || `${idx}-${idVal || nombreVal}`,
+      nombre: nombreVal || (idVal ? `ID: ${idVal}` : 'Sin información'),
+      identificacion: idVal,
+      tipoIdentificacion: tipoIdVal,
+      cargo: p.cargo || '',
+      dependencia: p.dependencia || p.lugarHechos || '',
+      entidad: p.entidad || '',
+      correo: p.correo || p.email || '',
+      telefono: p.telefono || p.celular || '',
+      tipo: p.tipo || '',
+      apoderado: p.apoderado ? {
+        nombre: p.apoderado.nombre || '',
+        cedula: p.apoderado.cedula || p.apoderado.identificacion || '',
+        correo: p.apoderado.correo || p.apoderado.email || '',
+        celular: p.apoderado.celular || p.apoderado.telefono || '',
+        telefono: p.apoderado.telefono || p.apoderado.celular || '',
+        direccion: p.apoderado.direccion || '',
+      } : undefined,
+    };
+  });
 }
 
 const SEMAFORO: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -2211,6 +2301,7 @@ export function ModalDetallesProceso({
   onHistorial, onExpediente, onActualizarProceso,
   onEnviarARevision, onNavigateToRevision,
   abrirEnvioJuridicaDirecto,
+  onRemitirCompetencia,
 }: ModalDetallesProcesoProps) {
   const [tabActiva, setTabActiva] = useState<Tab>('general');
   const [busqueda,  setBusqueda]  = useState('');
@@ -3711,6 +3802,9 @@ export function ModalDetallesProceso({
           detalles: { version: autoEnviarRevision.version || 1 },
         }],
         tiempoEspera: '0m',
+        tipo: (autoEnviarRevision as any).tipoAuto || (autoEnviarRevision as any).tipo,
+        entidadDestino: (autoEnviarRevision as any).entidadDestino || (autoEnviarRevision as any).entidad_destino || proceso.entidadRemision || undefined,
+        entidadDestinoEmail: (autoEnviarRevision as any).entidadDestinoEmail || (autoEnviarRevision as any).entidad_destino_email || proceso.correoEntidadRemision || undefined,
       };
       onEnviarARevision(borrador);
     }
@@ -3781,14 +3875,17 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(borrador);
   }, [proceso]);
 
-  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string, radicadorAsignadoId?: string) => {
+  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string, radicadorAsignadoId?: string, extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => {
     const userId = authService.getCurrentUser()?.id;
     if (!userId) {
       toast.error('No se pudo obtener el usuario actual');
       return;
     }
     try {
-      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId, radicadorAsignadoId);
+      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId, radicadorAsignadoId, {
+        ...extraData,
+        observaciones: _comentarios,
+      });
       const numeroAsignado = autoActualizado?.numero;
       const radicadorNombre = radicadorAsignadoId
         ? radicadoresNombres[radicadorAsignadoId] || 'Radicador asignado'
@@ -4060,7 +4157,7 @@ export function ModalDetallesProceso({
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
             )} */}
-            {!isArchivado && puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
+            {!isArchivado && puedeEnviarRevision && !isJefe && !isRadicador && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -4169,6 +4266,19 @@ export function ModalDetallesProceso({
                   {proceso.pendienteAprobacion && (
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                       ⚠ Pendiente
+                    </span>
+                  )}
+                  {checkEsEnProcesoRemision(proceso) && (
+                    <span
+                      className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-700 border border-purple-300 flex items-center gap-1"
+                      title="Proceso en trámite de remisión por competencia"
+                    >
+                      <Send className="w-2.5 h-2.5 text-purple-600" />
+                      {proceso.numeroRC
+                        ? `RC: ${proceso.numeroRC}`
+                        : proceso.remisionAprobada
+                          ? 'Auto Remisión OK'
+                          : 'En proceso de remisión'}
                     </span>
                   )}
                 </div>
@@ -4336,7 +4446,12 @@ export function ModalDetallesProceso({
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-blue-100">
                           {[
-                            { label: 'ORIGEN', value: origenVal || '—' },
+                            {
+                              label: 'ORIGEN',
+                              value: checkEsEnProcesoRemision(proceso)
+                                ? `${origenVal || 'Remisión por competencia'} (En proceso de remisión)`
+                                : (origenVal || '—')
+                            },
                             { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
                             { label: 'PRIORIDAD', value: (proceso.prioridadNoticia || (proceso as any).prioridad || '—').toString().toUpperCase() },
                             { label: 'NOTICIA', value: proceso.noticiaOrigen || '—' },
@@ -4432,16 +4547,8 @@ export function ModalDetallesProceso({
                                 denunciados = proceso.denunciados;
                               } else if (Array.isArray(proceso.denunciado) && proceso.denunciado.length > 0) {
                                 denunciados = proceso.denunciado;
-                              } else if (noticia?.disciplinable) {
-                                denunciados = [{
-                                  id: 'noticia-disciplinable',
-                                  nombre: noticia.disciplinable.nombre,
-                                  identificacion: noticia.disciplinable.documento || noticia.disciplinable.cedula || '',
-                                  cargo: noticia.disciplinable.cargo || '',
-                                  lugarHechos: noticia.disciplinable.lugarHechos || '',
-                                  dependencia: noticia.disciplinable.dependencia || '',
-                                  apoderado: noticia.disciplinable.apoderado
-                                }];
+                              } else if (noticia?.disciplinable || (noticia as any)?.disciplinables || (noticia as any)?.denunciados) {
+                                denunciados = extractPersonList(noticia.disciplinable || (noticia as any)?.disciplinables || (noticia as any)?.denunciados);
                               } else if (proceso.denunciado && !Array.isArray(proceso.denunciado)) {
                                 denunciados = [{
                                   id: 'fallback-denunciado',
@@ -4529,19 +4636,8 @@ export function ModalDetallesProceso({
                                 denunciantes = proceso.denunciantes;
                               } else if (Array.isArray(proceso.denunciante) && proceso.denunciante.length > 0) {
                                 denunciantes = proceso.denunciante;
-                              } else if (noticia?.denunciante) {
-                                denunciantes = [{
-                                  id: 'noticia-denunciante',
-                                  nombre: noticia.denunciante.nombre,
-                                  identificacion: noticia.denunciante.documento || noticia.denunciante.cedula || '',
-                                  direccion: noticia.denunciante.direccion || '',
-                                  telefono: noticia.denunciante.telefono || '',
-                                  correo: noticia.denunciante.email || '',
-                                  cargo: noticia.denunciante.cargo || '',
-                                  entidad: noticia.denunciante.entidad || '',
-                                  tipo: (noticia.denunciante.tipo as 'Denunciante' | 'Víctima') || 'Denunciante',
-                                  apoderado: noticia.denunciante.apoderado
-                                }];
+                              } else if (noticia?.denunciante || (noticia as any)?.denunciantes) {
+                                denunciantes = extractPersonList(noticia.denunciante || (noticia as any)?.denunciantes);
                               } else if (proceso.denunciante && !Array.isArray(proceso.denunciante)) {
                                 denunciantes = [{
                                   id: 'fallback-denunciante',
@@ -4694,7 +4790,7 @@ export function ModalDetallesProceso({
                       }
 
                       if (autoPliego.estado === 'borrador') {
-                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) ? (
+                        return !isJefe && !isRadicador && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) ? (
                             <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#7C3AED', background: '#F5F3FF' }}>
                               <button
                                 onClick={() => handleEnviarARevision(autoPliego)}
@@ -4807,6 +4903,67 @@ export function ModalDetallesProceso({
                       }
 
                       return null;
+                    })()}
+
+                    {/* Auto de Remisión por Competencia / Estado de Remisión */}
+                    {(() => {
+                      const autoRemision = archivosBackend.find(a =>
+                        a.tipo === 'auto' &&
+                        (a.nombre?.toUpperCase().includes('REMISION') || a.tipoAuto === 'AUTO_REMISION_COMPETENCIA' || a.tipoAuto === 'AUTO_REMISION') &&
+                        a.estado === 'aprobado'
+                      );
+                      const tieneRemisionAprobada = proceso.remisionAprobada || (autoRemision as any)?.estado === 'aprobado';
+                      const entidadDestino = proceso.entidadRemision || (autoRemision as any)?.entidadDestino || (proceso as any)?.legalAutos?.find((la: any) => la.entidadDestino)?.entidadDestino;
+                      const yaRemitido = !!proceso.numeroRC || proceso.estadoActual === 'ARCHIVADO' || proceso.estadoActual === 'REMITIDO';
+                      const esRemision = checkEsEnProcesoRemision(proceso) || tieneRemisionAprobada || yaRemitido;
+
+                      if (!esRemision) return null;
+
+                      return (
+                        <div className="rounded-xl border-2 border-purple-400 bg-purple-50 p-3.5 space-y-2 shadow-sm">
+                          <div className="flex items-start gap-2.5">
+                            <Send className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-purple-950 uppercase tracking-wide">
+                                {yaRemitido
+                                  ? 'Proceso Remitido por Competencia'
+                                  : tieneRemisionAprobada
+                                    ? 'Auto de Remisión Aprobado'
+                                    : 'En proceso de remisión'}
+                              </p>
+                              {proceso.numeroRC && (
+                                <p className="text-xs font-black text-purple-900 mt-0.5">
+                                  Radicado: {proceso.numeroRC}
+                                </p>
+                              )}
+                              {entidadDestino && (
+                                <p className="text-xs text-purple-800 mt-0.5">
+                                  <strong>Entidad destinataria definida por el Jefe:</strong> {entidadDestino}
+                                </p>
+                              )}
+                              {!yaRemitido && !tieneRemisionAprobada && (
+                                <p className="text-xs text-purple-700 mt-0.5 leading-relaxed">
+                                  Este proceso se encuentra en <strong>trámite de remisión por competencia</strong>. El profesional debe elaborar el <strong>Auto de Remisión por Competencia</strong> para que el Jefe lo apruebe y el Radicador efectúe la remisión formal.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {tieneRemisionAprobada && !yaRemitido && onRemitirCompetencia && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onRemitirCompetencia(proceso);
+                              }}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 transition-colors shadow-sm"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              Remitir por competencia
+                            </button>
+                          )}
+                        </div>
+                      );
                     })()}
 
                     {/* Badge CERRADO */}
@@ -4939,7 +5096,14 @@ export function ModalDetallesProceso({
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {noticiasAsociadas.map((noticia: any, idx: number) => (
+                            {noticiasAsociadas.map((noticia: any, idx: number) => {
+                              const disciplinablesNoticia = extractPersonList(
+                                noticia.disciplinables || noticia.disciplinable || noticia.denunciados || noticia.denunciado
+                              );
+                              const denunciantesNoticia = extractPersonList(
+                                noticia.denunciantes || noticia.denunciante
+                              );
+                              return (
                               <div key={`${noticia.id || 'no-id'}-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
@@ -4982,102 +5146,80 @@ export function ModalDetallesProceso({
                                     </div>
                                   )}
                                   {/* Disciplinable(s) / Denunciado(s) */}
-                                  {(noticia.disciplinable || (noticia.denunciados && noticia.denunciados.length > 0)) && (
+                                  {disciplinablesNoticia.length > 0 && (
                                     <div className="mt-2 p-2 rounded-md bg-red-50 border border-red-100">
                                       <p className="text-[9px] font-medium text-red-800">
-                                        Disciplinado{((noticia.denunciados?.length || 0) > 1) ? 's' : ''}:
+                                        Disciplinado{disciplinablesNoticia.length > 1 ? 's' : ''}:
                                       </p>
                                       <div className="mt-1 space-y-2">
-                                        {noticia.denunciados && noticia.denunciados.length > 0 ? (
-                                          noticia.denunciados.map((d: any, dIdx: number) => (
-                                            <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-red-100/50' : ''}>
-                                              <p className="text-[8px] font-bold text-red-700">{d.nombre || 'Sin información'}</p>
-                                              <div className="grid grid-cols-2 gap-x-2 text-[7px] text-red-600">
-                                                {d.identificacion && <p>ID: {d.identificacion}</p>}
-                                                {d.cargo && <p>Cargo: {d.cargo}</p>}
-                                                {d.dependencia && <p className="col-span-2">Dep: {d.dependencia}</p>}
-                                              </div>
-                                              {d.apoderado && (
-                                                <p className="text-[7px] text-red-800 font-medium mt-0.5">Apoderado: {d.apoderado.nombre}</p>
+                                        {disciplinablesNoticia.map((d: any, dIdx: number) => (
+                                          <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-red-100/50' : ''}>
+                                            <p className="text-[8px] font-bold text-red-700">{d.nombre || 'Sin información'}</p>
+                                            <div className="grid grid-cols-2 gap-x-2 text-[7px] text-red-600">
+                                              {d.identificacion && (
+                                                <p>ID: {d.tipoIdentificacion ? `${d.tipoIdentificacion} ` : ''}{d.identificacion}</p>
                                               )}
+                                              {d.cargo && <p>Cargo: {d.cargo}</p>}
+                                              {d.dependencia && <p className="col-span-2">Dep: {d.dependencia}</p>}
                                             </div>
-                                          ))
-                                        ) : (
-                                          <div>
-                                            <p className="text-[8px] text-red-700">Nombre: {noticia.disciplinable.nombre || 'Sin información'}</p>
-                                            {noticia.disciplinable.cargo && <p className="text-[8px] text-red-700">Cargo: {noticia.disciplinable.cargo}</p>}
-                                            {noticia.disciplinable.dependencia && <p className="text-[8px] text-red-700">Dependencia: {noticia.disciplinable.dependencia}</p>}
-                                            {noticia.disciplinable.numeroIdentificacion && (
-                                              <p className="text-[8px] text-red-700">
-                                                ID: {noticia.disciplinable.tipoIdentificacion || ''} {noticia.disciplinable.numeroIdentificacion}
+                                            {d.apoderado && (
+                                              <p className="text-[7px] text-red-800 font-medium mt-0.5">
+                                                Apoderado: {d.apoderado.nombre}{d.apoderado.cedula ? ` (${d.apoderado.cedula})` : ''}
                                               </p>
                                             )}
                                           </div>
-                                        )}
+                                        ))}
                                       </div>
                                     </div>
                                   )}
                                   {/* Denunciante(s) */}
-                                  {(noticia.denunciante || (noticia.denunciantes && noticia.denunciantes.length > 0)) && (
+                                  {denunciantesNoticia.length > 0 && (
                                     <div className="mt-2 p-2 rounded-md bg-blue-50 border border-blue-100">
                                       <p className="text-[9px] font-medium text-blue-800">
-                                        Denunciante{((noticia.denunciantes?.length || 0) > 1) ? 's' : ''}:
+                                        Denunciante{denunciantesNoticia.length > 1 ? 's' : ''}:
                                       </p>
                                       <div className="mt-1 space-y-2">
-                                        {noticia.denunciantes && noticia.denunciantes.length > 0 ? (
-                                          noticia.denunciantes.map((d: any, dIdx: number) => (
-                                            <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-blue-100/50' : ''}>
-                                              <p className="text-[8px] font-bold text-blue-700">{d.nombre || 'Sin información'}</p>
-                                              <div className="grid grid-cols-2 gap-x-2 text-[7px] text-blue-600">
-                                                {d.identificacion && <p>ID: {d.identificacion}</p>}
-                                                {d.tipo && <p className="font-medium">{d.tipo}</p>}
-                                                {d.cargo && <p>Cargo: {d.cargo}</p>}
-                                                {d.entidad && <p>Entidad: {d.entidad}</p>}
-                                                {d.correo && <p className="col-span-2 truncate">Email: {d.correo}</p>}
-                                              </div>
-                                              {d.apoderado && (
-                                                <p className="text-[7px] text-blue-800 font-medium mt-0.5">Apoderado: {d.apoderado.nombre}</p>
+                                        {denunciantesNoticia.map((d: any, dIdx: number) => (
+                                          <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-blue-100/50' : ''}>
+                                            <p className="text-[8px] font-bold text-blue-700">{d.nombre || 'Sin información'}</p>
+                                            <div className="grid grid-cols-2 gap-x-2 text-[7px] text-blue-600">
+                                              {d.identificacion && (
+                                                <p>ID: {d.tipoIdentificacion ? `${d.tipoIdentificacion} ` : ''}{d.identificacion}</p>
                                               )}
+                                              {d.tipo && <p className="font-medium">{d.tipo}</p>}
+                                              {d.cargo && <p>Cargo: {d.cargo}</p>}
+                                              {d.entidad && <p>Entidad: {d.entidad}</p>}
+                                              {d.correo && <p className="col-span-2 truncate">Email: {d.correo}</p>}
+                                              {d.telefono && <p>Tel: {d.telefono}</p>}
                                             </div>
-                                          ))
-                                        ) : (
-                                          <div>
-                                            <p className="text-[8px] text-blue-700">Nombre: {noticia.denunciante.nombre || 'Sin información'}</p>
-                                            {noticia.denunciante.cargo && <p className="text-[8px] text-blue-700">Cargo: {noticia.denunciante.cargo}</p>}
-                                            {noticia.denunciante.entidad && <p className="text-[8px] text-blue-700">Entidad: {noticia.denunciante.entidad}</p>}
-                                            {noticia.denunciante.numeroIdentificacion && (
-                                              <p className="text-[8px] text-blue-700">
-                                                ID: {noticia.denunciante.tipoIdentificacion || ''} {noticia.denunciante.numeroIdentificacion}
+                                            {d.apoderado && (
+                                              <p className="text-[7px] text-blue-800 font-medium mt-0.5">
+                                                Apoderado: {d.apoderado.nombre}{d.apoderado.cedula ? ` (${d.apoderado.cedula})` : ''}
                                               </p>
                                             )}
-                                            {noticia.denunciante.telefono && <p className="text-[8px] text-blue-700">Teléfono: {noticia.denunciante.telefono}</p>}
-                                            {noticia.denunciante.correo && <p className="text-[8px] text-blue-700">Correo: {noticia.denunciante.correo}</p>}
                                           </div>
-                                        )}
+                                        ))}
                                       </div>
                                     </div>
                                   )}
                                   {(noticia.origen) && (
                                     <div className="mt-2 p-2 rounded-md bg-green-50 border border-green-100">
-                                      
                                       <div className="mt-1 space-y-0.5">
                                         {noticia.origen && <p className="text-[8px] text-green-700">Origen: {noticia.origen}</p>}
-                                        
                                       </div>
                                     </div>
                                   )}
                                   {(noticia.territorial) && (
                                     <div className="mt-2 p-2 rounded-md bg-green-50 border border-green-100">
-                                      
                                       <div className="mt-1 space-y-0.5">
-                                        
                                         {noticia.territorial && <p className="text-[8px] text-green-700">Territorial: {noticia.territorial}</p>}
                                       </div>
                                     </div>
                                   )}
                                 </div>
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         )}
                       </div>
@@ -6570,7 +6712,7 @@ export function ModalDetallesProceso({
           <ModalRevisionAuto
             borrador={autoEnRevisionModal}
             onClose={() => setAutoEnRevisionModal(null)}
-            onAprobar={(comentarios, radicadorAsignadoId) => handleAutoAprobado(autoEnRevisionModal.id, comentarios, radicadorAsignadoId)}
+            onAprobar={(comentarios, radicadorAsignadoId, extraData) => handleAutoAprobado(autoEnRevisionModal.id, comentarios, radicadorAsignadoId, extraData)}
             onDevolver={(motivo, comentarios, _archivos) => handleAutoDevuelto(autoEnRevisionModal.id, motivo, comentarios)}
             mostrarBotonDevolver={true}
             tituloModal="Revisión y Aprobación de Auto"

@@ -67,6 +67,17 @@ export class NewsService {
     return await this.terminosService.diasHabilesRestantes(fechaVencimiento);
   }
 
+  private normalizeOrig(orig?: string | null): NewsOrigin {
+    if (!orig) return NewsOrigin.POR_DETERMINAR;
+    const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
+    if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
+    if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
+    if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
+    if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
+    return (orig as NewsOrigin) || NewsOrigin.POR_DETERMINAR;
+  }
+
   /**
    * Radica una nueva noticia disciplinaria
    */
@@ -134,10 +145,19 @@ export class NewsService {
         fechaRecepcionValue = new Date();
       }
 
+      // Normalizar conductas
+      const initialConductas = (Array.isArray(createNewsDto.conductas) && createNewsDto.conductas.length > 0)
+        ? createNewsDto.conductas
+        : (createNewsDto.conducta ? [createNewsDto.conducta] : []);
+      const initialConducta = createNewsDto.conducta || (initialConductas.length > 0 ? initialConductas[0] : undefined);
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
+        conducta: initialConducta,
+        conductas: initialConductas,
+        origen: this.normalizeOrig(createNewsDto.origen),
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
@@ -247,7 +267,7 @@ export class NewsService {
   /**
    * Obtiene las noticias asociadas a un proceso específico
    */
-  async findAssociatedToProcess(processId: string): Promise<DisciplinaryNews[]> {
+  async findAssociatedToProcess(processId: string): Promise<any[]> {
     // Buscar las asociaciones en la tabla puente
     const associations = await this.newsProcessRepository.find({
       where: { processId },
@@ -255,8 +275,45 @@ export class NewsService {
       order: { fechaAsociacion: 'ASC' },
     });
 
-    // Extraer las noticias
-    return associations.map(association => association.news);
+    // Extraer y enriquecer las noticias
+    return associations
+      .filter(association => !!association.news)
+      .map(association => {
+        const news = association.news;
+        let disciplinable = news.disciplinable;
+        if (typeof disciplinable === 'string') {
+          try {
+            disciplinable = JSON.parse(disciplinable);
+          } catch {
+            // mantener como está
+          }
+        }
+        let denunciante = news.denunciante;
+        if (typeof denunciante === 'string') {
+          try {
+            denunciante = JSON.parse(denunciante);
+          } catch {
+            // mantener como está
+          }
+        }
+
+        const disciplinableList = Array.isArray(disciplinable)
+          ? disciplinable
+          : (disciplinable ? [disciplinable] : []);
+        const denuncianteList = Array.isArray(denunciante)
+          ? denunciante
+          : (denunciante ? [denunciante] : []);
+
+        return {
+          ...news,
+          disciplinable,
+          denunciante,
+          denunciados: disciplinableList,
+          denunciantes: denuncianteList,
+          fechaAsociacion: association.fechaAsociacion,
+          justificacion: association.justificacion,
+        };
+      });
   }
 
   /**
@@ -294,6 +351,10 @@ export class NewsService {
       // Si no tiene otras asociaciones, cambiar estado a RADICADA
       const noticia = await this.findById(newsId);
       noticia.estado = NewsStatus.RADICADA;
+      noticia.procesoAsociadoId = null;
+      noticia.procesoAsociadoNumero = null;
+      noticia.procesoAsociadoFecha = null;
+      noticia.procesoAsociadoJustificacion = null;
 
       // Registrar en auditoría
       const historyEntry = {
@@ -317,6 +378,39 @@ export class NewsService {
     if (!noticia) {
       throw new HttpException('Noticia no encontrada', HttpStatus.NOT_FOUND);
     }
+
+    try {
+      // Buscar proceso asociado directamente o por newsId
+      let proceso = await this.processRepository.findOne({
+        where: { newsId: id },
+        relations: ['autos', 'evidence'],
+      });
+
+      if (!proceso) {
+        const association = await this.newsProcessRepository.findOne({
+          where: { newsId: id },
+          relations: ['process', 'process.autos', 'process.evidence'],
+        });
+        if (association?.process) {
+          proceso = association.process;
+        }
+      }
+
+      if (proceso) {
+        (noticia as any).proceso = proceso;
+        (noticia as any).procesoAsociado = {
+          id: proceso.id,
+          numeroProceso: proceso.radicadoProceso || (proceso as any).numeroProceso || '',
+          etapaActual: proceso.etapaActual,
+          autos: proceso.autos || [],
+          evidence: proceso.evidence || [],
+          pruebas: proceso.pruebas || [],
+        };
+      }
+    } catch (err) {
+      console.warn('[NewsService] No se pudo cargar proceso relacionado en findById:', err);
+    }
+
     return noticia;
   }
 
@@ -373,81 +467,374 @@ export class NewsService {
 
   /**
    * Actualiza los datos de una noticia (edición por Profesional)
-   * Registra los cambios en el historial de auditoría
+   * Registra los cambios en el historial de auditoría únicamente si hubo modificaciones reales
    */
   async update(id: string, data: any, files?: FileData[]): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
 
     // Rastrear campos modificados para trazabilidad
     const cambios: string[] = [];
-    if (data.origen && data.origen !== noticia.origen) {
-      cambios.push(`Origen: ${noticia.origen} → ${data.origen}`);
-    }
-    if (data.territorial && data.territorial !== noticia.territorial) {
-      cambios.push(`Territorial: ${noticia.territorial} → ${data.territorial}`);
-    }
-    if (data.hechos && data.hechos !== noticia.hechos) {
-      cambios.push('Hechos modificados');
-    }
-    if (data.fechaHechos === null) {
-      cambios.push('Fecha de hechos: eliminada (por determinar)');
-    } else if (data.fechaHechos) {
-      cambios.push(`Fecha de hechos: ${data.fechaHechos}`);
-    }
-    if (data.denunciante) cambios.push('Datos de denunciante modificados');
-    if (data.disciplinable) cambios.push('Datos de disciplinable modificados');
-    if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
-      cambios.push(`Documentos eliminados: ${data.adjuntosParaEliminar.length}`);
-    }
-    if (files && files.length > 0) {
-      cambios.push(`Documentos nuevos: ${files.length}`);
+
+    // Helper: normalizar strings
+    const normalizeStr = (val: any): string => (val === null || val === undefined ? '' : String(val).trim());
+
+    // Helper: normalizar fechas en formato YYYY-MM-DD
+    const normalizeDate = (d: any): string | null => {
+      if (!d) return null;
+      if (typeof d === 'string') {
+        const s = d.trim();
+        return s ? s.split('T')[0] : null;
+      }
+      if (d instanceof Date && !isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+      }
+      return null;
+    };
+
+    // Helper: normalizar origen
+    const normalizeOrig = (orig?: string | null): string => {
+      if (!orig) return '';
+      const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
+      if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
+      if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
+      if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
+      if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
+      return s;
+    };
+
+    // Helper: verificar si un valor es equivalente a vacío / placeholder
+    const isPlaceholder = (val: any): boolean => {
+      if (val === null || val === undefined) return true;
+      const s = String(val).trim().toLowerCase();
+      return (
+        s === '' ||
+        s === 'n/a' ||
+        s === 'na' ||
+        s === 'sin dependencia' ||
+        s === 'sin entidad' ||
+        s === 'sin direccion' ||
+        s === 'sin dirección' ||
+        s === 'sin telefono' ||
+        s === 'sin teléfono' ||
+        s === 'sin-correo@esap.edu.co' ||
+        s === 'sin correo' ||
+        s === 'por determinar' ||
+        s === 'ninguno' ||
+        s === 'ninguna'
+      );
+    };
+
+    // Helper: comparar listas o entidades de personas (denunciante / disciplinable)
+    const arePersonsEqual = (a: any, b: any): boolean => {
+      const cleanVal = (val: any): string =>
+        typeof val === 'string'
+          ? val.trim().toLowerCase()
+          : val !== null && val !== undefined
+          ? String(val).trim().toLowerCase()
+          : '';
+
+      const areFieldValuesEqual = (valA: any, valB: any): boolean => {
+        const sA = cleanVal(valA);
+        const sB = cleanVal(valB);
+        if (sA === sB) return true;
+        if (isPlaceholder(sA) && isPlaceholder(sB)) return true;
+        return false;
+      };
+
+      const normalizePerson = (p: any) => {
+        if (!p || typeof p !== 'object') {
+          return { nombre: '', cedula: '', cargo: '', dependencia: '', entidad: '', telefono: '', email: '', direccion: '', tipo: '' };
+        }
+        const apod = p.apoderado && typeof p.apoderado === 'object' ? {
+          nombre: cleanVal(p.apoderado.nombre),
+          cedula: cleanVal(p.apoderado.cedula || p.apoderado.identificacion || p.apoderado.numeroIdentificacion),
+          email: cleanVal(p.apoderado.email || p.apoderado.correo),
+          telefono: cleanVal(p.apoderado.telefono || p.apoderado.celular),
+          direccion: cleanVal(p.apoderado.direccion),
+        } : undefined;
+
+        const hasApodData = apod && Object.values(apod).some((v) => !isPlaceholder(v));
+
+        return {
+          nombre: cleanVal(p.nombre),
+          cedula: cleanVal(p.cedula || p.identificacion || p.numeroIdentificacion || p.documento),
+          cargo: cleanVal(p.cargo),
+          dependencia: cleanVal(p.dependencia || p.lugarHechos || p.entidad),
+          entidad: cleanVal(p.entidad || p.dependencia || p.lugarHechos),
+          telefono: cleanVal(p.telefono || p.celular),
+          email: cleanVal(p.email || p.correo),
+          direccion: cleanVal(p.direccion),
+          tipo: cleanVal(p.tipo),
+          ...(hasApodData ? { apoderado: apod } : {}),
+        };
+      };
+
+      const toList = (val: any) => {
+        let parsed = val;
+        if (typeof val === 'string') {
+          const s = val.trim();
+          if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+            try {
+              parsed = JSON.parse(s);
+            } catch {
+              parsed = val;
+            }
+          }
+        }
+        const raw = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object') ? [parsed] : [];
+        return raw.map(normalizePerson).filter((p) => !isPlaceholder(p.nombre) || !isPlaceholder(p.cedula) || !isPlaceholder(p.cargo) || !isPlaceholder(p.dependencia));
+      };
+
+      const listA = toList(a);
+      const listB = toList(b);
+
+      if (listA.length !== listB.length) return false;
+
+      for (let i = 0; i < listA.length; i++) {
+        const pA = listA[i];
+        const pB = listB[i];
+
+        if (!areFieldValuesEqual(pA.nombre, pB.nombre)) return false;
+        if (!areFieldValuesEqual(pA.cedula, pB.cedula)) return false;
+        if (!areFieldValuesEqual(pA.cargo, pB.cargo)) return false;
+        if (!areFieldValuesEqual(pA.dependencia, pB.dependencia)) return false;
+        if (!areFieldValuesEqual(pA.entidad, pB.entidad)) return false;
+        if (!areFieldValuesEqual(pA.telefono, pB.telefono)) return false;
+        if (!areFieldValuesEqual(pA.email, pB.email)) return false;
+        if (!areFieldValuesEqual(pA.direccion, pB.direccion)) return false;
+
+        // Tipo: 'denunciante' por defecto no diverge de ausencia de tipo
+        const tipoA = isPlaceholder(pA.tipo) || pA.tipo === 'denunciante' ? 'denunciante' : pA.tipo;
+        const tipoB = isPlaceholder(pB.tipo) || pB.tipo === 'denunciante' ? 'denunciante' : pB.tipo;
+        if (tipoA !== tipoB) return false;
+
+        // Apoderado
+        const apodA = pA.apoderado;
+        const apodB = pB.apoderado;
+        if (Boolean(apodA) !== Boolean(apodB)) return false;
+        if (apodA && apodB) {
+          if (!areFieldValuesEqual(apodA.nombre, apodB.nombre)) return false;
+          if (!areFieldValuesEqual(apodA.cedula, apodB.cedula)) return false;
+          if (!areFieldValuesEqual(apodA.email, apodB.email)) return false;
+          if (!areFieldValuesEqual(apodA.telefono, apodB.telefono)) return false;
+          if (!areFieldValuesEqual(apodA.direccion, apodB.direccion)) return false;
+        }
+      }
+
+      return true;
+    };
+
+    // 1. Origen
+    if (data.origen !== undefined && data.origen !== null) {
+      const origenActual = normalizeOrig(noticia.origen);
+      const origenNuevo = normalizeOrig(data.origen);
+      if (origenNuevo && origenNuevo !== origenActual) {
+        cambios.push(`Origen: ${noticia.origen || 'No definido'} → ${data.origen}`);
+        noticia.origen = origenNuevo;
+      }
     }
 
-    // Aplicar cambios (todos los valores del enum incluido POR_DETERMINAR)
-    const validOrigens = Object.values(NewsOrigin);
-    if (data.origen !== undefined) {
-      if (validOrigens.includes(data.origen)) noticia.origen = data.origen;
-    }
-    if (data.territorial) noticia.territorial = data.territorial;
-    if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
-    if (data.hechos) noticia.hechos = data.hechos;
-    if (data.fechaQueja) {
-      const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
-      const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
-      noticia.fechaQueja = fechaSegura;
-      noticia.fechaRecepcion = fechaSegura;
-    }
-    if (data.denunciante) noticia.denunciante = data.denunciante;
-    if (data.disciplinable) noticia.disciplinable = data.disciplinable;
-    if (data.conductas) noticia.conductas = data.conductas;
-    if (data.fechaHechos === null) {
-      // Limpiar fecha cuando el usuario selecciona "Por determinar"
-      (noticia as any).fechaHechos = null;
-      (noticia as any).fechaCaducidad = null;
-    } else if (data.fechaHechos) {
-      noticia.fechaHechos = new Date(data.fechaHechos);
-      noticia.fechaCaducidad = new Date(data.fechaHechos);
-      noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
+    // 2. Territorial
+    if (data.territorial !== undefined && data.territorial !== null) {
+      const terrActual = normalizeStr(noticia.territorial);
+      const terrNuevo = normalizeStr(data.territorial);
+      if (terrNuevo && terrNuevo !== terrActual) {
+        cambios.push(`Territorial: ${noticia.territorial || 'No definida'} → ${data.territorial}`);
+        noticia.territorial = data.territorial;
+      }
     }
 
-    // ✅ Gestión de documentos adjuntos en actualización
-    let currentAdjuntos: string[] = Array.isArray((noticia as any).adjuntos) ? [...(noticia as any).adjuntos] : [];
-    if (data.adjuntosParaEliminar && Array.isArray(data.adjuntosParaEliminar)) {
-      for (const toDelete of data.adjuntosParaEliminar) {
-        currentAdjuntos = currentAdjuntos.filter((a) => a !== toDelete);
-        try {
-          await this.storageService.deleteFile(toDelete);
-        } catch (e) {
-          console.warn(`No se pudo eliminar archivo físico ${toDelete}:`, e.message);
+    // 3. Dependencia denunciado
+    if (data.dependenciaDenunciado !== undefined && data.dependenciaDenunciado !== null) {
+      const depActual = normalizeStr(noticia.dependenciaDenunciado);
+      const depNueva = normalizeStr(data.dependenciaDenunciado);
+      const depActualSignificativa = !isPlaceholder(depActual);
+      const depNuevaSignificativa = !isPlaceholder(depNueva);
+
+      if (depActualSignificativa && depNuevaSignificativa && depNueva.toLowerCase() !== depActual.toLowerCase()) {
+        cambios.push(`Dependencia del denunciado modificada: ${noticia.dependenciaDenunciado} → ${data.dependenciaDenunciado}`);
+        noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+      } else if (!depActualSignificativa && depNuevaSignificativa) {
+        // Estaba vacía o sin definir en DB y se completa desde la del denunciado sin registrar cambio falso
+        noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+      } else if (depActualSignificativa && !depNuevaSignificativa) {
+        cambios.push('Dependencia del denunciado eliminada');
+        noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+      }
+    }
+
+    // 4. Hechos
+    if (data.hechos !== undefined && data.hechos !== null) {
+      const hechosActuales = normalizeStr(noticia.hechos);
+      const hechosNuevos = normalizeStr(data.hechos);
+      if (hechosNuevos !== hechosActuales) {
+        cambios.push('Hechos modificados');
+        noticia.hechos = data.hechos;
+      }
+    }
+
+    // 5. Fecha de la queja / recepción
+    if (data.fechaQueja !== undefined && data.fechaQueja !== null && data.fechaQueja !== '') {
+      const fechaActualQueja = normalizeDate(noticia.fechaQueja);
+      const fechaActualRecepcion = normalizeDate(noticia.fechaRecepcion);
+      const fechaNueva = normalizeDate(data.fechaQueja);
+      if (fechaNueva) {
+        const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
+        const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+
+        const fechaComparar = fechaActualQueja || fechaActualRecepcion;
+        if (fechaNueva !== fechaComparar) {
+          cambios.push(`Fecha de la queja modificada: ${fechaNueva}`);
+          noticia.fechaQueja = fechaSegura;
+          noticia.fechaRecepcion = fechaSegura;
+        } else if (!noticia.fechaQueja) {
+          // Si era igual a fechaRecepcion pero fechaQueja en BD estaba null, persistirla
+          noticia.fechaQueja = fechaSegura;
         }
       }
     }
-    console.log('[NEWS SERVICE UPDATE] files param length:', files?.length || 0);
+
+    if (data.fechaRecepcion !== undefined && data.fechaRecepcion !== null && data.fechaRecepcion !== '') {
+      const fechaActualRec = normalizeDate(noticia.fechaRecepcion);
+      const fechaNuevaRec = normalizeDate(data.fechaRecepcion);
+      if (fechaNuevaRec && fechaNuevaRec !== fechaActualRec) {
+        if (!data.fechaQueja) {
+          cambios.push(`Fecha de recepción modificada: ${fechaNuevaRec}`);
+        }
+        const [y, m, d] = (data.fechaRecepcion as string).split('T')[0].split('-').map(Number);
+        const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+        noticia.fechaRecepcion = fechaSegura;
+        if (!noticia.fechaQueja) {
+          noticia.fechaQueja = fechaSegura;
+        }
+      }
+    }
+
+    // 6. Fecha de hechos
+    if (data.fechaHechos !== undefined) {
+      const fechaHechosActual = normalizeDate(noticia.fechaHechos);
+      const fechaHechosNueva = normalizeDate(data.fechaHechos);
+      if (fechaHechosNueva !== fechaHechosActual) {
+        if (fechaHechosNueva === null) {
+          if (fechaHechosActual !== null) {
+            cambios.push('Fecha de hechos: eliminada (por determinar)');
+            (noticia as any).fechaHechos = null;
+            (noticia as any).fechaCaducidad = null;
+          }
+        } else {
+          cambios.push(`Fecha de hechos: ${fechaHechosNueva}`);
+          const [y, m, d] = fechaHechosNueva.split('-').map(Number);
+          const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+          noticia.fechaHechos = fechaSegura;
+          const caducidad = new Date(fechaSegura);
+          caducidad.setFullYear(caducidad.getFullYear() + 5);
+          noticia.fechaCaducidad = caducidad;
+        }
+      }
+    }
+
+    // 7. Denunciante
+    if (data.denunciante !== undefined && data.denunciante !== null) {
+      if (!arePersonsEqual(noticia.denunciante, data.denunciante)) {
+        cambios.push('Datos de denunciante modificados');
+        noticia.denunciante = data.denunciante;
+      }
+    }
+
+    // 8. Disciplinable / Denunciado
+    if (data.disciplinable !== undefined && data.disciplinable !== null) {
+      if (!arePersonsEqual(noticia.disciplinable, data.disciplinable)) {
+        cambios.push('Datos de denunciado modificados');
+        noticia.disciplinable = data.disciplinable;
+      }
+    }
+
+    // 9. Conductas
+    const extractConductaStr = (c: any): string => {
+      if (!c) return '';
+      if (typeof c === 'string') return normalizeStr(c).toLowerCase();
+      if (typeof c === 'object') {
+        const val = c.nombre || c.name || c.descripcion || '';
+        return normalizeStr(val).toLowerCase();
+      }
+      return normalizeStr(String(c)).toLowerCase();
+    };
+
+    let curConductasRaw: any = noticia.conductas;
+    if (typeof curConductasRaw === 'string') {
+      try {
+        curConductasRaw = JSON.parse(curConductasRaw);
+      } catch {
+        curConductasRaw = [curConductasRaw];
+      }
+    }
+    const curList = (Array.isArray(curConductasRaw) && curConductasRaw.filter(Boolean).length > 0)
+      ? curConductasRaw
+      : (noticia.conducta ? [noticia.conducta] : []);
+
+    const normCur = curList
+      .map(extractConductaStr)
+      .filter(Boolean)
+      .sort();
+
+    if (data.conductas !== undefined && Array.isArray(data.conductas)) {
+      const normNew = data.conductas
+        .map(extractConductaStr)
+        .filter(Boolean)
+        .sort();
+      const changed =
+        normCur.length !== normNew.length || normCur.some((c, i) => c !== normNew[i]);
+      if (changed) {
+        cambios.push('Conductas disciplinarias modificadas');
+        noticia.conductas = data.conductas;
+        if (data.conducta) {
+          noticia.conducta = data.conducta;
+        } else if (data.conductas.length > 0) {
+          noticia.conducta = typeof data.conductas[0] === 'string' ? data.conductas[0] : (data.conductas[0]?.nombre || '');
+        }
+      } else {
+        // Asegurar consistencia en la entidad sin registrar cambio falso
+        if (!noticia.conductas || noticia.conductas.length === 0) {
+          noticia.conductas = data.conductas;
+        }
+        if (data.conducta && !noticia.conducta) {
+          noticia.conducta = data.conducta;
+        }
+      }
+    } else if (data.conducta !== undefined && typeof data.conducta === 'string') {
+      const curConducta = extractConductaStr(noticia.conducta || (Array.isArray(curList) ? curList[0] : ''));
+      const newConducta = extractConductaStr(data.conducta);
+      if (newConducta && newConducta !== curConducta) {
+        cambios.push('Conducta disciplinaria modificada');
+        noticia.conducta = data.conducta;
+        if (!noticia.conductas || noticia.conductas.length === 0) {
+          noticia.conductas = [data.conducta];
+        }
+      }
+    }
+
+    // 10. Gestión de documentos adjuntos en actualización
+    let currentAdjuntos: string[] = Array.isArray((noticia as any).adjuntos) ? [...(noticia as any).adjuntos] : [];
+    if (data.adjuntosParaEliminar && Array.isArray(data.adjuntosParaEliminar) && data.adjuntosParaEliminar.length > 0) {
+      const realEliminados = data.adjuntosParaEliminar.filter((toDelete: string) => currentAdjuntos.includes(toDelete));
+      if (realEliminados.length > 0) {
+        cambios.push(`Documentos eliminados: ${realEliminados.length}`);
+        for (const toDelete of realEliminados) {
+          currentAdjuntos = currentAdjuntos.filter((a) => a !== toDelete);
+          try {
+            await this.storageService.deleteFile(toDelete);
+          } catch (e) {
+            console.warn(`No se pudo eliminar archivo físico ${toDelete}:`, e.message);
+          }
+        }
+      }
+    }
+
     if (files && files.length > 0) {
-      console.log('[NEWS SERVICE UPDATE] nombres:', files.map(f => f.originalname));
+      cambios.push(`Documentos nuevos: ${files.length}`);
       try {
         const storedNew = await this.storageService.saveMultipleFiles(noticia.radicado || 'sin-radicado', files);
-        console.log('[NEWS SERVICE UPDATE] archivos guardados en disco:', storedNew);
         currentAdjuntos.push(...storedNew);
       } catch (e) {
         console.error('Error guardando nuevos adjuntos en update:', e);
@@ -455,17 +842,17 @@ export class NewsService {
     }
     (noticia as any).adjuntos = currentAdjuntos;
 
-    // Registrar en historial de auditoría
-    const historyEntry = {
-      id: Date.now().toString(),
-      tipo: 'edicion',
-      usuario: data.usuario || 'Profesional',
-      fecha: new Date().toISOString(),
-      observaciones: cambios.length > 0
-        ? `Campos modificados: ${cambios.join(', ')}`
-        : 'Noticia actualizada',
-    };
-    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+    // Registrar en historial de auditoría ÚNICAMENTE si hubo modificaciones reales
+    if (cambios.length > 0) {
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'edicion',
+        usuario: data.usuario || 'Profesional',
+        fecha: new Date().toISOString(),
+        observaciones: `Campos modificados: ${cambios.join(', ')}`,
+      };
+      noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+    }
 
     return await this.newsRepository.save(noticia);
   }
@@ -845,6 +1232,10 @@ export class NewsService {
   
       // Solo si la asociación se guarda exitosamente, cambiar el estado de la noticia
       noticia.estado = NewsStatus.ASOCIADA;
+      noticia.procesoAsociadoId = procesoDestinoId;
+      noticia.procesoAsociadoNumero = proceso.radicadoProceso;
+      noticia.procesoAsociadoFecha = associationData.fechaAsociacion;
+      noticia.procesoAsociadoJustificacion = justificacion;
   
       // Registrar en auditoría de la noticia
       const historyEntry = {

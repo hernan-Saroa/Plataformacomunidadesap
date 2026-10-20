@@ -168,6 +168,8 @@ export class AutoService {
         comentarios: createAutoDto.comentarios,
         etapaDestino,
         prorrogaMeses: createAutoDto.prorrogaMeses ?? null,
+        entidadDestino: createAutoDto.entidadDestino ?? null,
+        entidadDestinoEmail: createAutoDto.entidadDestinoEmail ?? null,
       });
 
       return await this.autoRepository.save(auto);
@@ -559,6 +561,57 @@ export class AutoService {
           '#10B981',
           aprobadoPorId,
         );
+      }
+
+      // Si es AUTO_REMISION_COMPETENCIA, marcar remisión aprobada en el proceso y notificar al Radicador
+      if (
+        auto.tipo === AutoType.AUTO_REMISION_COMPETENCIA ||
+        auto.tipo === AutoType.AUTO_REMISION
+      ) {
+        if (reviewAutoDto.entidadDestino) {
+          auto.entidadDestino = reviewAutoDto.entidadDestino;
+        }
+        if (reviewAutoDto.entidadDestinoEmail) {
+          auto.entidadDestinoEmail = reviewAutoDto.entidadDestinoEmail;
+        }
+
+        const proceso = await this.processService.findById(auto.processId, false);
+        if (proceso) {
+          proceso.remisionAprobada = true;
+          const entidadDefinida = auto.entidadDestino || reviewAutoDto.entidadDestino || proceso.entidadRemision;
+          if (entidadDefinida) {
+            proceso.entidadRemision = entidadDefinida;
+          }
+          if (auto.entidadDestinoEmail || reviewAutoDto.entidadDestinoEmail) {
+            proceso.correoEntidadRemision = auto.entidadDestinoEmail || reviewAutoDto.entidadDestinoEmail;
+          }
+          proceso.kanbanNotice = `Auto de Remisión Aprobado · Entidad: ${proceso.entidadRemision || 'Definida por el Jefe'}`;
+          await this.processService['processRepository'].save(proceso);
+
+          await this.actuacionesRepository.save({
+            processId: auto.processId,
+            tipo: 'AUTO_REMISION_APROBADO',
+            etapa: proceso.etapaActual,
+            descripcion: `Auto de Remisión por Competencia aprobado por el Jefe. Entidad destinataria: ${proceso.entidadRemision || 'Por definir'}. El Radicador puede proceder con la remisión formal.`,
+            responsableNombre: aprobadoPorNombre || aprobadoPorId,
+            fechaActuacion: new Date(),
+            observaciones: reviewAutoDto.observaciones || `Aprobado por Jefe: ${aprobadoPorNombre || aprobadoPorId}`,
+          });
+
+          const asuntoRemision = `Auto de Remisión por Competencia Aprobado - Proceso ${proceso.radicadoProceso}`;
+          const mensajeRemision = `El Auto de Remisión por Competencia ha sido aprobado por el Jefe para el proceso ${proceso.radicadoProceso}. Entidad destinataria: ${proceso.entidadRemision || 'Definida en auto'}. El Radicador ya puede ingresar al proceso y realizar la remisión correspondiente.`;
+          await this.notificarRadicadores(
+            proceso,
+            auto,
+            asuntoRemision,
+            mensajeRemision,
+            'AUTO_REMISION_APROBADO',
+            asuntoRemision,
+            'Send',
+            '#7C3AED',
+            aprobadoPorId,
+          );
+        }
       }
 
       // Notificaciones de aprobación con radicador asignado

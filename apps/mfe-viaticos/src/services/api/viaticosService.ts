@@ -87,6 +87,9 @@ import {
   TarifaRegionalExcepcion,
   TarifaTransporteTerminal,
   LiquidationParam,
+  ConfigJornadaLaboral,
+  CrearConfigJornadaLaboralDTO,
+  ActualizarConfigJornadaLaboralDTO,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
@@ -360,6 +363,26 @@ export class ViaticosService {
     }
   }
 
+  /**
+   * Obtiene exclusivamente las solicitudes creadas a nombre del funcionario comisionado
+   * autenticado. Invoca el endpoint filtrando por el comisionado.
+   */
+  async obtenerSolicitudesComisionado(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
+    try {
+      await this.cargarDependenciasCache();
+      const timestamp = Date.now();
+      const response = await apiClient.get<unknown>(
+        `/viaticos/api/v1/solicitudes?soloComisionado=true&t=${timestamp}`,
+      );
+      const { data, esSuperAdmin } = extraerSolicitudes(response);
+      const solicitudes = data.map((item) => this.mapearSolicitudLista(item));
+      return { solicitudes, esSuperAdmin };
+    } catch (error) {
+      console.error('[viaticos] obtenerSolicitudesComisionado error=', error);
+      return { solicitudes: [], esSuperAdmin: false };
+    }
+  }
+
   async obtenerResumenEstadistico(): Promise<ResumenEstadisticoViaticos> {
     const { solicitudes } = await this.obtenerSolicitudes();
     return {
@@ -504,9 +527,18 @@ export class ViaticosService {
     }
   }
 
-  async consultarComisionado(documento: string): Promise<Comisionado | null> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: number | string | null,
+  ): Promise<Comisionado | null> {
     try {
-      const comisionado = await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
+      const queryParams = new URLSearchParams();
+      if (idDependencia != null && idDependencia !== '') {
+        queryParams.set('idDependencia', String(idDependencia));
+      }
+      const qs = queryParams.toString();
+      const url = `/viaticos/api/v1/comisionados/${encodeURIComponent(documento)}${qs ? `?${qs}` : ''}`;
+      const comisionado = await apiClient.get<Comisionado>(url);
       if (comisionado && (!comisionado.solicitudesPendientes || !Array.isArray(comisionado.solicitudesPendientes))) {
         try {
           comisionado.solicitudesPendientes = await this.obtenerSolicitudesPendientesComisionado(documento);
@@ -524,9 +556,46 @@ export class ViaticosService {
             `No se encontró un comisionado con documento ${documento} en ESAP.`,
         );
       }
+      if (error?.status === 400 || error?.status === 403) {
+        throw new Error(
+          error?.message ||
+            `No se pudo consultar el comisionado con documento ${documento}.`,
+        );
+      }
       console.error('[viaticos] Error consultando comisionado:', error);
       throw error;
     }
+  }
+
+  async listarComisionados(
+    idDependencia?: number | string | null,
+    search?: string,
+  ): Promise<Comisionado[]> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (idDependencia != null && idDependencia !== '') {
+        queryParams.set('idDependencia', String(idDependencia));
+      }
+      if (search && search.trim()) {
+        queryParams.set('search', search.trim());
+      }
+      const qs = queryParams.toString();
+      const url = `/viaticos/api/v1/comisionados${qs ? `?${qs}` : ''}`;
+      const res = await apiClient.get<Comisionado[] | { data: Comisionado[] }>(url);
+      if (Array.isArray(res)) return res;
+      if (res && Array.isArray((res as any).data)) return (res as any).data;
+      return [];
+    } catch (error) {
+      console.warn('[viaticos] Error listando comisionados:', error);
+      return [];
+    }
+  }
+
+  async obtenerComisionados(
+    idDependencia?: number | string | null,
+    search?: string,
+  ): Promise<Comisionado[]> {
+    return this.listarComisionados(idDependencia, search);
   }
 
   async obtenerSolicitudesPendientesComisionado(documento: string): Promise<SolicitudPendiente023[]> {
@@ -722,6 +791,64 @@ export class ViaticosService {
       return await apiClient.put<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipo)}`, dto);
     } catch (error) {
       console.error('Error actualizando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  // ==================== JORNADA LABORAL Y DÍAS HÁBILES ====================
+
+  async obtenerConfiguracionesJornada(): Promise<ConfigJornadaLaboral[]> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral[]>('/viaticos/api/v1/parametrizacion/jornada-laboral');
+      return Array.isArray(res) ? res : (res as any)?.data || [];
+    } catch (error) {
+      console.error('Error obteniendo configuraciones de jornada laboral:', error);
+      return [];
+    }
+  }
+
+  async obtenerJornadaLaboralActiva(): Promise<ConfigJornadaLaboral | null> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral/activa');
+      return res || null;
+    } catch (error) {
+      console.warn('Error obteniendo jornada laboral activa, usando fallback local:', error);
+      return null;
+    }
+  }
+
+  async crearConfigJornada(dto: CrearConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.post<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral', dto);
+    } catch (error) {
+      console.error('Error creando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async actualizarConfigJornada(id: number, dto: ActualizarConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async activarConfigJornada(id: number): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}/activar`, {});
+    } catch (error) {
+      console.error('Error activando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async eliminarConfigJornada(id: number): Promise<{ success: boolean }> {
+    try {
+      return await apiClient.delete<{ success: boolean }>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`);
+    } catch (error) {
+      console.error('Error eliminando jornada laboral:', error);
       throw error;
     }
   }

@@ -5,6 +5,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { conexionDb } from './config/conexion-db';
 import { AuthModule } from './auth/auth.module';
 import { TravelExpensesModule } from './modules/travel-expenses/travel-expenses.module';
 import { ConfigModule as ConfigParamModule } from './modules/config/config.module';
@@ -18,6 +19,7 @@ import { CampoFormularioEntity } from './entities/config/campo-formulario.entity
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-tipo-comisionado-documento.entity';
+import { ConfigJornadaLaboralEntity } from './entities/config/config-jornada-laboral.entity';
 import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
@@ -48,11 +50,8 @@ import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
     ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      username: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
+      // DB_* o DATABASE_*; sin base configurada no arranca (ver config/conexion-db.ts).
+      ...conexionDb(),
       schema: 'travel_expenses',
       entities: [
         AnalistaEntity,
@@ -64,6 +63,7 @@ import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
         ConfigTipoComisionadoEntity,
         TipoDocumentoSoporteEntity,
         ConfigTipoComisionadoDocumentoEntity,
+        ConfigJornadaLaboralEntity,
         EscalaViaticoEntity,
         TarifaInvestigadorEntity,
         TarifaRegionalExcepcionEntity,

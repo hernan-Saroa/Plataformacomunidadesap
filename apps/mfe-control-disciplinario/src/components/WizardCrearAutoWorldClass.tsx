@@ -22,7 +22,7 @@ import {
   X, ChevronRight, ChevronLeft, Check, Scale, FileText, Download,
   Upload, AlertCircle, CheckCircle, Info, File, Calendar, User,
   Paperclip, Eye, Search, Clock, Sparkles, Send, AlertTriangle,
-  FileCheck, Zap, Shield, Star
+  FileCheck, Zap, Shield, Star, Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@esap-mfe/shared-ui/card';
@@ -36,6 +36,7 @@ import {
   type PlantillaArchivo,
 } from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 import { buildApiUrl } from '../../../config/environment';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
@@ -46,6 +47,8 @@ const TIPOS_CON_ACCION_ESTATICOS = [
   'AUTO_FORMULACION_PLIEGO',
   'PLIEGO_CARGOS',
   'AUTO_PRORROGA',
+  'AUTO_REMISION_COMPETENCIA',
+  'AUTO_REMISION',
 ];
 const tieneAccion = (tipo: string): boolean =>
   tipo?.startsWith('AUTO_APERTURA_') || TIPOS_CON_ACCION_ESTATICOS.includes(tipo);
@@ -112,6 +115,18 @@ const TIPOS_AUTOS_MOCK: TipoAuto[] = [
     },
     activo: true,
     orden: 3,
+    fechaCreacion: '2024-01-15',
+    fechaModificacion: '2024-01-15'
+  },
+  {
+    id: 'tipo-auto-remision',
+    nombre: 'Auto de Remisión por Competencia',
+    descripcion: 'Auto especial mediante el cual se dispone la remisión del proceso disciplinario por competencia a otra entidad',
+    etapa: 'VALORACION',
+    tipo: 'AUTO_REMISION_COMPETENCIA',
+    plantilla: null,
+    activo: true,
+    orden: 4,
     fechaCreacion: '2024-01-15',
     fechaModificacion: '2024-01-15'
   }
@@ -228,6 +243,9 @@ export function WizardCrearAutoWorldClass({
   const [fechaAuto, setFechaAuto] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [prorrogaMeses, setProrrogaMeses] = useState<number | null>(null);
+  const [entidadDestino, setEntidadDestino] = useState('');
+  const [entidadDestinoEmail, setEntidadDestinoEmail] = useState('');
+  const [entidadesRemision, setEntidadesRemision] = useState<EntidadRemision[]>([]);
 
   // Estados del Paso 3
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
@@ -483,6 +501,27 @@ export function WizardCrearAutoWorldClass({
     setFechaAuto(today);
     // Cargar autos existentes del proceso
     cargarAutosGenerados();
+    // Cargar entidades de remisión activas
+    entidadesRemisionService.getActivas()
+      .then(data => {
+        const list = data || [];
+        setEntidadesRemision(list);
+        const preEntidad = (proceso as any)?.entidadRemision || (proceso as any)?.entidad_remision || (proceso as any)?.news?.entidadRemision;
+        if (preEntidad) {
+          const match = list.find((e: any) => e.nombre?.trim().toLowerCase() === preEntidad.trim().toLowerCase())
+            || list.find((e: any) => e.nombre?.toLowerCase().includes(preEntidad.toLowerCase()) || preEntidad.toLowerCase().includes(e.nombre?.toLowerCase()));
+          if (match) {
+            setEntidadDestino(match.nombre);
+            const correo = match.correo || (match as any).correoElectronico || '';
+            if (correo) setEntidadDestinoEmail(correo);
+          } else {
+            setEntidadDestino(preEntidad);
+            const preEmail = (proceso as any)?.correoEntidadRemision || (proceso as any)?.correo_entidad_remision;
+            if (preEmail) setEntidadDestinoEmail(preEmail);
+          }
+        }
+      })
+      .catch(err => console.error('Error cargando entidades de remisión:', err));
   }, [proceso?.id]);
 
   // ==================== FUNCIONES ====================
@@ -552,6 +591,10 @@ export function WizardCrearAutoWorldClass({
       const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
       if (tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && !prorrogaMeses) {
         toast.error('Debes seleccionar la duración de la prórroga: 3 o 6 meses');
+        return;
+      }
+      if ((tipoSeleccionado?.tipo === 'AUTO_REMISION_COMPETENCIA' || tipoSeleccionado?.tipo === 'AUTO_REMISION') && !entidadDestino.trim()) {
+        toast.error('Debes seleccionar o especificar la entidad destinataria');
         return;
       }
     }
@@ -692,6 +735,8 @@ export function WizardCrearAutoWorldClass({
         documentSize: archivoAdjunto.size,
         etapaDestino: tieneCambioEtapa ? (tipoSeleccionado.etapa || (esPliego ? 'CARGOS' : undefined)) : undefined,
         prorrogaMeses: prorrogaMeses || undefined,
+        entidadDestino: (tipoAutoValue === 'AUTO_REMISION_COMPETENCIA' || tipoAutoValue === 'AUTO_REMISION') ? entidadDestino.trim() : undefined,
+        entidadDestinoEmail: (tipoAutoValue === 'AUTO_REMISION_COMPETENCIA' || tipoAutoValue === 'AUTO_REMISION') ? entidadDestinoEmail.trim() : undefined,
       });
 
       toast.success('Auto creado exitosamente', {
@@ -722,6 +767,8 @@ export function WizardCrearAutoWorldClass({
     setFechaAuto(new Date().toISOString().split('T')[0]);
     setObservaciones('');
     setProrrogaMeses(null);
+    setEntidadDestino('');
+    setEntidadDestinoEmail('');
     setArchivoAdjunto(null);
     setObservacionesAdjunto('');
     setPlantillaDescargada(false);
@@ -1386,6 +1433,89 @@ export function WizardCrearAutoWorldClass({
                         </div>
                       )}
 
+                      {/* Remisión por competencia — solo para AUTO_REMISION_COMPETENCIA */}
+                      {(tipoSeleccionado?.tipo === 'AUTO_REMISION_COMPETENCIA' || tipoSeleccionado?.tipo === 'AUTO_REMISION') && (
+                        <div className="mb-5 space-y-4">
+                          <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #FAF5FF 0%, #EDE9FE 100%)', border: '1px solid rgba(147, 51, 234, 0.3)' }}>
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-xl bg-purple-600/10 text-purple-700">
+                                <Send className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-purple-900 mb-1">
+                                  Auto Especial de Remisión por Competencia
+                                </p>
+                                <p className="text-xs text-purple-700 leading-relaxed">
+                                  Define la entidad destinataria correspondiente. Una vez el Jefe apruebe este auto, el proceso adquirirá la identificación morada de remisión y el Radicador podrá ejecutar la remisión oficial mediante el botón correspondiente.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
+                                <Send className="w-4 h-4 text-purple-600" />
+                                Entidad Destinataria
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={entidadesRemision.some(e => e.nombre === entidadDestino) ? entidadDestino : (entidadDestino ? 'OTRA' : '')}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === 'OTRA') {
+                                    setEntidadDestino('');
+                                    setEntidadDestinoEmail('');
+                                  } else {
+                                    setEntidadDestino(val);
+                                    const found = entidadesRemision.find(ent => ent.nombre === val || ent.id === val);
+                                    const correoEncontrado = found?.correo || (found as any)?.correoElectronico || '';
+                                    setEntidadDestinoEmail(correoEncontrado);
+                                  }
+                                }}
+                                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-purple-500/10 focus:border-purple-600 transition-all text-sm font-medium shadow-sm"
+                              >
+                                <option value="">Selecciona la entidad competente...</option>
+                                {entidadesRemision.map(e => (
+                                  <option key={e.id} value={e.nombre}>{e.nombre}</option>
+                                ))}
+                                <option value="OTRA">Otra entidad (especificar)...</option>
+                              </select>
+                              {(!entidadesRemision.some(e => e.nombre === entidadDestino) || entidadDestino === '') && (
+                                <input
+                                  type="text"
+                                  placeholder="Escribe el nombre de la entidad destinataria..."
+                                  value={entidadDestino}
+                                  onChange={(e) => setEntidadDestino(e.target.value)}
+                                  className="w-full mt-2 px-4 py-2.5 border-2 border-purple-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-400"
+                                />
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="text-sm font-bold text-gray-900 mb-2 flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                  <Mail className="w-4 h-4 text-purple-600" />
+                                  Correo Oficial de la Entidad
+                                </span>
+                                <span className="text-[10px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                                  Automático (Tabla Paramétrica)
+                                </span>
+                              </label>
+                              <div className="w-full px-4 py-3 border-2 border-purple-200 bg-purple-50/60 rounded-xl flex items-center gap-2.5 shadow-sm min-h-[48px]">
+                                <Mail className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                <span className="text-sm font-bold text-purple-950 truncate">
+                                  {entidadDestinoEmail || 'Se asignará automáticamente según la entidad seleccionada'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-500 mt-1">
+                                Correo institucional parametrizado en la base de datos para notificaciones de remisión.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Observaciones */}
                       <div>
                         <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
@@ -1628,6 +1758,22 @@ export function WizardCrearAutoWorldClass({
                           <p className="text-xs font-semibold text-blue-700 mb-2">TIPO DE AUTO</p>
                           <p className="text-base font-black text-blue-900">{tipoSeleccionado.nombre}</p>
                         </div>
+
+                        {/* Entidad Destino (Remisión por competencia) */}
+                        {(tipoSeleccionado?.tipo === 'AUTO_REMISION_COMPETENCIA' || tipoSeleccionado?.tipo === 'AUTO_REMISION') && entidadDestino && (
+                          <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-5">
+                            <p className="text-xs font-semibold text-purple-700 mb-1 flex items-center gap-1.5">
+                              <Send className="w-3.5 h-3.5" />
+                              ENTIDAD DESTINATARIA (REMISIÓN)
+                            </p>
+                            <p className="text-base font-black text-purple-950">{entidadDestino}</p>
+                            {entidadDestinoEmail && (
+                              <p className="text-xs text-purple-700 mt-1 flex items-center gap-1">
+                                <Mail className="w-3 h-3" /> {entidadDestinoEmail}
+                              </p>
+                            )}
+                          </div>
+                        )}
 
                         {/* Fechas */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
