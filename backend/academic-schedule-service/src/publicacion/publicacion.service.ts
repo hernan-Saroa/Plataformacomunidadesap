@@ -2,8 +2,10 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import { seSolapan } from '../horarios/solapamiento.js';
+import { cargarFranjasCruceables, encontrarCruces, type FranjaCruceable } from '../horarios/choque.js';
 import { FACTOR_TOPE_HORAS } from '../horarios/horarios.service.js';
+import { condicionNivelSql, NIVELES_ACADEMICOS, type NivelAcademico } from '../catalogo/nivel-academico.js';
+import { condicionPeriodoGrupo, parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 
 /**
  * Publicación de la programación — NUEVA-1 / EFDS-1937.
@@ -16,22 +18,14 @@ import { FACTOR_TOPE_HORAS } from '../horarios/horarios.service.js';
  * franja no guarda el periodo por su cuenta. Una sola fuente de verdad del
  * estado: `franja.estado` (migración 029), no una tabla aparte.
  *
- * ⚠️ Validar «sin cruces» REUSA la regla existente: la primitiva `seSolapan` de
- * horarios, la misma que usa `crearSesion`. No se reimplementa el solapamiento.
+ * ⚠️ Validar «sin cruces» REUSA la regla única de `horarios/choque.ts`: mismo día, horas
+ * solapadas y ciclos de clases solapados, la misma que usa `crearSesion`. No se
+ * reimplementa el solapamiento.
  *
  * ⚠️ Lo virtual no cruza por aula porque no tiene aula: una sesión mediada por
  * tecnología va sin `aula_codigo`. El docente SÍ cruza consigo mismo aunque sea
  * virtual —nadie dicta dos clases a la vez—, y eso se valida por `id_docente`.
  */
-
-interface FranjaCruce {
-  idFranja: string;
-  aulaCodigo: string | null;
-  idDocente: string | null;
-  diaSemana: string;
-  horaInicio: string;
-  horaFin: string;
-}
 
 export interface CrucePublicacion {
   tipo: 'aula' | 'docente';
@@ -58,71 +52,99 @@ export interface EstadoPublicacion {
 export class PublicacionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
+  /** Periodo de plataforma o legado (EFDS-2328). Un id que no es de ninguno no existe. */
+  private ref(idPeriodo: string): RefPeriodo {
+    const ref = parsearPeriodo(idPeriodo);
+    if (!ref) throw new NotFoundException('El periodo no existe.');
+    return ref;
+  }
+
   private async exigirPeriodo(idPeriodo: string): Promise<void> {
-    const p = await this.dataSource.query(
-      `SELECT 1 FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]);
+    const ref = this.ref(idPeriodo);
+    const p = ref.modelo === 'plataforma'
+      ? await this.dataSource.query(`SELECT 1 FROM academic_work_plan.periodo_academico WHERE id = $1::bigint`, [ref.id])
+      : await this.dataSource.query(`SELECT 1 FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1::uuid`, [ref.id]);
     if (!p.length) throw new NotFoundException('El periodo no existe.');
   }
 
-  /** Franjas del periodo (vía grupo.id_periodo), opcionalmente acotadas por estado. */
-  private async franjasDelPeriodo(idPeriodo: string, estado?: string): Promise<FranjaCruce[]> {
-    const filas = await this.dataSource.query(
-      `SELECT f.id_franja      AS "idFranja",
-              f.aula_codigo     AS "aulaCodigo",
-              f.id_docente      AS "idDocente",
-              f.dia_semana      AS "diaSemana",
-              f.hora_inicio     AS "horaInicio",
-              f.hora_fin        AS "horaFin"
-         FROM "academic-schedule".franja_horaria f
-         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
-        WHERE g.id_periodo = $1 ${estado ? 'AND f.estado = $2' : ''}`,
-      estado ? [idPeriodo, estado] : [idPeriodo],
+  /**
+   * Subconsulta de los grupos del periodo cuyos programas son de `niveles`
+   * (RN-08, EFDS-2302/2303). Ocupa $1 (periodo) y, si filtra, $2 (tipos de
+   * posgrado). LEFT JOIN: con los dos niveles no se pierde ningún grupo.
+   */
+  private gruposEnAlcance(idPeriodo: string, niveles: readonly NivelAcademico[]): { sql: string; params: unknown[] } {
+    const ref = this.ref(idPeriodo);
+    const nivel = condicionNivelSql('pr.tipo', niveles, 2);
+    return {
+      sql: `SELECT gn.id_grupo
+              FROM "academic-schedule".grupo gn
+              LEFT JOIN academic_work_plan.asignatura an ON an.id = gn.id_asignatura
+              LEFT JOIN academic_work_plan.programa pr   ON pr.id = an.id_programa
+             WHERE ${condicionPeriodoGrupo('gn', ref, 1)} AND ${nivel.sql}`,
+      params: [ref.id, ...nivel.params],
+    };
+  }
+
+  /** Franjas del periodo en esos niveles (vía su grupo), con su ciclo, opcionalmente acotadas por estado. */
+  private async franjasDelPeriodo(
+    idPeriodo: string,
+    estado?: string,
+    niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
+  ): Promise<FranjaCruceable[]> {
+    const grupos = this.gruposEnAlcance(idPeriodo, niveles);
+    const params = [...grupos.params];
+    if (estado) params.push(estado);
+    return cargarFranjasCruceables(
+      this.dataSource,
+      `f.id_grupo IN (${grupos.sql}) ${estado ? `AND f.estado = $${params.length}` : ''}`,
+      params,
     );
-    return filas.map((f: any) => ({
-      idFranja: f.idFranja,
-      aulaCodigo: f.aulaCodigo ?? null,
-      idDocente: f.idDocente ?? null,
-      diaSemana: f.diaSemana,
-      horaInicio: String(f.horaInicio).slice(0, 5),
-      horaFin: String(f.horaFin).slice(0, 5),
-    }));
   }
 
   /**
-   * Cruces entre las franjas PROGRAMADO del periodo: dos que compartan aula (o
-   * docente), el mismo día y se solapen en hora. Es lo que impide publicar.
+   * Cruces que impiden publicar las franjas PROGRAMADO de `niveles`: dos que
+   * compartan aula (o docente), el mismo día y se solapen en hora.
+   *
+   * ⚠️ El aula y el docente son de TODOS los niveles (RN-07): una franja de
+   * pregrado por publicar también choca con una de posgrado del mismo periodo.
+   * Por eso se compara contra todas las franjas del periodo, y solo se exige que
+   * al menos una de las dos sea de las que se publican. El cruce informa aula,
+   * día y hora, nunca la asignatura del otro nivel.
    */
-  async validarCruces(idPeriodo: string): Promise<CrucePublicacion[]> {
-    const franjas = await this.franjasDelPeriodo(idPeriodo, 'PROGRAMADO');
+  async validarCruces(
+    idPeriodo: string,
+    niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
+  ): Promise<CrucePublicacion[]> {
+    const porPublicar = new Set(
+      (await this.franjasDelPeriodo(idPeriodo, 'PROGRAMADO', niveles)).map((f) => f.idFranja));
+    const franjas = await this.franjasDelPeriodo(idPeriodo);
+    // Aula: solo el MISMO salón físico (lo virtual va sin aula). Docente: cruza aunque sea
+    // virtual (nadie dicta dos a la vez). Solo se exige que una de las dos sea de las que se publican.
+    const pares = encontrarCruces(franjas, (a, b) => porPublicar.has(a.idFranja) || porPublicar.has(b.idFranja));
     const cruces: CrucePublicacion[] = [];
-
-    for (let i = 0; i < franjas.length; i++) {
-      for (let j = i + 1; j < franjas.length; j++) {
-        const a = franjas[i], b = franjas[j];
-        if (a.diaSemana !== b.diaSemana) continue;
-        if (!seSolapan(a.horaInicio, a.horaFin, b.horaInicio, b.horaFin)) continue;
-
-        // Aula: solo si ambas tienen el MISMO salón físico. Lo virtual va sin aula.
-        if (a.aulaCodigo && b.aulaCodigo && a.aulaCodigo === b.aulaCodigo) {
-          cruces.push({ tipo: 'aula', recurso: a.aulaCodigo, dia: a.diaSemana, horaInicio: a.horaInicio, horaFin: a.horaFin });
-        }
-        // Docente: cruza aunque sea virtual (nadie dicta dos a la vez).
-        if (a.idDocente && b.idDocente && a.idDocente === b.idDocente) {
-          cruces.push({ tipo: 'docente', recurso: a.idDocente, dia: a.diaSemana, horaInicio: a.horaInicio, horaFin: a.horaFin });
-        }
-      }
+    for (const p of pares) {
+      // El cruce del propio grupo lo impide `crearSesion` al guardar; no es de publicación.
+      if (p.tipo === 'grupo') continue;
+      cruces.push({ tipo: p.tipo, recurso: p.recurso!, dia: p.a.diaSemana, horaInicio: p.a.horaInicio, horaFin: p.a.horaFin });
     }
     return cruces;
   }
 
-  async estado(idPeriodo: string): Promise<EstadoPublicacion> {
+  /**
+   * Conteos por estado de las franjas del periodo en `niveles`. Sin niveles
+   * explícitos cuenta todo el periodo: es lo que necesita `cerrar`.
+   */
+  async estado(
+    idPeriodo: string,
+    niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
+  ): Promise<EstadoPublicacion> {
     await this.exigirPeriodo(idPeriodo);
+    const grupos = this.gruposEnAlcance(idPeriodo, niveles);
     const filas = await this.dataSource.query(
       `SELECT f.estado AS estado, COUNT(*)::int AS n
          FROM "academic-schedule".franja_horaria f
-         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
-        WHERE g.id_periodo = $1
-        GROUP BY f.estado`, [idPeriodo]);
+        WHERE f.id_grupo IN (${grupos.sql})
+        GROUP BY f.estado`, grupos.params);
     const por: Record<string, number> = Object.fromEntries(filas.map((r: any) => [r.estado, r.n]));
     const programado = por['PROGRAMADO'] ?? 0;
     const publicada = por['PUBLICADA'] ?? 0;
@@ -134,8 +156,7 @@ export class PublicacionService {
     const pend = await this.dataSource.query(
       `SELECT COUNT(*)::int AS n
          FROM "academic-schedule".franja_horaria f
-         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
-        WHERE g.id_periodo = $1 AND f.estado <> 'APROBADA' AND f.excepcion = false`, [idPeriodo]);
+        WHERE f.id_grupo IN (${grupos.sql}) AND f.estado <> 'APROBADA' AND f.excepcion = false`, grupos.params);
 
     return {
       idPeriodo, programado, publicada, tomada, aprobada, devuelta,
@@ -145,19 +166,23 @@ export class PublicacionService {
   }
 
   /**
-   * Publica la programación del periodo: valida que no haya cruces y pasa las
-   * franjas PROGRAMADO a PUBLICADA. Sin franjas programadas, no hay nada que
-   * publicar. Con cruces, no se publica y se dice cuáles.
+   * Publica la programación de `niveles` en el periodo: valida que no haya
+   * cruces y pasa sus franjas PROGRAMADO a PUBLICADA (EFDS-2303: la publica el
+   * programador, cada uno la de su nivel). Sin franjas programadas, no hay nada
+   * que publicar. Con cruces, no se publica y se dice cuáles.
    */
-  async publicar(idPeriodo: string): Promise<EstadoPublicacion> {
+  async publicar(
+    idPeriodo: string,
+    niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
+  ): Promise<EstadoPublicacion> {
     await this.exigirPeriodo(idPeriodo);
 
-    const programadas = await this.franjasDelPeriodo(idPeriodo, 'PROGRAMADO');
+    const programadas = await this.franjasDelPeriodo(idPeriodo, 'PROGRAMADO', niveles);
     if (programadas.length === 0) {
       throw new BadRequestException('No hay franjas programadas por publicar en este periodo.');
     }
 
-    const cruces = await this.validarCruces(idPeriodo);
+    const cruces = await this.validarCruces(idPeriodo, niveles);
     if (cruces.length > 0) {
       const detalle = cruces.slice(0, 5).map((c) =>
         `${c.tipo === 'aula' ? `aula ${c.recurso}` : 'un docente'} el ${c.dia.toLowerCase()} `
@@ -171,6 +196,7 @@ export class PublicacionService {
     // las requeridas por el catálogo (asignatura.horas_clase, nunca recalculadas,
     // Circular 003). Se avisa durante el armado; aquí, al publicar, se bloquea.
     // Los grupos sin ciclo definido no se pueden validar y no bloquean.
+    const grupos = this.gruposEnAlcance(idPeriodo, niveles);
     const excesos = await this.dataSource.query(
       `WITH g AS (
          SELECT gr.id_grupo, a.nombre AS asignatura, a.horas_clase AS requeridas,
@@ -179,7 +205,7 @@ export class PublicacionService {
            FROM "academic-schedule".grupo gr
            JOIN "academic-schedule".franja_horaria f ON f.id_grupo = gr.id_grupo
            JOIN academic_work_plan.asignatura a ON a.id = gr.id_asignatura
-          WHERE gr.id_periodo = $1 AND gr.fecha_inicio IS NOT NULL AND gr.fecha_fin IS NOT NULL
+          WHERE gr.id_grupo IN (${grupos.sql}) AND gr.fecha_inicio IS NOT NULL AND gr.fecha_fin IS NOT NULL
             AND a.horas_clase IS NOT NULL AND a.horas_clase > 0
           GROUP BY gr.id_grupo, a.nombre, a.horas_clase, gr.fecha_inicio, gr.fecha_fin
        )
@@ -187,7 +213,7 @@ export class PublicacionService {
               ROUND(horas_semana * semanas)::int AS programadas
          FROM g WHERE horas_semana * semanas > requeridas * ${FACTOR_TOPE_HORAS}
         ORDER BY programadas DESC`,
-      [idPeriodo],
+      grupos.params,
     );
     if (excesos.length > 0) {
       const d = excesos.slice(0, 3).map((e: any) =>
@@ -200,27 +226,28 @@ export class PublicacionService {
     await this.dataSource.query(
       `UPDATE "academic-schedule".franja_horaria f
           SET estado = 'PUBLICADA', updated_at = NOW()
-         FROM "academic-schedule".grupo g
-        WHERE g.id_grupo = f.id_grupo
-          AND g.id_periodo = $1
-          AND f.estado = 'PROGRAMADO'`, [idPeriodo]);
+        WHERE f.id_grupo IN (${grupos.sql})
+          AND f.estado = 'PROGRAMADO'`, grupos.params);
 
-    return this.estado(idPeriodo);
+    return this.estado(idPeriodo, niveles);
   }
 
   /**
-   * Retira la publicación: PUBLICADA → PROGRAMADO. GUARDA: solo si NADIE tomó
-   * franjas. Si alguna está TOMADA, retirar rompería el compromiso con ese
-   * docente, así que se rechaza.
+   * Retira la publicación de `niveles`: PUBLICADA → PROGRAMADO. GUARDA: solo si
+   * NADIE tomó franjas de esos niveles. Si alguna está TOMADA, retirar rompería
+   * el compromiso con ese docente, así que se rechaza.
    */
-  async retirar(idPeriodo: string): Promise<EstadoPublicacion> {
+  async retirar(
+    idPeriodo: string,
+    niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
+  ): Promise<EstadoPublicacion> {
     await this.exigirPeriodo(idPeriodo);
+    const grupos = this.gruposEnAlcance(idPeriodo, niveles);
 
     const tomadas = await this.dataSource.query(
       `SELECT COUNT(*)::int AS n
          FROM "academic-schedule".franja_horaria f
-         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
-        WHERE g.id_periodo = $1 AND f.estado = 'TOMADA'`, [idPeriodo]);
+        WHERE f.id_grupo IN (${grupos.sql}) AND f.estado = 'TOMADA'`, grupos.params);
     if (tomadas[0].n > 0) {
       throw new ConflictException(
         `No se puede retirar la publicación: ${tomadas[0].n} franja(s) ya fueron tomadas por docentes.`,
@@ -230,23 +257,26 @@ export class PublicacionService {
     await this.dataSource.query(
       `UPDATE "academic-schedule".franja_horaria f
           SET estado = 'PROGRAMADO', updated_at = NOW()
-         FROM "academic-schedule".grupo g
-        WHERE g.id_grupo = f.id_grupo
-          AND g.id_periodo = $1
-          AND f.estado = 'PUBLICADA'`, [idPeriodo]);
+        WHERE f.id_grupo IN (${grupos.sql})
+          AND f.estado = 'PUBLICADA'`, grupos.params);
 
-    return this.estado(idPeriodo);
+    return this.estado(idPeriodo, niveles);
   }
 
   /**
    * Franjas que impiden cerrar el periodo (ni APROBADA ni en excepción), con su
    * contexto, para poder marcarlas como excepción desde la vista de cierre.
+   * Acotadas a `niveles`: el nombre de la asignatura es del nivel (RN-08).
    */
-  async pendientesCierre(idPeriodo: string): Promise<Array<{
+  async pendientesCierre(
+    idPeriodo: string,
+    niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
+  ): Promise<Array<{
     idFranja: string; diaSemana: string; horaInicio: string; horaFin: string;
     estado: string; asignatura: string | null; programa: string | null;
   }>> {
     await this.exigirPeriodo(idPeriodo);
+    const grupos = this.gruposEnAlcance(idPeriodo, niveles);
     return this.dataSource.query(
       `SELECT f.id_franja                       AS "idFranja",
               f.dia_semana                      AS "diaSemana",
@@ -259,9 +289,9 @@ export class PublicacionService {
          JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
          LEFT JOIN academic_work_plan.asignatura a ON a.id       = g.id_asignatura
          LEFT JOIN academic_work_plan.programa pr  ON pr.id      = a.id_programa
-        WHERE g.id_periodo = $1 AND f.estado <> 'APROBADA' AND f.excepcion = false
+        WHERE f.id_grupo IN (${grupos.sql}) AND f.estado <> 'APROBADA' AND f.excepcion = false
         ORDER BY f.dia_semana, f.hora_inicio`,
-      [idPeriodo],
+      grupos.params,
     );
   }
 
@@ -271,34 +301,45 @@ export class PublicacionService {
    */
   async marcarExcepcion(idPeriodo: string, idFranja: string, excepcion: boolean): Promise<EstadoPublicacion> {
     await this.exigirPeriodo(idPeriodo);
+    const ref = this.ref(idPeriodo);
     const r = await this.dataSource.query(
       `UPDATE "academic-schedule".franja_horaria f
           SET excepcion = $3, updated_at = NOW()
          FROM "academic-schedule".grupo g
         WHERE g.id_grupo = f.id_grupo
           AND f.id_franja = $2
-          AND g.id_periodo = $1
+          AND ${condicionPeriodoGrupo('g', ref, 1)}
       RETURNING f.id_franja`,
-      [idPeriodo, idFranja, excepcion],
+      [ref.id, idFranja, excepcion],
     );
     if (!r.length) throw new NotFoundException('La franja no pertenece a este periodo.');
     return this.estado(idPeriodo);
   }
 
   /**
-   * Cierra el periodo: exige que TODA su franja esté APROBADA o marcada como
-   * excepción. Un periodo cerrado es inmutable (ofertas.activar ya rechaza
-   * reactivarlo); aquí se impide re-cerrar.
+   * Cierra la PROGRAMACIÓN del periodo: exige que TODA su franja esté APROBADA o
+   * marcada como excepción. Lo cerrado es inmutable; aquí se impide re-cerrar.
    *
-   * ⚠️ NUEVA-5b: depende de la aprobación de NUEVA-3 (EFDS-1939). Por eso cerrar
-   * no vivía en ofertas.crear/activar: hasta ahora no tenía de qué depender.
+   * ⚠️ EFDS-2328: en un periodo de plataforma esto cierra SOLO la programación
+   * (`programacion_periodo`), NUNCA el periodo de la plataforma: cerrar ese
+   * periodo termina PTA y es acto del PTA, no de este módulo. En un periodo
+   * legado cierra el `periodo_programacion`, como antes.
+   *
+   * ⚠️ NUEVA-5b: depende de la aprobación de NUEVA-3 (EFDS-1939).
    */
-  async cerrar(idPeriodo: string): Promise<EstadoPublicacion> {
-    const p = await this.dataSource.query(
-      `SELECT estado FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]);
+  async cerrar(idPeriodo: string, cerradoPor?: string | null): Promise<EstadoPublicacion> {
+    const ref = this.ref(idPeriodo);
+    const p = ref.modelo === 'plataforma'
+      ? await this.dataSource.query(
+          `SELECT CASE WHEN COALESCE(pp.estado, 'abierta') = 'cerrada' THEN 'cerrado' ELSE 'abierto' END AS estado
+             FROM academic_work_plan.periodo_academico pa
+             LEFT JOIN "academic-schedule".programacion_periodo pp ON pp.id_periodo_academico = pa.id
+            WHERE pa.id = $1::bigint`, [ref.id])
+      : await this.dataSource.query(
+          `SELECT estado FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1::uuid`, [ref.id]);
     if (!p.length) throw new NotFoundException('El periodo no existe.');
     if (p[0].estado === 'cerrado') {
-      throw new ConflictException('El periodo ya está cerrado y es inmutable.');
+      throw new ConflictException('La programación de este periodo ya está cerrada y es inmutable.');
     }
 
     const est = await this.estado(idPeriodo);
@@ -308,10 +349,24 @@ export class PublicacionService {
       );
     }
 
-    await this.dataSource.query(
-      `UPDATE "academic-schedule".periodo_programacion
-          SET estado = 'cerrado', updated_at = NOW()
-        WHERE id_periodo = $1`, [idPeriodo]);
+    if (ref.modelo === 'plataforma') {
+      await this.dataSource.query(
+        `INSERT INTO "academic-schedule".programacion_periodo (id_periodo_academico, estado, cerrada_en, cerrada_por)
+         VALUES ($1::bigint, 'cerrada', NOW(), $2::uuid)
+         ON CONFLICT (id_periodo_academico) DO UPDATE
+            SET estado = 'cerrada', cerrada_en = NOW(), cerrada_por = EXCLUDED.cerrada_por, updated_at = NOW()`,
+        [ref.id, esUuid(cerradoPor) ? cerradoPor : null]);
+    } else {
+      await this.dataSource.query(
+        `UPDATE "academic-schedule".periodo_programacion
+            SET estado = 'cerrado', updated_at = NOW()
+          WHERE id_periodo = $1::uuid`, [ref.id]);
+    }
     return this.estado(idPeriodo);
   }
+}
+
+function esUuid(valor: unknown): valor is string {
+  return typeof valor === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(valor);
 }

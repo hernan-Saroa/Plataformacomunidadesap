@@ -85,6 +85,22 @@ export const dashboardService = {
   async getExecutiveStats(): Promise<any> {
     return apiClient.get(`${SERVICE_PREFIX}/backoffice/dashboard/executive-stats`);
   },
+
+  /**
+   * Obtiene la URL para cargar un template HTML del dashboard ejecutivo
+   */
+  getTemplateUrl(templateName: string): string {
+    return `/services${SERVICE_PREFIX}/backoffice/dashboard/templates/${templateName}`;
+  },
+
+  /**
+   * Carga y reemplaza el archivo HTML de una plantilla del dashboard
+   */
+  async uploadTemplate(templateName: string, htmlContent: string): Promise<any> {
+    return apiClient.post(`${SERVICE_PREFIX}/backoffice/dashboard/templates/${templateName}`, {
+      html: htmlContent,
+    });
+  },
 };
 
 export default dashboardService;

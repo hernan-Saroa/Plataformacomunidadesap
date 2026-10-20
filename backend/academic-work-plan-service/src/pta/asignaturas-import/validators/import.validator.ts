@@ -11,7 +11,6 @@ export interface ValidationResult {
 }
 
 export class ImportValidator {
-  static readonly REFERENCIA_ASIGNATURAS = 427;
   static readonly REFERENCIA_PROGRAMAS = 14;
   static readonly REFERENCIA_OFERTAS = 325;
 
@@ -96,13 +95,6 @@ export class ImportValidator {
     } else if (asignaturas.length > 2000) {
       errors.push(
         `R1: La hoja ASIGNATURAS tiene ${asignaturas.length} filas y excede el máximo de 2000.`,
-      );
-    } else if (
-      asignaturas.length !== ImportValidator.REFERENCIA_ASIGNATURAS
-    ) {
-      warnings.push(
-        `[BR-002] La hoja ASIGNATURAS contiene ${asignaturas.length} filas. ` +
-          `El catálogo institucional de referencia contiene ${ImportValidator.REFERENCIA_ASIGNATURAS}.`,
       );
     }
 
@@ -262,6 +254,20 @@ export class ImportValidator {
     const invalidAssignmentModalities = new Set<string>();
     const invalidSemesters = new Set<string>();
     const invalidExceptions = new Set<string>();
+    const programasPorCodigo = new Map(
+      programas.map(programa => [programa.codigo_programa.toLowerCase().trim(), programa]),
+    );
+    const codigosPorNombre = new Map<string, Set<string>>();
+    for (const programa of programas) {
+      const codigo = programa.codigo_programa.toLowerCase().trim();
+      for (const nombre of [programa.nombre_programa, programa.nombre_corto, programa.nombre_excel_origen]) {
+        const identidad = ImportValidator.normalizarNombrePrograma(nombre);
+        if (!identidad) continue;
+        const codigos = codigosPorNombre.get(identidad) ?? new Set<string>();
+        codigos.add(codigo);
+        codigosPorNombre.set(identidad, codigos);
+      }
+    }
 
     asignaturas.forEach((asignatura, index) => {
       const row = index + 2;
@@ -342,6 +348,25 @@ export class ImportValidator {
         missingProgramReferences.add(
           asignatura.codigo_programa || '(vacío)',
         );
+      } else {
+        // El código es la referencia del cargue. Un nombre que identifica inequívocamente
+        // otro programa no puede aceptarse como si fuera sólo una etiqueta informativa.
+        // Los nombres alternativos no registrados (p. ej. el nombre completo de GEPUR)
+        // siguen siendo compatibles; no se infiere ni cambia el programa automáticamente.
+        const codigosDelNombre = codigosPorNombre.get(
+          ImportValidator.normalizarNombrePrograma(asignatura.nombre_programa),
+        );
+        if (codigosDelNombre?.size === 1 && !codigosDelNombre.has(programCode)) {
+          const codigoDelNombre = [...codigosDelNombre][0];
+          const programaDelNombre = programasPorCodigo.get(codigoDelNombre)!;
+          const programaDelCodigo = programasPorCodigo.get(programCode)!;
+          errors.push(
+            `ASIGNATURAS fila ${row} (${code}, Pensum ${asignatura.pensum || 'sin registrar'}): ` +
+            `nombre_programa "${asignatura.nombre_programa}" corresponde a ${programaDelNombre.codigo_programa}, ` +
+            `pero codigo_programa "${asignatura.codigo_programa}" corresponde a "${programaDelCodigo.nombre_programa}". ` +
+            'Corrija la asociación entre código y nombre del programa antes de importar.',
+          );
+        }
       }
 
       if (
@@ -479,6 +504,11 @@ export class ImportValidator {
     }
 
     return warnings;
+  }
+
+  private static normalizarNombrePrograma(value: unknown): string {
+    return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
   private static isBooleanLike(value: unknown): boolean {

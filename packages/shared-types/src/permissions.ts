@@ -481,4 +481,11 @@ export enum Permissions {
   VIATICOS_GENERAL_ES_TESORERIA = 'travel_expenses.general.es_tesoreria',
   VIATICOS_GENERAL_ES_SST = 'travel_expenses.general.es_sst',
   VIATICOS_GENERAL_ES_TIQUETES = 'travel_expenses.general.es_responsable_tiquetes',
+
+  // Dashboard Ejecutivo / Centro de Comando (Migración 006)
+  DASHBOARD_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view',
+  DASHBOARD_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit',
+  DASHBOARD_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view',
+  DASHBOARD_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit',
 }
+

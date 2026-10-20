@@ -26,17 +26,23 @@ import {
 } from 'lucide-react';
 
 import {
-  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura, getOfertas,
-  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
-  type FranjaConContexto, type ValidacionHistorico, type Oferta, type EstadoPublicacion,
+  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura,
+  publicarProgramacion, retirarProgramacion,
+  type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
+import { useEstadoPublicacion } from './useEstadoPublicacion';
 import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
 import { AprobacionJefatura } from './AprobacionJefatura';
+import { ConcertacionBandeja } from './ConcertacionBandeja';
+import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
+import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
+import { getCrucesVivos, type ConteoCrucesVivos } from '../services/api/crucesVivosApi';
+import { getPeriodos, type PeriodoVista } from '../services/api/periodosApi';
 
 interface FranjaHoraria {
   id: string;
@@ -64,7 +70,7 @@ interface FranjaHoraria {
   periodoCodigo: string | null;
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion' | 'concertacion';
 
 /** Los cinco estados del ciclo de la franja, con su etiqueta y color (§1.2). */
 const BADGE_ESTADO: Record<string, { etiqueta: string; clase: string }> = {
@@ -104,8 +110,19 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
   };
 }
 
-export function ProgramacionAcademicaModule() {
+interface ProgramacionAcademicaModuleProps {
+  puedeAbrirProgramasAcademicos?: boolean;
+  abrirProgramasAcademicos?: () => void;
+}
+
+export function ProgramacionAcademicaModule({
+  puedeAbrirProgramasAcademicos = false,
+  abrirProgramasAcademicos,
+}: ProgramacionAcademicaModuleProps) {
+  const revisionProgramacion = useRevisionProgramacion('programacion');
+  const revisionPeriodos = useRevisionProgramacion('periodos');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
+  const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
@@ -121,26 +138,52 @@ export function ProgramacionAcademicaModule() {
   // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
   const [esJefatura, setEsJefatura] = useState(false);
   useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
+  // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
+  // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
+  const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
+  useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
   // periodo seleccionado en la cabecera; se persiste entre recargas.
-  const [periodos, setPeriodos] = useState<Oferta[]>([]);
+  const [periodos, setPeriodos] = useState<PeriodoVista[]>([]);
+  const [periodoError, setPeriodoError] = useState('');
   const [periodoSel, setPeriodoSel] = useState<string>(() => {
     try { return localStorage.getItem('prog-periodo-sel') || ''; } catch { return ''; }
   });
   const periodoActual = periodos.find((p) => p.idPeriodo === periodoSel) || null;
+  const periodoProgramable = periodoActual?.modelo === 'plataforma'
+    ? periodoActual.programable
+    : periodoActual?.estado !== 'cerrado';
 
   useEffect(() => {
-    getOfertas().then((lista) => {
+    let vigente = true;
+    getPeriodos().then((respuesta) => {
+      if (!vigente) return;
+      const lista: PeriodoVista[] = [...respuesta.periodos, ...respuesta.legado];
+      setPeriodoError('');
       setPeriodos(lista);
       setPeriodoSel((actual) => {
         if (actual && lista.some((p) => p.idPeriodo === actual)) return actual;
-        // Por defecto, el primer periodo activo; si no hay, el primero.
-        const def = lista.find((p) => p.estado === 'activo') || lista[0];
+        const def = respuesta.periodos.find((p) => p.esActivo) || respuesta.periodos[0] || respuesta.legado[0];
         return def ? def.idPeriodo : '';
       });
-    }).catch(() => {});
-  }, []);
+    }).catch((e) => {
+      if (!vigente) return;
+      // 403 = el perfil no programa ningún nivel (p. ej. la jefatura, que solo revisa y aprueba).
+      if (e?.status === 403) { setSoloRevision(true); return; }
+      setPeriodoError(e?.message || 'No se pudieron consultar los periodos.');
+    });
+    return () => { vigente = false; };
+  }, [revisionPeriodos]);
+
+  // Perfil de REVISIÓN (jefatura): no programa, así que no ve la cabecera de periodo, los indicadores ni las
+  // secciones de programación —todas piden permisos que no tiene y solo mostraban errores—. Ve lo suyo:
+  // la concertación y, si es jefatura territorial, la aprobación. Antes veía «Sin periodos» y «No tiene permisos».
+  const [soloRevision, setSoloRevision] = useState(false);
+  useEffect(() => {
+    if (!soloRevision) return;
+    setSeccion((s) => (s === 'concertacion' || s === 'aprobacion') ? s : (concertacion?.habilitada ? 'concertacion' : 'aprobacion'));
+  }, [soloRevision, concertacion]);
 
   const elegirPeriodo = (id: string) => {
     setPeriodoSel(id);
@@ -150,11 +193,10 @@ export function ProgramacionAcademicaModule() {
   // §1.2 — Publicar/retirar el periodo activo DESDE la vista de programación, sin
   // ir a buscarlo a otra sección. El backend valida sin cruces al publicar y
   // rechaza retirar si alguien tomó franjas; el mensaje se muestra tal cual.
-  const [estadoPub, setEstadoPub] = useState<EstadoPublicacion | null>(null);
+  // Se relee tras cada escritura confirmada (crear una franja cambia los conteos), no solo al cambiar de periodo.
+  const [estadoPub, setEstadoPub] = useEstadoPublicacion(periodoSel);
   const [avisoPub, setAvisoPub] = useState('');
   const [pubOcupado, setPubOcupado] = useState(false);
-  const cargarEstadoPub = (id: string) => getEstadoPublicacion(id).then(setEstadoPub).catch(() => setEstadoPub(null));
-  useEffect(() => { if (periodoSel) cargarEstadoPub(periodoSel); }, [periodoSel]);
 
   const publicar = async () => {
     setAvisoPub(''); setPubOcupado(true);
@@ -191,20 +233,38 @@ export function ProgramacionAcademicaModule() {
       .catch(() => { if (vivo) setTotalAulas(null); })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
-  }, [periodoSel, periodos]);
+  }, [periodoSel, periodos, revisionProgramacion]);
+
+  // EFDS-2307 — Cruces REALES de la programación viva, contados por el servidor
+  // con la misma regla que rechaza los cruces al guardar. Debe dar 0; si no, el
+  // panel avisa. `null` mientras carga o si falla: no se muestra un 0 inventado.
+  const [crucesVivos, setCrucesVivos] = useState<ConteoCrucesVivos | null>(null);
+  const [errorCrucesVivos, setErrorCrucesVivos] = useState('');
+  useEffect(() => {
+    if (!periodoSel) return;
+    let vivo = true;
+    setCrucesVivos(null); setErrorCrucesVivos('');
+    getCrucesVivos(periodoSel)
+      .then((c) => { if (vivo) setCrucesVivos(c); })
+      .catch((e) => { if (vivo) setErrorCrucesVivos(e?.message || 'No se pudieron contar los cruces.'); });
+    return () => { vivo = false; };
+  }, [periodoSel, revisionProgramacion]);
 
   // Form state
 
   const totalFranjas = scheduleList.length;
   // Confirmadas = aprobadas por la jefatura (estado real, no el inventado 'CONFIRMADO').
   const totalConfirmados = scheduleList.filter(s => s.estado === 'APROBADA').length;
-  // Alertas de cruce = las de validación del periodo (0 en un periodo nuevo).
-  const totalConflictos = historico?.resumen?.total ?? 0;
+  // El histórico (hallazgos del Excel) es otro contador: va en el badge de Validación.
+  const totalConflictosHistoricos = historico?.resumen?.total ?? 0;
 
+  // Un solo elemento para las dos entradas de aprobación (jefatura y concertación).
+  const iconoAprobacion = <ClipboardCheck className="w-5 h-5" />;
   const gruposNav: MenuGroup[] = [
     {
       title: 'GESTIÓN PRINCIPAL',
       items: [
+        ...(soloRevision ? [] : [
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -249,15 +309,23 @@ export function ProgramacionAcademicaModule() {
           subtitle: 'Alertas y traslapes de horario',
           icon: <AlertTriangle className="w-5 h-5" />,
           color: '#D97706',
-          badge: totalConflictos > 0 ? totalConflictos : undefined,
+          badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
+        ]),
         // EFDS-1939 — solo para jefaturas territoriales.
         ...(esJefatura ? [{
           id: 'aprobacion',
           label: 'Aprobación territorial',
           subtitle: 'Aprobar o devolver franjas de tus docentes',
-          icon: <ClipboardCheck className="w-5 h-5" />,
+          icon: iconoAprobacion,
           color: '#059669',
+        }] : []),
+        ...(concertacion?.habilitada ? [{
+          id: 'concertacion',
+          label: 'Concertación de la docencia',
+          subtitle: 'Revisar y aprobar la docencia de los docentes',
+          icon: iconoAprobacion,
+          color: '#003DA5',
         }] : []),
       ],
     },
@@ -284,7 +352,8 @@ export function ProgramacionAcademicaModule() {
       activeSection={seccion}
       onSectionChange={(s) => setSeccion(s as Seccion)}
     >
-      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo ── */}
+      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo. El perfil de revisión no lo usa. ── */}
+      {!soloRevision && (<>
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div className="flex items-center gap-3">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Periodo</span>
@@ -293,21 +362,33 @@ export function ProgramacionAcademicaModule() {
             onChange={(e) => elegirPeriodo(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-[#003DA5] focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
           >
-            {periodos.length === 0 && <option value="">Cargando…</option>}
-            {periodos.map((p) => (
+            {periodos.length === 0 && <option value="">Sin periodos</option>}
+            <optgroup label="Periodos de la plataforma">
+            {periodos.filter((p) => p.modelo === 'plataforma').map((p) => (
               <option key={p.idPeriodo} value={p.idPeriodo}>
-                {p.codigo} — {p.estado === 'activo' ? 'Activo' : p.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
+                {p.codigo} — {p.esActivo ? 'Activo' : p.estadoPlataforma.replace('_', ' ')}{p.programacion.estado === 'cerrada' ? ' · programación cerrada' : ''}
               </option>
             ))}
+            </optgroup>
+            {periodos.some((p) => p.modelo === 'legado') && (
+              <optgroup label="Periodos anteriores al modelo único">
+                {periodos.filter((p) => p.modelo === 'legado').map((p) => (
+                  <option key={p.idPeriodo} value={p.idPeriodo}>{p.codigo} — {p.nombre}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
           {periodoActual && (
-            <span className="text-xs text-slate-500 hidden sm:inline">{periodoActual.nombre}</span>
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              {periodoActual.modelo === 'plataforma' ? (periodoActual.programable ? 'Programación abierta' : 'Solo consulta') : periodoActual.motivo}
+            </span>
           )}
         </div>
         <p className="text-[11px] text-slate-400">
           Todo lo que ves —franjas, validación, disponibilidad— pertenece a este periodo.
         </p>
       </div>
+      {periodoError && <p role="alert" className="mb-4 text-sm text-red-700">{periodoError}</p>}
 
       {/* ── KPI HEADER ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -336,8 +417,21 @@ export function ProgramacionAcademicaModule() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alertas de Cruce</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">{totalConflictos}</h3>
-            <p className="text-xs text-amber-600 font-medium mt-1">Requieren resolución</p>
+            <h3 className={`text-2xl font-black mt-1 ${crucesVivos && crucesVivos.total > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+              {crucesVivos ? crucesVivos.total : '—'}
+            </h3>
+            {errorCrucesVivos ? (
+              <p className="text-xs text-red-600 font-medium mt-1">{errorCrucesVivos}</p>
+            ) : !crucesVivos ? (
+              <p className="text-xs text-slate-400 font-medium mt-1">Contando cruces…</p>
+            ) : crucesVivos.total === 0 ? (
+              <p className="text-xs text-emerald-600 font-medium mt-1">Programación viva · sin cruces</p>
+            ) : (
+              <p className="text-xs text-red-600 font-medium mt-1">
+                Cruces reales en la programación ({crucesVivos.aula} de aula, {crucesVivos.docente} de docente,
+                {' '}{crucesVivos.grupo} de grupo): el sistema debió impedirlos. Repórtelo.
+              </p>
+            )}
           </div>
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
             <AlertTriangle className="w-6 h-6" />
@@ -355,9 +449,10 @@ export function ProgramacionAcademicaModule() {
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
-      {seccion === 'horarios' && estadoPub && periodoActual && periodoActual.estado !== 'cerrado' && (
+      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -417,12 +512,13 @@ export function ProgramacionAcademicaModule() {
               className="bg-transparent font-semibold text-slate-800 focus:outline-none"
             >
               {/* §2.1 — Los valores deben ser los del dato del backend
-                  (DIURNA/NOCTURNA/FIN_DE_SEMANA), no 'Diurna': la comparacion es
+                  (DIURNA/NOCTURNA/FIN_DE_SEMANA/DISTANCIA), no 'Diurna': la comparacion es
                   exacta y con la etiqueta bonita nunca casaba. */}
               <option value="TODAS">Todas las jornadas</option>
               <option value="DIURNA">Diurna</option>
               <option value="NOCTURNA">Nocturna</option>
               <option value="FIN_DE_SEMANA">Fin de semana</option>
+              <option value="DISTANCIA">Distancia</option>
             </select>
           </div>
 
@@ -447,7 +543,7 @@ export function ProgramacionAcademicaModule() {
       {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
           que el endpoint de horarios devuelva programa, asignatura y docente:
           hoy solo trae la sesión, así que esas columnas van vacías. */}
-      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} />}
+      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} />}
 
       {seccion === 'horarios' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -534,15 +630,22 @@ export function ProgramacionAcademicaModule() {
       )}
 
       {/* EFDS-1374: disponibilidad de aulas, sin revelar qué las ocupa (RN-07). */}
-      {seccion === 'aulas' && <DisponibilidadAulas />}
+      {seccion === 'aulas' && <DisponibilidadAulas idPeriodo={periodoSel} />}
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
       {seccion === 'docentes' && <AsignacionDocente />}
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
-      {seccion === 'ofertas' && <GestionOfertas />}
+      {seccion === 'ofertas' && <GestionOfertas
+        periodoParaCarga={cargaSolicitada}
+        puedeAbrirProgramasAcademicos={puedeAbrirProgramasAcademicos}
+        abrirProgramasAcademicos={abrirProgramasAcademicos}
+      />}
 
       {seccion === 'aprobacion' && <AprobacionJefatura />}
+      {seccion === 'concertacion' && concertacion?.habilitada && (
+        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
+      )}
 
       {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
           Antes esta sección mostraba alertas inventadas en el propio front.
