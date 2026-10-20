@@ -141,6 +141,8 @@ describe('EFDS-2344 / EFDS-2343 :: árbol de programación y calendario del doce
     expect(c.franjas[1]).toMatchObject({ idGrupo: null, asignatura: null, aulaCodigo: null, horaInicio: '08:00' });
     // 32 h (mitad del grupo de pregrado) + 64 h (todo el de posgrado); el tope de cátedra es 304.
     expect(c.horas).toEqual({ total: 96, tope: 304 });
+    // El desglose por grupo solo trae los visibles: el grupo de posgrado no se nombra.
+    expect(c.horasPorGrupo).toEqual({ [ids.grupoPre]: 32 });
   });
 
   caso('calendario del portal (todos los niveles): nada reservado', async () => {

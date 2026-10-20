@@ -5,7 +5,7 @@ import { NivelesRequestService } from '../acceso/niveles-request.service.js';
 import { rolesDe } from '../acceso/roles.js';
 import { tokenDe } from '../acceso/token.js';
 import {
-  nivelesVisibles, puedeAsignarDocentes, puedeVerDisponibilidadDocente,
+  nivelesAsignables, nivelesProgramables, nivelesVisibles, puedeAsignarDocentes, puedeVerDisponibilidadDocente,
 } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { esNivelAcademico } from '../catalogo/nivel-academico.js';
@@ -22,6 +22,25 @@ export class VistaController {
     private readonly niveles: NivelesRequestService,
     private readonly permisos: ProgramacionPermissionsService,
   ) {}
+
+  /**
+   * GET /programacion/mis-permisos — qué niveles ve, programa y asigna el usuario
+   * (EFDS-2342). Solo para que la pantalla muestre lo que corresponde: las
+   * garantías siguen en el servidor, ruta por ruta.
+   */
+  @Get('mis-permisos')
+  async misPermisos(@Req() req: Request) {
+    const permisos = await this.permisos.resolveForRoles(rolesDe(req));
+    return {
+      success: true,
+      data: {
+        ver: nivelesVisibles(permisos),
+        programar: nivelesProgramables(permisos),
+        asignar: nivelesAsignables(permisos),
+        disponibilidad: puedeVerDisponibilidadDocente(permisos) || puedeAsignarDocentes(permisos),
+      },
+    };
+  }
 
   /** GET /programacion/arbol?periodo=&nivel=&programa=&tipoOferta=&soloSinDocente= */
   @Get('arbol')

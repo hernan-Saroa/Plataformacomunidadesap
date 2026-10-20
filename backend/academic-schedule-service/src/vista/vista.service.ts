@@ -273,7 +273,7 @@ export class VistaService {
       [docente.idDocente, ref.id]);
 
     // Horas del docente en el periodo: por grupo, contrato × reparto (todas sus franjas, de cualquier nivel).
-    const total = await this.horasDelDocenteEnPeriodo(docente.idDocente, docente.vinculacion?.texto ?? null, filas, token);
+    const { total, porGrupo } = await this.horasPorGrupoDelDocente(docente.idDocente, docente.vinculacion?.texto ?? null, filas, token);
     const tope = topeDeDocencia(docente.vinculacion?.texto ?? null, docente.horasAsignables);
 
     const franjas = filas
@@ -298,7 +298,10 @@ export class VistaService {
       });
 
     const { horasAsignables: _omitir, ...datosDocente } = docente;
-    return { docente: datosDocente, periodo, horas: { total, tope: tope > 0 ? tope : null }, franjas };
+    // Desglose solo de los grupos visibles: el id de un grupo reservado no sale (RN-07).
+    const horasPorGrupo = Object.fromEntries(
+      [...new Set(franjas.filter((f) => !f.reservada).map((f) => f.idGrupo as string))].map((id) => [id, porGrupo[id] ?? null]));
+    return { docente: datosDocente, periodo, horas: { total, tope: tope > 0 ? tope : null }, horasPorGrupo, franjas };
   }
 
   /** Buscador del filtro de disponibilidad: por cédula o nombre; sin texto, los que tienen franjas en el periodo. */
@@ -359,22 +362,34 @@ export class VistaService {
     idDocente: string, vinculacion: string | null,
     suyas: ReadonlyArray<{ idGrupo: string; codigoAsignatura: string }>, token: string | null,
   ): Promise<number | null> {
+    return (await this.horasPorGrupoDelDocente(idDocente, vinculacion, suyas, token)).total;
+  }
+
+  /** Igual, con el desglose por grupo (el portal muestra las horas de cada grupo asignado). */
+  private async horasPorGrupoDelDocente(
+    idDocente: string, vinculacion: string | null,
+    suyas: ReadonlyArray<{ idGrupo: string; codigoAsignatura: string }>, token: string | null,
+  ): Promise<{ total: number | null; porGrupo: Record<string, number | null> }> {
     const grupos = new Map<string, string>();
     for (const f of suyas) if (f.idGrupo) grupos.set(f.idGrupo, f.codigoAsignatura);
-    if (!grupos.size) return 0;
+    if (!grupos.size) return { total: 0, porGrupo: {} };
     const delGrupo: any[] = await this.dataSource.query(
       `SELECT id_grupo::text AS "idGrupo", dia_semana AS "diaSemana", id_docente::text AS "idDocente",
               to_char(hora_inicio,'HH24:MI') AS "horaInicio", to_char(hora_fin,'HH24:MI') AS "horaFin"
          FROM "academic-schedule".franja_horaria WHERE id_grupo = ANY($1::uuid[])`,
       [[...grupos.keys()]]);
     const horas = this.calculadorHoras(token);
-    let total = 0;
+    let total: number | null = 0;
+    const porGrupo: Record<string, number | null> = {};
     for (const [idGrupo, codigo] of grupos) {
       const h = await horas(codigo, vinculacion);
-      if (h == null) return null;
-      total += h * this.docencia.fraccion(delGrupo.filter((f) => f.idGrupo === idGrupo), idDocente);
+      // Sin contrato no hay horas: el grupo queda en null y el total también (no se suma a medias).
+      if (h == null) { porGrupo[idGrupo] = null; total = null; continue; }
+      const delDocente = h * this.docencia.fraccion(delGrupo.filter((f) => f.idGrupo === idGrupo), idDocente);
+      porGrupo[idGrupo] = redondear(delDocente);
+      if (total != null) total += delDocente;
     }
-    return redondear(total);
+    return { total: total == null ? null : redondear(total), porGrupo };
   }
 
   /** Horas por (asignatura, vinculación), con caché. Si el contrato no responde: null (la vista no se cae). */
