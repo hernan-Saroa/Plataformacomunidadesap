@@ -7,6 +7,7 @@ import { superaElTope, topeDeDocencia } from '../asignaciones/tope.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { buscarChoque, cargarFranjasCruceables } from '../horarios/choque.js';
 import { sqlPeriodoNoCerrado } from '../periodos/periodo-ref.js';
+import { MENSAJE_TOMA_DESHABILITADA, tomaDeFranjasHabilitada } from './flujo-docente.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -109,6 +110,8 @@ export class PortalDocenteService {
    * porque pasan a cruzar con una franja que el docente ya posee.
    */
   async disponibles(idPerson: string): Promise<FranjaPortal[]> {
+    // Flujo nuevo (EFDS-2348): no hay nada que tomar; la programación llega asignada.
+    if (!tomaDeFranjasHabilitada()) return [];
     // Dos clases: las PUBLICADA libres (por diseño sin id_docente) y las DEVUELTA
     // a ESTE docente (suyas para corregir, con el comentario de la jefatura). Una
     // devuelta a otro docente no aparece aquí.
@@ -155,6 +158,8 @@ export class PortalDocenteService {
    * posee (revalidado bajo el lock, no en el cliente).
    */
   async tomar(idPerson: string, idFranja: string, token: string | null): Promise<{ tomada: true }> {
+    // EFDS-2348: con el flujo nuevo se rechaza AQUÍ, no en el cliente: llamar la API directo tampoco toma.
+    if (!tomaDeFranjasHabilitada()) throw new ConflictException(MENSAJE_TOMA_DESHABILITADA);
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
@@ -258,6 +263,8 @@ export class PortalDocenteService {
    * jefatura la aprobó, deshacerla es decisión de la jefatura, no del docente.
    */
   async soltar(idPerson: string, idFranja: string): Promise<{ soltada: true }> {
+    // Soltar una asignada sería deshacer la decisión de la decanatura desde el portal.
+    if (!tomaDeFranjasHabilitada()) throw new ConflictException(MENSAJE_TOMA_DESHABILITADA);
     const filas = await this.dataSource.query(
       `SELECT estado, id_docente FROM "academic-schedule".franja_horaria WHERE id_franja = $1`,
       [idFranja],

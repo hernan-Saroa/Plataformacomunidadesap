@@ -6,6 +6,7 @@ import { ProgramacionPermissionsService } from '../auth/programacion-permissions
 import { PortalDocenteService } from './portal-docente.service.js';
 import { tokenDe } from '../acceso/token.js';
 import { EscrituraEn } from '../acceso/escritura.decorator.js';
+import { tomaDeFranjasHabilitada } from './flujo-docente.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -39,6 +40,16 @@ export class PortalDocenteController {
     if (!permisos.has(permiso)) {
       throw new ForbiddenException('No tiene acceso al portal de programación del docente.');
     }
+  }
+
+  /**
+   * GET /portal-docente/configuracion — qué flujo rige (EFDS-2348). Con
+   * `tomaFranjas: false` el docente recibe su programación asignada y no toma ni suelta.
+   */
+  @Get('configuracion')
+  async configuracion(@Req() req: Request) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    return { success: true, data: { tomaFranjas: tomaDeFranjasHabilitada() } };
   }
 
   /** GET /portal-docente/disponibles — franjas publicadas que puede tomar. */

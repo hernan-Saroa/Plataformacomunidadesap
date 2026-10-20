@@ -32,6 +32,15 @@ const conexion = {
 const S = 'academic-schedule';
 const DOCUMENTO = '1020304053'; // qa.docente (Docente del RUND de pruebas)
 
+// Flujo ANTERIOR (EFDS-1938): el docente toma y suelta. Sigue en el código detrás del
+// interruptor PROG_PORTAL_TOMA_FRANJAS (EFDS-2348); esta suite lo prueba encendido.
+const tomaAntes = process.env.PROG_PORTAL_TOMA_FRANJAS;
+beforeAll(() => { process.env.PROG_PORTAL_TOMA_FRANJAS = 'true'; });
+afterAll(() => {
+  if (tomaAntes === undefined) delete process.env.PROG_PORTAL_TOMA_FRANJAS;
+  else process.env.PROG_PORTAL_TOMA_FRANJAS = tomaAntes;
+});
+
 describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffice (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
