@@ -42,13 +42,14 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
  * si hay cambios sin versionar, como el borrador de la siguiente. La V1 nace con la
  * aprobación del plan y las demás con "Generar versión".
  */
-export async function exportarProgramaAnualVersionado(vigencia: number) {
+export async function exportarProgramaAnualVersionado(vigencia: number, { soloArchivo = false } = {}) {
   const version = await controlInternoService.resolverVersionProgramaAnual(vigencia);
   const resultado = await exportarAuditoriasTemplate(filasParaDocumento(version.filas), String(vigencia), {
     version: version.borrador || version.pendiente ? undefined : version.version,
     fechaVersion: version.borrador || version.pendiente ? undefined : version.fecha,
     borrador: !!version.borrador,
     borradorDe: version.pendiente ? version.version + 1 : undefined,
+    soloArchivo,
   });
   return {
     ...resultado,

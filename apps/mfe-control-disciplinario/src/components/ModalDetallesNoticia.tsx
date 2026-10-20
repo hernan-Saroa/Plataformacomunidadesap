@@ -78,7 +78,15 @@ interface ArchivoAdjunto {
   tamano: number;
   fechaSubida: string;
   url: string;
-  fullUrl: string;
+  fullUrl?: string;
+  seccion?: 'autos' | 'actas_evidencias' | 'soportes_queja';
+  categoria?: string;
+  subtitulo?: string;
+  esRemision?: boolean;
+  numeroAuto?: string;
+  tipoAutoDetalle?: string;
+  estadoAuto?: string;
+  contenidoHtml?: string;
 }
 
 export interface NoticiaCompleta {
@@ -97,18 +105,31 @@ export interface NoticiaCompleta {
   procesoAsociado?: {
     id: string;
     numeroProceso: string;
-    fechaAsociacion: string;
-    justificacion: string;
+    fechaAsociacion?: string;
+    justificacion?: string;
+    autos?: any[];
+    evidence?: any[];
+    pruebas?: any[];
   };
-  // Campos extendidos de creación
+  // Campos extendidos de creación y remisión
+  numeroRC?: string;
+  entidadRemision?: string;
+  descripcionRemision?: any;
+  adjuntos?: any;
+  soporteRadicadoUrl?: string;
+  autos?: any[];
+  evidencias?: any[];
   territorial?: string;
   fechaHechos?: string;
   cargo?: string;
   dependencia?: string;
+  dependenciaDenunciado?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
   conductas?: string[];
+  disciplinable?: any;
+  disciplinables?: any;
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: HechoSeparado[];
@@ -117,6 +138,287 @@ export interface NoticiaCompleta {
   fechaRegistro?: string;
   createdAt?: string;
 }
+
+// ✅ Helpers para compilar todos los archivos del expediente (Autos, Actas, Evidencias, Soportes de Queja)
+const limpiarNombreArchivo = (nombre?: string | null): string => {
+  if (!nombre || typeof nombre !== 'string') return '';
+  let limpio = nombre.trim();
+  if (limpio.includes('/') || limpio.includes('\\')) {
+    const lastPart = limpio.split(/[\/\\]/).pop();
+    if (lastPart && lastPart.includes('.')) {
+      limpio = lastPart;
+    }
+  }
+  limpio = limpio.replace(/^\d{10,}_(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})_/, '');
+  limpio = limpio.replace(/^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})_/, '');
+  limpio = limpio.replace(/^\d{10,14}_/, '');
+  return limpio;
+};
+
+const extraerFilename = (p: string): string => {
+  if (!p) return '';
+  const clean = p.replace(/\\/g, '/');
+  return clean.split('/').pop() || clean;
+};
+
+const inferirMimeType = (filename: string): string => {
+  const ext = (filename || '').split('.').pop()?.toLowerCase() || '';
+  if (ext === 'pdf') return 'application/pdf';
+  if (['docx', 'doc'].includes(ext)) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (['xlsx', 'xls'].includes(ext)) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  if (['mp4', 'webm', 'ogg', 'mov'].includes(ext)) return 'video/mp4';
+  if (['mp3', 'wav'].includes(ext)) return 'audio/mpeg';
+  return 'application/octet-stream';
+};
+
+const formatTipoAutoDetallado = (tipoRaw?: string): string => {
+  if (!tipoRaw) return 'Auto de Trámite Ordinario';
+  const t = tipoRaw.trim().toUpperCase();
+  if (t === 'AUTO_REMISION_COMPETENCIA' || t === 'AUTO_REMISION' || t.includes('REMISION') || t.includes('REMISIÓN')) {
+    return 'Auto de Remisión por Competencia';
+  }
+  if (t === 'AUTO_APERTURA_INVESTIGACION_DISCIPLINARIA' || t === 'AUTO_APERTURA_INVESTIGACION') {
+    return 'Auto de Apertura de Investigación Disciplinaria';
+  }
+  if (t === 'AUTO_INDAGACION_PRELIMINAR' || t === 'AUTO_APERTURA_INDAGACION' || t.includes('INDAGACION') || t.includes('INDAGACIÓN')) {
+    return 'Auto de Apertura de Indagación Previa';
+  }
+  if (t === 'AUTO_FORMULACION_PLIEGO' || t === 'PLIEGO_CARGOS' || t.includes('PLIEGO')) {
+    return 'Auto de Formulación de Pliego de Cargos';
+  }
+  if (t === 'AUTO_ARCHIVO' || t === 'AUTO_ARCHIVO_DEFINITIVO' || t.includes('ARCHIVO')) {
+    return 'Auto de Archivo Definitivo';
+  }
+  if (t === 'AUTO_PRORROGA' || t.includes('PRORROGA') || t.includes('PRÓRROGA')) {
+    return 'Auto de Prórroga';
+  }
+  if (t === 'AUTO_INHIBITORIO' || t.includes('INHIBITORIO')) {
+    return 'Auto Inhibitorio';
+  }
+  if (t === 'AUTO_CIERRE' || t.includes('CIERRE')) {
+    return 'Auto de Cierre de Investigación';
+  }
+  if (t === 'AUTO_NORMAL') {
+    return 'Auto de Trámite Ordinario';
+  }
+  return t.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+};
+
+interface DossierSections {
+  autos: ArchivoAdjunto[];
+  actasYEvidencias: ArchivoAdjunto[];
+  soportesQueja: ArchivoAdjunto[];
+  todos: ArchivoAdjunto[];
+}
+
+const compileDossier = (n: NoticiaCompleta): DossierSections => {
+  const autos: ArchivoAdjunto[] = [];
+  const actasYEvidencias: ArchivoAdjunto[] = [];
+  const soportesQueja: ArchivoAdjunto[] = [];
+  const seenUrls = new Set<string>();
+
+  // Parsear descripción remisión si viene como string
+  let descRem: any = n.descripcionRemision;
+  if (typeof descRem === 'string' && descRem.trim()) {
+    try {
+      descRem = JSON.parse(descRem);
+    } catch {
+      descRem = null;
+    }
+  }
+
+  // 1. AUTOS JURÍDICOS (incluido Auto de Remisión por Competencia)
+  const rawAutos: any[] = [
+    ...(n.procesoAsociado?.autos || []),
+    ...(Array.isArray(descRem?.autos) ? descRem.autos : []),
+    ...(Array.isArray(n.autos) ? n.autos : [])
+  ];
+
+  rawAutos.forEach((a, idx) => {
+    if (!a) return;
+
+    const tipoRaw = a.tipoAuto || a.tipo || a.autoType || '';
+    const esRemision = tipoRaw === 'AUTO_REMISION_COMPETENCIA' ||
+      tipoRaw === 'AUTO_REMISION' ||
+      tipoRaw.toLowerCase().includes('remisi') ||
+      Boolean(a.remisionAprobada);
+
+    const tipoAutoFormateado = formatTipoAutoDetallado(tipoRaw || (esRemision ? 'AUTO_REMISION_COMPETENCIA' : 'AUTO_NORMAL'));
+    const numeroAuto = a.numero || a.autoNumber || (typeof a.nombre === 'string' && a.nombre.match(/AUTO-\d+/i) ? a.nombre.match(/AUTO-\d+/i)[0] : '');
+
+    // Resolver el nombre de archivo sin caer en /preview ficticio
+    let fileBase = '';
+    const rawCandidate = a.firmaUrl || a.documentUrl || a.finalPdfPath || a.filePath || a.docxFilePath || a.url || '';
+    if (rawCandidate && typeof rawCandidate === 'string' && !rawCandidate.toLowerCase().endsWith('/preview') && rawCandidate.toLowerCase() !== 'preview') {
+      fileBase = extraerFilename(rawCandidate);
+    }
+
+    if (!fileBase || fileBase.toLowerCase() === 'preview') {
+      if (a.documentName && typeof a.documentName === 'string' && a.documentName.toLowerCase() !== 'preview') {
+        fileBase = a.documentName;
+      } else if (numeroAuto) {
+        fileBase = `${numeroAuto.trim()}.pdf`;
+      } else if (a.id) {
+        fileBase = `Auto_${tipoRaw || 'Juridico'}_${a.id}.pdf`;
+      }
+    }
+
+    const directUrl = fileBase ? `/files/${encodeURIComponent(fileBase)}` : '';
+    const urlKey = directUrl || `auto-${a.id || idx}`;
+    if (seenUrls.has(urlKey)) return;
+    seenUrls.add(urlKey);
+
+    // Título explícito que especifica Auto Jurídico y el Tipo de Auto
+    const displayName = numeroAuto
+      ? `Auto Jurídico ${numeroAuto} — ${tipoAutoFormateado}`
+      : `Auto Jurídico — ${tipoAutoFormateado}`;
+
+    const estadoAuto = a.estado ? String(a.estado).toUpperCase() : 'APROBADO';
+    const subtituloPartes = [
+      `Tipo: ${tipoAutoFormateado}`,
+      `Estado: ${estadoAuto}`
+    ];
+    if (a.entidadDestino || descRem?.entidadDestino || n.entidadRemision) {
+      subtituloPartes.push(`Destino: ${a.entidadDestino || descRem?.entidadDestino || n.entidadRemision}`);
+    }
+    if (a.stage || a.etapa) {
+      subtituloPartes.push(`Etapa: ${a.stage || a.etapa}`);
+    }
+
+    const tipoMime = inferirMimeType(fileBase || a.documentName || 'auto.pdf');
+
+    autos.push({
+      nombre: displayName,
+      tipo: tipoMime,
+      tamano: Number(a.tamano || a.fileSize || 0),
+      fechaSubida: a.createdAt || a.fecha || n.createdAt || '',
+      url: directUrl,
+      fullUrl: directUrl,
+      seccion: 'autos',
+      categoria: 'Auto Jurídico',
+      subtitulo: subtituloPartes.join(' · '),
+      esRemision,
+      numeroAuto: numeroAuto || undefined,
+      tipoAutoDetalle: tipoAutoFormateado,
+      estadoAuto,
+      contenidoHtml: a.contenido || a.contenidoHtml || undefined,
+    });
+  });
+
+  // 2. ACTAS, OFICIOS Y EVIDENCIAS DEL PROCESO
+  const rawEvidencias: any[] = [
+    ...(n.procesoAsociado?.evidence || []),
+    ...(Array.isArray(descRem?.actasYEvidencias) ? descRem.actasYEvidencias : []),
+    ...(Array.isArray(n.evidencias) ? n.evidencias : []),
+    ...(n.procesoAsociado?.pruebas || [])
+  ];
+
+  rawEvidencias.forEach((e, idx) => {
+    if (!e) return;
+    const rawFile = e.fileUrl || e.filePath || e.fileName || e.originalName || e.url || '';
+    const fileBase = extraerFilename(rawFile);
+    const directUrl = fileBase ? `/files/${encodeURIComponent(fileBase)}` : (typeof rawFile === 'string' && rawFile.startsWith('http') ? rawFile : '');
+    const urlKey = directUrl || `evid-${e.id || idx}`;
+    if (seenUrls.has(urlKey)) return;
+    seenUrls.add(urlKey);
+
+    const nombre = limpiarNombreArchivo(e.originalName || e.fileName || e.nombre || `Documento ${idx + 1}`);
+    const tipo = e.fileType || e.tipo || inferirMimeType(nombre);
+
+    actasYEvidencias.push({
+      nombre,
+      tipo,
+      tamano: Number(e.fileSize || e.tamano || 0),
+      fechaSubida: e.createdAt || e.fechaSubida || '',
+      url: directUrl,
+      fullUrl: directUrl,
+      seccion: 'actas_evidencias',
+      categoria: e.category || e.categoria || 'Acta / Evidencia',
+      subtitulo: e.description || e.descripcion || e.category || 'Evidencia del proceso'
+    });
+  });
+
+  // 3. SOPORTES INICIALES DE LA QUEJA
+  if (Array.isArray(n.archivosAdjuntos)) {
+    n.archivosAdjuntos.forEach((adj, idx) => {
+      if (!adj) return;
+      const directUrl = adj.url || adj.fullUrl || '';
+      const urlKey = directUrl || `soporte-${idx}`;
+      if (seenUrls.has(urlKey)) return;
+      seenUrls.add(urlKey);
+
+      soportesQueja.push({
+        ...adj,
+        nombre: limpiarNombreArchivo(adj.nombre),
+        seccion: 'soportes_queja',
+        categoria: 'Soporte de Queja',
+        subtitulo: 'Anexo presentado con la noticia disciplinaria'
+      });
+    });
+  }
+
+  let rawAdjuntosArray: any[] = [];
+  if (Array.isArray(n.adjuntos)) {
+    rawAdjuntosArray = n.adjuntos;
+  } else if (typeof n.adjuntos === 'string' && n.adjuntos.trim()) {
+    try {
+      const parsed = JSON.parse(n.adjuntos);
+      if (Array.isArray(parsed)) rawAdjuntosArray = parsed;
+    } catch {
+      rawAdjuntosArray = [n.adjuntos];
+    }
+  }
+
+  rawAdjuntosArray.forEach((item, idx) => {
+    if (!item) return;
+    const strPath = typeof item === 'string' ? item : (item.url || item.filePath || item.fileName || item.nombre || '');
+    const fileBase = extraerFilename(strPath);
+    if (!fileBase) return;
+    const directUrl = `/files/${encodeURIComponent(fileBase)}`;
+    if (seenUrls.has(directUrl)) return;
+    seenUrls.add(directUrl);
+
+    const nombre = limpiarNombreArchivo(typeof item === 'object' ? (item.nombre || item.name || fileBase) : fileBase);
+    soportesQueja.push({
+      nombre,
+      tipo: (typeof item === 'object' && item.tipo) ? item.tipo : inferirMimeType(nombre),
+      tamano: typeof item === 'object' ? Number(item.tamano || item.size || 0) : 0,
+      fechaSubida: (typeof item === 'object' && item.fechaSubida) ? item.fechaSubida : (n.fechaRegistro || n.createdAt || ''),
+      url: directUrl,
+      fullUrl: directUrl,
+      seccion: 'soportes_queja',
+      categoria: 'Soporte de Queja',
+      subtitulo: 'Anexo presentado con la noticia disciplinaria'
+    });
+  });
+
+  if (n.soporteRadicadoUrl) {
+    const fileBase = extraerFilename(n.soporteRadicadoUrl);
+    const directUrl = fileBase ? `/files/${encodeURIComponent(fileBase)}` : n.soporteRadicadoUrl;
+    if (!seenUrls.has(directUrl)) {
+      seenUrls.add(directUrl);
+      soportesQueja.push({
+        nombre: 'Soporte Oficial de Radicación.pdf',
+        tipo: 'application/pdf',
+        tamano: 0,
+        fechaSubida: n.fechaRecepcion || n.fechaRegistro || '',
+        url: directUrl,
+        fullUrl: directUrl,
+        seccion: 'soportes_queja',
+        categoria: 'Soporte de Radicación',
+        subtitulo: 'Comprobante de radicado oficial'
+      });
+    }
+  }
+
+  return {
+    autos,
+    actasYEvidencias,
+    soportesQueja,
+    todos: [...autos, ...actasYEvidencias, ...soportesQueja]
+  };
+};
 
 interface ModalDetallesNoticiaProps {
   noticia: NoticiaCompleta;
@@ -149,6 +451,89 @@ interface HistorialEntry {
 
 const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apoderado?.email || '';
 const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
+
+const normalizePersona = (d: any): any => {
+  if (!d) return null;
+  if (typeof d === 'string') return { nombre: d, identificacion: '', cargo: '', lugarHechos: '' };
+  return {
+    ...d,
+    id: d.id || d.cedula || d.identificacion || d.numeroIdentificacion || '',
+    nombre: d.nombre || d.name || 'Sin información',
+    identificacion: d.identificacion || d.cedula || d.numeroIdentificacion || '',
+    cargo: d.cargo || '',
+    lugarHechos: d.lugarHechos || d.dependencia || '',
+    dependencia: d.dependencia || d.lugarHechos || '',
+    correo: d.correo || d.email || '',
+    email: d.email || d.correo || '',
+    telefono: d.telefono || d.celular || '',
+    direccion: d.direccion || '',
+    entidad: d.entidad || '',
+    tipo: d.tipo || 'Denunciante',
+    apoderado: d.apoderado ? {
+      ...d.apoderado,
+      nombre: d.apoderado.nombre || '',
+      cedula: d.apoderado.cedula || d.apoderado.identificacion || '',
+      correo: d.apoderado.correo || d.apoderado.email || '',
+      email: d.apoderado.email || d.apoderado.correo || '',
+      celular: d.apoderado.celular || d.apoderado.telefono || '',
+      telefono: d.apoderado.telefono || d.apoderado.celular || '',
+      direccion: d.apoderado.direccion || ''
+    } : undefined
+  };
+};
+
+const normalizePersonaList = (rawSingle: any, rawPlural: any): any[] => {
+  const source = rawPlural && (Array.isArray(rawPlural) ? rawPlural.length > 0 : true)
+    ? rawPlural
+    : rawSingle;
+  if (!source) return [];
+  if (Array.isArray(source)) {
+    return source.map(normalizePersona).filter(Boolean);
+  }
+  if (typeof source === 'object') {
+    const norm = normalizePersona(source);
+    return norm ? [norm] : [];
+  }
+  if (typeof source === 'string') {
+    try {
+      const parsed = JSON.parse(source);
+      return normalizePersonaList(parsed, null);
+    } catch {
+      return [{ nombre: source, identificacion: '', cargo: '', lugarHechos: '' }];
+    }
+  }
+  return [];
+};
+
+const ORIGEN_LABELS: Record<string, string> = {
+  ANONIMO: 'Anónimo',
+  QUEJOSO: 'Quejoso',
+  OFICIO: 'De oficio',
+  REMISION: 'Remisión por competencia',
+  POR_DETERMINAR: 'Por determinar',
+  'Anónimo': 'Anónimo',
+  'Quejoso': 'Quejoso',
+  'Informante': 'Informante',
+  'De oficio': 'De oficio',
+  'Remisión por competencia': 'Remisión por competencia',
+  'Por determinar': 'Por determinar',
+};
+
+const formatOrigenLabel = (origen?: string | null): string => {
+  if (!origen) return '—';
+  const clean = String(origen).trim();
+  if (ORIGEN_LABELS[clean]) return ORIGEN_LABELS[clean];
+  const s = clean.toUpperCase();
+  if (ORIGEN_LABELS[s]) return ORIGEN_LABELS[s];
+  const norm = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('REMISI') || norm.includes('COMPETENC')) return 'Remisión por competencia';
+  if (norm.includes('ANONIM')) return 'Anónimo';
+  if (norm.includes('QUEJ')) return 'Quejoso';
+  if (norm.includes('INFORMANT')) return 'Informante';
+  if (norm.includes('OFICIO')) return 'De oficio';
+  if (norm.includes('DETERMINAR')) return 'Por determinar';
+  return clean;
+};
 
 // ═══════════════════════════════════════════════════════════════
 // UTILIDADES DE FECHA - Parseo local para fechas sin timezone
@@ -190,9 +575,10 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const [tabActiva, setTabActiva] = useState<TabNoticia>('general');
   const [viewingFile, setViewingFile] = useState<ArchivoAdjunto | null>(null);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
-  
-  // ✅ Validación defensiva: asegurar que noticia existe y tiene la estructura esperada
-  const n = noticia || {
+  const [fullNoticia, setFullNoticia] = useState<any>(null);
+
+  // ✅ Combinar props con datos frescos del backend si están disponibles
+  const baseNoticia = noticia || {
     id: '',
     numero: '',
     fechaRecepcion: '',
@@ -202,9 +588,38 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     hechos: '',
     estado: 'pendiente',
     prioridad: 'media',
-    conduta: '',
+    conducta: '',
     diasPendientes: 0,
     tipo: 'noticia'
+  };
+
+  const n = {
+    ...baseNoticia,
+    ...(fullNoticia || {}),
+    // Asegurar que campos clave respeten nombres de frontend y backend
+    numero: fullNoticia?.radicado || fullNoticia?.numero || baseNoticia.numero,
+    fechaQueja: fullNoticia?.fechaQueja || baseNoticia.fechaQueja,
+    fechaRecepcion: fullNoticia?.fechaRecepcion || baseNoticia.fechaRecepcion,
+    fechaHechos: fullNoticia?.fechaHechos || baseNoticia.fechaHechos,
+    territorial: fullNoticia?.territorial || baseNoticia.territorial,
+    dependenciaDenunciado: fullNoticia?.dependenciaDenunciado || (baseNoticia as any).dependenciaDenunciado,
+    hechos: fullNoticia?.hechos || baseNoticia.hechos,
+    origen: fullNoticia?.origen || baseNoticia.origen,
+    denunciante: fullNoticia?.denunciante ?? baseNoticia.denunciante,
+    denunciantes: fullNoticia?.denunciantes ?? fullNoticia?.denunciante ?? baseNoticia.denunciantes,
+    denunciado: fullNoticia?.disciplinable ?? fullNoticia?.denunciado ?? baseNoticia.denunciado,
+    denunciados: fullNoticia?.disciplinables ?? fullNoticia?.disciplinable ?? baseNoticia.denunciados,
+    disciplinable: fullNoticia?.disciplinable ?? (baseNoticia as any).disciplinable,
+    conductas: fullNoticia?.conductas || baseNoticia.conductas,
+    conducta: fullNoticia?.conducta || baseNoticia.conducta,
+    numeroRC: fullNoticia?.numeroRC || (baseNoticia as any).numeroRC,
+    entidadRemision: fullNoticia?.entidadRemision || (baseNoticia as any).entidadRemision,
+    descripcionRemision: fullNoticia?.descripcionRemision || (baseNoticia as any).descripcionRemision,
+    procesoAsociado: fullNoticia?.procesoAsociado || (baseNoticia as any).procesoAsociado,
+    adjuntos: fullNoticia?.adjuntos || (baseNoticia as any).adjuntos,
+    soporteRadicadoUrl: fullNoticia?.soporteRadicadoUrl || (baseNoticia as any).soporteRadicadoUrl,
+    autos: fullNoticia?.autos || (baseNoticia as any).autos,
+    evidencias: fullNoticia?.evidencias || (baseNoticia as any).evidencias,
   };
 
   // ✅ Historial de auditoría — se trae aparte porque no viene en el objeto
@@ -214,14 +629,17 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const [historialError, setHistorialError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!n.id) return;
+    if (!baseNoticia.id) return;
     let cancelled = false;
     setHistorialLoading(true);
     setHistorialError(null);
-    disciplinaryService.getNoticiaById(n.id)
+    disciplinaryService.getNoticiaById(baseNoticia.id)
       .then((data) => {
         if (cancelled) return;
-        setHistorial(data?.historialAuditoria || []);
+        if (data) {
+          setFullNoticia(data);
+          setHistorial(data.historialAuditoria || []);
+        }
       })
       .catch((error: any) => {
         if (cancelled) return;
@@ -232,7 +650,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
         if (!cancelled) setHistorialLoading(false);
       });
     return () => { cancelled = true; };
-  }, [n.id]);
+  }, [baseNoticia.id]);
 
   // ✅ EFDS-1562 — Actuaciones registradas contra la noticia (desde radicación).
   const [actuaciones, setActuaciones] = useState<ActuacionNoticia[]>([]);
@@ -268,24 +686,27 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE,
   );
 
-  // Extraer datos de persona (compatibilidad con formato string o Persona)
+  const denunciadosList = normalizePersonaList(n.disciplinable || n.denunciado, n.disciplinables || n.denunciados);
+  const denunciantesList = normalizePersonaList(n.denunciante, n.denunciantes);
+
+  // Extraer datos de persona (compatibilidad con formato string, objeto único o array)
   const getDenuncianteNombre = () => {
-    if (typeof n.denunciante === 'string') return n.denunciante || 'Sin información';
-    return n.denunciante?.nombre || 'Sin información';
+    return denunciantesList[0]?.nombre || 'Sin información';
   };
   const getDenunciadoNombre = () => {
-    if (typeof n.denunciado === 'string') return n.denunciado || 'Sin información';
-    return n.denunciado?.nombre || 'Sin información';
+    return denunciadosList[0]?.nombre || 'Sin información';
   };
   const getDenunciadoId = () => {
-    if (typeof n.denunciado !== 'string' && n.denunciado?.numeroIdentificacion) {
-      return `${n.denunciado.tipoIdentificacion || 'CC'}: ${n.denunciado.numeroIdentificacion}`;
+    const d = denunciadosList[0];
+    if (d?.identificacion) {
+      return `${d.tipoIdentificacion || 'CC'}: ${d.identificacion}`;
     }
     return '';
   };
   const getDenuncianteId = () => {
-    if (typeof n.denunciante !== 'string' && n.denunciante?.numeroIdentificacion) {
-      return `${n.denunciante.tipoIdentificacion || 'CC'}: ${n.denunciante.numeroIdentificacion}`;
+    const d = denunciantesList[0];
+    if (d?.identificacion) {
+      return `${d.tipoIdentificacion || 'CC'}: ${d.identificacion}`;
     }
     return '';
   };
@@ -308,11 +729,12 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const estadoValue = n.estado || 'pendiente';
   const em = estadoMeta[estadoValue] || estadoMeta.pendiente;
 
-  // Conteos para badges en tabs
-  const cantDenunciados = n.denunciado?.length || (n.denunciado ? 1 : 0);
-  const cantDenunciantes = n.denunciante?.length || (n.denunciante ? 1 : 0);
+  // Conteos para badges en tabs y compilación del dossier completo (Autos, Actas/Evidencias, Queja)
+  const cantDenunciados = denunciadosList.length;
+  const cantDenunciantes = denunciantesList.length;
   const cantHechos = n.hechosSeparados?.length || (n.hechos ? 1 : 0);
-  const cantAdjuntos = n.archivosAdjuntos?.length || 0;
+  const dossier = compileDossier(n);
+  const cantAdjuntos = dossier.todos.length;
 
   const tabs: { id: TabNoticia; label: string; icon: any; count?: number }[] = [
     { id: 'general', label: 'General', icon: FileText },
@@ -416,17 +838,16 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               <span className="text-sm font-bold text-gray-900 truncate">{nombre}</span>
             </div>
             <div className="flex items-center gap-2">
-              {onDownload && (
-                <button
-                  onClick={() => {
-                    closeFileViewer();
-                    onDownload(viewingFile.url, nombre);
-                  }}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
-                >
-                  Descargar
-                </button>
-              )}
+              <button
+                onClick={async () => {
+                  if (viewingFile) {
+                    await handleDownloadFileDirecto(viewingFile);
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+              >
+                Descargar
+              </button>
               <button
                 onClick={closeFileViewer}
                 className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
@@ -468,17 +889,16 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                   <FileText className="w-16 h-16 text-gray-300 mb-4" />
                   <p className="text-lg font-bold text-gray-600 mb-2">No se puede previsualizar este tipo de archivo</p>
                   <p className="text-sm text-gray-500 mb-4">Formato no soportado: {tipo || 'desconocido'}</p>
-                  {onDownload && (
                   <button
-                    onClick={() => {
-                      closeFileViewer();
-                      onDownload(viewingFile.url, nombre);
+                    onClick={async () => {
+                      if (viewingFile) {
+                        await handleDownloadFileDirecto(viewingFile);
+                      }
                     }}
                     className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
                   >
                     Descargar
                   </button>
-                  )}
                 </div>
               )}
             </>
@@ -498,67 +918,214 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     setFileBlobUrl(null);
   };
 
+  const handleDownloadFileDirecto = async (archivo: ArchivoAdjunto) => {
+    const rawUrl = archivo.url || (archivo as any).fullUrl || '';
+    const cleanFilename = archivo.nombre.endsWith('.pdf') || archivo.nombre.endsWith('.html') || archivo.nombre.endsWith('.docx')
+      ? archivo.nombre
+      : `${archivo.nombre}.pdf`;
+
+    // 1. Probar onDownload si existe y la URL no contiene 'preview' ficticio
+    if (onDownload && rawUrl && !rawUrl.toLowerCase().includes('/preview') && rawUrl.toLowerCase() !== 'preview') {
+      try {
+        await onDownload(rawUrl, cleanFilename);
+        return;
+      } catch (err) {
+        console.warn('[ModalDetallesNoticia] onDownload falló, usando descarga directa de fallback:', err);
+      }
+    }
+
+    // 2. Probar fetch directo de la URL
+    try {
+      if (rawUrl && !rawUrl.toLowerCase().includes('/preview') && rawUrl.toLowerCase() !== 'preview') {
+        const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(rawUrl);
+        const res = await fetch(absoluteUrl, { credentials: 'include' });
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = cleanFilename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+          return;
+        }
+      }
+
+      // 3. Fallback a contenido HTML si el archivo físico no estuvo disponible
+      if (archivo.contenidoHtml) {
+        const docHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${archivo.nombre}</title>
+            <style>
+              body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; line-height: 1.6; color: #111; max-width: 850px; margin: 0 auto; background: #fff; }
+              .header { text-align: center; border-bottom: 2px solid #001A6E; padding-bottom: 12px; margin-bottom: 24px; }
+              .header h2 { margin: 0; color: #001A6E; font-size: 16px; font-weight: 800; }
+              .header p { margin: 4px 0 0; color: #555; font-size: 13px; font-weight: 600; }
+              .content { font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h2>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h2>
+              <p>OFICINA DE CONTROL DISCIPLINARIO INTERNO</p>
+            </div>
+            <div class="content">
+              ${archivo.contenidoHtml}
+            </div>
+          </body>
+          </html>
+        `;
+        const blob = new Blob([docHtml], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = cleanFilename.replace(/\.pdf$/i, '.html');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+    } catch (err) {
+      console.error('[ModalDetallesNoticia] Error descargando archivo:', err);
+      if (rawUrl && !rawUrl.toLowerCase().includes('/preview')) {
+        window.open(disciplinaryService.getAbsoluteFileUrl(rawUrl), '_blank');
+      }
+    }
+  };
+
   const handleViewFile = async (archivo: ArchivoAdjunto) => {
     setViewingFile(archivo);
     setFileBlobUrl(null);
     try {
-      const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(archivo.url || (archivo as any).fullUrl || '');
-      const response = await fetch(absoluteUrl, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load file');
-      let blob = await response.blob();
-      const tipo = archivo.tipo || '';
+      const rawUrl = archivo.url || (archivo as any).fullUrl || '';
 
-      // Soporte para previsualización de DOCX igual que evidencias (usando mammoth)
-      const isDocx = (archivo.nombre || '').toLowerCase().endsWith('.docx') || tipo.includes('word') || tipo.includes('docx');
-      if (isDocx) {
-        try {
-          const arrayBuffer = await blob.arrayBuffer();
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          const htmlContent = result.value;
-          const docxHtml = `
-            <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
-              <style>
-                .docx-content { max-width: 800px; margin: 0 auto; }
-                .docx-content p { margin-bottom: 10px; line-height: 1.5; }
-                .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
-                .docx-content ul, .docx-content ol { margin-left: 20px; }
-                .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-                .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
-                .docx-content th { background-color: #f5f5f5; }
-              </style>
-              <div class="docx-content">
-                ${htmlContent}
-              </div>
+      // Si la URL es inválida o /preview ficticio y hay contenidoHtml disponible, mostrarlo inmediatamente
+      if ((!rawUrl || rawUrl.toLowerCase().includes('/preview') || rawUrl.toLowerCase() === 'preview') && archivo.contenidoHtml) {
+        const docHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; line-height: 1.6; color: #111; max-width: 850px; margin: 0 auto; background: #fff; }
+              .header { text-align: center; border-bottom: 2px solid #001A6E; padding-bottom: 12px; margin-bottom: 24px; }
+              .header h2 { margin: 0; color: #001A6E; font-size: 16px; font-weight: 800; }
+              .header p { margin: 4px 0 0; color: #555; font-size: 13px; font-weight: 600; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h2>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h2>
+              <p>OFICINA DE CONTROL DISCIPLINARIO INTERNO · EXPEDIENTE OFICIAL</p>
             </div>
-          `;
-          blob = new Blob([docxHtml], { type: 'text/html' });
-        } catch (convErr) {
-          console.error('Error convirtiendo DOCX para preview en noticia:', convErr);
-        }
-      } else {
-        // Asignar tipo MIME explícito para PDFs e imágenes
-        const isPdf = tipo.includes('pdf') || (archivo.nombre || '').toLowerCase().endsWith('.pdf');
-        const isImage = tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(archivo.nombre || '');
-        if (isPdf && blob.type !== 'application/pdf') {
-          blob = blob.slice(0, blob.size, 'application/pdf');
-        } else if (isImage && blob.type.startsWith('application/')) {
-          const ext = (archivo.nombre || '').split('.').pop()?.toLowerCase() || '';
-          const mimeMap: Record<string, string> = {
-            jpg: 'image/jpeg',
-            jpeg: 'image/jpeg',
-            png: 'image/png',
-            gif: 'image/gif',
-            webp: 'image/webp',
-            svg: 'image/svg+xml'
-          };
-          blob = blob.slice(0, blob.size, mimeMap[ext] || 'image/png');
+            ${archivo.contenidoHtml}
+          </body>
+          </html>
+        `;
+        const htmlBlob = new Blob([docHtml], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(htmlBlob);
+        setFileBlobUrl(blobUrl);
+        return;
+      }
+
+      if (rawUrl && !rawUrl.toLowerCase().includes('/preview') && rawUrl.toLowerCase() !== 'preview') {
+        const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(rawUrl);
+        const response = await fetch(absoluteUrl, {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          let blob = await response.blob();
+          const tipo = archivo.tipo || '';
+
+          // Soporte para previsualización de DOCX igual que evidencias (usando mammoth)
+          const isDocx = (archivo.nombre || '').toLowerCase().endsWith('.docx') || tipo.includes('word') || tipo.includes('docx');
+          if (isDocx) {
+            try {
+              const arrayBuffer = await blob.arrayBuffer();
+              const result = await mammoth.convertToHtml({ arrayBuffer });
+              const htmlContent = result.value;
+              const docxHtml = `
+                <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+                  <style>
+                    .docx-content { max-width: 800px; margin: 0 auto; }
+                    .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                    .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                    .docx-content ul, .docx-content ol { margin-left: 20px; }
+                    .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                    .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                    .docx-content th { background-color: #f5f5f5; }
+                  </style>
+                  <div class="docx-content">
+                    ${htmlContent}
+                  </div>
+                </div>
+              `;
+              blob = new Blob([docxHtml], { type: 'text/html' });
+            } catch (convErr) {
+              console.error('Error convirtiendo DOCX para preview en noticia:', convErr);
+            }
+          } else {
+            // Asignar tipo MIME explícito para PDFs e imágenes
+            const isPdf = tipo.includes('pdf') || (archivo.nombre || '').toLowerCase().endsWith('.pdf');
+            const isImage = tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(archivo.nombre || '');
+            if (isPdf && blob.type !== 'application/pdf') {
+              blob = blob.slice(0, blob.size, 'application/pdf');
+            } else if (isImage && blob.type.startsWith('application/')) {
+              const ext = (archivo.nombre || '').split('.').pop()?.toLowerCase() || '';
+              const mimeMap: Record<string, string> = {
+                jpg: 'image/jpeg',
+                jpeg: 'image/jpeg',
+                png: 'image/png',
+                gif: 'image/gif',
+                webp: 'image/webp',
+                svg: 'image/svg+xml'
+              };
+              blob = blob.slice(0, blob.size, mimeMap[ext] || 'image/png');
+            }
+          }
+
+          const blobUrl = URL.createObjectURL(blob);
+          setFileBlobUrl(blobUrl);
+          return;
         }
       }
 
-      const blobUrl = URL.createObjectURL(blob);
-      setFileBlobUrl(blobUrl);
+      // Si fetch no fue ok pero tenemos contenidoHtml, fallback limpio
+      if (archivo.contenidoHtml) {
+        const docHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; line-height: 1.6; color: #111; max-width: 850px; margin: 0 auto; background: #fff; }
+              .header { text-align: center; border-bottom: 2px solid #001A6E; padding-bottom: 12px; margin-bottom: 24px; }
+              .header h2 { margin: 0; color: #001A6E; font-size: 16px; font-weight: 800; }
+              .header p { margin: 4px 0 0; color: #555; font-size: 13px; font-weight: 600; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h2>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h2>
+              <p>OFICINA DE CONTROL DISCIPLINARIO INTERNO · EXPEDIENTE OFICIAL</p>
+            </div>
+            ${archivo.contenidoHtml}
+          </body>
+          </html>
+        `;
+        const htmlBlob = new Blob([docHtml], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(htmlBlob);
+        setFileBlobUrl(blobUrl);
+        return;
+      }
+
+      throw new Error('Failed to load file');
     } catch (error) {
       console.error('Error loading file:', error);
       closeFileViewer();
@@ -613,7 +1180,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 </span>
               </div>
               <p className="text-[11px] text-blue-200 mt-0.5 truncate">
-                {n.origen} · {getDenunciadoNombre()}
+                {formatOrigenLabel(n.origen)} · {getDenunciadoNombre()}
               </p>
             </div>
           </div>
@@ -664,6 +1231,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               getDenunciadoNombre={getDenunciadoNombre}
               getDenuncianteId={getDenuncianteId}
               getDenunciadoId={getDenunciadoId}
+              onVerAdjuntos={() => setTabActiva('adjuntos')}
             />
           )}
           {tabActiva === 'personas' && (
@@ -676,7 +1244,16 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             />
           )}
           {tabActiva === 'hechos' && <TabHechos n={n} />}
-           {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={handleViewFile} />}
+           {tabActiva === 'adjuntos' && (
+             <TabAdjuntos
+               n={n}
+               dossier={dossier}
+               formatFileSize={formatFileSize}
+               onDownload={onDownload}
+               onDownloadFileDirecto={handleDownloadFileDirecto}
+               onView={handleViewFile}
+             />
+           )}
            {tabActiva === 'actuaciones' && (
              <TabActuaciones
                noticiaId={n.id}
@@ -743,7 +1320,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
 function TabGeneral({
   n, pm, em, fechaCaducidad,
   cantAdjuntos,
-  getDenuncianteNombre, getDenunciadoNombre, getDenuncianteId, getDenunciadoId
+  getDenuncianteNombre, getDenunciadoNombre, getDenuncianteId, getDenunciadoId,
+  onVerAdjuntos
 }: {
   n: NoticiaCompleta;
   pm: any; em: any;
@@ -753,14 +1331,13 @@ function TabGeneral({
   getDenunciadoNombre: () => string;
   getDenuncianteId: () => string;
   getDenunciadoId: () => string;
-
-  
+  onVerAdjuntos?: () => void;
 }) {
 
 
   // Preparar datos de personas para mostrar al inicio
-  let denunciados = n.denunciado && n.denunciado.length > 0 ? n.denunciado : [];
-  let denunciantes = n.denunciante && n.denunciante.length > 0 ? n.denunciante : [];
+  const denunciados = normalizePersonaList(n.disciplinable || n.denunciado, n.disciplinables || n.denunciados);
+  const denunciantes = normalizePersonaList(n.denunciante, n.denunciantes);
 
   
 
@@ -891,9 +1468,9 @@ function TabGeneral({
 <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
             {[
               { label: 'NÚMERO', value: n.numero },
-              { label: 'ORIGEN', value: n.origen || '—' },
+              { label: 'ORIGEN', value: formatOrigenLabel(n.origen) },
               { label: 'FECHA RECEPCIÓN', value: formatFechaLocal(n.fechaRecepcion) },
-              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.createdAt || n.fechaQueja || n.fechaRegistro) },
+              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.fechaQueja || n.fechaRecepcion || n.fechaRegistro || n.createdAt) },
             ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
@@ -975,6 +1552,50 @@ function TabGeneral({
 
 
 
+      {/* Remisión por competencia si aplica */}
+      {(n.estado === 'remitida' || Boolean(n.numeroRC) || Boolean(n.entidadRemision)) && (
+        <div className="rounded-xl border-2 border-purple-300 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-purple-50 p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-purple-600 flex items-center justify-center text-white flex-shrink-0 mt-0.5 shadow-sm">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xs font-black text-purple-900 uppercase tracking-wider">
+                    Expediente Remitido por Competencia
+                  </h3>
+                  {n.numeroRC && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-200 text-purple-900">
+                      RC: {n.numeroRC}
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">
+                    Auto Aprobado
+                  </span>
+                </div>
+                <p className="text-xs text-purple-950 font-bold mt-1">
+                  Entidad receptora: {n.entidadRemision || n.descripcionRemision?.entidadDestino || 'Entidad competente'}
+                </p>
+                <p className="text-[11px] text-purple-700 mt-0.5 leading-relaxed">
+                  Se conservan todos los documentos oficiales generados (Autos, Actas y Evidencias) y los soportes iniciales de la queja.
+                </p>
+              </div>
+            </div>
+            {onVerAdjuntos && (
+              <button
+                type="button"
+                onClick={onVerAdjuntos}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors shadow-sm ml-auto"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                Ver Documentos ({cantAdjuntos})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Hechos (resumen) */}
       {n.hechos && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -1024,8 +1645,8 @@ function TabPersonas({
   getDenunciadoId: () => string;
 }) {
   // Preparar datos de personas para mostrar al inicio
-  let denunciados = n.denunciado && n.denunciado.length > 0 ? n.denunciado : [];
-  let denunciantes = n.denunciante && n.denunciante.length > 0 ? n.denunciante : [];
+  const denunciados = normalizePersonaList(n.disciplinable || n.denunciado, n.disciplinables || n.denunciados);
+  const denunciantes = normalizePersonaList(n.denunciante, n.denunciantes);
 
   return (
     <div className="space-y-5">
@@ -1038,55 +1659,79 @@ function TabPersonas({
           </h3>
         </div>
         <div className="space-y-3">
-          {denunciados.map((d, idx) => (
-            <div key={d.id || idx} className="rounded-xl border-2 border-orange-200 bg-orange-50/30 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
-                  style={{ backgroundColor: '#EA580C' }}>
-                  {idx + 1}
+          {denunciados.length > 0 ? (
+            denunciados.map((d, idx) => (
+              <div key={d.id || idx} className="rounded-xl border-2 border-orange-200 bg-orange-50/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
+                    style={{ backgroundColor: '#EA580C' }}>
+                    {idx + 1}
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
+                    {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
-                  {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {d.cargo && (
+                    <div className="flex items-start gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.lugarHechos && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Lugar de Hechos / Dependencia</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.lugarHechos}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.correo && (
+                    <div className="flex items-start gap-2">
+                      <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Correo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.correo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.telefono && (
+                    <div className="flex items-start gap-2">
+                      <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Teléfono</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.telefono}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {d.cargo && (
-                  <div className="flex items-start gap-2">
-                    <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
+                {d.apoderado && (
+                  <div className="mt-3 pt-3 border-t border-orange-200">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Scale className="w-3.5 h-3.5 text-orange-600" />
+                      <span className="text-[10px] font-bold text-orange-600 uppercase">Apoderado</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                      <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
                     </div>
                   </div>
                 )}
-                {d.lugarHechos && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Lugar de Hechos</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.lugarHechos}</p>
-                    </div>
-                  </div>
-                )}
               </div>
-               {d.apoderado && (
-                 <div className="mt-3 pt-3 border-t border-orange-200">
-                   <div className="flex items-center gap-1.5 mb-2">
-                     <Scale className="w-3.5 h-3.5 text-orange-600" />
-                     <span className="text-[10px] font-bold text-orange-600 uppercase">Apoderado</span>
-                   </div>
-                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                     <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
-                   </div>
-                 </div>
-               )}
+            ))
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-center">
+              <p className="text-sm text-gray-500 italic">No hay información de disciplinados registrada</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
@@ -1099,91 +1744,97 @@ function TabPersonas({
           </h3>
         </div>
         <div className="space-y-3">
-          {denunciantes.map((d, idx) => (
-            <div key={d.id || idx} className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
-                  style={{ backgroundColor: '#003DA5' }}>
-                  {idx + 1}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
-                    {'tipo' in d && d.tipo && (
-                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                        d.tipo === 'Víctima' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {d.tipo}
-                      </span>
-                    )}
+          {denunciantes.length > 0 ? (
+            denunciantes.map((d, idx) => (
+              <div key={d.id || idx} className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
+                    style={{ backgroundColor: '#003DA5' }}>
+                    {idx + 1}
                   </div>
-                  {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
+                      {'tipo' in d && d.tipo && (
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                          d.tipo === 'Víctima' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {d.tipo}
+                        </span>
+                      )}
+                    </div>
+                    {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                  </div>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {d.correo && (
+                    <div className="flex items-start gap-2">
+                      <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Correo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.correo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.telefono && (
+                    <div className="flex items-start gap-2">
+                      <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Teléfono</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.telefono}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.direccion && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Dirección</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.direccion}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.cargo && (
+                    <div className="flex items-start gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.entidad && (
+                    <div className="flex items-start gap-2">
+                      <Building2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Entidad</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.entidad}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {d.apoderado && (
+                  <div className="mt-3 pt-3 border-t border-blue-200">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Scale className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-[10px] font-bold text-blue-600 uppercase">Apoderado</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                      <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {d.correo && (
-                  <div className="flex items-start gap-2">
-                    <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Correo</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.correo}</p>
-                    </div>
-                  </div>
-                )}
-                {d.telefono && (
-                  <div className="flex items-start gap-2">
-                    <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Teléfono</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.telefono}</p>
-                    </div>
-                  </div>
-                )}
-                {d.direccion && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Dirección</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.direccion}</p>
-                    </div>
-                  </div>
-                )}
-                {d.cargo && (
-                  <div className="flex items-start gap-2">
-                    <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
-                    </div>
-                  </div>
-                )}
-                {d.entidad && (
-                  <div className="flex items-start gap-2">
-                    <Building2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Entidad</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.entidad}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {d.apoderado && (
-                <div className="mt-3 pt-3 border-t border-blue-200">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Scale className="w-3.5 h-3.5 text-blue-600" />
-                    <span className="text-[10px] font-bold text-blue-600 uppercase">Apoderado</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                    <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
-                  </div>
-                </div>
-              )}
+            ))
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-center">
+              <p className="text-sm text-gray-500 italic">No hay información de denunciantes registrada</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
@@ -1270,81 +1921,261 @@ function TabHechos({ n }: { n: NoticiaCompleta }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TAB: ADJUNTOS
+// TAB: ADJUNTOS Y EXPEDIENTE
 // ═══════════════════════════════════════════════════════════════
 
-function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaCompleta; formatFileSize: (b: number) => string; onDownload?: (url: string, filename: string) => Promise<void>; onView?: (archivo: ArchivoAdjunto) => void }) {
-  const adjuntos = n.archivosAdjuntos || [];
+function TabAdjuntos({
+  n,
+  dossier,
+  formatFileSize,
+  onDownload,
+  onDownloadFileDirecto,
+  onView
+}: {
+  n: NoticiaCompleta;
+  dossier: DossierSections;
+  formatFileSize: (b: number) => string;
+  onDownload?: (url: string, filename: string) => Promise<void>;
+  onDownloadFileDirecto?: (archivo: ArchivoAdjunto) => Promise<void>;
+  onView?: (archivo: ArchivoAdjunto) => void;
+}) {
+  const { autos, actasYEvidencias, soportesQueja, todos } = dossier;
+  const esRemitida = n.estado === 'remitida' || Boolean(n.numeroRC) || Boolean(n.entidadRemision);
 
-  const getIconByType = (tipo: string) => {
-    if (tipo.includes('pdf')) return { icon: FileText, color: '#DC2626', bg: '#FEE2E2' };
-    if (tipo.includes('image') || tipo.includes('png') || tipo.includes('jpg')) return { icon: Eye, color: '#7C3AED', bg: '#EDE9FE' };
-    if (tipo.includes('word') || tipo.includes('doc')) return { icon: FileText, color: '#2563EB', bg: '#DBEAFE' };
-    if (tipo.includes('excel') || tipo.includes('xls') || tipo.includes('sheet')) return { icon: FileText, color: '#059669', bg: '#D1FAE5' };
+  const getIconByType = (tipo: string, nombre: string) => {
+    const t = (tipo || '').toLowerCase();
+    const name = (nombre || '').toLowerCase();
+    if (t.includes('pdf') || name.endsWith('.pdf')) return { icon: FileText, color: '#DC2626', bg: '#FEE2E2' };
+    if (t.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/i.test(name)) return { icon: Eye, color: '#7C3AED', bg: '#EDE9FE' };
+    if (t.includes('word') || t.includes('doc') || /\.(docx?|rtf|odt)$/i.test(name)) return { icon: FileText, color: '#2563EB', bg: '#DBEAFE' };
+    if (t.includes('excel') || t.includes('xls') || t.includes('sheet') || /\.(xlsx?|csv)$/i.test(name)) return { icon: FileText, color: '#059669', bg: '#D1FAE5' };
     return { icon: Paperclip, color: '#6B7280', bg: '#F3F4F6' };
   };
 
-  if (adjuntos.length === 0) {
+  const handleDownloadFile = async (url: string, filename: string) => {
+    if (onDownload && url && !url.toLowerCase().includes('/preview')) {
+      try {
+        await onDownload(url, filename);
+        return;
+      } catch (err) {
+        console.warn('[TabAdjuntos] onDownload falló, usando descarga directa:', err);
+      }
+    }
+    try {
+      if (url && !url.toLowerCase().includes('/preview')) {
+        const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(url);
+        const res = await fetch(absoluteUrl, { credentials: 'include' });
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error descargando archivo:', err);
+      if (url && !url.toLowerCase().includes('/preview')) {
+        window.open(disciplinaryService.getAbsoluteFileUrl(url), '_blank');
+      }
+    }
+  };
+
+  if (todos.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Paperclip className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <p className="text-sm font-bold text-gray-400">No hay archivos adjuntos</p>
-        <p className="text-xs text-gray-300 mt-1">Los archivos se adjuntan durante la creación o edición de la noticia</p>
+      <div className="space-y-4">
+        {esRemitida && (
+          <div className="rounded-xl border-2 border-purple-200 bg-purple-50/70 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-purple-600 flex items-center justify-center text-white flex-shrink-0">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-purple-900 uppercase tracking-wider">
+                  Expediente Remitido por Competencia
+                </h3>
+                <p className="text-xs text-purple-800 font-semibold">
+                  Radicado: {n.numeroRC || 'En trámite'} · Destino: {n.entidadRemision || n.descripcionRemision?.entidadDestino || 'Entidad competente'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="text-center py-12">
+          <Paperclip className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm font-bold text-gray-400">No hay archivos adjuntos ni documentos registrados</p>
+          <p className="text-xs text-gray-300 mt-1">Los documentos se adjuntan o generan durante el trámite de la noticia y del proceso</p>
+        </div>
       </div>
     );
   }
 
+  const renderArchivoCard = (archivo: ArchivoAdjunto, idx: number) => {
+    const { icon: Icon, color, bg } = getIconByType(archivo.tipo, archivo.nombre);
+    return (
+      <div key={`${archivo.url}-${idx}`} className="flex items-center gap-3 rounded-xl border-2 border-gray-200 p-3 hover:bg-gray-50 transition-colors group">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 shadow-xs"
+          style={{ backgroundColor: bg }}>
+          <Icon className="w-5 h-5" style={{ color }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-bold text-gray-900 truncate">{archivo.nombre}</p>
+            {archivo.seccion === 'autos' ? (
+              <>
+                <span className="px-2 py-0.5 text-[9px] font-black rounded-md uppercase bg-blue-100 text-blue-900 border border-blue-300 flex items-center gap-1 shadow-2xs">
+                  <Scale className="w-2.5 h-2.5 text-blue-700" />
+                  Auto Jurídico
+                </span>
+                {archivo.tipoAutoDetalle && (
+                  <span className={`px-2 py-0.5 text-[9px] font-black rounded-md uppercase border shadow-2xs ${
+                    archivo.esRemision
+                      ? 'bg-purple-100 text-purple-900 border-purple-300'
+                      : 'bg-indigo-50 text-indigo-900 border-indigo-200'
+                  }`}>
+                    {archivo.tipoAutoDetalle}
+                  </span>
+                )}
+                {archivo.estadoAuto && (
+                  <span className="px-2 py-0.5 text-[9px] font-black rounded-md uppercase bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs">
+                    {archivo.estadoAuto}
+                  </span>
+                )}
+              </>
+            ) : archivo.categoria ? (
+              <span className={`px-2 py-0.5 text-[9px] font-black rounded-md uppercase ${
+                archivo.seccion === 'actas_evidencias' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                'bg-gray-100 text-gray-700 border border-gray-200'
+              }`}>
+                {archivo.categoria}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {archivo.tamano > 0 && (
+              <>
+                <span className="text-[11px] text-gray-400">{formatFileSize(archivo.tamano)}</span>
+                <span className="text-gray-300">·</span>
+              </>
+            )}
+            {archivo.fechaSubida && (
+              <>
+                <span className="text-[11px] text-gray-400">
+                  {formatFechaLocal(archivo.fechaSubida)}
+                </span>
+                <span className="text-gray-300">·</span>
+              </>
+            )}
+            <span className="text-[11px] text-gray-500 font-medium truncate max-w-md">
+              {archivo.subtitulo || 'Documento oficial del expediente'}
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-1" style={{ opacity: 1 }}>
+          {onView && (
+            <button
+              onClick={() => onView(archivo)}
+              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+              title="Previsualizar"
+            >
+              <Eye className="w-4 h-4 text-gray-500" />
+            </button>
+          )}
+          <button
+            onClick={() => onDownloadFileDirecto ? onDownloadFileDirecto(archivo) : handleDownloadFile(archivo.url, archivo.nombre)}
+            className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+            title="Descargar"
+          >
+            <Download className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-4">
-        <Paperclip className="w-4 h-4 text-gray-600" />
-        <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
-          Archivos Adjuntos ({adjuntos.length})
-        </h3>
-      </div>
-      <div className="space-y-2">
-        {adjuntos.map((archivo, idx) => {
-          const { icon: Icon, color, bg } = getIconByType(archivo.tipo);
-          return (
-            <div key={idx} className="flex items-center gap-3 rounded-xl border-2 border-gray-200 p-3 hover:bg-gray-50 transition-colors group">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: bg }}>
-                <Icon className="w-5 h-5" style={{ color }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-gray-900 truncate">{archivo.nombre}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[11px] text-gray-400">{formatFileSize(archivo.tamano)}</span>
-                  <span className="text-gray-300">·</span>
-<span className="text-[11px] text-gray-400">
-                     {formatFechaLocal(archivo.fechaSubida)}
-                   </span>
-                </div>
-              </div>
-                <div className="flex gap-1" style={{ opacity: 1 }}>
-                  {onView && (
-                    <button
-                      onClick={() => onView(archivo)}
-                      className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                      title="Previsualizar"
-                    >
-                      <Eye className="w-4 h-4 text-gray-500" />
-                    </button>
-                  )}
-                  {onDownload && (
-                   <button
-                     onClick={() => onDownload(archivo.url, archivo.nombre)}
-                     className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                     title="Descargar"
-                   >
-                     <Download className="w-4 h-4 text-gray-500" />
-                   </button>
-                 )}
-               </div>
+    <div className="space-y-6">
+      {/* Banner de remisión destacada */}
+      {esRemitida && (
+        <div className="rounded-xl border-2 border-purple-300 bg-gradient-to-r from-purple-50 via-indigo-50/50 to-purple-50 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center text-white flex-shrink-0 shadow-sm mt-0.5">
+              <Scale className="w-5 h-5" />
             </div>
-          );
-        })}
-      </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xs font-black text-purple-900 uppercase tracking-wider">
+                  Expediente Completo Remitido por Competencia
+                </h3>
+                {n.numeroRC && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-200 text-purple-800">
+                    RC: {n.numeroRC}
+                  </span>
+                )}
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">
+                  {todos.length} archivos preservados
+                </span>
+              </div>
+              <p className="text-xs text-purple-950 font-bold mt-1">
+                Entidad receptora: {n.entidadRemision || n.descripcionRemision?.entidadDestino || 'Entidad competente'}
+              </p>
+              <p className="text-[11px] text-purple-800 mt-1 leading-relaxed">
+                Este expediente conserva íntegramente los autos jurídicos aprobados (incluido el Auto de Remisión por Competencia), las actas, oficios y evidencias del proceso disciplinario, así como los soportes de la queja inicial.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. AUTOS JURÍDICOS */}
+      {autos.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Scale className="w-4 h-4 text-purple-700" />
+            <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+              Autos Jurídicos del Proceso ({autos.length})
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {autos.map(renderArchivoCard)}
+          </div>
+        </div>
+      )}
+
+      {/* 2. ACTAS, OFICIOS Y EVIDENCIAS */}
+      {actasYEvidencias.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <ClipboardList className="w-4 h-4 text-amber-700" />
+            <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+              Actas, Oficios y Evidencias ({actasYEvidencias.length})
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {actasYEvidencias.map(renderArchivoCard)}
+          </div>
+        </div>
+      )}
+
+      {/* 3. SOPORTES INICIALES DE LA QUEJA */}
+      {soportesQueja.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Paperclip className="w-4 h-4 text-blue-700" />
+            <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+              Soportes Iniciales de la Noticia / Queja ({soportesQueja.length})
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {soportesQueja.map(renderArchivoCard)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

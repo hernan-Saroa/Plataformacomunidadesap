@@ -6,6 +6,8 @@ import type { Request } from 'express';
 import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { OfertasService, type CrearPeriodoDto } from './ofertas.service.js';
+import { tokenDe } from '../acceso/token.js';
+import { EscrituraEn, EscrituraSinPeriodo } from '../acceso/escritura.decorator.js';
 
 /**
  * Ofertas académicas y consumo por oferta — EFDS-1375.
@@ -60,12 +62,13 @@ export class OfertasController {
 
   /** GET /ofertas/consumo/:documento — consumo del docente por oferta vs tope. */
   @Get('consumo/:documento')
-  async consumo(@Param('documento') documento: string) {
-    return { success: true, data: await this.ofertas.consumoPorOferta(documento) };
+  async consumo(@Req() req: Request, @Param('documento') documento: string) {
+    return { success: true, data: await this.ofertas.consumoPorOferta(documento, tokenDe(req)) };
   }
 
   /** POST /ofertas — crea un periodo. Nace en 'planeacion' (NUEVA-5a). */
   @Post()
+  @EscrituraSinPeriodo('Crea un periodo: todavía no existe ninguno del cual colgar.')
   async crear(@Req() req: Request, @Body() body: CrearPeriodoDto) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.ofertas.crear(body) };
@@ -78,6 +81,7 @@ export class OfertasController {
    * CERRAR no vive aquí: depende del flujo de aprobación de NUEVA-3 (NUEVA-5b).
    */
   @Patch(':id/activar')
+  @EscrituraEn({ periodo: { param: 'id' } })
   async activar(@Req() req: Request, @Param('id') id: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.ofertas.activar(id) };

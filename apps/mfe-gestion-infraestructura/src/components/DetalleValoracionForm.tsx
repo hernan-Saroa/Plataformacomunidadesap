@@ -33,14 +33,24 @@ const NIVELES_RIESGO: { value: NivelRiesgoValoracion; label: string; clase: stri
   { value: 'ALTO', label: 'Alto', clase: 'bg-rose-100 text-rose-900 border-rose-300 ring-rose-500' },
 ];
 
-const FILA_INSUMO_VACIA = (): ValoracionInsumoPayload & { _key: string } => ({
+type FilaInsumoLocal = ValoracionInsumoPayload & {
+  _key: string;
+  _cantidadStr: string;
+  _costoStr: string;
+  _tiempoStr: string;
+};
+
+const FILA_INSUMO_VACIA = (): FilaInsumoLocal => ({
   _key: Math.random().toString(36).slice(2, 9),
   nombre: '',
   cantidad: 1,
+  _cantidadStr: '1',
   unidadMedida: 'un',
   costoUnitarioCop: 0,
+  _costoStr: '0',
   disponibilidad: 'DISPONIBLE_EN_BODEGA',
   tiempoAdquisicionDias: undefined,
+  _tiempoStr: '',
 });
 
 export interface DetalleValoracionFormProps {
@@ -62,11 +72,11 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
 }) => {
   const [diagnostico, setDiagnostico] = useState('');
   const [alcance, setAlcance] = useState('');
-  const [tiempoHoras, setTiempoHoras] = useState<number>(1);
+  const [tiempoHoras, setTiempoHoras] = useState<string>('1');
   const [nivelRiesgo, setNivelRiesgo] = useState<NivelRiesgoValoracion>('BAJO');
   const [requiereApagado, setRequiereApagado] = useState<boolean | null>(null);
   const [observaciones, setObservaciones] = useState('');
-  const [insumos, setInsumos] = useState<Array<ValoracionInsumoPayload & { _key: string }>>([]);
+  const [insumos, setInsumos] = useState<FilaInsumoLocal[]>([]);
   const [evidencias, setEvidencias] = useState<SolicitudEvidencia[]>([]);
   const [subiendoEvidencia, setSubiendoEvidencia] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -79,7 +89,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     if (!open) return;
     setDiagnostico('');
     setAlcance('');
-    setTiempoHoras(1);
+    setTiempoHoras('1');
     setNivelRiesgo('BAJO');
     setRequiereApagado(esCategoriaElectrica ? null : false);
     setObservaciones('');
@@ -95,7 +105,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
           if (v) {
             setDiagnostico(v.diagnostico || '');
             setAlcance(v.alcanceIdentificado || '');
-            setTiempoHoras(v.tiempoEstimadoHoras || 0.5);
+            setTiempoHoras(String(v.tiempoEstimadoHoras || 0.5));
             setNivelRiesgo(v.nivelRiesgo || 'BAJO');
             setRequiereApagado(v.requiereApagadoElectrico ?? (esCategoriaElectrica ? null : false));
             setObservaciones(v.observaciones || '');
@@ -107,10 +117,13 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                   codigoInsumo: ins.codigoInsumo,
                   nombre: ins.nombre,
                   cantidad: ins.cantidad,
+                  _cantidadStr: String(ins.cantidad ?? 1),
                   unidadMedida: ins.unidadMedida,
                   costoUnitarioCop: ins.costoUnitarioCop ?? 0,
+                  _costoStr: String(ins.costoUnitarioCop ?? 0),
                   disponibilidad: ins.disponibilidad,
                   tiempoAdquisicionDias: ins.tiempoAdquisicionDias,
+                  _tiempoStr: ins.tiempoAdquisicionDias != null ? String(ins.tiempoAdquisicionDias) : '',
                 })),
               );
             }
@@ -128,18 +141,18 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     setInsumos((prev) => (prev.length <= 1 ? [FILA_INSUMO_VACIA()] : prev.filter((x) => x._key !== k)));
   };
 
-  const actualizarFila = <K extends keyof ValoracionInsumoPayload>(
+  const actualizarFila = <K extends keyof FilaInsumoLocal>(
     k: string,
     campo: K,
-    valor: ValoracionInsumoPayload[K],
+    valor: FilaInsumoLocal[K],
   ) => {
     setInsumos((prev) => prev.map((f) => (f._key === k ? { ...f, [campo]: valor } : f)));
   };
 
   const totalEstimadoCop = useMemo(() => {
     return insumos.reduce((acc, f) => {
-      const c = Number(f.cantidad || 0);
-      const u = Number(f.costoUnitarioCop || 0);
+      const c = Number(f._cantidadStr || 0);
+      const u = Number(f._costoStr || 0);
       return isFinite(c) && isFinite(u) ? acc + c * u : acc;
     }, 0);
   }, [insumos]);
@@ -174,6 +187,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         const ev = await infraestructuraService.uploadEvidencia(files[i], {
           idSolicitud,
           orden: evidencias.length + subidas.length + 1,
+          notas: 'valoracion_campo',
         });
         subidas.push(ev);
       }
@@ -200,9 +214,9 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     for (let i = 0; i < insumos.length; i++) {
       const f = insumos[i];
       if (!f.nombre || f.nombre.trim().length < 2) return `Fila ${i + 1}: nombre del material requiere al menos 2 caracteres.`;
-      if (!isFinite(Number(f.cantidad)) || Number(f.cantidad) <= 0) return `Fila ${i + 1}: cantidad debe ser mayor que 0.`;
+      if (!isFinite(Number(f._cantidadStr)) || Number(f._cantidadStr) <= 0) return `Fila ${i + 1}: cantidad debe ser mayor que 0.`;
       if (f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR') {
-        const d = Number(f.tiempoAdquisicionDias);
+        const d = Number(f._tiempoStr);
         if (!isFinite(d) || d <= 0) return `Fila ${i + 1}: si requiere solicitar el material, debe indicar el tiempo de adquisición (días > 0).`;
       }
     }
@@ -217,12 +231,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
       setToast({ tipo: 'err', texto: err });
       return;
     }
-    if (!idValoracion) {
-      setToast({ tipo: 'warn', texto: 'No hay valoración abierta. Cancele y use el botón Iniciar Valoración.' });
-      return;
-    }
     setGuardando(true);
     try {
+      // Si no hay valoración abierta (nueva), la creamos primero.
+      // Esto evita que el estado cambie a EN_CAMPO_VALORACION con un solo click
+      // sin que el usuario haya llenado los datos.
+      let valoracionId = idValoracion;
+      if (!valoracionId) {
+        const init = await infraestructuraService.iniciarValoracion(idSolicitud, {});
+        valoracionId = init.valoracion.idValoracion;
+      }
       const payload = {
         diagnostico: diagnostico.trim(),
         alcanceIdentificado: alcance.trim(),
@@ -239,16 +257,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         insumos: insumos.map<ValoracionInsumoPayload>((f) => ({
           codigoInsumo: f.codigoInsumo,
           nombre: f.nombre.trim(),
-          cantidad: Number(f.cantidad),
+          cantidad: Number(f._cantidadStr),
           unidadMedida: f.unidadMedida,
-          costoUnitarioCop: f.costoUnitarioCop == null ? 0 : Number(f.costoUnitarioCop),
+          costoUnitarioCop: Number(f._costoStr) || 0,
           disponibilidad: f.disponibilidad,
           tiempoAdquisicionDias: f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
-            ? Number(f.tiempoAdquisicionDias)
+            ? Number(f._tiempoStr || 0)
             : undefined,
         })),
       };
-      const r = await infraestructuraService.guardarValoracionCompleta(idValoracion, payload);
+      const r = await infraestructuraService.guardarValoracionCompleta(valoracionId, payload);
       setToast({
         tipo: 'ok',
         texto: r.solicitud.estado === 'EN_ESPERA_DE_INSUMOS'
@@ -395,7 +413,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                 min="0.25"
                 max="240"
                 value={tiempoHoras}
-                onChange={(e) => setTiempoHoras(Number(e.target.value))}
+                onChange={(e) => setTiempoHoras(e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <p className="mt-1 text-[11px] text-slate-500">Mínimo 0.25 h (15 min)</p>
@@ -531,10 +549,10 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                       <td className="px-3 py-2">
                         <input
                           type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={f.cantidad}
-                          onChange={(e) => actualizarFila(f._key, 'cantidad', Number(e.target.value) as any)}
+                          min="1"
+                          step="1"
+                          value={f._cantidadStr}
+                          onChange={(e) => actualizarFila(f._key, '_cantidadStr', e.target.value)}
                           className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
@@ -553,15 +571,15 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                         <input
                           type="number"
                           min="0"
-                          step="1"
-                          value={f.costoUnitarioCop ?? 0}
-                          onChange={(e) => actualizarFila(f._key, 'costoUnitarioCop', Number(e.target.value) as any)}
+                          step="1000"
+                          value={f._costoStr}
+                          onChange={(e) => actualizarFila(f._key, '_costoStr', e.target.value)}
                           className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">
                         $
-                        {((Number(f.cantidad || 0) * Number(f.costoUnitarioCop || 0)) || 0).toLocaleString(
+                        {((Number(f._cantidadStr || 0) * Number(f._costoStr || 0)) || 0).toLocaleString(
                           'es-CO',
                         )}
                       </td>
@@ -586,8 +604,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                           min="1"
                           step="1"
                           disabled={f.disponibilidad !== 'NO_DISPONIBLE_A_SOLICITAR'}
-                          value={f.tiempoAdquisicionDias ?? ''}
-                          onChange={(e) => actualizarFila(f._key, 'tiempoAdquisicionDias', Number(e.target.value) as any)}
+                          value={f._tiempoStr}
+                          onChange={(e) => {
+                            const valor = e.target.value;
+                            actualizarFila(f._key, '_tiempoStr', valor);
+                            actualizarFila(
+                              f._key,
+                              'tiempoAdquisicionDias',
+                              valor === '' ? undefined : Number(valor),
+                            );
+                          }}
                           placeholder={f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Ej: 5' : '—'}
                           className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-100"
                         />
@@ -644,7 +670,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                 {subiendoEvidencia ? 'Subiendo...' : 'Adjuntar archivos'}
                 <input
                   type="file"
-                  accept="image/*,application/pdf"
+                  accept="image/*,application/pdf,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo,video/mpeg"
                   multiple
                   disabled={subiendoEvidencia || evidencias.length >= 5}
                   onChange={handleUploadEvidencia}
@@ -654,7 +680,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
             </div>
             {evidencias.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-500">
-                No hay evidencias adjuntas. Haga clic en Adjuntar archivos para subir hasta 5 fotos o documentos.
+                No hay evidencias adjuntas. Haga clic en Adjuntar archivos para subir hasta 5 fotos, videos o documentos de hasta 20 MB.
               </div>
             ) : (
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -723,7 +749,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
               onClick={() => {
                 setDiagnostico('');
                 setAlcance('');
-                setTiempoHoras(1);
+                setTiempoHoras('1');
                 setNivelRiesgo('BAJO');
                 setObservaciones('');
                 setInsumos([FILA_INSUMO_VACIA()]);

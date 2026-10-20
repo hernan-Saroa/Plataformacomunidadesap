@@ -17,10 +17,11 @@ import {
   User, AlertCircle, History, X, Check,
   RotateCcw, Mail, Calendar, Info,
   Shield, Key, Users, Trash2, ChevronDown,
-  Filter, Paperclip, ListFilter, List, Loader2
+  Filter, Paperclip, ListFilter, List, Loader2, Building2
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
+import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 import { Permissions } from '../../../../packages/shared-types/src/permissions';
 import { ModalSeleccionarRadicador } from './ModalSeleccionarRadicador';
 
@@ -53,6 +54,9 @@ export interface BorradorPendiente {
   tipo?: string;
   prorrogaMeses?: number;
   fechaVencimientoEtapa?: string;
+  // Campos de remisión por competencia
+  entidadDestino?: string;
+  entidadDestinoEmail?: string;
 }
 
 export interface AccionRevision {
@@ -67,7 +71,7 @@ export interface AccionRevision {
 interface ModalRevisionAutoProps {
   borrador: BorradorPendiente;
   onClose: () => void;
-  onAprobar: (comentarios: string, radicadorAsignadoId?: string) => void | Promise<void>;
+  onAprobar: (comentarios: string, radicadorAsignadoId?: string, extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => void | Promise<void>;
   onDevolver?: (motivo: string, comentarios: string, archivos: File[]) => void;
   onRefresh?: () => void | Promise<void>;
   mostrarBotonDevolver?: boolean;
@@ -158,13 +162,42 @@ function ModalAprobacion({
   borrador,
   isProcessing = false
 }: {
-  onConfirm: (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => void;
+  onConfirm: (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local', extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => void;
   onCancel: () => void;
-  borrador?: { titulo?: string; plantilla?: string };
+  borrador?: BorradorPendiente | { titulo?: string; plantilla?: string; tipo?: string; entidadDestino?: string; entidadDestinoEmail?: string };
   isProcessing?: boolean;
 }) {
   const [comentarios, setComentarios] = useState('');
   const [tipoFirma, setTipoFirma] = useState<'electronica' | 'digital' | 'local'>('local');
+
+  const esRemision = borrador?.tipo === 'AUTO_REMISION_COMPETENCIA' ||
+    borrador?.tipo === 'AUTO_REMISION' ||
+    borrador?.titulo?.toLowerCase().includes('remisi') ||
+    borrador?.plantilla?.toLowerCase().includes('remisi');
+
+  const [entidadDestino, setEntidadDestino] = useState(borrador?.entidadDestino || '');
+  const [entidadDestinoEmail, setEntidadDestinoEmail] = useState(borrador?.entidadDestinoEmail || '');
+  const [entidades, setEntidades] = useState<EntidadRemision[]>([]);
+  const [mostrarCambioEntidad, setMostrarCambioEntidad] = useState(false);
+
+  useEffect(() => {
+    if (esRemision) {
+      entidadesRemisionService.getActivas()
+        .then(data => {
+          const list = data || [];
+          setEntidades(list);
+          const actual = borrador?.entidadDestino || entidadDestino;
+          if (actual && !entidadDestinoEmail) {
+            const found = list.find(e => e.nombre?.trim().toLowerCase() === actual.trim().toLowerCase());
+            const correo = found?.correo || (found as any)?.correoElectronico || '';
+            if (correo) {
+              setEntidadDestinoEmail(correo);
+            }
+          }
+        })
+        .catch(err => console.error('Error cargando entidades de remision:', err));
+    }
+  }, [esRemision, borrador?.entidadDestino]);
 
   return createPortal(
     <motion.div
@@ -180,7 +213,7 @@ function ModalAprobacion({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 12 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: '#D1FAE5' }}>
@@ -196,8 +229,110 @@ function ModalAprobacion({
           </div>
         </div>
 
+        {/* Auto de Remisión por Competencia */}
+        {esRemision && (
+          <div className="mb-5 p-4 rounded-xl border-2 border-purple-400 bg-purple-50 shadow-sm">
+            <div className="flex items-start gap-2.5">
+              <Send className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-purple-950">Auto de Remisión por Competencia</p>
+                <p className="text-xs text-purple-700 mt-0.5 leading-relaxed">
+                  Revisa y confirma la entidad destinataria seleccionada por el profesional para la remisión del expediente.
+                </p>
+
+                {/* Tarjeta de revisión cuando la entidad ya está definida */}
+                {entidadDestino && !mostrarCambioEntidad ? (
+                  <div className="mt-3 p-3.5 rounded-xl bg-white border border-purple-200 shadow-xs flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <Building2 className="w-5 h-5 text-purple-700 mt-0.5 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-purple-700">Entidad Destinataria Definida</p>
+                        <p className="text-sm font-bold text-purple-950 truncate mt-0.5">{entidadDestino}</p>
+                        {entidadDestinoEmail ? (
+                          <p className="text-xs text-purple-800 flex items-center gap-1.5 mt-1 font-medium">
+                            <Mail className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                            {entidadDestinoEmail}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-700 mt-1">Sin correo configurado</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarCambioEntidad(true)}
+                      className="text-xs font-bold text-purple-700 hover:text-purple-900 underline flex-shrink-0 pt-0.5"
+                    >
+                      Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-purple-900">
+                          Entidad Destinataria <span className="text-red-500">*</span>
+                        </label>
+                        {entidadDestino && (
+                          <button
+                            type="button"
+                            onClick={() => setMostrarCambioEntidad(false)}
+                            className="text-[10px] font-semibold text-purple-700 underline"
+                          >
+                            Cancelar cambio
+                          </button>
+                        )}
+                      </div>
+                      <select
+                        value={entidades.some(e => e.nombre === entidadDestino) ? entidadDestino : (entidadDestino ? 'OTRA' : '')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'OTRA') {
+                            setEntidadDestino('');
+                            setEntidadDestinoEmail('');
+                          } else {
+                            setEntidadDestino(val);
+                            const found = entidades.find(ent => ent.nombre === val || ent.id === val);
+                            const correo = found?.correo || (found as any)?.correoElectronico || '';
+                            setEntidadDestinoEmail(correo);
+                          }
+                        }}
+                        className="w-full px-3 py-2 border-2 border-purple-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-purple-400 bg-white"
+                      >
+                        <option value="">Selecciona la entidad...</option>
+                        {entidades.map(e => (
+                          <option key={e.id} value={e.nombre}>{e.nombre}</option>
+                        ))}
+                        <option value="OTRA">Otra entidad (especificar)...</option>
+                      </select>
+                      {(!entidades.some(e => e.nombre === entidadDestino) || entidadDestino === '') && (
+                        <input
+                          type="text"
+                          placeholder="Escribe el nombre de la entidad..."
+                          value={entidadDestino}
+                          onChange={(e) => setEntidadDestino(e.target.value)}
+                          className="w-full mt-1.5 px-3 py-1.5 border-2 border-purple-200 rounded-lg text-xs font-medium"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-purple-900 mb-1">
+                        Correo Institucional Parametrizado
+                      </label>
+                      <div className="w-full px-3 py-2 border-2 border-purple-200 bg-purple-50/60 rounded-lg text-xs font-bold text-purple-950 flex items-center gap-1.5 min-h-[38px]">
+                        <Mail className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                        <span className="truncate">{entidadDestinoEmail || 'Se asigna automáticamente según la entidad'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Advertencia para auto pliego de cargos */}
-        {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && (
+        {(borrador?.titulo?.toLowerCase().includes('pliego') || borrador?.plantilla?.toLowerCase().includes('pliego')) && (
           <div className="mb-4 p-3 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
             <div className="flex items-start gap-2">
               <AlertCircle style={{ width: 18, height: 18, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
@@ -292,7 +427,19 @@ function ModalAprobacion({
         {/* Botones */}
         <div className="flex gap-3">
           <button
-            onClick={() => onConfirm(comentarios, tipoFirma)}
+            onClick={() => {
+              if (esRemision && !entidadDestino.trim()) {
+                toast.error('Validación', {
+                  description: 'Debes definir la entidad destinataria para la remisión por competencia'
+                });
+                return;
+              }
+              onConfirm(
+                comentarios,
+                tipoFirma,
+                esRemision ? { entidadDestino: entidadDestino.trim(), entidadDestinoEmail: entidadDestinoEmail.trim() } : undefined
+              );
+            }}
             disabled={isProcessing}
             className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${isProcessing ? 'opacity-80 cursor-wait' : ''}`}
             style={{ background: '#059669' }}
@@ -612,7 +759,11 @@ export function ModalRevisionAuto({
     }
   };
 
-  const handleConfirmarAprobacion = async (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => {
+  const handleConfirmarAprobacion = async (
+    comentarios: string,
+    tipoFirma: 'electronica' | 'digital' | 'local',
+    extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }
+  ) => {
     if (aprobandoAuto) return;
 
     const toastId = `aprobar-auto-${borrador.autoId || borrador.id}`;
@@ -625,7 +776,7 @@ export function ModalRevisionAuto({
         duration: Infinity,
       });
 
-      await onAprobar(comentarios, radicadorPreseleccionadoId);
+      await onAprobar(comentarios, radicadorPreseleccionadoId, extraData);
 
       toast.success('Auto aprobado correctamente', {
         id: toastId,

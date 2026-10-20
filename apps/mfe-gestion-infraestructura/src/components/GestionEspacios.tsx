@@ -55,7 +55,7 @@ export const GestionEspacios: React.FC<GestionEspaciosProps> = ({
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                Inventario de Espacios Físicos y Aulas
+                Inventario de Espacios Físicos
               </h3>
               <p className="text-sm text-slate-600 font-medium mt-1">
                 Gestión de capacidad, equipamiento y disponibilidad de ambientes de aprendizaje

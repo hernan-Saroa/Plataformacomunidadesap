@@ -610,6 +610,15 @@ export class ProcessService {
        const { fechaVencimiento } =
          await this.terminosService.calculateVencimientoEtapa(etapaInicial);
 
+       // Determinar si la noticia proviene o es para remisión por competencia
+       const origenNoticiaNorm = (noticia.origen || '').toUpperCase().trim();
+       const esNoticiaRemision =
+         origenNoticiaNorm === 'REMISION' ||
+         origenNoticiaNorm === 'REMISIÓN' ||
+         origenNoticiaNorm.includes('REMISI') ||
+         !!noticia.entidadRemision ||
+         !!noticia.tipoRemision;
+
        // Crear proceso con la relación del abogado
        const proceso = this.processRepository.create({
          radicadoProceso,
@@ -623,6 +632,10 @@ export class ProcessService {
          fechaVencimientoEtapa: fechaVencimiento,
          fechaInicioEtapa: new Date(),
          observaciones: createProcessDto.observaciones,
+         enProcesoRemision: esNoticiaRemision,
+         tipoRemision: esNoticiaRemision ? (noticia.tipoRemision || 'sin-competencia') : null,
+         entidadRemision: noticia.entidadRemision || null,
+         correoEntidadRemision: noticia.correoEntidadRemision || null,
        });
 
       console.log('💾 Guardando proceso con abogado:', {
@@ -2390,6 +2403,46 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
     } catch (error: any) {
       console.error('Error notificando a radicadores en ProcessService:', error?.message || error);
     }
+  }
+
+  /**
+   * Busca procesos asociados a una noticia
+   */
+  async findByNewsId(newsId: string): Promise<DisciplinaryProcess[]> {
+    return await this.processRepository.find({
+      where: { newsId },
+      relations: ['news', 'abogadoAsignado'],
+    });
+  }
+
+  /**
+   * Actualiza el proceso con los datos de remisión por competencia
+   */
+  async remitirProceso(
+    processId: string,
+    data: {
+      numeroRC: string;
+      entidadRemision: string;
+      correoEntidadRemision: string;
+      fechaRemision: Date;
+      tipoRemision?: string;
+      justificacionRemision?: string;
+      descripcionRemision?: any;
+    },
+  ): Promise<DisciplinaryProcess> {
+    const process = await this.findById(processId, false);
+    process.numeroRC = data.numeroRC;
+    process.entidadRemision = data.entidadRemision;
+    process.correoEntidadRemision = data.correoEntidadRemision;
+    process.fechaRemision = data.fechaRemision;
+    process.tipoRemision = data.tipoRemision || 'sin-competencia';
+    process.justificacionRemision = data.justificacionRemision || null;
+    process.descripcionRemision = data.descripcionRemision || null;
+    process.remisionAprobada = true;
+    process.estado = ProcessStatus.ARCHIVADO;
+    process.fechaVencimientoEtapa = null;
+    process.kanbanNotice = `Remitido por Competencia (${data.numeroRC}) · Entidad: ${data.entidadRemision}`;
+    return await this.processRepository.save(process);
   }
 }
 

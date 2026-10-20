@@ -1,6 +1,10 @@
 import { Client } from 'pg';
 
+import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
 
 /**
  * EFDS-1938 :: portal del docente.
@@ -27,12 +31,15 @@ const conexion = {
 };
 
 const S = 'academic-schedule';
-const D1 = '00000000-0000-0000-0000-00000000d001';
-const D2 = '00000000-0000-0000-0000-00000000d002';
+// Dos docentes REALES del RUND (con su registro de docente): tomar ahora valida el tope.
+const D1 = '39a6f90f-2daf-496d-9035-b057e4734873';
+const D2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';
 
 describe('EFDS-1938 :: portal del docente (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
   let idPeriodo = '';
   let idGrupo = '';
   const franjas: Record<string, string> = {}; // etiqueta -> id_franja
@@ -44,20 +51,22 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
     query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     createQueryRunner: () => ({
       connect: async () => {},
-      startTransaction: async () => { await client!.query('BEGIN'); },
-      commitTransaction: async () => { await client!.query('COMMIT'); },
-      rollbackTransaction: async () => { await client!.query('ROLLBACK'); },
+      startTransaction: async () => { await client!.query('SAVEPOINT qr'); },
+      commitTransaction: async () => { await client!.query('RELEASE SAVEPOINT qr'); },
+      rollbackTransaction: async () => { await client!.query('ROLLBACK TO SAVEPOINT qr'); },
       release: async () => {},
       query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     }),
   };
-  const servicio = () => new PortalDocenteService(dataSource, null as any);
+  // El contrato PROG↔PTA se simula a 10 h por grupo: lejos del tope (el tope tiene su propio canario).
+  const docencia = () => new DocenciaService(dataSource, { calcularImpacto: async () => ({ horasImpacto: 10 }) } as any);
+  const servicio = () => new PortalDocenteService(dataSource, null as any, docencia());
 
-  const insertar = async (etiqueta: string, dia: string, ini: string, fin: string, aula: string) => {
+  const insertar = async (etiqueta: string, dia: string, ini: string, fin: string, aula: string, grupo = idGrupo) => {
     const r = await client!.query(
       `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, aula_codigo, estado)
        VALUES ($1,$2,$3::time,$4::time,'presencial',$5,'PUBLICADA') RETURNING id_franja`,
-      [idGrupo, dia, ini, fin, aula]);
+      [grupo, dia, ini, fin, aula]);
     franjas[etiqueta] = r.rows[0].id_franja;
   };
 
@@ -65,6 +74,10 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
     try {
       client = new Client(conexion);
       await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       const cod = `QA-POR-${Date.now().toString().slice(-7)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo, nombre, tipo, fecha_inicio, fecha_fin, estado)
@@ -72,39 +85,58 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
       idPeriodo = p.rows[0].id_periodo;
       const g = await client.query(
         `INSERT INTO "${S}".grupo (id_asignatura, id_periodo, numero_grupo, estado)
-         VALUES (2, $1, 902, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+         VALUES (${idAsig}, $1, 902, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
       // A y B cruzan en tiempo (LUNES), aulas distintas (no es cruce de aula). C no cruza.
+      // B va en OTRO grupo: dos sesiones del mismo grupo a la vez son un cruce que la
+      // API prohíbe, y el canario de cruces vivos (EFDS-2307) lo vería en paralelo.
+      const g2 = await client.query(
+        `INSERT INTO "${S}".grupo (id_asignatura, id_periodo, numero_grupo, estado)
+         VALUES (${idAsig}, $1, 903, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       await insertar('A', 'LUNES', '08:00', '10:00', '201');
-      await insertar('B', 'LUNES', '09:00', '11:00', '202');
+      await insertar('B', 'LUNES', '09:00', '11:00', '202', g2.rows[0].id_grupo);
       await insertar('C', 'MARTES', '08:00', '10:00', '201');
       hayBase = true;
-    } catch {
-      client = null; hayBase = false;
+    } catch (e) {
+        // Solo la FALTA DE BASE se omite. Un fixture que falla (clave foránea, columna) se grita: antes se
+        // saltaba en silencio y dejaba la conexión abierta dentro de una transacción abortada.
+        const conectado = !!(client as any)?._connected;
+        if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+        client = null; hayBase = false;
+        if (conectado) throw e;
     }
   });
 
   afterAll(async () => {
-    if (client && idPeriodo) {
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo = $1`, [idPeriodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end();
   });
 
   const siHayBase = (nombre: string, fn: () => Promise<void>) =>
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
-      await fn();
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
     });
 
   siHayBase('tomar mueve PUBLICADA -> TOMADA y fija el id_docente', async () => {
     const svc = servicio();
-    await svc.tomar(D1, franjas['A']);
+    await svc.tomar(D1, franjas['A'], null);
     const { rows } = await client!.query(
       `SELECT estado, id_docente FROM "${S}".franja_horaria WHERE id_franja = $1`, [franjas['A']]);
     expect(rows[0].estado).toBe('TOMADA');
     expect(String(rows[0].id_docente)).toBe(D1);
+  });
+
+  siHayBase('cada franja trae su periodo (id y código): el portal lo necesita para enviar a concertación', async () => {
+    const svc = servicio();
+    const mias = await svc.misFranjas(D1);
+    const a = mias.find((f) => f.idFranja === franjas['A'])!;
+    expect(a.idPeriodo).toBe(idPeriodo);
+    expect(a.periodoCodigo).toMatch(/^QA-POR-/);
   });
 
   siHayBase('al tener A, la franja B (que cruza) sale de disponibles; C sigue', async () => {
@@ -118,7 +150,7 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
 
   siHayBase('tomar la misma franja de nuevo: la segunda ve que ya no está publicada', async () => {
     const svc = servicio();
-    await expect(svc.tomar(D2, franjas['A'])).rejects.toThrow(/disponible/i);
+    await expect(svc.tomar(D2, franjas['A'], null)).rejects.toThrow(/disponible/i);
   });
 
   siHayBase('soltar devuelve A a PUBLICADA y B vuelve a estar disponible', async () => {
@@ -135,10 +167,72 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
 
   siHayBase('no se suelta una franja ajena (solo la suelta quien la tomó)', async () => {
     const svc = servicio();
-    await svc.tomar(D1, franjas['C']);
+    await svc.tomar(D1, franjas['C'], null);
     // Otro docente no puede soltarla.
     await expect(svc.soltar(D2, franjas['C'])).rejects.toThrow(/usted haya tomado/i);
     // (La guarda de «no soltar lo APROBADO» se ejercita en el canario de D,
     //  donde el estado APROBADA ya existe en el CHECK de la migración.)
+  });
+
+  siHayBase('lo que el docente tiene en OTRO periodo (fechas que no se tocan) no bloquea; si las fechas se tocan, sí', async () => {
+    // Regla única de choque (`horarios/choque.ts`): día + horas + ciclo. Tres periodos, la misma franja
+    // semanal (LUNES 14:00-16:00): 2029-1 y 2029-2 no se tocan entre sí; 2029-3 se cruza con los dos.
+    const periodo = async (cod: string, ini: string, fin: string) => (await client!.query(
+      `INSERT INTO "${S}".periodo_programacion (codigo, nombre, tipo, fecha_inicio, fecha_fin, estado)
+       VALUES ($1,$1,'periodo_regular',$2::date,$3::date,'activo') RETURNING id_periodo`, [cod, ini, fin])).rows[0].id_periodo;
+    const franjaEn = async (idPer: string, n: number) => {
+      const g = await client!.query(
+        `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
+         VALUES (${idAsig},$1,$2,'PROGRAMADO') RETURNING id_grupo`, [idPer, n]);
+      const f = await client!.query(
+        `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado)
+         VALUES ($1,'LUNES','14:00'::time,'16:00'::time,'mediada_tecnologia','PUBLICADA') RETURNING id_franja`, [g.rows[0].id_grupo]);
+      return f.rows[0].id_franja as string;
+    };
+    const x = await franjaEn(await periodo('QA-POR-29A', '2029-02-01', '2029-06-15'), 931);
+    const y = await franjaEn(await periodo('QA-POR-29B', '2029-07-01', '2029-11-30'), 932);
+    const z = await franjaEn(await periodo('QA-POR-29C', '2029-06-01', '2029-07-15'), 933);
+
+    const svc = servicio();
+    await svc.tomar(D2, x, null);
+    const ids = (await svc.disponibles(D2)).map((f) => f.idFranja);
+    expect(ids).toContain(y);        // mismo día y hora, pero en otro periodo sin solape: libre
+    expect(ids).not.toContain(z);    // su ciclo se toca con el de X: cruza
+    await expect(svc.tomar(D2, z, null)).rejects.toThrow(/se cruza/i);
+    await expect(svc.tomar(D2, y, null)).resolves.toEqual({ tomada: true });
+  });
+
+  // Reporte de Tomás: al activar un periodo nuevo el anterior queda cerrado, pero lo que el docente tomó
+  // allí seguía en su portal y contando contra su tope en el periodo nuevo. Debe quedar en ceros.
+  siHayBase('al CERRARSE el periodo, sus franjas salen del portal, no cuentan para el tope y no se toman', async () => {
+    const p = await client!.query(
+      `INSERT INTO "${S}".periodo_programacion (codigo, nombre, tipo, fecha_inicio, fecha_fin, estado)
+       VALUES ('QA-POR-CIERRE','QA cierre','periodo_regular','2031-02-01','2031-06-15','activo') RETURNING id_periodo`);
+    const g = await client!.query(
+      `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
+       VALUES (${idAsig},$1,941,'PROGRAMADO') RETURNING id_grupo`, [p.rows[0].id_periodo]);
+    const franja = async (dia: string) => (await client!.query(
+      `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado)
+       VALUES ($1,$2,'16:00'::time,'18:00'::time,'mediada_tecnologia','PUBLICADA') RETURNING id_franja`,
+      [g.rows[0].id_grupo, dia])).rows[0].id_franja as string;
+    const tomada = await franja('SABADO');
+    const otra = await franja('DOMINGO');
+
+    const svc = servicio();
+    await svc.tomar(D2, tomada, null);
+    const horasConElPeriodo = await docencia().total(D2, null, null);
+    // Lo que aporta este grupo (reparto por días: 1 de sus 2 días).
+    const delGrupo = (await docencia().porGrupo(D2, null, null)).find((x) => x.idGrupo === g.rows[0].id_grupo)!.horas;
+    expect(delGrupo).toBeGreaterThan(0);
+    expect((await svc.misFranjas(D2)).map((f) => f.idFranja)).toContain(tomada);
+
+    // Se activa el siguiente: este queda CERRADO.
+    await client!.query(`UPDATE "${S}".periodo_programacion SET estado = 'cerrado' WHERE id_periodo = $1`, [p.rows[0].id_periodo]);
+
+    expect((await svc.misFranjas(D2)).map((f) => f.idFranja)).not.toContain(tomada);   // sale del portal
+    expect(await docencia().total(D2, null, null)).toBe(Math.round((horasConElPeriodo - delGrupo) * 10) / 10); // y del tope
+    expect((await docencia().porGrupo(D2, null, null)).some((x) => x.idGrupo === g.rows[0].id_grupo)).toBe(false);
+    expect((await svc.disponibles(D2)).map((f) => f.idFranja)).not.toContain(otra);    // lo publicado de un periodo cerrado no se ofrece
+    await expect(svc.tomar(D2, otra, null)).rejects.toThrow(/periodo de esta franja está cerrado/);
   });
 });

@@ -59,6 +59,8 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerSolicitudControlViaticos: vi.fn(),
     solicitarOtpFirma: vi.fn(),
     verificarOtpFirma: vi.fn(),
+    consultarTarifaEstimada: vi.fn(),
+    validarTiquete: vi.fn(),
   },
 }));
 
@@ -537,6 +539,233 @@ describe('ControlViaticosModal', () => {
 
     expect(screen.getByText('Expediente Verificado en Segundo Nivel')).toBeDefined();
     expect(screen.getAllByText('VERIFICADA').length).toBeGreaterThan(0);
+  });
+
+  describe('Desplazamiento Aéreo y Estimación de Tiquetes (Control de Viáticos)', () => {
+    it('consulta tarifa estimada y muestra la comparativa de desplazamiento institucional cuando requiereTiquetes es true', async () => {
+      (viaticosService.consultarTarifaEstimada as any).mockResolvedValue({
+        encontrado: true,
+        origen: 'Bogotá',
+        destino: 'Pereira',
+        origenIata: 'BOG',
+        destinoIata: 'PEI',
+        tarifaEstimada: 330000,
+        tarifaMinima: 280000,
+        tarifaMaxima: 420000,
+        fuente: 'API_AMADEUS',
+        ultimaActualizacion: new Date().toISOString(),
+        mensaje: 'Tarifa obtenida correctamente',
+      });
+      (viaticosService.validarTiquete as any).mockResolvedValue({
+        is_valid: true,
+        nivel_alerta: 'VERDE',
+        mensaje_alerta: 'Saldo presupuestal disponible',
+        saldo_actual_dependencia: 25000000,
+        monto_reserva_con_holgura: 759000,
+        holgura_aplicada_porcentaje: 15,
+      });
+
+      renderModal({
+        abierta: true,
+        solicitud: solicitudMock({
+          requiereTiquetes: true,
+          montoViaticos: 560000,
+          montoGastosViaje: 76034,
+          costoEstimadoTiquete: 0,
+          itinerario: [
+            {
+              id: 'r-1',
+              origenCiudad: 'Bogotá, D.C.',
+              origenDepartamento: 'Bogotá D.C.',
+              destinoCiudad: 'Pereira',
+              destinoDepartamento: 'Risaralda',
+              fechaSalida: '2026-10-20',
+              fechaLlegada: '2026-10-20',
+              tipoTrayecto: 'SOLO_IDA',
+              tipoTransporte: 'AEREO',
+            },
+            {
+              id: 'r-2',
+              origenCiudad: 'Pereira',
+              origenDepartamento: 'Risaralda',
+              destinoCiudad: 'Bogotá, D.C.',
+              destinoDepartamento: 'Bogotá D.C.',
+              fechaSalida: '2026-10-22',
+              fechaLlegada: '2026-10-22',
+              tipoTrayecto: 'SOLO_IDA',
+              tipoTransporte: 'AEREO',
+            },
+          ],
+        }),
+        cargando: false,
+      });
+
+      // Debe consultar origen 'Bogotá, D.C.' y destino 'Pereira'
+      await waitFor(() => {
+        expect(viaticosService.consultarTarifaEstimada).toHaveBeenCalledWith('Bogotá, D.C.', 'Pereira');
+      });
+
+      // Debe mostrar la sección de tiquetes y las etiquetas IATA BOG ⇄ PEI
+      await waitFor(() => {
+        expect(screen.getByText('Desplazamiento Aéreo y Transporte a Terminal Aérea')).toBeDefined();
+        expect(screen.getByText('BOG ⇄ PEI')).toBeDefined();
+        expect(screen.getByText('Tarifa Estimada de Referencia (Vuelos)')).toBeDefined();
+        expect(screen.getByText('Fuente: API_AMADEUS')).toBeDefined();
+      });
+
+      // Debe mostrar el cálculo de 2 tramos ida y vuelta ($330.000 * 2 = $660.000)
+      expect(screen.getByText('2 tramos (Ida y Vuelta)')).toBeDefined();
+      expect(screen.getAllByText('$660000').length).toBeGreaterThan(0);
+
+      // Debe renderizar la comparativa de desplazamiento institucional
+      expect(screen.getByText('Comparativa de Desplazamiento Institucional')).toBeDefined();
+      expect(screen.getByText('Traslados Terrestres (Terminal):')).toBeDefined();
+      expect(screen.getByText('Pasajes Aéreos (Tiquetes):')).toBeDefined();
+
+      // Debe incluir TicketBudgetWidget
+      expect(screen.getByTestId('ticket-budget-widget')).toBeDefined();
+
+      // Debe mostrar el total consolidado proyectado ($560.000 + $76.034 + $660.000 = $1.296.034)
+      expect(screen.getByText('Total Consolidado Proyectado')).toBeDefined();
+      expect(screen.getAllByText('$1296034').length).toBeGreaterThan(0);
+    });
+
+    it('utiliza tarifaEstimada precargada sin invocar el servicio de nuevo', async () => {
+      renderModal({
+        abierta: true,
+        solicitud: solicitudMock({
+          requiereTiquetes: true,
+          destinoCiudad: 'Pereira',
+          tarifaEstimada: {
+            encontrado: true,
+            origen: 'Bogotá',
+            destino: 'Pereira',
+            origenIata: 'BOG',
+            destinoIata: 'PEI',
+            tarifaEstimada: 330000,
+            tarifaMinima: 250000,
+            tarifaMaxima: 450000,
+            fuente: 'PARAMETRICO_ESAP',
+            ultimaActualizacion: new Date().toISOString(),
+            mensaje: 'OK',
+          },
+          itinerario: [
+            {
+              id: 'r-1',
+              origenCiudad: 'Bogotá',
+              destinoCiudad: 'Pereira',
+              fechaSalida: '2026-10-20',
+              fechaLlegada: '2026-10-20',
+              tipoTrayecto: 'SOLO_IDA',
+              tipoTransporte: 'AEREO',
+            },
+          ],
+        }),
+        cargando: false,
+      });
+
+      expect(viaticosService.consultarTarifaEstimada).not.toHaveBeenCalled();
+      expect(screen.getByText('Fuente: PARAMETRICO_ESAP')).toBeDefined();
+      expect(screen.getByText('BOG ⇄ PEI')).toBeDefined();
+      expect(screen.getByText('1 tramo (Solo Ida)')).toBeDefined();
+    });
+
+    it('respeta costoEstimadoTiquete cuando ya está registrado en la solicitud cargándolo en el input editable', async () => {
+      renderModal({
+        abierta: true,
+        solicitud: solicitudMock({
+          requiereTiquetes: true,
+          costoEstimadoTiquete: 720000,
+          montoViaticos: 400000,
+          montoGastosViaje: 80000,
+        }),
+        cargando: false,
+      });
+
+      expect(screen.getByDisplayValue('720000')).toBeDefined();
+      expect(screen.getByText('Valor de gasto registrado manualmente')).toBeDefined();
+      expect(screen.getAllByText('$720000').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('$1200000').length).toBeGreaterThan(0);
+    });
+
+    it('permite al usuario ingresar o modificar el gasto de tiquete manualmente o aplicar la sugerencia automática', async () => {
+      renderModal({
+        abierta: true,
+        solicitud: solicitudMock({
+          requiereTiquetes: true,
+          costoEstimadoTiquete: 0,
+          montoViaticos: 500000,
+          montoGastosViaje: 50000,
+          tarifaEstimada: {
+            encontrado: true,
+            origen: 'Bogotá',
+            destino: 'Pereira',
+            origenIata: 'BOG',
+            destinoIata: 'PEI',
+            tarifaEstimada: 330000,
+            tarifaMinima: 250000,
+            tarifaMaxima: 450000,
+            fuente: 'PARAMETRICO_ESAP',
+            ultimaActualizacion: new Date().toISOString(),
+            mensaje: 'OK',
+          },
+          itinerario: [
+            {
+              id: 'r-1',
+              origenCiudad: 'Bogotá',
+              destinoCiudad: 'Pereira',
+              fechaSalida: '2026-10-20',
+              fechaLlegada: '2026-10-20',
+              tipoTrayecto: 'SOLO_IDA',
+              tipoTransporte: 'AEREO',
+            },
+            {
+              id: 'r-2',
+              origenCiudad: 'Pereira',
+              destinoCiudad: 'Bogotá',
+              fechaSalida: '2026-10-22',
+              fechaLlegada: '2026-10-22',
+              tipoTrayecto: 'SOLO_IDA',
+              tipoTransporte: 'AEREO',
+            },
+          ],
+        }),
+        cargando: false,
+      });
+
+      // Inicialmente la sugerencia automática de 2 tramos ($660.000) está precargada por usabilidad
+      const input = screen.getByLabelText('Valor del Pasaje Aéreo (COP)') as HTMLInputElement;
+      expect(input.value).toBe('660000');
+      expect(screen.getAllByText('$660000').length).toBeGreaterThan(0);
+      // Total consolidado inicial: 500.000 + 50.000 + 660.000 = 1.210.000
+      expect(screen.getAllByText('$1210000').length).toBeGreaterThan(0);
+
+      // El usuario ingresa un valor de cotización real diferente: 750.000
+      fireEvent.change(input, { target: { value: '750000' } });
+      expect(input.value).toBe('750000');
+      expect(screen.getByText('Valor de gasto registrado manualmente')).toBeDefined();
+      expect(screen.getAllByText('$750000').length).toBeGreaterThan(0);
+      // Total consolidado recalculado dinámicamente: 500.000 + 50.000 + 750.000 = 1.300.000
+      expect(screen.getAllByText('$1300000').length).toBeGreaterThan(0);
+
+      // Ahora hace clic en el botón de "Usar tarifa sugerida ($660.000)"
+      const botonSugerida = screen.getByRole('button', { name: /Usar tarifa sugerida/i });
+      fireEvent.click(botonSugerida);
+      expect(input.value).toBe('660000');
+      expect(screen.getAllByText('$660000').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('$1210000').length).toBeGreaterThan(0);
+    });
+
+    it('no muestra la sección de tiquetes aéreos cuando requiereTiquetes es false', () => {
+      renderModal({
+        abierta: true,
+        solicitud: solicitudMock({ requiereTiquetes: false }),
+        cargando: false,
+      });
+
+      expect(screen.queryByText('Desplazamiento Aéreo y Transporte a Terminal Aérea')).toBeNull();
+      expect(viaticosService.consultarTarifaEstimada).not.toHaveBeenCalled();
+    });
   });
 });
 

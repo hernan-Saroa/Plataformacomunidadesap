@@ -37,11 +37,46 @@ import {
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
+import {
+  DOCENCIA_KEYS,
+  SCOPE_PROGRAMACION,
+  aplicarPendientesAlCrear,
+  exigirDecisionDocenciaEnPta,
+  exigirDocenciaParaEnviar,
+  habilitadaLocal,
+  protegerAsignaturas,
+  regimenDocencia,
+  regimenDocenciaSeguro,
+  tieneDocenciaDeProgramacion,
+} from './docencia-programacion';
 import { etapasComplementaria, tipoAprobacionComplementaria, complementariasHistoricas,
   COMPLEMENTARIAS_FLUJO_SECUENCIAL, COMPLEMENTARIAS_FLUJO_LEGACY } from './utils/complementarias-flujo';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
+
+/** Estados que el cierre por nuevo periodo no toca. */
+const ESTADOS_PTA_TERMINALES_CIERRE = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+
+/**
+ * Qué PTA quedan terminados al activar un periodo ($1 = código del periodo que
+ * se activa, $2 = ESTADOS_PTA_TERMINALES_CIERRE). La comparten la terminación
+ * (`finalizarPtasPorNuevoPeriodo`) y su vista previa
+ * (`contarPtasAFinalizarPorNuevoPeriodo`, EFDS-2328): si cambia, cambian las dos.
+ */
+const CONDICION_PTA_A_FINALIZAR = `
+        p.estado <> ALL($2::text[])
+        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
+        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
+        -- completar su edición aunque pertenezca a un periodo anterior. Al
+        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
+        AND NOT EXISTS (
+          SELECT 1
+          FROM academic_work_plan."SolicitudPTA" s
+          WHERE s."ptaId" = p.id
+            AND s."tipoSolicitud" = 'edicion_componentes'
+            AND s.estado IN ('aprobado', 'en_aprobacion')
+        )`;
 
 const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION = 'Resolución proyecto de investigación';
 const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION =
@@ -4420,6 +4455,19 @@ export class PtaService {
     // No confiar en el total enviado por el navegador: puede venir de un
     // borrador abierto antes de una modificación de cupos. La oferta académica
     // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    // EFDS-2315: en el régimen nuevo la docencia "de programación" no se edita ni
+    // se agregan asignaturas a mano. Apagado, no se consulta nada.
+    if (habilitadaLocal()) {
+      const previo = existingForDocenteEdit ?? (id ? await this.ptaRepo.findOne({ where: { id } }) : null);
+      const regimen = await regimenDocencia({
+        periodo, estado: previo?.estado ?? 'BORRADOR', datosEstructurados: previo?.datosEstructurados ?? null,
+      });
+      input = { ...input, asignaturas: protegerAsignaturas(regimen, previo?.datosEstructurados, input?.asignaturas) };
+      if (isPendingRoleApprovalState(estado)) {
+        await exigirDocenciaParaEnviar({ periodo, estado: previo?.estado ?? 'BORRADOR', datosEstructurados: input });
+      }
+    }
+
     if (Array.isArray(input?.asignaturas)) {
       const asignaturasConPensum = await this.syncAsignaturasPensum(input.asignaturas, false);
       input = {
@@ -4567,6 +4615,11 @@ export class PtaService {
       }
     } else {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
+    }
+
+    if (!estadoAnteriorSave && habilitadaLocal()) {
+      // EFDS-2315: un PTA nuevo del régimen nuevo recibe la docencia ya concertada.
+      await aplicarPendientesAlCrear(this.ptaRepo.manager, saved as any);
     }
 
     if (isPtaHabilitadoParaSeguimientoPorEstado(saved.estado)) {
@@ -5058,6 +5111,11 @@ export class PtaService {
       }
     }
 
+    if (isPendingRoleApprovalState(nuevoEstado) && habilitadaLocal()) {
+      // EFDS-2315: sin la docencia concertada no se envía un PTA del régimen nuevo.
+      await exigirDocenciaParaEnviar(existing);
+    }
+
     if (isPendingRoleApprovalState(nuevoEstado)) {
       await this.validatePtaBeforeApproval(
         existing, a === 'reenviar_corregido' ? solicitudEdicionParcial : null,
@@ -5521,6 +5579,20 @@ export class PtaService {
           );
         }
       }
+    } else if (habilitadaLocal()) {
+      // EFDS-2315: un reenvío no borra la Docencia aprobada en la concertación.
+      await this.ptaComponentApprovalRepo.createQueryBuilder().delete()
+        .where('pta_id = :ptaId AND componente IN (:...keys)', { ptaId, keys: componentKeys })
+        .andWhere('scope IS DISTINCT FROM :scope', { scope: SCOPE_PROGRAMACION })
+        .execute();
+      await this.ptaComponentReviewRepo.delete({ ptaId, componente: In(componentKeys) } as any);
+      // Tampoco la Docencia territorial concertada (scope en SQL directo: la
+      // columna es de la migración 668 y la entidad no la mapea, para que el PTA
+      // apagado no consulte nada nuevo).
+      await this.ptaTerritorialApprovalRepo.query(
+        `DELETE FROM academic_work_plan."PtaTerritorialApproval" WHERE pta_id = $1 AND scope IS DISTINCT FROM $2`,
+        [ptaId, SCOPE_PROGRAMACION]);
+      await this.ptaTerritorialReviewRepo.delete({ ptaId } as any);
     } else {
       await this.ptaComponentApprovalRepo.delete({
         ptaId,
@@ -7266,7 +7338,6 @@ export class PtaService {
   // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
-    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
     const rows = await this.ptaRepo.manager.query(
       `
@@ -7274,21 +7345,10 @@ export class PtaService {
       SET estado = 'Terminado',
           "estadoAntesCierrePeriodo" = estado,
           "cerradoPorPeriodo" = NULLIF($1, '')
-      WHERE p.estado <> ALL($2::text[])
-        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
-        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
-        -- completar su edición aunque pertenezca a un periodo anterior. Al
-        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
-        AND NOT EXISTS (
-          SELECT 1
-          FROM academic_work_plan."SolicitudPTA" s
-          WHERE s."ptaId" = p.id
-            AND s."tipoSolicitud" = 'edicion_componentes'
-            AND s.estado IN ('aprobado', 'en_aprobacion')
-        )
+      WHERE ${CONDICION_PTA_A_FINALIZAR}
       RETURNING p.id
       `,
-      [codigo, terminales],
+      [codigo, ESTADOS_PTA_TERMINALES_CIERRE],
     );
     const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
@@ -7297,6 +7357,29 @@ export class PtaService {
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Cuántos PTA terminaría activar `codigo`, por periodo — EFDS-2328.
+   *
+   * Solo lectura. Usa EXACTAMENTE la misma condición que
+   * `finalizarPtasPorNuevoPeriodo` (CONDICION_PTA_A_FINALIZAR), para que la
+   * confirmación que ve el administrador no pueda diferir de lo que pasa.
+   * `restaurarPtasPorReactivacionPeriodo` corre antes al activar, pero solo
+   * toca los PTA de `codigo`, que esta condición ya excluye.
+   */
+  async contarPtasAFinalizarPorNuevoPeriodo(codigo: string): Promise<Array<{ codigo: string | null; ptas: number }>> {
+    const rows = await this.ptaRepo.manager.query(
+      `
+      SELECT p.periodo AS codigo, COUNT(*)::int AS ptas
+        FROM academic_work_plan."PlanTrabajoAcademico" AS p
+       WHERE ${CONDICION_PTA_A_FINALIZAR}
+       GROUP BY p.periodo
+       ORDER BY p.periodo
+      `,
+      [coalesceString(codigo) || '', ESTADOS_PTA_TERMINALES_CIERRE],
+    );
+    return (rows || []).map((r: any) => ({ codigo: r.codigo ?? null, ptas: Number(r.ptas) }));
   }
 
   /**
@@ -10256,6 +10339,16 @@ export class PtaService {
 
     const byComponent = new Map(componentList.map(item => [item.componente, item]));
     const toSave: PtaComponentApprovalEntity[] = [];
+    // EFDS-2315: en el régimen nuevo, mientras el PTA espera su Docencia concertada,
+    // la Docencia sin horas NO se auto-aprueba: sería aprobarla sin concertación
+    // (ante la duda, si no responde PA, tampoco). Cuando ya llegó Docencia
+    // concertada, un componente de Docencia vacío (p. ej. pregrado, si todo lo
+    // concertado es territorial) se auto-aprueba como hoy: si no, quedaría sin
+    // ninguna aprobación.
+    const docenciaDeProgramacion = habilitadaLocal() && ptaEntity
+      ? (await regimenDocenciaSeguro(ptaEntity)) === 'programacion'
+        && !tieneDocenciaDeProgramacion(ptaEntity.datosEstructurados)
+      : false;
 
     for (const c of todosComponentes) {
       const tieneContenido = horasPorComponente[c] > 0 || complementariasConContenido[c] === true;
@@ -10268,7 +10361,8 @@ export class PtaService {
       const requiereReaprobacionManual =
         existing?.scope === 'solicitud_edicion'
         && ['pendiente', 'devuelto'].includes(String(existing.estado || '').toLowerCase());
-      const autoAprobar = hayActividades && !tieneContenido && !requiereReaprobacionManual;
+      const autoAprobar = hayActividades && !tieneContenido && !requiereReaprobacionManual
+        && !(docenciaDeProgramacion && DOCENCIA_KEYS.has(c));
 
       if (!existing) {
         const item = this.ptaComponentApprovalRepo.create({
@@ -10461,6 +10555,10 @@ export class PtaService {
     const estado = coalesceString(body?.estado); // 'revisado' o 'devuelto'
     if (!componente || !estado) {
       throw new BadRequestException('Componente y estado son requeridos');
+    }
+    // EFDS-2315: la Docencia del régimen nuevo tampoco se revisa en el PTA.
+    if (habilitadaLocal() && DOCENCIA_KEYS.has(componente)) {
+      await exigirDecisionDocenciaEnPta(await this.ptaRepo.findOne({ where: { id: ptaId } }), componente);
     }
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
@@ -10722,6 +10820,11 @@ export class PtaService {
     }
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
+    }
+    // EFDS-2315: con la concertación encendida, la Docencia del periodo de corte
+    // se aprueba en Programación Académica; aquí no (ni aprobar ni devolver).
+    if (habilitadaLocal() && DOCENCIA_KEYS.has(componente)) {
+      await exigirDecisionDocenciaEnPta(await this.ptaRepo.findOne({ where: { id: ptaId } }), componente);
     }
     if (!['aprobado', 'devuelto'].includes(estado)) {
       throw new BadRequestException('El estado del componente debe ser "aprobado" o "devuelto".');

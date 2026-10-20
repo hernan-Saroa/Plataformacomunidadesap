@@ -46,4 +46,7 @@ export class SegundaRevisionObservacionesDto {
   @IsOptional()
   @IsString()
   documentoIdentidad?: string;
+
+  @IsOptional()
+  costoEstimadoTiquete?: number;
 }

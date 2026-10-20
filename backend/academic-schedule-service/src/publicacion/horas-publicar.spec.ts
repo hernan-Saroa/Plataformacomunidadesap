@@ -2,6 +2,9 @@ import { Client } from 'pg';
 
 import { PublicacionService } from './publicacion.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * §1.3 :: el tope de horas al publicar.
  *
@@ -29,6 +32,8 @@ const FI = '2028-02-07', FF = '2028-05-28';
 describe('§1.3 :: tope de horas al publicar (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
   let idPeriodo = '';
   let idGrupo = '';
 
@@ -40,6 +45,10 @@ describe('§1.3 :: tope de horas al publicar (agregado real)', () => {
     try {
       client = new Client(conexion);
       await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       const cod = `QA-H13-${Date.now().toString().slice(-6)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -47,22 +56,33 @@ describe('§1.3 :: tope de horas al publicar (agregado real)', () => {
       idPeriodo = p.rows[0].id_periodo;
       const g = await client.query(
         `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado,fecha_inicio,fecha_fin)
-         VALUES (2,$1,911,'PROGRAMADO',$2::date,$3::date) RETURNING id_grupo`, [idPeriodo, FI, FF]);
+         VALUES (${idAsig},$1,911,'PROGRAMADO',$2::date,$3::date) RETURNING id_grupo`, [idPeriodo, FI, FF]);
       idGrupo = g.rows[0].id_grupo;
       hayBase = true;
-    } catch { client = null; hayBase = false; }
+    } catch (e) {
+      // Solo la FALTA DE BASE se omite. Un fixture que falla (clave foránea, columna) se grita: antes se
+      // saltaba en silencio y dejaba la conexión abierta dentro de una transacción abortada.
+      const conectado = !!(client as any)?._connected;
+      if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+      client = null; hayBase = false;
+      if (conectado) throw e;
+    }
   });
 
   afterAll(async () => {
-    if (client && idPeriodo) {
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [idPeriodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [idPeriodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end();
   });
 
   const siHayBase = (n: string, fn: () => Promise<void>) =>
-    it(n, async () => { if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; } await fn(); });
+    it(n, async () => {
+      if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
+    });
 
   const franja = (ini: string, fin: string) => client!.query(
     `INSERT INTO "${S}".franja_horaria (id_grupo,dia_semana,hora_inicio,hora_fin,tipo_sesion,estado)
@@ -86,7 +106,7 @@ describe('§1.3 :: tope de horas al publicar (agregado real)', () => {
     // semanas, asi que no entra en el tope. Se deja en TOMADA para no re-publicar.
     const g2 = await client!.query(
       `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
-       VALUES (2,$1,912,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+       VALUES (${idAsig},$1,912,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
     await client!.query(
       `INSERT INTO "${S}".franja_horaria (id_grupo,dia_semana,hora_inicio,hora_fin,tipo_sesion,estado)
        VALUES ($1,'MARTES','06:00'::time,'23:00'::time,'mediada_tecnologia','PROGRAMADO')`, [g2.rows[0].id_grupo]);

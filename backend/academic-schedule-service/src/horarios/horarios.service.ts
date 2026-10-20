@@ -7,9 +7,13 @@ import {
   type DiaSemana, type Jornada, type TipoSesion,
 } from './franja-horaria.entity.js';
 import {
-  buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos, seSolapan,
+  buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos,
 } from './solapamiento.js';
+import { buscarChoque, cargarFranjasCruceables, cicloDelGrupo } from './choque.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
+import { exigirAulaDeLaOferta } from '../grupos/oferta-cetap.js';
+import { condicionNivelSql, type NivelAcademico } from '../catalogo/nivel-academico.js';
+import { condicionPeriodoGrupo, parsearPeriodo } from '../periodos/periodo-ref.js';
 
 /**
  * Margen del tope de horas del grupo (§1.3). Se publica solo si las horas
@@ -48,9 +52,14 @@ export interface FranjaConContexto {
   asignatura: string | null;
   programa: string | null;
   docente: string | null;
-  /** Periodo al que pertenece la franja (vía grupo.id_periodo). Null = sin periodo. */
+  /**
+   * Periodo de la franja, vía su grupo: el de plataforma si el grupo ya lo
+   * tiene (EFDS-2328), si no el legado. Null = sin periodo.
+   */
   idPeriodo: string | null;
   periodoCodigo: string | null;
+  /** Oferta del grupo en el periodo de plataforma; null en grupos legado. */
+  tipoOferta: string | null;
 }
 
 export interface PeriodoGrupoDto {
@@ -85,8 +94,20 @@ export class HorariosService {
    * grupo.id_periodo). Es lo que permite que cada vista del módulo pertenezca al
    * periodo seleccionado en la cabecera: sin él, la tabla mezclaba periodos.
    */
-  async listarTodas(idPeriodo?: string): Promise<FranjaConContexto[]> {
-    const filtro = idPeriodo ? 'WHERE g.id_periodo = $1' : '';
+  /**
+   * Programación General. `niveles` son los que el usuario puede programar: el
+   * filtro es del SERVIDOR (EFDS-2302); antes devolvía todas las franjas y el
+   * programador de posgrado veía las de pregrado.
+   */
+  async listarTodas(idPeriodo: string | undefined, niveles: readonly NivelAcademico[]): Promise<FranjaConContexto[]> {
+    // El periodo puede ser de plataforma o legado (EFDS-2328); un id que no es de
+    // ninguno no devuelve nada, en vez de devolverlo todo.
+    const ref = idPeriodo ? parsearPeriodo(idPeriodo) : null;
+    if (idPeriodo && !ref) return [];
+    const params: unknown[] = ref ? [ref.id] : [];
+    const nivel = condicionNivelSql('pr.tipo', niveles, params.length + 1);
+    params.push(...nivel.params);
+    const filtro = `WHERE ${nivel.sql}${ref ? ' AND ' + condicionPeriodoGrupo('g', ref, 1) : ''}`;
     return this.franjaRepo.query(
       `SELECT f.id_franja                       AS "idFranja",
               f.id_grupo::text                  AS "idGrupo",
@@ -100,14 +121,16 @@ export class HorariosService {
               g.numero_grupo                    AS "numeroGrupo",
               g.fecha_inicio::text              AS "fechaInicioGrupo",
               g.fecha_fin::text                 AS "fechaFinGrupo",
-              g.id_periodo::text                AS "idPeriodo",
-              pp.codigo                         AS "periodoCodigo",
+              COALESCE(g.id_periodo_academico::text, g.id_periodo::text) AS "idPeriodo",
+              COALESCE(pa.codigo, pp.codigo)    AS "periodoCodigo",
+              g.tipo_oferta                     AS "tipoOferta",
               a.nombre                          AS "asignatura",
               pr.nombre                         AS "programa",
               per.nom_largo                     AS "docente"
          FROM "academic-schedule".franja_horaria f
          LEFT JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
+         LEFT JOIN academic_work_plan.periodo_academico pa      ON pa.id = g.id_periodo_academico
          LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
          LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
          LEFT JOIN "academic-schedule".asignacion_docente ad
@@ -115,7 +138,7 @@ export class HorariosService {
          LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
         ${filtro}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
-      idPeriodo ? [idPeriodo] : undefined,
+      params.length ? params : undefined,
     );
   }
 
@@ -177,9 +200,11 @@ export class HorariosService {
     // en día y hora. El mensaje NO revela qué grupo lo ocupa (RN-07): otra
     // decanatura puede tener ahí una asignatura de posgrado que este programador
     // no debe ver. Solo se dice el aula, el día y la hora.
+    // EFDS-2315: una sesión presencial con aula se dicta en el CETAP de la oferta del grupo.
+    await exigirAulaDeLaOferta(this.franjaRepo.manager, dto.idGrupo, dto.aulaCodigo, dto.tipoSesion);
     if (dto.aulaCodigo) {
       const choqueAula = await this.buscarChoqueAula(
-        dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,
+        dto.idGrupo, dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,
       );
       if (choqueAula) {
         throw new BadRequestException(
@@ -205,23 +230,28 @@ export class HorariosService {
   }
 
   /**
-   * Busca una franja de OTRO grupo que ocupe la misma aula y se cruce en día y
-   * hora. Transversal a todos los programas (RN-07). Devuelve la franja ocupada
-   * para nombrar el día y la hora, nunca su grupo ni su asignatura.
+   * Busca una franja que ocupe la misma aula y CHOQUE con la propuesta según la regla
+   * única (`choque.ts`): mismo día, horas solapadas y ciclos de clases solapados. El
+   * ciclo de la propuesta es el de su grupo, o el de su periodo si el grupo no tiene. Una
+   * franja del mismo aula en otro periodo (otras fechas) NO ocupa el salón.
+   * Transversal a todos los programas (RN-07). Devuelve la franja ocupada para nombrar
+   * el día y la hora, nunca su grupo ni su asignatura.
    */
   private async buscarChoqueAula(
-    aulaCodigo: string, diaSemana: string, horaInicio: string, horaFin: string, idFranjaExcluir?: string,
+    idGrupo: string, aulaCodigo: string, diaSemana: string, horaInicio: string, horaFin: string,
+    idFranjaExcluir?: string,
   ): Promise<{ horaInicio: string; horaFin: string } | null> {
-    const mismas = await this.franjaRepo.find({
-      where: { aulaCodigo, diaSemana: diaSemana as DiaSemana },
-    });
-    for (const f of mismas) {
-      if (idFranjaExcluir && f.idFranja === idFranjaExcluir) continue;
-      if (seSolapan(horaInicio, horaFin, f.horaInicio, f.horaFin)) {
-        return { horaInicio: f.horaInicio, horaFin: f.horaFin };
-      }
-    }
-    return null;
+    const manager = this.franjaRepo.manager;
+    const ciclo = await cicloDelGrupo(manager, idGrupo);
+    const mismas = await cargarFranjasCruceables(
+      manager, 'f.aula_codigo = $1 AND f.dia_semana = $2', [aulaCodigo, diaSemana],
+    );
+    const choque = buscarChoque(
+      { diaSemana, horaInicio, horaFin, ...ciclo },
+      mismas,
+      (f) => !!idFranjaExcluir && f.idFranja === idFranjaExcluir,
+    );
+    return choque ? { horaInicio: choque.horaInicio, horaFin: choque.horaFin } : null;
   }
 
   async eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {

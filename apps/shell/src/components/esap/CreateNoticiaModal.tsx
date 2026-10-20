@@ -172,8 +172,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [formData, setFormData] = useState({
     origen: origenInicial,
-    fechaQueja: (noticiaToEdit?.fechaQueja || noticiaToEdit?.fechaRecepcion)?.split('T')[0],
-    fechaHechos: noticiaToEdit?.fechaHechos || '',
+    fechaQueja: (noticiaToEdit?.fechaQueja || noticiaToEdit?.fechaRecepcion)
+      ? String(noticiaToEdit.fechaQueja || noticiaToEdit.fechaRecepcion).split('T')[0]
+      : '',
+    fechaHechos: noticiaToEdit?.fechaHechos
+      ? String(noticiaToEdit.fechaHechos).split('T')[0]
+      : '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
       nombre: noticiaToEdit?.denunciado?.nombre || noticiaToEdit?.disciplinable?.nombre || '',
@@ -429,7 +433,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [porDeterminar, setPorDeterminar] = useState({
     // Paso 1
     // En edición: si el origen guardado es POR_DETERMINAR, mostrar el checkbox marcado
-    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR') : false,
+    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR' || noticiaToEdit?.origen === 'Por determinar') : false,
     // En edición: si el valor guardado es 'Por determinar', mostrar el checkbox marcado
     territorial: isEditMode ? (noticiaToEdit?.territorial === 'Por determinar') : false,
     // En modo edición, si no hay fechaHechos guardada se marca "Por determinar" para no bloquear el wizard

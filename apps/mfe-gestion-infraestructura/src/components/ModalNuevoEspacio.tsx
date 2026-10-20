@@ -195,11 +195,12 @@ export const ModalNuevoEspacio: React.FC<ModalNuevoEspacioProps> = ({
         role="switch"
         aria-checked={activo}
         onClick={onClick}
-        className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-sm ${activo ? colorActive : 'bg-slate-300'}`}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${activo ? colorActive : 'bg-gray-300'}`}
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${activo ? 'translate-x-5' : 'translate-x-0'}`}
+          style={{ transform: activo ? 'translateX(14px)' : 'translateX(0px)' }}
+          className="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out"
         />
       </button>
     </div>
@@ -413,21 +414,21 @@ export const ModalNuevoEspacio: React.FC<ModalNuevoEspacioProps> = ({
             <FilaToggle
               activo={form.tieneAireAcondicionado}
               onClick={() => toggle('tieneAireAcondicionado')}
-              colorActive="bg-sky-600"
+              colorActive="bg-emerald-600"
               label="Aire Acondicionado"
               hint="Equipo HVAC / Clima"
             />
             <FilaToggle
               activo={form.tieneComputadores}
               onClick={() => toggle('tieneComputadores')}
-              colorActive="bg-amber-600"
+              colorActive="bg-emerald-600"
               label="Equipos de Cómputo"
               hint="PC, All-In-One, portátiles"
             />
             <FilaToggle
               activo={form.tieneVideobeam}
               onClick={() => toggle('tieneVideobeam')}
-              colorActive="bg-purple-600"
+              colorActive="bg-emerald-600"
               label="Proyector / VideoBeam"
               hint="Pantalla o proyección"
             />
@@ -437,7 +438,7 @@ export const ModalNuevoEspacio: React.FC<ModalNuevoEspacioProps> = ({
             <FilaToggle
               activo={form.isActivo}
               onClick={() => toggle('isActivo')}
-              colorActive={form.isActivo ? 'bg-emerald-600' : 'bg-slate-300'}
+              colorActive={form.isActivo ? 'bg-emerald-600' : 'bg-gray-300'}
               label={form.isActivo ? 'Espacio Activo' : 'Espacio Inactivo (soft delete)'}
               hint={form.isActivo
                 ? 'Visible en inventario y disponible para solicitudes.'

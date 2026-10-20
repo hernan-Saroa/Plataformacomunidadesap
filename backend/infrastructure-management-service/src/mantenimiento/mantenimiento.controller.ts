@@ -15,7 +15,6 @@ import {
   UploadedFile,
   ParseFilePipe,
   MaxFileSizeValidator,
-  FileTypeValidator,
   BadRequestException,
   NotFoundException,
   ConflictException,
@@ -51,7 +50,10 @@ import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
 const MAX_SIZE_20MB = 20 * 1024 * 1024;
-const MIMES_PERMITIDOS = /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf)$/i;
+const MIMES_PERMITIDOS =
+  /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf|video\/(mp4|webm|quicktime|x-m4v|x-msvideo|mpeg))$/i;
+const EXTENSIONES_EVIDENCIA_PERMITIDAS =
+  /\.(png|jpe?g|gif|webp|heic|heif|pdf|mp4|webm|mov|m4v|avi|mpeg)$/i;
 
 @ApiTags('Mantenimiento e Infraestructura')
 @ApiBearerAuth()
@@ -905,7 +907,7 @@ export class MantenimientoController {
       type: 'object',
       required: ['file'],
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Archivo (PNG/JPG/HEIC/PDF, hasta 20MB)' },
+        file: { type: 'string', format: 'binary', description: 'Archivo (PNG/JPG/HEIC/WEBP/PDF/MP4/WEBM/MOV, hasta 20MB)' },
         idSolicitud: { type: 'string', format: 'uuid', description: '(Opcional) ligar directamente a una solicitud existente' },
         orden: { type: 'integer', description: '(Opcional) orden visual, default 1' },
         notas: { type: 'string', description: '(Opcional) nota sobre la evidencia' },
@@ -918,7 +920,6 @@ export class MantenimientoController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: MAX_SIZE_20MB, message: 'Archivo excede 20MB' }),
-          new FileTypeValidator({ fileType: MIMES_PERMITIDOS }),
         ],
       }),
     )
@@ -929,10 +930,17 @@ export class MantenimientoController {
     if (!file?.buffer) {
       throw new BadRequestException('Archivo no puede estar vacío');
     }
+    const mimeType = String(file.mimetype || '');
+    const nombreOriginal = String(file.originalname || '');
+    if (!MIMES_PERMITIDOS.test(mimeType) && !EXTENSIONES_EVIDENCIA_PERMITIDAS.test(nombreOriginal)) {
+      throw new BadRequestException(
+        'Tipo de archivo no permitido. Solo imagenes, videos MP4/WEBM/MOV/AVI/MPEG o PDF, hasta 20MB.',
+      );
+    }
     return this.mantenimientoService.subirEvidencia({
-      nombreOriginal: file.originalname,
+      nombreOriginal,
       buffer: file.buffer,
-      mimeType: file.mimetype,
+      mimeType,
       tamanoBytes: file.size,
       user: req?.user,
       idSolicitud: body?.idSolicitud,

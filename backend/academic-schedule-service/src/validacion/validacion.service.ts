@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
+import { cargarFranjasCruceables, encontrarCruces } from '../horarios/choque.js';
+
 /**
  * Validación de cruces del HISTÓRICO (3.9).
  *
@@ -37,9 +39,58 @@ export interface CruceHistorico {
   programaB: string;
 }
 
+/** Cruce de la programación VIVA: sin grupo ni asignatura del otro lado (RN-07). */
+export interface CruceVivo {
+  tipo: 'grupo' | 'aula' | 'docente';
+  dia: string;
+  horaInicio: string;
+  horaFin: string;
+  /** Código del aula; para grupo y docente no se expone quién (RN-07/08). */
+  recurso: string | null;
+}
+
+export interface ConteoCrucesVivos {
+  total: number;
+  grupo: number;
+  aula: number;
+  docente: number;
+  cruces: CruceVivo[];
+}
+
 @Injectable()
 export class ValidacionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  /**
+   * Cruces REALES de la programación viva — EFDS-2307.
+   *
+   * La API no deja crear cruces, así que este conteo debería dar 0. No es un
+   * número quemado: se CUENTA, y por eso funciona como canario de la regla. Si
+   * algún día no da 0, alguna ruta dejó pasar un cruce y el panel lo muestra.
+   *
+   * ⚠️ MISMA REGLA QUE AL GUARDAR (`horarios/choque.ts`, la única): mismo día, horas
+   * solapadas Y ciclos de clases solapados (el del grupo; si no tiene, el del periodo).
+   * Es la misma del histórico de cruces. Un aula o un docente en dos periodos distintos,
+   * con ciclos que no se tocan, NO es un cruce.
+   *   · grupo   — dos sesiones del mismo grupo;
+   *   · aula    — el mismo salón físico (lo virtual va sin aula y no cruza);
+   *   · docente — el mismo docente (`franja.id_docente`, EFDS-2306), aunque sea virtual.
+   *
+   * @param idPeriodo si viene, cuenta los pares en que al menos una franja es de ese
+   * periodo (la otra puede ser de cualquiera con el que choque en fechas).
+   */
+  async crucesVivos(idPeriodo?: string): Promise<ConteoCrucesVivos> {
+    const franjas = await cargarFranjasCruceables(this.dataSource, 'TRUE');
+    const pares = encontrarCruces(
+      franjas,
+      idPeriodo ? (a, b) => a.idPeriodo === idPeriodo || b.idPeriodo === idPeriodo : undefined,
+    );
+    const cruces: CruceVivo[] = pares
+      .map((p) => ({ tipo: p.tipo, dia: p.dia, horaInicio: p.horaInicio, horaFin: p.horaFin, recurso: p.tipo === 'aula' ? p.recurso : null }))
+      .sort((x, y) => (x.tipo < y.tipo ? -1 : x.tipo > y.tipo ? 1 : x.dia < y.dia ? -1 : x.dia > y.dia ? 1 : x.horaInicio < y.horaInicio ? -1 : x.horaInicio > y.horaInicio ? 1 : 0));
+    const cuenta = (t: CruceVivo['tipo']) => cruces.filter((c) => c.tipo === t).length;
+    return { total: cruces.length, grupo: cuenta('grupo'), aula: cuenta('aula'), docente: cuenta('docente'), cruces };
+  }
 
   /**
    * Cruces detectados en la programación histórica cargada.
