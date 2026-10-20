@@ -201,4 +201,38 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
     await expect(svc.tomar(D2, z, null)).rejects.toThrow(/se cruza/i);
     await expect(svc.tomar(D2, y, null)).resolves.toEqual({ tomada: true });
   });
+
+  // Reporte de Tomás: al activar un periodo nuevo el anterior queda cerrado, pero lo que el docente tomó
+  // allí seguía en su portal y contando contra su tope en el periodo nuevo. Debe quedar en ceros.
+  siHayBase('al CERRARSE el periodo, sus franjas salen del portal, no cuentan para el tope y no se toman', async () => {
+    const p = await client!.query(
+      `INSERT INTO "${S}".periodo_programacion (codigo, nombre, tipo, fecha_inicio, fecha_fin, estado)
+       VALUES ('QA-POR-CIERRE','QA cierre','periodo_regular','2031-02-01','2031-06-15','activo') RETURNING id_periodo`);
+    const g = await client!.query(
+      `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
+       VALUES (${idAsig},$1,941,'PROGRAMADO') RETURNING id_grupo`, [p.rows[0].id_periodo]);
+    const franja = async (dia: string) => (await client!.query(
+      `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado)
+       VALUES ($1,$2,'16:00'::time,'18:00'::time,'mediada_tecnologia','PUBLICADA') RETURNING id_franja`,
+      [g.rows[0].id_grupo, dia])).rows[0].id_franja as string;
+    const tomada = await franja('SABADO');
+    const otra = await franja('DOMINGO');
+
+    const svc = servicio();
+    await svc.tomar(D2, tomada, null);
+    const horasConElPeriodo = await docencia().total(D2, null, null);
+    // Lo que aporta este grupo (reparto por días: 1 de sus 2 días).
+    const delGrupo = (await docencia().porGrupo(D2, null, null)).find((x) => x.idGrupo === g.rows[0].id_grupo)!.horas;
+    expect(delGrupo).toBeGreaterThan(0);
+    expect((await svc.misFranjas(D2)).map((f) => f.idFranja)).toContain(tomada);
+
+    // Se activa el siguiente: este queda CERRADO.
+    await client!.query(`UPDATE "${S}".periodo_programacion SET estado = 'cerrado' WHERE id_periodo = $1`, [p.rows[0].id_periodo]);
+
+    expect((await svc.misFranjas(D2)).map((f) => f.idFranja)).not.toContain(tomada);   // sale del portal
+    expect(await docencia().total(D2, null, null)).toBe(Math.round((horasConElPeriodo - delGrupo) * 10) / 10); // y del tope
+    expect((await docencia().porGrupo(D2, null, null)).some((x) => x.idGrupo === g.rows[0].id_grupo)).toBe(false);
+    expect((await svc.disponibles(D2)).map((f) => f.idFranja)).not.toContain(otra);    // lo publicado de un periodo cerrado no se ofrece
+    await expect(svc.tomar(D2, otra, null)).rejects.toThrow(/periodo de esta franja está cerrado/);
+  });
 });

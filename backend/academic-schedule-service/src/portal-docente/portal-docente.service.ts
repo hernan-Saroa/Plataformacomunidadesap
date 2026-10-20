@@ -6,6 +6,7 @@ import { AcumuladoService, type AcumuladoDocente } from '../asignaciones/acumula
 import { superaElTope, topeDeDocencia } from '../asignaciones/tope.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { buscarChoque, cargarFranjasCruceables } from '../horarios/choque.js';
+import { sqlPeriodoNoCerrado } from '../periodos/periodo-ref.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -114,13 +115,14 @@ export class PortalDocenteService {
     const candidatas: FranjaPortal[] = await this.dataSource.query(
       `${this.SELECT_CONTEXTO}
         WHERE (f.estado = 'PUBLICADA' OR (f.estado = 'DEVUELTA' AND f.id_docente = $1))
+          AND ${sqlPeriodoNoCerrado()}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
       [idPerson],
     );
     // Lo que ya tiene el docente en un ciclo que no se toca con el de la franja no la bloquea:
     // la regla de choque es la única (`horarios/choque.ts`): día, horas Y ciclo.
     const suyas = await cargarFranjasCruceables(
-      this.dataSource, `f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA')`, [idPerson]);
+      this.dataSource, `f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA') AND ${sqlPeriodoNoCerrado()}`, [idPerson]);
     if (!suyas.length) return candidatas;
     const ciclos = new Map((await cargarFranjasCruceables(
       this.dataSource,
@@ -132,11 +134,15 @@ export class PortalDocenteService {
     });
   }
 
-  /** Franjas que el docente ya tomó (o le aprobaron). */
+  /**
+   * Franjas que el docente ya tomó (o le aprobaron) en periodos VIGENTES. Al cerrarse un periodo (se
+   * activa el siguiente) lo suyo deja de mostrarse y de contar: el portal del periodo nuevo arranca en ceros.
+   */
   async misFranjas(idPerson: string): Promise<FranjaPortal[]> {
     return this.dataSource.query(
       `${this.SELECT_CONTEXTO}
         WHERE f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA')
+          AND ${sqlPeriodoNoCerrado()}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
       [idPerson],
     );
@@ -179,8 +185,17 @@ export class PortalDocenteService {
 
       // Regla única de choque (`horarios/choque.ts`): día, horas Y ciclo de clases. Lo que el
       // docente tiene en otro periodo, con fechas que no se tocan, no se cruza con esta franja.
+      // Nada de un periodo cerrado se toma: ya no hay docencia vigente que programar ahí.
+      const cerrado = await qr.query(
+        `SELECT 1 FROM "academic-schedule".franja_horaria f
+           LEFT JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
+           LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
+           LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
+          WHERE f.id_franja = $1 AND NOT (${sqlPeriodoNoCerrado()})`, [idFranja]);
+      if (cerrado.length) throw new ConflictException('El periodo de esta franja está cerrado: ya no se puede tomar.');
+
       const suyas = await cargarFranjasCruceables(
-        qr, `f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA')`, [idPerson]);
+        qr, `f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA') AND ${sqlPeriodoNoCerrado()}`, [idPerson]);
       const [objetivo] = await cargarFranjasCruceables(qr, 'f.id_franja = $1', [idFranja]);
       if (objetivo && buscarChoque(objetivo, suyas, (m) => m.idFranja === objetivo.idFranja)) {
         throw new ConflictException('No puede tomar esta franja: se cruza con otra que usted ya tiene.');

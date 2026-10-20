@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 
 import { ContratoClient } from '../asignaciones/contrato-client.js';
 import { repartoPorDias, type FranjaReparto, type ReglaReparto } from './reparto.js';
+import { sqlPeriodoNoCerrado } from '../periodos/periodo-ref.js';
 
 /** Docencia de un docente en un grupo, derivada de las franjas. */
 export interface DocenciaGrupo {
@@ -69,7 +70,9 @@ export class DocenciaService {
          LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
         WHERE (f.id_docente = $1 OR f.id_franja = $3::uuid)
-          AND ($2::uuid IS NULL OR g.id_grupo <> $2::uuid)`,
+          AND ($2::uuid IS NULL OR g.id_grupo <> $2::uuid)
+          -- Lo de un periodo CERRADO ya no es carga vigente: no cuenta contra el tope del nuevo.
+          AND ${sqlPeriodoNoCerrado()}`,
       [idDocente, excluirGrupo ?? null, incluirFranja ?? null],
     );
     if (!grupos.length) return [];

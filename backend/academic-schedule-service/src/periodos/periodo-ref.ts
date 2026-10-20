@@ -35,3 +35,16 @@ export function condicionPeriodoGrupo(alias: string, ref: RefPeriodo, indice: nu
     ? `${alias}.id_periodo_academico = $${indice}::bigint`
     : `(${alias}.id_periodo = $${indice}::uuid AND ${alias}.id_periodo_academico IS NULL)`;
 }
+
+/**
+ * Condición SQL «el periodo del grupo NO está cerrado». `pa` = periodo de plataforma
+ * (`academic_work_plan.periodo_academico`), `pp` = periodo legado (`periodo_programacion`).
+ *
+ * Al activar un periodo nuevo el anterior queda CERRADO, y lo que el docente tomó o le
+ * aprobaron allí deja de ser carga vigente: no aparece en su portal ni cuenta contra su
+ * tope en el periodo nuevo (queda en ceros). No confundir con «programación cerrada»
+ * (`programacion_periodo`): ahí el periodo sigue en curso y su docencia sigue contando.
+ */
+export function sqlPeriodoNoCerrado(pa = 'pa', pp = 'pp'): string {
+  return `COALESCE(${pa}.estado, ${pp}.estado, '') <> 'cerrado'`;
+}

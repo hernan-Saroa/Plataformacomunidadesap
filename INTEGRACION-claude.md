@@ -510,3 +510,15 @@ Las pruebas de agregado de PA ya no dependen del catálogo cargado: usan `test/c
 - **mfe-pta:** `PTAForm`, en un PTA nuevo del régimen de concertación, carga esa docencia como vista previa. `DocenciaConcertada` dice «Aprobada en la concertación · se incorpora a este PTA al guardarlo» y, si ya existe un PTA del periodo, avisa que lo continúe («Ir a mis PTAs»). Al guardar un PTA **nuevo** no se reenvía la vista previa: el servidor la aplica al crear, y `protegerAsignaturas` rechaza asignaturas «de programación» que no tenga guardadas.
 - Pruebas: MFE del PTA 599/599 (+3 en `PTAForm.docencia-concertada.test.tsx`); `docencia-decisiones.agregado.spec.ts` 7/7 sin omitidas (caso nuevo: solo la propia, otro usuario y otro periodo vacíos).
 - **Omisión previa, ajena a este cambio:** `calculo-horas.paridad.spec.ts` usa `postgres` como contraseña por defecto y el Jest del PTA no carga el `.env`: se salta en silencio («sin base: paridad omitida»). Pendiente de decidir si se le da el mismo `cargar-env` que a PA.
+
+## 18. Periodo cerrado: el portal del docente arranca en ceros (19 de octubre, en `micro-frontend`)
+
+- **Reporte:** al activar 2027-1, el anterior (2026-2) quedó cerrado, pero las 4 franjas aprobadas del docente seguían en su portal y sus 96 h contaban contra el tope de 304 h del periodo nuevo.
+- **Regla:** lo de un periodo **cerrado** (`periodo_academico.estado` o legado `periodo_programacion.estado` = `cerrado`) deja de ser carga vigente. Una sola condición, `sqlPeriodoNoCerrado()` en `periodos/periodo-ref.ts`, se usa en:
+  - `DocenciaService.porGrupo`, el cálculo único: acumulado, tope al tomar y tope del backoffice;
+  - el portal: `misFranjas` y `disponibles`, también para lo propio que bloquea por choque;
+  - `tomar`, que rechaza con 409 una franja de un periodo cerrado.
+  Al no haber franjas vigentes, el bloque de concertación del periodo cerrado también desaparece.
+- **No es lo mismo que «programación cerrada»** (`programacion_periodo`): ahí el periodo sigue en curso y su docencia sigue contando.
+- **No se borra nada:** franjas, concertaciones, firmas y el PTA del periodo cerrado quedan en la base como histórico.
+- Verificado: portal de `qa.docente` en 2027-1 con 0 h de 304, 0 franjas propias y 9 disponibles (todas de 2027-1). Prueba de agregado nueva en `portal-docente.agregado.spec.ts` con mutación verificada. PA 227/227.
