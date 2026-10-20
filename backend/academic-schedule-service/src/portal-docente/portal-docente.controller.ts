@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PORTAL_TOMAR, PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
@@ -7,6 +7,7 @@ import { PortalDocenteService } from './portal-docente.service.js';
 import { tokenDe } from '../acceso/token.js';
 import { EscrituraEn } from '../acceso/escritura.decorator.js';
 import { tomaDeFranjasHabilitada } from './flujo-docente.js';
+import { VistaService } from '../vista/vista.service.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -20,6 +21,7 @@ export class PortalDocenteController {
   constructor(
     private readonly portal: PortalDocenteService,
     private readonly permisos: ProgramacionPermissionsService,
+    private readonly vista: VistaService,
   ) {}
 
   private roles(req: Request): string[] {
@@ -66,6 +68,20 @@ export class PortalDocenteController {
     await this.exigir(req, PERMISO_PORTAL_VER);
     const docente = await this.portal.resolverDocente(this.idUser(req));
     return { success: true, data: await this.portal.misFranjas(docente.idPerson) };
+  }
+
+  /**
+   * GET /portal-docente/mi-calendario?periodo= — su programación asignada, de lunes a
+   * domingo, con asignatura, grupo, aula y horas (EFDS-2343/2348). Sin periodo, el en curso.
+   * La identidad sale del token: un docente no ve el calendario de otro.
+   */
+  @Get('mi-calendario')
+  async miCalendario(@Req() req: Request, @Query('periodo') periodo?: string) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    const yo = await this.portal.resolverDocente(this.idUser(req));
+    const docente = await this.vista.docentePor({ idDocente: yo.idPerson });
+    const idPeriodo = periodo || (await this.vista.periodoEnCurso());
+    return { success: true, data: await this.vista.calendario(docente, idPeriodo, 'todos', tokenDe(req)) };
   }
 
   /** GET /portal-docente/acumulado — consumo del docente vs tope (RN-04, solo lectura). */
