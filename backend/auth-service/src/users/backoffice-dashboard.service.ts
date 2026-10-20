@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class BackofficeDashboardService {
@@ -241,6 +243,76 @@ export class BackofficeDashboardService {
         programasDetalle: programasDetalle.map((p: any) => ({ nombre: p.nombre, nivel: p.nivel || '', estado: p.estado, facultad: p.facultad || '', asignaturas: +p.asignaturas, personas: 0 })),
         rolesDetalle: rolesList.map((r: any) => ({ nombre: r.name, isSystem: r.type === 'sistema', estado: 'ACTIVO', usuarios: +r.users_count, permisos: 0 })),
       },
+    };
+  }
+
+  async getDashboardTemplate(templateName: string): Promise<string> {
+    const safeName = templateName.replace(/[^a-zA-Z0-9_-]/g, '');
+    const validTemplates = ['panel_seguimiento', 'desarrollo_otic'];
+    if (!validTemplates.includes(safeName)) {
+      throw new NotFoundException(`Plantilla '${templateName}' no encontrada.`);
+    }
+
+    const fileName = `${safeName}.html`;
+    const candidates = [
+      join(__dirname, '..', '..', 'templates', fileName),
+      join(__dirname, '..', 'templates', fileName),
+      join(process.cwd(), 'backend', 'auth-service', 'templates', fileName),
+      join(process.cwd(), 'templates', fileName),
+      join(process.cwd(), 'auth-service', 'templates', fileName),
+    ];
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return readFileSync(candidate, 'utf-8');
+      }
+    }
+
+    throw new NotFoundException(`El archivo para la plantilla '${templateName}' no existe.`);
+  }
+
+  async updateDashboardTemplate(templateName: string, htmlContent: string): Promise<{ success: boolean; message: string }> {
+    const safeName = templateName.replace(/[^a-zA-Z0-9_-]/g, '');
+    const validTemplates = ['panel_seguimiento', 'desarrollo_otic'];
+    if (!validTemplates.includes(safeName)) {
+      throw new BadRequestException(`Plantilla '${templateName}' no es válida.`);
+    }
+
+    if (!htmlContent || typeof htmlContent !== 'string' || !htmlContent.trim()) {
+      throw new BadRequestException('El contenido HTML es requerido.');
+    }
+
+    const fileName = `${safeName}.html`;
+    const candidates = [
+      join(__dirname, '..', '..', 'templates', fileName),
+      join(__dirname, '..', 'templates', fileName),
+      join(process.cwd(), 'backend', 'auth-service', 'templates', fileName),
+      join(process.cwd(), 'templates', fileName),
+      join(process.cwd(), 'auth-service', 'templates', fileName),
+    ];
+
+    let written = false;
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        writeFileSync(candidate, htmlContent, 'utf-8');
+        written = true;
+      }
+    }
+
+    if (!written) {
+      const defaultDir = existsSync(join(process.cwd(), 'templates'))
+        ? join(process.cwd(), 'templates')
+        : join(process.cwd(), 'backend', 'auth-service', 'templates');
+
+      if (!existsSync(defaultDir)) {
+        mkdirSync(defaultDir, { recursive: true });
+      }
+      writeFileSync(join(defaultDir, fileName), htmlContent, 'utf-8');
+    }
+
+    return {
+      success: true,
+      message: `Plantilla '${safeName}' actualizada exitosamente.`,
     };
   }
 }
