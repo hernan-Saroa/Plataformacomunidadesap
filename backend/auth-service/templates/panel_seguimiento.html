@@ -53,6 +53,13 @@
   .tab-btn.active{color:var(--navy);border-bottom-color:var(--blue);}
   .tab-btn:hover{color:var(--navy);}
 
+  /* -------- Control de permisos de edición -------- */
+  body.no-edit [data-tab="edicion"],
+  body.no-edit .edit-link,
+  body.no-edit #viewEdicion {
+    display: none !important;
+  }
+
   section{margin-top:38px;}
   .sec-title{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
   .sec-title h2{font-size:19px;color:var(--navy);}
@@ -230,7 +237,7 @@
 <nav class="tab-bar">
   <div class="tab-row">
     <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
-    <button class="tab-btn" data-tab="edicion">⚙ Edición</button>
+    <button class="tab-btn" data-tab="edicion" id="btnTabEdicion" style="display:none;">⚙ Edición</button>
   </div>
 </nav>
 
@@ -543,7 +550,7 @@ const seedTimeline = [{"name":"Fase 1 · Módulos (6)","sub":"15 oct 25 → 30 d
 /*__SEED_TIMELINE_END__*/
 
 /*__CORTE_START__*/
-let CORTE = "2026-08-20";
+let CORTE = "2026-09-01";
 /*__CORTE_END__*/
 
 /*__SEED_FINANCIERO_START__*/
@@ -555,7 +562,7 @@ const seedHistorico = [{"fecha":"2025-12-31","mes":"Dic 2025","fisico":85,"fin":
 /*__SEED_HISTORICO_END__*/
 
 /*__SNAPSHOT_INFO_START__*/
-const SNAPSHOT_SAVED_AT = "20/8/2026, 9:36:55 a. m.";
+const SNAPSHOT_SAVED_AT = "19/10/2026, 10:12:00 p. m.";
 /*__SNAPSHOT_INFO_END__*/
 
 /*__CONFIG_START__*/
@@ -1169,8 +1176,49 @@ function renderAll(){
 /* ============================================================
    EVENTOS
    ============================================================ */
+/* -------- Control de permisos de edición -------- */
+let canEditCurrent = false;
+
+function applyEditPermissions(allowed){
+  canEditCurrent = Boolean(allowed);
+  const btnEdicion = document.getElementById('btnTabEdicion') || document.querySelector('[data-tab="edicion"]');
+  const editLinks = document.querySelectorAll('.edit-link');
+  if(!canEditCurrent){
+    document.body.classList.add('no-edit');
+    if(btnEdicion) btnEdicion.style.display = 'none';
+    editLinks.forEach(el => el.style.display = 'none');
+    const viewEdicion = document.getElementById('viewEdicion');
+    if(viewEdicion && viewEdicion.style.display !== 'none'){
+      showTab('dashboard');
+    }
+  } else {
+    document.body.classList.remove('no-edit');
+    if(btnEdicion) btnEdicion.style.display = '';
+    editLinks.forEach(el => el.style.display = '');
+  }
+}
+
+// 1. Detección por URL query parameter (?canEdit=true o ?edit=true)
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  const p = urlParams.get('canEdit') || urlParams.get('edit');
+  applyEditPermissions(p === 'true' || p === '1');
+} catch(e) {
+  applyEditPermissions(false);
+}
+
+// 2. Detección por mensaje postMessage desde el contenedor Shell
+window.addEventListener('message', (ev) => {
+  if (ev && ev.data && ev.data.type === 'SET_PERMISSIONS') {
+    applyEditPermissions(Boolean(ev.data.canEdit));
+  }
+});
+
 /* Pestañas Dashboard / Edición */
 function showTab(tab){
+  if(tab === 'edicion' && !canEditCurrent){
+    return;
+  }
   document.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
   document.getElementById('viewDashboard').style.display = tab==='dashboard' ? '' : 'none';
   document.getElementById('viewEdicion').style.display = tab==='edicion' ? '' : 'none';

@@ -5,8 +5,9 @@ import {
   Globe, BarChart3, ArrowUpRight, ArrowDownRight,
   FileText, Target, Eye, Gauge, ExternalLink, BookOpen,
   Zap, ArrowRight, FileCheck, ClipboardList, Award,
-  AlertOctagon, Clock, Maximize2, Minimize2,
+  AlertOctagon, Clock, Maximize2, Minimize2, Upload,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -18,7 +19,9 @@ import { motion } from 'motion/react';
 
 // ═══════ PERMISOS ═══════
 const PERMISSION_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view';
+const PERMISSION_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit';
 const PERMISSION_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view';
+const PERMISSION_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit';
 
 // ═══════ TYPES ═══════
 interface DashboardExecutivoProps { onNavigateToModule?: (moduleId: string) => void; }
@@ -159,14 +162,23 @@ interface DashboardHtmlViewerProps {
   templateName: 'panel_seguimiento' | 'desarrollo_otic';
   title: string;
   description: string;
+  canEdit?: boolean;
 }
 
-function DashboardHtmlViewer({ templateName, title, description }: DashboardHtmlViewerProps) {
+function DashboardHtmlViewer({ templateName, title, description, canEdit = false }: DashboardHtmlViewerProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const url = `${dashboardService.getTemplateUrl(templateName)}${reloadKey ? `?t=${reloadKey}` : ''}`;
+  const queryParams = new URLSearchParams();
+  if (canEdit) {
+    queryParams.set('canEdit', 'true');
+  }
+  if (reloadKey) {
+    queryParams.set('t', String(reloadKey));
+  }
+  const queryString = queryParams.toString();
+  const url = `${dashboardService.getTemplateUrl(templateName)}${queryString ? `?${queryString}` : ''}`;
 
   const handleReload = () => {
     setIframeLoading(true);
@@ -175,6 +187,45 @@ function DashboardHtmlViewer({ templateName, title, description }: DashboardHtml
 
   const handleOpenNewTab = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      const text = await file.text();
+
+      if (!text.includes('<html') && !text.includes('<!DOCTYPE') && !text.includes('<div') && !text.includes('<body')) {
+        toast.error('Archivo no válido', {
+          description: 'El archivo seleccionado debe ser un documento HTML.',
+        });
+        return;
+      }
+
+      await dashboardService.uploadTemplate(templateName, text);
+      toast.success('Plantilla actualizada', {
+        description: `Se reemplazó el archivo HTML de ${title} correctamente.`,
+      });
+
+      // Recargar el iframe inmediatamente para mostrar los nuevos datos
+      setIframeLoading(true);
+      setReloadKey(Date.now());
+    } catch (err: any) {
+      console.error('Error al subir plantilla HTML:', err);
+      toast.error('Error al cargar la plantilla', {
+        description: err.message || 'No se pudo guardar el archivo en el servidor.',
+      });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -211,6 +262,31 @@ function DashboardHtmlViewer({ templateName, title, description }: DashboardHtml
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
+          {canEdit && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".html,text/html"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#003DA5] hover:bg-[#002D7A] border border-[#003DA5] rounded-xl transition-all shadow-2xs hover:shadow-sm disabled:opacity-50 cursor-pointer"
+                title="Cargar y reemplazar el archivo HTML con la nueva versión editada"
+              >
+                {isUploading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                <span>{isUploading ? 'Cargando...' : 'Cargar'}</span>
+              </button>
+            </>
+          )}
+
           <button
             onClick={handleReload}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all shadow-2xs hover:text-[#003DA5]"
@@ -267,6 +343,25 @@ function DashboardHtmlViewer({ templateName, title, description }: DashboardHtml
           }}
           onLoad={() => {
             ajustarAltura();
+            try {
+              iframeRef.current?.contentWindow?.postMessage({ type: 'SET_PERMISSIONS', canEdit }, '*');
+              const doc = iframeRef.current?.contentDocument;
+              if (doc) {
+                const btnEdicion = doc.querySelector<HTMLElement>('[data-tab="edicion"]');
+                const editLinks = doc.querySelectorAll<HTMLElement>('.edit-link');
+                if (!canEdit) {
+                  doc.body.classList.add('no-edit');
+                  if (btnEdicion) btnEdicion.style.display = 'none';
+                  editLinks.forEach(el => el.style.display = 'none');
+                } else {
+                  doc.body.classList.remove('no-edit');
+                  if (btnEdicion) btnEdicion.style.display = '';
+                  editLinks.forEach(el => el.style.display = '');
+                }
+              }
+            } catch (err) {
+              console.warn('Error sincronizando permisos en iframe:', err);
+            }
             setIframeLoading(false);
           }}
         />
@@ -284,10 +379,12 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
   const [stats, setStats] = useState<any>(null);
   const [viewTab, setViewTab] = useState<ViewTab>('estrategico');
 
-  // Permisos: SUPER_ADMIN tiene acceso total, o usuario con permiso explícito de view
+  // Permisos: SUPER_ADMIN tiene acceso total, o usuario con permiso explícito de view / edit
   const isSuperAdmin = authService.isSuperAdmin();
   const canViewPanelSeguimiento = isSuperAdmin || authService.hasPermission(PERMISSION_PANEL_SEGUIMIENTO_VIEW);
   const canViewDesarrolloOtic = isSuperAdmin || authService.hasPermission(PERMISSION_DESARROLLO_OTIC_VIEW);
+  const canEditPanelSeguimiento = isSuperAdmin || authService.hasPermission(PERMISSION_PANEL_SEGUIMIENTO_EDIT);
+  const canEditDesarrolloOtic = isSuperAdmin || authService.hasPermission(PERMISSION_DESARROLLO_OTIC_EDIT);
 
   // Si la pestaña actual no está permitida para el usuario, volver a 'estrategico'
   useEffect(() => {
@@ -698,6 +795,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
           templateName="panel_seguimiento"
           title="Panel de Seguimiento"
           description="Estado consolidado de la implementación, metas y compromisos estratégicos"
+          canEdit={canEditPanelSeguimiento}
         />
       )}
 

@@ -92,6 +92,15 @@ export const dashboardService = {
   getTemplateUrl(templateName: string): string {
     return `/services${SERVICE_PREFIX}/backoffice/dashboard/templates/${templateName}`;
   },
+
+  /**
+   * Carga y reemplaza el archivo HTML de una plantilla del dashboard
+   */
+  async uploadTemplate(templateName: string, htmlContent: string): Promise<any> {
+    return apiClient.post(`${SERVICE_PREFIX}/backoffice/dashboard/templates/${templateName}`, {
+      html: htmlContent,
+    });
+  },
 };
 
 export default dashboardService;

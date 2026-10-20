@@ -487,9 +487,5 @@ export enum Permissions {
   DASHBOARD_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit',
   DASHBOARD_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view',
   DASHBOARD_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit',
-  PERMISSION_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view',
-  PERMISSION_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit',
-  PERMISSION_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view',
-  PERMISSION_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit',
 }
 
