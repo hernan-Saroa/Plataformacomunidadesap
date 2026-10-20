@@ -1500,6 +1500,28 @@ type ModuleView = 'gestion' | 'seguimiento_docs' | 'configuracion' | 'banco_doce
 type FiltroEtapaPersonal = '' | 'revision_pendiente' | 'revision_revisado' | 'aprobacion_pendiente' | 'aprobacion_aprobado';
 type EstadoEtapaPersonal = 'sin_alcance' | 'pendiente' | 'resuelto';
 
+/** Combina el detalle general con las tareas personales ya autorizadas. */
+function mergePtaWorkflowUpdate(pta: any, update: any) {
+  const merged = { ...pta, ...update };
+  for (const etapa of ['revision', 'aprobacion']) {
+    const personal = `componentes_${etapa}_usuario`;
+    const general = `componentes_${etapa}_estado`;
+    // Una colección personal explícita, incluso vacía, es autoritativa. El
+    // detalle general solo puede renovar filas que ya pertenecían al usuario.
+    if (Array.isArray(update[personal]) || !Array.isArray(update[general])
+      || !Array.isArray(pta[personal])) continue;
+    merged[personal] = pta[personal].map((row: any) => {
+      // El consolidado territorial no decide por un par territorial/nivel.
+      if (row.territorial_id || row.territorialId) return row;
+      const confirmed = update[general].find((item: any) => item.componente === row.componente
+        && !item.territorial_id && !item.territorialId
+        && (etapa !== 'revision' || (item.subseccion || 'general') === (row.subseccion || 'general')));
+      return confirmed ? { ...row, ...confirmed } : row;
+    });
+  }
+  return merged;
+}
+
 function normalizeEstadoKey(value?: string | null) {
   return String(value || '')
     .normalize('NFD')
@@ -2582,10 +2604,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     const byId = new Map<string, any>(actualizados.map((pta: any) => [pta.id, pta]));
     const aplicarActualizacion = (pta: any) => {
       const actualizado = byId.get(pta.id);
-      return actualizado && actualizado.periodo === pta.periodo ? { ...pta, ...actualizado } : pta;
+      return actualizado && actualizado.periodo === pta.periodo ? mergePtaWorkflowUpdate(pta, actualizado) : pta;
     };
     setPtas(prev => prev.map(aplicarActualizacion));
-    setSelectedPTA((prev: any) => prev && byId.has(prev.id) ? { ...prev, ...byId.get(prev.id) } : prev);
+    setSelectedPTA((prev: any) => prev ? aplicarActualizacion(prev) : prev);
     const etapa = filtroEstado === 'revision_pendiente' ? 'revision'
       : filtroEstado === 'aprobacion_pendiente' ? 'aprobacion' : null;
     if (etapa && contextoBandeja === contextoBandejaRef.current) {

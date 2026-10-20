@@ -1851,20 +1851,6 @@ export function GestionNoticias() {
                     </button>
                   )}
 
-                  {/* Botón Remitir por Competencia - solo si NO ha sido remitido */}
-                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
-                    <button
-                      onClick={() => {
-                        setNoticiaSeleccionada(noticia);
-                        setShowRemitirCompetenciaModal(true);
-                      }}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
-                      title="Remitir por competencia"
-                    >
-                      <Send className="w-4 h-4 text-purple-600" />
-                    </button>
-                  )}
-
                   {/* RF002: Botones de Revisión y Asignación */}
                   {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
                     <>
@@ -2042,6 +2028,9 @@ export function GestionNoticias() {
               setNoticiaSeleccionada(null);
             }}
             onDownload={async (url, filename) => {
+              if (!url || url.toLowerCase().includes('/preview') || url.toLowerCase() === 'preview') {
+                return;
+              }
               await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
             }}
           />

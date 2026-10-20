@@ -4,6 +4,9 @@ import { CalculoHorasController } from './v1/calculo-horas.controller';
 import { CalculoHorasService } from './v1/calculo-horas.service';
 import { DocentesContratoController } from './v1/docentes-contrato.controller';
 import { DocentesContratoService } from './v1/docentes-contrato.service';
+import { DocenciaDecisionesController } from './v1/docencia-decisiones.controller';
+import { DocenciaDecisionesService } from './v1/docencia-decisiones.service';
+import { PtaPermissionsService } from '../pta/auth/pta-permissions.service';
 
 /**
  * Superficie que Programación Académica consume de este servicio.
@@ -13,8 +16,10 @@ import { DocentesContratoService } from './v1/docentes-contrato.service';
  * de los DTOs propios.
  */
 @Module({
-  controllers: [DocentesContratoController, CalculoHorasController],
-  providers: [DocentesContratoService, CalculoHorasService],
+  controllers: [DocentesContratoController, CalculoHorasController, DocenciaDecisionesController],
+  // PtaPermissionsService solo necesita el DataSource: se provee aquí en vez de
+  // importar todo PtaModule (EFDS-2315).
+  providers: [DocentesContratoService, CalculoHorasService, DocenciaDecisionesService, PtaPermissionsService],
   exports: [DocentesContratoService, CalculoHorasService],
 })
 export class ContratoProgramacionModule {}

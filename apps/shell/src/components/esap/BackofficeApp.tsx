@@ -874,7 +874,16 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'programacion-academica':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <ProgramacionAcademicaModule />
+            <ProgramacionAcademicaModule
+              puedeAbrirProgramasAcademicos={
+                (hasAllAssignedModules || accessibleViews.has('programas-academicos')) &&
+                (activeModules.length === 0 || activeModules.some((module) => module.code === 'programas-academicos'))
+              }
+              abrirProgramasAcademicos={() => {
+                setCurrentSidebarModule('programas-academicos');
+                setCurrentModule('programas-academicos');
+              }}
+            />
           </Suspense>
         );
 

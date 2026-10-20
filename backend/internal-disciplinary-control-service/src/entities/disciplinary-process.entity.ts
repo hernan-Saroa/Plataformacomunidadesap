@@ -160,4 +160,32 @@ export class DisciplinaryProcess {
 
   @Column({ name: 'restaurado', type: 'boolean', default: false })
   restaurado: boolean;
+
+  // Campos para Remisión por Competencia
+  @Column({ name: 'en_proceso_remision', type: 'boolean', default: false })
+  enProcesoRemision: boolean;
+
+  @Column({ name: 'remision_aprobada', type: 'boolean', default: false })
+  remisionAprobada: boolean;
+
+  @Column({ name: 'numero_rc', type: 'varchar', length: 50, nullable: true })
+  numeroRC: string | null;
+
+  @Column({ name: 'entidad_remision', type: 'varchar', length: 255, nullable: true })
+  entidadRemision: string | null;
+
+  @Column({ name: 'correo_entidad_remision', type: 'varchar', length: 255, nullable: true })
+  correoEntidadRemision: string | null;
+
+  @Column({ name: 'fecha_remision', type: 'timestamptz', nullable: true })
+  fechaRemision: Date | null;
+
+  @Column({ name: 'tipo_remision', type: 'varchar', length: 100, nullable: true })
+  tipoRemision: string | null;
+
+  @Column({ name: 'justificacion_remision', type: 'text', nullable: true })
+  justificacionRemision: string | null;
+
+  @Column({ name: 'descripcion_remision', type: 'jsonb', nullable: true })
+  descripcionRemision: any;
 }

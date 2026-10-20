@@ -1,8 +1,10 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { JefaturaService } from './jefatura.service.js';
+import { concertacionHabilitada } from '../concertacion/configuracion.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 const PERMISO_APROBACION = 'programacion-academica.aprobacion.territorial';
 
@@ -34,6 +36,12 @@ export class JefaturaController {
   }
 
   private async exigirAprobacion(req: Request): Promise<void> {
+    // EFDS-2315: con la concertación encendida, la docencia se aprueba allí con
+    // los roles del PTA. Dos caminos de aprobación serían doble aprobación.
+    if (concertacionHabilitada()) {
+      throw new ConflictException(
+        'La docencia se aprueba en la concertación. La aprobación por franja de la jefatura está desactivada.');
+    }
     const permisos = await this.permisos.resolveForRoles(this.roles(req));
     if (!permisos.has(PERMISO_APROBACION)) {
       throw new ForbiddenException('Aprobar programación requiere el permiso de jefatura territorial.');
@@ -49,14 +57,16 @@ export class JefaturaController {
 
   /** POST /jefatura/aprobar/:idFranja — TOMADA → APROBADA. */
   @Post('aprobar/:idFranja')
-  async aprobar(@Req() req: Request, @Param('idFranja') idFranja: string) {
+  @EscrituraEn({ franja: { param: 'idFranja' } })
+  async aprobar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigirAprobacion(req);
     return { success: true, data: await this.jefatura.aprobar(this.idUser(req), idFranja) };
   }
 
   /** POST /jefatura/devolver/:idFranja — TOMADA → PUBLICADA con comentario. */
   @Post('devolver/:idFranja')
-  async devolver(@Req() req: Request, @Param('idFranja') idFranja: string, @Body() body: { comentario?: string }) {
+  @EscrituraEn({ franja: { param: 'idFranja' } })
+  async devolver(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string, @Body() body: { comentario?: string }) {
     await this.exigirAprobacion(req);
     return { success: true, data: await this.jefatura.devolver(this.idUser(req), idFranja, body?.comentario ?? '') };
   }

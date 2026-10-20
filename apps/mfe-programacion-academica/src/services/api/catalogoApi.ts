@@ -1,4 +1,5 @@
 import { getApiGatewayBaseUrl } from '../../../config/environment';
+import { invalidarEscrituraProgramacion } from '../actualizacionProgramacion';
 
 /**
  * Cliente del catálogo académico (EFDS-1368).
@@ -64,17 +65,31 @@ async function pedir<T>(ruta: string): Promise<T> {
   return (cuerpo?.data ?? cuerpo) as T;
 }
 
-/** Programas visibles para el usuario; sin `nivel` devuelve los de todos sus niveles. */
-export function getProgramas(nivel?: NivelAcademico): Promise<ProgramaCatalogo[]> {
-  const query = nivel ? `?nivel=${encodeURIComponent(nivel)}` : '';
-  return pedir<ProgramaCatalogo[]>(`${BASE}/programas${query}`);
+/** Arma `?a=1&b=2` solo con lo que trae valor. */
+function consulta(params: Record<string, string | undefined>): string {
+  const partes = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`);
+  return partes.length ? `?${partes.join('&')}` : '';
 }
 
-/** Catálogo del programa agrupado por semestre del plan de estudios (AC-01). */
+/**
+ * Programas visibles para el usuario; sin `nivel` devuelve los de todos sus niveles.
+ * Con `idPeriodo`, solo los que tienen oferta CETAP activa en ese periodo (un periodo sin carga: vacío).
+ */
+export function getProgramas(nivel?: NivelAcademico, idPeriodo?: string): Promise<ProgramaCatalogo[]> {
+  return pedir<ProgramaCatalogo[]>(`${BASE}/programas${consulta({ nivel, periodo: idPeriodo })}`);
+}
+
+/**
+ * Catálogo del programa agrupado por semestre del plan de estudios (AC-01).
+ * Con `idPeriodo` y un programa sin oferta en él: `semestres: []` y `ofertadoEnPeriodo: false`.
+ */
 export function getCatalogoPorSemestre(
   idPrograma: string,
-): Promise<{ programa: any; semestres: SemestreCatalogo[] }> {
-  return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas`);
+  idPeriodo?: string,
+): Promise<{ programa: any; semestres: SemestreCatalogo[]; ofertadoEnPeriodo?: boolean }> {
+  return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas${consulta({ periodo: idPeriodo })}`);
 }
 
 // ─── Grupos (EFDS-1370) ─────────────────────────────────────────────────────
@@ -83,6 +98,7 @@ export interface Grupo {
   idGrupo: string;
   idAsignatura: string;
   idPeriodo: string | null;
+  idOfertaCetap: string | null;
   numeroGrupo: number;
   idDocente: string | null;
   cupoMaximo: number;
@@ -94,6 +110,14 @@ export interface Grupo {
 }
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
+
+export interface OfertaCetapGrupo {
+  idOfertaCetap: string;
+  idPrograma: string;
+  idPeriodoAcademico: string;
+  cetap: { id: string; codigo: string; nombre: string };
+  territorial: { codigo: string | null; nombre: string | null; idSeccional: string | null };
+}
 
 async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -114,8 +138,15 @@ async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
     }
     throw new Error(detalle || `No se pudo completar la operación (error ${res.status}).`);
   }
-  const cuerpo = await res.json();
+  const cuerpo = res.status === 204 ? null : await res.json();
+  if (!['GET', 'HEAD'].includes((init.method ?? 'GET').toUpperCase())) {
+    invalidarEscrituraProgramacion(ruta);
+  }
   return (cuerpo?.data ?? cuerpo) as T;
+}
+
+export function getGrupo(idGrupo: string): Promise<Grupo> {
+  return pedirJson<Grupo>(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, { method: 'GET' });
 }
 
 export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Grupo[]> {
@@ -123,13 +154,27 @@ export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Gru
   return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}${q}`, { method: 'GET' });
 }
 
+/** Ofertas activas del programa de la asignatura en el periodo seleccionado. */
+export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): Promise<OfertaCetapGrupo[]> {
+  return pedirJson<OfertaCetapGrupo[]>(
+    `${BASE_GRUPOS}/ofertas-cetap?asignatura=${encodeURIComponent(idAsignatura)}&periodo=${encodeURIComponent(idPeriodo)}`,
+    { method: 'GET' },
+  );
+}
+
 /** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
-export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null): Promise<Grupo[]> {
+export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null, idOfertaCetap?: string | null): Promise<Grupo[]> {
   return pedirJson<Grupo[]>(BASE_GRUPOS, {
     method: 'POST',
     // El periodo del grupo es el seleccionado en la cabecera: sin él, el grupo
     // nace huérfano (id_periodo NULL) y publicar/validar no lo alcanzan.
-    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null }),
+    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null, ...(idOfertaCetap ? { idOfertaCetap } : {}) }),
+  });
+}
+
+export function actualizarOfertaCetapGrupo(idGrupo: string, idOfertaCetap: string | null): Promise<Grupo> {
+  return pedirJson<Grupo>(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, {
+    method: 'PATCH', body: JSON.stringify({ idOfertaCetap }),
   });
 }
 
@@ -333,8 +378,8 @@ export interface AsignaturaSnies {
 }
 
 /** Autocompletado por llave maestra. El código no existente devuelve error controlado. */
-export function getAsignaturaPorCodigo(codigo: string): Promise<AsignaturaSnies> {
-  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}`);
+export function getAsignaturaPorCodigo(codigo: string, idPeriodo?: string): Promise<AsignaturaSnies> {
+  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}${consulta({ periodo: idPeriodo })}`);
 }
 
 // ─── Aulas y disponibilidad (EFDS-1374) ─────────────────────────────────────
@@ -345,6 +390,21 @@ export interface Aula {
   sedeCodigo: string | null;
   capacidad: number | null;
   provisional: boolean;
+  tipo?: string | null;
+  piso?: number | null;
+  /** Territorial y CETAP del aula. */
+  territorial?: { codigo: string; nombre: string | null } | null;
+  cetap?: { codigo: string; nombre: string | null } | null;
+  /** Con filtro de oferta: la oferta (programa + CETAP + periodo) que se deduce al elegir esta aula. */
+  idOfertaCetap?: string | null;
+}
+
+/** Filtros de `GET /aulas`: por CETAP, por grupo, o por asignatura + periodo (solo las aulas válidas para la oferta). */
+export interface FiltroAulas {
+  cetap?: string;
+  grupo?: string;
+  asignatura?: string;
+  periodo?: string;
 }
 
 /** Franja ocupada de un aula: SOLO día y hora (RN-07, no revela qué la ocupa). */
@@ -356,13 +416,20 @@ export interface FranjaOcupadaAula {
 
 const BASE_AULAS = '/programacion-academica/api/v1/aulas';
 
-export function getAulas(): Promise<Aula[]> {
-  return pedirJson<Aula[]>(BASE_AULAS, { method: 'GET' });
+export function getAulas(filtros: FiltroAulas = {}): Promise<Aula[]> {
+  return pedirJson<Aula[]>(`${BASE_AULAS}${consulta({ ...filtros })}`, { method: 'GET' });
 }
 
-/** Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo. */
-export function getDisponibilidadAula(codigo: string): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
-  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad`, { method: 'GET' });
+/**
+ * Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo.
+ * Con `periodo` (o `grupo`) solo cuenta lo que ocupa el aula EN ESE CICLO de clases: el aula de
+ * otro periodo, con fechas que no se tocan, no aparece ocupada.
+ */
+export function getDisponibilidadAula(
+  codigo: string,
+  opciones: { periodo?: string; grupo?: string } = {},
+): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
+  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad${consulta({ ...opciones })}`, { method: 'GET' });
 }
 
 /** Publica la oferta del grupo. Exige aula en todas las franjas (cierra deuda de 1371). */
@@ -578,6 +645,9 @@ export interface FranjaPortal {
   programa: string | null;
   /** Motivo de la devolución de la jefatura, si la franja está DEVUELTA. */
   comentarioJefatura: string | null;
+  /** Periodo de la franja: el id de las rutas (plataforma o legado) y su código. */
+  idPeriodo?: string | null;
+  periodoCodigo?: string | null;
 }
 
 const BASE_PORTAL = '/programacion-academica/api/v1/portal-docente';

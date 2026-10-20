@@ -17,11 +17,13 @@
  */
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { getPTADecisionPermissions, type PTADecisionPermissions } from '../../services/api/ptaApi';
+import { getPTADecisionPermissions, getCatalogoTerritoriales, type PTADecisionPermissions } from '../../services/api/ptaApi';
 import { canDecidePtaComponent } from './shared/ptaDecisionPermissions';
 import { scopedTerritorialProgress, territorialProgressStatus, mergeTerritorialProgress } from './shared/ptaTerritorialProgress';
+import { getApprovalTerritorialLabel, getTerritorialDisplayName, toTerritorialReference } from './shared/ptaTerritorialDisplay';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { getPtaResearchData } from '../../utils/ptaResearch';
+import { DocenciaCrucesAlert } from './shared/DocenciaCrucesAlert';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../utils/officePreview';
 import { createPortal } from 'react-dom';
@@ -208,8 +210,8 @@ function normalizeTerritorialToken(v: any): string {
 type ParTerritorial = { territorialId: string; nivel: PTANivelDocencia };
 
 /** Etiqueta legible de un par, para botones y mensajes. */
-function etiquetaPar(t: { territorialNombre?: string | null; territorialId: string; nivel: string }): string {
-  const territorial = t.territorialNombre || t.territorialId;
+function etiquetaPar(t: { territorialNombre?: string | null; territorialId: string; nivel: string }, resolveName: (value: any) => string | null): string {
+  const territorial = resolveName(t) || 'Territorial no disponible';
   return `${territorial} · ${t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado'}`;
 }
 
@@ -730,7 +732,8 @@ function normalizeExtensionSectionForDisplay(section: unknown): string {
 
 function normalizePTAData(d: any, fallbackPta: any = {}) {
   if (!d) return d;
-  const extensionActs = (d.extension_actividades || []).map((e: any) => ({
+  const source = { ...fallbackPta, ...d };
+  const extensionActs = (source.extension_actividades || []).map((e: any) => ({
     ...e,
     seccion: normalizeExtensionSectionForDisplay(e.seccion),
   }));
@@ -746,8 +749,9 @@ function normalizePTAData(d: any, fallbackPta: any = {}) {
       alto_gobierno: extensionActs.filter((e: any) => e.seccion === 'alto_gobierno'),
       otras: extensionActs.filter((e: any) => e.seccion === 'otras'),
     },
-    complementarias: { actividades: d.complementarias || [] },
-    acad_admin: { actividades: d.academico_admin || [] },
+    complementarias: { actividades: Array.isArray(source.complementarias)
+      ? source.complementarias : source.complementarias?.actividades || [] },
+    acad_admin: { actividades: source.academico_admin || source.acad_admin?.actividades || [] },
   };
 }
 
@@ -799,6 +803,22 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [revisionCargada, setRevisionCargada] = useState(false);
   const [comentariosRevision, setComentariosRevision] = useState<Record<string, string>>({});
   const [procesandoRevision, setProcesandoRevision] = useState<Record<string, boolean>>({});
+
+  const [catalogoTerritoriales, setCatalogoTerritoriales] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelado = false;
+    // Sin filtro de período: las decisiones históricas pueden referirse a una territorial inactiva.
+    getCatalogoTerritoriales().then(result => {
+      if (!cancelado && result.success) setCatalogoTerritoriales(result.data || []);
+    }).catch(() => {});
+    return () => { cancelado = true; };
+  }, []);
+  const referenciasTerritoriales = useMemo(() => [
+    ...catalogoTerritoriales,
+    ...[pta, ...(Array.isArray(pta.asignaturas) ? pta.asignaturas : []),
+      ...aprobacionTerritorial, ...revisionTerritorial, ...aprobacionesJefatura].map(toTerritorialReference),
+  ], [catalogoTerritoriales, pta, aprobacionTerritorial, revisionTerritorial, aprobacionesJefatura]);
+  const nombreTerritorial = useCallback((value: any) => getTerritorialDisplayName(value, referenciasTerritoriales), [referenciasTerritoriales]);
 
   const { rules } = usePTARules();
 
@@ -1124,8 +1144,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     ) || revisionTerritorial.find(
       t => t.territorialId === par.territorialId && t.nivel === par.nivel,
     );
-    return etiquetaPar(fila || { territorialId: par.territorialId, nivel: par.nivel });
-  }, [aprobacionTerritorial, revisionTerritorial]);
+    return etiquetaPar(fila || { territorialId: par.territorialId, nivel: par.nivel }, nombreTerritorial);
+  }, [aprobacionTerritorial, revisionTerritorial, nombreTerritorial]);
 
   /**
    * Refresca los datos derivados del PTA después de decidir sobre un componente.
@@ -1137,17 +1157,26 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
    * previo hasta recargar la página, que es justo lo que se reportó.
    */
   const refrescarEstadoDerivadoDelPta = async (notificarActualizacion = true) => {
-    const [resPta, resJefatura] = await Promise.all([
+    const [detail, jefatura] = await Promise.allSettled([
       getPTAById(pta.id),
       getAprobacionesJefatura(pta.id),
     ]);
-    if (resPta.success && resPta.data) {
-      setPta((prev: any) => ({ ...prev, ...resPta.data }));
-      // El detalle general no trae el alcance personal. No reenviar aquí los
-      // estados personales anteriores: sobrescribirían el resultado de Gestión.
-      if (notificarActualizacion) onUpdated?.({ ...resPta.data, id: pta.id, periodo: pta.periodo });
+    if (detail.status === 'fulfilled' && detail.value.success && detail.value.data) {
+      const derivado = { ...detail.value.data };
+      // Esta ruta devuelve el consolidado general. No debe sustituir los pares
+      // personales ni el alcance que Gestión ya confirmó para el usuario.
+      for (const campo of ['componentes_revision_usuario', 'componentes_aprobacion_usuario',
+        'componentes_en_alcance', 'componentes_revision_en_alcance', 'componentes_aprobacion_en_alcance']) {
+        delete derivado[campo];
+      }
+      setPta((prev: any) => normalizePTAData(derivado, prev));
+      if (notificarActualizacion) onUpdated?.({ ...derivado, id: pta.id, periodo: pta.periodo });
     }
-    if (resJefatura.success) setAprobacionesJefatura(resJefatura.data || []);
+    // La lista ya recibió la decisión confirmada y sus tareas personales. El
+    // detalle general no debe volver a publicar el alcance anterior del usuario.
+    if (jefatura.status === 'fulfilled' && jefatura.value.success) {
+      setAprobacionesJefatura(jefatura.value.data || []);
+    }
   };
 
   const publicarDecisionRegistrada = (data: any) => {
@@ -1156,8 +1185,56 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       id: pta.id,
       periodo: pta.periodo,
       ...(data?.estadoGeneral ? { estado: data.estadoGeneral } : {}),
+      componentes_revision_estado: componentesRevision,
+      componentes_aprobacion_estado: componentesAprobacion,
+      // El resumen personal es auxiliar: puede faltar tras una decisión ya
+      // guardada, o durante un despliegue con versiones distintas del servicio.
+      // Conservar todas las tareas propias, incluidas las que siguen pendientes.
+      componentes_revision_usuario: pta.componentes_revision_usuario ?? [
+        ...componentesRevision.filter(row => row.componente !== 'academica_territorial'
+          && isSubseccionAuthorizedToReview(row.componente, row.subseccion || 'general')),
+        ...revisionesTerritorialesPropias.map(row => ({ ...row, componente: 'academica_territorial',
+          subseccion: 'general', territorial_id: row.territorialId })),
+      ],
+      componentes_aprobacion_usuario: pta.componentes_aprobacion_usuario ?? [
+        ...componentesAprobacion.filter(row => row.componente !== 'academica_territorial'
+          && isComponentAuthorized(row.componente)),
+        ...aprobacionesTerritorialesPropias.map(row => ({ ...row, componente: 'academica_territorial',
+          territorial_id: row.territorialId })),
+      ],
     };
-    setPta((prev: any) => ({ ...prev, ...cambio }));
+    if (!actualizado) {
+      const confirmarFila = (rows: any[], row: any, personal: boolean) => {
+        if (!row?.componente) return rows;
+        const territorialId = row.territorialId ?? row.territorial_id;
+        // Una decisión de un par no confirma el componente global completo.
+        if (territorialId && !personal) return rows;
+        const confirmada = territorialId ? { ...row, territorial_id: territorialId, subseccion: 'general' } : row;
+        const mismaFila = (item: any) => item.componente === row.componente
+          && (item.subseccion || 'general') === (confirmada.subseccion || 'general')
+          && (item.territorialId ?? item.territorial_id) === territorialId
+          && item.nivel === row.nivel;
+        return rows.some(mismaFila)
+          ? rows.map(item => mismaFila(item) ? { ...item, ...confirmada } : item)
+          : [...rows, confirmada];
+      };
+      cambio.componentes_revision_estado = confirmarFila(cambio.componentes_revision_estado, data?.review, false);
+      cambio.componentes_revision_usuario = confirmarFila(cambio.componentes_revision_usuario, data?.review, true);
+      const approval = data?.approval ? { ...data.approval,
+        estado_visual: data.approval.estado_visual || data.approval.estado } : null;
+      cambio.componentes_aprobacion_estado = confirmarFila(cambio.componentes_aprobacion_estado, approval, false);
+      cambio.componentes_aprobacion_usuario = confirmarFila(cambio.componentes_aprobacion_usuario, approval, true);
+      const review = data?.review;
+      if (review?.componente === 'academica_territorial' && review.territorialId && review.nivel) {
+        // La revisión confirmada de este par habilita su aprobación, aunque el
+        // consolidado siga esperando la revisión de otras territoriales.
+        cambio.componentes_aprobacion_usuario = cambio.componentes_aprobacion_usuario.map((row: any) =>
+          row.componente === review.componente
+            && (row.territorial_id ?? row.territorialId) === review.territorialId && row.nivel === review.nivel
+            ? { ...row, revision_completa: review.estado === 'revisado' } : row);
+      }
+    }
+    setPta((prev: any) => normalizePTAData(cambio, prev));
     // Actualizar las filas visibles con la decisión guardada antes de las
     // lecturas auxiliares. Un par territorial no sustituye el consolidado.
     const revisionesConfirmadas = [
@@ -1278,7 +1355,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
       decisionSucceeded = res.success;
       if (res.success) {
-        const estadoPersonalActualizado = publicarDecisionRegistrada(res.data);
+        const tieneResumenPersonal = publicarDecisionRegistrada(res.data);
         const sufijo = par ? ` (${etiquetaParDe(par)})` : '';
         toast.success(`Componente ${estado === 'aprobado' ? 'aprobado' : 'devuelto'} con éxito${sufijo}`);
         setComentariosComponente(prev => ({ ...prev, [clave]: '' }));
@@ -1294,7 +1371,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         }
 
         // Estado por componente y avance de Jefatura: los recalcula el backend.
-        await refrescarEstadoDerivadoDelPta(!estadoPersonalActualizado);
+        await refrescarEstadoDerivadoDelPta(!tieneResumenPersonal);
       } else {
         // Caso de carrera: el panel seguía mostrando el botón "Aprobar" con datos
         // ya desactualizados (otro aprobador resolvió el último par propio pendiente
@@ -1387,7 +1464,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
       decisionSucceeded = res.success;
       if (res.success) {
-        const estadoPersonalActualizado = publicarDecisionRegistrada(res.data);
+        const tieneResumenPersonal = publicarDecisionRegistrada(res.data);
         const sufijo = par ? ` (${etiquetaParDe(par)})` : '';
         toast.success(`Revisión ${estado === 'revisado' ? 'registrada' : 'devuelta'} con éxito${sufijo}`);
         setComentariosRevision(prev => ({ ...prev, [claveComentario]: '' }));
@@ -1408,7 +1485,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         }
 
         // Igual que al aprobar: 'en_revision' también cambia componentes_estado.
-        await refrescarEstadoDerivadoDelPta(!estadoPersonalActualizado);
+        await refrescarEstadoDerivadoDelPta(!tieneResumenPersonal);
       } else {
         toast.error(res.message || 'Error al actualizar la revisión del componente');
       }
@@ -1545,22 +1622,21 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   ));
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
-  const territorialResumen = pta.territorial || pta.territorial_nombre;
+  const territorialResumen = nombreTerritorial(toTerritorialReference(pta));
   // Territoriales donde se dictan las asignaturas del PTA. NO son la territorial
   // de vinculación del docente (ver 'Territorial del docente'): un docente de
   // Risaralda puede tener asignaturas en Chocó.
   const territorialesAsignaturas: string[] = useMemo(() => {
     const delBackend = Array.isArray(pta?.territorialesAsignaturas) ? pta.territorialesAsignaturas : [];
     if (delBackend.length > 0) {
-      return delBackend.map(String).filter(Boolean);
+      return [...new Set(delBackend.map(nombreTerritorial).filter((value): value is string => Boolean(value)))];
     }
     return [...new Set(
       asignaturas
-        .map((a: any) => a?.territorial_nombre || a?.territorialNombre || a?.territorial)
-        .map((v: any) => String(v || '').trim())
-        .filter(Boolean),
+        .map((a: any) => nombreTerritorial(toTerritorialReference(a)))
+        .filter((value: string | null): value is string => Boolean(value)),
     )];
-  }, [pta, asignaturas]);
+  }, [pta, asignaturas, nombreTerritorial]);
   const historial = pta.historial || [];
   const concertacion = pta.concertacion || {};
 
@@ -2329,7 +2405,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     outline: esSuyo ? `1px solid ${pillColors.color}` : undefined,
                   }}
                 >
-                  {t.territorialNombre} · {nivelLabel}: {estadoLabel}
+                  {nombreTerritorial(t) || 'Territorial no disponible'} · {nivelLabel}: {estadoLabel}
                 </span>
               );
             })}
@@ -2361,7 +2437,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Territorial</span>
-                <strong style={{ color: '#7F1D1D' }}>{approval.scopeId || (approval.aprobadorRol === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'))}</strong>
+                <strong style={{ color: '#7F1D1D' }}>{getApprovalTerritorialLabel(approval, pta, referenciasTerritoriales)}</strong>
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
@@ -2467,7 +2543,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Territorial</span>
-                <strong style={{ color: '#14532D' }}>{approval.scopeId || (approval.aprobadorRol === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'))}</strong>
+                <strong style={{ color: '#14532D' }}>{getApprovalTerritorialLabel(approval, pta, referenciasTerritoriales)}</strong>
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
@@ -2604,7 +2680,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                               color: visualT.color, background: visualT.bg, border: `1px solid ${visualT.border}`,
                             }}
                           >
-                            {t.territorialNombre} · {nivelLabel}: {visualT.label}
+                            {nombreTerritorial(t) || 'Territorial no disponible'} · {nivelLabel}: {visualT.label}
                           </span>
                         );
                       })}
@@ -2727,7 +2803,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             key={`rev-${t.territorialId}:${t.nivel}`}
                             style={{ padding: 10, borderRadius: 10, background: 'white', border: '1px solid #E2E8F0' }}
                           >
-                            {bloqueRevision({ territorialId: t.territorialId, nivel: t.nivel }, etiquetaPar(t))}
+                            {bloqueRevision({ territorialId: t.territorialId, nivel: t.nivel }, etiquetaPar(t, nombreTerritorial))}
                           </div>
                         ))}
                       </div>
@@ -2781,12 +2857,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       }}
                     >
                       <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1E293B' }}>
-                        {etiquetaPar(t)}
+                        {etiquetaPar(t, nombreTerritorial)}
                       </div>
                       <textarea
                         value={comentariosComponente[clavePar] || ''}
                         onChange={e => setComentariosComponente(prev => ({ ...prev, [clavePar]: e.target.value }))}
-                        placeholder={`Comentario para ${etiquetaPar(t)} (obligatorio al devolver)...`}
+                        placeholder={`Comentario para ${etiquetaPar(t, nombreTerritorial)} (obligatorio al devolver)...`}
                         disabled={procesandoPar}
                         rows={2}
                         style={{
@@ -2805,7 +2881,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             cursor: procesandoPar ? 'default' : 'pointer',
                             display: 'flex', alignItems: 'center', gap: 4,
                           }}
-                          title={`Devolver ${etiquetaPar(t)} al docente (requiere comentario)`}
+                          title={`Devolver ${etiquetaPar(t, nombreTerritorial)} al docente (requiere comentario)`}
                         >
                           {procesandoPar ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RotateCcw style={{ width: 13, height: 13 }} />}
                           Devolver
@@ -2820,7 +2896,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             display: 'flex', alignItems: 'center', gap: 4,
                             boxShadow: '0 2px 4px rgba(5, 150, 105, 0.1)',
                           }}
-                          title={`Aprobar ${etiquetaPar(t)}`}
+                          title={`Aprobar ${etiquetaPar(t, nombreTerritorial)}`}
                         >
                           {procesandoPar ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <CheckCircle style={{ width: 13, height: 13 }} />}
                           Aprobar
@@ -3806,7 +3882,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem' }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: color }} />
                           <span style={{ flex: 1, color: '#374151' }}>
-                            {a.territorialNombre || a.territorial_nombre_actual || a.territorialId}
+                            {nombreTerritorial(toTerritorialReference(a)) || 'Territorial no disponible'}
                           </span>
                           <span style={{ fontWeight: 600, color }}>
                             {decision === 'aprobado' ? '✓ Aprobado'
@@ -4080,6 +4156,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               {/* Docencia — detalle y aprobar/devolver agrupados por nivel (Posgrado,
                   luego Pregrado son componentes independientes, igual que las 4
                   direcciones de Extensión) */}
+              <DocenciaCrucesAlert warnings={(pta.docencia_cruces_fechas || []).map((cruce: any) => cruce.descripcion)} />
               {docenciaCards.map(item => {
                 const nivelLabel = item.label.split(' - ')[1];
                 return (
@@ -4115,6 +4192,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                                     <div style={{ minWidth: 0 }}>
                                       <div style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {a.nombre || a.asignatura_nombre}
+                                        {a.cruce_fechas && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">CRUCE DE FECHAS</span>}
                                       </div>
                                       {a.nucleo_tematico && (
                                         <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>

@@ -150,6 +150,24 @@ describe('EFDS-1372 :: bloqueo duro', () => {
     expect(cruce).toBeNull();
   });
 
+  // RN-07 con CICLO — la regla única de choque (`horarios/choque.ts`): día + horas + fechas.
+  it('RN-07 :: lo que el docente tiene en otro periodo (ciclo que no se toca) NO es un cruce', () => {
+    const ocupada = { idGrupo: 'g-otro', diaSemana: 'LUNES', horaInicio: '08:00', horaFin: '10:00', cicloInicio: '2098-07-01', cicloFin: '2098-11-30' };
+    const propuesta = [{ diaSemana: 'LUNES', horaInicio: '08:00', horaFin: '10:00' }];
+    expect(buscarCruceTransversal(propuesta, [ocupada], 'g-1', { cicloInicio: '2098-02-01', cicloFin: '2098-06-15' })).toBeNull();
+    // Con ciclos que se tocan, sí cruza.
+    expect(buscarCruceTransversal(propuesta, [ocupada], 'g-1', { cicloInicio: '2098-06-01', cicloFin: '2098-07-15' })).not.toBeNull();
+  });
+
+  it('RN-07 :: sin ciclo conocido se asume solape (lado seguro): nunca se deja pasar por falta de fechas', () => {
+    const cruce = buscarCruceTransversal(
+      [{ diaSemana: 'LUNES', horaInicio: '08:00', horaFin: '10:00' }],
+      [{ idGrupo: 'g-otro', diaSemana: 'LUNES', horaInicio: '09:00', horaFin: '11:00' }],
+      'g-1',
+    );
+    expect(cruce).not.toBeNull();
+  });
+
   // RN-04 / RN-05 — topes de horas.
   it('EFDS-1372 :: RN-04 :: exceder el tope del docente es rechazado', () => {
     const motivos = evaluarAsignacion(
