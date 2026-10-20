@@ -174,6 +174,25 @@ describe('cadena de aprobación', () => {
       expect(escalonCompleto(todos, [], 'a')).toBe(false);
       expect(escalonCompleto(todos, [aprobo('a')], 'b')).toBe(true);
     });
+
+    it('con TODOS por puestos espera a cada cuenta que los ocupa', () => {
+      const porPuestos = { orden: 1, reglaDecision: 'TODOS' as const, personas: [] };
+      const aproboCuenta = (usuarioId: string): DecisionPrevia => ({
+        escalon: 1,
+        decision: 'APROBADO',
+        personaId: null,
+        usuarioId,
+      });
+
+      // El abogado aprueba primero: falta el financiero.
+      expect(escalonCompleto(porPuestos, [], 'p-abogado', ['u-abogado', 'u-financiero'], 'u-abogado')).toBe(
+        false,
+      );
+      // Aprueba el financiero: el escalón queda resuelto.
+      expect(
+        escalonCompleto(porPuestos, [aproboCuenta('u-abogado')], 'p-fin', ['u-abogado', 'u-financiero'], 'u-financiero'),
+      ).toBe(true);
+    });
   });
 
   describe('leerConfigDeRegla', () => {
@@ -228,6 +247,18 @@ describe('cadena de aprobación', () => {
         { nombre: 'Comité', roles: ['COMITE'], reglaDecision: 'TODOS' },
       ]);
       expect(problemas[0]).toMatch(/aprueben todos/);
+    });
+
+    it('TODOS acepta puestos: aprueban todos los que los ocupan en el proceso', () => {
+      const { problemas } = validarEscalones([
+        { nombre: 'Estructurador y financiero', puestos: ['p-abogado', 'p-financiero'], reglaDecision: 'TODOS' },
+      ]);
+      expect(problemas).toEqual([]);
+    });
+
+    it('TODOS con un solo puesto no tiene a quién esperar', () => {
+      const { problemas } = validarEscalones([{ nombre: 'Solo', puestos: ['p-abogado'], reglaDecision: 'TODOS' }]);
+      expect(problemas[0]).toMatch(/al menos dos entre personas y puestos/);
     });
 
     it('una cadena vacía no es una cadena', () => {

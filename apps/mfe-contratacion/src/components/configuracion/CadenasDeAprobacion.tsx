@@ -418,7 +418,7 @@ function EditorCadena({
                   aria-label={`Regla de decisión del escalón ${i + 1}`}
                 >
                   <option value="UNO">Basta con que apruebe uno</option>
-                  <option value="TODOS">Deben aprobar todas las personas nombradas</option>
+                  <option value="TODOS">Deben aprobar todos: las personas nombradas y quienes ocupen los puestos</option>
                 </select>
               </div>
               <div className="space-y-1">

@@ -231,7 +231,8 @@ export class CadenaAprobacionService {
     em: EntityManager,
     procesoId: string,
     numeral: string,
-    escalon: Pick<EscalonRonda, 'roles' | 'personas' | 'papeles' | 'puestos'>,
+    escalon: Pick<EscalonRonda, 'roles' | 'personas' | 'papeles' | 'puestos'> &
+      Partial<Pick<EscalonRonda, 'reglaDecision'>>,
   ): Promise<{ cuentas: string[]; textos: string[]; problema: string | null }> {
     const ids = escalon.puestos ?? [];
     if (!ids.length) return { cuentas: [], textos: [], problema: null };
@@ -260,6 +261,9 @@ export class CadenaAprobacionService {
       }
     }
 
+    // Con TODOS tienen que aprobar todos los puestos: uno sin quien lo ocupe
+    // (o sin permiso) deja el escalón sin salida, aunque los demás estén.
+    if (escalon.reglaDecision === 'TODOS') return { cuentas, textos, problema: primerProblema };
     const hayMas = escalon.roles.length > 0 || escalon.personas.length > 0 || escalon.papeles.length > 0;
     return { cuentas, textos, problema: cuentas.length || hayMas ? null : primerProblema };
   }
@@ -372,7 +376,12 @@ export class CadenaAprobacionService {
     const previas = await this.previasDe(em, ronda.id);
 
     // Un escalón de puestos sin nadie que pueda decidirlo: se dice qué hacer.
-    const { problema } = await this.puestosDelEscalon(em, actividad.procesoId, actividad.numeral, escalon);
+    const { problema, cuentas: ocupantes } = await this.puestosDelEscalon(
+      em,
+      actividad.procesoId,
+      actividad.numeral,
+      escalon,
+    );
     if (problema) throw new ConflictException(problema);
 
     const motivo = motivoParaNoDecidir({
@@ -388,7 +397,10 @@ export class CadenaAprobacionService {
     }
 
     const decision = DECISION_DE[accion];
-    const completo = decision === 'APROBADO' ? escalonCompleto(escalon, previas, quien.personaId) : true;
+    const completo =
+      decision === 'APROBADO'
+        ? escalonCompleto(escalon, previas, quien.personaId, ocupantes, acceso.userId || null)
+        : true;
     const tras = trasDecision(
       escalones.map((e) => e.orden),
       escalon.orden,

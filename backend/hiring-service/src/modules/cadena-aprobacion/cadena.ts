@@ -108,9 +108,12 @@ export function validarEscalones(entrada: unknown): { escalones: EscalonConfigur
     if (!acciones.includes('APROBAR')) {
       problemas.push(`El escalón ${n} tiene que poder aprobar: sin eso la cadena no tiene salida`);
     }
-    if (reglaDecision === 'TODOS' && (roles.length || papeles.length || puestos.length || personas.length < 2)) {
+    // Con TODOS, cada miembro tiene que ser alguien concreto: una persona
+    // nombrada o quien ocupe un puesto en el proceso. Un rol o un papel no
+    // dicen cuántos son, así que «todos» no tendría fin.
+    if (reglaDecision === 'TODOS' && (roles.length || papeles.length || personas.length + puestos.length < 2)) {
       problemas.push(
-        `El escalón ${n} exige que aprueben todos: nombra al menos dos personas y ningún rol, puesto ni papel, porque los miembros de un rol cambian`,
+        `El escalón ${n} exige que aprueben todos: nombra al menos dos entre personas y puestos, y ningún rol ni papel, porque los miembros de un rol cambian`,
       );
     }
 
@@ -221,22 +224,26 @@ export function motivoParaNoDecidir(args: {
 /**
  * Si con esta aprobación el escalón queda resuelto.
  *
- * Con `UNO`, siempre. Con `TODOS`, cuando cada persona nombrada aprobó: las
- * aprobaciones anteriores del escalón más la que se está registrando.
+ * Con `UNO`, siempre. Con `TODOS`, cuando aprobaron cada persona nombrada y
+ * cada cuenta que ocupa uno de los puestos del escalón en el proceso
+ * (`ocupantes`): las aprobaciones anteriores del escalón más la que se está
+ * registrando. Las personas se cuentan por su id del directorio y los
+ * ocupantes por su cuenta, que es como los guarda cada configuración.
  */
 export function escalonCompleto(
   escalon: { orden: number; reglaDecision: ReglaDecision; personas: string[] },
   previas: DecisionPrevia[],
   personaQueAprueba: string | null,
+  ocupantes: string[] = [],
+  cuentaQueAprueba: string | null = null,
 ): boolean {
   if (escalon.reglaDecision === 'UNO') return true;
-  const aprobaron = new Set(
-    previas
-      .filter((d) => d.escalon === escalon.orden && d.decision === 'APROBADO' && d.personaId)
-      .map((d) => d.personaId as string),
-  );
-  if (personaQueAprueba) aprobaron.add(personaQueAprueba);
-  return escalon.personas.every((p) => aprobaron.has(p));
+  const delEscalon = previas.filter((d) => d.escalon === escalon.orden && d.decision === 'APROBADO');
+  const personas = new Set(delEscalon.filter((d) => d.personaId).map((d) => d.personaId as string));
+  const cuentas = new Set(delEscalon.filter((d) => d.usuarioId).map((d) => d.usuarioId as string));
+  if (personaQueAprueba) personas.add(personaQueAprueba);
+  if (cuentaQueAprueba) cuentas.add(cuentaQueAprueba);
+  return escalon.personas.every((p) => personas.has(p)) && ocupantes.every((c) => cuentas.has(c));
 }
 
 /** Cómo quedan la ronda, sus escalones y la actividad tras una decisión. */
