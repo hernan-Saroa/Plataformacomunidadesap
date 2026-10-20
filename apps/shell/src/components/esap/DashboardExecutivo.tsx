@@ -13,7 +13,12 @@ import {
   ComposedChart, Line, Legend,
 } from 'recharts';
 import dashboardService from '../../services/api/dashboard.service';
+import { authService } from '../../services/api/authService';
 import { motion } from 'motion/react';
+
+// ═══════ PERMISOS ═══════
+const PERMISSION_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view';
+const PERMISSION_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view';
 
 // ═══════ TYPES ═══════
 interface DashboardExecutivoProps { onNavigateToModule?: (moduleId: string) => void; }
@@ -279,6 +284,20 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
   const [stats, setStats] = useState<any>(null);
   const [viewTab, setViewTab] = useState<ViewTab>('estrategico');
 
+  // Permisos: SUPER_ADMIN tiene acceso total, o usuario con permiso explícito de view
+  const isSuperAdmin = authService.isSuperAdmin();
+  const canViewPanelSeguimiento = isSuperAdmin || authService.hasPermission(PERMISSION_PANEL_SEGUIMIENTO_VIEW);
+  const canViewDesarrolloOtic = isSuperAdmin || authService.hasPermission(PERMISSION_DESARROLLO_OTIC_VIEW);
+
+  // Si la pestaña actual no está permitida para el usuario, volver a 'estrategico'
+  useEffect(() => {
+    if (viewTab === 'panel_seguimiento' && !canViewPanelSeguimiento) {
+      setViewTab('estrategico');
+    } else if (viewTab === 'desarrollo_otic' && !canViewDesarrolloOtic) {
+      setViewTab('estrategico');
+    }
+  }, [viewTab, canViewPanelSeguimiento, canViewDesarrolloOtic]);
+
   const nav = useCallback((sid: string) => { onNavigateToModule?.(sid); }, [onNavigateToModule]);
 
   const load = useCallback(async () => {
@@ -441,14 +460,30 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
             </button>
           ))}
           </div>
-          <div className="flex items-center gap-1 p-1 rounded-xl w-fit">
-           {([{ v: 'panel_seguimiento' as ViewTab, l: '📈 Panel Seguimiento', d: 'Estado consolidado de la implementación' }, { v: 'desarrollo_otic' as ViewTab, l: '🛠️ Desarrollo OTIC', d: 'Trazabilidad de Procesos' }]).map(t => (
-            <button key={t.v} onClick={() => setViewTab(t.v)} className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === t.v ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
-              <span className="text-sm font-bold">{t.l}</span>
-              <span className="text-[9px] text-gray-400">{t.d}</span>
-            </button>
-          ))}
-          </div>
+          {(canViewPanelSeguimiento || canViewDesarrolloOtic) && (
+            <div className="flex items-center gap-1 p-1 rounded-xl w-fit">
+              {canViewPanelSeguimiento && (
+                <button
+                  key="panel_seguimiento"
+                  onClick={() => setViewTab('panel_seguimiento')}
+                  className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === 'panel_seguimiento' ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <span className="text-sm font-bold">📈 Panel Seguimiento</span>
+                  <span className="text-[9px] text-gray-400">Estado consolidado de la implementación</span>
+                </button>
+              )}
+              {canViewDesarrolloOtic && (
+                <button
+                  key="desarrollo_otic"
+                  onClick={() => setViewTab('desarrollo_otic')}
+                  className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === 'desarrollo_otic' ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <span className="text-sm font-bold">🛠️ Desarrollo OTIC</span>
+                  <span className="text-[9px] text-gray-400">Trazabilidad de Procesos</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -658,7 +693,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
       )}
 
       {/* PLAN DE SEGUIMIENTO */}
-      {viewTab === 'panel_seguimiento' && (  
+      {viewTab === 'panel_seguimiento' && canViewPanelSeguimiento && (  
         <DashboardHtmlViewer
           templateName="panel_seguimiento"
           title="Panel de Seguimiento"
@@ -667,7 +702,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
       )}
 
       {/* DESARROLLO OTIC */}
-      {viewTab === 'desarrollo_otic' && (
+      {viewTab === 'desarrollo_otic' && canViewDesarrolloOtic && (
         <DashboardHtmlViewer
           templateName="desarrollo_otic"
           title="Portafolio BI de Desarrollo OTIC"

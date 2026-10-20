@@ -256,6 +256,12 @@ class AuthService {
 
     const directPermissions = Array.isArray(user?.permissions)
       ? user.permissions
+          .map((permissionItem: any) =>
+            typeof permissionItem === 'string'
+              ? permissionItem
+              : permissionItem?.code,
+          )
+          .filter(Boolean)
       : [];
     const rolePermissions = roles.flatMap((role: any) =>
       Array.isArray(role?.permissions)
