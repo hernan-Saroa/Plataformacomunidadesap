@@ -31,7 +31,7 @@ module.exports = async function verifyExtractionIdentity(pgConfig, runtime, chec
   const fullContext = row => row && Object.fromEntries(Object.entries(EXTRACTION_FIELDS).map(([key, def]) => [key, extractionValue(row[def.source])]));
   const job = async id => (await database.query('SELECT * FROM rund."RundExtraccionTrabajo" WHERE id=$1', [id])).rows[0];
   const suggestions = async id => (await database.query('SELECT * FROM rund."RundExtraccionSugerencia" WHERE trabajo_id=$1 ORDER BY campo', [id])).rows;
-  const profiles = async () => ({ auth: (await database.query('SELECT to_jsonb(p) AS row FROM auth.personas p ORDER BY id_person')).rows,
+  const profiles = async () => ({ auth: (await database.query('SELECT (to_jsonb(p) - \'fec_modificacion\') AS row FROM auth.personas p ORDER BY id_person')).rows,
     native: (await database.query('SELECT to_jsonb(d) AS row FROM rund."Docente" d ORDER BY id')).rows });
   const enableNow = id => database.query(`UPDATE rund."RundExtraccionTrabajo" SET disponible_en=now()-interval '1 second' WHERE id=$1`, [id]);
   try {

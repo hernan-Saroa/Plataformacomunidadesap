@@ -52,21 +52,25 @@ export class RundIdentityWriteViaAuth implements RundIdentityWriter {
     return this.settleAborted(id);
   }
 
-  /** Resuelve en Auth una intención ya abortada: cancela si no se aplicó, compensa si se aplicó. */
+  /**
+   * Resuelve en Auth una intención ya abortada: cancela si no se aplicó y, si resulta que sí se aplicó (respuesta perdida),
+   * la compensa. Un cambio ya aplicado nunca se deja sin resolver.
+   */
   async settleAborted(id: string) {
-    const current = await this.execution.consultar(id);
-    if (current.decisionNativa !== 'ABORTADA' || current.estadoAuth === 'CANCELADA'
-      || ['COMPENSADA', 'REVISION_REQUERIDA'].includes(current.resolucionAuth?.estado)) return current;
-    if (current.estadoAuth === 'AUTH_APLICADA') await this.compensation.resolver(id);
-    else await this.execution.resolverAborto(id);
+    let current = await this.execution.consultar(id);
+    const resolved = () => ['COMPENSADA', 'REVISION_REQUERIDA'].includes(current.resolucionAuth?.estado);
+    if (current.decisionNativa !== 'ABORTADA' || current.estadoAuth === 'CANCELADA' || resolved()) return current;
+    if (current.estadoAuth !== 'AUTH_APLICADA') current = await this.execution.resolverAborto(id);
+    if (current.estadoAuth === 'AUTH_APLICADA' && !resolved()) await this.compensation.resolver(id);
     return this.execution.consultar(id);
   }
 }
 
 /**
  * Cierra lo que quedó a medias si el proceso cayó entre pasos:
- *  - intención que nunca llegó a Auth y lleva tiempo detenida: se cancela (la solicitud original ya falló);
- *  - intención con Auth ya involucrado: se reanuda hacia adelante con el mismo UUID (idempotente);
+ *  - intención cuya aplicación en Auth no se confirmó (sin publicar o solo registrada) y lleva tiempo detenida: se cancela, y si Auth
+ *    resulta haberla aplicado se compensa. La solicitud original ya devolvió un error: no se cumple más tarde con un comando viejo
+ *  - intención que Auth ya aplicó y RUND no confirmó: se reanuda hacia adelante con el mismo UUID (idempotente, no reaplica);
  *  - intención abortada sin resolver en Auth: se resuelve.
  */
 @Injectable()
@@ -95,7 +99,7 @@ export class RundIdentityWriteRecovery implements OnModuleInit, OnModuleDestroy 
          ORDER BY e.preparada_en LIMIT $2`, [idleSeconds, limit]);
       for (const row of open) {
         try {
-          if (row.estado_auth === 'PREPARADA') { await this.writer.rollback(row.intencion_id); result.cancelled++; }
+          if (row.estado_auth !== 'AUTH_APLICADA') { await this.writer.rollback(row.intencion_id); result.cancelled++; }
           else { await this.writer.run(row.intencion_id); result.resumed++; }
         } catch (error: any) { this.logger.warn(`No se pudo recuperar la intención ${row.intencion_id}: ${error?.message || error}`); }
       }

@@ -24,7 +24,7 @@ module.exports=async function verifyCoordination(pgConfig,runtime,check,{databas
   const fresh=async()=>{const cmd=command(),id=randomUUID(),local=await service.preparar(id,cmd);return {cmd,id,local};};
   const register=async()=>{const prepared=await fresh();prepared.local=await service.registrarEnAuth(prepared.id);return prepared;};
   const identities=async()=>{
-    const result={};for(const table of ['personas','user','user_roles','role'])result[table]=(await database.query(`SELECT to_jsonb(t) AS row FROM auth."${table}" t ORDER BY to_jsonb(t)::text`)).rows;
+    const result={};for(const table of ['personas','user','user_roles','role'])result[table]=(await database.query(`SELECT (to_jsonb(t) - 'fec_modificacion' - 'updated_at') AS row FROM auth."${table}" t ORDER BY to_jsonb(t)::text`)).rows;
     return result;
   };
   const authRows=async()=>(await database.query('SELECT * FROM auth.rund_identidad_operacion ORDER BY operacion_id')).rows;

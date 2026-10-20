@@ -48,9 +48,9 @@ export function planRundNativeProfile(input: RundNativeWriteInput, existingDocen
         periodoCarga: payload.periodoCarga ?? existingDocente?.periodoCarga ?? null,
         observaciones: payload.observaciones ?? existingDocente?.observaciones ?? null,
         idRund: nextIdRund,
-        // Â§6 â€” Canal de origen para auditorÃ­a
+        // §6 — Canal de origen para auditoría
         canalOrigen: existingDocente?.canalOrigen || rawPayload?.canal_origen || 'MASIVO',
-        // Â§4/Â§5.4 â€” Estado segÃºn canal: MODALâ†’Activo, AUTOGESTIONâ†’Pendiente, MASIVOâ†’Activo
+        // §4/§5.4 — Estado según canal: MODAL→Activo, AUTOGESTION→Pendiente, MASIVO→Activo
         estadoAprobacion: rawPayload?.canal_origen === 'AUTOGESTION' ? 'PENDIENTE_APROBACION' : (existingDocente?.estadoAprobacion || 'PENDIENTE_APROBACION'),
       };
 

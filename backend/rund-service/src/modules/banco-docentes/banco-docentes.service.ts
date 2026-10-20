@@ -1,4 +1,5 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
+import { hashOtp, otpMatches } from './rund-otp';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
@@ -83,7 +84,7 @@ type BulkUpsertOptions = {
   support?: BulkSupport;
 };
 
-// â”€â”€â”€ text helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── text helpers ─────────────────────────────────────────────────────────────
 
 function toCleanString(value: any): string | null {
   if (value === undefined || value === null) return null;
@@ -200,7 +201,7 @@ export function normalizePhoneForAuth(value: any, preserveImportedText = false):
   return normalized || null;
 }
 
-// â”€â”€â”€ dedican / vinculacion codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── dedican / vinculacion codes ──────────────────────────────────────────────
 
 export function normalizeDedicacionCode(value: any): string {
   const n = normalizeLookupText(value);
@@ -221,7 +222,7 @@ export function getDedicacionLabel(code: any, fallback?: any): string | null {
   if (fb) return fb;
   const n = normalizeDedicacionCode(code);
   if (n === 'MT') return 'Medio Tiempo';
-  if (n === 'HC') return 'Hora CÃ¡tedra';
+  if (n === 'HC') return 'Hora Cátedra';
   if (n === 'TC') return 'Tiempo Completo';
   return toCleanString(code);
 }
@@ -265,7 +266,7 @@ export function getTipoVinculacionLabel(code: any, fallback?: any): string | nul
   if (n === 'OCASIONAL') return 'Ocasional';
   if (n === 'ESPECIAL') return 'Especial';
   if (n === 'VISITANTE') return 'Visitante';
-  if (n === 'CATEDRA') return 'Hora CÃ¡tedra';
+  if (n === 'CATEDRA') return 'Hora Cátedra';
   return n.replace(/_/g, ' ');
 }
 
@@ -309,16 +310,16 @@ function computeRangoEdad(edad: any, fallback?: any): string | null {
 export function categorizarSituacion(texto: string | null): string {
   const t = (texto || '').toLowerCase().trim();
   if (!t || t === 'no aplica' || t === 'servicio activo') return 'Servicio Activo';
-  if (t.includes('sabatico') || t.includes('sabÃ¡tico')) return 'AÃ±o SabÃ¡tico';
-  if (t.includes('exclusiva')) return 'DedicaciÃ³n Exclusiva';
-  if (t.includes('comision de estudios') || t.includes('comisiÃ³n de estudios')) return 'ComisiÃ³n de Estudios';
-  if (t.includes('comision') || t.includes('comisiÃ³n')) return 'ComisiÃ³n de Servicios';
+  if (t.includes('sabatico') || t.includes('sabÃ¡tico')) return 'Año Sabático';
+  if (t.includes('exclusiva')) return 'Dedicación Exclusiva';
+  if (t.includes('comision de estudios') || t.includes('comisiÃ³n de estudios')) return 'Comisión de Estudios';
+  if (t.includes('comision') || t.includes('comisiÃ³n')) return 'Comisión de Servicios';
   if (t.includes('periodo de prueba') || t.includes('perÃ­odo de prueba')) return 'En Periodo de Prueba';
   if (t.includes('decan') || t.includes('subdirector') || t.includes('director')) return 'Cargo Directivo';
   return 'Otra';
 }
 
-// â”€â”€â”€ territorial resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── territorial resolution ───────────────────────────────────────────────────
 
 function normalizeEstadoDocente(value: any, fallback = 'ACTIVO'): string {
   const n = normalizeLookupText(value);
@@ -356,7 +357,7 @@ export function resolveTerritorial(territoriales: AuthSeccionalTerritorial[], ra
   return findTerritorialMatch(territoriales, rawValue) || territoriales.find((t) => normalizeLookupText(t.nombre) === 'sedecentral') || territoriales[0] || null;
 }
 
-// â”€â”€â”€ payload normalization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── payload normalization ────────────────────────────────────────────────────
 
 export function normalizeBancoDocentePayload(raw: any) {
   if (raw && typeof raw === 'object') {
@@ -391,7 +392,7 @@ export function normalizeBancoDocentePayload(raw: any) {
   // [BR-016] Personal email differs from institutional
   if (correoPers && correoInst && correoPers.toLowerCase().trim() === correoInst.toLowerCase().trim()) {
     correoPers = null;
-    observationsList.push('Correo personal no puede ser igual al institucional. Se descartÃ³ el correo personal duplicado');
+    observationsList.push('Correo personal no puede ser igual al institucional. Se descartó el correo personal duplicado');
   }
 
   // [BR-021] Document type inference
@@ -414,7 +415,7 @@ export function normalizeBancoDocentePayload(raw: any) {
         docType = 'CC';
       } else {
         docType = 'OTRO';
-        observationsList.push('NÃºmero de â‰¤6 dÃ­gitos atÃ­pico para la edad. Confirmar si es CC, CE o PA');
+        observationsList.push('Número de ≤6 dígitos atípico para la edad. Confirmar si es CC, CE o PA');
       }
     }
   }
@@ -492,7 +493,7 @@ export function normalizeBancoDocentePayload(raw: any) {
   } else {
     regimenNormativo = 'N/A';
     horasPta = baseHoras;
-    observationsList.push('Tipo de vinculaciÃ³n no reconocido');
+    observationsList.push('Tipo de vinculación no reconocido');
   }
 
   if (regimenNormativoRaw) {
@@ -598,9 +599,9 @@ export function validatePayload(payload: ReturnType<typeof normalizeBancoDocente
     const val = (payload as any)[f.key];
     if (val === undefined || val === null || String(val).trim() === '') {
       throw new BadRequestException({
-        message: `Campo obligatorio vacÃ­o: ${f.name}`,
+        message: `Campo obligatorio vacío: ${f.name}`,
         columna: f.name,
-        datoErrado: '(vacÃ­o)',
+        datoErrado: '(vacío)',
         valorEsperado: 'Dato requerido'
       });
     }
@@ -779,7 +780,7 @@ function validatePayloadAutogestion(payload: ReturnType<typeof normalizeBancoDoc
   }
 }
 
-// â”€â”€â”€ response builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── response builder ─────────────────────────────────────────────────────────
 
 export function buildBancoDocenteResponse(docente: BancoDocenteEntity & { persona?: PersonaEntity & { usuario?: UsuarioEntity } }) {
   const persona = docente.persona;
@@ -852,10 +853,10 @@ export function buildBancoDocenteResponse(docente: BancoDocenteEntity & { person
     observaciones: docente.observaciones ?? null,
     id_rund: docente.idRund ?? null,
     idRund: docente.idRund ?? null,
-    // BR-047 â€” Approval state
+    // BR-047 — Approval state
     estadoAprobacion: docente.estadoAprobacion ?? 'PENDIENTE_APROBACION',
     completitud: docente.completitud ?? {},
-    // Â§6 â€” Canal de origen
+    // §6 — Canal de origen
     canal_origen: docente.canalOrigen ?? 'MASIVO',
     createdAt: docente.createdAt,
     updatedAt: docente.updatedAt,
@@ -943,7 +944,7 @@ function buildAuthBancoDocenteResponse(row: any) {
   };
 }
 
-// â”€â”€â”€ service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class BancoDocentesService implements OnModuleInit {
@@ -1011,15 +1012,15 @@ export class BancoDocentesService implements OnModuleInit {
       '',
       'Tu usuario docente fue creado en la plataforma ESAP.',
       `Usuario: ${username}`,
-      `ContraseÃ±a temporal: ${password}`,
+      `Contraseña temporal: ${password}`,
       '',
-      'Por seguridad, cambia tu contraseÃ±a en el primer ingreso.',
+      'Por seguridad, cambia tu contraseña en el primer ingreso.',
     ].join('\n');
     const html = `
       <p>Hola ${fullName},</p>
       <p>Tu usuario docente fue creado en la plataforma ESAP.</p>
-      <p><strong>Usuario:</strong> ${username}<br><strong>ContraseÃ±a temporal:</strong> ${password}</p>
-      <p>Por seguridad, cambia tu contraseÃ±a en el primer ingreso.</p>
+      <p><strong>Usuario:</strong> ${username}<br><strong>Contraseña temporal:</strong> ${password}</p>
+      <p>Por seguridad, cambia tu contraseña en el primer ingreso.</p>
     `;
 
     try {
@@ -1437,7 +1438,7 @@ export class BancoDocentesService implements OnModuleInit {
       if (!finalFullName) throw new BadRequestException({
         message: `No se pudo construir el nombre del docente ${payload.documentNumber}.`,
         columna: 'NOMBRE_COMPLETO',
-        datoErrado: payload.fullName || '(vacÃ­o)',
+        datoErrado: payload.fullName || '(vacío)',
         valorEsperado: 'Nombres y apellidos completos'
       });
       return (finals = { emailFinal, phoneFinal, finalFullName });
@@ -2225,7 +2226,7 @@ export class BancoDocentesService implements OnModuleInit {
     const otp = randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    invitacion.otpCodigo = otp;
+    invitacion.otpCodigo = hashOtp(invitacion.id, otp);
     invitacion.otpExpiraEn = expiresAt;
     invitacion.estado = 'Abierta';
     invitacion.sesionTokenHash = null;
@@ -2271,7 +2272,7 @@ export class BancoDocentesService implements OnModuleInit {
       throw new BadRequestException('El código OTP ha expirado o no ha sido solicitado.');
     }
 
-    if (invitacion.otpCodigo !== String(otp)) {
+    if (!otpMatches(invitacion.otpCodigo, invitacion.id, otp)) {
       invitacion.intentosOtp += 1;
       await this.invitacionRepo.save(invitacion);
       throw new BadRequestException('Código OTP incorrecto.');
@@ -2511,15 +2512,15 @@ export class BancoDocentesService implements OnModuleInit {
     return `AUTOGESTION:${invitacion.id}`;
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // BR-038..BR-061 â€” Soporte documental, aprobaciÃ³n y validaciÃ³n RUND
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BR-038..BR-061 — Soporte documental, aprobación y validación RUND
+  // ═══════════════════════════════════════════════════════════════════════════
 
   private static readonly BLOQUES = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'] as const;
   private static readonly BLOQUES_OBLIGATORIOS = ['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'] as const;
 
   /**
-   * BR-039 â€” CatÃ¡logo de tipos de soporte vÃ¡lidos por bloque.
+   * BR-039 — Catálogo de tipos de soporte válidos por bloque.
    */
   private static readonly CATALOGO_SOPORTE: Record<string, string[]> = {
     IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
@@ -2610,7 +2611,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * Inicializar bloques de aprobaciÃ³n al crear/importar un docente.
+   * Inicializar bloques de aprobación al crear/importar un docente.
    */
   async inicializarBloques(docenteId: string, cargadoPor?: string, canalOrigen?: string,
     manager: { query: (sql: string, params?: any[]) => Promise<any[]> } = this.dataSource) {
@@ -2622,7 +2623,7 @@ export class BancoDocentesService implements OnModuleInit {
       );
       if (existing.length === 0) {
         const id = randomUUID();
-        // BR-038 â€” CONTACTO no es crÃ­tico, no exige soporte
+        // BR-038 — CONTACTO no es crítico, no exige soporte
         const estadoInicial = bloque === 'CONTACTO' ? 'Pendiente' : 'Soporte faltante';
         await manager.query(
           `INSERT INTO rund."RundCampoEstado" 
@@ -2637,8 +2638,8 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-043 â€” Aprobar un bloque (maker-checker: aprobador â‰  cargador).
-   * BR-038 â€” Verifica que exista al menos un soporte para bloques crÃ­ticos.
+   * BR-043 — Aprobar un bloque (maker-checker: aprobador ≠ cargador).
+   * BR-038 — Verifica que exista al menos un soporte para bloques críticos.
    */
   async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string, ip?: string) {
     return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, undefined, ip);
@@ -2653,7 +2654,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-046 â€” Cuando un dato aprobado cambia, vuelve a Pendiente y se guarda la versiÃ³n anterior.
+   * BR-046 — Cuando un dato aprobado cambia, vuelve a Pendiente y se guarda la versión anterior.
    */
   async reevaluarBloqueAlEditar(docenteId: string, bloque: string, editadoPor?: string) {
     const bloqueUpper = bloque.toUpperCase();
@@ -2669,13 +2670,13 @@ export class BancoDocentesService implements OnModuleInit {
       await this.dataSource.query(
         `UPDATE rund."RundCampoEstado" 
          SET estado = 'Pendiente', version = version + 1, cargado_por = $1, 
-             revisado_por = NULL, observacion = 'Dato aprobado fue modificado â€” requiere re-aprobaciÃ³n', 
+             revisado_por = NULL, observacion = 'Dato aprobado fue modificado — requiere re-aprobación', 
              fecha_revision = NULL, "updatedAt" = NOW()
          WHERE docente_id = $2 AND bloque = $3`,
         [editadoPor || null, docenteId, bloqueUpper],
       );
 
-      // Revertir activaciÃ³n global
+      // Revertir activación global
       await this.dataSource.query(
         `UPDATE rund."Docente" SET "estadoAprobacion" = 'PENDIENTE_APROBACION' WHERE id = $1 AND "estadoAprobacion" = 'ACTIVO_RUND'`,
         [docenteId],
@@ -2693,7 +2694,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-047 â€” Activar registro solo si todos los bloques obligatorios estÃ¡n Aprobados.
+   * BR-047 — Activar registro solo si todos los bloques obligatorios están Aprobados.
    */
   async verificarActivacion(docenteId: string): Promise<{ activable: boolean; completitud: Record<string, string> }> {
     docenteId = await this.resolveDocenteId(docenteId);
@@ -2707,7 +2708,7 @@ export class BancoDocentesService implements OnModuleInit {
       completitud[b.bloque] = b.estado;
     }
 
-    // Verificar que todos los bloques obligatorios estÃ©n aprobados
+    // Verificar que todos los bloques obligatorios estén aprobados
     const activable = BancoDocentesService.BLOQUES_OBLIGATORIOS.every(
       (b) => completitud[b] === 'Aprobado',
     );
@@ -2722,7 +2723,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-039 â€” Vincular un soporte a un bloque, validando el catÃ¡logo.
+   * BR-039 — Vincular un soporte a un bloque, validando el catálogo.
    */
   async vincularSoporte(docenteId: string, bloque: string, data: {
     tipoSoporte: string;
@@ -2737,13 +2738,13 @@ export class BancoDocentesService implements OnModuleInit {
     const bloqueUpper = bloque.toUpperCase();
     const catalogoValido = BancoDocentesService.CATALOGO_SOPORTE[bloqueUpper];
     if (!catalogoValido) {
-      throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}`);
+      throw new BadRequestException(`Bloque inválido: ${bloque}`);
     }
 
-    // BR-039 â€” Validar tipo de soporte contra el catÃ¡logo
+    // BR-039 — Validar tipo de soporte contra el catálogo
     if (catalogoValido.length > 0 && !catalogoValido.includes(data.tipoSoporte)) {
       throw new BadRequestException({
-        message: `BR-039: Tipo de soporte "${data.tipoSoporte}" no vÃ¡lido para el bloque ${bloqueUpper}. Tipos esperados: ${catalogoValido.join(', ')}`,
+        message: `BR-039: Tipo de soporte "${data.tipoSoporte}" no válido para el bloque ${bloqueUpper}. Tipos esperados: ${catalogoValido.join(', ')}`,
         rule: 'BR-039',
         tiposPermitidos: catalogoValido,
       });
@@ -2809,7 +2810,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-052 â€” ValidaciÃ³n de unicidad de documento y correo institucional.
+   * BR-052 — Validación de unicidad de documento y correo institucional.
    */
   async validarUnicidad(documentNumber: string, correoInstitucional: string, excludeDocenteId?: string): Promise<{ duplicados: any[] }> {
     if (!documentNumber && !correoInstitucional) return { duplicados: [] };
@@ -2840,7 +2841,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-053 â€” DetecciÃ³n de posible duplicado por nombre + fecha nacimiento.
+   * BR-053 — Detección de posible duplicado por nombre + fecha nacimiento.
    */
   async detectarPosibleDuplicado(nombreCompleto: string, fechaNacimiento: Date | null): Promise<{ posiblesDuplicados: any[] }> {
     if (!nombreCompleto || !fechaNacimiento) return { posiblesDuplicados: [] };
@@ -2868,7 +2869,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-054 â€” Validar coherencia tipo â†” formato de nÃºmero de documento.
+   * BR-054 — Validar coherencia tipo ↔ formato de número de documento.
    */
   validarFormatoDocumento(tipoDocumento: string, numero: string): { valido: boolean; error?: string } {
     if (!tipoDocumento || !numero) return { valido: true };
@@ -2878,27 +2879,27 @@ export class BancoDocentesService implements OnModuleInit {
 
     switch (tipo) {
       case 'CC':
-        // CÃ©dula de CiudadanÃ­a: 6-10 dÃ­gitos numÃ©ricos
+        // Cédula de Ciudadanía: 6-10 dígitos numéricos
         if (!/^\d{6,10}$/.test(num)) {
-          return { valido: false, error: `BR-054: CÃ©dula de CiudadanÃ­a debe tener entre 6 y 10 dÃ­gitos numÃ©ricos. Recibido: "${num}"` };
+          return { valido: false, error: `BR-054: Cédula de Ciudadanía debe tener entre 6 y 10 dígitos numéricos. Recibido: "${num}"` };
         }
         break;
       case 'CE':
-        // CÃ©dula de ExtranjerÃ­a: 6-12 caracteres alfanumÃ©ricos
+        // Cédula de Extranjería: 6-12 caracteres alfanuméricos
         if (!/^[A-Za-z0-9]{6,12}$/.test(num)) {
-          return { valido: false, error: `BR-054: CÃ©dula de ExtranjerÃ­a debe tener entre 6 y 12 caracteres alfanumÃ©ricos. Recibido: "${num}"` };
+          return { valido: false, error: `BR-054: Cédula de Extranjería debe tener entre 6 y 12 caracteres alfanuméricos. Recibido: "${num}"` };
         }
         break;
       case 'PA':
-        // Pasaporte: 5-15 caracteres alfanumÃ©ricos
+        // Pasaporte: 5-15 caracteres alfanuméricos
         if (!/^[A-Za-z0-9]{5,15}$/.test(num)) {
-          return { valido: false, error: `BR-054: Pasaporte debe tener entre 5 y 15 caracteres alfanumÃ©ricos. Recibido: "${num}"` };
+          return { valido: false, error: `BR-054: Pasaporte debe tener entre 5 y 15 caracteres alfanuméricos. Recibido: "${num}"` };
         }
         break;
       case 'PEP':
-        // PEP: alfanumÃ©rico, 5-20 caracteres
+        // PEP: alfanumérico, 5-20 caracteres
         if (!/^[A-Za-z0-9]{5,20}$/.test(num)) {
-          return { valido: false, error: `BR-054: PEP debe tener entre 5 y 20 caracteres alfanumÃ©ricos. Recibido: "${num}"` };
+          return { valido: false, error: `BR-054: PEP debe tener entre 5 y 20 caracteres alfanuméricos. Recibido: "${num}"` };
         }
         break;
     }
@@ -2907,7 +2908,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-048 â€” Validar coherencia categorÃ­a â†” nivel de formaciÃ³n.
+   * BR-048 — Validar coherencia categoría ↔ nivel de formación.
    */
   validarCategoriaFormacion(categoria: string | null, nivelFormacion: string | null): { valido: boolean; alerta?: string } {
     if (!categoria || !nivelFormacion) return { valido: true };
@@ -2915,16 +2916,16 @@ export class BancoDocentesService implements OnModuleInit {
     const cat = normalizeLookupText(categoria);
     const nivel = normalizeLookupText(nivelFormacion);
 
-    // CategorÃ­as que exigen al menos maestrÃ­a
+    // Categorías que exigen al menos maestría
     const categoriasAltas = ['titular', 'asociado'];
-    // CategorÃ­as que exigen al menos especializaciÃ³n
+    // Categorías que exigen al menos especialización
     const categoriasMedias = ['asistente'];
 
     if (categoriasAltas.some(c => cat.includes(c))) {
       if (!['maestria', 'doctorado', 'posdoctorado', 'postdoctorado'].some(n => nivel.includes(n))) {
         return {
           valido: false,
-          alerta: `BR-048: La categorÃ­a "${categoria}" exige al menos nivel de MaestrÃ­a. Nivel declarado: "${nivelFormacion}".`,
+          alerta: `BR-048: La categoría "${categoria}" exige al menos nivel de Maestría. Nivel declarado: "${nivelFormacion}".`,
         };
       }
     }
@@ -2933,7 +2934,7 @@ export class BancoDocentesService implements OnModuleInit {
       if (!['especializacion', 'maestria', 'doctorado', 'posdoctorado', 'postdoctorado'].some(n => nivel.includes(n))) {
         return {
           valido: false,
-          alerta: `BR-048: La categorÃ­a "${categoria}" exige al menos nivel de EspecializaciÃ³n. Nivel declarado: "${nivelFormacion}".`,
+          alerta: `BR-048: La categoría "${categoria}" exige al menos nivel de Especialización. Nivel declarado: "${nivelFormacion}".`,
         };
       }
     }
@@ -2942,24 +2943,24 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-049 â€” Validar coherencia rÃ©gimen â†” vinculaciÃ³n.
+   * BR-049 — Validar coherencia régimen ↔ vinculación.
    */
   validarRegimenVinculacion(tipoVinculacion: string, regimenNormativo: string): { valido: boolean; error?: string } {
     const vinc = tipoVinculacion?.toUpperCase();
     const reg = (regimenNormativo || '').toLowerCase();
 
     if (vinc === 'CARRERA1' && !reg.includes('009')) {
-      return { valido: false, error: 'BR-049: Carrera1 debe tener rÃ©gimen Acuerdo 009/2004.' };
+      return { valido: false, error: 'BR-049: Carrera1 debe tener régimen Acuerdo 009/2004.' };
     }
     if (vinc === 'CARRERA2' && !reg.includes('003')) {
-      return { valido: false, error: 'BR-049: Carrera2 debe tener rÃ©gimen Acuerdo 003/2018.' };
+      return { valido: false, error: 'BR-049: Carrera2 debe tener régimen Acuerdo 003/2018.' };
     }
 
     return { valido: true };
   }
 
   /**
-   * BR-055 â€” Verificar soportes prÃ³ximos a vencer.
+   * BR-055 — Verificar soportes próximos a vencer.
    */
   async getSoportesProximosVencer(diasUmbral = 30): Promise<any[]> {
     if (!Number.isSafeInteger(diasUmbral)) throw new BadRequestException('El umbral de días debe ser un entero válido.');
@@ -2983,12 +2984,12 @@ export class BancoDocentesService implements OnModuleInit {
     });
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // BR-056 â€” AuditorÃ­a inmutable + Tarjeta RUND
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BR-056 — Auditoría inmutable + Tarjeta RUND
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * BR-056 â€” Registrar entrada inmutable en el log de auditorÃ­a.
+   * BR-056 — Registrar entrada inmutable en el log de auditoría.
    */
   async logAudit(entry: {
     docenteId: string;
@@ -3081,7 +3082,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-056 â€” Obtener historial de auditorÃ­a de un docente.
+   * BR-056 — Obtener historial de auditoría de un docente.
    */
   async getAuditoria(docenteId: string, limit = 50): Promise<any[]> {
     docenteId = await this.resolveDocenteId(docenteId);
@@ -3093,8 +3094,8 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * Â§6.3 / BR-059 â€” Obtener tarjeta RUND completa para Carpeta Digital.
-   * Retorna datos del docente organizados por bloque + estados + soportes + semÃ¡foro.
+   * §6.3 / BR-059 — Obtener tarjeta RUND completa para Carpeta Digital.
+   * Retorna datos del docente organizados por bloque + estados + soportes + semáforo.
    */
   async getTarjetaRUND(docenteId: string) {
     docenteId = await this.resolveDocenteId(docenteId);
@@ -3104,7 +3105,7 @@ export class BancoDocentesService implements OnModuleInit {
     // Ausencia confirmada conserva campos nulos; un fallo del propietario bloquea la tarjeta.
     const p = await this.identities.fichaPorPersona(docente.personaId) || {} as any;
 
-    // Obtener bloques de aprobaciÃ³n
+    // Obtener bloques de aprobación
     let bloques: any[] = [];
     try {
       bloques = await this.getBloques(docenteId) as any[];
@@ -3119,7 +3120,7 @@ export class BancoDocentesService implements OnModuleInit {
       );
     } catch { /* no support docs yet */ }
 
-    // Obtener validaciÃ³n documental
+    // Obtener validación documental
     let validacion: any[] = [];
     try {
       validacion = await this.dataSource.query(
@@ -3227,7 +3228,7 @@ export class BancoDocentesService implements OnModuleInit {
 
       validacionDocumental: validacion,
 
-      // SemÃ¡foro de completitud
+      // Semáforo de completitud
       semaforo: (() => {
         const total = bloques.length || 4;
         const aprobados = bloques.filter((b: any) => b.estado === 'Aprobado').length;

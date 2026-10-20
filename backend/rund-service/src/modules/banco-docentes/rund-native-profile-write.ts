@@ -60,7 +60,7 @@ export async function upsertRundNativeProfileWithManager(manager: any, input: Ru
         }
       }
 
-      // Â§6.2 â€” Initialize RUND approval blocks (BR-044) for new records
+      // §6.2 — Initialize RUND approval blocks (BR-044) for new records
       if (action === 'insert') {
         try {
           await hooks.inicializarBloques(docente.id, rawPayload?.cargadoPor || null, rawPayload?.canal_origen || 'MASIVO', manager);

@@ -2,6 +2,11 @@ import { ForbiddenException } from '@nestjs/common';
 import { BancoDocentesService } from './banco-docentes.service';
 
 describe('Autogestión: sesión OTP, borradores y propiedad', () => {
+  // El OTP se guarda como HMAC: el servicio exige un secreto (en producción JWT_SECRET es obligatorio).
+  const savedSecret = process.env.JWT_SECRET;
+  beforeAll(() => { process.env.JWT_SECRET = 'secreto-de-prueba-para-otp-0123456789'; });
+  afterAll(() => { if (savedSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = savedSecret; });
+
   function build() {
     const invitation: any = { id: 'invite-1', correoInstitucional: 'prueba@example.test', tokenAcceso: 'enlace-publico',
       estado: 'Enviada', fechaExpiracion: new Date(Date.now() + 3600000),

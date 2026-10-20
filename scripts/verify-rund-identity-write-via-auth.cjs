@@ -26,13 +26,15 @@ module.exports = async function verifyIdentityWriteViaAuth(pgConfig, runtime, ch
   const recovery = () => new RundIdentityWriteRecovery(ds, writer);
   const savedEnv = { flag: process.env.RUND_IDENTITY_WRITE_VIA_AUTH_API, token: process.env.INTERNAL_SERVICE_TOKEN };
   const originalApply = client.aplicar.bind(client), originalMail = banco.sendWelcomeEmail, originalRef = banco.moduleRef;
-  let applyCalls = 0, failApply = 0, mails = [], writes = 0, proof;
+  let applyCalls = 0, failApply = 0, failAfterApply = 0, mails = [], writes = 0, proof;
   const realWrite = writer.write.bind(writer);
   writer.write = async (...args) => { writes++; return realWrite(...args); };
   client.aplicar = async (...args) => {
     applyCalls++;
     if (failApply > 0) { failApply--; throw new ServiceUnavailableException('Auth no disponible (fixture)'); }
-    return originalApply(...args);
+    const receipt = await originalApply(...args);
+    if (failAfterApply > 0) { failAfterApply--; throw new ServiceUnavailableException('Respuesta de Auth perdida (fixture)'); }
+    return receipt;
   };
   banco.sendWelcomeEmail = async (...args) => { mails.push(args); return { sent: false, fixture: true }; };
   banco.moduleRef = { get: () => writer };
@@ -85,15 +87,27 @@ module.exports = async function verifyIdentityWriteViaAuth(pgConfig, runtime, ch
       assert.equal((await execution.consultar(intent.intencion_id)).resolucionAuth.estado, 'COMPENSADA');
     });
 
-    await check('Escritura por Auth: si Auth no responde, la solicitud falla y el recuperador completa la MISMA intención sin duplicar', async () => {
+    await check('Escritura por Auth: si Auth no responde, la solicitud falla y la intención se CANCELA (no se cumple después con un comando viejo)', async () => {
       const item = data(), beforeIntents = await intents(); failApply = 1;
       await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item)), error => error.getStatus?.() === 503);
       assert.equal((await authPerson(item.command.payload.documentNumber)).length, 0);
       const [intent] = await newIntents(beforeIntents); assert.deepEqual([intent.decision, intent.nativo], ['EN_CURSO', 'PREPARADA']);
-      const result = await recovery().recover(500, 0); assert(result.resumed >= 1);
-      assert.equal((await authPerson(item.command.payload.documentNumber)).length, 1);
-      assert.equal((await intents()).find(r => r.intencion_id === intent.intencion_id).nativo, 'CONFIRMADA');
-      assert.equal((await profiles((await authPerson(item.command.payload.documentNumber))[0].id_person)).length, 1);
+      const result = await recovery().recover(500, 0); assert(result.cancelled >= 1);
+      const current = await execution.consultar(intent.intencion_id); assert.equal(current.decisionNativa, 'ABORTADA'); assert.equal(current.estadoAuth, 'CANCELADA');
+      assert.equal((await authPerson(item.command.payload.documentNumber)).length, 0); assert.equal((await recovery().recover(500, 0)).resumed, 0);
+      const retry = await banco.upsertDocente(item.input.rawPayload, optionsFor(item)); assert.equal(retry.action, 'insert');
+      assert.equal((await authPerson(item.command.payload.documentNumber)).length, 1); assert.equal((await profiles(retry.personaId)).length, 1);
+    });
+
+    await check('Escritura por Auth: respuesta de Auth perdida tras aplicar una edición: el recuperador cancela, detecta que se aplicó y la compensa', async () => {
+      const before = (await authPerson(createdItem.command.payload.documentNumber))[0], beforeBusiness = await business(), beforeIntents = await intents();
+      const item = data({ DOCUMENTO_IDENTIDAD: createdItem.command.payload.documentNumber, CORREO_INSTITUCIONAL: createdItem.command.emailFinal, NOMBRE_COMPLETO: 'NOMBRE CUYA RESPUESTA SE PERDIO' }); failAfterApply = 1;
+      await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item)), error => error.getStatus?.() === 503);
+      assert.equal((await authPerson(createdItem.command.payload.documentNumber))[0].nom_largo, 'NOMBRE CUYA RESPUESTA SE PERDIO');
+      const [intent] = await newIntents(beforeIntents); await recovery().recover(500, 0);
+      assert.equal((await authPerson(createdItem.command.payload.documentNumber))[0].nom_largo, before.nom_largo);
+      const current = await execution.consultar(intent.intencion_id); assert.equal(current.decisionNativa, 'ABORTADA'); assert.equal(current.resolucionAuth.estado, 'COMPENSADA');
+      assert.deepEqual(await business(), beforeBusiness);
     });
 
     await check('Escritura por Auth: una intención que nunca llegó a Auth y quedó detenida se cancela; no crea identidad ni perfil', async () => {

@@ -85,10 +85,10 @@ export async function upsertRundAuthIdentityWithManager(
 
   if (emailConflictRows[0]) {
     throw new BadRequestException({
-      message: `El correo ${emailFinal} ya estÃ¡ en uso por otra persona o usuario.`,
+      message: `El correo ${emailFinal} ya está en uso por otra persona o usuario.`,
       columna: 'CORREO_INSTITUCIONAL',
       datoErrado: emailFinal,
-      valorEsperado: 'Correo Ãºnico'
+      valorEsperado: 'Correo único'
     });
   }
 

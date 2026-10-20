@@ -35,7 +35,7 @@ module.exports=async function verifyNative(pgConfig,runtime,check,{database,row,
     await client.aplicar(local.operacionAuthId,item.command);await coord.reconciliar(item.id);return item;};
   const snapshot=async()=>{const result={};for(const {tablename}of(await admin.query("SELECT tablename FROM pg_tables WHERE schemaname='rund' ORDER BY tablename")).rows)
     result[tablename]=(await admin.query(`SELECT to_jsonb(t) AS row FROM rund."${tablename}" t ORDER BY to_jsonb(t)::text`)).rows;return result;};
-  const identities=async()=>{const result={};for(const table of ['personas','user','user_roles','role'])result[table]=(await database.query(`SELECT to_jsonb(t) AS row FROM auth."${table}" t ORDER BY to_jsonb(t)::text`)).rows;return result;};
+  const identities=async()=>{const result={};for(const table of ['personas','user','user_roles','role'])result[table]=(await database.query(`SELECT (to_jsonb(t) - 'fec_modificacion' - 'updated_at') AS row FROM auth."${table}" t ORDER BY to_jsonb(t)::text`)).rows;return result;};
   const trigger=async(table,when,work)=>{await admin.query(`CREATE FUNCTION rund.reject_native_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'FALLO FICTICIO NATIVO'; END $$;
     CREATE TRIGGER reject_native_fixture BEFORE ${when} ON rund."${table}" FOR EACH ROW EXECUTE FUNCTION rund.reject_native_fixture()`);
     try{await work();}finally{await admin.query(`DROP TRIGGER reject_native_fixture ON rund."${table}";DROP FUNCTION rund.reject_native_fixture()`);}};

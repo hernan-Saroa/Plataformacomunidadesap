@@ -75,7 +75,8 @@ module.exports=async function verifyApply(pgConfig,runtime,check,{database,authU
       }finally{await database.query('ROLLBACK');}
       const id=await register(cmd),applied=await client.aplicar(id,cmd),result=applied.resultado;
       assert.deepEqual(result,JSON.parse(JSON.stringify({personaId:expected.authPersonId,usuarioId:expected.authUser.id_user,usuarioCreado:expected.authUserCreated,camposModificados:expected.personaChangedFields,cambios:expected.profileChanges})));
-      assert.deepEqual(await person(cmd),expectedPerson);const current=await user(result.personaId);
+      // fec_modificacion la reescribe el trigger de Auth (160) con la hora de cada transacción.
+      const unstamp=({fec_modificacion:_stamp,...rest})=>rest;assert.deepEqual(unstamp(await person(cmd)),unstamp(expectedPerson));const current=await user(result.personaId);
       assert.equal(current.password_hash,previous.password_hash);assert.equal(current.is_active,previous.is_active);assert.equal(current.password_temp,previous.password_temp);
       assert.equal(current.username,cmd.emailFinal);assert.equal(result.usuarioCreado,false);
     });

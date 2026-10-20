@@ -5,7 +5,7 @@
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-> **Último punto técnico terminado: 100**, documentado al final de este archivo.
+> **Último punto técnico terminado: 102**, documentado al final de este archivo.
 > Guardado preparado para push hasta el [corte 95](PUSH-CORTE-95.md).
 > Para retomar después del guardado, leer la sección 95 y el mapa de pendientes.
 
@@ -7656,3 +7656,53 @@ coordinación que ya existía (puntos 62–91: contexto congelado, intención, a
 **Límites conocidos**: la edición con sugerencias OCR dentro de una transacción externa y las cargas con vista previa siguen en el escritor anterior; una intención
 abandonada que ya involucró a Auth se completa hacia adelante aunque la solicitud original haya fallado (sin bienvenida por correo en ese caso); una alta de identidad
 nueva que falle por negocio no se puede deshacer automáticamente y pasa a revisión (comportamiento del motor ya existente).
+
+## 101. Primera activación local con servicios reales (2026-10-19)
+
+Se aplicaron en la base de desarrollo las migraciones del RUND (Auth 663, 669–672; RUND 004–022, con respaldo previo) y se levantaron Auth, PTA y RUND con
+las banderas activas. Procedimiento y comprobaciones: [ACTIVACION-RUND-LOCAL-Y-DESPLIEGUE.md](ACTIVACION-RUND-LOCAL-Y-DESPLIEGUE.md).
+
+**Defectos que solo aparecieron con el esquema real (corregidos)**
+
+- **Compensación de Auth imposible en producción.** `auth.personas.fec_modificacion` es `timestamptz` y el trigger `trg_personas_set_fechas` (migración 160) lo reescribe
+  en cada UPDATE (igual `updated_at` de la cuenta). La compensación comparaba la imagen restaurada con la previa de forma literal y siempre fallaba
+  ("Auth no confirmo la restauracion completa"). Ahora esas dos marcas, mantenidas por triggers, se excluyen de esa comparación (`restoredValues`); el resto
+  debe coincidir exactamente. El Auth de los verificadores no tenía esa migración: ahora la aplican y las comprobaciones que comparaban filas completas
+  ignoran solo esas marcas.
+- **El recuperador reanudaba intenciones viejas.** Una intención solo "registrada" en Auth (la solicitud ya había devuelto error) se completaba dos minutos después
+  con un comando antiguo y pisaba cambios posteriores. Nueva política: lo que Auth no aplicó se **cancela** (y si resulta que sí aplicó, se compensa);
+  solo se reanuda hacia adelante lo que Auth ya aplicó y RUND no confirmó.
+- Auth tiene sus propias banderas `RUND_IDENTITY_APPLY_ENABLED` y `RUND_IDENTITY_COMPENSATION_ENABLED`; sin ellas el alta responde 503.
+
+**Resultados**: integración con PostgreSQL real y el esquema de Auth completo: **722 comprobaciones, salida 0**; Jest auth **26 / 459**, rund-service **98 / 1.915**;
+verificador OCR 23 comprobaciones. En local: alta, rechazo con restauración, falla a mitad de camino con cancelación y reintento, y confirmación OCR de nombre y cédula, todos correctos.
+Quedan en la base de desarrollo tres docentes de prueba (documentos 8800000001–3) y sus diarios (inmutables).
+
+## 102. Batería funcional del módulo nuevo y pulido (2026-10-20)
+
+Se probó el RUND nuevo con servicios reales (Auth, PTA, RUND, gateway) y el frontend `mfe-rund` en un navegador real (Chrome/Puppeteer, montado como lo hace el shell
+con rol SUPER_ADMIN), contra la base de desarrollo. Resultado por área:
+
+| Área | Resultado |
+|---|---|
+| Paridad de rutas | Las 56 rutas del banco, Macro Docente y `rund/*` del RUND viejo existen en el nuevo; las 11 que solo están en PTA son su API interna hacia RUND |
+| Interfaz | Listado, filtros, estadísticas, carga masiva, invitaciones, ficha con los 6 bloques, documentos del perfil y asistente de 4 pasos de alta; 0 errores de red o de consola |
+| Lecturas por gateway | 21 consultas (ficha, cabezote, tarjeta, bloques, activación, auditoría, estadísticas, categorías, historial de cargas, invitaciones, soportes, resumen, Macro) |
+| Escrituras por API | Documentos (subir, listar, descargar, reemplazar, rechazar no-PDF), bloques (aprobar/devolver), soportes de edición, **edición con soporte y justificación incluido cambio de nombre en Auth**, inactivar/reactivar, auditoría, invitaciones, accesos externos de Macro Docente (crear, consultar sin sesión, revocar) |
+| Autogestión pública | Solicitar OTP, validar (incorrecto/correcto/ya usado), borrador, envío del formulario que crea al docente por el escritor de identidad nuevo |
+| Carga masiva (UI) | Vista previa (2 nuevos, 1 error) e importación definitiva: 2 docentes con identidad en Auth y la fila con error registrada |
+| Carpeta Digital (Auth) | Con `RUND_CARPETA_ENABLED`: carpeta, checklist, perfiles (propietario `rund`) y documentos de RUND; con `PTA_HISTORICO_API_ENABLED`: históricos de PTA por API |
+| PTA | Con `RUND_SYNC_ENABLED`: 285 docentes sincronizados desde RUND, 0 errores, tablas idénticas |
+
+**Pulido aplicado en el módulo nuevo (el RUND viejo de PTA no se tocó)**
+
+- **Texto mal codificado** heredado de PTA (`vacÃ­o`, `Hora CÃ¡tedra`, `ContraseÃ±a temporal` en el correo de bienvenida, mensajes de validación): 76 líneas de salidas y comentarios
+  corregidas. Se conservan las claves que leen encabezados de Excel deformados.
+- **Código OTP de autogestión**: ya no se guarda en claro; se guarda un HMAC-SHA256 ligado a la invitación (`RUND_OTP_SECRET` o `JWT_SECRET`; sin secreto falla), comparado en tiempo
+  constante; los códigos emitidos antes (texto plano, ≤10 min) siguen valiéndose. Sin migración.
+
+**Observaciones (sin cambio, decisiones de producto)**: los endpoints públicos de OTP/borrador/envío responden 201 con `success:false` ante errores (la interfaz lo lee así);
+el período por defecto de la interfaz es el activo de PTA (2025-2), por lo que no muestra docentes de otros períodos hasta elegir "Todos los periodos"; los 274 docentes migrados no aparecen en
+el banco porque su persona no existe en Auth (el listado sale de Auth) y se cargarán por carga masiva.
+
+**Verificación final**: Jest rund-service **99 / 1.922**, auth **27 / 459**; integración con PostgreSQL real **722 comprobaciones**; verificadores OCR, cédula y carpeta histórica en verde.

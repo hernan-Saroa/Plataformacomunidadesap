@@ -320,15 +320,17 @@ async function run() {
     // El dump deja search_path vacío; psql usa una sesión nueva para cada migración.
     await database.query('SET search_path TO public');
     await database.query(fs.readFileSync(path.join(root, 'db/migrations/158_add_id_person_to_personas_and_user.sql'), 'utf8'));
+    // Igual que el Auth real: fechas de persona y cuenta mantenidas por triggers (la compensación no puede restaurarlas literalmente).
+    await database.query(fs.readFileSync(path.join(root, 'db/migrations/160_set_personas_fechas_automaticas.sql'), 'utf8'));
     for (const role of ['SUPER_ADMIN', 'GESTION_PROFESORAL', 'DOCENTE']) {
       await database.query(`INSERT INTO auth.role (id,code,name,category,is_active)
         VALUES ($1,$2,$2,'sistema',true)`, [randomUUID(), role]);
     }
     for (const name of migrationNames) await check(`Migración ${name} en PostgreSQL real`, () => migrate(name));
     await check('Operaciones Auth: migración 669 crea registro sin modificar personas, cuentas o roles', async () => {
-      const before = (await database.query('SELECT to_jsonb(p) AS row FROM auth.personas p ORDER BY id_person')).rows;
+      const before = (await database.query('SELECT (to_jsonb(p) - \'fec_modificacion\') AS row FROM auth.personas p ORDER BY id_person')).rows;
       await database.query(fs.readFileSync(path.join(root, 'db/migrations/669_auth_rund_identidad_operacion.sql'), 'utf8'));
-      assert.deepEqual((await database.query('SELECT to_jsonb(p) AS row FROM auth.personas p ORDER BY id_person')).rows, before);
+      assert.deepEqual((await database.query('SELECT (to_jsonb(p) - \'fec_modificacion\') AS row FROM auth.personas p ORDER BY id_person')).rows, before);
     });
     await check('Aplicación Auth: migración 670 extiende recibos sin aplicar identidades', async () => {
       await database.query(fs.readFileSync(path.join(root,'db/migrations/670_auth_rund_identidad_aplicacion.sql'),'utf8'));

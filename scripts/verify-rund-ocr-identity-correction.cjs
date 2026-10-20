@@ -48,7 +48,9 @@ const actor = { actorId: 'OCR_FICTICIO', roles: ['SUPER_ADMIN'], fullAccess: tru
   let authApp, authDs, rundDs;
   try {
     await db.connect();
-    for (const file of ['db/init/000_uuid_ossp.sql', 'db/init/003_auth_ddl_20260129_215539.sql', 'db/migrations/158_add_id_person_to_personas_and_user.sql']) {
+    for (const file of ['db/init/000_uuid_ossp.sql', 'db/init/003_auth_ddl_20260129_215539.sql', 'db/migrations/158_add_id_person_to_personas_and_user.sql',
+      // Igual que el Auth real: fechas de persona y cuenta mantenidas por triggers.
+      'db/migrations/160_set_personas_fechas_automaticas.sql']) {
       await db.query(fs.readFileSync(path.join(root, file), 'utf8'));
     }
     await db.query('SET search_path TO public');

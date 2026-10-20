@@ -37,8 +37,17 @@ describe('Escritor de identidad por API de Auth', () => {
   it('un rechazo de negocio antes de aplicar en Auth cancela la intención en lugar de compensar', async () => {
     const { writer, execution, compensation } = build(); execution.ejecutar.mockRejectedValue(new BadRequestException('x'));
     execution.consultar.mockResolvedValueOnce(state({ estadoAuth: 'AUTH_REGISTRADA' })).mockResolvedValue(state({ decisionNativa: 'ABORTADA', estadoAuth: 'AUTH_REGISTRADA' }));
+    execution.resolverAborto.mockResolvedValue(state({ decisionNativa: 'ABORTADA', estadoAuth: 'CANCELADA' }));
     await expect(writer.write(plan)).rejects.toBeInstanceOf(BadRequestException);
     expect(execution.resolverAborto).toHaveBeenCalledTimes(1); expect(compensation.resolver).not.toHaveBeenCalled();
+  });
+
+  it('si al cancelar resulta que Auth sí aplicó (respuesta perdida), la compensa en lugar de dejarla sin resolver', async () => {
+    const { writer, execution, compensation } = build();
+    execution.consultar.mockResolvedValue(state({ decisionNativa: 'ABORTADA', estadoAuth: 'AUTH_REGISTRADA' }));
+    execution.resolverAborto.mockResolvedValue(state({ decisionNativa: 'ABORTADA', estadoAuth: 'AUTH_APLICADA' }));
+    await writer.settleAborted('x');
+    expect(execution.resolverAborto).toHaveBeenCalledTimes(1); expect(compensation.resolver).toHaveBeenCalledTimes(1);
   });
 
   it('un fallo técnico (503 o error inesperado) NO revierte: la intención queda para el recuperador', async () => {
@@ -80,11 +89,11 @@ describe('Recuperador de escrituras de identidad', () => {
     const { recovery, db } = buildRecovery(); await expect(recovery.recover()).resolves.toEqual({ resumed: 0, cancelled: 0, settled: 0 }); expect(db.query).not.toHaveBeenCalled();
   });
 
-  it('cancela lo que nunca llegó a Auth, reanuda lo demás con su mismo ID y resuelve los abortos pendientes', async () => {
+  it('cancela lo que Auth no aplicó (sin publicar o solo registrada), reanuda solo lo ya aplicado con su mismo ID y resuelve los abortos pendientes', async () => {
     flag();
     const { recovery, writer, db } = buildRecovery([{ intencion_id: 'a', estado_auth: 'PREPARADA' }, { intencion_id: 'b', estado_auth: 'AUTH_REGISTRADA' }, { intencion_id: 'c', estado_auth: 'AUTH_APLICADA' }], [{ intencion_id: 'd' }]);
-    await expect(recovery.recover(7, 30)).resolves.toEqual({ resumed: 2, cancelled: 1, settled: 1 });
-    expect(writer.rollback).toHaveBeenCalledWith('a'); expect(writer.run.mock.calls.map(([id]: [string]) => id)).toEqual(['b', 'c']); expect(writer.settleAborted).toHaveBeenCalledWith('d');
+    await expect(recovery.recover(7, 30)).resolves.toEqual({ resumed: 1, cancelled: 2, settled: 1 });
+    expect(writer.rollback.mock.calls.map(([id]: [string]) => id)).toEqual(['a', 'b']); expect(writer.run.mock.calls.map(([id]: [string]) => id)).toEqual(['c']); expect(writer.settleAborted).toHaveBeenCalledWith('d');
     expect(db.query.mock.calls[0][1]).toEqual([30, 7]); expect(db.query.mock.calls[0][0]).toMatch(/decision='EN_CURSO' AND n\.estado='PREPARADA'/);
     expect(db.query.mock.calls[1][0]).toMatch(/decision='ABORTADA'.*r\.intencion_id IS NULL/s);
   });

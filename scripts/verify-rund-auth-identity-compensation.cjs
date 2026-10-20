@@ -8,7 +8,8 @@ module.exports=async function verifyCompensation(pgConfig,runtime,check,ctx) {
   const {AuthIdentityExecutionService,AuthIdentityAbortProofController}=compiled('common/auth-identity-execution.service');
   const {InternalServiceGuard}=compiled('internal/internal-service.guard');
   const {identityWriteFingerprint}=compiled('common/auth-identity-command');
-  const {identityImage,imageValues}=require(path.join(auth,'dist/users/rund-identity-effects'));
+  // Auth mantiene con triggers (160) fec_modificacion y updated_at: la restauración se compara sin ellos.
+  const {identityImage,restoredValues:imageValues}=require(path.join(auth,'dist/users/rund-identity-effects'));
   const {admin,ds,coord,native,client,authFixture,authUrl,authToken,database,data,identities}=ctx;
   const execution=new AuthIdentityExecutionService(ds,coord,native,client),route='/internal/rund/v1/personas/escritura/operaciones/';
   const image=id=>identityImage({query:async(sql,params)=>(await database.query(sql,params)).rows},id);
@@ -97,7 +98,8 @@ module.exports=async function verifyCompensation(pgConfig,runtime,check,ctx) {
     await check('Compensacion Auth: imagen independiente de zona horaria conserva microsegundos y bigint superior al entero seguro',async()=>{
       const item=await abort(await existing({precision:true})),record=await effect(item.local.operacionAuthId);
       assert.equal(record.preimagen.persona.datos.id_seccional,'9007199254740993');
-      assert.equal(record.preimagen.usuarios[0].datos.updated_at,'2001-02-03T04:05:06.123456Z');
+      // updated_at de la cuenta lo fija el trigger 160 en cada UPDATE: no se puede sembrar un valor, pero la imagen conserva microsegundos UTC.
+      assert.match(record.preimagen.usuarios[0].datos.updated_at,/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/);
       await database.query("SET TIME ZONE 'America/Bogota'");
       try{assert.deepEqual(await image(item.personId),record.postimagen);}finally{await database.query('SET TIME ZONE DEFAULT');}
       assert.equal((await send(item)).body.data.resolucion.estado,'COMPENSADA');assert.deepEqual(await identities(),item.beforeIdentities);

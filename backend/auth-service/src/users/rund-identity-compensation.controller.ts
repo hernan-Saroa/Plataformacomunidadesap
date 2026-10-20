@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from 'util';
 import { Public } from '../auth/decorators/public.decorator';
 import { RundIdentityGuard } from './rund-identity.controller';
 import { RundIdentityAbortClient } from './rund-identity-abort.client';
-import { identityImage, imageValues, lockIdentityEffects, restoreIdentityEffects, validIdentityImage } from './rund-identity-effects';
+import { identityImage, imageValues, lockIdentityEffects, restoreIdentityEffects, restoredValues, validIdentityImage } from './rund-identity-effects';
 
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(v);
 type ReviewReason='SIN_PREIMAGEN'|'PREIMAGEN_INCOMPATIBLE'|'ALTA_IDENTIDAD'|'CAMBIOS_POSTERIORES'|'OTRA_OPERACION_POSTERIOR'|'CORREO_REUTILIZADO';
@@ -86,7 +86,7 @@ export class RundIdentityCompensationService {
         ) claims WHERE correo=ANY($1::text[]) AND (owner IS NULL OR owner<>$2::uuid) LIMIT 1`,[emails,effect.persona_id]);
       if(conflict)return finish('CORREO_REUTILIZADO');
       await restoreIdentityEffects(manager,before,after);
-      if(!isDeepStrictEqual(imageValues(await identityImage(manager,effect.persona_id)),imageValues(before)))
+      if(!isDeepStrictEqual(restoredValues(await identityImage(manager,effect.persona_id)),restoredValues(before)))
         throw new Error('Auth no confirmo la restauracion completa de los efectos propios.');
       return finish(null);
     });

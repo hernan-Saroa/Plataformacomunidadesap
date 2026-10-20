@@ -64,6 +64,18 @@ export function imageValues(image:IdentityImage) {
     usuarios:image.usuarios.map(({id,datos})=>({id,datos})),roles:image.roles.map(({usuarioId,rolId,datos})=>({usuarioId,rolId,datos}))};
 }
 
+/**
+ * Valores comparables tras restaurar. Auth mantiene con triggers (migración 160) `fec_modificacion` de la persona y `updated_at`
+ * de la cuenta: cualquier UPDATE, incluida la restauración, los reescribe con la hora actual, así que no pueden quedar
+ * literalmente iguales a la imagen previa. El resto de columnas, cuentas y roles sí deben coincidir exactamente.
+ */
+export function restoredValues(image:IdentityImage) {
+  const values=imageValues(image);
+  if(values.persona){const {fec_modificacion:_stamp,...datos}=values.persona.datos;values.persona={...values.persona,datos};}
+  values.usuarios=values.usuarios.map(u=>{const {updated_at:_stamp,...datos}=u.datos;return {...u,datos};});
+  return values;
+}
+
 export async function restoreIdentityEffects(manager:RundAuthWriteManager,before:IdentityImage,after:IdentityImage) {
   if(!before.persona||!after.persona||before.persona.id!==after.persona.id)throw new Error('Restauracion requiere una persona existente coincidente.');
   if(!isDeepStrictEqual(before.persona.datos,after.persona.datos))
