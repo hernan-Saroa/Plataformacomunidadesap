@@ -614,4 +614,39 @@ Respuesta del calendario (las dos rutas):
 - En el portal, `reservada` siempre es `false`: el docente ve todo lo suyo.
 - 404 si el documento no existe en el banco de docentes; `franjas: []` si no tiene nada en el periodo.
 
-Estado: **contrato fijado; implementación en curso en `feature/pa/ronda3-claude`.** Aviso aquí cuando esté integrado en `feature/pa/ronda3`.
+Estado: **implementado e integrado en `feature/pa/ronda3`**. Lo cubre la prueba de agregado `src/vista/vista.agregado.spec.ts`, con mutación verificada, y se verificó por API con los datos de 2027-2.
+
+Agregados al contrato. Son aditivos y no cambian lo de arriba:
+- Calendario: `horasPorGrupo: { [idGrupo]: number | null }`, solo para los grupos visibles.
+- Si el contrato de horas con el PTA no responde, las `horas` de un docente y `horas.total` vienen en `null`. La vista no se cae.
+- `GET /programacion/mis-permisos` devuelve `{ ver, programar, asignar, disponibilidad }` (por niveles), para que la pantalla muestre solo lo que corresponde.
+- **Clientes y tipos listos** en `apps/mfe-programacion-academica/src/services/api/vistaApi.ts`: `getArbolProgramacion`, `buscarDocentes`, `getCalendarioDocente`, `getMiCalendario` y `getMisPermisos`. Codex: úsalo. Si te falta algo, pídelo en `INTEGRACION-codex.md`.
+
+## 20. Ronda 3: EFDS-2342 y EFDS-2348 (20 de octubre)
+
+### Rol de asignación (EFDS-2342)
+
+- **Migración PA `060`:** crea los permisos `programacion-academica.asignacion-docente.<nivel>` y los roles `PROGRAMADOR_DOCENTE_PREGRADO` y `PROGRAMADOR_DOCENTE_POSGRADO`, ambos con disponibilidad docente.
+  - Trae un canario: cada rol resuelve su permiso y ninguno de programar ni del otro nivel.
+  - Los roles aparecen solos en la gestión de usuarios, porque esa lista viene de `auth.role`. No se tocó ese módulo.
+- **Ver, programar y asignar son permisos distintos:** `nivelesVisibles`, `nivelesProgramables` y `nivelesAsignables`.
+  - `POST /asignaciones` y `DELETE /asignaciones/grupo/:id` usan `@EscrituraEn(..., { exigeNivel: 'asignacion' })`.
+  - Publicar y retirar usan solo los niveles que se programan.
+- ⚠️ **Desviación a confirmar con Tomás:** `PROGRAMADOR_PREGRADO` y `PROGRAMADOR_POSGRADO` **ya no asignan docentes**. Asigna el rol nuevo o quien tenga `programacion-academica.all`. Si los programadores deben seguir asignando, basta una migración de una línea.
+- **Panel del docente:** `GET /asignaciones/docente/:doc` y `GET /asignaciones/acumulado/:doc` respondían a cualquier token, incluido el de un docente. Ahora exigen el permiso de disponibilidad o el de asignación.
+- **Menú del asignador:** solo Programación General y Disponibilidad Docente, más Concertación si está encendida. No puede publicar ni programar.
+
+### El docente recibe su programación (EFDS-2348)
+
+- **Interruptor `PROG_PORTAL_TOMA_FRANJAS`:** sin definir, rige el flujo nuevo.
+  - Tomar y soltar responden 409 en el servidor, y `disponibles` sale vacío.
+  - Al asignar, las franjas del grupo quedan en **TOMADA** («con docente, pendiente de concertación») dentro de una transacción. Así la concertación y el portal funcionan igual que antes.
+  - Lo **APROBADO** no se reasigna ni se retira: responde 409.
+- **Portal:** `GET /portal-docente/configuracion` informa qué flujo rige. El portal muestra **Mis grupos asignados** con horario, aula, ciclo, horas y estado.
+- Las 3 suites del flujo anterior se corren con el interruptor encendido, porque ese código sigue vivo.
+
+### Pruebas y datos
+
+- **Pruebas:** PA 247/247 sin omitidas y MFE PA 33/33. Las suites nuevas tienen mutación verificada: `asignacion-docente.agregado.spec.ts`, `flujo-asignado.agregado.spec.ts` y `vista.agregado.spec.ts`.
+- **Usuario QA local nuevo:** `qa.asignador@esap.edu.co`, con la clave de `qa.programacion` y el rol `PROGRAMADOR_DOCENTE_PREGRADO`.
+- **Propuestas sin construir** de EFDS-2345, 2341, 2346 y 2347: `PROPUESTAS-RONDA3-claude.md`.
