@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, revisarComponente, getAprobacionTerritorial, getRevisionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
+import { getPTAById, getCatalogoTerritoriales, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, revisarComponente, getAprobacionTerritorial, getRevisionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
 import { PTADetallePanelBackoffice, ApprovalTracker } from './PTADetallePanelBackoffice';
 import { PTA_COMPONENT_KEYS, PTA_COMPONENT_REVIEW_PERMISSION, REVIEW_SUBSECCIONES_BY_COMPONENT } from './shared/ptaComponentPermissions';
 
@@ -25,6 +25,29 @@ vi.mock('./FirmaDigitalPTA', () => ({
 }));
 
 describe('tarjetas del detalle administrativo', () => {
+  it.each(['aprobado', 'devuelto'])('resuelve el UUID de la territorial de una decisión %s sin cambiar su ID', async estado => {
+    const territorialId = '265cf9d0-536c-4405-9c62-219ea59c07ab';
+    let resolverCatalogo!: (result: any) => void;
+    vi.mocked(getCatalogoTerritoriales).mockImplementationOnce(() => new Promise(resolve => { resolverCatalogo = resolve; }));
+    const decision = { componente: 'academica_territorial', estado, estado_visual: estado,
+      scope: 'territorial', scopeId: territorialId, aplica: true, horas: 96, aprobadorNombre: 'Aprobador territorial' };
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [decision] } as any);
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: basePta({
+      territorial: 'Sede Central',
+      asignaturas: [{ nombre: 'Curso territorial', territorial_id: territorialId, componente_docencia: 'academica_territorial', total_horas: 96 }],
+    }) })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    await screen.findByText('Aprobador territorial');
+    expect(screen.queryByText(territorialId)).toBeNull();
+    expect(screen.getByText('Territorial no disponible')).toBeTruthy();
+    await act(async () => resolverCatalogo({ success: true, data: [{ id: territorialId, nombre: 'Risaralda', codigo: '900017' }] }));
+    expect(await screen.findByText('Risaralda')).toBeTruthy();
+    expect(screen.queryByText(territorialId)).toBeNull();
+    expect(decision.scopeId).toBe(territorialId);
+    expect(getCatalogoTerritoriales).toHaveBeenCalledWith();
+    expect(aprobarComponente).not.toHaveBeenCalled();
+  });
+
   it('muestra al aprobador los cruces guardados sin impedir su decisión', async () => {
     vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [
       { componente: 'academica_pregrado', estado: 'pendiente', estado_visual: 'pendiente', aplica: true, horas: 192 },
@@ -89,6 +112,7 @@ vi.mock('../../../../shell/src/services/api', () => ({
 }));
 
 vi.mock('../../services/api/ptaApi', () => ({
+  getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
   getPTADecisionPermissions: vi.fn().mockResolvedValue({ success: true, data: {
     allowedComponents: ['academica_pregrado'], allowedReviewSubsecciones: [],
     territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
