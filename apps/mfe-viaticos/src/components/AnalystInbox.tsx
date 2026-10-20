@@ -16,6 +16,7 @@ import {
   Landmark,
   BadgeDollarSign,
   MapPin,
+  ShieldAlert,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -1024,7 +1025,19 @@ export default function AnalystInbox() {
                             <FileText className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {puedeCancelarComision && (
+                        {s.estadoSolicitud === 'EN_REVOCATORIA' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <ShieldAlert className="w-2.5 h-2.5 text-amber-600" />
+                            En Revocatoria
+                          </span>
+                        )}
+                        {s.estadoSolicitud === 'REVOCADA' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-rose-600" />
+                            Revocada
+                          </span>
+                        )}
+                        {puedeCancelarComision && s.estadoSolicitud !== 'CANCELADA' && s.estadoSolicitud !== 'REVOCADA' && s.estadoSolicitud !== 'EN_REVOCATORIA' && (
                           <button
                             type="button"
                             onClick={() => setSolicitudCancelar(s)}

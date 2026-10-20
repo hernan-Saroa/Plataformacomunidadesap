@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Loader2, Gauge, Check, Hand, RotateCcw } from 'lucide-react';
 
+import { ConcertacionDocente } from './ConcertacionDocente';
 import {
   getDisponiblesPortal, getMisFranjasPortal, getAcumuladoPortal,
   tomarFranja, soltarFranja,
@@ -100,6 +101,19 @@ export default function PortalDocenteProgramacion() {
     finally { setOcupado(null); }
   };
 
+  // Periodos en que el docente tiene franjas (tomadas, aprobadas o devueltas a él):
+  // en cada uno puede enviar su docencia a concertación (EFDS-2315). El componente
+  // decide si aplica (encendida y dentro del corte); aquí solo se montan.
+  const periodosConDocencia = useMemo(() => {
+    const porId = new Map<string, string | null>();
+    for (const f of [...mias, ...disponibles.filter((d) => d.estado === 'DEVUELTA')]) {
+      if (f.idPeriodo) porId.set(f.idPeriodo, f.periodoCodigo ?? null);
+    }
+    return [...porId.entries()]
+      .map(([idPeriodo, codigoPeriodo]) => ({ idPeriodo, codigoPeriodo }))
+      .sort((a, b) => String(a.codigoPeriodo ?? '').localeCompare(String(b.codigoPeriodo ?? '')));
+  }, [mias, disponibles]);
+
   const pct = acumulado && acumulado.tope > 0
     ? Math.min(100, Math.round((acumulado.totalAsignado / acumulado.tope) * 100)) : 0;
   const excedido = !!acumulado && acumulado.totalAsignado > acumulado.tope;
@@ -143,6 +157,11 @@ export default function PortalDocenteProgramacion() {
           {excedido && <p className="text-[11px] text-red-600 font-semibold">Estás por encima del tope.</p>}
         </div>
       )}
+
+      {/* Concertación de la docencia (EFDS-2315): solo si está encendida y el periodo está en el corte */}
+      {periodosConDocencia.map((p) => (
+        <ConcertacionDocente key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} docenteNombre={acumulado?.nombre} />
+      ))}
 
       {/* Mis franjas */}
       <div className="space-y-2">

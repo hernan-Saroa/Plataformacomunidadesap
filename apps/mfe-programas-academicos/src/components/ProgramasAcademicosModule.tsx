@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   GraduationCap,
@@ -102,6 +102,8 @@ export function ProgramasAcademicosModule() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
+  const [eliminandoPrograma, setEliminandoPrograma] = useState(false);
+  const eliminandoProgramaRef = useRef(false);
   const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'importar-asignaturas' | 'periodos-academicos'>('lista');
   const [selectedProgramaForCetaps, setSelectedProgramaForCetaps] = useState<ProgramaAcademicoDTO | null>(null);
   const [selectedPeriodoForImport, setSelectedPeriodoForImport] = useState<string | undefined>(undefined);
@@ -185,6 +187,7 @@ export function ProgramasAcademicosModule() {
 
   // Cargar datos del backend
   useEffect(() => {
+    let cancelled = false;
     const loadProgramas = async () => {
       if (!periodosCargadosPA) {
         return;
@@ -221,6 +224,7 @@ export function ProgramasAcademicosModule() {
           limit: itemsPerPage,
           _t: Date.now()
         });
+        if (cancelled) return;
         console.log('[DEBUG] Raw API response keys:', Object.keys(response));
         console.log('[DEBUG] response.data count:', response.data?.length, 'response.total:', response.total);
         const programasData = response.data || [];
@@ -239,18 +243,22 @@ export function ProgramasAcademicosModule() {
 
 
       } catch (error) {
+        if (cancelled) return;
         console.error('Error cargando programas:', error);
         setError('Error al cargar los programas. Por favor intente nuevamente.');
         setProgramas([]);
         setPagination(null);
         toast.error('Error al cargar los programas');
       } finally {
-        setLoading(false);
-        setHasLoadedPrograms(true);
+        if (!cancelled) {
+          setLoading(false);
+          setHasLoadedPrograms(true);
+        }
       }
     };
 
     loadProgramas();
+    return () => { cancelled = true; };
   }, [debouncedSearch, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, periodosCargadosPA, currentPage, refreshTrigger]);
 
 
@@ -314,22 +322,34 @@ export function ProgramasAcademicosModule() {
   };
 
   const confirmDelete = async () => {
-    if (programaToDelete) {
+    if (programaToDelete && !eliminandoProgramaRef.current) {
+      if (!periodoSeleccionadoPA) {
+        toast.error('Seleccione un período para retirar el programa.');
+        return;
+      }
+      eliminandoProgramaRef.current = true;
+      setEliminandoPrograma(true);
       try {
         // Se envía el período visualizado para que el borrado sea SOLO de ese período
         // (si el programa también existe en otro período, allí se conserva).
         const periodoQS = periodoSeleccionadoPA
           ? `?periodo=${encodeURIComponent(periodoSeleccionadoPA)}`
           : '';
-        await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}${periodoQS}`);
-        toast.success('Programa Eliminado', { description: `Se eliminó: ${programaToDelete.nombre}` });
+        await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}${periodoQS}`, { skipErrorToast: true });
+        toast.success('Programa retirado del período', { description: `${programaToDelete.nombre}. Los registros académicos existentes se conservan.` });
+        setProgramaToDelete(null);
+        if (programas.length === 1 && currentPage > 1) setCurrentPage(page => page - 1);
         // Recargar datos
         setRefreshTrigger(prev => prev + 1);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error deleting programa:', error);
-        toast.error('Error al eliminar el programa');
+        toast.error('No se pudo retirar el programa', {
+          description: error?.message || 'Intenta nuevamente. El programa permanece en la lista.',
+        });
+        throw error;
       } finally {
-        setProgramaToDelete(null);
+        eliminandoProgramaRef.current = false;
+        setEliminandoPrograma(false);
       }
     }
   };
@@ -1152,8 +1172,14 @@ export function ProgramasAcademicosModule() {
                 <GraduationCap className="w-8 h-8 text-[#003DA5]/40" />
               </div>
               <h3 className="font-bold text-gray-900 text-sm mb-1">No se encontraron programas</h3>
-              <p className="text-xs text-gray-400 mb-5 max-w-xs mx-auto">
-                {hasActiveFilters ? 'Intenta ajustar los filtros de búsqueda' : 'Aún no hay programas registrados. Crea uno para comenzar.'}
+              <p className="text-xs text-gray-400 mb-5 max-w-sm mx-auto">
+                {hasActiveFilters
+                  ? 'Intenta ajustar los filtros de búsqueda'
+                  : periodoSeleccionadoPA
+                    // Los programas de un periodo son los que tienen oferta CETAP en él. Sin carga masiva
+                    // en ese periodo la lista sale vacía aunque los programas existan en el catálogo.
+                    ? `El periodo ${periodoSeleccionadoPA} no tiene oferta cargada: aquí se listan los programas que se dictan en el periodo. Cárguela desde «Periodos» con el Excel, o elija otro periodo en el selector.`
+                    : 'Aún no hay programas registrados. Crea uno para comenzar.'}
               </p>
               <div className="flex items-center justify-center gap-3">
                 {hasActiveFilters && (
@@ -1193,10 +1219,11 @@ export function ProgramasAcademicosModule() {
       <ConfirmationDialog
         open={!!programaToDelete}
         title="Eliminar Programa"
-        description={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
+        description={`¿Retirar el programa "${programaToDelete?.nombre}" del período ${periodoSeleccionadoPA}? Dejará de estar disponible para nuevas selecciones en este período. Los PTAs y registros académicos existentes se conservarán, al igual que su oferta en otros períodos.`}
         confirmText="Eliminar"
         cancelText="Cancelar"
-        variant="danger"
+        variant="warning"
+        loading={eliminandoPrograma}
         onConfirm={confirmDelete}
         onClose={() => setProgramaToDelete(null)}
       />

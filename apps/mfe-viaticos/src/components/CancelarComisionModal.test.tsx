@@ -185,7 +185,7 @@ describe('CancelarComisionModal — RF-AUT-003 (Etapa 6)', () => {
       target: { value: 'Evento cancelado por orden del Ministerio de Hacienda' },
     });
 
-    const submitBtn = screen.getByRole('button', { name: /Confirmar Cancelación/i });
+    const submitBtn = screen.getByRole('button', { name: /Confirmar Cancelación|Iniciar Proceso de Revocatoria/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {

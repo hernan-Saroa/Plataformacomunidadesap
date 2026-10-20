@@ -6081,6 +6081,168 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(res.firmas[0].tipo).toBe('JEFE_DEPENDENCIA');
       });
 
+      it('firmarAprobacionSolicitud: rechaza a jefe regular si el comisionado es Subdirector Nacional y permite al Director Nacional', async () => {
+        const solicitud = {
+          id: 'sol-subdirector-desp',
+          consecutivoUnico: 'SOL-2026-SUB',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 10,
+          camposAdicionales: {
+            reglaDesplazamiento: 'DESPLAZAMIENTO_SUBDIRECTOR_GC',
+            cargo: 'Subdirector Nacional',
+            firmasAprobacion: [],
+          },
+          comisionado: { primerNombre: 'Subdirector', primerApellido: 'Nacional', idDependencia: 10 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 10 }]),
+        };
+        const historialRepo = { save: jest.fn().mockResolvedValue({ id: 'h-sub' }) };
+        const dataSource = { getRepository: jest.fn().mockReturnValue(historialRepo) };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // 1. Jefe regular de la dependencia intenta firmar -> debe ser rechazado
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-subdirector-desp',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Jefe Habitual',
+              cargoFirmante: 'Jefe de Oficina',
+            },
+            'user-jefe-regular',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(/el comisionado es Subdirector Nacional o tiene cargo de Dirección Territorial.*Director Nacional/);
+
+        // 2. Director Nacional intenta firmar -> debe ser aprobado
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-subdirector-desp',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Director General',
+            cargoFirmante: 'Director Nacional',
+          },
+          'user-dir-nal',
+          ['DIRECTOR_NACIONAL'],
+        );
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].cargoFirmante).toBe('Director Nacional');
+      });
+
+      it('firmarAprobacionSolicitud: rechaza a jefe regular si el comisionado es Director Nacional y permite al Subdirector Nacional', async () => {
+        const solicitud = {
+          id: 'sol-dir-desp',
+          consecutivoUnico: 'SOL-2026-DIR',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 1,
+          camposAdicionales: {
+            reglaDesplazamiento: 'DESPLAZAMIENTO_DIRECTOR_NACIONAL',
+            cargo: 'Director General Nacional',
+            firmasAprobacion: [],
+          },
+          comisionado: { primerNombre: 'Director', primerApellido: 'General', idDependencia: 1 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 1 }]),
+        };
+        const historialRepo = { save: jest.fn().mockResolvedValue({ id: 'h-dir' }) };
+        const dataSource = { getRepository: jest.fn().mockReturnValue(historialRepo) };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // 1. Jefe regular intenta firmar -> debe ser rechazado
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-dir-desp',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Jefe Habitual',
+              cargoFirmante: 'Jefe de Dependencia',
+            },
+            'user-jefe-regular',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(/el comisionado es el Director Nacional.*Subdirector Nacional/);
+
+        // 2. Subdirector Nacional intenta firmar -> debe ser aprobado
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-dir-desp',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Subdirector General',
+            cargoFirmante: 'Subdirector Nacional',
+          },
+          'user-subdir-nal',
+          ['SUBDIRECTOR_NACIONAL'],
+        );
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].cargoFirmante).toBe('Subdirector Nacional');
+      });
+
+      it('firmarAprobacionSolicitud: rechaza a jefe territorial si el comisionado es Director Territorial y permite al Director Nacional', async () => {
+        const solicitud = {
+          id: 'sol-territorial-desp',
+          consecutivoUnico: 'SOL-2026-TER',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 20,
+          camposAdicionales: {
+            reglaDesplazamiento: 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL',
+            cargo: 'Director Territorial Antioquia',
+            firmasAprobacion: [],
+          },
+          comisionado: { primerNombre: 'Director', primerApellido: 'Territorial Antioquia', idDependencia: 20 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 20 }]),
+        };
+        const historialRepo = { save: jest.fn().mockResolvedValue({ id: 'h-ter' }) };
+        const dataSource = { getRepository: jest.fn().mockReturnValue(historialRepo) };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // 1. Jefe territorial regular intenta firmar -> debe ser rechazado
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-territorial-desp',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Coordinador Territorial',
+              cargoFirmante: 'Líder de Dependencia Territorial',
+            },
+            'user-jefe-ter',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(/el comisionado es Subdirector Nacional o tiene cargo de Dirección Territorial.*Director Nacional/);
+
+        // 2. Director Nacional intenta firmar -> debe ser aprobado
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-territorial-desp',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Director Nacional',
+            cargoFirmante: 'Director Nacional',
+          },
+          'user-dir-nal',
+          ['DIRECTOR_NACIONAL'],
+        );
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].cargoFirmante).toBe('Director Nacional');
+      });
+
       it('obtenerBandejaFirmas: filtra por la dependencia del usuario cuando no es superadmin', async () => {
         const qb = {
           leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -6158,8 +6320,9 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           },
           objetoComision: 'Capacitación territorial en Girardot',
           destinoCiudad: 'Girardot',
-          destinoDepartamento: 'Cundinamarca',
-          camposAdicionales: {},
+          camposAdicionales: {
+            justificacionDuracion: 'Capacitación integral programada para fortalecimiento territorial institucional.',
+          },
         } as any;
 
         const qbMock: any = {

@@ -1128,12 +1128,44 @@ export class NotificationClientService {
       // ========================================================================
       // 1. Notificación a Jefe y Gerente (roles con permiso general jefe y gerente)
       // ========================================================================
+      const regla =
+        (params.solicitud as any)?.camposAdicionales?.reglaDesplazamiento ||
+        (params.solicitud as any)?.reglaDesplazamiento ||
+        'REGULAR';
+
+      let permisosFirmante1 = ['travel_expenses.general.es_jefe_dependencia'];
+      let rolesFirmante1 = ['JEFE_DEPENDENCIA'];
+
+      if (
+        regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+        regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL'
+      ) {
+        permisosFirmante1 = [
+          'travel_expenses.general.es_direccion_nacional',
+          'travel_expenses.general.es_director',
+          'general.es_director',
+        ];
+        rolesFirmante1 = ['DIRECCION_NACIONAL', 'DIRECTOR_NACIONAL', 'DIRECTOR_GENERAL'];
+      } else if (regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL') {
+        permisosFirmante1 = [
+          'travel_expenses.general.es_subdireccion_corporativa',
+          'travel_expenses.general.es_subdirector',
+          'general.es_subdirector',
+        ];
+        rolesFirmante1 = [
+          'SUBDIRECCION_GESTION_CORPORATIVA',
+          'SUBDIRECTOR_GESTION_CORPORATIVA',
+          'SUBDIRECTOR_NACIONAL',
+          'SUBDIRECTOR',
+        ];
+      }
+
       let directivos = await this.getRecipientsByPermissions(
         [
-          'travel_expenses.general.es_jefe_dependencia',
+          ...permisosFirmante1,
           'travel_expenses.general.es_gerente_proyecto',
         ],
-        ['JEFE_DEPENDENCIA', 'GERENTE_PROYECTO'],
+        [...rolesFirmante1, 'GERENTE_PROYECTO'],
       );
 
       // Contingencia en entornos de desarrollo: si aún no hay usuarios con los roles asignados,

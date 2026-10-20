@@ -405,6 +405,41 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
       );
     });
 
+    it('permite la cancelación a un Coordinador del Grupo de Comisiones (Administrador de Viáticos)', async () => {
+      const solicitudExistente: any = {
+        id: 'sol-coord-1',
+        consecutivoUnico: 'COM-2026-COORD-01',
+        estadoSolicitud: EstadoSolicitud.EN_VERIFICACION,
+        siifExportado: false,
+        creadoPorUsuarioId: 'user-enlace-99',
+        requiereTiquetes: false,
+        idDependencia: 1,
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(solicitudExistente),
+      };
+      mockSolicitudRepo.createQueryBuilder.mockReturnValue(qbMock);
+
+      const dto: CancelarComisionDto = {
+        motivoCancelacion: 'Cancelación autorizada por la Coordinación del Grupo de Comisiones',
+        responsableCancelacion: 'Coordinación Grupo de Comisiones',
+      };
+
+      const result = await serviceInstance.cancelarComision(
+        'sol-coord-1',
+        'user-coord-01',
+        ['COORDINADOR_COMISIONES_VIATICOS'],
+        dto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.CANCELADA);
+      expect(result.responsableCancelacion).toBe('Coordinación Grupo de Comisiones');
+    });
+
     it('debe rechazar la cancelación si la comisión ya está en estado LEGALIZADO', async () => {
       const solicitudLegalizada: any = {
         id: 'sol-leg-1',
