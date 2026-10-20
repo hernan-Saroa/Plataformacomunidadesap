@@ -29,6 +29,7 @@ export const VIATICOS_PERMISOS_GENERALES = {
   JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
   GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
   COMISIONADO: 'travel_expenses.general.es_comisionado',
+  COORDINADOR_COMISIONES: 'travel_expenses.general.es_coordinador_comisiones',
 } as const;
 
 export type ViaticosRoleKey = keyof typeof VIATICOS_PERMISOS_GENERALES;
@@ -84,6 +85,12 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'SUBDIRECCION_GESTION_CORPORATIVA',
       'SUBDIRECTOR_GESTION_CORPORATIVA',
       'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+      'SUBDIRECTOR_NACIONAL',
+      'SUBDIRECTOR',
+      'SUBDIRECCION_NACIONAL',
+      'SUBDIRECTOR_ACADEMICO',
+      'SUBDIRECTOR_PROYECCION',
+      'SUBDIRECTOR_ALTO_GOBIERNO',
     ],
     fallbackPermissions: [
       'travel_expenses:read_authorizations',
@@ -198,6 +205,25 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'es_comisionado',
     ],
     label: 'Comisionado',
+  },
+  COORDINADOR_COMISIONES: {
+    permission: VIATICOS_PERMISOS_GENERALES.COORDINADOR_COMISIONES,
+    legacyRoles: [
+      'COORDINADOR_COMISIONES_VIATICOS',
+      'COORDINADOR_GRUPO_COMISIONES',
+      'COORDINADOR_COMISIONES',
+      'COORDINADORA_GRUPO_COMISIONES',
+      'COORDINADORA_COMISIONES_VIATICOS',
+      'COORDINADOR_DE_COMISIONES',
+    ],
+    fallbackPermissions: [
+      'travel_expenses:manage_config',
+      'travel_expenses:cancel_request',
+      'travel_expenses:read_requests',
+      'travel_expenses:read_inbox',
+      'travel_expenses:paz_y_salvo.manage',
+    ],
+    label: 'Coordinador del Grupo de Comisiones y Viáticos (Administrador)',
   },
 };
 
@@ -319,6 +345,12 @@ export const isGerenteProyecto = (auth: AuthService = defaultAuthService): boole
 export const isComisionado = (auth: AuthService = defaultAuthService): boolean =>
   hasViaticosRolePermission(auth, 'COMISIONADO');
 
+export const isCoordinadorComisiones = (auth: AuthService = defaultAuthService): boolean =>
+  hasViaticosRolePermission(auth, 'COORDINADOR_COMISIONES') || auth.isCoordinadorComisiones();
+
+export const isAdministradorViaticos = (auth: AuthService = defaultAuthService): boolean =>
+  auth.isSuperAdmin() || isCoordinadorComisiones(auth);
+
 export const canFirmarAprobacion = (auth: AuthService = defaultAuthService): boolean => {
   const user = auth.getCurrentUserSync();
   if (!user) return false;
@@ -366,11 +398,15 @@ export function useViaticosPermissions(auth: AuthService = defaultAuthService) {
     const esJefe = isJefeDependencia(auth);
     const esGerente = isGerenteProyecto(auth);
     const esComi = isComisionado(auth);
+    const esCoord = isCoordinadorComisiones(auth);
+    const esAdminViaticos = esSuperAdmin || esCoord;
     const puedeFirmar = canFirmarAprobacion(auth);
 
     return {
       user,
       esSuperAdmin,
+      esCoordinadorComisiones: esCoord,
+      esAdministradorViaticos: esAdminViaticos,
       esSecretario,
       esAnalista,
       esControlViaticos: esControl,

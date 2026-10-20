@@ -6629,8 +6629,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const puedeExportarPlan = puedeRealizar('plan-anual', 'export');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
-  /** Backend permite DELETE con permiso edit o delete; la UI debe coincidir. */
-  const puedeEliminarPlanEnUI = puedeEliminarPlan || puedeEditarPlan || esSuperUsuario;
+  /** Eliminar el plan pide el permiso de eliminar; editar no basta, igual que en el backend (EFDS-2282). */
+  const puedeEliminarPlanEnUI = puedeEliminarPlan || esSuperUsuario;
   const puedeVerPlan = puedeRealizar('plan-anual', 'view');
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
@@ -6713,6 +6713,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   };
 
   const solicitarEliminarPlan = (planObjetivo: PlanAnual) => {
+    if (!puedeEliminarPlanEnUI) {
+      toast.error('Su rol no tiene el permiso para eliminar planes');
+      return;
+    }
     if (!esEstadoPlanBorrador(planObjetivo.estado)) {
       toast.error('Solo se pueden eliminar planes en borrador');
       return;
@@ -9368,11 +9372,6 @@ function SeccionGestionYSeguimiento({
       {/* Planes registrados (historial + plan actual) */}
       {planesEnHistorial.length > 0 && (
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-          {hayBorradoresEnLista && !puedeEliminarPlan && (
-            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
-              Hay planes en borrador, pero tu usuario no tiene permiso <code className="text-[10px]">control-interno.plan-anual.delete</code> ni <code className="text-[10px]">.edit</code>. Pide al administrador que te asigne uno de esos permisos para ver el botón eliminar.
-            </div>
-          )}
           <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
             <div>
               <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -9380,8 +9379,9 @@ function SeccionGestionYSeguimiento({
                 Planes registrados
               </h3>
               <p className="text-xs text-gray-500 mt-1">
-                El plan que estás viendo está marcado. Cada fila en <strong>borrador</strong> puede eliminarse (verificación OTP por correo).
-                {historialColapsado && hayBorradoresEnLista && (
+                El plan que estás viendo está marcado.
+                {puedeEliminarPlan && <> Cada fila en <strong>borrador</strong> puede eliminarse (verificación OTP por correo).</>}
+                {puedeEliminarPlan && historialColapsado && hayBorradoresEnLista && (
                   <span className="block mt-1 text-amber-700 font-medium">Expande el historial para ver el botón eliminar.</span>
                 )}
               </p>

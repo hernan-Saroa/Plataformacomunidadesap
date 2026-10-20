@@ -79,8 +79,18 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     authService.hasPermission('general.es_director') ||
     authService.isDireccionNacional();
 
+  const esDirTerritorial =
+    authService.hasPermission('travel_expenses.general.es_director_territorial') ||
+    authService.hasPermission('travel_expenses.general.es_director_seccional') ||
+    (usuario?.roles || []).some((r: any) => {
+      const norm = String(typeof r === 'string' ? r : r?.code || '').toLowerCase();
+      return norm.includes('territorial') && norm.includes('director');
+    }) ||
+    (usuario?.cargo || '').toLowerCase().includes('director territorial') ||
+    (usuario?.cargo || '').toLowerCase().includes('directora territorial');
+
   // Si tiene alguno de estos roles/permisos directivos, muestra la bandeja; de lo contrario no.
-  const puedeVerBandeja = esSuperAdmin || esJefe || esGerente || esSubdir || esDirNac;
+  const puedeVerBandeja = esSuperAdmin || esJefe || esGerente || esSubdir || esDirNac || esDirTerritorial;
   const puedeFirmar = puedeVerBandeja;
 
   const cargarSolicitudes = async () => {
@@ -114,18 +124,64 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
       ? s.camposAdicionales.firmasAprobacion
       : [];
+    const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+    const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+
+    // Validación de VoBo de duración extendida (>3 días calendario / 3.5 días valor)
+    const requiereVoBo = Boolean(s.camposAdicionales?.requiereVoBoDuracion);
+    const voboAprobado = s.camposAdicionales?.voboDuracion?.estado === 'APROBADO';
+    const instanciaVoBo = s.camposAdicionales?.instanciaVoBoDuracion || 'DIRECCION_NACIONAL';
+
+    let faltaVoBo = false;
+    if (requiereVoBo && !voboAprobado) {
+      if (instanciaVoBo === 'DIRECTOR_TERRITORIAL') {
+        faltaVoBo = esSuperAdmin || esDirTerritorial;
+      } else {
+        faltaVoBo = esSuperAdmin || esDirNac;
+      }
+    }
+
     if (esSuperAdmin) {
-      const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
-      const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+      if (requiereVoBo && !voboAprobado) {
+        return true;
+      }
       return !tieneJefe || !tieneGerente;
     }
-    if (esGerente && !esJefe && !esSubdir && !esDirNac) {
-      return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+
+    // Si la comisión requiere VoBo de duración extendida (>3 días calendario / >=3.5 días valor)
+    // y aún NO ha sido aprobado, el expediente se encuentra en Fase 1 (espera de VoBo).
+    // Ni el Jefe ni el Gerente pueden firmar todavía; solo la autoridad que otorga el VoBo
+    // (Dirección Nacional o Director Territorial) tiene la acción pendiente.
+    if (requiereVoBo && !voboAprobado) {
+      return faltaVoBo;
     }
-    if (esJefe || esSubdir || esDirNac) {
-      return !firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+
+    // Fase 2 (VoBo aprobado) o Comisiones sin VoBo (<= 3 días cal. / <= 3.5 días valor):
+    // Pasa directo a firmas de Jefe y Gerente de Proyecto.
+    const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
+    const requiereDirNacional =
+      regla === 'SUBDIRECTOR_NACIONAL' ||
+      regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+      regla === 'DIRECTOR_TERRITORIAL' ||
+      regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+    const requiereSubdirNacional =
+      regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+    const faltaGerente = !tieneGerente && esGerente;
+
+    let faltaJefe = false;
+    if (!tieneJefe) {
+      if (requiereDirNacional) {
+        faltaJefe = esDirNac;
+      } else if (requiereSubdirNacional) {
+        faltaJefe = esSubdir;
+      } else {
+        // En flujo regular, solo el jefe de dependencia (el jefe habitual no puede firmar cuando se requiere Director/Subdirector Nacional)
+        faltaJefe = esJefe && !requiereDirNacional && !requiereSubdirNacional;
+      }
     }
-    return false;
+
+    return faltaJefe || faltaGerente;
   };
 
   // Determina si el usuario actual ya registró su firma en la solicitud
@@ -133,12 +189,39 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
       ? s.camposAdicionales.firmasAprobacion
       : [];
+    const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
+    const requiereDirNacional =
+      regla === 'SUBDIRECTOR_NACIONAL' ||
+      regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+      regla === 'DIRECTOR_TERRITORIAL' ||
+      regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+    const requiereSubdirNacional =
+      regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+    const requiereVoBo = Boolean(s.camposAdicionales?.requiereVoBoDuracion);
+    const voboAprobado = s.camposAdicionales?.voboDuracion?.estado === 'APROBADO';
+    const instanciaVoBo = s.camposAdicionales?.instanciaVoBoDuracion || 'DIRECCION_NACIONAL';
+
+    if (requiereVoBo && voboAprobado) {
+      if (instanciaVoBo === 'DIRECTOR_TERRITORIAL' && esDirTerritorial) return true;
+      if (instanciaVoBo === 'DIRECCION_NACIONAL' && esDirNac) return true;
+    }
+
     if (esGerente && firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO')) {
       return true;
     }
-    if ((esJefe || esSubdir || esDirNac) && firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO')) {
-      return true;
+
+    const firmaJefeRegistrada = firmas.some(
+      (f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO',
+    );
+
+    if (firmaJefeRegistrada) {
+      if (requiereDirNacional && esDirNac) return true;
+      if (requiereSubdirNacional && esSubdir) return true;
+      if (!requiereDirNacional && !requiereSubdirNacional && esJefe) return true;
+      if (esSuperAdmin) return true;
     }
+
     return false;
   };
 
@@ -248,7 +331,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     const regla = sol.camposAdicionales?.reglaDesplazamiento;
     const desc = sol.camposAdicionales?.descripcionReglaDesplazamiento;
 
-    if (regla === 'SUBDIRECTOR_NACIONAL') {
+    if (regla === 'SUBDIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -260,7 +343,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         </span>
       );
     }
-    if (regla === 'DIRECTOR_NACIONAL') {
+    if (regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -272,7 +355,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         </span>
       );
     }
-    if (regla === 'DIRECTOR_TERRITORIAL') {
+    if (regla === 'DIRECTOR_TERRITORIAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -294,6 +377,61 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         Regla Regular: Jefe de Dependencia + Gerente
       </span>
     );
+  };
+
+  const obtenerBadgeVoBo = (sol: any) => {
+    const requiere = Boolean(sol.camposAdicionales?.requiereVoBoDuracion);
+    const eximidoDoc = Boolean(sol.camposAdicionales?.eximidoVoBoDocente);
+    const vobo = sol.camposAdicionales?.voboDuracion;
+    const instancia = sol.camposAdicionales?.tituloVoBoDuracion || (sol.camposAdicionales?.instanciaVoBoDuracion === 'DIRECTOR_TERRITORIAL' ? 'Director Territorial' : 'Dirección Nacional');
+
+    if (requiere) {
+      if (vobo?.estado === 'APROBADO') {
+        return (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300"
+            title={`VoBo otorgado por ${vobo.nombreFirmante || instancia} (${vobo.cargoFirmante || ''}) - Certificado: ${vobo.certificadoId || 'Digital'}`}
+          >
+            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+            VoBo Duración: Aprobado ({instancia})
+          </span>
+        );
+      }
+      if (vobo?.estado === 'RECHAZADO') {
+        return (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-300"
+            title={`VoBo rechazado por ${instancia}: ${vobo.comentarios || 'Sin observaciones'}`}
+          >
+            <X className="w-3 h-3 text-rose-600" />
+            VoBo Duración: Rechazado
+          </span>
+        );
+      }
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs animate-pulse"
+          title={`Comisión > 3 días calendario (${sol.camposAdicionales?.diasCalendario || 'N/D'} días cal. / ${sol.camposAdicionales?.diasValor || 'N/D'} días valor). Requiere VoBo previo de ${instancia}.`}
+        >
+          <AlertTriangle className="w-3 h-3 text-amber-600" />
+          Requiere VoBo: {instancia} (&gt;3 días)
+        </span>
+      );
+    }
+
+    if (eximidoDoc) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300"
+          title="Docente o docente capacitador eximido de VoBo de duración por dictado de clase o agenda"
+        >
+          <ShieldCheck className="w-3 h-3 text-slate-500" />
+          Eximido VoBo (Docente en clase / agenda)
+        </span>
+      );
+    }
+
+    return null;
   };
 
   if (!puedeVerBandeja) {
@@ -616,6 +754,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         {sol.consecutivoUnico || sol.codigoSolicitud || sol.codigo || 'SIN CÓDIGO'}
                       </span>
                       {obtenerBadgeRegla(sol)}
+                      {obtenerBadgeVoBo(sol)}
                       {tieneFirma1 && tieneFirma2 ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -727,6 +866,19 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         &ldquo;{sol.objetoComision}&rdquo;
                       </p>
                     )}
+
+                    {/* Justificación de Duración Extendida (>3 días calendario / 3.5 días valor) */}
+                    {sol.camposAdicionales?.justificacionDuracion && (
+                      <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900 space-y-1">
+                        <div className="flex items-center gap-1 font-bold text-amber-800">
+                          <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Justificación de Duración Extendida (&gt; 3 días calendario):</span>
+                        </div>
+                        <p className="italic pl-4 text-slate-700">
+                          &ldquo;{sol.camposAdicionales.justificacionDuracion}&rdquo;
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Panel de Estado de Firmas y Acciones */}
@@ -806,6 +958,57 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         </div>
                       )}
                     </div>
+
+                    {/* VoBo Institucional de Duración Extendida (>3 días calendario / 3.5 días valor) */}
+                    {sol.camposAdicionales?.requiereVoBoDuracion && (() => {
+                      const vobo = sol.camposAdicionales?.voboDuracion;
+                      const tieneVoBo = vobo?.estado === 'APROBADO';
+                      const esRechazado = vobo?.estado === 'RECHAZADO';
+                      const inst = sol.camposAdicionales?.tituloVoBoDuracion || (sol.camposAdicionales?.instanciaVoBoDuracion === 'DIRECTOR_TERRITORIAL' ? 'Director Territorial' : 'Dirección Nacional');
+
+                      return (
+                        <div className={`p-2.5 rounded-lg border text-xs space-y-1 transition-all ${
+                          tieneVoBo
+                            ? 'bg-[#F0FDF4] border-[#BBF7D0]'
+                            : esRechazado
+                            ? 'bg-rose-50 border-rose-200'
+                            : 'bg-amber-50/80 border-amber-300'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-700">
+                              3. VoBo ({inst}):
+                            </span>
+                            {tieneVoBo ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#065F46] font-bold text-[10px]">
+                                <CheckCircle2 className="w-3 h-3 text-[#065F46]" />
+                                Aprobado
+                              </span>
+                            ) : esRechazado ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">
+                                <X className="w-3 h-3 text-rose-600" />
+                                Rechazado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] animate-pulse">
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                VoBo Requerido
+                              </span>
+                            )}
+                          </div>
+                          {tieneVoBo && (
+                            <div className="text-[11px] text-slate-700 font-medium">
+                              <p>
+                                <strong>{vobo.nombreFirmante || inst}</strong>
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                {vobo.cargoFirmante ? `${vobo.cargoFirmante} · ` : ''}
+                                {vobo.fechaVoBo ? new Date(vobo.fechaVoBo).toLocaleDateString('es-CO') : ''}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Botones de Acción */}
                     <div className="pt-2 flex flex-col gap-2">

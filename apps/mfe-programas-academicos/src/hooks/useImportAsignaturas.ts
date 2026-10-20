@@ -1,10 +1,13 @@
 import { useState, useCallback } from 'react';
 import { apiClient } from '../services/api/apiClient';
+import { describeCatalogImportError, type CatalogImportFailure } from '../utils/catalogImportError';
 
 export interface ImportCount {
   creados: number;
   actualizados: number;
   omitidos: number;
+  sin_cambios?: number;
+  rechazadas?: number;
 }
 
 export interface ImportCarga {
@@ -58,18 +61,21 @@ export function useImportAsignaturas() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importFailure, setImportFailure] = useState<CatalogImportFailure | null>(null);
 
   const resetImportState = useCallback(() => {
     setLoading(false);
     setProgress(0);
     setResult(null);
     setError(null);
+    setImportFailure(null);
   }, []);
 
   const uploadCatalog = useCallback(async (file: File, dryRun: boolean, periodoCodigo = '2025-2', omitErrors = false) => {
     setLoading(true);
     setProgress(0);
     setError(null);
+    setImportFailure(null);
     setResult(null);
 
     const formData = new FormData();
@@ -85,8 +91,9 @@ export function useImportAsignaturas() {
       setResult(res);
       return res;
     } catch (err: any) {
-      const msg = err.message || 'Error al procesar la carga del catálogo';
-      setError(msg);
+      const failure = describeCatalogImportError(err);
+      setError(failure.title);
+      setImportFailure(failure);
       throw err;
     } finally {
       setLoading(false);
@@ -211,6 +218,7 @@ export function useImportAsignaturas() {
     progress,
     result,
     error,
+    importFailure,
     resetImportState,
     uploadCatalog,
     getLastImport,

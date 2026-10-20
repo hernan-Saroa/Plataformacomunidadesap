@@ -1,11 +1,22 @@
 import {
-  Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { AulasService, type ActualizarAulaDto, type CrearAulaDto } from './aulas.service.js';
+import { EscrituraEn, EscrituraSinPeriodo } from '../acceso/escritura.decorator.js';
 
 /**
  * Aulas y disponibilidad de espacio — EFDS-1374.
@@ -49,10 +60,19 @@ export class AulasController {
     }
   }
 
-  /** GET /aulas — catálogo de aulas (datos provisionales, C-4). */
+  /**
+   * GET /aulas — catálogo de aulas con su territorial y CETAP.
+   * Filtros opcionales: `cetap=CET-xxxx`; `grupo=<uuid>`; o `asignatura=<id>&periodo=<id>`
+   * (solo las aulas válidas para esa oferta, cada una con su `idOfertaCetap`).
+   */
   @Get()
-  async listar() {
-    return { success: true, data: await this.aulas.listar() };
+  async listar(
+    @Query('cetap') cetap?: string,
+    @Query('grupo') grupo?: string,
+    @Query('asignatura') asignatura?: string,
+    @Query('periodo') periodo?: string,
+  ) {
+    return { success: true, data: await this.aulas.listar({ cetap, grupo, asignatura, periodo }) };
   }
 
   /** GET /aulas/territoriales — para el selector del formulario (§3.3). */
@@ -67,20 +87,30 @@ export class AulasController {
     return { success: true, data: await this.aulas.cetaps(Number(territorial) || 0) };
   }
 
-  /** GET /aulas/:codigo/disponibilidad — franjas ocupadas: solo día y hora. */
+  /**
+   * GET /aulas/:codigo/disponibilidad — franjas ocupadas: solo día y hora.
+   * `?periodo=<id>` o `?grupo=<uuid>` limita a lo que ocupa el aula EN ESE CICLO de clases;
+   * sin ellos devuelve todo lo que tenga el aula, de cualquier periodo.
+   */
   @Get(':codigo/disponibilidad')
-  async disponibilidad(@Param('codigo') codigo: string) {
-    return { success: true, data: await this.aulas.disponibilidad(codigo) };
+  async disponibilidad(
+    @Param('codigo') codigo: string,
+    @Query('periodo') periodo?: string,
+    @Query('grupo') grupo?: string,
+  ) {
+    return { success: true, data: await this.aulas.disponibilidad(codigo, { periodo, grupo }) };
   }
 
   /** POST /aulas/publicar/:idGrupo — publica la oferta; exige aula en toda franja. */
   @Post('publicar/:idGrupo')
-  async publicar(@Param('idGrupo') idGrupo: string) {
+  @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: true })
+  async publicar(@Param('idGrupo', ParseUUIDPipe) idGrupo: string) {
     return { success: true, data: await this.aulas.publicarGrupo(idGrupo) };
   }
 
   /** POST /aulas — crea un aula (EFDS-1942). */
   @Post()
+  @EscrituraSinPeriodo('Catálogo de aulas: es transversal a los periodos.')
   async crear(@Req() req: Request, @Body() body: CrearAulaDto) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.aulas.crear(body) };
@@ -88,6 +118,7 @@ export class AulasController {
 
   /** PATCH /aulas/:codigo — actualiza nombre, capacidad, sede, tipo o piso. */
   @Patch(':codigo')
+  @EscrituraSinPeriodo('Catálogo de aulas: es transversal a los periodos.')
   async actualizar(@Req() req: Request, @Param('codigo') codigo: string, @Body() body: ActualizarAulaDto) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.aulas.actualizar(codigo, body) };
@@ -95,6 +126,7 @@ export class AulasController {
 
   /** DELETE /aulas/:codigo — elimina un aula sin franjas que la referencien. */
   @Delete(':codigo')
+  @EscrituraSinPeriodo('Catálogo de aulas: es transversal a los periodos.')
   async eliminar(@Req() req: Request, @Param('codigo') codigo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.aulas.eliminar(codigo) };

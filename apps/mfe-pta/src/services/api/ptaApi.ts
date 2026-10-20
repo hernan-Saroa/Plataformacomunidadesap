@@ -196,7 +196,7 @@ export async function savePTA(data: any) {
     return { ...asObject(raw), success: normalized.success, data: normalized.data };
   } catch (error: any) {
     console.error('[mfe-pta][savePTA] Error:', error);
-    return { success: false, data: null, message: error?.message || 'Error al guardar el PTA' };
+    return { success: false, data: null, message: error?.message || 'Error al guardar el PTA', status: error?.status ?? error?.response?.status ?? error?.statusCode };
   }
 }
 

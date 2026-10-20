@@ -212,6 +212,10 @@ export class CreateSolicitudDto {
   camposAdicionales?: Record<string, any>;
 
   @IsOptional()
+  @IsString()
+  justificacionDuracion?: string;
+
+  @IsOptional()
   @IsObject()
   cuentaBancariaSeleccionada?: {
     id?: string;

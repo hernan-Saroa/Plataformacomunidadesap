@@ -29,6 +29,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --prefer-offline
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/templates ./templates
 
 # Expose the port the app runs on
 EXPOSE 3001

@@ -26,12 +26,14 @@ const ETIQUETA_TIPO: Record<string, string> = { aula: 'Aula', auditorio: 'Audito
 // ambos de selectores. Se conserva capacidad (se completa aquí).
 const FORM_VACIO = { codigo: '', nombre: '', tipo: 'aula', capacidad: '', territorialId: '', codigoCetap: '' };
 
-export function DisponibilidadAulas() {
+export function DisponibilidadAulas({ idPeriodo }: { idPeriodo?: string } = {}) {
   const [aulas, setAulas] = useState<Aula[]>([]);
   const [sel, setSel] = useState<string>('');
   const [ocupada, setOcupada] = useState<FranjaOcupadaAula[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  const [filtroTerritorial, setFiltroTerritorial] = useState('');
+  const [filtroCetap, setFiltroCetap] = useState('');
 
   // NUEVA — gestión (EFDS-1942). El aviso del backend se muestra verbatim.
   const [nuevo, setNuevo] = useState({ ...FORM_VACIO });
@@ -60,12 +62,25 @@ export function DisponibilidadAulas() {
     getCetaps(Number(nuevo.territorialId)).then(setCetaps).catch(() => setCetaps([]));
   }, [nuevo.territorialId]);
 
+  // La ocupación es del PERIODO seleccionado: el aula de otro periodo no aparece ocupada.
   useEffect(() => {
     if (!sel) return;
-    getDisponibilidadAula(sel).then((r) => setOcupada(r.ocupada)).catch(() => setOcupada([]));
-  }, [sel]);
+    let vigente = true;
+    getDisponibilidadAula(sel, { periodo: idPeriodo || undefined })
+      .then((r) => { if (vigente) setOcupada(r.ocupada); })
+      .catch(() => { if (vigente) setOcupada([]); });
+    return () => { vigente = false; };
+  }, [sel, idPeriodo]);
 
   const aula = aulas.find((a) => a.codigo === sel);
+  const territorialesFiltro = Array.from(new Map(aulas.filter((a) => a.territorial?.codigo).map((a) => [a.territorial!.codigo, a.territorial!])).values()).sort((a, b) => (a.nombre || a.codigo).localeCompare(b.nombre || b.codigo, 'es'));
+  const cetapsFiltro = Array.from(new Map(aulas.filter((a) => a.cetap?.codigo && (!filtroTerritorial || a.territorial?.codigo === filtroTerritorial)).map((a) => [a.cetap!.codigo, a.cetap!])).values()).sort((a, b) => (a.nombre || a.codigo).localeCompare(b.nombre || b.codigo, 'es'));
+  const aulasVisibles = aulas.filter((a) => (!filtroTerritorial || a.territorial?.codigo === filtroTerritorial) && (!filtroCetap || a.cetap?.codigo === filtroCetap));
+
+  useEffect(() => {
+    if (aulasVisibles.length && !aulasVisibles.some((a) => a.codigo === sel)) setSel(aulasVisibles[0].codigo);
+    if (!aulasVisibles.length && sel) setSel('');
+  }, [filtroTerritorial, filtroCetap, aulas]);
 
   // La capacidad viaja como número o null: cadena vacía = "sin dato", no cero.
   const capNum = (s: string): number | null => (s.trim() === '' ? null : Number(s));
@@ -143,6 +158,19 @@ export function DisponibilidadAulas() {
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
       )}
 
+      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+        <label className="text-xs font-bold text-slate-600">Filtrar por territorial
+          <select value={filtroTerritorial} onChange={(e) => { setFiltroTerritorial(e.target.value); setFiltroCetap(''); }} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">Todas las territoriales</option>{territorialesFiltro.map((t) => <option key={t.codigo} value={t.codigo}>{t.nombre || t.codigo}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-bold text-slate-600">Filtrar por CETAP
+          <select value={filtroCetap} onChange={(e) => setFiltroCetap(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">Todos los CETAP</option>{cetapsFiltro.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre || c.codigo} ({c.codigo})</option>)}
+          </select>
+        </label>
+      </div>
+
       {cargando ? (
         <div className="flex items-center gap-2 text-sm text-slate-500 p-4">
           <Loader2 className="w-4 h-4 animate-spin" /> Cargando aulas…
@@ -155,7 +183,7 @@ export function DisponibilidadAulas() {
               Aulas
             </div>
             <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-              {aulas.map((a) => (
+              {aulasVisibles.map((a) => (
                 <button
                   key={a.codigo}
                   onClick={() => setSel(a.codigo)}
@@ -166,8 +194,10 @@ export function DisponibilidadAulas() {
                     {a.provisional && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">PROV.</span>}
                   </div>
                   {a.capacidad != null && <span className="text-[11px] text-slate-400">Capacidad: {a.capacidad}</span>}
+                  <span className="block text-[11px] text-slate-500">{a.territorial?.nombre || a.territorial?.codigo || 'Sin territorial'} · {a.cetap?.nombre || a.cetap?.codigo || 'Sin CETAP'}</span>
                 </button>
               ))}
+              {aulasVisibles.length === 0 && <p className="p-4 text-sm text-slate-500">No hay aulas con estos filtros.</p>}
             </div>
           </div>
 
@@ -279,12 +309,14 @@ export function DisponibilidadAulas() {
                 <tr>
                   <th className="px-4 py-3">Código</th>
                   <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3">Territorial</th>
+                  <th className="px-4 py-3">CETAP</th>
                   <th className="px-4 py-3">Capacidad</th>
                   <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {aulas.map((a) => {
+                {aulasVisibles.map((a) => {
                   const editando = editCodigo === a.codigo;
                   return (
                     <tr key={a.codigo} className="hover:bg-slate-50/80">
@@ -300,6 +332,8 @@ export function DisponibilidadAulas() {
                           </span>
                         )}
                       </td>
+                      <td className="px-4 py-2 text-slate-700">{a.territorial?.nombre || a.territorial?.codigo || '—'}</td>
+                      <td className="px-4 py-2 text-slate-700">{a.cetap?.nombre || a.cetap?.codigo || '—'}</td>
                       <td className="px-4 py-2">
                         {editando ? (
                           <input type="number" min={0} value={draft.capacidad}

@@ -167,6 +167,160 @@ export function calcularDiasRuta(fechaSalida: string, fechaLlegada: string): num
 }
 
 /**
+ * Evalúa el requisito institucional de visto bueno y justificación para comisiones
+ * cuya duración supera los 3 días calendario (es decir, 3.5 días de valor) al interior del país:
+ * - Aplica a: funcionarios administrativos (FUNCIONARIO), gastos de desplazamiento (CONTRATISTA)
+ *   o auxilios económicos (ESTUDIANTE).
+ * - Exime a: docentes y docentes capacitadores (DOCENTE) siempre y cuando su actividad sea dictar clase
+ *   o se presente en la agenda la justificación correspondiente.
+ * - Instancia requerida: Dirección Nacional (Sede Central) o Director Territorial (Territoriales).
+ */
+export function evaluarVoBoDuracion(params: {
+  esInternacional?: boolean;
+  tipoComision?: string;
+  tipoComisionado?: string;
+  fechaInicio?: string | Date;
+  fechaFin?: string | Date;
+  diasComision?: number;
+  diasPernoctados?: number;
+  diasNoPernoctados?: number;
+  objetoComision?: string;
+  agenda?: string;
+  justificacionAgenda?: string;
+  justificacionDocente?: string;
+  dependencia?: string;
+  sede?: string;
+  cargo?: string;
+}): {
+  aplica: boolean;
+  diasCalendario: number;
+  diasValor: number;
+  instanciaVoBo: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL';
+  tituloInstancia: string;
+  esEximidoDocente: boolean;
+  motivo: string;
+} {
+  const esInter = Boolean(
+    params.esInternacional || params.tipoComision === 'INTERNACIONAL',
+  );
+  if (esInter) {
+    return {
+      aplica: false,
+      diasCalendario: 0,
+      diasValor: 0,
+      instanciaVoBo: 'DIRECCION_NACIONAL',
+      tituloInstancia: 'Dirección Nacional',
+      esEximidoDocente: false,
+      motivo: 'Comisión internacional (no aplica la regla de comisiones al interior del país).',
+    };
+  }
+
+  let diasValor = Number(params.diasComision || 0);
+  const pernoctados = Number(params.diasPernoctados ?? 0);
+  const noPernoctados = Number(params.diasNoPernoctados ?? 0);
+  if (pernoctados > 0 || noPernoctados > 0) {
+    const valorCalc = pernoctados + noPernoctados * 0.5;
+    if (valorCalc > 0) diasValor = valorCalc;
+  }
+
+  let diasCalendario = 0;
+  if (params.fechaInicio && params.fechaFin) {
+    const iniStr = typeof params.fechaInicio === 'string' ? params.fechaInicio : params.fechaInicio.toISOString();
+    const finStr = typeof params.fechaFin === 'string' ? params.fechaFin : params.fechaFin.toISOString();
+    const ini = new Date(iniStr.includes('T') ? iniStr : `${iniStr}T00:00:00`);
+    const fin = new Date(finStr.includes('T') ? finStr : `${finStr}T00:00:00`);
+    if (!Number.isNaN(ini.getTime()) && !Number.isNaN(fin.getTime())) {
+      const diff = Math.round((fin.getTime() - ini.getTime()) / 86400000);
+      diasCalendario = diff >= 0 ? diff + 1 : 1;
+      if (diasValor <= 0) {
+        diasValor = diff <= 0 ? 0.5 : diff + 0.5;
+      }
+    }
+  }
+
+  const superaDuracion = diasCalendario > 3 || diasValor >= 3.5;
+
+  const tipo = (params.tipoComisionado || '').toUpperCase().trim();
+  const dep = `${params.dependencia || ''} ${params.sede || ''}`.toLowerCase();
+  const cargo = (params.cargo || '').toLowerCase();
+
+  const esTerritorial = dep.includes('territorial') || cargo.includes('territorial');
+  const instanciaVoBo: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL' = esTerritorial
+    ? 'DIRECTOR_TERRITORIAL'
+    : 'DIRECCION_NACIONAL';
+  const tituloInstancia = esTerritorial ? 'Director Territorial' : 'Dirección Nacional';
+
+  if (!superaDuracion) {
+    return {
+      aplica: false,
+      diasCalendario,
+      diasValor,
+      instanciaVoBo,
+      tituloInstancia,
+      esEximidoDocente: false,
+      motivo: `La duración no supera tres (3) días calendario (${diasCalendario} días calendario / ${diasValor} días de valor).`,
+    };
+  }
+
+  // Exención para docentes y docentes capacitadores
+  const esDocente =
+    tipo === 'DOCENTE' ||
+    cargo.includes('docente') ||
+    cargo.includes('profesor') ||
+    cargo.includes('capacitador');
+
+  if (esDocente) {
+    const texto = `${params.objetoComision || ''} ${params.agenda || ''} ${params.justificacionAgenda || ''} ${params.justificacionDocente || ''}`.toLowerCase();
+    const terminosClase = [
+      'clase',
+      'catedra',
+      'cátedra',
+      'docenc',
+      'capacita',
+      'capacitador',
+      'modulo',
+      'módulo',
+      'asignatura',
+      'academ',
+      'académ',
+      'lectiv',
+      'pregrado',
+      'posgrado',
+      'taller academico',
+      'taller académico',
+    ];
+    const dictaClase = terminosClase.some((t) => texto.includes(t));
+    const tieneAgenda = Boolean(
+      (params.agenda && params.agenda.trim().length >= 10) ||
+      (params.justificacionAgenda && params.justificacionAgenda.trim().length >= 10) ||
+      (params.justificacionDocente && params.justificacionDocente.trim().length >= 10),
+    );
+
+    if (dictaClase || tieneAgenda) {
+      return {
+        aplica: false,
+        diasCalendario,
+        diasValor,
+        instanciaVoBo,
+        tituloInstancia,
+        esEximidoDocente: true,
+        motivo: 'Docente o docente capacitador eximido por actividad de dictar clase o justificación en agenda.',
+      };
+    }
+  }
+
+  return {
+    aplica: true,
+    diasCalendario,
+    diasValor,
+    instanciaVoBo,
+    tituloInstancia,
+    esEximidoDocente: false,
+    motivo: `Comisión al interior del país superior a tres (3) días calendario (${diasCalendario} días calendario / ${diasValor} días de valor). Requiere justificación y visto bueno obligatorio de ${tituloInstancia}.`,
+  };
+}
+
+/**
  * Formatea un horario militar HH:mm de forma legible.
  * Ej: '07:30' → '07:30 h'
  */
@@ -661,6 +815,10 @@ export function mapearARequestCreacion(
       form.cargoSeleccionado?.idCargo ??
       form.camposAdicionales?.idCargo ??
       undefined,
+    justificacionDuracion:
+      form.justificacionDuracion ||
+      form.camposAdicionales?.justificacionDuracion ||
+      undefined,
     itinerario: (form.itinerario || []).map((r) => {
       // Excluir únicamente campos auxiliares de UI interna
       const {
@@ -742,6 +900,16 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     label: 'Cancelada',
     bg: 'bg-rose-100',
     text: 'text-rose-800',
+  },
+  EN_REVOCATORIA: {
+    label: 'En Revocatoria',
+    bg: 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300',
+    text: 'text-amber-800 dark:text-amber-300',
+  },
+  REVOCADA: {
+    label: 'Revocada en SIIF',
+    bg: 'bg-rose-100 dark:bg-rose-900/30 border border-rose-300',
+    text: 'text-rose-800 dark:text-rose-300',
   },
   EN_PRESUPUESTO: {
     label: 'En Presupuesto',
