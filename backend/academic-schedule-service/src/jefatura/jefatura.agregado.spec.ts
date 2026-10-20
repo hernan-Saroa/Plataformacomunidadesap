@@ -32,6 +32,15 @@ const JEFA = '6cc8451a-6c7e-4734-b07d-9c500753479d'; // qa.jefatura -> DT-009
 const P1 = '39a6f90f-2daf-496d-9035-b057e4734873';    // docente DT-009
 const P2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';    // docente DT-010
 
+// Flujo ANTERIOR (EFDS-1938): el docente toma y suelta. Sigue en el código detrás del
+// interruptor PROG_PORTAL_TOMA_FRANJAS (EFDS-2348); esta suite lo prueba encendido.
+const tomaAntes = process.env.PROG_PORTAL_TOMA_FRANJAS;
+beforeAll(() => { process.env.PROG_PORTAL_TOMA_FRANJAS = 'true'; });
+afterAll(() => {
+  if (tomaAntes === undefined) delete process.env.PROG_PORTAL_TOMA_FRANJAS;
+  else process.env.PROG_PORTAL_TOMA_FRANJAS = tomaAntes;
+});
+
 describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;

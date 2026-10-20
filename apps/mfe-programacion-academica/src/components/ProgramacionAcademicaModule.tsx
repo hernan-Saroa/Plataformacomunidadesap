@@ -38,6 +38,7 @@ import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
 import { AprobacionJefatura } from './AprobacionJefatura';
+import { getMisPermisos, type MisPermisos } from '../services/api/vistaApi';
 import { ConcertacionBandeja } from './ConcertacionBandeja';
 import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
@@ -141,6 +142,11 @@ export function ProgramacionAcademicaModule({
   // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
   // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
   const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
+  // EFDS-2342 — quién asigna docentes y no programa (PROGRAMADOR_DOCENTE_<NIVEL>) solo ve la
+  // programación y la asignación: el resto le respondería 403. El servidor decide; esto solo ordena el menú.
+  const [misPermisos, setMisPermisos] = useState<MisPermisos | null>(null);
+  useEffect(() => { getMisPermisos().then(setMisPermisos).catch(() => setMisPermisos(null)); }, []);
+  const perfilAsignador = !!misPermisos && misPermisos.programar.length === 0 && misPermisos.asignar.length > 0;
   useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
@@ -264,7 +270,7 @@ export function ProgramacionAcademicaModule({
     {
       title: 'GESTIÓN PRINCIPAL',
       items: [
-        ...(soloRevision ? [] : [
+        ...(soloRevision ? [] : ([
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -311,7 +317,7 @@ export function ProgramacionAcademicaModule({
           color: '#D97706',
           badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
-        ]),
+        ] as MenuGroup['items']).filter((i) => !perfilAsignador || i.id === 'horarios' || i.id === 'docentes')),
         // EFDS-1939 — solo para jefaturas territoriales.
         ...(esJefatura ? [{
           id: 'aprobacion',
@@ -452,7 +458,7 @@ export function ProgramacionAcademicaModule({
       </>)}
 
       {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
-      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && (
+      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && !perfilAsignador && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -526,13 +532,13 @@ export function ProgramacionAcademicaModule({
               grupo → calendario). No hay atajo directo, así que el botón lleva al
               inicio real de ese flujo, el catálogo, y el texto lo dice sin
               prometer una creación que no puede cumplir aquí. */}
-          <button
+          {!perfilAsignador && <button
             onClick={() => setSeccion('catalogo')}
             className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 font-semibold text-xs rounded-xl shadow-md transition-all"
           >
             <Plus className="w-4 h-4" />
             <span>Programar franja (elegir asignatura)</span>
-          </button>
+          </button>}
 
         </div>
       </div>

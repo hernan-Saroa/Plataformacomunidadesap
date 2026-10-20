@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 import {
   evaluarAsignacion,
@@ -14,6 +14,7 @@ import { topeDeDocencia } from './tope.js';
 import { ContratoClient } from './contrato-client.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
+import { tomaDeFranjasHabilitada } from '../portal-docente/flujo-docente.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -282,29 +283,66 @@ export class AsignacionesService {
       return { asignado: false, motivos };
     }
 
-    const filas = await this.dataSource.query(
-      `INSERT INTO "academic-schedule".asignacion_docente
-         (id_grupo, id_docente, horas_asignadas, asignado_por, observaciones,
-          disponibilidad_confirmada_por, disponibilidad_confirmada_en, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6::text, CASE WHEN $6::text IS NULL THEN NULL ELSE NOW() END, NOW())
-       ON CONFLICT (id_grupo) DO UPDATE
-         SET id_docente = EXCLUDED.id_docente,
-             horas_asignadas = EXCLUDED.horas_asignadas,
-             asignado_por = EXCLUDED.asignado_por,
-             observaciones = EXCLUDED.observaciones,
-             disponibilidad_confirmada_por = EXCLUDED.disponibilidad_confirmada_por,
-             disponibilidad_confirmada_en = EXCLUDED.disponibilidad_confirmada_en,
-             estado = 'ASIGNADO',
-             updated_at = NOW()
-       RETURNING id_asignacion`,
-      [dto.idGrupo, docente.idDocente, grupo.horasRequeridas, dto.asignadoPor ?? null, dto.observaciones ?? null, dto.disponibilidadConfirmadaPor ?? null],
-    );
+    const insertar = (q: Pick<EntityManager, 'query'>) => q.query(
+        `INSERT INTO "academic-schedule".asignacion_docente
+           (id_grupo, id_docente, horas_asignadas, asignado_por, observaciones,
+            disponibilidad_confirmada_por, disponibilidad_confirmada_en, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6::text, CASE WHEN $6::text IS NULL THEN NULL ELSE NOW() END, NOW())
+         ON CONFLICT (id_grupo) DO UPDATE
+           SET id_docente = EXCLUDED.id_docente,
+               horas_asignadas = EXCLUDED.horas_asignadas,
+               asignado_por = EXCLUDED.asignado_por,
+               observaciones = EXCLUDED.observaciones,
+               disponibilidad_confirmada_por = EXCLUDED.disponibilidad_confirmada_por,
+               disponibilidad_confirmada_en = EXCLUDED.disponibilidad_confirmada_en,
+               estado = 'ASIGNADO',
+               updated_at = NOW()
+         RETURNING id_asignacion`,
+        [dto.idGrupo, docente.idDocente, grupo.horasRequeridas, dto.asignadoPor ?? null, dto.observaciones ?? null, dto.disponibilidadConfirmadaPor ?? null],
+      );
+    // Flujo anterior: tal como estaba. Flujo nuevo (EFDS-2348): franjas y asignación en una transacción.
+    const filas = tomaDeFranjasHabilitada()
+      ? await insertar(this.dataSource)
+      : await this.dataSource.transaction(async (m) => {
+        await this.prepararFranjasParaAsignar(m, dto.idGrupo, docente.idDocente);
+        return insertar(m);
+      });
 
     return { asignado: true, idAsignacion: filas[0].id_asignacion };
   }
 
+  /**
+   * Flujo nuevo (EFDS-2348): el docente no toma, se le asigna. Antes de grabar la
+   * asignación (cuyo trigger pone el docente en las franjas del grupo), las franjas
+   * pasan a TOMADA —«con docente, pendiente de concertación»—: así el portal se las
+   * muestra y la concertación las envía igual que antes. Va en la misma transacción.
+   *
+   * ⚠️ Lo APROBADO no se toca: si el grupo ya tiene franjas aprobadas en la
+   * concertación de OTRO docente, reasignarlo cambiaría docencia aprobada (y su PTA).
+   * Hay que devolver la concertación primero.
+   */
+  private async prepararFranjasParaAsignar(m: EntityManager, idGrupo: string, idDocente: string): Promise<void> {
+    await m.query(`SELECT 1 FROM "academic-schedule".grupo WHERE id_grupo = $1 FOR UPDATE`, [idGrupo]);
+    const aprobadas = await m.query(
+      `SELECT 1 FROM "academic-schedule".franja_horaria
+        WHERE id_grupo = $1 AND estado = 'APROBADA' AND id_docente IS DISTINCT FROM $2::uuid LIMIT 1`,
+      [idGrupo, idDocente],
+    );
+    if (aprobadas.length) {
+      throw new ConflictException(
+        'El grupo ya tiene docencia aprobada en la concertación de otro docente: devuélvala antes de reasignarlo.');
+    }
+    await m.query(
+      `UPDATE "academic-schedule".franja_horaria
+          SET estado = 'TOMADA', comentario_jefatura = NULL, updated_at = NOW()
+        WHERE id_grupo = $1 AND estado IN ('PROGRAMADO', 'PUBLICADA', 'DEVUELTA', 'TOMADA')`,
+      [idGrupo],
+    );
+  }
+
   /** Retira la asignación del grupo y libera sus franjas. */
   async retirar(idGrupo: string): Promise<{ retirado: boolean }> {
+    if (!tomaDeFranjasHabilitada()) return this.retirarAsignada(idGrupo);
     const r = await this.dataSource.query(
       `DELETE FROM "academic-schedule".asignacion_docente WHERE id_grupo = $1 RETURNING id_asignacion`,
       [idGrupo],
@@ -317,5 +355,28 @@ export class AsignacionesService {
       );
     }
     return { retirado: (r?.length ?? 0) > 0 };
+  }
+
+  /**
+   * Retiro en el flujo nuevo: las franjas vuelven a PROGRAMADO sin docente, para
+   * asignarlas a otro. Lo APROBADO en la concertación no se retira desde aquí.
+   */
+  private async retirarAsignada(idGrupo: string): Promise<{ retirado: boolean }> {
+    return this.dataSource.transaction(async (m) => {
+      await m.query(`SELECT 1 FROM "academic-schedule".grupo WHERE id_grupo = $1 FOR UPDATE`, [idGrupo]);
+      const aprobadas = await m.query(
+        `SELECT 1 FROM "academic-schedule".franja_horaria WHERE id_grupo = $1 AND estado = 'APROBADA' LIMIT 1`, [idGrupo]);
+      if (aprobadas.length) {
+        throw new ConflictException(
+          'El grupo tiene docencia aprobada en la concertación: devuélvala antes de retirar al docente.');
+      }
+      const r = await m.query(
+        `DELETE FROM "academic-schedule".asignacion_docente WHERE id_grupo = $1 RETURNING id_asignacion`, [idGrupo]);
+      await m.query(
+        `UPDATE "academic-schedule".franja_horaria
+            SET id_docente = NULL, estado = 'PROGRAMADO', comentario_jefatura = NULL, updated_at = NOW()
+          WHERE id_grupo = $1 AND estado IN ('TOMADA', 'DEVUELTA')`, [idGrupo]);
+      return { retirado: (r?.length ?? 0) > 0 };
+    });
   }
 }

@@ -104,6 +104,20 @@ export class DocenciaService {
     return resultado;
   }
 
+  /**
+   * Fracción de un grupo que le toca al docente con la regla de reparto vigente.
+   * La usan las vistas (EFDS-2344/2343) para no repetir la regla.
+   */
+  fraccion(franjasDelGrupo: readonly FranjaReparto[], idDocente: string): number {
+    return this.reparto(franjasDelGrupo, idDocente);
+  }
+
+  /** Horas de la asignatura para la vinculación, por el contrato (cálculo único). */
+  async horasAsignatura(codigoAsignatura: string, vinculacion: string | null, token: string | null): Promise<number> {
+    const calc = await this.contrato.calcularImpacto(codigoAsignatura, vinculacion, token);
+    return Number(calc.horasImpacto ?? 0);
+  }
+
   /** Total de horas de docencia del docente (suma de `porGrupo`). */
   async total(
     idDocente: string, vinculacion: string | null, token: string | null, excluirGrupo?: string, incluirFranja?: string,

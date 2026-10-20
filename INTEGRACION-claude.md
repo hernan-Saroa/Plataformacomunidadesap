@@ -522,3 +522,131 @@ Las pruebas de agregado de PA ya no dependen del catálogo cargado: usan `test/c
 - **No es lo mismo que «programación cerrada»** (`programacion_periodo`): ahí el periodo sigue en curso y su docencia sigue contando.
 - **No se borra nada:** franjas, concertaciones, firmas y el PTA del periodo cerrado quedan en la base como histórico.
 - Verificado: portal de `qa.docente` en 2027-1 con 0 h de 304, 0 franjas propias y 9 disponibles (todas de 2027-1). Prueba de agregado nueva en `portal-docente.agregado.spec.ts` con mutación verificada. PA 227/227.
+
+## 19. Ronda 3: contratos para Codex (EFDS-2344 y EFDS-2343), 20 de octubre
+
+Rama base `feature/pa/ronda3` (desde `origin/micro-frontend` `7ccf579d5`). Claude trabaja en `feature/pa/ronda3-claude`; Codex en `feature/pa/ronda3-codex`. Codex consume estos contratos; no los cambia: si le falta un campo, lo pide en `INTEGRACION-codex.md`.
+
+Rutas vía gateway: `/programacion-academica/api/v1/<ruta>` (las de abajo van sin ese prefijo). Todas exigen token.
+
+### Reglas comunes a los dos contratos
+
+- **Registro único del docente: la franja** (`franja_horaria.id_docente`). Un grupo puede tener varios docentes (uno por franja). No se lee `grupo.id_docente` ni `asignacion_docente` para saber quién dicta.
+- **`idDocente`** es `auth.personas.id_person` (uuid); **`documento`** es la cédula.
+- **Vinculación** del banco de docentes (`"Docente"."tipoVinculacion"`), normalizada:
+  `vinculacion: { tipo: 'carrera' | 'ocasional' | 'especial' | 'catedra' | 'periodo_prueba' | 'otra', texto: string }`. `texto` es el valor crudo («Carrera2», «Cátedra»…). `null` si el docente no está en el banco.
+- **Horas del docente** = cálculo único (`DocenciaService`: `horasImpacto` del contrato × reparto por días). Nunca se recalculan en el cliente.
+- **`periodo`** acepta el id de `periodo_academico` o el código (`2050-1`).
+- **`diaSemana`**: `LUNES | MARTES | MIERCOLES | JUEVES | VIERNES | SABADO | DOMINGO`. Horas `HH:MM`.
+- **Ciclo** de un grupo: sus fechas, o las del periodo si no tiene (`cicloInicio`/`cicloFin`, `YYYY-MM-DD` o `null`).
+- **Segregación por nivel (RN-08) en el servidor:** solo vuelve lo de los niveles que el usuario puede ver (programador o asignador docente de pregrado/posgrado; `programacion-academica.all` ve ambos). Pedir un `nivel` sin permiso responde 403.
+
+### EFDS-2344 · Árbol de programación: `GET /programacion/arbol`
+
+Query: `periodo` (obligatorio), `nivel?` (`pregrado|posgrado`), `programa?` (id), `tipoOferta?` (`periodo_regular|creditos_virtual|interperiodo`), `soloSinDocente?` (`true`: solo grupos con alguna franja sin docente).
+
+```jsonc
+{
+  "periodo": { "id": "12", "codigo": "2050-1", "estado": "activo", "fechaInicio": "2050-02-01", "fechaFin": "2050-06-10" },
+  "resumen": { "programas": 3, "asignaturas": 20, "grupos": 41, "franjas": 96, "franjasSinDocente": 12 },
+  "programas": [{
+    "idPrograma": "4", "codigo": "AP", "nombre": "Administración Pública", "nivel": "pregrado", "tipo": "profesional",
+    "asignaturas": [{
+      "idAsignatura": "1001", "codigo": "ASIG-01001", "nombre": "Historia del Pensamiento Político",
+      "semestre": 1, "creditos": 3, "horasClase": 64,
+      "area": { "id": "2", "codigo": "NT-002", "nombre": "Estado Y Poder" },          // null si no tiene
+      "grupos": [{
+        "idGrupo": "uuid", "numeroGrupo": 1, "estado": "PROGRAMADO", "tipoOferta": "periodo_regular",
+        "cicloInicio": "2050-02-01", "cicloFin": "2050-05-30", "cupoMaximo": 30,
+        "oferta": {                                                                       // null si el grupo no tiene oferta CETAP
+          "idOfertaCetap": "77",
+          "cetap": { "id": "10", "codigo": "CET-01", "nombre": "CETAP Bogotá" },
+          "territorial": { "codigo": "DT01", "nombre": "Sede Principal" }
+        },
+        "horas": { "programadas": 64, "requeridas": 64, "semanas": 16, "excede": false },
+        "estadoFranjas": { "PROGRAMADO": 0, "PUBLICADA": 0, "TOMADA": 0, "APROBADA": 2, "DEVUELTA": 0 },
+        "docentes": [{                                                                    // [] si no tiene
+          "idDocente": "uuid", "documento": "52364430", "nombre": "ÁVILA PÉREZ SANDRA",
+          "vinculacion": { "tipo": "catedra", "texto": "Cátedra" },
+          "fraccion": 1, "horas": 64
+        }],
+        "franjas": [{
+          "idFranja": "uuid", "diaSemana": "LUNES", "horaInicio": "08:00", "horaFin": "10:00",
+          "tipoSesion": "presencial", "jornada": "DIURNA", "aulaCodigo": "101", "estado": "APROBADA",
+          "idDocente": "uuid"                                                              // null si no tiene
+        }]
+      }]
+    }]
+  }]
+}
+```
+
+Orden: programa por nombre, asignatura por semestre y nombre, grupo por número, franja por día (lunes→domingo) y hora. Una sola llamada: no hay N+1. Programas y asignaturas sin grupos en el periodo no aparecen.
+
+### EFDS-2343 · Calendario semanal del docente
+
+**Backoffice:** `GET /programacion/docentes/calendario?periodo=&documento=` (o `&idDocente=`).
+**Portal (el propio docente, identidad del token):** `GET /portal-docente/mi-calendario?periodo=`. Sin `periodo`, el periodo activo.
+**Buscador para el filtro:** `GET /programacion/docentes?periodo=&q=` → docentes con al menos una franja en el periodo, por cédula o nombre (máx. 50):
+`[{ "idDocente", "documento", "nombre", "vinculacion", "horas", "franjas": 6 }]`.
+
+Respuesta del calendario (las dos rutas):
+
+```jsonc
+{
+  "docente": { "idDocente": "uuid", "documento": "52364430", "nombre": "…", "vinculacion": { "tipo": "catedra", "texto": "Cátedra" } },
+  "periodo": { "id": "12", "codigo": "2050-1", "estado": "activo", "fechaInicio": "…", "fechaFin": "…" },
+  "horas": { "total": 128, "tope": 304 },                // tope: null si no aplica
+  "franjas": [{
+    "idFranja": "uuid", "diaSemana": "LUNES", "horaInicio": "08:00", "horaFin": "10:00",
+    "reservada": false,                                   // true = de un nivel que el usuario no ve
+    // Si reservada=true, todo lo de abajo viene null (solo se sabe que está ocupado: RN-07)
+    "idGrupo": "uuid", "numeroGrupo": 1, "tipoOferta": "periodo_regular",
+    "cicloInicio": "2050-02-01", "cicloFin": "2050-05-30",
+    "idAsignatura": "1001", "codigoAsignatura": "ASIG-01001", "asignatura": "Historia…",
+    "programa": "Administración Pública", "nivel": "pregrado",
+    "aulaCodigo": "101", "tipoSesion": "presencial", "jornada": "DIURNA", "estado": "APROBADA"
+  }]
+}
+```
+
+- El calendario muestra **todas** las franjas del docente en el periodo, de lunes a domingo, incluidas las de grupos con ciclos distintos (el cliente puede rotular el ciclo).
+- En el portal, `reservada` siempre es `false`: el docente ve todo lo suyo.
+- 404 si el documento no existe en el banco de docentes; `franjas: []` si no tiene nada en el periodo.
+
+Estado: **implementado e integrado en `feature/pa/ronda3`**. Lo cubre la prueba de agregado `src/vista/vista.agregado.spec.ts`, con mutación verificada, y se verificó por API con los datos de 2027-2.
+
+Agregados al contrato. Son aditivos y no cambian lo de arriba:
+- Calendario: `horasPorGrupo: { [idGrupo]: number | null }`, solo para los grupos visibles.
+- Si el contrato de horas con el PTA no responde, las `horas` de un docente y `horas.total` vienen en `null`. La vista no se cae.
+- `GET /programacion/mis-permisos` devuelve `{ ver, programar, asignar, disponibilidad }` (por niveles), para que la pantalla muestre solo lo que corresponde.
+- **Clientes y tipos listos** en `apps/mfe-programacion-academica/src/services/api/vistaApi.ts`: `getArbolProgramacion`, `buscarDocentes`, `getCalendarioDocente`, `getMiCalendario` y `getMisPermisos`. Codex: úsalo. Si te falta algo, pídelo en `INTEGRACION-codex.md`.
+
+## 20. Ronda 3: EFDS-2342 y EFDS-2348 (20 de octubre)
+
+### Rol de asignación (EFDS-2342)
+
+- **Migración PA `060`:** crea los permisos `programacion-academica.asignacion-docente.<nivel>` y los roles `PROGRAMADOR_DOCENTE_PREGRADO` y `PROGRAMADOR_DOCENTE_POSGRADO`, ambos con disponibilidad docente.
+  - Trae un canario: cada rol resuelve su permiso y ninguno de programar ni del otro nivel.
+  - Los roles aparecen solos en la gestión de usuarios, porque esa lista viene de `auth.role`. No se tocó ese módulo.
+- **Ver, programar y asignar son permisos distintos:** `nivelesVisibles`, `nivelesProgramables` y `nivelesAsignables`.
+  - `POST /asignaciones` y `DELETE /asignaciones/grupo/:id` usan `@EscrituraEn(..., { exigeNivel: 'asignacion' })`.
+  - Publicar y retirar usan solo los niveles que se programan.
+- ⚠️ **Desviación a confirmar con Tomás:** `PROGRAMADOR_PREGRADO` y `PROGRAMADOR_POSGRADO` **ya no asignan docentes**. Asigna el rol nuevo o quien tenga `programacion-academica.all`. Si los programadores deben seguir asignando, basta una migración de una línea.
+- **Panel del docente:** `GET /asignaciones/docente/:doc` y `GET /asignaciones/acumulado/:doc` respondían a cualquier token, incluido el de un docente. Ahora exigen el permiso de disponibilidad o el de asignación.
+- **Menú del asignador:** solo Programación General y Disponibilidad Docente, más Concertación si está encendida. No puede publicar ni programar.
+
+### El docente recibe su programación (EFDS-2348)
+
+- **Interruptor `PROG_PORTAL_TOMA_FRANJAS`:** sin definir, rige el flujo nuevo.
+  - Tomar y soltar responden 409 en el servidor, y `disponibles` sale vacío.
+  - Al asignar, las franjas del grupo quedan en **TOMADA** («con docente, pendiente de concertación») dentro de una transacción. Así la concertación y el portal funcionan igual que antes.
+  - Lo **APROBADO** no se reasigna ni se retira: responde 409.
+- **Portal:** `GET /portal-docente/configuracion` informa qué flujo rige. El portal muestra **Mis grupos asignados** con horario, aula, ciclo, horas y estado.
+- Las 3 suites del flujo anterior se corren con el interruptor encendido, porque ese código sigue vivo.
+
+### Pruebas y datos
+
+- **Pruebas:** PA 247/247 sin omitidas y MFE PA 33/33. Las suites nuevas tienen mutación verificada: `asignacion-docente.agregado.spec.ts`, `flujo-asignado.agregado.spec.ts` y `vista.agregado.spec.ts`.
+- **Usuario QA local nuevo:** `qa.asignador@esap.edu.co`, con la clave de `qa.programacion` y el rol `PROGRAMADOR_DOCENTE_PREGRADO`.
+- **Propuestas sin construir** de EFDS-2345, 2341, 2346 y 2347: `PROPUESTAS-RONDA3-claude.md`.

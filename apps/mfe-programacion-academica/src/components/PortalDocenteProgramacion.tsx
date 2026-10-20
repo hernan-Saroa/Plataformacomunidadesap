@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Loader2, Gauge, Check, Hand, RotateCcw } from 'lucide-react';
 
 import { ConcertacionDocente } from './ConcertacionDocente';
+import { GruposAsignados } from './GruposAsignados';
+import { getConfiguracionPortal } from '../services/api/vistaApi';
 import {
   getDisponiblesPortal, getMisFranjasPortal, getAcumuladoPortal,
   tomarFranja, soltarFranja,
@@ -18,6 +20,10 @@ import {
  * ⚠️ Al tomar una franja, las que cruzan con ella desaparecen de «disponibles»:
  * la exclusión la hace el backend, no esta pantalla (aquí solo se recarga). El
  * id_docente lo pone el servidor desde el token; nada de identidad por el cliente.
+ *
+ * EFDS-2348 — con el flujo nuevo (`tomaFranjas: false`, lo dice el servidor) el docente
+ * YA NO toma ni suelta: ve los grupos que la decanatura le asignó y su concertación.
+ * El flujo anterior queda intacto detrás del interruptor.
  *
  * Estética ESAP: azul institucional #003DA5.
  */
@@ -65,17 +71,21 @@ export default function PortalDocenteProgramacion() {
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState<string | null>(null);
+  // Hasta saber qué flujo rige no se ofrece tomar; si la consulta falla, se asume el nuevo.
+  const [tomaFranjas, setTomaFranjas] = useState(false);
 
   const ordenar = (fs: FranjaPortal[]) =>
     [...fs].sort((a, b) =>
       DIA_ORDEN.indexOf(a.diaSemana) - DIA_ORDEN.indexOf(b.diaSemana) || a.horaInicio.localeCompare(b.horaInicio));
 
   const recargar = useCallback(async () => {
-    const [d, m, a] = await Promise.all([
+    const [cfg, d, m, a] = await Promise.all([
+      getConfiguracionPortal().catch(() => ({ tomaFranjas: false })),
       getDisponiblesPortal().catch(() => []),
       getMisFranjasPortal().catch(() => []),
       getAcumuladoPortal().catch(() => null),
     ]);
+    setTomaFranjas(!!cfg?.tomaFranjas);
     setDisponibles(ordenar(d));
     setMias(ordenar(m));
     setAcumulado(a);
@@ -133,8 +143,9 @@ export default function PortalDocenteProgramacion() {
           <CalendarClock className="w-4 h-4 text-[#003DA5]" /> Mi programación
         </h3>
         <p className="text-xs text-slate-500">
-          Toma las franjas publicadas que quieras dictar. Al tomar una, las que se cruzan con ella
-          dejan de ofrecerse. Puedes soltar una franja mientras la jefatura no la haya aprobado.
+          {tomaFranjas
+            ? 'Toma las franjas publicadas que quieras dictar. Al tomar una, las que se cruzan con ella dejan de ofrecerse. Puedes soltar una franja mientras la jefatura no la haya aprobado.'
+            : 'Tu programación la asigna la decanatura. Aquí ves tus grupos asignados con su horario, aula y horas; revísalos y envíalos a concertación.'}
         </p>
       </div>
 
@@ -163,6 +174,13 @@ export default function PortalDocenteProgramacion() {
         <ConcertacionDocente key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} docenteNombre={acumulado?.nombre} />
       ))}
 
+      {/* Flujo nuevo (EFDS-2348): grupos asignados, sin tomar ni soltar */}
+      {!tomaFranjas && (periodosConDocencia.length
+        ? periodosConDocencia.map((p) => <GruposAsignados key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} />)
+        : <GruposAsignados />)}
+
+      {/* Flujo anterior (EFDS-1938): mis franjas y disponibles */}
+      {tomaFranjas && (<>
       {/* Mis franjas */}
       <div className="space-y-2">
         <h4 className="font-bold text-slate-800 text-sm">Mis franjas ({mias.length})</h4>
@@ -202,6 +220,7 @@ export default function PortalDocenteProgramacion() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }
