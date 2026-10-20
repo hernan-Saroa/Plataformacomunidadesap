@@ -11,7 +11,7 @@ export type RundIdentityWriteInput = Omit<RundNativeWriteInput, 'identity'>;
 export type RundIdentityWritePlan = { ok: true; input: RundIdentityWriteInput; command: IdentityWriteCommand } | { ok: false; reason: string };
 
 export interface RundIdentityWriter {
-  /** Decide si la solicitud puede coordinarse con Auth; si no, el llamador conserva el escritor anterior. */
+  /** Valida la solicitud antes de coordinarla con Auth. Un rechazo nunca autoriza SQL sobre Auth. */
   plan(input: RundIdentityWriteInput): RundIdentityWritePlan;
   /** Aplica la identidad en Auth y confirma el perfil nativo. Devuelve el mismo resultado que el escritor anterior. */
   write(plan: Extract<RundIdentityWritePlan, { ok: true }>): Promise<any>;
@@ -20,7 +20,7 @@ export interface RundIdentityWriter {
 /** Activa la escritura de identidad por Auth (diario durable). Apagada por defecto. */
 export const identityWriteViaAuthEnabled = () => process.env.RUND_IDENTITY_WRITE_VIA_AUTH_API === 'true';
 
-const CONTEXT_OPTIONS = ['bulkImport', 'preserveTerritorial', 'rejectExisting', 'relaxValidation', 'audit'] as const;
+const CONTEXT_OPTIONS = ['bulkImport', 'preserveTerritorial', 'rejectExisting', 'relaxValidation', 'audit', 'extractionReview'] as const;
 
 /** Solo los datos que el contexto persistido admite; el territorial se normaliza a texto como exige el contrato. */
 export function normalizeIdentityWriteInput(input: RundIdentityWriteInput): RundIdentityWriteInput {
@@ -45,10 +45,11 @@ export function identityWriteCommandFor(input: RundIdentityWriteInput): Identity
       fechaNacimiento: payload.fechaNacimiento ? new Date(payload.fechaNacimiento).toISOString().slice(0, 10) : null },
     options: { relaxValidation: Boolean(options.relaxValidation), preserveTerritorial: Boolean(options.preserveTerritorial) },
     territorial: territorial ? { id: String(territorial.id) } : null,
-    emailFinal: input.emailFinal, phoneFinal: input.phoneFinal, finalFullName: input.finalFullName });
+    emailFinal: input.emailFinal, phoneFinal: input.phoneFinal, finalFullName: input.finalFullName,
+    ...(options.extractionReview ? { identidadEsperada: options.extractionReview.identity } : {}) });
 }
 
-/** Valida con las mismas reglas del contexto persistido; lo que no encaje sigue por el escritor anterior. */
+/** Valida con las mismas reglas del contexto persistido antes de cualquier aplicación remota. */
 export function identityWritePlan(raw: RundIdentityWriteInput): RundIdentityWritePlan {
   try {
     const input = normalizeIdentityWriteInput(raw);

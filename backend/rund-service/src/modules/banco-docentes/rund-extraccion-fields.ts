@@ -238,6 +238,74 @@ async function lockedExtractionProfile(db: any, docenteId: string) {
   return Object.fromEntries(Object.entries(EXTRACTION_FIELDS).map(([key, def]) => [key, extractionValue(profile[def.source])]));
 }
 
+export interface RundExtractionReview {
+  docenteId: string;
+  ids: string[];
+  values: Record<string, string>;
+  identity: import('../../common/auth-identity-command').IdentityWriteExpectation;
+}
+
+/** Solo bloqueos y lecturas RUND. La identidad congelada se valida de nuevo por CAS
+ * en Auth antes de aplicar; nunca se consulta HTTP mientras se mantienen estos bloqueos. */
+export async function lockRundExtractionSuggestions(db: any, docenteId: string, ids: string[], payload: any,
+  identity?: RundExtractionReview['identity']) {
+  const [native] = await db.query('SELECT d.* FROM rund."Docente" d WHERE d.id::text = $1 FOR UPDATE', [docenteId]);
+  if (!native) throw new BadRequestException('Perfil docente no encontrado.');
+  if (identity && String(native.personaId).toLowerCase() !== identity.personaId.toLowerCase())
+    throw new ConflictException('La identidad no corresponde al perfil revisado.');
+  const rows = await db.query(`SELECT s.*, d.estado AS documento_estado, j.estado AS trabajo_estado
+    FROM rund."RundExtraccionSugerencia" s
+    JOIN rund."RundExtraccionTrabajo" j ON j.id = s.trabajo_id
+    JOIN rund."RundDocumentoPerfil" d ON d.id = j.documento_id
+    WHERE s.id = ANY($1::uuid[]) AND j.docente_id::text = $2 FOR UPDATE OF s, d, j`, [ids, docenteId]);
+  if (rows.length !== ids.length || new Set(rows.map((s: any) => s.campo)).size !== ids.length)
+    throw new ConflictException('Las sugerencias no corresponden a este perfil o repiten un campo.');
+  const profile = { ...native, ...(identity || {}),
+    ...(identity ? { fec_nacimiento: identity.fec_nacimiento ? new Date(identity.fec_nacimiento + 'T00:00:00Z') : null } : {}) };
+  for (const s of rows) {
+    if (s.estado !== 'PENDIENTE' || s.documento_estado !== 'ACTIVO' || s.trabajo_estado !== 'COMPLETADO')
+      throw new ConflictException('La sugerencia ya fue revisada o su PDF dejó de estar vigente. Actualice el expediente.');
+    const field = Object.prototype.hasOwnProperty.call(EXTRACTION_FIELDS, s.campo) ? EXTRACTION_FIELDS[s.campo] : undefined;
+    if (!field || typeof payload[s.campo] !== 'string' || !payload[s.campo].trim())
+      throw new BadRequestException('Revise el valor del campo sugerido antes de confirmar.');
+    if (!identity && ['num_identificacion','tip_identificacion','nom_largo','gen_tercero','fec_nacimiento'].includes(field.source))
+      throw new BadRequestException('La sugerencia de identidad requiere validación por Auth.');
+    if (comparable(profile[field.source]) !== comparable(s.valor_previo))
+      throw new ConflictException('El dato del perfil cambió desde la extracción. Descarte esta sugerencia y vuelva a procesar el documento.');
+  }
+  return rows;
+}
+
+/** Control del contexto servidor antes de persistirlo o reanudarlo. */
+export function validateExtractionReview(review: RundExtractionReview, input: any, expected: RundExtractionReview['identity'] | undefined) {
+  if (!review || Object.keys(review).length !== 4 || typeof review.docenteId !== 'string' || !review.docenteId.trim()
+    || review.docenteId.includes('\0') || !expected
+    || !review.identity || Object.keys(review.identity).length !== Object.keys(expected).length
+    || Object.keys(expected).some(key => review.identity[key] !== expected[key])
+    || extractionIds(review.ids).length === 0 || !review.values || typeof review.values !== 'object' || Array.isArray(review.values)
+    || Object.keys(review.values).length !== review.ids.length
+    || input.options?.audit?.requiredSupport?.docenteId !== review.docenteId
+    || input.options?.audit?.sensitiveAccess?.fullAccess !== true) throw new Error('Revisión de sugerencias incompatible.');
+  for (const [field, value] of Object.entries(review.values)) {
+    if (!Object.prototype.hasOwnProperty.call(EXTRACTION_FIELDS, field) || typeof value !== 'string' || !value.trim()) throw new Error('Campo de sugerencia incompatible.');
+    let written = field === 'nombreCompleto' ? input.finalFullName : input.payload[field];
+    let reviewed = value;
+    if (field === 'genero') {
+      const gender = comparable(value);
+      reviewed = ['F','FEMENINO','MUJER'].includes(gender) ? 'F' : ['M','MASCULINO','HOMBRE'].includes(gender) ? 'M' : value;
+    }
+    // El contexto durable contiene fechas ISO; antes de serializar eran Date.
+    // La comparación civil debe ser idéntica al preparar y al reanudar.
+    if (EXTRACTION_FIELDS[field].date && written != null) {
+      const date = new Date(written);
+      if (!Number.isFinite(date.getTime())) throw new Error('Fecha revisada incompatible.');
+      written = date.toISOString().slice(0,10);
+    }
+    if (field === 'documentNumber') { written = String(written).replace(/\./g, ''); reviewed = reviewed.replace(/\./g, ''); }
+    if (comparable(written) !== comparable(reviewed)) throw new Error('La escritura no corresponde al valor revisado.');
+  }
+}
+
 export function extractionIds(input: any): string[] {
   if (input === undefined) return [];
   if (!Array.isArray(input) || input.length < 1 || input.length > 20

@@ -55,11 +55,23 @@ describe('upsertDocente con la escritura de identidad por Auth', () => {
     expect(moduleRef.get).not.toHaveBeenCalled(); expect(dataSource.transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('si el plan no es aplicable o el módulo no está registrado, sigue por el escritor anterior', async () => {
+  it('si el plan no es aplicable o el módulo no está registrado, falla sin tocar el escritor SQL anterior', async () => {
     on(); const declined = { plan: jest.fn(() => ({ ok: false, reason: 'contexto incompatible' })), write: jest.fn() };
-    const a = build(declined); await expect(a.service.upsertDocente(raw, options())).rejects.toThrow('ESCRITOR ANTERIOR');
-    expect(declined.write).not.toHaveBeenCalled(); expect(a.dataSource.transaction).toHaveBeenCalledTimes(1);
-    const b = build(undefined); await expect(b.service.upsertDocente(raw, options())).rejects.toThrow('ESCRITOR ANTERIOR');
+    const a = build(declined); await expect(a.service.upsertDocente(raw, options())).rejects.toThrow('contexto de escritura');
+    expect(declined.write).not.toHaveBeenCalled(); expect(a.dataSource.transaction).not.toHaveBeenCalled(); expect(a.manager.query).not.toHaveBeenCalled();
+    const b = build(undefined); await expect(b.service.upsertDocente(raw, options())).rejects.toThrow('no está disponible');
+    expect(b.dataSource.transaction).not.toHaveBeenCalled(); expect(b.manager.query).not.toHaveBeenCalled();
+  });
+
+  it('rechaza una transacción externa antes de escribir o abrir otra transacción', async () => {
+    on(); const writer = okPlan({}), outerManager = { query: jest.fn() }; const { service, dataSource } = build(writer);
+    await expect(service.upsertDocente(raw, options({ outerManager }))).rejects.toThrow('transacción externa');
+    expect(outerManager.query).not.toHaveBeenCalled(); expect(dataSource.transaction).not.toHaveBeenCalled(); expect(writer.write).not.toHaveBeenCalled();
+  });
+
+  it('un resultado vacío del escritor no habilita la alternativa SQL', async () => {
+    on(); const writer = okPlan({}); writer.write.mockResolvedValue(undefined); const { service, dataSource } = build(writer);
+    await expect(service.upsertDocente(raw, options())).rejects.toThrow('no confirmó'); expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('un error del escritor por Auth se propaga sin ejecutar además el escritor anterior', async () => {

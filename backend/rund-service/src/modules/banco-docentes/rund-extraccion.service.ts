@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, OnModuleDes
 import { DataSource } from 'typeorm';
 import { createHash, randomUUID } from 'crypto';
 import { RundDocumentStorageService } from './rund-document-storage.service';
-import { ageForDate, ageRange, comparable, confirmExtractionSuggestions, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
+import { ageForDate, ageRange, comparable, confirmExtractionSuggestions, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, lockRundExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { postLocalJson } from './rund-local-http';
 import { invalidateEditedEvidence } from './rund-evidence-workflow';
@@ -144,8 +144,16 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
         JOIN rund."RundExtraccionTrabajo" j ON j.id=s.trabajo_id
         WHERE s.id::text=$1 AND j.docente_id::text=$2`, [suggestionId,docenteId]);
       if (!candidate) throw new ConflictException('La sugerencia no pertenece al docente.');
+      if (!Object.prototype.hasOwnProperty.call(EXTRACTION_FIELDS, candidate.campo)) throw new BadRequestException('Este campo no admite confirmación directa.');
+      const nativeField = Object.prototype.hasOwnProperty.call(DOCENTE_EXTRACTION_COLUMNS, candidate.campo);
+      if (this.identityCorrection?.enabled && !nativeField)
+        throw new ConflictException('La sugerencia de identidad cambió. Actualice el expediente antes de confirmar.');
       const payload = { [candidate.campo]: String(candidate.valor || '').trim() };
-      const [suggestion] = await lockExtractionSuggestions(manager,docenteId,[suggestionId],payload);
+      // Un campo propio de RUND no necesita leer ni bloquear auth.personas, incluso
+      // durante la transición. Los campos Auth conservan su coordinador propietario.
+      const [suggestion] = await (nativeField
+        ? lockRundExtractionSuggestions(manager,docenteId,[suggestionId],payload)
+        : lockExtractionSuggestions(manager,docenteId,[suggestionId],payload));
 
       const changed = comparable(suggestion.valor)!==comparable(suggestion.valor_previo);
       if (changed) await this.applyConfirmedValue(manager,docenteId,suggestion.campo,String(suggestion.valor).trim(),actor,suggestion.id);

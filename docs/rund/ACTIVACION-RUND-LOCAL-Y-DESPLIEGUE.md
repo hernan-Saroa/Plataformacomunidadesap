@@ -21,14 +21,30 @@ Comunes: el mismo `INTERNAL_SERVICE_TOKEN` en auth, PTA y RUND; `AUTH_SERVICE_UR
 Opcionales de RUND para el recuperador: `RUND_IDENTITY_WRITE_IDLE_SECONDS` (120), `RUND_IDENTITY_WRITE_RECOVERY_MS` (60000),
 `RUND_OCR_IDENTITY_IDLE_SECONDS`, `RUND_OCR_IDENTITY_RECONCILE_MS`.
 
+Desde el punto 103, publicar Auth con soporte de `identidadEsperada` antes de RUND
+y aplicar la migración RUND `023` antes de habilitar la escritura coordinada.
+La edición con sugerencias conserva una precondición comprobada dentro de la transacción de Auth;
+RUND confirma perfil, sugerencias y auditoría en su propia transacción. Con la frontera activa,
+un contexto incompatible devuelve 400 y un escritor ausente o transacción externa devuelve 503;
+ninguno autoriza regresar al SQL directo sobre Auth. El preview sigue siendo de lectura.
+Las confirmaciones OCR de campos nativos (por ejemplo, pregrado) usan únicamente tablas RUND.
+La autogestión conserva la posibilidad de enviar datos parciales sin período.
+Los caminos SQL de transición siguen disponibles con las banderas apagadas hasta completar
+la aceptación por ambiente; este cambio no activa banderas ni retira el RUND embebido.
+
 ## 2. Orden
 
 1. **Respaldo** de la base (`pg_dump -Fc`).
-2. **Migraciones** (solo las del RUND; el resto de pendientes son de otros equipos): Auth `663`, `669`, `670`, `671`, `672`; RUND `004` a `022`.
+2. **Migraciones** (solo las del RUND; el resto de pendientes son de otros equipos): Auth `663`, `669`, `670`, `671`, `672`; RUND `004` a `023`.
    Cada archivo con `ON_ERROR_STOP=1` y registrado en `auth.migrations_db_log`. La 672 corrige además el rechazo actual de la cédula por OCR.
+   La preparación 673 y su activación LOCAL requieren el procedimiento específico de
+   [protección de cédula en Auth independiente](PROTECCION-CEDULA-AUTH-INDEPENDIENTE.md):
+   pausa de escritores, permisos propios e inventario conciliado, con Auth separado.
 3. **Publicar** PTA y Auth, y **después** RUND, todavía con las banderas de RUND apagadas.
 4. Activar primero las banderas de **auth**, luego las de **rund**, de una en una.
-5. Si algo falla: apagar la bandera (vuelve al comportamiento anterior sin migraciones inversas) y revisar el diario.
+5. Antes de activar la política LOCAL de 673, si algo falla: apagar la bandera y revisar
+   el diario. Después de activar LOCAL, conservar la pausa y seguir la reversión del
+   procedimiento específico; apagar banderas por sí solo ya no restaura la topología anterior.
 
 ## 3. Comprobaciones tras activar (resultado local, todas correctas)
 

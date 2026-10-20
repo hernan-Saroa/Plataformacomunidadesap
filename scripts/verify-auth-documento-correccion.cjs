@@ -71,8 +71,16 @@ const check = async (name, fn) => { await fn(); count++; console.log('OK  ' + na
     });
 
     await db.query(sql('672_auth_rund_documento_correccion.sql'));
+    // Regresión del modo HEREDADO de 673 con exactamente los mismos escenarios.
+    if (process.argv.includes('--with-local-protection')) {
+      for (const file of ['669_auth_rund_identidad_operacion.sql', '670_auth_rund_identidad_aplicacion.sql',
+        '671_auth_rund_identidad_compensacion.sql', '673_auth_rund_documento_proteccion_local.sql']) await db.query(sql(file));
+    }
 
-    await check('672 es idempotente: se puede aplicar de nuevo sin error', async () => { await db.query(sql('672_auth_rund_documento_correccion.sql')); });
+    await check('migración es idempotente: se puede aplicar de nuevo sin error', async () => {
+      await db.query(sql(process.argv.includes('--with-local-protection')
+        ? '673_auth_rund_documento_proteccion_local.sql' : '672_auth_rund_documento_correccion.sql'));
+    });
 
     await check('el trigger de auth.personas usa ahora la función de Auth', async () => {
       const r = await db.query(`SELECT p.pronamespace::regnamespace::text AS esquema FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid

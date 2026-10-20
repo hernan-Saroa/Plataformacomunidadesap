@@ -13,7 +13,7 @@ module.exports=async function verifyNative(pgConfig,runtime,check,{database,row,
   const admin=new Client({...pgConfig,database:dbName}),client=new AuthIdentityOperationClient();
   const saved=Object.fromEntries(['AUTH_SERVICE_URL','AUTH_INTERNAL_SERVICE_TOKEN'].map(key=>[key,process.env[key]]));
   const migrations=['001_create_rund_schema.sql','003_legacy_rund_tables.sql','004_rund_docente_identificadores_text.sql',
-    '005_rund_tarjeta_numero_secuencia.sql','007_rund_carpeta_auth_proyeccion.sql','008_rund_identidad_operacion.sql','009_rund_identidad_contexto_nativo.sql','010_rund_identidad_ejecucion.sql','011_rund_identidad_resolucion_auth.sql','012_rund_identidad_revision.sql','013_rund_identidad_solicitud.sql','014_rund_identidad_entrada_manual.sql','015_rund_identidad_abandono_manual.sql','016_rund_identidad_correo.sql', '017_rund_identidad_correo_resultado.sql', '018_rund_identidad_correo_revision.sql', '019_rund_identidad_correo_revision_cierre.sql', '020_rund_identidad_correo_omision.sql', '021_rund_identidad_correo_revision_incierto.sql'];
+    '005_rund_tarjeta_numero_secuencia.sql','007_rund_carpeta_auth_proyeccion.sql','008_rund_identidad_operacion.sql','009_rund_identidad_contexto_nativo.sql','010_rund_identidad_ejecucion.sql','011_rund_identidad_resolucion_auth.sql','012_rund_identidad_revision.sql','013_rund_identidad_solicitud.sql','014_rund_identidad_entrada_manual.sql','015_rund_identidad_abandono_manual.sql','016_rund_identidad_correo.sql', '017_rund_identidad_correo_resultado.sql', '018_rund_identidad_correo_revision.sql', '019_rund_identidad_correo_revision_cierre.sql', '020_rund_identidad_correo_omision.sql', '021_rund_identidad_correo_revision_incierto.sql', '023_rund_autogestion_contexto_sin_periodo.sql'];
   let ds,coord,native,banco,connected=false,roleCreated=false,stub;
   const makeDb=()=>new DataSource({type:'postgres',host:pgConfig.host,port:pgConfig.port,database:dbName,
     username:role,password,entities:[BancoDocenteEntity],synchronize:false,extra:{max:6}});
@@ -123,9 +123,11 @@ module.exports=async function verifyNative(pgConfig,runtime,check,{database,row,
       const before=await snapshot();await ds.destroy();await start();const recovered=await native.consultar(item.id);assert.equal(recovered.estado,'CONFIRMADA');
       assert.deepEqual(await native.confirmarNativo(item.id),recovered);assert.deepEqual(await snapshot(),before);
     });
-    await check('Commit nativo: contexto y marcador final inmutables; 009 repetible no cambia negocio o recibos',async()=>{
+    await check('Commit nativo: contexto y marcador final inmutables; 009 y 023 repetibles no cambian negocio o recibos',async()=>{
       const before=await snapshot(),sql=fs.readFileSync(path.join(rund,'db/migrations/009_rund_identidad_contexto_nativo.sql'),'utf8');
-      await admin.query(sql);await admin.query(sql);assert.deepEqual(await snapshot(),before);
+      await admin.query(sql);await admin.query(sql);
+      const partialSql=fs.readFileSync(path.join(rund,'db/migrations/023_rund_autogestion_contexto_sin_periodo.sql'),'utf8');
+      await admin.query(partialSql);await admin.query(partialSql);assert.deepEqual(await snapshot(),before);
       for(const query of ['DELETE FROM rund.identidad_contexto_nativo WHERE intencion_id=$1',
         "UPDATE rund.identidad_contexto_nativo SET contexto='{}'::jsonb WHERE intencion_id=$1",
         "UPDATE rund.identidad_contexto_nativo SET estado='PREPARADA',confirmada_en=NULL,docente_id=NULL,resultado_nativo=NULL WHERE intencion_id=$1"])

@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { identityWriteCommand, IdentityWriteCommand } from '../../common/auth-identity-command';
 import { capturarDatosCarga } from './rund-carga-original';
 import type { RundNativeWriteInput } from './rund-native-profile-write';
+import { validateExtractionReview } from './rund-extraccion-fields';
 
 export interface RundNativeBusinessContext {
   version: 1;
@@ -38,9 +39,11 @@ export function nativeBusinessContext(command:unknown, input:Omit<RundNativeWrit
   const comandoAuth=identityWriteCommand(command),options=input?.options,audit=options?.audit;
   if(!record(input)||!record(input.payload)||!record(input.rawPayload)||!record(options)||!record(audit)
     ||Object.keys(input).some(k=>!['payload','rawPayload','options','territorial','emailFinal','phoneFinal','finalFullName'].includes(k))
-    ||Object.keys(options).some(k=>!['bulkImport','preserveTerritorial','rejectExisting','relaxValidation','audit'].includes(k))
+    ||Object.keys(options).some(k=>!['bulkImport','preserveTerritorial','rejectExisting','relaxValidation','audit','extractionReview'].includes(k))
     ||['bulkImport','preserveTerritorial','rejectExisting','relaxValidation'].some(k=>options[k]!==undefined&&typeof options[k]!=='boolean')
-    ||input.payload.documentNumber!==comandoAuth.payload.documentNumber||!nonempty(input.payload.periodoCarga)
+    ||input.payload.documentNumber!==comandoAuth.payload.documentNumber
+    ||(!nonempty(input.payload.periodoCarga)
+      && !(options.relaxValidation === true && audit.canalOrigen === 'AUTOGESTION' && input.payload.periodoCarga == null))
     ||input.emailFinal!==comandoAuth.emailFinal||input.phoneFinal!==comandoAuth.phoneFinal||input.finalFullName!==comandoAuth.finalFullName
     ||Boolean(options.relaxValidation)!==comandoAuth.options.relaxValidation||Boolean(options.preserveTerritorial)!==comandoAuth.options.preserveTerritorial
     ||audit.actorId!==comandoAuth.actorId||!['MODAL','MASIVO','AUTOGESTION','API'].includes(audit.canalOrigen)
@@ -51,12 +54,15 @@ export function nativeBusinessContext(command:unknown, input:Omit<RundNativeWrit
     throw new Error('Territorial de contexto incompatible.');
   if(audit.requiredSupport&&(!record(audit.requiredSupport)||audit.requiredSupport.type!=='soporte_edicion_perfil'
     ||!nonempty(audit.requiredSupport.id)||!nonempty(audit.requiredSupport.docenteId)))throw new Error('Soporte de contexto incompatible.');
+  if (options.extractionReview) validateExtractionReview(options.extractionReview, input, comandoAuth.identidadEsperada);
+  else if (comandoAuth.identidadEsperada) throw new Error('Precondición sin revisión de sugerencias.');
   const raw=input.rawPayload;
   const result=snapshot({version:1,comandoAuth,escritura:{payload:input.payload,
     rawPayload:{...capturarDatosCarga(raw),canal_origen:raw.canal_origen??null,cargadoPor:raw.cargadoPor??null,
       __previewId:raw.__previewId??null,__sourceRowNumber:raw.__sourceRowNumber??null},
     options:{bulkImport:options.bulkImport===true,preserveTerritorial:options.preserveTerritorial===true,
-      rejectExisting:options.rejectExisting===true,relaxValidation:options.relaxValidation===true,audit},
+      rejectExisting:options.rejectExisting===true,relaxValidation:options.relaxValidation===true,audit,
+      ...(options.extractionReview ? { extractionReview: options.extractionReview } : {})},
     territorial:input.territorial||null,emailFinal:input.emailFinal,phoneFinal:input.phoneFinal,finalFullName:input.finalFullName}});
   if(Buffer.byteLength(JSON.stringify(result),'utf8')>1024*1024)throw new Error('Contexto demasiado grande.');
   return result;

@@ -1,20 +1,48 @@
 # Estado para llegar al cierre de independencia
 
-Actualizado con el punto 95. La referencia técnica y las evidencias están en
+Actualizado con el punto 104. La referencia técnica y las evidencias están en
 [ESTADO-MIGRACION-MICROSERVICIO.md](ESTADO-MIGRACION-MICROSERVICIO.md).
 
 Hay 11 pasos de base completados en código/revisión y validación local. El paso 12
-continúa abierto. Los 58 cortes técnicos posteriores al merge son avances de
+continúa abierto. Los cortes técnicos posteriores al merge son avances de
 distinto tamaño; su cantidad no mide el porcentaje de independencia ni certifica
 el estado de las instalaciones. Todavía queda trabajo de implementación y aceptación.
 
+**Actualización del punto 103:** con `RUND_IDENTITY_WRITE_VIA_AUTH_API=true`, la edición
+con sugerencias usa el coordinador propietario: Auth compara la identidad esperada
+dentro de su transacción y RUND confirma perfil, sugerencias y auditoría en la suya.
+Los errores de contexto/configuración ya no habilitan SQL alternativo sobre Auth.
+Los campos OCR propios de RUND se confirman únicamente en sus tablas. Se conserva
+la autogestión parcial sin período y el actor servidor de la carga definitiva.
+Publicar Auth antes que RUND. La activación y aceptación por instalación siguen pendientes.
+
+**Actualización del punto 104:** se prepara la migración Auth 673 con protección de
+cédula basada en inventario propio y operaciones no compensadas. En modo LOCAL no
+consulta perfiles ni sugerencias de RUND/PTA. Conserva HEREDADO por defecto. La activación
+requiere Auth separado, inventario completo conciliado, permisos y escrituras propietarias
+aceptadas; no se aplicó a instalaciones existentes. Procedimiento y reversión:
+[PROTECCION-CEDULA-AUTH-INDEPENDIENTE.md](PROTECCION-CEDULA-AUTH-INDEPENDIENTE.md).
+
+El mapa siguiente actualiza el alcance que se describió en el punto 95;
+las tareas de escritor general, lotes y autogestión fueron implementadas en el 100,
+y la edición con sugerencias queda incorporada en el 103. Reportes/dashboard y los
+clientes de PTA/Programación ya están conectados en código (39 y 98): falta aceptación
+integrada por ambiente. Siguen la activación del reemplazo del trigger inverso Auth, el SQL histórico
+de transición, el rol SQL limitado, configuración de despliegue, operación de revisiones,
+y el retiro final autorizado del RUND embebido.
+
 | Frente abierto | Qué falta para cerrarlo | Evidencia de cierre necesaria |
 |---|---|---|
-| 4. Aislamiento de propietarios, trabajo técnico actual | Aceptación de navegador/instalación de la entrada opcional de revisiones y del preview manual antes de habilitarlos; resolución humana de incertidumbres sin evidencia adicional y otras resoluciones de rechazos; intervalo entre validación Auth y SMTP; política/cierre de altas y revisiones; recuperación de contextos inconsistentes tras publicación; activación del formulario con principal, consulta de correo y preview ya preparados; publicar Auth antes del consumidor RUND para aceptar el preview masivo propietario; preparar sustitución del escritor masivo por operaciones propietarias reanudables, preservando soporte y resultados por fila; adaptación de edición, lotes y autogestión con soportes/OTP (la confirmación OCR de identidad ya se coordina con Auth por API y diario, punto 99, tras la bandera RUND_OCR_IDENTITY_VIA_AUTH_API; falta activarla por ambiente y reutilizar el patrón en la edición con sugerencias; el escritor de altas, ediciones, cargas y autogestión ya puede coordinarse con Auth por API tras RUND_IDENTITY_WRITE_VIA_AUTH_API, punto 100); sustitución final de escritores/consultas SQL restantes entre propietarios | Inventario de dependencias resuelto y pruebas de cada entrada, fallos, recuperación y permisos, preservando los contratos existentes |
-| 2. Consumidores históricos | Dashboard/reportes. Los accesos documentales históricos de Auth ya se consultan a PTA por API con PTA_HISTORICO_API_ENABLED (punto 96); falta aceptarlo por ambiente y retirar el SQL de transición | Consultas y documentos históricos resueltos por el propietario correcto, con regresión y protección de datos |
-| 3. Integraciones de otros módulos | PTA, Programación Académica y contrato-programación con sus relaciones y registros históricos | Escenarios integrados aprobados sin modificar reglas o perder enlaces |
+| 4. Aislamiento de propietarios | Aceptar las escrituras por API y la migración 023 del punto 103; conciliar inventarios y activar/aceptar la política LOCAL de Auth 673 (104), retirar el SQL histórico de transición y limitar las credenciales SQL. Continúan la operación y cierre humano de revisiones/altas, incertidumbres de correo, intervalo Auth–SMTP y aceptación de las interfaces opcionales | Flujos activos con roles limitados a sus propietarios, protección de cédula en Auth separado, regresión y recuperación por cada entrada, más aceptación de instalación |
+| 2. Consumidores históricos | Reportes/dashboard ya conectados en código. Los históricos documentales de Auth se consultan a PTA por API con PTA_HISTORICO_API_ENABLED (96); falta aceptar por ambiente y retirar SQL de transición | Consultas y documentos históricos resueltos por su propietario, con regresión y protección de datos |
+| 3. Integraciones de otros módulos | Clientes PTA, Programación Académica y contrato-programación implementados (39/98); falta aceptación integral por ambiente de reglas, copias y relaciones históricas | Escenarios integrados aprobados sin pérdida de identificadores, relaciones o reglas |
 | 1. Instalaciones y activación del paso 12 | Configuración, accesos, migraciones, artefactos y aceptación en local/DEV/QA/PRE/PROD | Evidencia de las instalaciones reales y sus prerrequisitos; las pruebas ficticias locales no la sustituyen |
 | 5. Aceptación integral y cierre operativo | Flujos completos, recuperación/rollback y retiro final del RUND embebido en PTA | Aceptación integral y confirmación explícita para el retiro, conforme a la sección 9.3 |
+
+## Referencia histórica de los puntos 83–95
+
+Las conexiones y tareas descritas a continuación corresponden a esos cortes; los
+avances posteriores de escritura están actualizados en los puntos 100–103.
 
 El punto 83 permite registrar, consultar y asignar casos de revisión de intentos
 sin resultado observado. El punto 84 añade un recibo de cierre solo con aceptación
@@ -60,5 +88,7 @@ abiertos estos bloques y su aceptación por ambiente. Una medida útil es regist
 qué criterio de esta tabla se cierra, en lugar de sumar nuevos cortes como si todos
 tuvieran el mismo alcance. Los cinco frentes siguen abiertos tras el punto 95.
 
-El flujo nuevo de escritura continúa desactivado. No se debe presentar el repositorio
-como independencia completada, ambiente desplegado o retiro de PTA autorizado.
+Las banderas de escritura son optativas y siguen apagadas por defecto. El punto 101
+documenta una activación local histórica; este mapa no certifica su configuración
+actual ni la de otros ambientes. La independencia, el despliegue y el retiro de PTA
+se cierran únicamente con la aceptación correspondiente.

@@ -84,4 +84,43 @@ describe('Aplicacion transaccional de identidad en Auth', () => {
     (identityImage as jest.Mock).mockResolvedValueOnce({persona:null,usuarios:[]});
     await expect(s.service.aplicar(id,body())).rejects.toThrow('imagen no corresponde');expect(s.query).toHaveBeenCalledTimes(4);
   });
+
+  const expected = { personaId: id, num_identificacion: command.payload.documentNumber, tip_identificacion: 'CC',
+    nom_largo: 'ANA ANTERIOR', gen_tercero: 'F', fec_nacimiento: '2000-02-29' };
+  const reviewedBody = () => { const comando = { ...command, identidadEsperada: expected }; return { comando, huellaComando: identityWriteFingerprint(comando) }; };
+  it.each(['ausente','nom_largo','gen_tercero','fec_nacimiento','num_identificacion'])('un cambio de identidad %s rechaza sin aplicar el adaptador', async field => {
+    const s = setup(), current = { ...expected, [field]: 'CAMBIO CONCURRENTE' };
+    s.query.mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ ...row(), huella_comando: reviewedBody().huellaComando }]).mockResolvedValueOnce([])
+      .mockResolvedValueOnce(field === 'ausente' ? [] : [current]);
+    await expect(s.service.aplicar(id, reviewedBody())).rejects.toBeInstanceOf(ConflictException);
+    expect(upsertRundAuthIdentityWithManager).not.toHaveBeenCalled(); expect(identityBefore).not.toHaveBeenCalled();
+    expect(s.query.mock.calls[4][0]).toContain('FOR UPDATE');
+  });
+  it('comprueba la precondición antes del adaptador y persiste aplicación y efectos en la misma transacción', async () => {
+    const s = setup(), applied = { ...row(), huella_comando: reviewedBody().huellaComando, estado: 'APLICADA', aplicada_en: new Date(), resultado: {} };
+    s.query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...applied, estado: 'REGISTRADA' }])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...expected }]).mockResolvedValueOnce([applied]).mockResolvedValueOnce([]);
+    (identityBefore as jest.Mock).mockResolvedValueOnce({ version: 1, persona: { id }, usuarios: [], roles: [] });
+    (upsertRundAuthIdentityWithManager as jest.Mock).mockResolvedValueOnce({ authPersonId: id, authUser: { id_user: id }, authUserCreated: false, personaChangedFields: [], profileChanges: {} });
+    await expect(s.service.aplicar(id, reviewedBody())).resolves.toHaveProperty('operacion.estado', 'APLICADA');
+    expect((upsertRundAuthIdentityWithManager as jest.Mock).mock.calls[0][0]).toBe(s.manager);
+  });
+  it('una identidad resuelta por otro registro no permite aplicar la revisión', async () => {
+    const s = setup(); s.query.mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ ...row(), huella_comando: reviewedBody().huellaComando }]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...expected }]);
+    (identityBefore as jest.Mock).mockResolvedValueOnce({ persona: { id: 'OTRO' } });
+    await expect(s.service.aplicar(id, reviewedBody())).rejects.toBeInstanceOf(ConflictException);
+    expect(upsertRundAuthIdentityWithManager).not.toHaveBeenCalled();
+  });
+  it('un reintento ya aplicado devuelve el recibo aunque haya cambios posteriores: nunca reaplica ni reevalúa el comando', async () => {
+    const s = setup(); s.query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...row(),
+      huella_comando: reviewedBody().huellaComando, estado: 'APLICADA', aplicada_en: new Date(), resultado: {} }]);
+    await expect(s.service.aplicar(id, reviewedBody())).resolves.toHaveProperty('operacion.estado', 'APLICADA');
+    expect(s.query).toHaveBeenCalledTimes(4); expect(upsertRundAuthIdentityWithManager).not.toHaveBeenCalled();
+  });
+  it.each([undefined, {}, { ...expected, extra: 'invalido' }, { ...expected, personaId: 'otro' },
+    { ...expected, num_identificacion: 'OTRO' }, { ...expected, fec_nacimiento: '2001-02-29' }])('rechaza precondiciones incompletas o incompatibles', value => {
+    expect(() => identityWriteCommand({ ...command, identidadEsperada: value })).toThrow();
+  });
 });

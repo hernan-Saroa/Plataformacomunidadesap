@@ -43,6 +43,14 @@ describe('Plan de escritura de identidad por Auth', () => {
     expect(identityWritePlan(input({ options: { territoriales: [{ id: 1 }], outerManager: {} } })).ok).toBe(true);
   });
 
+  it('autogestión conserva el alta parcial sin período y puede reanudarla sin recurrir al escritor SQL', () => {
+    const plan = identityWritePlan(input({ top: { payload: { ...payload, periodoCarga: null },
+      rawPayload: { canal_origen: 'AUTOGESTION', cargadoPor: 'AUTOGESTION:sesion' } },
+      options: { relaxValidation: true, audit: { actorId: 'AUTOGESTION:sesion', canalOrigen: 'AUTOGESTION' } } }));
+    expect(plan.ok).toBe(true);
+    if (plan.ok) expect(plan.input.payload.periodoCarga).toBeNull();
+  });
+
   it.each([
     ['sin auditoría', { options: { audit: undefined } }],
     ['actor distinto en la auditoría', { top: { rawPayload: { cargadoPor: 'otro' } } }],
@@ -51,7 +59,7 @@ describe('Plan de escritura de identidad por Auth', () => {
     ['sin período de carga', { top: { payload: { ...payload, periodoCarga: '' } } }],
     ['soporte requerido incompleto', { options: { audit: { ...audit, requiredSupport: { type: 'soporte_edicion_perfil' } } } }],
     ['correo inválido', { top: { emailFinal: 'no-es-correo' } }],
-  ])('queda para el escritor anterior: %s', (_name, extra) => {
+  ])('rechaza un contexto incompatible antes de escribir: %s', (_name, extra) => {
     const plan = identityWritePlan(input(extra as any));
     expect(plan.ok).toBe(false);
     if (!plan.ok) expect((plan as { reason: string }).reason.length).toBeGreaterThan(0);

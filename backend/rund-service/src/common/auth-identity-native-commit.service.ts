@@ -6,6 +6,7 @@ import { BancoDocentesService } from '../modules/banco-docentes/banco-docentes.s
 import { BancoDocentesModule } from '../modules/banco-docentes/banco-docentes.module';
 import { nativeBusinessContext, nativeBusinessFingerprint, restoreNativeBusinessContext } from '../modules/banco-docentes/rund-native-business-context';
 import type { RundNativeWriteInput } from '../modules/banco-docentes/rund-native-profile-write';
+import { lockRundExtractionSuggestions, confirmExtractionSuggestions } from '../modules/banco-docentes/rund-extraccion-fields';
 
 @Injectable()
 export class AuthIdentityNativeCommitService {
@@ -79,10 +80,19 @@ export class AuthIdentityNativeCommitService {
       if(nativeBusinessFingerprint(context)!==native.huella_contexto||identityWriteFingerprint(context.comandoAuth)!==journal.huella_comando)
         throw new ConflictException('La identidad y el contexto persistidos no coinciden.');
       const result=journal.recibo_auth.resultado;
+      const review = context.escritura.options.extractionReview;
+      if (review && result.personaId !== review.identity.personaId)
+        throw new ConflictException('Auth no confirmó la identidad del perfil revisado.');
+      const suggestions = review ? await lockRundExtractionSuggestions(manager, review.docenteId, review.ids, review.values, review.identity) : [];
       const written=await this.banco.persistirPerfilNativoConManager(manager,{...context.escritura,identity:{
         authPersonId:result.personaId,authUser:{id_user:result.usuarioId},authUserCreated:result.usuarioCreado,
         personaChangedFields:[...result.camposModificados],profileChanges:structuredClone(result.cambios),
       }});
+      if (review) {
+        if (written.docenteId !== review.docenteId) throw new ConflictException('La escritura no corresponde al perfil revisado.');
+        await confirmExtractionSuggestions(manager, suggestions, review.values, context.escritura.options.audit.actorId,
+          String(context.escritura.options.audit.observacion || '').trim());
+      }
       // El escritor heredado tolera fallos JS al inicializar bloques. El coordinador nuevo no confirma un alta incompleta.
       if(written.action==='insert'&&!await this.banco.bloquesInicialesCompletosConManager(manager,written.docenteId))
         throw new ServiceUnavailableException('La creacion nativa no completo sus bloques.');

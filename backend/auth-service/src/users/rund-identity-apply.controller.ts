@@ -35,7 +35,19 @@ export class RundIdentityApplyService {
       if (op.estado!=='APLICADA') {
         if (op.estado!=='REGISTRADA') throw new ConflictException('Estado de operación incompatible.');
         await lockIdentityEffects(manager);
+        // La precondición se comprueba bajo bloqueo del propietario, en la misma transacción
+        // que aplica identidad y recibo. Un GET previo desde RUND no sustituye este control.
+        if (comando.identidadEsperada) {
+          const expected = comando.identidadEsperada;
+          const [current] = await manager.query(`SELECT id_person::text AS "personaId", num_identificacion,
+            tip_identificacion, nom_largo, gen_tercero, fec_nacimiento::text AS fec_nacimiento
+            FROM auth.personas WHERE id_person=$1::uuid FOR UPDATE`, [expected.personaId]);
+          if (!current || Object.keys(expected).some(key => current[key] !== expected[key]))
+            throw new ConflictException('La identidad cambió desde la revisión de las sugerencias. Actualice el perfil.');
+        }
         const before=await identityBefore(manager,comando);
+        if (comando.identidadEsperada && before.persona?.id !== comando.identidadEsperada.personaId)
+          throw new ConflictException('La identidad resuelta no corresponde al perfil revisado.');
         const result=await upsertRundAuthIdentityWithManager(manager,{
           ...comando,payload:{...comando.payload,fechaNacimiento:comando.payload.fechaNacimiento===null?null:new Date(comando.payload.fechaNacimiento+'T00:00:00.000Z')},
           territorial:comando.territorial===null?undefined:comando.territorial,

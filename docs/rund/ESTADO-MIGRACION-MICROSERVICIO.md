@@ -1,13 +1,16 @@
 # Estado de la migración del RUND a microservicio
 
-> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-17
+> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-20
 > Documento de contexto para retomar la migración. Describe qué se decidió, qué está hecho,
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-> **Último punto técnico terminado: 102**, documentado al final de este archivo.
+> **Último punto técnico terminado: 104**, documentado al final de este archivo.
 > Guardado preparado para push hasta el [corte 95](PUSH-CORTE-95.md).
-> Para retomar después del guardado, leer la sección 95 y el mapa de pendientes.
+> Para retomar el trabajo actual, leer las secciones 103–104 y el mapa de pendientes.
+
+> El resumen del 17 de octubre que sigue es histórico. Los puntos 96–104 incorporan
+> integraciones, activación local y aislamiento de las escrituras posteriores a ese corte.
 
 ## Resumen de avance para seguimiento (2026-10-17)
 
@@ -7706,3 +7709,97 @@ el período por defecto de la interfaz es el activo de PTA (2025-2), por lo que 
 el banco porque su persona no existe en Auth (el listado sale de Auth) y se cargarán por carga masiva.
 
 **Verificación final**: Jest rund-service **99 / 1.922**, auth **27 / 459**; integración con PostgreSQL real **722 comprobaciones**; verificadores OCR, cédula y carpeta histórica en verde.
+
+## 103. Frente 4: edición con sugerencias y frontera SQL de escritura RUND → Auth (2026-10-20)
+
+Se completa el recorrido coordinado de la edición con sugerencias. No se activan
+banderas ni se aplican migraciones en instalaciones existentes.
+
+**Frontera activa y concurrencia**
+
+- Con `RUND_IDENTITY_WRITE_VIA_AUTH_API=true`, un contexto incompatible devuelve 400;
+  un escritor no registrado, una transacción externa o un resultado sin confirmar devuelve 503.
+  Ninguno habilita el escritor SQL de transición. La previsualización conserva sus lecturas propietarias.
+- `updateDocente` prepara una revisión de sugerencias con bloqueos únicamente RUND.
+  Congela persona, valores revisados y selección en el contexto durable del coordinador.
+- El comando Auth admite `identidadEsperada` opcional. La canonicalización y las huellas
+  de comandos anteriores no cambian. Auth compara persona, documento, tipo, nombre, género
+  y nacimiento bajo bloqueo antes de aplicar; un cambio concurrente responde 409 sin escribir.
+- El commit RUND vuelve a bloquear su perfil, sugerencias, trabajos y documentos. Comprueba
+  pertenencia, vigencia y valores nativos previos; guarda perfil, aprobación/corrección de
+  sugerencias, auditoría y recibo nativo en la misma transacción, sin HTTP dentro de ella.
+- Un PDF reemplazado o un cambio nativo posterior impiden confirmar y usan el aborto/compensación
+  existente. Un fallo técnico revierte el commit RUND y el recuperador reanuda el mismo contexto;
+  una intención confirmada no vuelve a aplicar identidad ni sugerencias.
+- La confirmación directa de campos propios de RUND (incluido pregrado) deja de consultar o
+  bloquear `auth.personas`, también con la bandera OCR apagada. Los campos de identidad usan
+  su coordinador cuando `RUND_OCR_IDENTITY_VIA_AUTH_API=true`. Un cambio de campo entre la
+  lectura inicial y la transacción se rechaza sin volver al SQL Auth.
+
+**Compatibilidad y migración 023**
+
+- La autogestión conserva el alta parcial sin período y la actualización de un perfil de
+  la misma persona cuando no se eligió período, como el escritor anterior. El actor de
+  autogestión se obtiene de su sesión OTP y el del lote definitivo del servidor.
+- `023_rund_autogestion_contexto_sin_periodo.sql` actualiza únicamente la función del trigger
+  nativo. Permite el período JSON explícitamente nulo solo para `AUTOGESTION` con
+  `relaxValidation=true`; los otros canales conservan la coincidencia exacta de período.
+  Mantiene comprobaciones de persona/usuario/recibo e inmutabilidad; no cambia datos.
+- Publicar Auth con la extensión antes del consumidor RUND y aplicar 023 antes de activar.
+  Una versión anterior de Auth rechaza el comando extendido; no se utiliza SQL alternativo.
+  Para reanudar contextos de sugerencias nuevos se necesita esta versión de RUND o posterior.
+- Con las banderas apagadas se conserva el SQL de transición para aceptar cada instalación
+  y disponer del comportamiento anterior. Su retiro, el trigger inverso Auth que aún conoce
+  tablas RUND/PTA y el aislamiento de credenciales siguen siendo cierres distintos.
+
+**Validación**
+
+- Jest RUND: **100 suites / 1.949 pruebas**; Auth: **27 suites / 473 pruebas**.
+- Compilación de RUND, Auth, PTA y Programación Académica correcta.
+- Regresión OCR de identidad: **23 comprobaciones PostgreSQL/HTTP correctas**.
+- Integración general: **733 comprobaciones correctas**, incluidas **10 nuevas** de
+  `verify-rund-extraction-write-boundary.cjs`: RUND en
+  una base sin esquema Auth, operaciones Auth por HTTP real, cambios concurrentes de
+  identidad/perfil/PDF, compensación, recuperación, revisiones simultáneas, lote con actor
+  servidor y autogestión parcial. Aplicaciones detenidas y clúster temporal eliminado.
+  Resultado consolidado: `validacion-servicio-postgres-local.json`. Alcance, comandos
+  comprobados y hashes de fuentes: [validacion-frontera-escritura-sugerencias-rund.json](validacion-frontera-escritura-sugerencias-rund.json).
+
+Sin cambios en el microfrontend, gateway, RUND embebido de PTA o archivos `.env` reales.
+La configuración de Compose, aceptación por ambiente y demás pendientes del mapa siguen abiertos.
+
+## 104. Frente 4: protección de cédula en Auth separado (2026-10-20)
+
+La migración Auth `673_auth_rund_documento_proteccion_local.sql` prepara un reemplazo
+de la dependencia inversa del trigger. Conserva `HEREDADO` por defecto y las reglas
+de 672 para instalaciones compartidas. No se aplicó ni activó en bases existentes.
+
+En `LOCAL`, la pertenencia protegida se resuelve exclusivamente con tablas Auth:
+inventario conciliado de perfiles anteriores y efectos de operaciones que no tengan
+resolución `COMPENSADA`. Esto protege desde el commit Auth, antes del commit RUND.
+Una compensación libera solo su reserva; inventario, otras operaciones y revisiones
+pendientes mantienen la protección. El rol DOCENTE no se equipara a un perfil.
+OCR sigue autorizándose por la corrección propia y su par de valores; el GUC
+heredado no autoriza cambios en LOCAL. Una política ausente falla explícitamente.
+
+La activación administrativa valida inventario/total, duplicados, nulos y existencia
+de personas, instala protección y política atómicamente y conserva entradas previas.
+Rechaza bases con tablas Docente RUND/PTA; no elimina esas tablas. El inventario
+remoto completo necesita conciliación por instalación: la función no puede certificar
+su exhaustividad. También requiere pausa de escritores, permisos Auth y APIs de
+escritura/OCR aceptadas. Después de activar LOCAL, apagar banderas no basta para
+revertir. Procedimiento y límites: [PROTECCION-CEDULA-AUTH-INDEPENDIENTE.md](PROTECCION-CEDULA-AUTH-INDEPENDIENTE.md).
+
+Validación del corte: **21 comprobaciones PostgreSQL/HTTP del modo LOCAL** y
+**14 comprobaciones de compatibilidad HEREDADO**. Incluyen DDL real, rol limitado a
+Auth, importación y reintentos, OCR y compensación, reservas por operación, rollback,
+falta de política y un cambio concurrente esperando el commit Auth. En el verificador
+LOCAL la respuesta de aborto RUND es simulada; no sustituye el commit RUND ni la
+aceptación integral por ambiente. Resultado/hashes:
+[validacion-proteccion-documento-auth-local.json](validacion-proteccion-documento-auth-local.json).
+
+Auth compila correctamente; su regresión Jest pasa **27 suites / 473 pruebas**.
+Las bases temporales se eliminaron. No se cambian `.env`
+reales, Compose, gateway, microfrontend ni RUND embebido. El aislamiento implementado
+sigue pendiente de activación/aceptación; continúan SQL de transición, despliegue,
+operación y retiro final del mapa de cierre.

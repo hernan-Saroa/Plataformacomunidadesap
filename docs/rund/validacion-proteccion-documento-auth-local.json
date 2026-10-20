@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-10-20T21:09:59.098Z",
+  "checkpoint": 104,
+  "passed": true,
+  "postgresVersion": "15.14",
+  "checks": [
+    "673 es idempotente y no modifica identidades ni activa LOCAL",
+    "activación rechaza inventario nulo, truncado, duplicado o con personas ausentes sin cambiar política",
+    "activación rehúsa bases con Docente de RUND o PTA aunque sus tablas estén vacías",
+    "inventario conciliado activa LOCAL sin tablas RUND/PTA ni cambios en personas",
+    "reaplicar 673 y repetir/ampliar inventario conserva modo y protecciones previas",
+    "perfil importado protegido; persona sin perfil conserva sus cambios y no se infiere por rol",
+    "puntos, documento inicial vacío y cambios en otros campos conservan la compatibilidad",
+    "GUC heredado o inventado no autoriza cambios en LOCAL",
+    "rol de servicio no puede activar, modificar o vaciar la política/inventario",
+    "HTTP OCR real aplica, reintenta y compensa una cédula protegida sin acceder a RUND/PTA",
+    "HTTP OCR rechaza valor previo obsoleto, cédula duplicada y correcciones de otra persona",
+    "alta por HTTP protege la identidad desde el recibo Auth, sin esperar al perfil remoto",
+    "rechazo de alta nueva conserva protección cuando Auth exige revisión humana",
+    "registrar/cancelar una intención sin aplicar no protege a una persona sin perfil",
+    "compensación probada libera su reserva para una persona previa que no tenía perfil",
+    "compensar una edición conserva la protección del perfil importado",
+    "compensar una operación conserva la reserva de otra operación de la misma persona",
+    "rollback de aplicación no deja una reserva o efecto huérfano",
+    "un cambio concurrente que espera al commit Auth observa la reserva recién confirmada",
+    "LOCAL ignora tablas ajenas inaccesibles y no cambia al modo heredado por su presencia",
+    "política ausente falla explícitamente y no abre la escritura"
+  ],
+  "isolation": {
+    "temporaryClusterRemoved": true,
+    "readsDotEnv": false,
+    "existingDatabasesTouched": false,
+    "authRuntimeHasForeignSchemaAccess": false,
+    "actualAuthHttpControllers": true,
+    "rundAbortProof": "simulated owner response; no RUND business commit in this verifier"
+  },
+  "activation": "Prepared only. Reconcile complete RUND/PTA inventory and pause writes before activation per installation.",
+  "sourceHashes": {
+    "db/migrations/673_auth_rund_documento_proteccion_local.sql": "4d3a1bab10ed8f23f053d72755f85bc410c7637589600ac91bba52f3850571ea",
+    "scripts/verify-auth-rund-document-protection.cjs": "a17f12183696207e57e15ac92a6c96295d17c12937a4c4ddc21c77ac43606659",
+    "scripts/verify-auth-documento-correccion.cjs": "2685afa0a1d889fb54e00d5303ccdaefd1b6d7bdcac6efd5e6ab47fb5186e2ba",
+    "backend/auth-service/src/users/rund-identity-apply.controller.ts": "c2c8327433efe6a9b71fb95c3d5259f7ef10cceecd55fc288c0cd7f64a48c7d7",
+    "backend/auth-service/src/users/rund-identity-compensation.controller.ts": "8569644d8724a5ccd118abc8b9ad33f166f16a978099e5767282e9c6fc5716c2",
+    "backend/auth-service/src/users/rund-identity-correction.controller.ts": "392fc7992bd6c33b6f1224f1ccd6e334235443055829f9e84cd61e4f93e7c1c0",
+    "backend/auth-service/src/users/rund-identity-effects.ts": "91aeabb29c9ea06b11d7bf5b88904a8b45af6c5aa501142cf377243e298e412c"
+  }
+}

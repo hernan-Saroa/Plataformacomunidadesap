@@ -195,7 +195,8 @@ describe('F014: aplicación directa y segura',()=>{
     const query=jest.fn(async(sql:string)=>{
       if(sql.includes('SELECT s.id,s.campo'))return [selected];
       if(sql.includes('SELECT s.*'))return [selected];
-      if(sql.includes('p.nom_largo'))return [{pregrado:'Derecho'}];
+      if(sql.includes('SELECT d.*'))return [{id:'doc-1',pregrado:'Derecho'}];
+      if(sql.includes('auth.'))throw new Error('SQL Auth no permitido para pregrado');
       if(sql.includes("campo IN ('documentNumber','nombreCompleto')"))return [];
       return [];
     });

@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-18T01:25:15.550Z",
+  "verifiedAt": "2026-10-20T16:07:16.333Z",
   "postgresVersion": "15.14",
   "application": "rund-service/dist/main.js",
   "database": "cluster temporal eliminado",
@@ -32,7 +32,9 @@
     "018_rund_identidad_correo_revision.sql",
     "019_rund_identidad_correo_revision_cierre.sql",
     "020_rund_identidad_correo_omision.sql",
-    "021_rund_identidad_correo_revision_incierto.sql"
+    "021_rund_identidad_correo_revision_incierto.sql",
+    "022_rund_identidad_correccion_ocr.sql",
+    "023_rund_autogestion_contexto_sin_periodo.sql"
   ],
   "passed": true,
   "checks": [
@@ -57,6 +59,8 @@
     "Migración 019_rund_identidad_correo_revision_cierre.sql en PostgreSQL real",
     "Migración 020_rund_identidad_correo_omision.sql en PostgreSQL real",
     "Migración 021_rund_identidad_correo_revision_incierto.sql en PostgreSQL real",
+    "Migración 022_rund_identidad_correccion_ocr.sql en PostgreSQL real",
+    "Migración 023_rund_autogestion_contexto_sin_periodo.sql en PostgreSQL real",
     "Operaciones Auth: migración 669 crea registro sin modificar personas, cuentas o roles",
     "Aplicación Auth: migración 670 extiende recibos sin aplicar identidades",
     "Compensacion Auth: migracion 671 crea efectos y resoluciones privados sin modificar identidad",
@@ -68,7 +72,7 @@
     "Repetir 005 no reutiliza números reservados ni limita el correlativo a seis dígitos",
     "005 falla sin renumerar tarjetas ni mover la secuencia ante un correlativo agotado",
     "006 preserva permisos previos, módulos, IDs, revocaciones y grants personalizados",
-    "Esquema nuevo vacío: 39 tablas y 7 categorías, sin copiar docentes",
+    "Esquema nuevo vacío: 40 tablas y 7 categorías, sin copiar docentes",
     "Migraciones repetibles sin duplicar columnas, categorías ni permisos",
     "Arranque del main real y health/ready con conexión a PostgreSQL",
     "JWT y permisos: 401 sin sesión y 403 para rol sin autorización",
@@ -442,7 +446,7 @@
     "Commit nativo: rejectExisting después de Auth no altera el perfil ni fabrica marcador confirmado",
     "Commit nativo: soporte rechazado antes del commit revierte la edición y conserva la intención pendiente",
     "Commit nativo: respuesta perdida después del commit se recupera al reabrir conexiones sin duplicar efectos",
-    "Commit nativo: contexto y marcador final inmutables; 009 repetible no cambia negocio o recibos",
+    "Commit nativo: contexto y marcador final inmutables; 009 y 023 repetibles no cambian negocio o recibos",
     "Commit nativo: preview y flujos activos no crean contexto; no hay schema Auth o compensación implícita en el escritor",
     "Ejecución identidad: preparar conserva contexto y decisión antes de HTTP; inputs inválidos no crean ejecución",
     "Ejecución identidad: orquesta consulta, registro, aplicación Auth y commit nativo desde contexto congelado",
@@ -745,6 +749,27 @@
     "Revision incierto registrado: 021 repetible no crea tablas, casos o cambios de historial",
     "Revision incierto registrado: ausencia de journal o aviso falla seguro y conserva GET de correo",
     "Bandeja HTTP integrada: direct con principal Auth, permisos RUND, SQL y recuperación reales",
-    "Bandeja HTTP integrada: gateway con principal Auth, permisos RUND, SQL y recuperación reales"
+    "Bandeja HTTP integrada: gateway con principal Auth, permisos RUND, SQL y recuperación reales",
+    "Escritura por Auth: un alta masiva crea identidad por API y perfil nativo en un commit, sin esquema auth en RUND",
+    "Escritura por Auth: editar un perfil existente actualiza sin duplicar persona, perfil ni correo de bienvenida",
+    "Escritura por Auth: rechazo de negocio (ya existe) conserva la atomicidad de antes: Auth restaura la identidad",
+    "Escritura por Auth: si Auth no responde, la solicitud falla y la intención se CANCELA (no se cumple después con un comando viejo)",
+    "Escritura por Auth: respuesta de Auth perdida tras aplicar una edición: el recuperador cancela, detecta que se aplicó y la compensa",
+    "Escritura por Auth: una intención que nunca llegó a Auth y quedó detenida se cancela; no crea identidad ni perfil",
+    "Escritura por Auth: fallo técnico tras aplicar en Auth no repite la aplicación; el recuperador solo completa el perfil",
+    "Escritura por Auth: dos recuperadores a la vez sobre la misma intención dejan un solo perfil y una sola auditoría",
+    "Escritura por Auth: un rechazo de negocio descubierto al reanudar (soporte rechazado) revierte la identidad en Auth",
+    "Frontera SQL: confirmar pregrado con RUND sin esquema auth mantiene valor, sugerencia y auditoría",
+    "Frontera SQL: edición con sugerencias de nombre y pregrado usa Auth por HTTP y confirma todo en RUND",
+    "Frontera SQL: cambio concurrente en Auth rechaza la edición sin sobrescribirlo ni aprobar sugerencias",
+    "Frontera SQL: PDF reemplazado tras aplicar Auth aborta y compensa la identidad sin aprobar sugerencias",
+    "Frontera SQL: cambio nativo posterior se conserva y provoca compensación Auth de la edición obsoleta",
+    "Frontera SQL: fallo técnico nativo revierte perfil y sugerencias; recuperador confirma una sola vez con contexto congelado",
+    "Frontera SQL: revisiones simultáneas de las mismas sugerencias producen una única edición confirmada",
+    "Frontera SQL: lote definitivo usa el actor servidor aunque la fila declare otro canal o cargador",
+    "Frontera SQL: autogestión parcial sin período conserva el contrato anterior y usa el coordinador, sin SQL Auth",
+    "Frontera SQL: autogestión sin período actualiza el perfil existente y conserva su período, sin duplicarlo",
+    "Escritura por Auth: transacción externa o contexto incompatible fallan sin saltar a SQL; bandera apagada conserva compatibilidad",
+    "Escritura por Auth: sin el módulo registrado devuelve 503 sin intentar SQL sobre Auth"
   ]
 }

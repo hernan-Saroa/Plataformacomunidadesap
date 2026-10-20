@@ -7,7 +7,8 @@ import { recordRundAccess } from './rund-access-audit';
 
 export interface RundNativeWriteInput {
   payload: any; rawPayload: any;
-  options: { bulkImport?: boolean; preserveTerritorial?: boolean; rejectExisting?: boolean; relaxValidation?: boolean; audit?: any };
+  options: { bulkImport?: boolean; preserveTerritorial?: boolean; rejectExisting?: boolean; relaxValidation?: boolean; audit?: any;
+    extractionReview?: import('./rund-extraccion-fields').RundExtractionReview };
   territorial?: { id: string; nombre: string; codigo?: string | null };
   emailFinal: string; phoneFinal: string | null; finalFullName: string;
   identity: { authPersonId: string; authUser: { id_user: string }; authUserCreated: boolean;

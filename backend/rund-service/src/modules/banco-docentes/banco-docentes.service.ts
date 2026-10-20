@@ -1,6 +1,6 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
 import { hashOtp, otpMatches } from './rund-otp';
-import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
+import { extractionIds, lockExtractionSuggestions, lockRundExtractionSuggestions, confirmExtractionSuggestions, RundExtractionReview } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
 import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
@@ -72,6 +72,7 @@ type UpsertDocenteOptions = {
   outerManager?: any;
   relaxValidation?: boolean;
   audit?: PerfilAuditContext;
+  extractionReview?: RundExtractionReview;
 };
 
 type BulkUpsertOptions = {
@@ -1464,16 +1465,17 @@ export class BancoDocentesService implements OnModuleInit {
       });
     };
 
-    // Identidad por API de Auth (intención durable, sin SQL sobre auth.*). Lo que no encaje en el contexto
-    // persistido sigue por el escritor anterior; la vista previa y las transacciones externas nunca la usan.
+    // Con la frontera API activa, un error de configuración o contexto no permite
+    // saltarla mediante el escritor SQL anterior. El preview sigue siendo solo lectura.
     let coordinated: any;
-    if (!options.previewOnly && !options.outerManager && identityWriteViaAuthEnabled()) {
+    if (!options.previewOnly && identityWriteViaAuthEnabled()) {
+      if (options.outerManager) throw new ServiceUnavailableException('La escritura por Auth no admite una transacción externa.');
       const writer = this.identityWriter();
-      if (writer) {
-        const plan = writer.plan({ payload, rawPayload, options, territorial, ...computeFinals() });
-        if (plan.ok) coordinated = await writer.write(plan);
-        else this.logger.warn(`Escritura de identidad por Auth no aplicable; se usa el escritor anterior: ${(plan as { reason: string }).reason}`);
-      }
+      if (!writer) throw new ServiceUnavailableException('El escritor de identidad por Auth no está disponible.');
+      const plan = writer.plan({ payload, rawPayload, options, territorial, ...computeFinals() });
+      if (!plan.ok) throw new BadRequestException('El contexto de escritura no es compatible con la coordinación por Auth.');
+      coordinated = await writer.write(plan);
+      if (!coordinated) throw new ServiceUnavailableException('Auth no confirmó el resultado de la escritura.');
     }
 
     const result = coordinated
@@ -1493,7 +1495,7 @@ export class BancoDocentesService implements OnModuleInit {
     return result;
   }
 
-  /** Escritor de identidad por API, registrado por RundIdentityWriteModule; sin él se conserva el escritor anterior. */
+  /** Escritor de identidad por API, registrado por RundIdentityWriteModule. Con la frontera activa es obligatorio. */
   private identityWriter(): RundIdentityWriter | undefined {
     try { return this.moduleRef?.get<RundIdentityWriter>(RUND_IDENTITY_WRITER, { strict: false }); } catch { return undefined; }
   }
@@ -1624,7 +1626,9 @@ export class BancoDocentesService implements OnModuleInit {
       const errors: any[] = [...duplicateValidation.errors];
       for (let i = 0; i < preparedRows.length; i++) {
         if (duplicateValidation.blockedRowIndexes.has(i)) continue;
-        const row = { ...preparedRows[i] };
+        const row = { ...preparedRows[i], ...(!options.dryRun ? {
+          canal_origen: 'MASIVO', cargadoPor: options.actorId || 'SISTEMA',
+        } : {}) };
         try {
           const result = await this.upsertDocente(row, {
             territoriales,
@@ -1907,8 +1911,21 @@ export class BancoDocentesService implements OnModuleInit {
     const ignoredAuditKeys = new Set(['soporteEdicionId', 'justificacionEdicion', 'actorId', 'cargadoPor', 'canal_origen', 'rundSensitiveAccess', 'rundSuggestionIds']);
     const changedFields = Object.keys(body).filter((key) => !ignoredAuditKeys.has(key));
     const territoriales = await this.getTerritoriales();
+    let extractionReview: RundExtractionReview | undefined;
+    if (suggestionIds.length && identityWriteViaAuthEnabled()) {
+      // Congelar la lectura del propietario. Auth la volverá a comparar bajo su
+      // bloqueo al aplicar; el commit RUND revalida PDF, sugerencias y datos nativos.
+      const expected = { personaId: String(d.personaId).toLowerCase(),
+        num_identificacion: identity.num_identificacion, tip_identificacion: identity.tip_identificacion,
+        nom_largo: identity.nom_largo, gen_tercero: identity.gen_tercero, fec_nacimiento: identity.fec_nacimiento };
+      const ids = suggestionIds.map(value => value.toLowerCase());
+      const suggestions = await this.dataSource.transaction(manager =>
+        lockRundExtractionSuggestions(manager, docenteId, ids, suggestionPayload, expected));
+      extractionReview = { docenteId, ids, identity: expected,
+        values: Object.fromEntries(suggestions.map(row => [row.campo, String(suggestionPayload[row.campo]).trim()])) };
+    }
     const execute = async (outerManager?: any) => {
-      const suggestions = suggestionIds.length
+      const suggestions = suggestionIds.length && !extractionReview
         ? await lockExtractionSuggestions(outerManager, docenteId, suggestionIds, suggestionPayload) : [];
       const result = await this.upsertDocente({
         ...safeBody,
@@ -1919,6 +1936,7 @@ export class BancoDocentesService implements OnModuleInit {
       }, {
         outerManager,
         territoriales,
+        ...(extractionReview ? { extractionReview } : {}),
         // Editar otro dato no reconcilia de forma implícita la territorial operativa.
         preserveTerritorial: Boolean(d.territorialReportada && String(safeBody.territorialNombre || '').trim() === d.territorialReportada.trim()),
         audit: {
@@ -1941,7 +1959,7 @@ export class BancoDocentesService implements OnModuleInit {
         body.actorId || body.cargadoPor, String(body.justificacionEdicion).trim());
       return result;
     };
-    return suggestionIds.length ? this.dataSource.transaction(execute) : execute();
+    return suggestionIds.length && !extractionReview ? this.dataSource.transaction(execute) : execute();
   }
 
   async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }) {
@@ -2471,6 +2489,7 @@ export class BancoDocentesService implements OnModuleInit {
 
     // Inyectar el canal de origen para que el payload upsertDocente sepa
     submissionData.canal_origen = 'AUTOGESTION';
+    submissionData.cargadoPor = `AUTOGESTION:${invitacion.id}`;
 
     // rejectExisting:false → un docente ya invitado puede actualizar sus datos vía
     // autogestión (upsert por num_identificacion). relaxValidation:true → validación

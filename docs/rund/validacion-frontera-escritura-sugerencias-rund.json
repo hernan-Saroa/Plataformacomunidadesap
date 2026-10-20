@@ -1,0 +1,78 @@
+{
+  "verifiedAt": "2026-10-20T16:08:18.479Z",
+  "checkpoint": 103,
+  "scope": "rund-to-auth-write-boundary",
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "deployed": false,
+  "flagsActivated": false,
+  "migration023AppliedOnlyToTemporaryDatabases": true,
+  "tests": {
+    "rund": {
+      "suites": 100,
+      "passed": 1949,
+      "failed": 0
+    },
+    "auth": {
+      "suites": 27,
+      "passed": 473,
+      "failed": 0
+    },
+    "ocrPostgresqlChecks": 23
+  },
+  "buildsPassed": [
+    "rund-service",
+    "auth-service",
+    "academic-work-plan-service",
+    "academic-schedule-service"
+  ],
+  "integration": {
+    "report": "docs/rund/validacion-servicio-postgres-local.json",
+    "sha256": "bbe13034d0e63bd43e130df734effce5fea18f11e44e8d8696006e9be6d7a511",
+    "passed": true,
+    "totalChecks": 733,
+    "boundaryChecks": [
+      "Frontera SQL: confirmar pregrado con RUND sin esquema auth mantiene valor, sugerencia y auditoría",
+      "Frontera SQL: edición con sugerencias de nombre y pregrado usa Auth por HTTP y confirma todo en RUND",
+      "Frontera SQL: cambio concurrente en Auth rechaza la edición sin sobrescribirlo ni aprobar sugerencias",
+      "Frontera SQL: PDF reemplazado tras aplicar Auth aborta y compensa la identidad sin aprobar sugerencias",
+      "Frontera SQL: cambio nativo posterior se conserva y provoca compensación Auth de la edición obsoleta",
+      "Frontera SQL: fallo técnico nativo revierte perfil y sugerencias; recuperador confirma una sola vez con contexto congelado",
+      "Frontera SQL: revisiones simultáneas de las mismas sugerencias producen una única edición confirmada",
+      "Frontera SQL: lote definitivo usa el actor servidor aunque la fila declare otro canal o cargador",
+      "Frontera SQL: autogestión parcial sin período conserva el contrato anterior y usa el coordinador, sin SQL Auth",
+      "Frontera SQL: autogestión sin período actualiza el perfil existente y conserva su período, sin duplicarlo"
+    ]
+  },
+  "independentMode": {
+    "generalWriteFlag": "RUND_IDENTITY_WRITE_VIA_AUTH_API=true",
+    "ocrIdentityFlag": "RUND_OCR_IDENTITY_VIA_AUTH_API=true",
+    "nativeOcrRequiresAuthSql": false,
+    "sqlFallbackOnInvalidContext": false,
+    "sqlFallbackOnMissingWriter": false,
+    "rundDatabaseWithoutAuthSchemaTested": true
+  },
+  "limits": [
+    "Legacy SQL remains available with flags disabled until environment acceptance.",
+    "Deploy Auth with identidadEsperada support before RUND; apply RUND 023 before coordinated partial self-service.",
+    "The inverse Auth trigger, historical transition SQL, deployment configuration and environment acceptance remain separate pending work."
+  ],
+  "sourceHashes": {
+    "backend/auth-service/src/users/rund-identity-command.ts": "0834609f48353edd84b7f743c6d5f3efe945afbcf22c5b73295d8498b29bd6ab",
+    "backend/auth-service/src/users/rund-identity-apply.controller.ts": "c2c8327433efe6a9b71fb95c3d5259f7ef10cceecd55fc288c0cd7f64a48c7d7",
+    "backend/rund-service/src/common/auth-identity-command.ts": "0834609f48353edd84b7f743c6d5f3efe945afbcf22c5b73295d8498b29bd6ab",
+    "backend/rund-service/src/common/auth-identity-native-commit.service.ts": "b615b316a90b8caeaf3339e3b243ed7d86a6e0e61d82ec0163cf41f3d20c0d41",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "0bcc05de3d13e5ece9636859b67c5e54cef8edc70b346794aee3a898fa1a632c",
+    "backend/rund-service/src/modules/banco-docentes/rund-extraccion-fields.ts": "910da94f9df19e6b87f1a147d2305d5221a5944d8c6b40c93c298ebd8ab14929",
+    "backend/rund-service/src/modules/banco-docentes/rund-extraccion.service.ts": "ecac8aa4e8dd189e3ea504bb7bc9a588b808eadf8396f27aade7f405baf36d56",
+    "backend/rund-service/src/modules/banco-docentes/rund-identity-writer.ts": "a2fbf166ae5bd49f695a1054b3d2d5f8c1015c226ec8bd70825b92996a428686",
+    "backend/rund-service/src/modules/banco-docentes/rund-native-business-context.ts": "373ad375192282edf9c77f12b10e64699b33c99bb452e4f0dcaea3fa47bb2c55",
+    "backend/rund-service/src/modules/banco-docentes/rund-native-profile-write.ts": "407e565890000da1b155428d043b9d695043894436edee8a077c27215b238e92",
+    "backend/rund-service/db/migrations/023_rund_autogestion_contexto_sin_periodo.sql": "e2cc632703c50b0bef7c30a74fa66ed21885c798672ae7e1511ec92c598edece",
+    "backend/rund-service/src/modules/banco-docentes/rund-extraction-isolation.spec.ts": "3d1341d661f01a7a3a6cc9544bc89ecd496211ac587b020ed53808dc1657aaa4",
+    "scripts/verify-rund-extraction-write-boundary.cjs": "1af9c3305e5b1596456f6be8766073b03d1d13608b524de96c0221d9a73ab3d1",
+    "scripts/verify-rund-identity-write-via-auth.cjs": "edbf60f1d5ac1f8bce7a3463cb619585665ba023cb60b0858c6488c8fed0c0ed",
+    "scripts/verify-rund-native-commit.cjs": "77497b4008d3a9bb3f5db13d2093a8c043ed5284199f293fba502e14e7b2bdf8",
+    "scripts/verify-rund-service-integration.cjs": "8a59056fd5847f0507cbafbc4fce41953d1d80fdaad6fc1d89acab06c5ba8c1b"
+  }
+}

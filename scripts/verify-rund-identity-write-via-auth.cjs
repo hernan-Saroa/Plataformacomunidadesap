@@ -158,12 +158,15 @@ module.exports = async function verifyIdentityWriteViaAuth(pgConfig, runtime, ch
       assert.deepEqual(await business(), beforeBusiness);
     });
 
-    await check('Escritura por Auth: vista previa, transacción externa, contexto incompatible o bandera apagada usan el escritor anterior', async () => {
+    await require('./verify-rund-extraction-write-boundary.cjs')(pgConfig, runtime, check,
+      { ...ctx, execution, recovery: recovery(), created, createdItem });
+
+    await check('Escritura por Auth: transacción externa o contexto incompatible fallan sin saltar a SQL; bandera apagada conserva compatibilidad', async () => {
       const item = data(), writesBefore = writes, beforeIntents = await intents();
       const legacy = /auth\.personas|relation.*auth|does not exist|no existe/i;
-      await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item, { outerManager: ds.manager })), legacy);
+      await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item, { outerManager: ds.manager })), error => error.getStatus?.() === 503);
       const noAudit = optionsFor(item); delete noAudit.audit;
-      await assert.rejects(banco.upsertDocente(item.input.rawPayload, noAudit), legacy);
+      await assert.rejects(banco.upsertDocente(item.input.rawPayload, noAudit), error => error.getStatus?.() === 400);
       process.env.RUND_IDENTITY_WRITE_VIA_AUTH_API = 'false';
       try { await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item)), legacy); }
       finally { process.env.RUND_IDENTITY_WRITE_VIA_AUTH_API = 'true'; }
@@ -171,9 +174,9 @@ module.exports = async function verifyIdentityWriteViaAuth(pgConfig, runtime, ch
       assert.equal((await authPerson(item.command.payload.documentNumber)).length, 0);
     });
 
-    await check('Escritura por Auth: sin el módulo registrado se conserva el escritor anterior aunque la bandera esté activa', async () => {
+    await check('Escritura por Auth: sin el módulo registrado devuelve 503 sin intentar SQL sobre Auth', async () => {
       banco.moduleRef = { get: () => { throw new Error('no registrado'); } };
-      try { const item = data(); await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item)), /auth\.personas|relation|does not exist|no existe/i); }
+      try { const item = data(); await assert.rejects(banco.upsertDocente(item.input.rawPayload, optionsFor(item)), error => error.getStatus?.() === 503); }
       finally { banco.moduleRef = { get: () => writer }; }
     });
   } finally {
