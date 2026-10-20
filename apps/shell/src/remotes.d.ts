@@ -118,7 +118,10 @@ declare module 'viaticos/Module' {
 }
 
 declare module 'programacion_academica/Module' {
-  const Module: React.ComponentType;
+  const Module: React.ComponentType<{
+    puedeAbrirProgramasAcademicos?: boolean;
+    abrirProgramasAcademicos?: () => void;
+  }>;
   export { Module as ProgramacionAcademicaModule };
   export default Module;
 }

@@ -17,7 +17,9 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 
 @Controller(['asignaturas-import', 'pta/asignaturas-import'])
 @UseGuards(RolesGuard)
-@Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+// ADMIN_PROGRAMACION: la carga masiva al crear el periodo pasó a Programación
+// Académica (EFDS-2314 / EFDS-2328), que llama a este mismo importador.
+@Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
 export class AsignaturasImportController {
   constructor(private readonly importService: AsignaturasImportService) {}
 

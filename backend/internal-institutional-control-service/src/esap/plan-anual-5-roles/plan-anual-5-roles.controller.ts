@@ -198,7 +198,8 @@ export class PlanAnual5RolesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.PLAN_ANUAL_DELETE, CIP.PLAN_ANUAL_EDIT)
+  // Solo con el permiso de eliminar: editar el plan no basta (EFDS-2282)
+  @Permissions(CIP.PLAN_ANUAL_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string, @Req() req: any) {
     if (!id || id === 'undefined') {

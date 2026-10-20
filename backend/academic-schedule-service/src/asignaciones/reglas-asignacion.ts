@@ -1,4 +1,6 @@
-import { seSolapan, type FranjaComparable } from '../horarios/solapamiento.js';
+import type { FranjaComparable } from '../horarios/solapamiento.js';
+import { chocan, type CicloFechas } from '../horarios/choque.js';
+import { superaElTope } from './tope.js';
 
 /**
  * Reglas de BLOQUEO DURO para asignar un docente a un grupo — EFDS-1372.
@@ -29,6 +31,11 @@ export interface DocenteParaAsignar {
   nombre: string;
   escalafon: string | null;
   horasPta: number;
+  /**
+   * Tope de docencia que se hace cumplir (RN-04), de la regla compartida
+   * `topeDeDocencia` (tope.ts): 304 h para cátedra. Si no viene, se usa `horasPta`.
+   */
+  tope?: number;
   vinculacionDesde: string | null;
   /** Nulo = vinculación indefinida, no fecha faltante (RN-10). */
   vinculacionHasta: string | null;
@@ -42,14 +49,22 @@ export interface GrupoParaAsignar {
   tipoPrograma: string | null;
   fechaInicio: string | null;
   fechaFin: string | null;
+  /**
+   * Ciclo de clases EFECTIVO del grupo para medir cruces: el suyo o, si no tiene, el de su
+   * periodo (`horarios/choque.ts`). Sin él se asume solape (el lado seguro).
+   */
+  cicloInicio?: string | null;
+  cicloFin?: string | null;
   franjas: FranjaComparable[];
   /** Horas que consumiría esta asignación. */
   horasRequeridas: number;
 }
 
-/** Franja ya ocupada por el docente, de cualquier programa o nivel. */
+/** Franja ya ocupada por el docente, de cualquier programa o nivel, con su ciclo efectivo. */
 export interface FranjaOcupada extends FranjaComparable {
   idGrupo: string;
+  cicloInicio?: string | null;
+  cicloFin?: string | null;
 }
 
 const normalizarEscalafon = (v: string | null | undefined) =>
@@ -121,14 +136,23 @@ export function buscarCruceTransversal(
   franjasDelGrupo: FranjaComparable[],
   franjasOcupadas: FranjaOcupada[],
   idGrupoActual: string,
+  cicloDelGrupo: Partial<CicloFechas> = {},
 ): FranjaOcupada | null {
+  const ciclo: CicloFechas = {
+    cicloInicio: cicloDelGrupo.cicloInicio ?? null,
+    cicloFin: cicloDelGrupo.cicloFin ?? null,
+  };
   for (const propuesta of franjasDelGrupo) {
     for (const ocupada of franjasOcupadas) {
       // El propio grupo no cuenta: reasignar el mismo docente al mismo grupo no
       // es un cruce consigo mismo.
       if (ocupada.idGrupo === idGrupoActual) continue;
-      if (ocupada.diaSemana !== propuesta.diaSemana) continue;
-      if (seSolapan(propuesta.horaInicio, propuesta.horaFin, ocupada.horaInicio, ocupada.horaFin)) {
+      // La regla única de choque: día, horas Y ciclo. Una franja del docente en otro
+      // periodo (fechas que no se tocan) no lo ocupa.
+      if (chocan(
+        { ...propuesta, ...ciclo },
+        { ...ocupada, cicloInicio: ocupada.cicloInicio ?? null, cicloFin: ocupada.cicloFin ?? null },
+      )) {
         return ocupada;
       }
     }
@@ -174,7 +198,10 @@ export function evaluarAsignacion(
     motivos.push({ regla: 'RN-10', mensaje: periodo.motivo! });
   }
 
-  const cruce = buscarCruceTransversal(grupo.franjas, franjasOcupadas, grupo.idGrupo);
+  const cruce = buscarCruceTransversal(grupo.franjas, franjasOcupadas, grupo.idGrupo, {
+    cicloInicio: grupo.cicloInicio ?? null,
+    cicloFin: grupo.cicloFin ?? null,
+  });
   if (cruce) {
     // No se revela qué asignatura ni qué programa ocupa la franja (RN-07/AC-02):
     // es confidencialidad entre decanaturas, no un detalle de presentación.
@@ -186,11 +213,12 @@ export function evaluarAsignacion(
   }
 
   const total = horasYaConsumidas + grupo.horasRequeridas;
-  if (docente.horasPta > 0 && total > docente.horasPta) {
+  const tope = docente.tope ?? docente.horasPta;
+  if (superaElTope(total, tope)) {
     motivos.push({
       regla: 'RN-04/RN-05',
       mensaje: `La asignación supera el tope del docente: ${total} h sobre un máximo de `
-        + `${docente.horasPta} h (ya tiene ${horasYaConsumidas} h asignadas)`,
+        + `${tope} h (ya tiene ${horasYaConsumidas} h asignadas)`,
     });
   }
 

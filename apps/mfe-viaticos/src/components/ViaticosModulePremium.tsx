@@ -221,6 +221,7 @@ export default function ViaticosModulePremium() {
   const [esJefeDependencia, setEsJefeDependencia] = useState(false);
   const [esGerenteProyecto, setEsGerenteProyecto] = useState(false);
   const [esComisionado, setEsComisionado] = useState(false);
+  const [esCoordinadorComisiones, setEsCoordinadorComisiones] = useState(false);
   const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const {
@@ -462,10 +463,14 @@ export default function ViaticosModulePremium() {
         const jefeDep = authService.isJefeDependencia();
         const gerenteProy = authService.isGerenteProyecto();
         const comisionado = authService.isComisionado();
+        const coordComisiones = authService.isCoordinadorComisiones();
         setEsJefeDependencia(jefeDep);
         setEsGerenteProyecto(gerenteProy);
         setEsComisionado(comisionado);
-        if (dirNac && !superAdmin) {
+        setEsCoordinadorComisiones(coordComisiones);
+        if (coordComisiones && !superAdmin) {
+          setSeccion('solicitudes');
+        } else if (dirNac && !superAdmin) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
@@ -494,10 +499,10 @@ export default function ViaticosModulePremium() {
   }, []);
 
   useEffect(() => {
-    if (!cargandoRol && (!esAnalista || esSuperAdmin)) {
+    if (!cargandoRol && (!esAnalista || esSuperAdmin || esCoordinadorComisiones)) {
       cargarDatos();
     }
-  }, [cargandoRol, esAnalista, esSuperAdmin]);
+  }, [cargandoRol, esAnalista, esSuperAdmin, esCoordinadorComisiones]);
 
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
@@ -764,9 +769,14 @@ export default function ViaticosModulePremium() {
       (currentUser.roles?.length || currentUser.permissions?.length),
   );
 
+  const esAdminViaticos =
+    esSuperAdmin ||
+    esCoordinadorComisiones ||
+    authService.isAdministradorViaticos();
+
   const puedeVerSolicitudes =
     !tieneContextoAuth ||
-    esSuperAdmin ||
+    esAdminViaticos ||
     authService.isSecretario() ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_SOLICITUDES_READ_OWN,
@@ -822,7 +832,8 @@ export default function ViaticosModulePremium() {
     ]);
   const puedeVerConfiguracion =
     !tieneContextoAuth ||
-    esSuperAdmin ||
+    esAdminViaticos ||
+    authService.canManageConfig() ||
     authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
   const puedeVerSolicitudesAsignadas =
     !tieneContextoAuth ||

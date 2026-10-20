@@ -1,7 +1,11 @@
 import { Client } from 'pg';
 
 import { JefaturaService } from './jefatura.service.js';
+import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from '../portal-docente/portal-docente.service.js';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
 
 /**
  * EFDS-1939 :: aprobación de la jefatura territorial.
@@ -31,6 +35,8 @@ const P2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';    // docente DT-010
 describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
   let idPeriodo = '';
   let idGrupo = '';
   const F: Record<string, string> = {};
@@ -38,16 +44,19 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
   const jefatura = () => new JefaturaService({
     query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
   } as any);
-  const portal = () => new PortalDocenteService({
+  const dsPortal = () => ({
     query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     createQueryRunner: () => ({
       connect: async () => {}, release: async () => {},
-      startTransaction: async () => { await client!.query('BEGIN'); },
-      commitTransaction: async () => { await client!.query('COMMIT'); },
-      rollbackTransaction: async () => { await client!.query('ROLLBACK'); },
+      startTransaction: async () => { await client!.query('SAVEPOINT qr'); },
+      commitTransaction: async () => { await client!.query('RELEASE SAVEPOINT qr'); },
+      rollbackTransaction: async () => { await client!.query('ROLLBACK TO SAVEPOINT qr'); },
       query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     }),
-  } as any, null as any);
+  } as any);
+  // El contrato PROG↔PTA se simula a 10 h por grupo: tomar valida el tope y aquí no es lo que se prueba.
+  const portal = () => new PortalDocenteService(dsPortal(), null as any,
+    new DocenciaService(dsPortal(), { calcularImpacto: async () => ({ horasImpacto: 10 }) } as any));
 
   // Franjas VIRTUALES (sin aula): no aportan cruce de aula, así el canario global
   // de validación no las ve; sábado/domingo para no chocar con datos reales.
@@ -63,6 +72,10 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
     try {
       client = new Client(conexion);
       await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       const cod = `QA-JEF-${Date.now().toString().slice(-7)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -70,30 +83,36 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
       idPeriodo = p.rows[0].id_periodo;
       const g = await client.query(
         `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
-         VALUES (2,$1,904,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+         VALUES (${idAsig},$1,904,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
       await tomada('F1', 'SABADO', '06:00', P1);
       await tomada('F2', 'SABADO', '08:00', P1);
       await tomada('F3', 'DOMINGO', '06:00', P1);
       await tomada('FX', 'SABADO', '06:00', P2); // otra territorial
       hayBase = true;
-    } catch {
-      client = null; hayBase = false;
+    } catch (e) {
+        // Solo la FALTA DE BASE se omite. Un fixture que falla (clave foránea, columna) se grita: antes se
+        // saltaba en silencio y dejaba la conexión abierta dentro de una transacción abortada.
+        const conectado = !!(client as any)?._connected;
+        if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+        client = null; hayBase = false;
+        if (conectado) throw e;
     }
   });
 
   afterAll(async () => {
-    if (client && idPeriodo) {
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [idPeriodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [idPeriodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end();
   });
 
   const siHayBase = (nombre: string, fn: () => Promise<void>) =>
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
-      await fn();
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
     });
 
   siHayBase('la jefatura ve las franjas de SU territorial y no las de otra', async () => {
@@ -141,7 +160,7 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
     await expect(jefatura().aprobar(JEFA, F['F3'])).rejects.toThrow(/devoluci/i);
 
     // Al re-tomar F2, se limpia el comentario y se desbloquea el resto.
-    await portal().tomar(P1, F['F2']);
+    await portal().tomar(P1, F['F2'], null);
     await jefatura().aprobar(JEFA, F['F3']); // ya no lanza
     const { rows } = await client!.query(`SELECT estado FROM "${S}".franja_horaria WHERE id_franja=$1`, [F['F3']]);
     expect(rows[0].estado).toBe('APROBADA');

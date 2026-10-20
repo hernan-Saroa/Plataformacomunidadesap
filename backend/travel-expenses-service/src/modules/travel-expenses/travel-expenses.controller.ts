@@ -91,6 +91,38 @@ const SUPER_ADMIN_ROLES = [
   'SUPER_ADMINISTRADOR',
 ];
 
+const COORDINADOR_COMISIONES_ROLES = [
+  'COORDINADOR_COMISIONES_VIATICOS',
+  'COORDINADOR_GRUPO_COMISIONES',
+  'COORDINADOR_COMISIONES',
+  'COORDINADORA_GRUPO_COMISIONES',
+  'COORDINADORA_COMISIONES_VIATICOS',
+  'COORDINADOR_DE_COMISIONES',
+];
+
+function isCoordinadorComisiones(user: AuthenticatedRequest['user']): boolean {
+  if (!user) return false;
+  const rawRoles = Array.isArray(user.roles) ? user.roles : [];
+  const singleRole = user.role ? [user.role] : [];
+  const allRoles = [...rawRoles, ...singleRole];
+  const rawPermissions = Array.isArray(user.permissions) ? user.permissions : [];
+  const normalizedPermissions = rawPermissions.map((p: any) =>
+    typeof p === 'string' ? p : p?.code || '',
+  );
+
+  return (
+    allRoles.some((r) => {
+      const code = normalizeRoleCode(r);
+      return (
+        COORDINADOR_COMISIONES_ROLES.includes(code) ||
+        code.includes('COORDINADOR_COMISIONES') ||
+        code.includes('COORDINADOR_GRUPO_COMISIONES')
+      );
+    }) ||
+    normalizedPermissions.includes('travel_expenses.general.es_coordinador_comisiones')
+  );
+}
+
 function normalizeRoleCode(role: any): string {
   if (typeof role === 'string') {
     return role.toUpperCase().replace(/\s+/g, '_');
@@ -108,7 +140,10 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
   const rawRoles = Array.isArray(user.roles) ? user.roles : [];
   const singleRole = user.role ? [user.role] : [];
   const allRoles = [...rawRoles, ...singleRole];
-  return allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r)));
+  return (
+    allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r))) ||
+    isCoordinadorComisiones(user)
+  );
 }
 
 @Controller()
@@ -135,15 +170,23 @@ export class TravelExpensesController {
         ? r.toUpperCase().replace(/\s+/g, '_')
         : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
     );
-    const superAdmin = normalizedRoles.some((r) =>
-      SUPER_ADMIN_ROLES.includes(r),
-    );
     const rawPermissions = Array.isArray(req.user?.permissions)
       ? req.user.permissions
       : [];
     const normalizedPermissions = rawPermissions.map((p: any) =>
       typeof p === 'string' ? p : p?.code || '',
     );
+    const isCoordinador =
+      normalizedRoles.some((r) =>
+        COORDINADOR_COMISIONES_ROLES.includes(r) ||
+        r.includes('COORDINADOR_COMISIONES') ||
+        r.includes('COORDINADOR_GRUPO_COMISIONES'),
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_coordinador_comisiones');
+
+    const superAdmin =
+      normalizedRoles.some((r) => SUPER_ADMIN_ROLES.includes(r)) ||
+      isCoordinador;
     const isControlViaticos =
       normalizedRoles.some(
         (r) => r === 'CONTROL_VIATICOS' || r === 'ROL_CONTROL_VIATICOS',

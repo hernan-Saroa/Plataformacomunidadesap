@@ -34,6 +34,10 @@ interface FiltrosUI {
   estado: string;
 }
 
+const padFecha = (n: number) => String(n).padStart(2, '0');
+const formatearFechaInput = (d: Date) => `${d.getFullYear()}-${padFecha(d.getMonth() + 1)}-${padFecha(d.getDate())}`;
+const limitarFechaFutura = (valor: string, max: string) => (valor && valor > max ? max : valor);
+
 const buildParamsDesdeUI = (u: FiltrosUI): FiltrosReporteGestionParams => {
   const out: FiltrosReporteGestionParams = {};
   if (u.fechaDesde) out.fechaDesde = new Date(u.fechaDesde + 'T00:00:00').toISOString();
@@ -47,14 +51,10 @@ const buildParamsDesdeUI = (u: FiltrosUI): FiltrosReporteGestionParams => {
 };
 
 const defaultFiltros = (): FiltrosUI => {
-  const hoy = new Date();
-  const hace90 = new Date();
-  hace90.setDate(hoy.getDate() - 90);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hoy = formatearFechaInput(new Date());
   return {
-    fechaDesde: iso(hace90),
-    fechaHasta: iso(hoy),
+    fechaDesde: hoy,
+    fechaHasta: hoy,
     idSede: '',
     idCategoria: '',
     areaResponsable: '',
@@ -94,6 +94,7 @@ export const ReportesGestionView: React.FC = () => {
   const [idSolicitudSeleccionada, setIdSolicitudSeleccionada] = useState<string | null>(null);
   const [abrirDetalleSolicitud, setAbrirDetalleSolicitud] = useState<boolean>(false);
   const [catExpandida, setCatExpandida] = useState<string | number | null>(null);
+  const hoyUI = useMemo(() => formatearFechaInput(new Date()), []);
 
   const cargarCatalogos = async () => {
     const [s, c, t] = await Promise.allSettled([
@@ -141,7 +142,7 @@ export const ReportesGestionView: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const sufijo = new Date().toISOString().slice(0, 10);
+      const sufijo = formatearFechaInput(new Date());
       a.download = `Reporte_Gestion_Infraestructura_UMI_${sufijo}.xlsx`;
       document.body.appendChild(a);
       a.click();
@@ -158,7 +159,7 @@ export const ReportesGestionView: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const sufijo = new Date().toISOString().slice(0, 10);
+      const sufijo = formatearFechaInput(new Date());
       a.download = `Reporte_Gestion_Infraestructura_UMI_${sufijo}.pdf`;
       document.body.appendChild(a);
       a.click();
@@ -282,7 +283,8 @@ export const ReportesGestionView: React.FC = () => {
           <input
             type="date"
             value={filtros.fechaDesde}
-            onChange={(e) => setFiltros({ ...filtros, fechaDesde: e.target.value })}
+            max={hoyUI}
+            onChange={(e) => setFiltros({ ...filtros, fechaDesde: limitarFechaFutura(e.target.value, hoyUI) })}
             className="px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
           />
         </label>
@@ -291,7 +293,8 @@ export const ReportesGestionView: React.FC = () => {
           <input
             type="date"
             value={filtros.fechaHasta}
-            onChange={(e) => setFiltros({ ...filtros, fechaHasta: e.target.value })}
+            max={hoyUI}
+            onChange={(e) => setFiltros({ ...filtros, fechaHasta: limitarFechaFutura(e.target.value, hoyUI) })}
             className="px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
           />
         </label>
@@ -504,7 +507,7 @@ export const ReportesGestionView: React.FC = () => {
                       <th className="p-2 font-semibold text-right">Compl</th>
                       <th className="p-2 font-semibold text-right">Curso</th>
                       <th className="p-2 font-semibold text-right">Venc</th>
-                      <th className="p-2 font-semibold text-right">Calif</th>
+                      <th className="p-2 font-semibold text-right">Calif promedio</th>
                       <th className="p-2 font-semibold text-right">Acc</th>
                     </tr>
                   </thead>
@@ -521,7 +524,7 @@ export const ReportesGestionView: React.FC = () => {
                         <td className="p-2 text-right tabular-nums text-emerald-700">{c.completados}</td>
                         <td className="p-2 text-right tabular-nums text-amber-700">{c.enCurso}</td>
                         <td className="p-2 text-right tabular-nums text-rose-700">{c.vencidos}</td>
-                        <td className="p-2 text-right tabular-nums">{c.promedioCalificacion.toFixed(2)}</td>
+                        <td className="p-2 text-right tabular-nums font-medium text-slate-700">Prom. {c.promedioCalificacion.toFixed(2)} / 5</td>
                         <td className="p-2 text-right">
                           <button
                             type="button"
@@ -554,7 +557,7 @@ export const ReportesGestionView: React.FC = () => {
                       <th className="p-2 font-semibold text-right">Compl</th>
                       <th className="p-2 font-semibold text-right">Curso</th>
                       <th className="p-2 font-semibold text-right">Carga HOY</th>
-                      <th className="p-2 font-semibold text-right">Calif</th>
+                      <th className="p-2 font-semibold text-right">Calif promedio</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -568,7 +571,7 @@ export const ReportesGestionView: React.FC = () => {
                         <td className="p-2 text-right tabular-nums text-emerald-700">{t.completados}</td>
                         <td className="p-2 text-right tabular-nums text-amber-700">{t.enCurso}</td>
                         <td className="p-2 text-right tabular-nums text-slate-700">{t.cargaVigente}</td>
-                        <td className="p-2 text-right tabular-nums">{t.promedioCalificacion.toFixed(2)}</td>
+                        <td className="p-2 text-right tabular-nums font-medium text-slate-700">Prom. {t.promedioCalificacion.toFixed(2)} / 5</td>
                       </tr>
                     ))}
                     {reporte.porTecnico.length === 0 && (

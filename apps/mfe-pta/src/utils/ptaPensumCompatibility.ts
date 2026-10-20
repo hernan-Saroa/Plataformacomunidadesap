@@ -27,6 +27,13 @@ export function catalogPensumKey(item: any): string {
   return text(item?.pensumKey ?? item?.pensum) || SIN_PENSUM_KEY;
 }
 
+/** Las referencias históricas se conservan para leer PTAs, pero no son opciones de registro. */
+function isSelectableAssignment(item: any): boolean {
+  const active = item?.activa ?? item?.activo;
+  return active !== false && active !== 0 && active !== 'false' && active !== '0'
+    && !item?.deletedAt && !item?.deleted_at;
+}
+
 /** Etiqueta segura para vistas y exportaciones; nunca expone el marcador interno. */
 export function formatPtaPensum(value: unknown): string {
   const pensum = text(value);
@@ -73,6 +80,14 @@ export function mergeAssignmentCatalog(
     });
   });
   return [...merged.values()];
+}
+
+/** La respuesta del programa reemplaza su copia general, sin incorporar filas de otros programas. */
+export function replaceProgramAssignmentCatalog(current: any[], incoming: any[], programaId: unknown) {
+  const programKey = text(programaId);
+  if (!programKey) return current;
+  const ownAssignments = incoming.filter(item => !catalogProgramId(item) || catalogProgramId(item) === programKey);
+  return mergeAssignmentCatalog(current.filter(item => catalogProgramId(item) !== programKey), ownAssignments, programKey);
 }
 
 function assignmentNameMatches(candidate: any, variants: Set<string>) {
@@ -167,7 +182,7 @@ export function listPensumsForProgram(catalog: any[], programaId: unknown) {
   const unique = new Map<string, string>();
 
   catalog
-    .filter(item => catalogProgramId(item) === programKey)
+    .filter(item => catalogProgramId(item) === programKey && isSelectableAssignment(item))
     .forEach(item => {
       const rawPensum = text(item?.pensum);
       const key = catalogPensumKey(item);
@@ -187,7 +202,7 @@ export function filterAssignmentsByPensum(
   const programKey = text(programaId);
   const pensumKey = text(pensum);
   const programAssignments = catalog.filter(
-    item => catalogProgramId(item) === programKey,
+    item => catalogProgramId(item) === programKey && isSelectableAssignment(item),
   );
 
   // Un borrador antiguo puede tener asignatura pero aún no Pensum. Mientras se

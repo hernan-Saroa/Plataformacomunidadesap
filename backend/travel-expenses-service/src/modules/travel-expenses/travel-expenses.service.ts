@@ -349,6 +349,29 @@ export class TravelExpensesService implements OnModuleInit {
     'superuser',
   ];
 
+  private readonly ROLES_COORDINADOR_COMISIONES = [
+    'COORDINADOR_COMISIONES_VIATICOS',
+    'COORDINADOR_GRUPO_COMISIONES',
+    'COORDINADOR_COMISIONES',
+    'COORDINADORA_GRUPO_COMISIONES',
+    'COORDINADORA_COMISIONES_VIATICOS',
+    'COORDINADOR_DE_COMISIONES',
+  ];
+
+  private esCoordinadorComisiones(rolesUsuario: string[]): boolean {
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_COORDINADOR_COMISIONES.includes(normalized) ||
+        normalized.includes('COORDINADOR_COMISIONES') ||
+        normalized.includes('COORDINADOR_GRUPO_COMISIONES') ||
+        r === 'travel_expenses.general.es_coordinador_comisiones'
+      );
+    });
+  }
+
   private esSuperAdmin(rolesUsuario: string[]): boolean {
     return rolesUsuario.some((r) => {
       if (typeof r !== 'string') return false;
@@ -9567,7 +9590,7 @@ if (itinerarioGeneral) {
       return;
     }
 
-    if (this.esSuperAdmin(rolesUsuario)) {
+    if (this.esSuperAdmin(rolesUsuario) || this.esCoordinadorComisiones(rolesUsuario)) {
       return;
     }
 
@@ -9580,6 +9603,12 @@ if (itinerarioGeneral) {
       'LIDER_DEPENDENCIA',
       'LIDER_DE_DEPENDENCIA',
       'JEFE_DE_DEPENDENCIA',
+      'COORDINADOR_COMISIONES_VIATICOS',
+      'COORDINADOR_GRUPO_COMISIONES',
+      'COORDINADOR_COMISIONES',
+      'COORDINADORA_GRUPO_COMISIONES',
+      'COORDINADORA_COMISIONES_VIATICOS',
+      'COORDINADOR_DE_COMISIONES',
     ];
 
     const esAutorizado = rolesUsuario.some((r: any) => {
@@ -9588,8 +9617,11 @@ if (itinerarioGeneral) {
       return (
         rolesPermitidosJefe.includes(normalized) ||
         normalized.includes('JEFE_DEPENDENCIA') ||
+        normalized.includes('COORDINADOR_COMISIONES') ||
+        normalized.includes('COORDINADOR_GRUPO_COMISIONES') ||
         normalized === 'SUPERVISOR' ||
         r === 'travel_expenses:cancel_request' ||
+        r === 'travel_expenses.general.es_coordinador_comisiones' ||
         r === 'travel_expenses.general.es_jefe_dependencia'
       );
     });

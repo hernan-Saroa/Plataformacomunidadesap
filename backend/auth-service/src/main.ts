@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ResponseInterceptor } from './common/response.interceptor';
@@ -12,6 +13,10 @@ import { rundFolderStaticAccess } from './carpeta-digital/rund-document-access';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.getHttpAdapter().getInstance().disable?.('x-powered-by');
+
+  // Body size limits for template and document uploads
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   // Static assets para los documentos subidos a la Carpeta Digital genérica.
   // Multer escribe a ./uploads/carpeta-digital/{personaId}/... relativo al CWD,

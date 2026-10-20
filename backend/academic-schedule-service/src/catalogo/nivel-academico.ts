@@ -42,6 +42,33 @@ export function nivelDeProgramaTipo(tipo: string | null | undefined): NivelAcade
   return POSGRADO_PROGRAMA_TIPOS.has(normalizado) ? 'posgrado' : 'pregrado';
 }
 
+/**
+ * Condición SQL que deja solo los programas de los niveles dados — RN-08 en las
+ * LISTAS (EFDS-2302). `columnaTipo` es la columna `programa.tipo` del JOIN.
+ *
+ * Fail-closed: sin niveles no pasa nada; con los dos no filtra. Un registro
+ * cuyo programa no se resuelve (tipo NULL) solo lo ve quien ve ambos niveles.
+ * Los tipos de posgrado van como parámetro, nunca concatenados.
+ */
+export function condicionNivelSql(
+  columnaTipo: string,
+  niveles: readonly NivelAcademico[],
+  indiceParametro: number,
+): { sql: string; params: unknown[] } {
+  const posgrado = [...POSGRADO_PROGRAMA_TIPOS];
+  if (niveles.includes('pregrado') && niveles.includes('posgrado')) return { sql: 'TRUE', params: [] };
+  if (niveles.includes('posgrado')) {
+    return { sql: `lower(${columnaTipo}) = ANY($${indiceParametro}::text[])`, params: [posgrado] };
+  }
+  if (niveles.includes('pregrado')) {
+    return {
+      sql: `(${columnaTipo} IS NOT NULL AND lower(${columnaTipo}) <> ALL($${indiceParametro}::text[]))`,
+      params: [posgrado],
+    };
+  }
+  return { sql: 'FALSE', params: [] };
+}
+
 /** Tipos concretos que componen un nivel binario, para filtrar en SQL. */
 export function tiposDeNivel(nivel: NivelAcademico, tiposExistentes: string[]): string[] {
   return tiposExistentes.filter((t) => nivelDeProgramaTipo(t) === nivel);
