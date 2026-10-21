@@ -12763,7 +12763,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   );
 
   // Observación, subsanación y firma OTP: los usan la vista completa y la del aprobador (EFDS-2320)
-  const modalesAprobacion = (
+  // Al body con un portal: dentro del contenido del shell quedaban recortados y sin cubrir toda la pantalla
+  const modalesAprobacion = createPortal(
     <>
         {/* Modal / Dialogo de Observación (Render Flotante Top-Level Z-Index) */}
         <AnimatePresence>
@@ -12903,7 +12904,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           userEmail={modalOTPConfig.userEmail}
           accionDetalle={modalOTPConfig.detalle}
         />
-    </>
+    </>,
+    document.body,
   );
 
   if (modo === 'aprobador') {
