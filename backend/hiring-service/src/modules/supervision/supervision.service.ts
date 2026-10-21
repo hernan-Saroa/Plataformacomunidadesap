@@ -21,6 +21,7 @@ import {
 } from './dto/supervision.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
+import { PuestosService } from '../participacion/puestos.service';
 
 /** Actividad 8.2 de la matriz: la designación del supervisor. */
 export const NUMERAL_SUPERVISOR = '8.2';
@@ -66,6 +67,7 @@ export class SupervisionService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    private readonly puestos: PuestosService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -85,6 +87,7 @@ export class SupervisionService {
 
     const admite = admiteSupervisor(contrato.estado);
     const vigente = await this.supervisorVigente(contrato.id);
+    const puesto = await this.puestos.puestoDelSupervisor(procesoId);
 
     // El historial completo: quien vigiló los primeros meses respondió por
     // ellos, así que el expediente conserva a los relevados con su motivo.
@@ -105,11 +108,18 @@ export class SupervisionService {
         ? null
         : 'el contrato todavía no lo han firmado las dos partes',
       contrato: { numero: contrato.numero, objeto: contrato.objeto },
+      /**
+       * El puesto que llena la designación: el que avala la 9.4 en el flujo
+       * (121). Sin él, avala cualquiera con el permiso y la designación solo
+       * deja constancia de quién vigila.
+       */
+      puesto: puesto ? { id: puesto.id, nombre: puesto.nombre } : null,
       puedeDesignar: admite && !vigente,
       supervisor: vigente
         ? {
             id: vigente.id,
             personaId: vigente.personaId,
+            usuarioId: vigente.usuarioId,
             nombre: vigente.nombre,
             cargo: vigente.cargo,
             email: vigente.email,
@@ -139,6 +149,11 @@ export class SupervisionService {
     };
   }
 
+  /** A quién se puede designar: los candidatos del puesto que avala la 9.4. */
+  candidatos(procesoId: string, termino: string) {
+    return this.puestos.candidatosASupervisor(procesoId, termino);
+  }
+
   // ---------------------------------------------------------- designación --
 
   async designar(
@@ -158,6 +173,7 @@ export class SupervisionService {
       }
 
       this.validarFecha(dto.fechaDesignacion);
+      const cuenta = await this.puestos.exigirCandidatoASupervisor(em, procesoId, dto.usuarioId);
 
       if (await this.cierre.exigeFirma(em, NUMERAL_SUPERVISOR)) {
         this.cierre.exigirFirmaValida(dto.firma);
@@ -165,6 +181,14 @@ export class SupervisionService {
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const puestoId = await this.puestos.ocuparPorDesignacion(
+        em,
+        procesoId,
+        cuenta,
+        'Se designó otro supervisor en la 8.2',
+        acceso,
+      );
 
       const doc = await this.guardarDocumento(
         em,
@@ -180,10 +204,12 @@ export class SupervisionService {
           contratoId: contrato.id,
           actoDocumentoId: doc.id,
           fechaDesignacion: dto.fechaDesignacion,
-          personaId: dto.personaId,
-          nombre: dto.nombre,
+          personaId: cuenta.personaId,
+          usuarioId: cuenta.usuarioId,
+          puestoId,
+          nombre: cuenta.nombre,
           cargo: dto.cargo ?? null,
-          email: dto.email ?? null,
+          email: cuenta.email,
           designadoPor: acceso.userName,
           estado: 'VIGENTE' as const,
         } as Partial<SupervisionContrato>),
@@ -194,7 +220,7 @@ export class SupervisionService {
       await this.traza(em, procesoId, supervision.id, 'DESIGNAR', acceso, {
         actividad: NUMERAL_SUPERVISOR,
         contrato: contrato.numero,
-        supervisor: dto.nombre,
+        supervisor: cuenta.nombre,
         fechaDesignacion: dto.fechaDesignacion,
       });
     });
@@ -219,6 +245,8 @@ export class SupervisionService {
       vigente.relevadoPor = acceso.userName;
       vigente.motivoRelevo = dto.motivo;
       await em.save(vigente);
+      // El puesto queda vacío con él: nadie avala hasta que se designe otro.
+      await this.puestos.liberarPorDesignacion(em, procesoId, dto.motivo, acceso);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
 
@@ -268,13 +296,14 @@ export class SupervisionService {
         );
       }
 
-      if (vigente.personaId === dto.personaId) {
+      if (vigente.usuarioId === dto.usuarioId) {
         throw new ConflictException(
           'Esa persona ya es el supervisor del contrato: reasignar exige designar a otra',
         );
       }
 
       this.validarFecha(dto.fechaDesignacion);
+      const cuenta = await this.puestos.exigirCandidatoASupervisor(em, procesoId, dto.usuarioId);
 
       if (await this.cierre.exigeFirma(em, NUMERAL_SUPERVISOR)) {
         this.cierre.exigirFirmaValida(dto.firma);
@@ -282,6 +311,9 @@ export class SupervisionService {
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      // Releva al que ocupaba el puesto con el mismo motivo del acto.
+      const puestoId = await this.puestos.ocuparPorDesignacion(em, procesoId, cuenta, dto.motivo, acceso);
 
       const doc = await this.guardarDocumento(
         em,
@@ -305,10 +337,12 @@ export class SupervisionService {
           contratoId: contrato.id,
           actoDocumentoId: doc.id,
           fechaDesignacion: dto.fechaDesignacion,
-          personaId: dto.personaId,
-          nombre: dto.nombre,
+          personaId: cuenta.personaId,
+          usuarioId: cuenta.usuarioId,
+          puestoId,
+          nombre: cuenta.nombre,
           cargo: dto.cargo ?? null,
-          email: dto.email ?? null,
+          email: cuenta.email,
           designadoPor: acceso.userName,
           estado: 'VIGENTE' as const,
         } as Partial<SupervisionContrato>),
@@ -321,7 +355,7 @@ export class SupervisionService {
         contrato: contrato.numero,
         reasignacion: true,
         supervisorAnterior: vigente.nombre,
-        supervisor: dto.nombre,
+        supervisor: cuenta.nombre,
         motivo: dto.motivo,
         fechaDesignacion: dto.fechaDesignacion,
       });

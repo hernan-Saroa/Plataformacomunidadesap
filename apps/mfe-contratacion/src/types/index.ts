@@ -2183,7 +2183,9 @@ export interface GuardarTipologia {
 
 export interface SupervisorContrato {
   id: string;
-  personaId: string;
+  personaId: string | null;
+  /** La cuenta designada (121): la que ocupa el puesto e inicia sesión. */
+  usuarioId: string | null;
   nombre: string;
   cargo: string | null;
   email: string | null;
@@ -2212,6 +2214,11 @@ export interface EstadoSupervision {
   admiteSupervisor: boolean;
   motivoNoAdmite: string | null;
   contrato?: { numero: string; objeto: string };
+  /**
+   * El puesto que llena la designación: el que aprueba la 9.4 en el flujo
+   * (121). Nulo si la 9.4 no nombra puesto.
+   */
+  puesto?: { id: string; nombre: string } | null;
   puedeDesignar?: boolean;
   supervisor: SupervisorContrato | null;
   /** El aviso que pide la matriz sigue pendiente. */
@@ -2221,10 +2228,9 @@ export interface EstadoSupervision {
 
 /** Lo que la pantalla envia al designar. */
 export interface DatosSupervisor {
-  personaId: string;
-  nombre: string;
+  /** La cuenta, entre los candidatos del puesto; nombre y correo salen de ella. */
+  usuarioId: string;
   cargo?: string;
-  email?: string;
   fechaDesignacion: string;
   firma?: EvidenciaFirmaOtp;
 }
@@ -4145,6 +4151,8 @@ export interface PuestoEnProceso {
   } | null;
   /** Lo que le impide actuar a quien lo ocupa: perdió un permiso. */
   problema: string | null;
+  /** Dónde se ocupa si no es en la 3.3: el del supervisor, con el acto de la 8.2 (121). */
+  seOcupaEn?: string | null;
 }
 
 export interface PuestosDelProceso {

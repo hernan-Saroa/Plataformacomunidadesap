@@ -654,12 +654,13 @@ export class AlertasService {
    * Cuentas de cobro radicadas que esperan el aval (9.4).
    *
    * Las avala el supervisor vigente del contrato, no un rol: es la regla de
-   * `PagosService.exigirSupervisor`, por persona o por nombre de cuenta.
+   * `PagosService.exigirSupervisor`. Por la cuenta que ocupa el puesto que
+   * llenó la designación (121); si la 9.4 no nombra puesto, por la cuenta
+   * designada.
    */
   private pagosPorAvalar(acceso: HiringAccess): Promise<any[]> {
-    const nombre = (acceso.userName ?? '').trim();
     const id = (acceso.userId ?? '').trim();
-    if (!nombre && !id) return Promise.resolve([]);
+    if (!id) return Promise.resolve([]);
 
     return this.dataSource.query(
       `
@@ -684,11 +685,15 @@ export class AlertasService {
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
        WHERE pg.estado = 'RADICADO'
          AND (
-           ($1 <> '' AND s.nombre = $1)
-           OR ($2 <> '' AND s.persona_id::text = $2)
+           EXISTS (
+             SELECT 1 FROM hiring.asignaciones_puesto ap
+              WHERE ap.proceso_id = p.id AND ap.puesto_id = s.puesto_id
+                AND ap.estado = 'VIGENTE' AND ap.usuario_id::text = $1
+           )
+           OR (s.puesto_id IS NULL AND s.usuario_id::text = $1)
          )
       `,
-      [nombre, id],
+      [id],
     );
   }
 

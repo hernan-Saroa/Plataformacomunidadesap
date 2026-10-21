@@ -33,8 +33,17 @@ export class SupervisionContrato {
   fechaDesignacion: string;
 
   /** `id_person` de auth.personas; sin FK porque ese esquema es de otro equipo. */
-  @Column({ name: 'persona_id' })
-  personaId: string;
+  /** La persona del directorio, si la cuenta tiene una. */
+  @Column({ name: 'persona_id', type: 'uuid', nullable: true })
+  personaId: string | null;
+
+  /** La cuenta designada (121): es la que ocupa el puesto e inicia sesión. */
+  @Column({ name: 'usuario_id', type: 'uuid', nullable: true })
+  usuarioId: string | null;
+
+  /** El puesto que llenó la designación, si la 9.4 nombra uno. */
+  @Column({ name: 'puesto_id', type: 'uuid', nullable: true })
+  puestoId: string | null;
 
   /** Copia del nombre al designar: el acto nombró a esa persona ese día. */
   @Column({ length: 200 })

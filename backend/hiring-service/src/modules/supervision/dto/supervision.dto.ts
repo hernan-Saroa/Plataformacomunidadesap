@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
-  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -21,19 +20,14 @@ import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma
  * un supervisor.
  */
 export class DesignarSupervisorDto {
-  @ApiProperty({ description: 'id_person de la persona en el directorio' })
-  @IsUUID('4', { message: 'El supervisor se identifica con el id de la persona del directorio' })
-  personaId: string;
-
   /**
-   * El nombre viaja junto al id y no se resuelve en el servidor: es el que se
-   * copia al expediente, y tiene que ser el que el ordenador vio y eligio.
+   * La cuenta y no la persona del directorio (121): quien se designa ocupa el
+   * puesto que avala la 9.4, y es la cuenta la que inicia sesión. El nombre,
+   * el correo y la persona se toman de ella.
    */
-  @ApiProperty({ description: 'Nombre tal como lo designa el acto' })
-  @IsString()
-  @IsNotEmpty({ message: 'Registra el nombre de quien se designa como supervisor' })
-  @MaxLength(200)
-  nombre: string;
+  @ApiProperty({ description: 'id_user de la cuenta que se designa, entre los candidatos del puesto' })
+  @IsUUID('all', { message: 'El supervisor se elige entre las cuentas que pueden ocupar el puesto' })
+  usuarioId: string;
 
   @ApiPropertyOptional({ description: 'Cargo que ocupa en la entidad' })
   @IsOptional()
@@ -41,14 +35,6 @@ export class DesignarSupervisorDto {
   @MaxLength(200)
   cargo?: string;
 
-  /** Para el aviso que pide la matriz en 8.2, cuando exista notificaciones. */
-  @ApiPropertyOptional({ description: 'Correo al que se le avisará de la designación' })
-  @IsOptional()
-  @IsEmail({}, { message: 'El correo del supervisor no tiene un formato válido' })
-  @MaxLength(200)
-  email?: string;
-
-  /** La del acto, no la del registro: es cuando la entidad designo. */
   @ApiProperty({ description: 'Fecha del acto administrativo (YYYY-MM-DD)' })
   @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
   fechaDesignacion: string;

@@ -142,6 +142,9 @@ function FilaDePuesto({
             {puesto.ocupante.esMio ? ' (tú)' : ''} · desde el {momento(puesto.ocupante.asignadoAt)}
             {puesto.ocupante.asignadoPor ? ` por ${puesto.ocupante.asignadoPor}` : ''}
           </p>
+        ) : puesto.seOcupaEn ? (
+          // Vacío hasta la etapa 8 es lo normal: no es una tarea pendiente de la 3.3.
+          <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">Todavía sin designar.</p>
         ) : (
           <p className="text-[11.5px] font-bold text-amber-700 m-0 mt-0.5">
             Sin asignar: mientras tanto lo que hace este puesto no lo hace nadie.
@@ -149,7 +152,14 @@ function FilaDePuesto({
         )}
       </div>
 
-      {puedeAsignar && modo === 'nada' ? (
+      {/* El del supervisor lo llena el acto de designación, no esta pantalla. */}
+      {puesto.seOcupaEn ? (
+        <p className="text-[11px] text-slate-500 m-0">
+          Se ocupa con la designación de la {puesto.seOcupaEn}, junto con el acto que lo nombra.
+        </p>
+      ) : null}
+
+      {puedeAsignar && !puesto.seOcupaEn && modo === 'nada' ? (
         <div className="flex flex-wrap items-center gap-2">
           <BotonSecundario icono={<UserPlus className="w-3.5 h-3.5" />} onClick={() => setModo('asignar')}>
             {cambiando ? 'Cambiar' : 'Asignar'}

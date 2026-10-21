@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -49,6 +50,17 @@ export class SupervisionController {
   })
   estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.estado(procesoId, getHiringAccess(req));
+  }
+
+  @Get('candidatos')
+  @Puede('ver', '8.2')
+  @ApiOperation({
+    summary: 'A quién se puede designar supervisor',
+    description:
+      'Las cuentas que pueden ocupar el puesto que avala la 9.4 en este proceso (121): las que tienen todos los permisos de lo que ese puesto hace.',
+  })
+  candidatos(@Param('id', ParseUUIDPipe) procesoId: string, @Query('q') q?: string) {
+    return this.service.candidatos(procesoId, q ?? '');
   }
 
   @Post()

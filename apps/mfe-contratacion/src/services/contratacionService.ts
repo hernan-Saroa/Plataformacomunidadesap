@@ -923,6 +923,10 @@ export const contratacionService = {
   supervision: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`),
 
+  /** A quién se puede designar: los candidatos del puesto que avala la 9.4 (121). */
+  candidatosASupervisor: (procesoId: string, q = '') =>
+    pedir<CandidatoAPuesto[]>(`/procesos/${procesoId}/supervision/candidatos?q=${encodeURIComponent(q)}`),
+
   /** Designa al supervisor con el acto administrativo que lo nombra. */
   designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File) => {
     const cuerpo = new FormData();

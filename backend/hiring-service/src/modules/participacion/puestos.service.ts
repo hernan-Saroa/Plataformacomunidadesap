@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 
 import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
@@ -19,6 +19,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import {
   AprobacionGuardada,
   LaHaceGuardada,
+  asignacionPara,
   asignacionQueRige,
   filasDeVersion,
   versionActiva,
@@ -47,6 +48,9 @@ export interface Candidato {
   /** Cuántos procesos lleva ya en ese puesto, para repartir con criterio. */
   procesosEnElPuesto: number;
 }
+
+/** Donde se avalan las cuentas de cobro: quien la aprueba es el supervisor (121). */
+const NUMERAL_AVAL = '9.4';
 
 const ACCION_NOMBRE: Record<string, string> = { editar: 'editar', aprobar: 'aprobar', decidir: 'decidir' };
 
@@ -266,6 +270,7 @@ export class PuestosService {
       .getRepository(AsignacionPuesto)
       .find({ where: { procesoId }, order: { asignadoAt: 'DESC' } });
     const usos = await this.usos(proceso.modalidad ?? null, undefined, await versionDelProceso(this.dataSource.manager, procesoId));
+    const delSupervisor = await this.puestoDelSupervisor(procesoId);
 
     const lista = [];
     for (const p of puestos) {
@@ -280,6 +285,8 @@ export class PuestosService {
         nombre: p.nombre,
         descripcion: p.descripcion,
         obligatorio: p.obligatorio,
+        /** Dónde se ocupa, si no es aquí: el del supervisor lo llena la 8.2. */
+        seOcupaEn: delSupervisor?.id === p.id ? '8.2' : null,
         usos: suyos.map((u) => ({ numeral: u.numeral, nombreActividad: u.nombreActividad, como: u.como })),
         ocupante: ocupa
           ? {
@@ -326,9 +333,12 @@ export class PuestosService {
     const usos = (
       await this.usos(proceso.modalidad ?? null, undefined, await versionDelProceso(this.dataSource.manager, procesoId))
     ).filter((u) => u.puestoId === puestoId);
-    const ids = await this.idsCandidatos(usos);
-    if (!ids.length) return [];
+    return this.cuentas(await this.idsCandidatos(usos), termino, puestoId);
+  }
 
+  /** Las cuentas activas de esa lista, con cuántos procesos llevan en el puesto. */
+  private async cuentas(ids: string[], termino: string, puestoId: string | null): Promise<Candidato[]> {
+    if (!ids.length) return [];
     return this.dataSource.query(
       `SELECT u.id_user::text AS "usuarioId",
               u.username      AS "usuarioNombre",
@@ -337,7 +347,7 @@ export class PuestosService {
               COALESCE(p.dir_email, u.username) AS email,
               (SELECT count(*) FROM hiring.asignaciones_puesto a
                  JOIN hiring.procesos x ON x.id = a.proceso_id AND x.estado = 'EN_CURSO'
-                WHERE a.usuario_id = u.id_user AND a.puesto_id::text = $3 AND a.estado = 'VIGENTE')::int
+                WHERE a.usuario_id = u.id_user AND a.puesto_id::text = $3::text AND a.estado = 'VIGENTE')::int
                 AS "procesosEnElPuesto"
          FROM auth."user" u
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
@@ -361,6 +371,7 @@ export class PuestosService {
       const proceso = await this.exigirProceso(em, procesoId, true);
       await this.exigirQuePuedaAsignar(em, procesoId, acceso);
       const puesto = await this.exigirPuesto(puestoId, em);
+      await this.exigirQueNoSeaElDelSupervisor(em, procesoId, puestoId);
 
       const usos = (await this.usos(proceso.modalidad ?? null, em, await versionDelProceso(em, procesoId))).filter(
         (u) => u.puestoId === puestoId,
@@ -442,6 +453,7 @@ export class PuestosService {
       await this.exigirProceso(em, procesoId, true);
       await this.exigirQuePuedaAsignar(em, procesoId, acceso);
       const puesto = await this.exigirPuesto(puestoId, em);
+      await this.exigirQueNoSeaElDelSupervisor(em, procesoId, puestoId);
       const repo = em.getRepository(AsignacionPuesto);
       const actual = await repo.findOne({ where: { procesoId, puestoId, estado: 'VIGENTE' } });
       if (!actual) throw new NotFoundException(`Nadie ocupa el puesto ${puesto.nombre} en este proceso`);
@@ -459,6 +471,162 @@ export class PuestosService {
       });
     });
     return this.delProceso(procesoId, acceso);
+  }
+
+  // ------------------------------------------------------ el supervisor --
+
+  /**
+   * El puesto del supervisor en este proceso: el que avala las cuentas de
+   * cobro de la 9.4 según el flujo con que corre (migración 121).
+   *
+   * No hay un puesto «Supervisor» escrito en el código: la Dirección dice en
+   * la ficha de la 9.4 qué puesto la aprueba, y ese es el que la 8.2 llena con
+   * el acto de designación. Sin puesto en la 9.4, el aval queda en manos de
+   * quien tenga el permiso, como cualquier actividad sin regla.
+   */
+  async puestoDelSupervisor(procesoId: string, em?: EntityManager): Promise<PuestoProceso | null> {
+    const manager = em ?? this.dataSource.manager;
+    const [proceso] = await manager.query(`SELECT modalidad FROM hiring.procesos WHERE id::text = $1`, [procesoId]);
+    const { aprobacion } = await asignacionPara(manager, NUMERAL_AVAL, proceso?.modalidad ?? null, procesoId);
+
+    let ids: string[] = [];
+    if (aprobacion.tipo === 'ESCALON') ids = aprobacion.puestos ?? [];
+    if (aprobacion.tipo === 'CADENA') {
+      const [cadena] = await manager.query(`SELECT escalones FROM hiring.cadenas_aprobacion WHERE id::text = $1`, [
+        aprobacion.cadenaId,
+      ]);
+      ids = ((cadena?.escalones ?? []) as { puestos?: string[] }[]).flatMap((e) => e.puestos ?? []);
+    }
+    if (!ids.length) return null;
+
+    const puestos = await manager.getRepository(PuestoProceso).find({ where: { id: In(ids), activo: true } });
+    // El primero en el orden de la ficha: con dos puestos, avala el que se nombró primero.
+    return ids.map((id) => puestos.find((p) => p.id === id)).find(Boolean) ?? null;
+  }
+
+  /** Quién ocupa hoy el puesto del supervisor en el proceso. */
+  async ocupanteDelSupervisor(procesoId: string, em?: EntityManager): Promise<AsignacionPuesto | null> {
+    const manager = em ?? this.dataSource.manager;
+    const puesto = await this.puestoDelSupervisor(procesoId, manager);
+    if (!puesto) return null;
+    return manager
+      .getRepository(AsignacionPuesto)
+      .findOne({ where: { procesoId, puestoId: puesto.id, estado: 'VIGENTE' } });
+  }
+
+  /**
+   * Si quien pregunta es el supervisor del proceso.
+   *
+   * Por la cuenta que ocupa el puesto, no por la persona del directorio: la
+   * 8.2 guardaba el `id_person` y aquí se comparaba con el `id_user` de la
+   * sesión, así que nunca coincidían y solo el super admin podía avalar.
+   *
+   * Sin puesto configurado en la 9.4 responde que sí: decide el permiso, que
+   * ya exigió el guard. El super admin pasa siempre: es la llave de soporte.
+   */
+  async esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager): Promise<boolean> {
+    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
+    const manager = em ?? this.dataSource.manager;
+    if (!(await this.puestoDelSupervisor(procesoId, manager))) return true;
+    const ocupa = await this.ocupanteDelSupervisor(procesoId, manager);
+    return !!ocupa && this.esDe(ocupa, acceso);
+  }
+
+  /**
+   * Quiénes se pueden designar como supervisor: los candidatos del puesto, o
+   * sin puesto, quien pueda avalar la 9.4.
+   */
+  async candidatosASupervisor(procesoId: string, termino = ''): Promise<Candidato[]> {
+    const puesto = await this.puestoDelSupervisor(procesoId);
+    if (puesto) return this.candidatos(procesoId, puesto.id, termino);
+    return this.cuentas(await this.alcance.cuentasQuePueden('aprobar', NUMERAL_AVAL), termino, null);
+  }
+
+  /**
+   * La cuenta que se designa en la 8.2, si puede serlo. Dentro de la
+   * transacción de la designación.
+   */
+  async exigirCandidatoASupervisor(em: EntityManager, procesoId: string, usuarioId: string): Promise<Candidato> {
+    const puesto = await this.puestoDelSupervisor(procesoId, em);
+    const proceso = await this.exigirProceso(em, procesoId);
+    const usos = puesto
+      ? (await this.usos(proceso.modalidad ?? null, em, await versionDelProceso(em, procesoId))).filter(
+          (u) => u.puestoId === puesto.id,
+        )
+      : [];
+    const ids = puesto ? await this.idsCandidatos(usos) : await this.alcance.cuentasQuePueden('aprobar', NUMERAL_AVAL);
+    if (!ids.includes(usuarioId)) {
+      throw new BadRequestException(
+        puesto
+          ? `Esa persona no puede ocupar el puesto ${puesto.nombre}: le falta poder ${this.permisosQuePide(usos)}`
+          : `Esa persona no puede avalar las cuentas de cobro: le falta el permiso de aprobar la ${NUMERAL_AVAL}`,
+      );
+    }
+    const [cuenta] = await this.cuentas([usuarioId], '', puesto?.id ?? null);
+    if (!cuenta) throw new NotFoundException('Esa cuenta no existe o está inactiva');
+    return cuenta;
+  }
+
+  /**
+   * Pone en el puesto del supervisor a quien designó la 8.2, relevando a quien
+   * estuviera. Sin puesto configurado no hay nada que ocupar.
+   *
+   * No pide el permiso de repartir puestos: lo que autoriza es el acto de
+   * designación, que ya exigió `decidir` en la 8.2.
+   */
+  async ocuparPorDesignacion(
+    em: EntityManager,
+    procesoId: string,
+    cuenta: Candidato,
+    motivo: string,
+    acceso: HiringAccess,
+  ): Promise<string | null> {
+    const puesto = await this.puestoDelSupervisor(procesoId, em);
+    if (!puesto) return null;
+
+    await this.liberarPorDesignacion(em, procesoId, motivo, acceso);
+    const repo = em.getRepository(AsignacionPuesto);
+    const nueva = await repo.save(
+      repo.create({
+        procesoId,
+        puestoId: puesto.id,
+        usuarioId: cuenta.usuarioId,
+        usuarioNombre: cuenta.usuarioNombre,
+        personaId: cuenta.personaId ?? null,
+        nombre: cuenta.nombre,
+        estado: 'VIGENTE',
+        asignadoPor: acceso.userName,
+      }),
+    );
+    await this.traza(em, procesoId, nueva.id, 'DESIGNAR', acceso, {
+      puesto: puesto.nombre,
+      puestoId: puesto.id,
+      designado: cuenta.nombre,
+      origen: '8.2',
+      numerales: [NUMERAL_AVAL],
+    });
+    return puesto.id;
+  }
+
+  /** Deja vacío el puesto del supervisor: se relevó en la 8.2 o se reasigna. */
+  async liberarPorDesignacion(em: EntityManager, procesoId: string, motivo: string, acceso: HiringAccess) {
+    const ocupa = await this.ocupanteDelSupervisor(procesoId, em);
+    if (!ocupa) return;
+    ocupa.estado = 'RELEVADO';
+    ocupa.relevadoAt = new Date();
+    ocupa.relevadoPor = acceso.userName;
+    ocupa.motivoRelevo = motivo;
+    await em.getRepository(AsignacionPuesto).save(ocupa);
+  }
+
+  /** El puesto del supervisor no se toca desde la 3.3: lo llena el acto de la 8.2. */
+  private async exigirQueNoSeaElDelSupervisor(em: EntityManager, procesoId: string, puestoId: string) {
+    const supervisor = await this.puestoDelSupervisor(procesoId, em);
+    if (supervisor?.id === puestoId) {
+      throw new ConflictException(
+        `El puesto ${supervisor.nombre} se ocupa con la designación de la 8.2: ahí se carga el acto que lo nombra`,
+      );
+    }
   }
 
   /** Los procesos en los que quien pregunta ocupa algún puesto. */

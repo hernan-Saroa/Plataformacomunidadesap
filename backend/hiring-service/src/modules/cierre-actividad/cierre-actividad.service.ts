@@ -84,6 +84,10 @@ export class CierreActividadService {
    * `EN_REVISION`; si no, se cierra en `APROBADO`. La firma se da por
    * comprobada por quien llama —con `exigirFirmaValida`, antes de que el
    * panel haga su propio trabajo— y aquí solo se guarda su evidencia.
+   *
+   * `aprobadaEnElPanel`: la aprobación configurada ya se dio dentro del panel,
+   * elemento por elemento —el aval de cada cuenta de cobro en la 9.4—, y
+   * abrir además una ronda sería pedir dos veces lo mismo.
    */
   async resolverCierre(
     em: EntityManager,
@@ -92,8 +96,9 @@ export class CierreActividadService {
     modalidad: string | null,
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
+    { aprobadaEnElPanel = false }: { aprobadaEnElPanel?: boolean } = {},
   ): Promise<{ estado: 'EN_REVISION' | 'APROBADO'; cierra: boolean }> {
-    const revisan = await this.aprobadoresDe(em, numeral, modalidad, procesoId);
+    const revisan = aprobadaEnElPanel ? null : await this.aprobadoresDe(em, numeral, modalidad, procesoId);
     const estado: 'EN_REVISION' | 'APROBADO' = revisan ? 'EN_REVISION' : 'APROBADO';
     const cierra = !revisan;
 

@@ -4,11 +4,11 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import {
+  CandidatoAPuesto,
   DatosReasignacion,
   DatosSupervisor,
   EstadoSupervision,
   EvidenciaFirmaOtp,
-  Persona,
 } from '../../types';
 import {
   Aviso,
@@ -22,7 +22,6 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
-import { SelectorPersona } from '../estudio-previo/SelectorPersona';
 import { useFirma } from '../shared/useFirma';
 
 interface Props {
@@ -55,7 +54,8 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
 
   const [designando, setDesignando] = useState(false);
   const [reasignando, setReasignando] = useState(false);
-  const [persona, setPersona] = useState<Persona | null>(null);
+  /** La cuenta elegida (121): ocupa el puesto que avala la 9.4. */
+  const [elegido, setElegido] = useState('');
   const [datos, setDatos] = useState(VACIO);
   const [acto, setActo] = useState<File | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -76,7 +76,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   }, [procesoId]);
 
   const limpiar = () => {
-    setPersona(null);
+    setElegido('');
     setDatos(VACIO);
     setActo(null);
     setMotivo('');
@@ -85,14 +85,12 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   };
 
   const designar = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    if (!persona || !acto) return;
+    if (!elegido || !acto) return;
 
     const cuerpo: DatosSupervisor = {
-      personaId: persona.id,
-      nombre: persona.nombre,
+      usuarioId: elegido,
       fechaDesignacion: datos.fechaDesignacion,
       ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
-      ...(persona.email ? { email: persona.email } : {}),
       firma: firmaOtp,
     };
 
@@ -116,15 +114,13 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
    * quien lo vigile mientras tanto.
    */
   const reasignar = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    if (!persona || !acto) return;
+    if (!elegido || !acto) return;
 
     const cuerpo: DatosReasignacion = {
-      personaId: persona.id,
-      nombre: persona.nombre,
+      usuarioId: elegido,
       fechaDesignacion: datos.fechaDesignacion,
       motivo: motivo.trim(),
       ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
-      ...(persona.email ? { email: persona.email } : {}),
       firma: firmaOtp,
     };
 
@@ -172,7 +168,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
     );
   }
 
-  const completo = persona && acto && datos.fechaDesignacion;
+  const completo = elegido && acto && datos.fechaDesignacion;
 
   return (
     <Marco>
@@ -286,13 +282,13 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             <label htmlFor="rea-persona" className="block text-xs font-bold text-gray-600 mb-1.5">
               Nuevo supervisor <span className="text-red-600">*</span>
             </label>
-            <SelectorPersona
+            <SelectorSupervisor
               id="rea-persona"
-              value={persona?.nombre ?? ''}
-              onChange={(nombre) => {
-                if (!nombre) setPersona(null);
-              }}
-              onSeleccionar={(elegida) => setPersona(elegida)}
+              procesoId={procesoId}
+              puesto={estado.puesto ?? null}
+              excluir={estado.supervisor.usuarioId}
+              value={elegido}
+              onChange={setElegido}
             />
           </div>
 
@@ -350,7 +346,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
           <div className="flex items-center gap-2 pt-1">
             <Boton
               icono={<UserCheck className="w-3.5 h-3.5" />}
-              disabled={!persona || !acto || motivo.trim().length < 10 || guardando}
+              disabled={!elegido || !acto || motivo.trim().length < 10 || guardando}
               onClick={() => firmaReasignacion.conFirma(reasignar)}
             >
               {guardando ? 'Reasignando…' : 'Reasignar'}
@@ -400,13 +396,12 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             <label htmlFor="sup-persona" className="block text-xs font-bold text-gray-600 mb-1.5">
               Quién supervisa <span className="text-red-600">*</span>
             </label>
-            <SelectorPersona
+            <SelectorSupervisor
               id="sup-persona"
-              value={persona?.nombre ?? ''}
-              onChange={(nombre) => {
-                if (!nombre) setPersona(null);
-              }}
-              onSeleccionar={(elegida) => setPersona(elegida)}
+              procesoId={procesoId}
+              puesto={estado.puesto ?? null}
+              value={elegido}
+              onChange={setElegido}
             />
           </div>
 
@@ -467,5 +462,78 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
       {firmaDesignacion.modal}
       {firmaReasignacion.modal}
     </Marco>
+  );
+}
+
+/**
+ * A quién se designa: las cuentas que pueden ocupar el puesto que avala la 9.4
+ * (121), no cualquier persona del directorio.
+ *
+ * Con el directorio se guardaba la persona y la 9.4 la comparaba con la cuenta
+ * que inicia sesión: nunca coincidían y el supervisor designado no podía
+ * avalar. Elegir la cuenta es lo que hace que la designación sirva.
+ */
+function SelectorSupervisor({
+  id,
+  procesoId,
+  puesto,
+  excluir,
+  value,
+  onChange,
+}: {
+  id: string;
+  procesoId: string;
+  puesto: { id: string; nombre: string } | null;
+  excluir?: string | null;
+  value: string;
+  onChange: (usuarioId: string) => void;
+}) {
+  const [candidatos, setCandidatos] = useState<CandidatoAPuesto[] | null>(null);
+
+  useEffect(() => {
+    contratacionService
+      .candidatosASupervisor(procesoId)
+      .then(setCandidatos)
+      .catch(() => setCandidatos([]));
+  }, [procesoId]);
+
+  // Los menos cargados primero, como al repartir los puestos en la 3.3.
+  const opciones = (candidatos ?? [])
+    .filter((c) => c.usuarioId !== excluir)
+    .sort((x, y) => x.procesosEnElPuesto - y.procesosEnElPuesto || x.nombre.localeCompare(y.nombre));
+
+  return (
+    <>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={campo}
+        disabled={candidatos === null}
+      >
+        <option value="">{candidatos === null ? 'Cargando…' : 'Elige a quién…'}</option>
+        {opciones.map((c) => (
+          <option key={c.usuarioId} value={c.usuarioId}>
+            {c.nombre}
+            {puesto
+              ? ` · ${c.procesosEnElPuesto === 1 ? '1 proceso' : `${c.procesosEnElPuesto} procesos`} como supervisor`
+              : ''}
+          </option>
+        ))}
+      </select>
+      {candidatos !== null && opciones.length === 0 ? (
+        <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+          {puesto
+            ? `Ninguna cuenta tiene todos los permisos del puesto ${puesto.nombre}: dáselos a un rol en Permisos por etapa.`
+            : 'Ninguna cuenta puede avalar las cuentas de cobro de la 9.4: dale ese permiso a un rol en Permisos por etapa.'}
+        </p>
+      ) : (
+        <p className="text-[11px] text-slate-500 m-0 mt-1">
+          {puesto
+            ? `Ocupará el puesto ${puesto.nombre}: avala las cuentas de cobro de la 9.4.`
+            : 'La 9.4 no nombra un puesto en el flujo: avala cualquiera con el permiso.'}
+        </p>
+      )}
+    </>
   );
 }
