@@ -19,6 +19,8 @@ export const FUID_SUBSERIE = 'PROCESOS DISCIPLINARIOS';
 const FIRST_DATA_ROW = 13;
 const TEMPLATE_CAPACITY_ROWS = 99; // Filas 13 a 111 reservadas en la plantilla original
 const TEMPLATE_PIE_START_ROW = 112;
+const FUID_DATA_FONT_SIZE = 11;
+const FUID_DATA_COLUMNS = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB'];
 
 function resolveTemplateAssetPath(filename: string): string {
   const candidates = [
@@ -53,6 +55,12 @@ export interface FuidItemDto {
   cantidadDocumentos?: number;
   tamanoDocumentos?: string;
   notas?: string; // Estado del expediente (Indagación, Valoración, Finalizado, etc.)
+  /**
+   * Indica si el proceso está cerrado (finalizado/archivado). Si es `false`, el proceso
+   * sigue activo y la Fecha Extrema Final y el Descriptor de identificación quedan vacíos.
+   * Si no se envía, se conserva el comportamiento anterior (se asume cerrado).
+   */
+  cerrado?: boolean;
 }
 
 export interface FuidHeaderDto {
@@ -140,14 +148,21 @@ export class FuidExportService {
       // Col E: Nombre de la unidad documental
       worksheet.getCell(`E${r}`).value = `Expediente ${item.radicado}`;
 
-      // Col F: Descriptor de identificación (NED / Asunto)
-      const descriptor = item.descriptorIdentificacion ||
-        (item.nombreDisciplinado ? `NED: ${item.nombreDisciplinado}` : (item.asunto || 'Expediente Disciplinario'));
+      // Un proceso activo (no cerrado) aún no tiene fecha final ni descriptor definitivo
+      const procesoCerrado = item.cerrado !== false;
+
+      // Col F: Descriptor de identificación (NED / Asunto) — vacío si el proceso sigue activo
+      const descriptor = procesoCerrado
+        ? (item.descriptorIdentificacion ||
+          (item.nombreDisciplinado ? `NED: ${item.nombreDisciplinado}` : (item.asunto || 'Expediente Disciplinario')))
+        : '';
       worksheet.getCell(`F${r}`).value = descriptor;
 
-      // Col G / H: Fechas extremas inicial / final (AAAA/MM/DD)
+      // Col G / H: Fechas extremas inicial / final (AAAA/MM/DD) — final vacía si el proceso sigue activo
       worksheet.getCell(`G${r}`).value = item.fechaExtremaInicial || '';
-      worksheet.getCell(`H${r}`).value = item.fechaExtremaFinal || item.fechaExtremaInicial || '';
+      worksheet.getCell(`H${r}`).value = procesoCerrado
+        ? (item.fechaExtremaFinal || item.fechaExtremaInicial || '')
+        : '';
 
       // Col I: Código CCDU
       worksheet.getCell(`I${r}`).value = item.codigoCCDU || FUID_CODIGO_CCDU;
@@ -180,9 +195,9 @@ export class FuidExportService {
       };
       cellU.font = {
         name: 'Arial',
-        size: 9,
+        size: FUID_DATA_FONT_SIZE,
         color: { argb: 'FF0563C1' },
-        underline: true,
+        underline: false,
       };
 
       // Col V: Cantidad de documentos electrónicos
@@ -196,6 +211,17 @@ export class FuidExportService {
 
       // Col AB: Rótulo (vacío)
       worksheet.getCell(`AB${r}`).value = null;
+
+      // Fuente legible: tamaño 11 y sin subrayado en todas las celdas de detalle
+      for (const col of FUID_DATA_COLUMNS) {
+        if (col === 'U') continue; // ya configurada arriba (hipervínculo)
+        const cell = worksheet.getCell(`${col}${r}`);
+        cell.font = {
+          ...(cell.font || {}),
+          size: FUID_DATA_FONT_SIZE,
+          underline: false,
+        };
+      }
     });
 
     // 4. Limpiar filas restantes de la reserva de 100 que no tengan datos (limpiar D..AB, conservando fórmulas en B y C)
