@@ -105,7 +105,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
 
     await cdp.cargar(
       proceso.id,
-      { rubro: 'A-02-02', numero: 'CDP-2026-159', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-159', valor: 60_000_000, fechaExpedicion: hoy() },
       null,
       financiero,
     );

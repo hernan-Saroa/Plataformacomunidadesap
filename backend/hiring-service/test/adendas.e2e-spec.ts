@@ -289,7 +289,9 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
       await publicarPliego(proceso.id);
       const estado = await emitir(proceso.id);
       expect(estado.adendas).toHaveLength(1);
-      expect(estado.mueve).toBe('PLAZO_OBSERVACIONES');
+      // Sin apertura, la publicación abre la recepción de ofertas: la adenda
+      // de cronograma mueve su cierre, que es lo que la invitación fija.
+      expect(estado.mueve).toBe('CIERRE_OFERTAS');
     });
   });
 
@@ -379,7 +381,9 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
       expect((await cierreDe(proceso.id)).vence).toBe(enDias(50));
     });
 
-    it('sin apertura, prorroga el plazo de observaciones', async () => {
+    it('sin apertura, prorroga el cierre de ofertas que abrió la publicación', async () => {
+      // Mínima cuantía: el plazo de ofertas corre desde la invitación publicada
+      // (5.3). Antes la recepción no se abría nunca sin apertura.
       const proceso = await crear('MINIMA_CUANTIA');
       await publicarPliego(proceso.id);
       const nuevo = enDias(30);
@@ -387,7 +391,7 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
       const emitida = await emitir(proceso.id, 'CRONOGRAMA', nuevo);
       await publicar(proceso.id, emitida.adendas[0].id);
 
-      expect(await observacionesDe(proceso.id)).toBe(nuevo);
+      expect((await cierreDe(proceso.id)).vence).toBe(nuevo);
     });
   });
 
