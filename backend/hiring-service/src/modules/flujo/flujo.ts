@@ -40,8 +40,8 @@ export interface ProblemaFlujo {
   nombre: string;
   etapa: number;
   modalidad: string | null;
-  /** Qué parte de la actividad: quién la hace o quién la aprueba. */
-  parte: 'HACE' | 'APRUEBA';
+  /** Qué parte de la actividad: quién la hace, quién la aprueba o cuándo empieza. */
+  parte: 'HACE' | 'APRUEBA' | 'SECUENCIA';
   gravedad: Gravedad;
   mensaje: string;
 }
@@ -64,6 +64,11 @@ export interface CadenaParaValidar {
 export interface DatosDeValidacion {
   /** Las actividades que aplican a la modalidad y se hacen en la plataforma. */
   actividades: { numeral: string; nombre: string; etapa: number }[];
+  /**
+   * Todas las actividades de la matriz, en orden (125): una actividad solo
+   * puede depender de una anterior. Sin ella no se revisa la secuencia.
+   */
+  orden?: string[];
   filas: FilaAsignacion[];
   modalidad: string | null;
   /** Las cuentas que pueden hacer esa acción en ese punto. */
@@ -200,6 +205,9 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
       }
     }
 
+    // ------------------------------------------------------ cuándo empieza
+    problemas.push(...problemasDeSecuencia(rige.secuencia.dependeDe, a, d, base));
+
     // ----------------------------------------------------- quién la aprueba
     const escalones = escalonesDe(rige.aprobacion, d.cadenas);
     if (escalones === null) {
@@ -231,6 +239,46 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
         });
       }
     });
+  }
+  return problemas;
+}
+
+/**
+ * Lo que está mal en «depende de» (125).
+ *
+ * Solo de anteriores: así no hay ciclos, y el recorrido del riel ya pasó por
+ * ellas cuando llega a la que depende. Una que no aplica en la modalidad, o
+ * que se hace fuera de la plataforma, se da por cumplida cuando el proceso
+ * llega a su lugar: se avisa para que nadie espere que la detenga.
+ */
+export function problemasDeSecuencia(
+  dependeDe: string[] | null,
+  a: { numeral: string },
+  d: Pick<DatosDeValidacion, 'actividades' | 'orden'>,
+  base: Omit<ProblemaFlujo, 'parte' | 'gravedad' | 'mensaje'>,
+): ProblemaFlujo[] {
+  if (!d.orden || dependeDe === null) return [];
+  const problema = (gravedad: Gravedad, mensaje: string): ProblemaFlujo => ({
+    ...base,
+    parte: 'SECUENCIA',
+    gravedad,
+    mensaje,
+  });
+  if (!dependeDe.length) return [problema('ERROR', 'Elige de qué actividad depende, o deja «la anterior»')];
+
+  const suya = d.orden.indexOf(a.numeral);
+  const problemas: ProblemaFlujo[] = [];
+  for (const dep of dependeDe) {
+    const lugar = d.orden.indexOf(dep);
+    if (lugar < 0) {
+      problemas.push(problema('ERROR', `Depende de la ${dep}, que no existe o se retiró de la matriz`));
+    } else if (lugar >= suya) {
+      problemas.push(problema('ERROR', `Depende de la ${dep}, que va después: solo puede depender de una anterior`));
+    } else if (!d.actividades.some((x) => x.numeral === dep)) {
+      problemas.push(
+        problema('AVISO', `La ${dep} no se hace aquí en esta modalidad: se da por cumplida cuando el proceso llega a ella`),
+      );
+    }
   }
   return problemas;
 }

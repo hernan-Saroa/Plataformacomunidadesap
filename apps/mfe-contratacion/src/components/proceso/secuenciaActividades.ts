@@ -1,5 +1,9 @@
 import { ActividadEtapa } from './ListaActividades';
 
+import { SecuenciaDelPaso } from '../../types';
+
+export type { SecuenciaDelPaso };
+
 /** Lo que la secuencia necesita saber de cada actividad, en orden de flujo. */
 export interface PasoDelFlujo {
   numeral: string;
@@ -9,6 +13,8 @@ export interface PasoDelFlujo {
   aplica: boolean;
   /** Si la plataforma tiene panel para trabajarla. */
   construida: boolean;
+  /** La de su versión del flujo (125); sin ella, lo predeterminado. */
+  secuencia?: SecuenciaDelPaso | null;
 }
 
 /**
@@ -56,6 +62,11 @@ const ATIENDEN_LA_REVISION = new Set(['3.3', '3.4']);
 const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
 
 /**
+ * Lo predeterminado: lo que rige cuando la versión del flujo no dice nada.
+ * Desde la 125 se configura en Configuración → Flujo, por modalidad; esto
+ * queda para las versiones viejas. Mismo mapa que `DEPENDE_DE_POR_DEFECTO` en
+ * `backend/hiring-service/src/flujo/lectura.ts`.
+ *
  * Las que no esperan a que termine la actividad que la matriz numera justo
  * antes, porque lo que resuelven no depende de eso (reunión de validación
  * del modelo, 17 sep).
@@ -132,13 +143,55 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
  */
 export const NUNCA_BLOQUEA = new Set(['5.13', '9.2', '9.3', '9.5']);
 
-/** Si una dependencia declarada ya no le hace falta a quien la exige. */
-function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {
+/** Lo que rige en el paso: lo de su versión del flujo, o lo predeterminado. */
+export function secuenciaDe(paso: Pick<PasoDelFlujo, 'numeral' | 'secuencia'>): SecuenciaDelPaso {
+  if (paso.secuencia) return paso.secuencia;
+  const depende = DEPENDE_DE[paso.numeral];
+  return { dependeDe: depende ? [...depende] : null, noBloquea: NUNCA_BLOQUEA.has(paso.numeral) };
+}
+
+/** Si quedarse sin terminar no detiene a las siguientes. */
+export const noDetiene = (paso: Pick<PasoDelFlujo, 'numeral' | 'secuencia'>) => secuenciaDe(paso).noBloquea;
+
+/**
+ * Las que no se trabajan en el proceso —no aplican o no tienen panel— y a
+ * cuyo lugar ya llegó la cadena.
+ */
+function alcanzadasSinTrabajo(flujo: PasoDelFlujo[]): Set<string> {
+  const alcanzadas = new Set<string>();
+  let alcanzado = true;
+  let esperandoDecision = false;
+  for (const paso of flujo) {
+    if (!paso.aplica || !paso.construida) {
+      if (alcanzado && !esperandoDecision) alcanzadas.add(paso.numeral);
+      continue;
+    }
+    if (esperandoDecision) {
+      if (ATIENDEN_LA_REVISION.has(paso.numeral) && !estaTerminada(paso)) alcanzado = false;
+      continue;
+    }
+    if (estaTerminada(paso) || noDetiene(paso)) continue;
+    if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
+      esperandoDecision = true;
+    } else {
+      alcanzado = false;
+    }
+  }
+  return alcanzadas;
+}
+
+/**
+ * Si una dependencia declarada ya no le hace falta a quien la exige.
+ *
+ * La que no aplica o no tiene panel nunca podrá terminarse: se da por cumplida
+ * cuando la cadena llega a su lugar. Antes se daba por cumplida siempre, y la
+ * que dependía de ella quedaba abierta desde el primer día (125).
+ */
+function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[], alcanzadas: Set<string>): boolean {
   const paso = flujo.find((p) => p.numeral === numeral);
-  // La que no está en el flujo, no aplica o no tiene panel nunca podrá
-  // terminarse: exigirla trancaría para siempre a quien depende de ella,
-  // igual que ya pasa con la cadena por defecto.
-  if (!paso || !paso.aplica || !paso.construida) return true;
+  // La que no está en el flujo no puede exigirse: trancaría para siempre.
+  if (!paso) return true;
+  if (!paso.aplica || !paso.construida) return alcanzadas.has(numeral);
   return estaTerminada(paso);
 }
 
@@ -167,6 +220,7 @@ function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean 
  */
 export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
   const disponibles = new Set<string>();
+  const alcanzadas = alcanzadasSinTrabajo(flujo);
   let alcanzado = true;
   /**
    * Hay una actividad enviada esperando decisión.
@@ -192,17 +246,17 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
       continue;
     }
 
-    // Lo normal es depender de que se llegó hasta aquí en la cadena; las
-    // declaradas en DEPENDE_DE mandan a buscar lo que de verdad necesitan, en
+    // Lo normal es depender de que se llegó hasta aquí en la cadena; las que
+    // declaran de qué dependen mandan a buscar lo que de verdad necesitan, en
     // vez de la actividad que la matriz numera justo antes.
-    const dependencias = DEPENDE_DE[paso.numeral];
-    const disponible = dependencias
-      ? dependencias.every((dep) => dependenciaSatisfecha(dep, flujo))
+    const { dependeDe, noBloquea } = secuenciaDe(paso);
+    const disponible = dependeDe?.length
+      ? dependeDe.every((dep) => dependenciaSatisfecha(dep, flujo, alcanzadas))
       : alcanzado;
 
     if (disponible) disponibles.add(paso.numeral);
 
-    if (estaTerminada(paso) || NUNCA_BLOQUEA.has(paso.numeral)) continue;
+    if (estaTerminada(paso) || noBloquea) continue;
 
     // Una actividad enviada y a la espera no cierra el paso: abre el tramo de
     // las que existen para resolver esa espera. Cualquier otra sin terminar sí
@@ -225,13 +279,21 @@ export function motivoDelBloqueo(
   numeral: string,
   flujo: PasoDelFlujo[],
 ): string | null {
+  const propio = flujo.find((p) => p.numeral === numeral);
   // Con dependencia declarada, el motivo es esa dependencia y no la actividad
   // que la matriz numera justo antes: decir «termina la 5.3» cuando la 5.4 no
   // necesita la 5.3 mandaría a esperar algo que no la destraba.
-  const dependencias = DEPENDE_DE[numeral];
-  if (dependencias) {
-    const faltante = dependencias.find((dep) => !dependenciaSatisfecha(dep, flujo));
-    return faltante ? `Antes hay que terminar ${faltante}` : null;
+  const dependencias = secuenciaDe(propio ?? { numeral }).dependeDe;
+  if (dependencias?.length) {
+    const alcanzadas = alcanzadasSinTrabajo(flujo);
+    const faltante = dependencias.find((dep) => !dependenciaSatisfecha(dep, flujo, alcanzadas));
+    if (!faltante) return null;
+    const suya = flujo.find((p) => p.numeral === faltante);
+    // La que espera no se hace aquí: lo que falta es lo que detiene la cadena
+    // antes de ella.
+    return suya && (!suya.aplica || !suya.construida)
+      ? (motivoDelBloqueo(faltante, flujo) ?? `Esperando a que el proceso llegue a la ${faltante}`)
+      : `Antes hay que terminar ${faltante}`;
   }
 
   const indice = flujo.findIndex((p) => p.numeral === numeral);
@@ -240,7 +302,7 @@ export function motivoDelBloqueo(
   const anterior = flujo
     .slice(0, indice)
     .reverse()
-    .find((p) => p.aplica && p.construida && !estaTerminada(p) && !NUNCA_BLOQUEA.has(p.numeral));
+    .find((p) => p.aplica && p.construida && !estaTerminada(p) && !noDetiene(p));
 
   // Un candado sin explicación se lee como un error del sistema: decir cuál es
   // la actividad que falta convierte el bloqueo en una instrucción.

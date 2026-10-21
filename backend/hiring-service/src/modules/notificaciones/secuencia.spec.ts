@@ -164,3 +164,57 @@ describe('secuencia · dependencias declaradas, como en el riel', () => {
     expect(porEmpezar(flujo)).toContain('10.1');
   });
 });
+
+/**
+ * La secuencia configurable (125): cada versión del flujo dice, por actividad
+ * y modalidad, de qué depende y si detiene a las siguientes.
+ */
+describe('secuencia · configurada en la versión del flujo', () => {
+  it('sin nada en la versión rige lo predeterminado: 5.5 solo espera a la 5.3', () => {
+    const flujo = [paso('5.3', 'APROBADO'), paso('5.4', null), paso('5.5', null)];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['5.3', '5.4', '5.5']);
+  });
+
+  it('una que no detiene el flujo deja pasar a la siguiente aunque siga abierta', () => {
+    // 8.8 en paralelo: si no se publica, igual arranca la reunión de inicio.
+    const flujo = [
+      paso('8.7', 'APROBADO'),
+      paso('8.8', null, { secuencia: { dependeDe: ['8.1'], noBloquea: true } }),
+      paso('9.1', null),
+    ];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['8.7', '8.8', '9.1']);
+  });
+
+  it('la misma, sin la configuración, detiene a la 9.1 como antes', () => {
+    const flujo = [paso('8.7', 'APROBADO'), paso('8.8', null), paso('9.1', null)];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['8.7', '8.8']);
+  });
+
+  it('depender de una anterior la abre aunque la de en medio siga abierta', () => {
+    // 10.4 archiva sobre la liquidación: no espera al cierre financiero.
+    const flujo = [
+      paso('10.2', 'APROBADO'),
+      paso('10.3', null),
+      paso('10.4', null, { secuencia: { dependeDe: ['10.2'], noBloquea: false } }),
+    ];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['10.2', '10.3', '10.4']);
+  });
+
+  it('una dependencia que no aplica se cumple al llegar a ella, no desde el primer día', () => {
+    const cronograma = paso('5.2', null, { secuencia: { dependeDe: ['4.2'], noBloquea: false } });
+    const antes = [paso('3.7', null), paso('4.2', null, { aplica: false }), paso('5.1', null), cronograma];
+    expect(actividadesDisponibles(antes).has('5.2')).toBe(false);
+
+    const despues = [paso('3.7', 'APROBADO'), paso('4.2', null, { aplica: false }), paso('5.1', null), cronograma];
+    expect([...actividadesDisponibles(despues)]).toEqual(['3.7', '5.1', '5.2']);
+  });
+
+  it('el «te toca» también la avisa en cuanto se abre', () => {
+    const flujo = [
+      paso('10.2', 'APROBADO'),
+      paso('10.3', null),
+      paso('10.4', null, { secuencia: { dependeDe: ['10.2'], noBloquea: false } }),
+    ];
+    expect(porEmpezar(flujo)).toEqual(['10.3', '10.4']);
+  });
+});

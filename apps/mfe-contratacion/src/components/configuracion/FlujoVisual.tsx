@@ -23,6 +23,7 @@ import { DiagramaFlujo, ModoAsignacion, NodoFlujo, ProblemaFlujo, VersionFlujo }
 import { useDialogo } from '../shared/useDialogo';
 import { AprobacionActividad } from './AprobacionActividad';
 import { LaHaceActividad } from './LaHaceActividad';
+import { SecuenciaActividad } from './SecuenciaActividad';
 import { PuestosConfig } from './PuestosConfig';
 import { NOMBRE_ETAPA } from './simbolos';
 
@@ -418,6 +419,9 @@ export function FlujoVisual() {
           <PanelDeActividad
             key={`${nodoElegido.numeral}|${modalidad}|${cambiosPuestos}`}
             nodo={nodoElegido}
+            anteriores={nodos
+              .slice(0, nodos.findIndex((n) => n.numeral === nodoElegido.numeral))
+              .map((n) => ({ numeral: n.numeral, nombre: n.nombre }))}
             modalidad={modalidad || null}
             nombreModalidad={nombreModalidad}
             onCerrar={() => setElegido(null)}
@@ -477,7 +481,9 @@ function Nodo({ nodo, elegido, onElegir }: { nodo: NodoFlujo; elegido: boolean; 
     <button id={`flujo-nodo-${nodo.numeral}`} type="button" onClick={onElegir} aria-pressed={elegido} className={clases}>
       <span className="flex items-center gap-1.5">
         <span className="text-xs font-black tabular-nums text-[#003DA5]">{nodo.numeral}</span>
-        {nodo.hace.propia || nodo.aprueba.propia ? <span className="flujo-marca-propia" title="Propio de esta modalidad" /> : null}
+        {nodo.hace.propia || nodo.aprueba.propia || nodo.secuenciaPropia ? (
+          <span className="flujo-marca-propia" title="Propio de esta modalidad" />
+        ) : null}
         {nodo.estado === 'ERROR' && nodo.aplica && nodo.enLaPlataforma ? (
           <AlertTriangle className="ml-auto w-3.5 h-3.5 text-red-600" aria-label="Falta configurar" />
         ) : nodo.estado === 'AVISO' && nodo.aplica && nodo.enLaPlataforma ? (
@@ -509,6 +515,7 @@ function Nodo({ nodo, elegido, onElegir }: { nodo: NodoFlujo; elegido: boolean; 
             </span>
           </span>
           {nodo.asigna ? <span className="mt-1.5 block text-xs font-bold text-indigo-700">{nodo.asigna}</span> : null}
+          {nodo.noBloquea ? <span className="mt-1 block text-xs text-slate-500">No detiene el flujo</span> : null}
         </>
       )}
     </button>
@@ -518,12 +525,15 @@ function Nodo({ nodo, elegido, onElegir }: { nodo: NodoFlujo; elegido: boolean; 
 /** El panel para consultar y configurar una actividad sin perder el diagrama. */
 function PanelDeActividad({
   nodo,
+  anteriores,
   modalidad,
   nombreModalidad,
   onCerrar,
   onCambio,
 }: {
   nodo: NodoFlujo;
+  /** Las que la matriz pone antes: de esas puede depender (125). */
+  anteriores: { numeral: string; nombre: string }[];
   modalidad: string | null;
   nombreModalidad?: string;
   onCerrar: () => void;
@@ -553,6 +563,9 @@ function PanelDeActividad({
           {nodo.asigna ? <p className="m-0 mt-1 text-xs font-bold text-indigo-700">{nodo.asigna}</p> : null}
           {nodo.dependeDe?.length ? (
             <p className="m-0 mt-1 text-xs text-slate-500">Empieza cuando termina la {nodo.dependeDe.join(' y la ')}.</p>
+          ) : null}
+          {nodo.noBloquea ? (
+            <p className="m-0 mt-1 text-xs text-slate-500">No detiene el flujo: las siguientes avanzan aunque siga abierta.</p>
           ) : null}
         </div>
         <button type="button" onClick={onCerrar} aria-label="Cerrar" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
@@ -615,6 +628,17 @@ function PanelDeActividad({
               numeral={nodo.numeral}
               modalidad={editando}
               nombreModalidad={nombreModalidad}
+              onCambio={onCambio}
+            />
+          </section>
+          <section className="space-y-2 border-t border-gray-100 pt-3">
+            <p className="m-0 text-sm font-bold text-slate-800">Cuándo empieza</p>
+            <SecuenciaActividad
+              key={`secuencia|${editando ?? ''}`}
+              numeral={nodo.numeral}
+              modalidad={editando}
+              nombreModalidad={nombreModalidad}
+              anteriores={anteriores}
               onCambio={onCambio}
             />
           </section>

@@ -53,7 +53,7 @@ import {
   ParticipacionService,
   esSuya,
 } from '../participacion/participacion.service';
-import { cargarResponde, respondeEn } from '../participacion/quien-responde';
+import { cargarResponde, respondeEn, secuenciaEn } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
 import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
 import { PaaAplicacion } from '../../entities/paa.entity';
@@ -755,6 +755,7 @@ export class EstudioPrevioService implements OnModuleInit {
               actualizadoEn: a.updatedAt,
               responsableCargo: deLaMatriz.responsableCargo,
               responde: respondeEn(responde, proceso.id, proceso.modalidad ?? null, a.numeral, acceso),
+              secuencia: secuenciaEn(responde, proceso.id, proceso.modalidad ?? null, a.numeral),
             };
           }),
       };

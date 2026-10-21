@@ -155,6 +155,8 @@ import {
   CadenaDeAprobacion,
   CandidatoAPuesto,
   DiagramaFlujo,
+  AsignacionFlujo,
+  SecuenciaDelPaso,
   FlujoDelProceso,
   ProblemaFlujo,
   VersionFlujo,
@@ -2996,6 +2998,27 @@ export const contratacionService = {
     }),
 
   // ----------------------------------------- versiones del flujo (111) ---
+
+  /** Lo que rige en una actividad del borrador (o de la activa), para la modalidad o la general. */
+  asignacionFlujo: (numeral: string, modalidad?: string | null) =>
+    pedir<AsignacionFlujo>(
+      `/configuracion/flujo-asignaciones/${encodeURIComponent(numeral)}${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
+
+  /**
+   * Cuándo empieza la actividad (125), en el borrador. `null` en una modalidad
+   * vuelve a heredar la general; en la general, vuelve a lo predeterminado.
+   */
+  guardarAsignacionFlujo: (
+    numeral: string,
+    datos: { modalidad?: string | null; secuencia: SecuenciaDelPaso | null },
+  ) =>
+    pedir<AsignacionFlujo>(`/configuracion/flujo-asignaciones/${encodeURIComponent(numeral)}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
 
   /** Las versiones del flujo: la activa, el borrador y las que aún usan procesos. */
   versionesFlujo: () => pedir<VersionFlujo[]>('/configuracion/flujo-versiones'),

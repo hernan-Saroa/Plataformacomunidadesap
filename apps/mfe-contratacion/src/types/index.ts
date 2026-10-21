@@ -406,6 +406,19 @@ export interface ActividadProceso {
   responsableCargo?: string | null;
   /** Si de ella responde una persona del proceso y no los roles (lo dice el backend). */
   responde?: RespondeElAsignado | null;
+  /** Cuándo empieza y si detiene a las siguientes, en su versión del flujo (125). */
+  secuencia?: SecuenciaDelPaso | null;
+}
+
+/**
+ * Cuándo empieza una actividad y si detiene a las siguientes (125): lo dice la
+ * versión del flujo del proceso, por modalidad.
+ */
+export interface SecuenciaDelPaso {
+  /** Las anteriores que tienen que terminar; null es la anterior en la matriz. */
+  dependeDe: string[] | null;
+  /** Si quedarse sin terminar no detiene a las siguientes. */
+  noBloquea: boolean;
 }
 
 /**
@@ -495,6 +508,8 @@ export interface ProcesoResumen {
     actualizadoEn?: string | null;
     responsableCargo?: string | null;
     responde?: RespondeElAsignado | null;
+    /** Cuándo empieza, en la versión del flujo del proceso (125). */
+    secuencia?: SecuenciaDelPaso | null;
   }[];
   /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
   participacion?: ParticipacionEnLista;
@@ -4248,7 +4263,7 @@ export interface ProblemaFlujo {
   nombre: string;
   etapa: number;
   modalidad: string | null;
-  parte: 'HACE' | 'APRUEBA';
+  parte: 'HACE' | 'APRUEBA' | 'SECUENCIA';
   gravedad: 'ERROR' | 'AVISO';
   mensaje: string;
   /** Las modalidades donde pasa, cuando se validan todas. */
@@ -4269,7 +4284,12 @@ export interface NodoFlujo {
   enLaPlataforma: boolean;
   /** Si en ella se asigna gente al proceso, qué se asigna. */
   asigna: string | null;
+  /** De cuáles depende (125); null es la anterior. */
   dependeDe: string[] | null;
+  /** Si quedarse sin terminar no detiene a las siguientes (125). */
+  noBloquea?: boolean;
+  /** Si la secuencia es propia de la modalidad. */
+  secuenciaPropia?: boolean;
   hace: { modo: ModoAsignacion; accion: string; propia: boolean; quien: string | null };
   aprueba: {
     tipo: 'NINGUNA' | 'CADENA' | 'ESCALON';
@@ -4278,7 +4298,15 @@ export interface NodoFlujo {
     escalones: { nombre: string; quienes: { tipo: 'PUESTO' | 'ROL' | 'PERSONA' | 'PAPEL'; nombre: string }[] }[];
   };
   estado: 'OK' | 'ERROR' | 'AVISO';
-  problemas: { parte: 'HACE' | 'APRUEBA'; gravedad: 'ERROR' | 'AVISO'; mensaje: string }[];
+  problemas: { parte: 'HACE' | 'APRUEBA' | 'SECUENCIA'; gravedad: 'ERROR' | 'AVISO'; mensaje: string }[];
+}
+
+/** Lo que rige en una actividad de la versión que se edita (111, 125). */
+export interface AsignacionFlujo {
+  secuencia: SecuenciaDelPaso;
+  propiaDeLaModalidad: { laHace: boolean; aprobacion: boolean; secuencia: boolean };
+  general: { secuencia: SecuenciaDelPaso };
+  editando: 'BORRADOR' | 'ACTIVA';
 }
 
 export interface DiagramaFlujo {

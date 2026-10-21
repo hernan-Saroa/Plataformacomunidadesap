@@ -26,7 +26,7 @@ import {
   RegistrarCdpExistenteDto,
 } from './dto/cdp.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
-import { cargarResponde, respondeEn } from '../participacion/quien-responde';
+import { cargarResponde, respondeEn, secuenciaEn } from '../participacion/quien-responde';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 /**
  * La actividad en que se carga el CDP.
@@ -305,6 +305,8 @@ export class CdpService {
         responsableCargo: a.responsableCargo,
         // Si de ella responde una persona del proceso y no los roles.
         responde: respondeEn(responde, procesoId, proceso.modalidad ?? null, a.numeral, acceso),
+        // De qué depende y si detiene a las siguientes, en su versión del flujo (125).
+        secuencia: secuenciaEn(responde, procesoId, proceso.modalidad ?? null, a.numeral),
       };
     });
   }

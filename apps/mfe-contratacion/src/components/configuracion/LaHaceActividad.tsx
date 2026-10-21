@@ -293,7 +293,7 @@ export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, on
   );
 }
 
-const Opcion = ({
+export const Opcion = ({
   marcada,
   disabled,
   onClick,

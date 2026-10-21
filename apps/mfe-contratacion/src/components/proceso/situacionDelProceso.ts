@@ -4,8 +4,9 @@ import {
   actividadesDisponibles,
   estaTerminada,
   motivoDelBloqueo,
-  NUNCA_BLOQUEA,
+  noDetiene,
   PasoDelFlujo,
+  SecuenciaDelPaso,
 } from './secuenciaActividades';
 
 /**
@@ -346,7 +347,7 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
       p.aplica &&
       p.construida &&
       !estaTerminada(p) &&
-      !NUNCA_BLOQUEA.has(p.numeral),
+      !noDetiene(p),
   );
 
   const actual = pendientes.find((p) => disponibles.has(p.numeral));
@@ -396,7 +397,7 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
    */
   const inicio = pasos.find((p) => p.numeral === INICIO_EJECUCION);
   const enEjecucion = pasos.some(
-    (p) => NUNCA_BLOQUEA.has(p.numeral) && p.aplica && p.construida && !estaTerminada(p),
+    (p) => noDetiene(p) && p.aplica && p.construida && !estaTerminada(p),
   );
   if (inicio && estaTerminada(inicio) && enEjecucion) {
     const seguimiento = pasos.find((p) => p.numeral === '9.2') ?? inicio;
@@ -437,6 +438,7 @@ export function pasosDelCatalogo(
     estado?: string | null;
     actualizadoEn?: string | null;
     responsableCargo?: string | null;
+    secuencia?: SecuenciaDelPaso | null;
   }[],
   estadoDelEstudio: string | null | undefined,
   construida: (numeral: string) => boolean,
@@ -450,6 +452,7 @@ export function pasosDelCatalogo(
     construida: construida(act.numeral),
     actualizadoEn: act.actualizadoEn ?? null,
     responsableCargo: act.responsableCargo ?? null,
+    secuencia: act.secuencia ?? null,
   }));
 }
 

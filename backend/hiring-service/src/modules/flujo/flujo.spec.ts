@@ -1,5 +1,5 @@
 import { asignacionQueRige, FilaAsignacion } from '../../flujo/lectura';
-import { DatosDeValidacion, modoDeAsignacion, usosDePuestos, validarModalidad } from './flujo';
+import { DatosDeValidacion, modoDeAsignacion, problemasDeSecuencia, usosDePuestos, validarModalidad } from './flujo';
 
 /**
  * Las versiones del flujo (migración 111): qué rige en cada modalidad y qué
@@ -14,14 +14,14 @@ describe('qué rige en una actividad', () => {
   it('sin fila de la modalidad, la general', () => {
     const r = asignacionQueRige(filas, '3.6', 'LICITACION_PUBLICA');
     expect(r.laHace).toEqual({ tipo: 'PUESTO', puestoId: 'p-caso' });
-    expect(r.propiaDeLaModalidad).toEqual({ laHace: false, aprobacion: false });
+    expect(r.propiaDeLaModalidad).toEqual({ laHace: false, aprobacion: false, secuencia: false });
   });
 
   it('la de la modalidad reemplaza columna por columna; NULL hereda', () => {
     const r = asignacionQueRige(filas, '3.6', 'MINIMA_CUANTIA');
     expect(r.laHace).toEqual({ tipo: 'PERMISO' });
     expect(r.aprobacion).toEqual({ tipo: 'NINGUNA' });
-    expect(r.propiaDeLaModalidad).toEqual({ laHace: true, aprobacion: false });
+    expect(r.propiaDeLaModalidad).toEqual({ laHace: true, aprobacion: false, secuencia: false });
   });
 
   it('sin ninguna fila, por permiso y sin aprobación', () => {
@@ -124,5 +124,36 @@ describe('validar el flujo antes de activarlo', () => {
       { accion: 'aprobar', numeral: '3.1' },
       { accion: 'aprobar', numeral: '3.6' },
     ]);
+  });
+});
+
+/** «Depende de» (125): solo de anteriores que existan. */
+describe('problemasDeSecuencia', () => {
+  const base = { numeral: '5.12', nombre: 'Audiencia de riesgos', etapa: 5, modalidad: null };
+  const orden = ['5.3', '5.7', '5.9', '5.12', '6.1'];
+  const d = { orden, actividades: ['5.3', '5.7', '5.12', '6.1'].map((n) => ({ numeral: n, nombre: n, etapa: 5 })) };
+
+  it('«la anterior» no tiene nada que revisar', () => {
+    expect(problemasDeSecuencia(null, { numeral: '5.12' }, d, base)).toEqual([]);
+  });
+
+  it('una anterior que aplica está bien', () => {
+    expect(problemasDeSecuencia(['5.7'], { numeral: '5.12' }, d, base)).toEqual([]);
+  });
+
+  it('no puede depender de una que va después, ni de sí misma', () => {
+    const problemas = problemasDeSecuencia(['6.1', '5.12'], { numeral: '5.12' }, d, base);
+    expect(problemas.map((p) => p.gravedad)).toEqual(['ERROR', 'ERROR']);
+    expect(problemas[0].mensaje).toContain('va después');
+  });
+
+  it('ni de una que no existe, ni de ninguna', () => {
+    expect(problemasDeSecuencia(['9.9'], { numeral: '5.12' }, d, base)[0].gravedad).toBe('ERROR');
+    expect(problemasDeSecuencia([], { numeral: '5.12' }, d, base)[0].gravedad).toBe('ERROR');
+  });
+
+  it('si la que espera no se hace en la modalidad, solo se avisa', () => {
+    const [p] = problemasDeSecuencia(['5.9'], { numeral: '5.12' }, d, base);
+    expect(p).toMatchObject({ gravedad: 'AVISO', parte: 'SECUENCIA' });
   });
 });

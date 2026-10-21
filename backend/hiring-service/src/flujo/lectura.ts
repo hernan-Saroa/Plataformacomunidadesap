@@ -26,23 +26,63 @@ export type AprobacionGuardada =
   | { tipo: 'CADENA'; cadenaId: string }
   | { tipo: 'ESCALON'; roles: string[]; personas: string[]; puestos: string[] };
 
+/**
+ * Cuándo empieza la actividad y si detiene a las que siguen (125).
+ *
+ * - `dependeDe`: las actividades anteriores que tienen que terminar para que
+ *   esta se pueda trabajar. `null` es lo de siempre: la anterior en la matriz.
+ * - `noBloquea`: quedarse sin terminar no detiene a las siguientes. Para las
+ *   que duran toda la ejecución, o las que corren en paralelo.
+ */
+export interface SecuenciaGuardada {
+  dependeDe: string[] | null;
+  noBloquea: boolean;
+}
+
 export interface FilaAsignacion {
   numeral: string;
   modalidad: string | null;
   laHace: LaHaceGuardada | null;
   aprobacion: AprobacionGuardada | null;
+  secuencia?: SecuenciaGuardada | null;
 }
 
 /** Lo que rige en una actividad para una modalidad, y de dónde sale. */
 export interface AsignacionEfectiva {
   laHace: LaHaceGuardada;
   aprobacion: AprobacionGuardada;
+  secuencia: SecuenciaGuardada;
   /** Si lo de la modalidad reemplaza a lo general en cada columna. */
-  propiaDeLaModalidad: { laHace: boolean; aprobacion: boolean };
+  propiaDeLaModalidad: { laHace: boolean; aprobacion: boolean; secuencia: boolean };
 }
 
 const POR_PERMISO: LaHaceGuardada = { tipo: 'PERMISO' };
 const SIN_APROBACION: AprobacionGuardada = { tipo: 'NINGUNA' };
+
+/**
+ * La secuencia cuando ninguna versión dice nada (125): las reglas que había
+ * escritas en el riel hasta la 124. Las versiones que vinieron después las
+ * reemplazan desde Configuración; las retiradas siguen con estas.
+ *
+ * Mismo mapa que `SECUENCIA_POR_DEFECTO` en
+ * `apps/mfe-contratacion/src/components/proceso/secuenciaActividades.ts`.
+ */
+export const DEPENDE_DE_POR_DEFECTO: Readonly<Record<string, readonly string[]>> = {
+  '5.5': ['5.3'],
+  '5.6': ['5.3'],
+  '5.13': ['5.3', '5.7'],
+  '8.3': ['8.1'],
+  '8.4': ['8.1'],
+  '8.5': ['8.1'],
+  '8.8': ['8.1'],
+  '9.5': ['9.1'],
+};
+export const NO_BLOQUEAN_POR_DEFECTO: ReadonlySet<string> = new Set(['5.13', '9.2', '9.3', '9.5']);
+
+export function secuenciaPorDefecto(numeral: string): SecuenciaGuardada {
+  const depende = DEPENDE_DE_POR_DEFECTO[numeral];
+  return { dependeDe: depende ? [...depende] : null, noBloquea: NO_BLOQUEAN_POR_DEFECTO.has(numeral) };
+}
 
 /**
  * Lo que rige: la fila de la modalidad, columna por columna, y si no dice
@@ -58,7 +98,8 @@ export function asignacionQueRige(
   return {
     laHace: propia?.laHace ?? general?.laHace ?? POR_PERMISO,
     aprobacion: propia?.aprobacion ?? general?.aprobacion ?? SIN_APROBACION,
-    propiaDeLaModalidad: { laHace: !!propia?.laHace, aprobacion: !!propia?.aprobacion },
+    secuencia: propia?.secuencia ?? general?.secuencia ?? secuenciaPorDefecto(numeral),
+    propiaDeLaModalidad: { laHace: !!propia?.laHace, aprobacion: !!propia?.aprobacion, secuencia: !!propia?.secuencia },
   };
 }
 
@@ -118,12 +159,19 @@ export async function filasDeVersion(
   numeral?: string,
 ): Promise<FilaAsignacion[]> {
   if (!versionId) return [];
-  const filas: { numeral: string; modalidad: string | null; la_hace: any; aprobacion: any }[] = await em.query(
-    `SELECT numeral, modalidad, la_hace, aprobacion FROM hiring.flujo_asignaciones
-      WHERE version_id::text = $1 AND ($2::text IS NULL OR numeral = $2)`,
-    [versionId, numeral ?? null],
-  );
-  return filas.map((f) => ({ numeral: f.numeral, modalidad: f.modalidad, laHace: f.la_hace, aprobacion: f.aprobacion }));
+  const filas: { numeral: string; modalidad: string | null; la_hace: any; aprobacion: any; secuencia: any }[] =
+    await em.query(
+      `SELECT numeral, modalidad, la_hace, aprobacion, secuencia FROM hiring.flujo_asignaciones
+        WHERE version_id::text = $1 AND ($2::text IS NULL OR numeral = $2)`,
+      [versionId, numeral ?? null],
+    );
+  return filas.map((f) => ({
+    numeral: f.numeral,
+    modalidad: f.modalidad,
+    laHace: f.la_hace,
+    aprobacion: f.aprobacion,
+    secuencia: f.secuencia,
+  }));
 }
 
 /**

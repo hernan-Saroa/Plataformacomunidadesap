@@ -7,7 +7,7 @@ import { getHiringAccess } from '../../auth/hiring-access';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Puede } from '../../auth/puede.guard';
-import { AprobacionGuardada, LaHaceGuardada } from '../../flujo/lectura';
+import { AprobacionGuardada, LaHaceGuardada, SecuenciaGuardada } from '../../flujo/lectura';
 import { FlujoService } from './flujo.service';
 
 export class GuardarAsignacionDto {
@@ -31,6 +31,15 @@ export class GuardarAsignacionDto {
   @ValidateIf((_, v) => v !== null)
   @IsObject()
   aprobacion?: AprobacionGuardada | null;
+
+  @ApiPropertyOptional({
+    description:
+      '{dependeDe: string[] | null, noBloquea: boolean} (125). dependeDe null = la anterior. null en una modalidad: hereda; en la general: lo predeterminado.',
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsObject()
+  secuencia?: SecuenciaGuardada | null;
 }
 
 export class ActivarFlujoDto {
@@ -123,11 +132,16 @@ export class FlujoController {
   @Put('flujo-asignaciones/:numeral')
   @UseGuards(PermisosGuard)
   @Permisos('contratacion.config.manage')
-  @ApiOperation({ summary: 'Cambiar quién hace o quién aprueba la actividad, en el borrador' })
+  @ApiOperation({ summary: 'Cambiar quién hace, quién aprueba o cuándo empieza la actividad, en el borrador' })
   guardar(@Param('numeral') numeral: string, @Body() dto: GuardarAsignacionDto, @Req() req: any) {
-    const cambios: { laHace?: LaHaceGuardada | null; aprobacion?: AprobacionGuardada | null } = {};
+    const cambios: {
+      laHace?: LaHaceGuardada | null;
+      aprobacion?: AprobacionGuardada | null;
+      secuencia?: SecuenciaGuardada | null;
+    } = {};
     if ('laHace' in dto) cambios.laHace = dto.laHace ?? null;
     if ('aprobacion' in dto) cambios.aprobacion = dto.aprobacion ?? null;
+    if ('secuencia' in dto) cambios.secuencia = dto.secuencia ?? null;
     return this.service.guardarAsignacion(numeral, dto.modalidad || null, cambios, getHiringAccess(req));
   }
 }

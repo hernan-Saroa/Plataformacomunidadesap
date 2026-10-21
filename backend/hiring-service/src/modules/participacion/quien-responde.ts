@@ -5,6 +5,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { accionQueHace } from '../../auth/la-hace';
 import {
   FilaAsignacion,
+  SecuenciaGuardada,
   aLaHace,
   asignacionQueRige,
   filasDeVersiones,
@@ -91,6 +92,21 @@ export async function cargarResponde(
     ? await em.query(`SELECT id_person::text AS id FROM auth."user" WHERE id_user::text = $1`, [acceso.userId])
     : [];
   return { filasPorVersion, versionDe, puestos, ocupantes, personas, miPersona: cuenta?.id ?? null };
+}
+
+/**
+ * Cuándo empieza la actividad en el proceso (125): de qué depende y si detiene
+ * a las siguientes, según la versión del flujo con que corre. Viaja con cada
+ * actividad para que el riel abra y cierre con la misma regla que el «te toca».
+ */
+export function secuenciaEn(
+  ctx: Pick<ContextoResponde, 'filasPorVersion' | 'versionDe'>,
+  procesoId: string,
+  modalidad: string | null,
+  numeral: string,
+): SecuenciaGuardada {
+  const filas = ctx.filasPorVersion.get(ctx.versionDe.get(procesoId) ?? '') ?? [];
+  return asignacionQueRige(filas, numeral, modalidad).secuencia;
 }
 
 /** Quién responde por la actividad en el proceso, o `null` si los roles del alcance. */

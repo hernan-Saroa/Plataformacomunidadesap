@@ -480,3 +480,47 @@ describe('actividadesDisponibles · la 9.5 se abre desde que arranca la ejecuci�
     expect(motivoDelBloqueo('10.1', flujo)).toBe('Antes hay que terminar 9.4');
   });
 });
+
+/**
+ * La secuencia de la versión del flujo (125): de qué depende cada actividad y
+ * si detiene a las siguientes, configurado por modalidad en Configuración.
+ */
+describe('secuencia de actividades · configurada en el flujo', () => {
+  const aprobado = { estado: 'APROBADO' } as const;
+
+  it('una que no detiene el flujo deja pasar a la siguiente aunque siga abierta', () => {
+    const flujo = [
+      paso('8.7', aprobado),
+      paso('8.8', { secuencia: { dependeDe: ['8.1'], noBloquea: true } }),
+      paso('9.1'),
+    ];
+    expect(actividadesDisponibles(flujo).has('9.1')).toBe(true);
+    expect(motivoDelBloqueo('9.1', flujo)).toBeNull();
+  });
+
+  it('sin configuración rige lo de siempre: la 8.8 detiene a la 9.1', () => {
+    const flujo = [paso('8.7', aprobado), paso('8.8'), paso('9.1')];
+    expect(actividadesDisponibles(flujo).has('9.1')).toBe(false);
+    expect(motivoDelBloqueo('9.1', flujo)).toBe('Antes hay que terminar 8.8');
+  });
+
+  it('depender de una anterior la abre aunque la de en medio siga abierta', () => {
+    const flujo = [
+      paso('10.2', aprobado),
+      paso('10.3'),
+      paso('10.4', { secuencia: { dependeDe: ['10.2'], noBloquea: false } }),
+    ];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['10.2', '10.3', '10.4']);
+  });
+
+  it('una dependencia que no aplica se cumple al llegar a ella, no desde el primer día', () => {
+    const cronograma = paso('5.2', { secuencia: { dependeDe: ['4.2'], noBloquea: false } });
+    const antes = [paso('3.7'), paso('4.2', { aplica: false }), paso('5.1'), cronograma];
+    expect(actividadesDisponibles(antes).has('5.2')).toBe(false);
+    // Lo que falta es lo que detiene la cadena antes de la 4.2.
+    expect(motivoDelBloqueo('5.2', antes)).toBe('Antes hay que terminar 3.7');
+
+    const despues = [paso('3.7', aprobado), paso('4.2', { aplica: false }), paso('5.1'), cronograma];
+    expect(actividadesDisponibles(despues).has('5.2')).toBe(true);
+  });
+});

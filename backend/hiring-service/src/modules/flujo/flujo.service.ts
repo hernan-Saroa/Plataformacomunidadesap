@@ -15,12 +15,13 @@ import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
 import {
   AprobacionGuardada,
   LaHaceGuardada,
+  SecuenciaGuardada,
   asignacionQueRige,
   filasDeVersion,
   versionActiva,
   versionBorrador,
 } from '../../flujo/lectura';
-import { DEPENDE_DE, SIN_PANEL } from '../notificaciones/secuencia';
+import { SIN_PANEL } from '../notificaciones/secuencia';
 import {
   ACTIVIDADES_QUE_ASIGNAN,
   NO_LA_HACE_UN_PUESTO,
@@ -93,8 +94,8 @@ export class FlujoService {
       );
       if (activa) {
         await m.query(
-          `INSERT INTO hiring.flujo_asignaciones (version_id, numeral, modalidad, la_hace, aprobacion, updated_by)
-           SELECT $1::uuid, numeral, modalidad, la_hace, aprobacion, $3
+          `INSERT INTO hiring.flujo_asignaciones (version_id, numeral, modalidad, la_hace, aprobacion, secuencia, updated_by)
+           SELECT $1::uuid, numeral, modalidad, la_hace, aprobacion, secuencia, $3
              FROM hiring.flujo_asignaciones WHERE version_id::text = $2`,
           [nueva.id, activa, acceso.userName],
         );
@@ -172,7 +173,11 @@ export class FlujoService {
   async guardarAsignacion(
     numeral: string,
     modalidad: string | null,
-    cambios: { laHace?: LaHaceGuardada | null; aprobacion?: AprobacionGuardada | null },
+    cambios: {
+      laHace?: LaHaceGuardada | null;
+      aprobacion?: AprobacionGuardada | null;
+      secuencia?: SecuenciaGuardada | null;
+    },
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
@@ -194,14 +199,17 @@ export class FlujoService {
         if (!c) throw new BadRequestException('La cadena elegida no existe o se archivó');
       }
 
+      if (cambios.secuencia) await this.revisarSecuencia(em, numeral, cambios.secuencia);
+
       const version = await this.crearBorrador(acceso, em);
       const [actual] = await em.query(
-        `SELECT la_hace, aprobacion FROM hiring.flujo_asignaciones
+        `SELECT la_hace, aprobacion, secuencia FROM hiring.flujo_asignaciones
           WHERE version_id::text = $1 AND numeral = $2 AND modalidad IS NOT DISTINCT FROM $3`,
         [version, numeral, modalidad],
       );
       const laHace = 'laHace' in cambios ? cambios.laHace ?? null : actual?.la_hace ?? null;
       const aprobacion = 'aprobacion' in cambios ? cambios.aprobacion ?? null : actual?.aprobacion ?? null;
+      const secuencia = 'secuencia' in cambios ? cambios.secuencia ?? null : actual?.secuencia ?? null;
 
       await em.query(
         `DELETE FROM hiring.flujo_asignaciones
@@ -209,22 +217,49 @@ export class FlujoService {
         [version, numeral, modalidad],
       );
       // Una fila de modalidad que ya no reemplaza nada sobra: hereda todo.
-      if (laHace || aprobacion || !modalidad) {
+      if (laHace || aprobacion || secuencia || !modalidad) {
         await em.query(
-          `INSERT INTO hiring.flujo_asignaciones (version_id, numeral, modalidad, la_hace, aprobacion, updated_by)
-           VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb, $6)`,
+          `INSERT INTO hiring.flujo_asignaciones (version_id, numeral, modalidad, la_hace, aprobacion, secuencia, updated_by)
+           VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7)`,
           [
             version,
             numeral,
             modalidad,
             laHace ? JSON.stringify(laHace) : modalidad ? null : JSON.stringify({ tipo: 'PERMISO' }),
             aprobacion ? JSON.stringify(aprobacion) : modalidad ? null : JSON.stringify({ tipo: 'NINGUNA' }),
+            // En la general, NULL es lo predeterminado del código (125).
+            secuencia ? JSON.stringify(secuencia) : null,
             acceso.userName,
           ],
         );
       }
     });
     return this.asignacion(numeral, modalidad);
+  }
+
+  /**
+   * Lo que se rechaza al guardar la secuencia (125), con el mismo criterio que
+   * la validación al activar: depende solo de anteriores que existan.
+   */
+  private async revisarSecuencia(em: EntityManager, numeral: string, secuencia: SecuenciaGuardada) {
+    if (typeof secuencia.noBloquea !== 'boolean') {
+      throw new BadRequestException('Di si la actividad detiene o no a las que siguen');
+    }
+    if (secuencia.dependeDe === null) return;
+    if (!Array.isArray(secuencia.dependeDe) || !secuencia.dependeDe.length) {
+      throw new BadRequestException('Elige de qué actividad depende, o deja «la anterior»');
+    }
+    const orden: string[] = (
+      await em.query(`SELECT numeral FROM hiring.actividades WHERE activa ORDER BY etapa, orden`)
+    ).map((f: any) => f.numeral);
+    const suya = orden.indexOf(numeral);
+    for (const dep of secuencia.dependeDe) {
+      const lugar = orden.indexOf(dep);
+      if (lugar < 0) throw new BadRequestException(`La ${dep} no existe o se retiró de la matriz`);
+      if (lugar >= suya) {
+        throw new BadRequestException(`La ${numeral} solo puede depender de actividades anteriores; la ${dep} va después`);
+      }
+    }
   }
 
   // ------------------------------------------------------------- validación --
@@ -300,6 +335,7 @@ export class FlujoService {
 
     const datos: Omit<DatosDeValidacion, 'actividades' | 'modalidad'> = {
       filas,
+      orden: actividades.map((a) => a.numeral),
       pueden: (accion, numeral) => permisos.get(`${accion}|${numeral}`) ?? new Set(),
       conRol: (rol) => new Set(roles.filter((r) => r.code === rol).map((r) => r.id)),
       cuentaDe: (persona) => cuentas.find((c) => c.persona === persona)?.id ?? null,
@@ -373,7 +409,10 @@ export class FlujoService {
         aplica: ctx.aplica(a.numeral, modalidad),
         enLaPlataforma: !SIN_PANEL.has(a.numeral),
         asigna: ACTIVIDADES_QUE_ASIGNAN[a.numeral] ?? null,
-        dependeDe: DEPENDE_DE[a.numeral] ?? null,
+        // Cuándo empieza (125): de qué depende y si detiene a las siguientes.
+        dependeDe: rige.secuencia.dependeDe,
+        noBloquea: rige.secuencia.noBloquea,
+        secuenciaPropia: rige.propiaDeLaModalidad.secuencia,
         hace: {
           modo: modoDeAsignacion(hace),
           accion,

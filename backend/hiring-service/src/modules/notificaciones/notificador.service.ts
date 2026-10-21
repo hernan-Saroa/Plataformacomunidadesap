@@ -7,6 +7,7 @@ import {
 import { AlcanceService } from '../../auth/alcance.service';
 import { accionQueHace, reglaLaHace } from '../../auth/la-hace';
 import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { FilaAsignacion, asignacionQueRige, filasDeVersion, versionDelProceso } from '../../flujo/lectura';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -236,9 +237,20 @@ export class NotificadorService implements OnApplicationBootstrap {
 
   /** Anota las actividades que se pueden empezar y devuelve las que no estaban anotadas. */
   private async anotarHabilitadas(procesoId: string): Promise<string[]> {
+    // La secuencia que rige es la de la versión del flujo del proceso (125).
+    // Si no se puede leer, rige lo predeterminado: un aviso tarde es mejor que
+    // ninguno.
+    let filasDelFlujo: FilaAsignacion[] = [];
+    try {
+      const em = this.dataSource.manager;
+      filasDelFlujo = await filasDeVersion(em, await versionDelProceso(em, procesoId));
+    } catch (error: any) {
+      this.logger.warn(`No se pudo leer la secuencia del flujo: ${error.message}`);
+    }
     const pasos: PasoDelFlujo[] = (
       await this.dataSource.query(
         `SELECT a.numeral,
+                p.modalidad,
                 pa.estado,
                 NOT EXISTS (
                   SELECT 1 FROM hiring.actividades_excluidas x
@@ -257,6 +269,7 @@ export class NotificadorService implements OnApplicationBootstrap {
       estado: f.estado ?? null,
       aplica: f.aplica === true,
       construida: !SIN_PANEL.has(f.numeral),
+      secuencia: asignacionQueRige(filasDelFlujo, f.numeral, f.modalidad ?? null).secuencia,
     }));
     if (!pasos.length) return [];
 

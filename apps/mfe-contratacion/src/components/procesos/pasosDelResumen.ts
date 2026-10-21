@@ -30,6 +30,7 @@ export function pasosDelResumen(
     actualizadoEn: a.actualizadoEn ?? null,
     responsableCargo: a.responsableCargo ?? null,
     responde: a.responde ?? null,
+    secuencia: a.secuencia ?? null,
   }));
 
   if (!pasos.some((p) => p.numeral === '3.1')) {

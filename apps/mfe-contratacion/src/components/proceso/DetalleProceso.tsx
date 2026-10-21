@@ -22,7 +22,7 @@ import {
   actividadesDisponibles,
   estaTerminada,
   motivoDelBloqueo,
-  NUNCA_BLOQUEA,
+  noDetiene,
   PasoDelFlujo,
 } from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
@@ -147,6 +147,7 @@ export const actividadEnCurso = (
     estado: act.numeral === '3.1' ? estadoDelEstudio : act.estado,
     aplica: act.aplica !== false,
     construida: TIENEN_PANEL(act.numeral),
+    secuencia: act.secuencia ?? null,
   }));
   const disponibles = actividadesDisponibles(flujo);
 
@@ -164,7 +165,7 @@ export const actividadEnCurso = (
     // La 9.2 nunca llega a "aprobada" mientras el contrato se ejecuta (dura
     // toda la vigencia): tratarla como pendiente la dejaría fija como "la
     // actividad en curso" para siempre, sin dejar ver qué más falta de verdad.
-    if (NUNCA_BLOQUEA.has(act.numeral)) continue;
+    if (noDetiene(act)) continue;
 
     const aplica = act.aplica !== false;
     if (!aplica || !disponibles.has(act.numeral)) continue;
@@ -376,6 +377,7 @@ export function DetalleProceso({
         estado: act.numeral === '3.1' ? (datos?.estado ?? null) : act.estado,
         aplica: act.aplica !== false,
         construida: TIENEN_PANEL(act.numeral),
+        secuencia: act.secuencia ?? null,
       }));
 
     const actual = flujoActual.find((p) => p.numeral === expandida) ?? null;
@@ -594,6 +596,7 @@ export function DetalleProceso({
     estado: act.numeral === '3.1' ? datos.estado : act.estado,
     aplica: act.aplica !== false,
     construida: TIENEN_PANEL(act.numeral),
+    secuencia: act.secuencia ?? null,
   }));
 
   const disponibles = actividadesDisponibles(flujo);
