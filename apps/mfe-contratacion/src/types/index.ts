@@ -2071,6 +2071,17 @@ export interface EstadoContratoProceso {
   /** Las dos condiciones por separado, para poder decir cual falta. */
   adjudicado: boolean;
   motivoNoAdjudicado: string | null;
+  /** Lo que fija el acto vigente de la 7.3: el contrato no puede apartarse. */
+  adjudicacion: {
+    /** De dónde sale: «el acto RES-1» o «el informe definitivo (7.2)» donde no hay acto. */
+    fuente: string;
+    valor: number;
+    contratista: {
+      nombre: string;
+      documento: string | null;
+      tipo: TipoPersonaContratista | null;
+    };
+  } | null;
   puedeGenerar: boolean;
   tipologias: TipologiaContrato[];
   formatos: FormatoContrato[];

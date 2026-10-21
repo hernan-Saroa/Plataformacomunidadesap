@@ -71,7 +71,8 @@ const VACIO = {
  *
  * El sistema no redacta la minuta: ofrece el formato del SIG de la tipología,
  * se diligencia fuera y se sube el documento resultante. Después se registra si
- * el proponente lo acepta, que es lo que formaliza el vínculo.
+ * el proponente lo acepta y las firmas de las dos partes; la actividad termina
+ * con la segunda firma.
  */
 export function PanelContrato({ procesoId, onCambio }: Props) {
   const dialogo = useDialogo();
@@ -79,7 +80,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
    * No se llama `firma`: ese nombre ya lo usa el estado de la firma física del
    * contrato (ordenador/contratista), un concepto distinto (EFDS-2070).
    */
-  const firmaOtp = useFirma(NUMERAL, 'Registrar la aceptación del contrato');
+  const firmaOtp = useFirma(NUMERAL, 'Registrar la última firma del contrato');
   const [estado, setEstado] = useState<EstadoContratoProceso | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +146,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
     }
   };
 
-  const aceptar = async (firmaOtpEvidencia?: EvidenciaFirmaOtp) => {
+  const aceptar = async () => {
     const nombre = aceptante.trim();
     if (!nombre) {
       toast.error('Escribe quién acepta en nombre del proponente');
@@ -155,15 +156,10 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
     setGuardando(true);
     try {
       setEstado(
-        await contratacionService.aceptarContrato(
-          procesoId,
-          nombre,
-          undefined,
-          firmaOtpEvidencia,
-        ),
+        await contratacionService.aceptarContrato(procesoId, nombre),
       );
       setAceptante('');
-      toast.success('Aceptación registrada; el contrato queda formalizado');
+      toast.success('Aceptación registrada; faltan las firmas de las dos partes');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -181,7 +177,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
   const cambiarFirma = (clave: keyof typeof FIRMA_VACIA, valor: string) =>
     setFirma((previo) => ({ ...previo, [clave]: valor }));
 
-  const registrarFirma = async () => {
+  const registrarFirma = async (firmaOtpEvidencia?: EvidenciaFirmaOtp) => {
     if (!evidencia) return;
 
     const cuerpo: DatosFirma = {
@@ -192,7 +188,12 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
 
     setGuardando(true);
     try {
-      const respuesta = await contratacionService.firmarContrato(procesoId, cuerpo, evidencia);
+      const respuesta = await contratacionService.firmarContrato(
+        procesoId,
+        cuerpo,
+        evidencia,
+        firmaOtpEvidencia,
+      );
       setEstado(respuesta);
       limpiarFirma();
       toast.success(
@@ -293,8 +294,9 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Contrato electrónico</Titulo>
       <Ayuda>
-        Descarga el formato de la tipología, diligéncialo y sube la minuta firmada. El contrato
-        queda formalizado cuando se registra la aceptación del proponente.
+        Descarga el formato de la tipología, diligéncialo y sube la minuta firmada. La
+        actividad termina cuando el proponente acepta y firman el ordenador del gasto y el
+        contratista.
       </Ayuda>
 
       {/* Por qué no se puede todavía, en vez de un botón apagado sin explicación. */}
@@ -379,8 +381,10 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             // el formulario no vuelve. Reabrirla contradiría el expediente.
             <Aviso tono="ok" titulo="El proponente aceptó el contrato">
               Aceptado por {contrato.aceptadoPor}
-              {contrato.aceptadoAt ? ` el ${momento(contrato.aceptadoAt)}` : ''}. Con esto el
-              vínculo contractual queda formalizado.
+              {contrato.aceptadoAt ? ` el ${momento(contrato.aceptadoAt)}` : ''}.
+              {estado?.perfeccionado
+                ? ' Firmado por las dos partes.'
+                : ' Falta registrar las firmas para terminar la actividad.'}
             </Aviso>
           ) : (
             <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
@@ -413,7 +417,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
                 <Boton
                   icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
                   disabled={guardando || !aceptante.trim()}
-                  onClick={() => firmaOtp.conFirma(aceptar)}
+                  onClick={aceptar}
                 >
                   Registrar la aceptación
                 </Boton>
@@ -555,7 +559,13 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
                   disabled={
                     guardando || !firma.firmanteNombre.trim() || !firma.fechaFirma || !evidencia
                   }
-                  onClick={registrarFirma}
+                  onClick={() =>
+                    // La segunda firma es la que cierra la 8.1: si la actividad
+                    // exige firma OTP, se pide ahí y no en la primera.
+                    estado?.partesPendientes.length === 1
+                      ? firmaOtp.conFirma(registrarFirma)
+                      : registrarFirma()
+                  }
                 >
                   Registrar la firma
                 </Boton>
@@ -575,7 +585,21 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
       {estado.puedeGenerar && !generando ? (
         <Boton
           icono={<FileSignature className="w-3.5 h-3.5" />}
-          onClick={() => setGenerando(true)}
+          onClick={() => {
+            // El contrato parte de lo que fijó el acto de la 7.3: a quién y por
+            // cuánto. El servidor rechaza el que se aparte de él.
+            const acto = estado.adjudicacion;
+            if (acto) {
+              setDatos((previo) => ({
+                ...previo,
+                valor: String(acto.valor),
+                contratistaNombre: acto.contratista.nombre,
+                contratistaDocumento: acto.contratista.documento ?? '',
+                contratistaTipo: acto.contratista.tipo ?? previo.contratistaTipo,
+              }));
+            }
+            setGenerando(true);
+          }}
         >
           Generar el contrato
         </Boton>

@@ -585,7 +585,12 @@ export const contratacionService = {
    * Con la segunda firma el contrato queda perfeccionado; eso lo decide el
    * servidor al comprobar que ya están las dos, no la pantalla.
    */
-  firmarContrato: (procesoId: string, datos: DatosFirma, evidencia: File) => {
+  firmarContrato: (
+    procesoId: string,
+    datos: DatosFirma,
+    evidencia: File,
+    firma?: EvidenciaFirmaOtp,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
 
@@ -594,6 +599,8 @@ export const contratacionService = {
         cuerpo.append(clave, String(valor));
       }
     }
+    // La segunda firma cierra la 8.1: es la que lleva el OTP si se exige.
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/firmar`, {
       method: 'POST',

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato, TipoPersona } from '../../entities/contrato.entity';
 import { FirmaContrato } from '../../entities/firma-contrato.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
@@ -16,7 +16,10 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
+import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
+import { aplicaArl, aplicanGarantias } from '../legalizacion/legalizacion.service';
+import { ActividadExcluida } from '../../entities/actividad.entity';
+import { InformeDefinitivo } from '../../entities/informe-definitivo.entity';
 import { Oferente } from '../../entities/oferente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AlcanceService } from '../../auth/alcance.service';
@@ -89,44 +92,79 @@ export function estaSuscrito(partesFirmadas: readonly string[]): boolean {
 /**
  * Si la actividad 8.1 está cumplida.
  *
- * Generada la minuta la actividad queda en curso, no aprobada: un contrato que
- * el proponente no ha aceptado todavía no formaliza nada, y darlo por cumplido
- * haría que el riel mintiera.
+ * Se cumple cuando el contrato queda suscrito por las dos partes. Generada la
+ * minuta, y también aceptada, la actividad sigue en curso: antes se daba por
+ * cumplida con la aceptación, y el riel la ponía en verde y mandaba a la 8.2
+ * con las firmas todavía pendientes.
  */
 export function actividadCumplida(estado: EstadoContrato | null | undefined): boolean {
-  // Perfeccionado y legalizado también la cumplen: son los estados a los que
-  // se llega desde aceptado, y marcarla en curso al avanzar sería retroceder.
-  return estado === 'ACEPTADO' || (!!estado && yaSuscrito(estado));
+  // Legalizado también la cumple: se llega desde perfeccionado, y marcarla en
+  // curso al avanzar sería retroceder.
+  return !!estado && yaSuscrito(estado);
+}
+
+/** El acto de adjudicación: donde la matriz lo excluye, vale el informe definitivo. */
+const NUMERAL_ACTO_ADJUDICACION = '7.3';
+
+/** Lo que la adjudicación vigente dice del contrato que sigue. */
+export interface AdjudicacionVigente {
+  /** De dónde sale, para los mensajes: «el acto RES-1» o «el informe definitivo (7.2)». */
+  fuente: string;
+  valor: number;
+  contratista: {
+    nombre: string;
+    documento: string | null;
+    tipo: TipoPersona | null;
+  };
 }
 
 /**
  * Si el proceso está adjudicado, con el motivo cuando no lo está.
  *
- * La adjudicación formal es la etapa 7 (numerales 7.1 a 7.3, con la 7.1.1) y todavía no tiene
- * módulo. Mientras llega, se toma como adjudicado el proceso cuya recepción de
- * ofertas cerró con al menos un oferente: es el hecho verificable más cercano
- * que el sistema conoce hoy.
- *
- * Cuando exista el acto de adjudicación (7.3), esta función pasa a mirarlo a
- * él. Está aislada y es pura para que el cambio sea de una función y no de todo
- * el servicio, y para poder probar el criterio 1 sin base de datos.
+ * Mira el acto de adjudicación vigente de la 7.3. Antes se tomaba como
+ * adjudicado el proceso cuya recepción de ofertas (6.1) cerró con un oferente,
+ * mientras la 7.3 no existía; con eso la contratación directa, que no recibe
+ * ofertas, no llegaba nunca al contrato.
  */
-export function evaluarAdjudicacion(recepcion: {
-  existe: boolean;
-  cerrada: boolean;
-  totalOferentes: number;
-}): { adjudicado: boolean; motivo: string | null } {
-  if (!recepcion.existe) {
-    return { adjudicado: false, motivo: 'el proceso todavía no ha recibido ofertas' };
+export function evaluarAdjudicacion(
+  acto: AdjudicacionVigente | null,
+): { adjudicado: boolean; motivo: string | null } {
+  if (!acto) {
+    return {
+      adjudicado: false,
+      motivo: 'falta el acto de adjudicación vigente (7.3), o el informe definitivo publicado donde no hay acto',
+    };
   }
-  if (!recepcion.cerrada) {
-    return { adjudicado: false, motivo: 'la recepción de ofertas sigue abierta' };
-  }
-  if (recepcion.totalOferentes === 0) {
-    return { adjudicado: false, motivo: 'el proceso cerró sin ofertas recibidas' };
-  }
-
   return { adjudicado: true, motivo: null };
+}
+
+/** Solo letras y dígitos: «900.123.456-7» y «9001234567» son el mismo NIT. */
+const normalizarDocumento = (documento: string) => documento.replace(/[^0-9a-z]/gi, '').toUpperCase();
+
+/**
+ * Por qué el contrato no cuadra con el acto que lo sustenta, o nulo si cuadra.
+ *
+ * El contrato se llenaba a mano y nada lo comparaba con la adjudicación: podía
+ * salir por más de lo adjudicado y con otro contratista.
+ */
+export function contradiceElActo(
+  contrato: { valor: number; contratistaDocumento: string },
+  acto: AdjudicacionVigente,
+): string | null {
+  if (contrato.valor > acto.valor) {
+    return (
+      `El valor del contrato ($ ${contrato.valor.toLocaleString('es-CO')}) supera el adjudicado ` +
+      `en ${acto.fuente} ($ ${acto.valor.toLocaleString('es-CO')})`
+    );
+  }
+  const documento = acto.contratista.documento;
+  if (documento && normalizarDocumento(documento) !== normalizarDocumento(contrato.contratistaDocumento)) {
+    return (
+      `El contratista no es a quien se adjudicó: ${acto.fuente} adjudica a ` +
+      `${acto.contratista.nombre} (${documento})`
+    );
+  }
+  return null;
 }
 
 interface ArchivoCargado {
@@ -164,7 +202,7 @@ export class ContratosService {
       order: { orden: 'ASC', nombre: 'ASC' },
     });
 
-    const { adjudicado, motivo } = await this.estadoDeLaAdjudicacion(
+    const { adjudicado, motivo, acto } = await this.estadoDeLaAdjudicacion(
       this.dataSource.manager,
       procesoId,
     );
@@ -197,6 +235,9 @@ export class ContratosService {
       // falta, no solo que no se puede.
       adjudicado,
       motivoNoAdjudicado: motivo,
+      // Lo que fija el acto: la pantalla parte de aquí en vez de un formulario
+      // en blanco, y el servidor rechaza el contrato que se aparte.
+      adjudicacion: acto,
       puedeGenerar: adjudicado && !contrato,
       tipologias: tipologias.map((t) => ({
         codigo: t.codigo,
@@ -278,12 +319,15 @@ export class ContratosService {
     await this.dataSource.transaction(async (em) => {
       await this.exigirProceso(em, procesoId);
 
-      const { adjudicado, motivo } = await this.estadoDeLaAdjudicacion(em, procesoId);
-      if (!adjudicado) {
+      const { adjudicado, motivo, acto } = await this.estadoDeLaAdjudicacion(em, procesoId);
+      if (!adjudicado || !acto) {
         throw new ConflictException(
           `El proceso todavía no está adjudicado: ${motivo}`,
         );
       }
+
+      const contradiccion = contradiceElActo(dto, acto);
+      if (contradiccion) throw new BadRequestException(contradiccion);
 
       if (await this.contratoVigente(procesoId, em)) {
         throw new ConflictException(
@@ -525,13 +569,24 @@ export class ContratosService {
       if (estaSuscrito(partes)) {
         contrato.estado = 'PERFECCIONADO';
         contrato.perfeccionadoAt = new Date();
+        // Sin garantías ni ARL que constituir (enajenación), firmado ya está
+        // legalizado: no hay otra actividad que lo vaya a marcar.
+        const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+        const modalidad = proceso?.modalidad ?? null;
+        if (
+          !(await aplicanGarantias(em, modalidad)) &&
+          !(await aplicaArl(em, modalidad, contrato.contratistaTipo))
+        ) {
+          contrato.estado = 'LEGALIZADO';
+          contrato.legalizadoAt = new Date();
+        }
         // La evidencia de la última firma es el contrato con las dos firmas
         // incorporadas, así que es la que queda como documento suscrito.
         contrato.contratoFirmadoDocumentoId = doc.id;
         await em.save(contrato);
       }
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, contrato.id, 'FIRMAR', acceso, {
         actividad: NUMERAL_CONTRATO,
@@ -596,44 +651,83 @@ export class ContratosService {
   }
 
   /**
-   * Lee la recepción de ofertas y le pasa los datos a `evaluarAdjudicacion`.
+   * La adjudicación vigente, con el contratista y el valor que fija.
    *
-   * Se leen las entidades de la actividad 6.1 en vez de llamar a su servicio: lo
-   * que hace falta son tres datos, y pedirlos por el estado completo ataría esta
-   * actividad a la forma de la respuesta de aquella.
+   * Lo normal es el acto de la 7.3. Con convocatoria el contratista es la
+   * oferta adjudicada; sin ella, lo que dice el acto. Donde la matriz excluye
+   * la 7.3 —la TVEC, donde se compra por la tienda virtual sin acto
+   * de adjudicación— vale el informe definitivo publicado (7.2) con su
+   * ganadora: sin esto la TVEC no llegaba nunca al contrato.
+   *
+   * Se leen las entidades en vez de llamar a los servicios: hacen falta tres
+   * datos, y pedirlos por el estado completo ataría esta actividad a la forma
+   * de la respuesta de aquellas.
    */
-  private async estadoDeLaAdjudicacion(em: EntityManager, procesoId: string) {
-    const recepcion = await em.getRepository(RecepcionOfertas).findOne({ where: { procesoId } });
+  private async adjudicacionVigente(
+    em: EntityManager,
+    procesoId: string,
+  ): Promise<AdjudicacionVigente | null> {
+    const acto = await em
+      .getRepository(ActoAdjudicacion)
+      .findOne({ where: { procesoId, estado: 'VIGENTE' } });
 
-    const totalOferentes = recepcion
-      ? await em.getRepository(Oferente).count({ where: { recepcionId: recepcion.id } })
-      : 0;
+    if (acto) {
+      const oferta = acto.oferenteId
+        ? await em.getRepository(Oferente).findOne({ where: { id: acto.oferenteId } })
+        : null;
+      return {
+        fuente: `el acto ${acto.numeroActo}`,
+        valor: Number(acto.valorAdjudicado),
+        contratista: oferta
+          ? { nombre: oferta.nombre, documento: oferta.identificacion ?? null, tipo: null }
+          : {
+              nombre: acto.contratistaNombre ?? '',
+              documento: acto.contratistaDocumento,
+              tipo: acto.contratistaTipo,
+            },
+      };
+    }
 
-    return evaluarAdjudicacion({
-      existe: !!recepcion,
-      cerrada: recepcion?.estado === 'CERRADA',
-      totalOferentes,
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    const sinActo = await em.getRepository(ActividadExcluida).findOne({
+      where: { numeral: NUMERAL_ACTO_ADJUDICACION, modalidad: proceso?.modalidad ?? '' },
     });
+    if (!sinActo) return null;
+
+    const definitivo = await em
+      .getRepository(InformeDefinitivo)
+      .findOne({ where: { procesoId, estado: 'PUBLICADO' } });
+    const ganadora = definitivo?.resultado?.ganadora;
+    if (!definitivo || !ganadora) return null;
+
+    const oferta = await em.getRepository(Oferente).findOne({ where: { id: ganadora.oferenteId } });
+    const valor = definitivo.resultado.valorEvaluado ?? (oferta?.valorOfertado != null ? Number(oferta.valorOfertado) : null);
+    if (valor == null) return null;
+
+    return {
+      fuente: 'el informe definitivo (7.2)',
+      valor: Number(valor),
+      contratista: { nombre: ganadora.nombre, documento: ganadora.identificacion ?? oferta?.identificacion ?? null, tipo: null },
+    };
+  }
+
+  private async estadoDeLaAdjudicacion(em: EntityManager, procesoId: string) {
+    const acto = await this.adjudicacionVigente(em, procesoId);
+    return { ...evaluarAdjudicacion(acto), acto };
   }
 
   /**
-   * La actividad se cumple cuando el proponente acepta.
+   * La 8.1 se cumple con la segunda firma, cuando el contrato queda
+   * perfeccionado. La matriz la da por hecha al aceptar la minuta, pero así el
+   * riel la ponía en verde y la guía mandaba a la 8.2 con las firmas del
+   * ordenador y del contratista todavía pendientes, que se hacen en esta misma
+   * actividad.
    *
-   * Generada la minuta la actividad queda en curso, no aprobada: un contrato
-   * que el proponente no ha aceptado todavía no formaliza nada, y darlo por
-   * cumplido haría que el riel mintiera.
-   */
-  /**
-   * La 8.1 se cumple al aceptar, no al firmar: la matriz da la actividad por
-   * hecha cuando el proponente acepta la minuta, y lo que viene después
-   * —las firmas del ordenador y del contratista— es el perfeccionamiento del
-   * contrato, no un segundo cierre de la misma actividad.
-   *
-   * Por eso la aprobación o la firma (EFDS-1183, EFDS-2070) solo se preguntan
+   * La aprobación o la firma (EFDS-1183, EFDS-2070) solo se preguntan
    * en la transición de BORRADOR a cumplida: si ya estaba decidida —aprobada
    * o en revisión—, cada firma que se registre después no vuelve a pedirla.
    * Rechazar la devuelve a BORRADOR, y ahí sí se vuelve a preguntar la próxima
-   * vez que se acepte.
+   * vez que se complete.
    */
   private async marcarActividad(
     em: EntityManager,
