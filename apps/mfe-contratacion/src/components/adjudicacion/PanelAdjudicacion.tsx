@@ -24,6 +24,7 @@ import {
   EstadoInformeDefinitivoProceso,
   EvidenciaFirmaOtp,
   InformeDefinitivo,
+  TipoPersonaContratista,
   TipoPiezaAudiencia,
   VersionInformeDefinitivo,
 } from '../../types';
@@ -136,6 +137,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const [valorAdjudicado, setValorAdjudicado] = useState('');
   const [correoContratista, setCorreoContratista] = useState('');
   const [justificacion, setJustificacion] = useState('');
+  // Sin convocatoria (directa) no hay ofertas: el acto nombra al contratista.
+  const [contratistaNombre, setContratistaNombre] = useState('');
+  const [contratistaDocumento, setContratistaDocumento] = useState('');
+  const [contratistaTipo, setContratistaTipo] = useState<TipoPersonaContratista>('NATURAL');
   const [actoArchivo, setActoArchivo] = useState<File | null>(null);
   const [medioActo, setMedioActo] = useState('');
   const [evidenciaActo, setEvidenciaActo] = useState<File | null>(null);
@@ -257,7 +262,13 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       await contratacionService.adjudicar(
         procesoId,
         {
-          oferenteId: adjudicatario,
+          ...(acto?.sinConvocatoria
+            ? {
+                contratistaNombre: contratistaNombre.trim(),
+                contratistaDocumento: contratistaDocumento.trim(),
+                contratistaTipo,
+              }
+            : { oferenteId: adjudicatario }),
           numeroActo: numeroActo.trim(),
           fechaActo,
           valorAdjudicado: aNumero(valorAdjudicado) as number,
@@ -274,6 +285,8 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setValorAdjudicado('');
       setCorreoContratista('');
       setJustificacion('');
+      setContratistaNombre('');
+      setContratistaDocumento('');
       setActoArchivo(null);
     }, 'Proceso adjudicado');
 
@@ -340,6 +353,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const laAudiencia = audiencia.audiencia;
   const elDefinitivo = definitivo.informe;
   const elActo = acto.acto;
+  const sinConvocatoria = acto.sinConvocatoria;
+  const faltaAdjudicatario = sinConvocatoria
+    ? !contratistaNombre.trim() || !contratistaDocumento.trim()
+    : !adjudicatario;
 
   // El adjudicatario elegido contra el que propone el informe: la contradicción
   // se muestra mientras se llena el formulario, no después de guardar.
@@ -367,13 +384,21 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   return (
     <Marco>
       <Titulo>Adjudicación del proceso</Titulo>
-      <Ayuda>
-        Cerrado el traslado, la entidad celebra la audiencia —donde la modalidad lo exige, allí se
-        abre el sobre económico—, produce el informe de evaluación definitivo y adjudica por acto
-        del Ordenador del Gasto. El informe propone; el acto decide.
-      </Ayuda>
+      {sinConvocatoria ? (
+        <Ayuda>
+          Esta modalidad no recibe ofertas: no hay traslado, audiencia ni informe de evaluación
+          definitivo. El Ordenador del Gasto emite el acto y en él dice a quién se adjudica y por
+          cuánto; el contrato de la 8.1 parte de ahí.
+        </Ayuda>
+      ) : (
+        <Ayuda>
+          Cerrado el traslado, la entidad celebra la audiencia —donde la modalidad lo exige, allí
+          se abre el sobre económico—, produce el informe de evaluación definitivo y adjudica por
+          acto del Ordenador del Gasto. El informe propone; el acto decide.
+        </Ayuda>
+      )}
 
-      {!audiencia.trasladoCerrado && (
+      {!sinConvocatoria && !audiencia.trasladoCerrado && (
         <Pendiente
           falta="6.6"
           texto="El traslado del informe de evaluación sigue abierto: mientras corra, la evaluación todavía se puede mover."
@@ -382,6 +407,8 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
 
       {/* ------------------------------------------ 7.1 y 7.1.1 · audiencia --- */}
 
+      {!sinConvocatoria && (
+      <>
       {audiencia.aplica ? (
         <div className="space-y-2.5">
           <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">
@@ -662,13 +689,15 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* -------------------------------------------- 7.3 · el acto --------- */}
 
       <div className="space-y-2.5">
         <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">Acto de adjudicación</p>
 
-        {!acto.informeDefinitivoPublicado && (
+        {!sinConvocatoria && !acto.informeDefinitivoPublicado && (
           <Pendiente
             falta="7.2"
             texto="El informe definitivo no se ha publicado: adjudicar sin él sería firmar sobre una evaluación que todavía se puede mover."
@@ -690,18 +719,46 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         {acto.puedeAdjudicar &&
           (adjudicando ? (
             <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-              <select
-                className={campo}
-                value={adjudicatario}
-                onChange={(e) => setAdjudicatario(e.target.value)}
-              >
-                <option value="">¿A quién se adjudica?</option>
-                {acto.ofertas.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.numero}. {o.nombre}
-                  </option>
-                ))}
-              </select>
+              {sinConvocatoria ? (
+                <>
+                  <input
+                    className={campo}
+                    aria-label="Nombre del contratista"
+                    placeholder="A quién se adjudica: nombre o razón social"
+                    value={contratistaNombre}
+                    onChange={(e) => setContratistaNombre(e.target.value)}
+                  />
+                  <input
+                    className={campo}
+                    aria-label="Documento del contratista"
+                    placeholder="Cédula o NIT"
+                    value={contratistaDocumento}
+                    onChange={(e) => setContratistaDocumento(e.target.value)}
+                  />
+                  <select
+                    className={campo}
+                    aria-label="Tipo de persona del contratista"
+                    value={contratistaTipo}
+                    onChange={(e) => setContratistaTipo(e.target.value as TipoPersonaContratista)}
+                  >
+                    <option value="NATURAL">Persona natural</option>
+                    <option value="JURIDICA">Persona jurídica</option>
+                  </select>
+                </>
+              ) : (
+                <select
+                  className={campo}
+                  value={adjudicatario}
+                  onChange={(e) => setAdjudicatario(e.target.value)}
+                >
+                  <option value="">¿A quién se adjudica?</option>
+                  {acto.ofertas.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.numero}. {o.nombre}
+                    </option>
+                  ))}
+                </select>
+              )}
               <input
                 className={campo}
                 placeholder="Número de la resolución"
@@ -775,7 +832,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                   onClick={() => firmaActo.conFirma(adjudicar)}
                   disabled={
                     guardando ||
-                    !adjudicatario ||
+                    faltaAdjudicatario ||
                     !numeroActo.trim() ||
                     !fechaActo ||
                     aNumero(valorAdjudicado) == null ||
@@ -850,7 +907,11 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
           </div>
         )}
       </div>
-      <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
+      {/* Desierto es no recibir ofertas o que ninguna quede habilitada: sin
+          convocatoria no hay ofertas que lo hagan posible. */}
+      {!sinConvocatoria && (
+        <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
+      )}
       {firmaAudiencia.modal}
       {firmaSobre.modal}
       {firmaInformeDefinitivo.modal}

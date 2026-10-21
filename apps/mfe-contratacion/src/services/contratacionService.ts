@@ -2593,7 +2593,10 @@ export const contratacionService = {
   adjudicar: (procesoId: string, datos: Adjudicar, acto: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
-    cuerpo.append('oferenteId', datos.oferenteId);
+    if (datos.oferenteId) cuerpo.append('oferenteId', datos.oferenteId);
+    if (datos.contratistaNombre) cuerpo.append('contratistaNombre', datos.contratistaNombre);
+    if (datos.contratistaDocumento) cuerpo.append('contratistaDocumento', datos.contratistaDocumento);
+    if (datos.contratistaTipo) cuerpo.append('contratistaTipo', datos.contratistaTipo);
     cuerpo.append('numeroActo', datos.numeroActo);
     cuerpo.append('fechaActo', datos.fechaActo);
     cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));

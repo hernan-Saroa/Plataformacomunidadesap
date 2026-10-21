@@ -131,6 +131,7 @@ const definitivo = (
 const adjudicacion = (parcial: Partial<EstadoAdjudicacion> = {}): EstadoAdjudicacion => ({
   aplica: true,
   motivoNoAplica: null,
+  sinConvocatoria: false,
   informeDefinitivoPublicado: true,
   ganadoraPropuesta: { oferenteId: 'of-2', nombre: 'Completa SAS', valorEvaluado: 48_000_000 },
   puedeAdjudicar: true,
@@ -497,3 +498,51 @@ describe('PanelAdjudicacion · etapa 7', () => {
   });
 });
 
+/**
+ * La 7.3 en contratación directa: no hay ofertas, traslado ni informe
+ * definitivo. Antes la pantalla mandaba a la 6.6 y a la 7.2, que en directa no
+ * existen, y el proceso no llegaba nunca al contrato.
+ */
+describe('PanelAdjudicacion · sin convocatoria', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.audienciaAdjudicacion.mockResolvedValue(
+      audiencia({ aplica: false, trasladoCerrado: false, audiencia: null, puedeCelebrar: false }),
+    );
+    servicio.informeDefinitivo.mockResolvedValue(definitivo({ aplica: false, informe: null }));
+    servicio.adjudicacion.mockResolvedValue(
+      adjudicacion({
+        sinConvocatoria: true,
+        informeDefinitivoPublicado: false,
+        ganadoraPropuesta: null,
+        ofertas: [],
+      }),
+    );
+    servicio.declaratoriaDesierta.mockResolvedValue(desierta());
+  });
+
+  it('no remite al traslado ni al informe definitivo', async () => {
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Adjudicar el proceso/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/El traslado del informe de evaluación sigue abierto/i)).toBeNull();
+    expect(screen.queryByText(/El informe definitivo no se ha publicado/i)).toBeNull();
+  });
+
+  it('pide al contratista en vez de la lista de ofertas', async () => {
+    const usuario = userEvent.setup();
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Adjudicar el proceso/i })).toBeInTheDocument(),
+    );
+    await usuario.click(screen.getByRole('button', { name: /Adjudicar el proceso/i }));
+
+    expect(screen.getByLabelText('Nombre del contratista')).toBeInTheDocument();
+    expect(screen.getByLabelText('Documento del contratista')).toBeInTheDocument();
+    expect(screen.queryByText('¿A quién se adjudica?')).toBeNull();
+    expect(await screen.findByRole('button', { name: /^Adjudicar$/i })).toBeDisabled();
+  });
+});

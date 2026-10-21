@@ -27,19 +27,31 @@ export class ActoAdjudicacion {
 
   /**
    * El informe sobre el que se adjudica. Adjudicar sin él sería firmar sobre
-   * una evaluación que todavía se podía mover.
+   * una evaluación que todavía se podía mover. Nulo en las modalidades sin
+   * convocatoria (migración 122): no hay evaluación.
    */
-  @Column({ name: 'informe_definitivo_id' })
-  informeDefinitivoId: string;
+  @Column({ name: 'informe_definitivo_id', type: 'uuid', nullable: true })
+  informeDefinitivoId: string | null;
 
   /**
    * A quién se le adjudica.
    *
    * Con llave a las ofertas del proceso: un nombre escrito a mano en un acto de
-   * adjudicación es el error que no se puede cometer aquí.
+   * adjudicación es el error que no se puede cometer aquí. Sin convocatoria no
+   * hay ofertas, y el contratista queda en las tres columnas de abajo.
    */
-  @Column({ name: 'oferente_id' })
-  oferenteId: string;
+  @Column({ name: 'oferente_id', type: 'uuid', nullable: true })
+  oferenteId: string | null;
+
+  /** Sin convocatoria (directa): a quién se adjudica, tal como lo dice el acto. */
+  @Column({ name: 'contratista_nombre', type: 'varchar', length: 300, nullable: true })
+  contratistaNombre: string | null;
+
+  @Column({ name: 'contratista_documento', type: 'varchar', length: 40, nullable: true })
+  contratistaDocumento: string | null;
+
+  @Column({ name: 'contratista_tipo', type: 'varchar', length: 20, nullable: true })
+  contratistaTipo: 'NATURAL' | 'JURIDICA' | null;
 
   @Column({ name: 'numero_acto', length: 60 })
   numeroActo: string;

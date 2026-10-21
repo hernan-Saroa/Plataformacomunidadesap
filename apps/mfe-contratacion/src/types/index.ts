@@ -1907,6 +1907,8 @@ export interface ActoAdjudicacion {
 export interface EstadoAdjudicacion {
   aplica: boolean;
   motivoNoAplica: string | null;
+  /** Directa: sin ofertas ni informe definitivo, el acto trae al contratista. */
+  sinConvocatoria: boolean;
   informeDefinitivoPublicado: boolean;
   /** La ganadora que propone el informe: el acto puede apartarse, con motivo. */
   ganadoraPropuesta: { oferenteId: string; nombre: string; valorEvaluado: number | null } | null;
@@ -1980,7 +1982,11 @@ export interface DeclararDesierto {
 
 /** Lo que el Ordenador del Gasto firma. */
 export interface Adjudicar {
-  oferenteId: string;
+  /** Con convocatoria. Sin ella van los tres campos del contratista (122). */
+  oferenteId?: string;
+  contratistaNombre?: string;
+  contratistaDocumento?: string;
+  contratistaTipo?: TipoPersonaContratista;
   numeroActo: string;
   fechaActo: string;
   valorAdjudicado: number;
