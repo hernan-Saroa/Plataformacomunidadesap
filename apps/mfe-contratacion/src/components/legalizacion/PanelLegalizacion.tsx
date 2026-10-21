@@ -32,6 +32,7 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 import { IrALaRevision, useLugarDeDecision } from '../shared/LugarDeDecision';
 
 interface Props {
@@ -79,6 +80,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
   // Las pólizas se aprueban solo en la pantalla de revisión.
   const { enLaRevision } = useLugarDeDecision();
   const firma = useFirma(numeral, numeral === '8.5' ? 'Registrar la ARL' : 'Aprobar la póliza');
+  const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoLegalizacion | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,9 +228,15 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
   };
 
   const devolver = async (g: GarantiaDelContrato) => {
-    const motivo = window
-      .prompt(`¿Por qué se devuelve la póliza ${g.numeroPoliza}? El contratista verá este motivo.`)
-      ?.trim();
+    // Era el último `window.prompt` de la etapa 8, con el cuadro del navegador
+    // («localhost dice…») en vez del diálogo del módulo.
+    const motivo = await dialogo.pedirMotivo({
+      titulo: `Devolver la póliza ${g.numeroPoliza}`,
+      descripcion: 'El contratista verá este motivo y podrá cargar la póliza corregida.',
+      etiqueta: 'Por qué se devuelve',
+      confirmar: 'Devolver la póliza',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -714,6 +722,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
         </>
       )}
       {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }
