@@ -48,12 +48,64 @@ import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { AuthUser } from '../auth/types.js';
 
 const MAX_SIZE_20MB = 20 * 1024 * 1024;
 const MIMES_PERMITIDOS =
   /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf|video\/(mp4|webm|quicktime|x-m4v|x-msvideo|mpeg))$/i;
 const EXTENSIONES_EVIDENCIA_PERMITIDAS =
   /\.(png|jpe?g|gif|webp|heic|heif|pdf|mp4|webm|mov|m4v|avi|mpeg)$/i;
+
+const parseCsvHeader = (raw: unknown): string[] => {
+  if (raw == null) return [];
+  const txt = String(raw).trim();
+  if (!txt) return [];
+  try {
+    const parsed = JSON.parse(txt);
+    if (Array.isArray(parsed)) return parsed.map((x) => String(x)).filter(Boolean);
+  } catch {
+    // ignore
+  }
+  return txt.split(/[,\s;|]+/).map((x) => x.trim()).filter(Boolean);
+};
+
+const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
+  const actual = req?.user;
+  if (actual && typeof actual === 'object') {
+    return {
+      userId: String(actual.userId || ''),
+      username: actual.username != null ? String(actual.username) : undefined,
+      email: actual.email != null ? String(actual.email) : undefined,
+      name: actual.name != null ? String(actual.name) : undefined,
+      roles: Array.isArray(actual.roles) ? actual.roles.map(String).filter(Boolean) : [],
+      permissions: actual.permissions,
+      codigoTecnico: actual.codigoTecnico != null ? String(actual.codigoTecnico).trim() : undefined,
+    };
+  }
+
+  const headerUserId = req?.headers?.['x-user-id'];
+  const headerEmail = req?.headers?.['x-user-email'];
+  const headerUsername = req?.headers?.['x-user-username'];
+  const headerName = req?.headers?.['x-user-name'];
+  if (headerUserId == null && headerEmail == null && headerUsername == null) {
+    return undefined;
+  }
+
+  return {
+    userId: headerUserId != null ? String(headerUserId) : '',
+    username: headerUsername != null ? String(headerUsername) : undefined,
+    email: headerEmail != null ? String(headerEmail) : undefined,
+    name: headerName != null ? String(headerName) : undefined,
+    roles: parseCsvHeader(req?.headers?.['x-user-roles'] ?? req?.headers?.['x-user-role']),
+    permissions: parseCsvHeader(req?.headers?.['x-user-permissions']),
+    codigoTecnico:
+      req?.headers?.['x-user-technical-code'] != null
+        ? String(req.headers['x-user-technical-code']).trim()
+        : (req?.headers?.['x-user-codigo-tecnico'] != null
+          ? String(req.headers['x-user-codigo-tecnico']).trim()
+          : undefined),
+  };
+};
 
 @ApiTags('Mantenimiento e Infraestructura')
 @ApiBearerAuth()
@@ -896,7 +948,6 @@ export class MantenimientoController {
   // Evidencias / Upload
   // ---------------------------------------------------------------------------
   @Post('evidencias/upload')
-  @Public()
   @ApiOperation({
     summary:
       'Subir un archivo evidencia al storage local (uploads/). Se pueden subir antes de radicar y luego ligar por uploadedEvidenciaIds, o después con idSolicitud opcional.',
@@ -942,7 +993,7 @@ export class MantenimientoController {
       buffer: file.buffer,
       mimeType,
       tamanoBytes: file.size,
-      user: req?.user,
+      user: obtenerUsuarioOpcionalDesdeRequest(req),
       idSolicitud: body?.idSolicitud,
       orden: body?.orden ? parseInt(body.orden, 10) : undefined,
       notas: body?.notas,
