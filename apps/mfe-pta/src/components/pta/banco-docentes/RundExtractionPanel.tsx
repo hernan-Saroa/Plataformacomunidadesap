@@ -63,7 +63,7 @@ export function RundExtractionPanel({docenteId,revision,activeBlock,activeBlockL
   const [expanded,setExpanded]=useState(false);
   const actionRef=useRef(false);
   const [refresh,setRefresh]=useState(0);
-  const base=`/pta/api/v1/pta/banco-docentes/${docenteId}/extracciones`;
+  const base=`/rund/api/v1/pta/banco-docentes/${docenteId}/extracciones`;
   useEffect(()=>{ setData(null); setReasons({}); setDiscardOpen({}); setExpanded(false); setError(''); },[docenteId]);
   useEffect(()=>{ setDiscardOpen({}); setExpanded(false); },[activeBlock]);
   useEffect(()=>{
@@ -160,7 +160,7 @@ export function RundExtractionPanel({docenteId,revision,activeBlock,activeBlockL
         const identityConflict=pending.filter((suggestion:RundSuggestion)=>['documentNumber','nombreCompleto'].includes(suggestion.campo) && suggestion.valor_previo && !valuesMatch(suggestion)).length>=2;
         return <article className="rund-extraction-job" key={job.id}>
           <header className="rund-extraction-job-heading"><div><FileText size={18}/><span><strong>{job.nombre_archivo}</strong><small>Versión {job.version} · {pending.length} campos pendientes</small></span></div><div>
-            {job.sugerencias?.length>0&&<button type="button" className="rund-extraction-button" disabled={!!busy} onClick={()=>onView(`/pta/api/v1/pta/banco-docentes/${docenteId}/documentos/${job.documento_id}/contenido`,job.nombre_archivo,'Documento analizado')}><Eye size={14}/> Ver PDF</button>}
+            {job.sugerencias?.length>0&&<button type="button" className="rund-extraction-button" disabled={!!busy} onClick={()=>onView(`/rund/api/v1/pta/banco-docentes/${docenteId}/documentos/${job.documento_id}/contenido`,job.nombre_archivo,'Documento analizado')}><Eye size={14}/> Ver PDF</button>}
             <span className="rund-extraction-badge">{statuses[job.estado]||job.estado}</span>
           </div></header>
           {identityConflict&&<div className="rund-extraction-identity-alert"><AlertTriangle size={18}/><div><strong>Datos principales distintos al perfil</strong><p>El número y el nombre reconocidos son diferentes. Puede tratarse de una corrección válida o de un documento equivocado: verifica el PDF y decide cada propuesta.</p></div><button type="button" className="rund-extraction-button rund-extraction-danger" disabled={!!busy} onClick={()=>mutate(`discard-job-${job.id}`,`trabajos/${job.id}/descartar`,{motivo:'El documento no corresponde al perfil revisado.'})}>{busy===`discard-job-${job.id}`?'Rechazando…':'Rechazar todas'}</button></div>}

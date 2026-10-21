@@ -424,14 +424,14 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       let dataId = docenteId;
       if (cleanPersonaId && !docenteId) {
         const qs = currentPeriodoCarga ? `?periodoCarga=${encodeURIComponent(currentPeriodoCarga)}` : '';
-        const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund${qs}`);
+        const res = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund${qs}`);
         dataId = res?.data?.docenteId || res?.docenteId;
       }
       if (!dataId) throw new Error('No se encontró un registro RUND persistido.');
       const [tarjetaResult, bloquesResult, auditResult] = await Promise.allSettled([
-        apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/tarjeta-rund?_t=${Date.now()}`),
-        apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/bloques?_t=${Date.now()}`),
-        apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/auditoria?_t=${Date.now()}`),
+        apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${dataId}/tarjeta-rund?_t=${Date.now()}`),
+        apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${dataId}/bloques?_t=${Date.now()}`),
+        apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${dataId}/auditoria?_t=${Date.now()}`),
       ]);
       if (sequence !== requestSequence.current) return;
       if (tarjetaResult.status === 'rejected' || bloquesResult.status === 'rejected') {
@@ -539,7 +539,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       formData.append('file', file);
 
       // CORRECTO: usar apiClient.upload (multipart/form-data) en vez de apiClient.post (JSON)
-      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${selectedRundBloque}/soportes`, formData);
+      const res = await apiClient.upload<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${selectedRundBloque}/soportes`, formData);
 
       // apiClient.upload unwraps { success: true, data: {id, bloque, tipoSoporte} } → returns {id, bloque, tipoSoporte}
       // We verify success by checking for the returned id (UUID from RundSoporteCampo insert),
@@ -587,7 +587,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     }
     setRundActionLoading(bloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
+      const res = await apiClient.post<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
       });
 
       if (res && res.success !== false) {
@@ -609,7 +609,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     if (rundActionLoading || loadingRund || loadError || !devolverRundBloque || !devolverRundObs.trim() || !tarjetaRund?.docenteId) return;
     setRundActionLoading(devolverRundBloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
+      const res = await apiClient.post<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
         observacion: devolverRundObs,
       });
       if (res && res.success !== false) {
@@ -637,7 +637,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     if (!support || rundActionLoading || loadingRund || loadError) return;
     setRundActionLoading(`review-${support.id}`);
     try {
-      await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${block}/soportes/${support.id}/revision`, {
+      await apiClient.post(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${block}/soportes/${support.id}/revision`, {
         estado, observacion, campo: field.revisionId || field.tipoSoporte, documentoVersionId: support.documento_perfil_id || support.documento_carpeta_id,
         blockVersion: Number(rundBloques.find(b => b.bloque === block)?.version),
       });

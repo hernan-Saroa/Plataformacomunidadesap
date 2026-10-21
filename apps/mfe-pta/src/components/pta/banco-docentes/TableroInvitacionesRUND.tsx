@@ -133,7 +133,7 @@ export function TableroInvitacionesRUND() {
     try {
       // apiClient desenvuelve {success, data} y devuelve `data` directamente,
       // así que `res` ya es el array. Soportamos también el caso sin desenvolver.
-      const res: any = await apiClient.get('/pta/api/v1/pta/banco-docentes/invitaciones');
+      const res: any = await apiClient.get('/rund/api/v1/pta/banco-docentes/invitaciones');
       const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
       setInvitaciones(list);
     } catch (err: any) {
@@ -241,7 +241,7 @@ export function TableroInvitacionesRUND() {
 
     for (const email of emails) {
       try {
-        const res = await apiClient.post('/pta/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: email });
+        const res = await apiClient.post('/rund/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: email });
         if (res.data?.success) success++;
         else failed++;
       } catch {
@@ -262,7 +262,7 @@ export function TableroInvitacionesRUND() {
   // ─── Resend ──────────────────────────────────────────────────
   const handleResend = async (inv: Invitacion) => {
     try {
-      await apiClient.post('/pta/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
+      await apiClient.post('/rund/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
       setSuccessMsg(`🔄 Invitación reenviada a ${inv.correoInstitucional}`);
       setTimeout(() => setSuccessMsg(null), 4000);
       fetchInvitaciones();
@@ -282,7 +282,7 @@ export function TableroInvitacionesRUND() {
     let count = 0;
     for (const inv of pending) {
       try {
-        await apiClient.post('/pta/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
+        await apiClient.post('/rund/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
         count++;
       } catch { /* skip */ }
     }

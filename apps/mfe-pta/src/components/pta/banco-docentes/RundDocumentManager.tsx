@@ -106,8 +106,8 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
     setLoading(true);
     try {
       const [categoryResponse, documentResponse] = await Promise.all([
-        apiClient.get<any>('/pta/api/v1/pta/banco-docentes/documentos/categorias'),
-        apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${docenteId}/documentos?historial=${history}`),
+        apiClient.get<any>('/rund/api/v1/pta/banco-docentes/documentos/categorias'),
+        apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${docenteId}/documentos?historial=${history}`),
       ]);
       const nextCategories = unwrapList<Category>(categoryResponse);
       setCategories(nextCategories);
@@ -155,7 +155,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
         formData.append('tipoSoporte', evidence.type);
       }
       formData.append('descripcion', description.trim());
-      await apiClient.upload(`/pta/api/v1/pta/banco-docentes/${docenteId}/documentos`, formData);
+      await apiClient.upload(`/rund/api/v1/pta/banco-docentes/${docenteId}/documentos`, formData);
       toast.success('Documento PDF cargado y vinculado al perfil.');
       setDescription('');
       await load();
@@ -189,7 +189,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
       formData.append('file', file);
       if (document.descripcion) formData.append('descripcion', document.descripcion);
       await apiClient.upload(
-        `/pta/api/v1/pta/banco-docentes/${docenteId}/documentos/${document.id}/reemplazo`,
+        `/rund/api/v1/pta/banco-docentes/${docenteId}/documentos/${document.id}/reemplazo`,
         formData,
       );
       toast.success(`Documento reemplazado. Se creó la versión ${document.version + 1}.`);
@@ -227,7 +227,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
     if (!window.confirm(`¿Eliminar “${document.nombreArchivo}”? Esta acción quedará registrada en la trazabilidad.`)) return;
     setBusy(`delete-${document.id}`);
     try {
-      await apiClient.delete(`/pta/api/v1/pta/banco-docentes/${docenteId}/documentos/${document.id}`);
+      await apiClient.delete(`/rund/api/v1/pta/banco-docentes/${docenteId}/documentos/${document.id}`);
       toast.success('Documento eliminado del perfil.');
       await load();
       await onChanged?.();

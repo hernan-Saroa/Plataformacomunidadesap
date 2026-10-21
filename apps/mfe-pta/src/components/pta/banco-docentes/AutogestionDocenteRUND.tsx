@@ -112,7 +112,7 @@ export function AutogestionDocenteRUND() {
     if (step !== 'FORM' || !sessionToken || !autoSaveEnabled) return;
     const interval = setInterval(async () => {
       try {
-        await apiClient.put(`/pta/api/v1/banco-docentes/drafts/${sessionToken}`, form);
+        await apiClient.put(`/rund/api/v1/banco-docentes/drafts/${sessionToken}`, form);
         setLastSaved(new Date());
       } catch (e) {
         console.warn('Auto-save failed', e);
@@ -140,7 +140,7 @@ export function AutogestionDocenteRUND() {
     setLoading(true);
     setError(null);
     try {
-      const res: any = await apiClient.post('/pta/api/v1/banco-docentes/otp/request', { email: emailStr });
+      const res: any = await apiClient.post('/rund/api/v1/banco-docentes/otp/request', { email: emailStr });
       const isSuccess = res.success || res.data?.success;
       const msg = res.message || res.data?.message || 'Error al solicitar el código.';
 
@@ -172,7 +172,7 @@ export function AutogestionDocenteRUND() {
     setLoading(true);
     setError(null);
     try {
-      const res: any = await apiClient.post('/pta/api/v1/banco-docentes/otp/validate', { email, otp });
+      const res: any = await apiClient.post('/rund/api/v1/banco-docentes/otp/validate', { email, otp });
       const isSuccess = res.success || res.data?.success;
       const msg = res.message || res.data?.message || 'Código inválido.';
       const sToken = res.sessionToken || res.data?.sessionToken;
@@ -197,7 +197,7 @@ export function AutogestionDocenteRUND() {
 
   const loadDraft = async (sToken: string) => {
     try {
-      const res = await apiClient.get(`/pta/api/v1/banco-docentes/drafts/${sToken}`);
+      const res = await apiClient.get(`/rund/api/v1/banco-docentes/drafts/${sToken}`);
       const draft = res?.draft || res?.data?.draft || res?.data?.data?.draft;
       if (draft) {
         setForm((previous: any) => ({ ...previous, ...draft, puntajeSalarial: '' }));
@@ -211,7 +211,7 @@ export function AutogestionDocenteRUND() {
     try {
       // El endpoint me/:token resuelve el correo desde la invitación en el server,
       // así que NO necesitamos un guard de correo aquí (antes retornaba temprano).
-      const searchRes: any = await apiClient.get(`/pta/api/v1/banco-docentes/autogestion/me/${sToken}`);
+      const searchRes: any = await apiClient.get(`/rund/api/v1/banco-docentes/autogestion/me/${sToken}`);
       // apiClient devuelve el contenido de data; se admiten también respuestas envueltas.
       const match = searchRes?.data?.data ?? searchRes?.data ?? searchRes ?? null;
 
@@ -279,7 +279,7 @@ export function AutogestionDocenteRUND() {
   const saveDraft = async () => {
     setLoading(true);
     try {
-      await apiClient.put(`/pta/api/v1/banco-docentes/drafts/${sessionToken}`, form);
+      await apiClient.put(`/rund/api/v1/banco-docentes/drafts/${sessionToken}`, form);
       setDraftSaved(true);
       setLastSaved(new Date());
       setTimeout(() => setDraftSaved(false), 3000);
@@ -339,7 +339,7 @@ export function AutogestionDocenteRUND() {
       };
       let profile = submittedProfile;
       if (!profile) {
-        const res: any = await apiClient.post(`/pta/api/v1/banco-docentes/submit/${sessionToken}`, payload);
+        const res: any = await apiClient.post(`/rund/api/v1/banco-docentes/submit/${sessionToken}`, payload);
         const docenteId = res?.data?.data?.docenteId || res?.data?.docenteId || res?.docenteId;
         const personaId = res?.data?.data?.personaId || res?.data?.personaId || res?.personaId;
         if (!docenteId) throw new Error('No se pudo confirmar el registro del perfil.');

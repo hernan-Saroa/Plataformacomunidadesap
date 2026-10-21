@@ -56,7 +56,7 @@ describe('revisión humana de OCR',()=>{
     fireEvent.click(screen.getByText(/Ver evidencia/));
     expect(evidence.open).toBe(true);
     fireEvent.click(screen.getByRole('button',{name:'Aplicar al perfil'}));
-    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/doc-1/extracciones/sugerencias/s-1/confirmar',{},expect.anything()));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/rund/api/v1/pta/banco-docentes/doc-1/extracciones/sugerencias/s-1/confirmar',{},expect.anything()));
     await waitFor(()=>expect(props.onConfirmed).toHaveBeenCalledTimes(1));
     await waitFor(()=>expect(apiClient.get).toHaveBeenCalledTimes(2));
   });
@@ -65,7 +65,7 @@ describe('revisión humana de OCR',()=>{
     render(<RundExtractionPanel {...props}/>);
     await openAssistant();
     fireEvent.click(screen.getByRole('button',{name:'Ver PDF'}));
-    expect(props.onView).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/doc-1/documentos/d-1/contenido','diploma.pdf','Documento analizado');
+    expect(props.onView).toHaveBeenCalledWith('/rund/api/v1/pta/banco-docentes/doc-1/documentos/d-1/contenido','diploma.pdf','Documento analizado');
   });
 
   it('advierte la diferencia, pero deja la decisión final al revisor',async()=>{
@@ -81,7 +81,7 @@ describe('revisión humana de OCR',()=>{
     expect(screen.getAllByRole('button',{name:'Aplicar al perfil'})).toHaveLength(2);
     expect(screen.queryByText('Aplicación bloqueada')).toBeNull();
     fireEvent.click(screen.getByRole('button',{name:'Rechazar todas'}));
-    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/doc-1/extracciones/trabajos/j-1/descartar',{motivo:'El documento no corresponde al perfil revisado.'},expect.anything()));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/rund/api/v1/pta/banco-docentes/doc-1/extracciones/trabajos/j-1/descartar',{motivo:'El documento no corresponde al perfil revisado.'},expect.anything()));
   });
 
   it.each(['documentNumber','nombreCompleto'])('aplica %s aunque nombre y documento difieran del perfil',async campo=>{
@@ -99,7 +99,7 @@ describe('revisión humana de OCR',()=>{
     const selected=identitySuggestions.find(item=>item.campo===campo)!;
     const card=screen.getByText(selected.label).closest('article')!;
     fireEvent.click(Array.from(card.querySelectorAll('button')).find(button=>button.textContent==='Aplicar al perfil')!);
-    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(`/pta/api/v1/pta/banco-docentes/doc-1/extracciones/sugerencias/${selected.id}/confirmar`,{},expect.anything()));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(`/rund/api/v1/pta/banco-docentes/doc-1/extracciones/sugerencias/${selected.id}/confirmar`,{},expect.anything()));
     await waitFor(()=>expect(props.onConfirmed).toHaveBeenCalledTimes(1));
   });
 
