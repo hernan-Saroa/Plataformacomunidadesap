@@ -2347,6 +2347,8 @@ export interface EstadoActaInicio {
   /** El contrato tiene sus coberturas en firme. */
   legalizado: boolean;
   tieneSupervisor: boolean;
+  /** El RP expedido (8.3): requisito de ejecución con la garantía aprobada. */
+  tieneRp?: boolean;
   puedeIniciar: boolean;
   /** Qué falta, dicho por el servidor y no deducido en pantalla. */
   motivoNoPuede: string | null;
