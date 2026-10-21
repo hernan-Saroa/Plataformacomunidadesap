@@ -95,16 +95,6 @@ describe('bandeja Por revisar', () => {
     expect(consultas.some((c) => c.includes('participaciones_proceso'))).toBe(false);
   });
 
-  it('la modalidad llega al abogado como la 3.1, y solo si tiene el permiso', async () => {
-    const filas = { aprobaciones: [], estudios: [fila('3.5', '2026-09-25')] };
-
-    const conPermiso = await montar(filas).service.porRevisar(acceso);
-    expect(conPermiso.map((e) => [e.tipo, e.numeral])).toEqual([['MODALIDAD', '3.5']]);
-
-    const sinPermiso = await montar(filas, () => false).service.porRevisar(acceso);
-    expect(sinPermiso).toEqual([]);
-  });
-
   it('trae las pólizas, modificaciones y cuentas de cobro, cada una con su detalle', async () => {
     const { service } = montar({
       aprobaciones: [],

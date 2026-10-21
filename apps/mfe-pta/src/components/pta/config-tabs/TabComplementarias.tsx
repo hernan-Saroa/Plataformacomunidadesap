@@ -612,6 +612,13 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                 <p className="text-xs text-slate-600 font-medium">
                   📋 Las secciones de este submódulo son fijas según el Anexo 1. Configura aquí las actividades disponibles dentro de cada bloque.
                 </p>
+                <p className="text-xs text-slate-600">
+                  <b>Programa y responsable:</b> Asocia cada bloque a Ninguno, Pregrado o Posgrado y selecciona
+                  por separado Gestión Profesoral, Decanatura o Territorial en Aprueba.
+                  Con Pregrado o Posgrado, primero se requiere la aprobación del programa y después
+                  la del responsable seleccionado. Con Ninguno, solo se requiere ese responsable.
+                  Cada etapa conserva sus permisos de revisión y aprobación.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500">
                   <div className="flex items-start gap-1.5">
                     <span className="text-amber-500 font-bold mt-0.5">⚡</span>
@@ -935,32 +942,30 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                 <div className="w-32 shrink-0">
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Programa</span>
                                   <select
-                                    value={(act as any).nivel_programa || ''}
+                                    aria-label={`Programa de ${act.nombre}`}
+                                    value={act.nivel_programa || ''}
                                     onChange={e => updateAct(sec.key, aIdx, 'nivel_programa', e.target.value)}
-                                    disabled={((act as any).tipo_aprobacion || 'gestion_profesoral') === 'decanatura'}
-                                    title={((act as any).tipo_aprobacion || 'gestion_profesoral') === 'decanatura'
-                                      ? 'No aplica: al ser Decanatura (Territorial), la aprobación se abre por cada territorial del PTA, no por nivel de programa.'
-                                      : 'Enruta la aprobación/revisión de esta actividad al Revisor/Aprobador de Complementarias Pregrado o Posgrado. Sin selección (Ninguno): la revisa/aprueba Complementarias.'}
-                                    className="w-full bg-white border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                    title="Selecciona el programa asociado a este bloque. Puedes cambiarlo independientemente de la opción Aprueba."
+                                    className="w-full bg-white border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none"
                                   >
                                     <option value="">Ninguno</option>
                                     <option value="pregrado">Pregrado</option>
                                     <option value="posgrado">Posgrado</option>
                                   </select>
                                 </div>
-                                {/* EFDS-1353: ámbito de aprobación. Decanatura abre una
-                                    aprobación por cada territorial presente en el PTA
-                                    (unanimidad); Gestión Profesoral mantiene el flujo único. */}
+                                {/* El responsable se configura independientemente del programa. */}
                                 <div className="w-40 shrink-0">
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Aprueba</span>
                                   <select
-                                    value={(act as any).tipo_aprobacion || 'gestion_profesoral'}
+                                    aria-label={`Aprueba ${act.nombre}`}
+                                    value={act.tipo_aprobacion || 'gestion_profesoral'}
                                     onChange={e => updateAct(sec.key, aIdx, 'tipo_aprobacion', e.target.value)}
-                                    title="Gestión Profesoral: flujo de aprobación único. Decanatura (Territorial): se abre una aprobación por cada territorial incluida en la complementaria, y el componente queda aprobado solo cuando todas aprueban."
+                                    title="Selecciona Gestión Profesoral, Decanatura o Territorial para este bloque. El programa se configura en su propio selector."
                                     className="w-full bg-white border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none"
                                   >
                                     <option value="gestion_profesoral">Gestión Profesoral</option>
-                                    <option value="decanatura">Decanatura (Territorial)</option>
+                                    <option value="decanatura">Decanatura</option>
+                                    <option value="territorial">Territorial</option>
                                   </select>
                                 </div>
                                 {!isRootOnly && (

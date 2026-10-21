@@ -442,6 +442,7 @@ export interface SugerenciaAsignacion {
 
 export interface AprobarAsignarPayload {
   tecnicoCodigo?: string | null;
+  idTecnicoAsignado?: string | null;
   observaciones?: string | null;
 }
 
@@ -451,7 +452,8 @@ export interface RechazarPayload {
 }
 
 export interface RedistribuirPayload {
-  tecnicoCodigo: string;
+  tecnicoCodigo?: string;
+  idTecnicoAsignado?: string | null;
   motivoRedistribucion?: string | null;
   observaciones?: string | null;
 }
@@ -514,15 +516,16 @@ const FE_GRUPOS: Record<string, string[]> = {
   ],
   INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM: [
     'INFRAESTRUCTURA.VIEW',
-    'INFRAESTRUCTURA.VIEW_ALL',
     'INFRAESTRUCTURA.SOLICITUD.READ',
-    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
-    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
-    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.SOLICITUD.AUTHORIZE_SPECIAL_CATEGORIES',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRUD',
+    'INFRAESTRUCTURA.PARAM.RULES_EDIT',
+    'INFRAESTRUCTURA.PARAM.SLA_TIMES_EDIT',
+    'INFRAESTRUCTURA.PARAM.TECHNICIANS_CRUD',
+    'INFRAESTRUCTURA.PARAM.APPROVE_CONFIG',
     'INFRAESTRUCTURA.REPORTES.GESTION',
-    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
-    'INFRAESTRUCTURA.PARAM.SEDES_CRU',
-    'INFRAESTRUCTURA.PARAM.ESPACIOS_CRU',
+    'INFRAESTRUCTURA.ESTADISTICAS.CALIFICACIONES.CONSOLIDADAS',
+    'INFRAESTRUCTURA.REPORTING.EXPORT_EXCEL',
     'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
   ],
   INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF: [
@@ -551,9 +554,10 @@ const FE_GRUPOS: Record<string, string[]> = {
   INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR: [
     'INFRAESTRUCTURA.VIEW',
     'INFRAESTRUCTURA.SOLICITUD.CREATE',
-    'INFRAESTRUCTURA.SOLICITUD.READ',
-    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
-    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.SOLICITUD.READ_OWN',
+    'INFRAESTRUCTURA.SOLICITUD.READ_REJECTION_REASON_OWN',
+    'INFRAESTRUCTURA.SOLICITUD.CONFIRM_CLOSE_OWN',
+    'INFRAESTRUCTURA.SOLICITUD.RATE_CLOSE_OWN',
     'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
   ],
   INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD: [
@@ -667,7 +671,7 @@ const urlB64Decode = (s: string): string => {
 };
 
 export const obtenerSesionUMI = (): SesionUsuarioUMI => {
-  const vacio: SesionUsuarioUMI = { userId: null, email: null, username: null, roles: [] };
+  const vacio: SesionUsuarioUMI = { userId: null, email: null, username: null, roles: [], permissions: [] };
   if (typeof window !== 'undefined') {
     const cache = (window as any).__esap_auth_cache;
     if (cache && typeof cache === 'object') {

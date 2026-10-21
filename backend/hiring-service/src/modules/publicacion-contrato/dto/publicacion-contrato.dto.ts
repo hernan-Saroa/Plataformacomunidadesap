@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsIn,
@@ -10,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Registro de la publicacion del contrato (EFDS-1166).
@@ -48,7 +48,7 @@ export class PublicarContratoDto {
   /** Solo si la 8.8 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;

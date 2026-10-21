@@ -24,6 +24,19 @@ describe('estados visuales de componentes PTA', () => {
     })).toBe('aprobado');
   });
 
+  it.each(['en_revision', 'pendiente', 'devuelto', 'aprobado'])('respeta %s en Complementarias sin horas cuando existen actividades', estado => {
+    const pta = { estado: 'Pendiente Jefatura', horas_complementarias: 0, componentes_estado: [
+      { key: 'complementarias', horas: 0, estado, aplica: true },
+    ] };
+    expect(getPtaComponentDisplayStatus(pta, 'complementarias')).toBe(estado);
+    expect(getPtaApprovalDisplayStatus(pta, {
+      componente: 'complementarias_gestion_profesoral', estado, horas: 0, aplica: true,
+    })).toBe(estado);
+    expect(getPtaApprovalDisplayStatus(pta, {
+      componente: 'complementarias_pregrado', estado: 'aprobado', horas: 0, aplica: false,
+    })).toBe('no_aplica');
+  });
+
   it('excluye subcomponentes vacíos de una aprobación parcial', () => {
     const rows = [
       { componente: 'academica_pregrado', estado: 'pendiente', horas: 0 },

@@ -26,6 +26,20 @@ export const PERMISO_DISPONIBILIDAD_DOCENTE = 'programacion-academica.docentes.d
 /** Acceso integral al catálogo, análogo a `pta.approve.all`. */
 export const PERMISO_PROGRAMACION_ALL = 'programacion-academica.all';
 
+/**
+ * Publicar y retirar la publicación de los niveles que se programan
+ * (EFDS-2303, migración 034). Lo tienen los programadores y el administrador.
+ */
+export const PERMISO_PUBLICAR = 'programacion-academica.publicar';
+
+/**
+ * Permisos del PORTAL del docente (EFDS-1938). Viven bajo el prefijo
+ * `portal-transaccional`, no bajo el del backoffice: DOCENTE se sacó del
+ * backoffice en la migración 028 y solo entra por el portal.
+ */
+export const PERMISO_PORTAL_VER = 'portal-transaccional.programacion-academica.view';
+export const PERMISO_PORTAL_TOMAR = 'portal-transaccional.programacion-academica.tomar';
+
 /** Niveles cuyo catálogo puede ver este conjunto de permisos. */
 export function nivelesVisibles(permisos: ReadonlySet<string>): NivelAcademico[] {
   if (permisos.has(PERMISO_PROGRAMACION_ALL)) return ['pregrado', 'posgrado'];

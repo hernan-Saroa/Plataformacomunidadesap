@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, render } from '@testing-library/react';
 import { PTAResumenPrint } from './PTAResumenPrint';
+
+afterEach(cleanup);
 
 /**
  * El reporte se descarga con window.print(), así que la calidad del PDF depende

@@ -2109,7 +2109,11 @@ export class CertificatesService {
 
   async generateCertificadoPdfBufferById(
     id: string,
-    options: { publicBaseUrl?: string } = {},
+    options: {
+      publicBaseUrl?: string;
+      includeSalary?: boolean | string;
+      includeTechnicalBonus?: boolean | string;
+    } = {},
   ): Promise<{ buffer: Buffer; filename: string }> {
     const certificate = await this.certificateRepo.findOne({
       where: { id },
@@ -2123,14 +2127,22 @@ export class CertificatesService {
     await this.hydrateCertificatesRequestContext([certificate]);
     await this.ensureTemplateSnapshotForCertificate(certificate);
 
+    // Los toggles "Ocultar salario" / "Incluir prima" que el usuario cambia
+    // después de emitir llegan como override; sin override manda lo persistido.
     const includeSalary = this.normalizeBoolean(
-      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
-      true,
+      options.includeSalary,
+      this.normalizeBoolean(
+        (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+        true,
+      ),
     );
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(
-          (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
-          false,
+          options.includeTechnicalBonus,
+          this.normalizeBoolean(
+            (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+            false,
+          ),
         )
       : false;
     const includeFunctions = this.normalizeBoolean(

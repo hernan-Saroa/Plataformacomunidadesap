@@ -10,7 +10,10 @@ import {
   type MotivoRechazo,
 } from './reglas-asignacion.js';
 import { resolverSituacion } from './situacion-docente.js';
+import { topeDeDocencia } from './tope.js';
 import { ContratoClient } from './contrato-client.js';
+import { DocenciaService } from '../docencia/docencia.service.js';
+import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -77,6 +80,7 @@ export class AsignacionesService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly contrato: ContratoClient,
+    private readonly docencia: DocenciaService,
   ) {}
 
   /** Datos del docente, resueltos por documento a su identidad estable. */
@@ -108,6 +112,8 @@ export class AsignacionesService {
       nombre: f.nombre,
       escalafon: f.escalafon ?? null,
       horasPta: Number(f.horas_pta ?? 0),
+      // El tope que se hace cumplir es el MISMO que ve el docente en su portal.
+      tope: topeDeDocencia(f.vinculacion, f.horas_pta),
       vinculacion: f.vinculacion ?? null,
       vinculacionDesde: iso(f.desde),
       vinculacionHasta: iso(f.hasta),
@@ -137,9 +143,12 @@ export class AsignacionesService {
       [idGrupo],
     );
     const iso = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+    const ciclo = await cicloDelGrupo(this.dataSource, idGrupo);
 
     return {
       idGrupo: g.id_grupo,
+      cicloInicio: ciclo.cicloInicio,
+      cicloFin: ciclo.cicloFin,
       tipoPrograma: g.tipo_programa ?? null,
       codigoAsignatura: g.codigo_asignatura ?? null,
       fechaInicio: iso(g.fecha_inicio),
@@ -161,30 +170,30 @@ export class AsignacionesService {
    * por identificador y no por nombre.
    */
   private async franjasOcupadas(idDocente: string): Promise<FranjaOcupada[]> {
-    const filas = await this.dataSource.query(
-      `SELECT f.id_franja, f.id_grupo, f.dia_semana, f.hora_inicio, f.hora_fin
-         FROM "academic-schedule".franja_horaria f
-        WHERE f.id_docente = $1`,
-      [idDocente],
-    );
-    return filas.map((f: any) => ({
-      idFranja: f.id_franja,
-      idGrupo: f.id_grupo,
-      diaSemana: f.dia_semana,
-      horaInicio: f.hora_inicio,
-      horaFin: f.hora_fin,
+    // Con su ciclo efectivo: lo que el docente tiene en otro periodo no lo ocupa en este.
+    const franjas = await cargarFranjasCruceables(this.dataSource, 'f.id_docente = $1', [idDocente]);
+    return franjas.map((f) => ({
+      idFranja: f.idFranja,
+      idGrupo: f.idGrupo as string,
+      diaSemana: f.diaSemana,
+      horaInicio: f.horaInicio,
+      horaFin: f.horaFin,
+      cicloInicio: f.cicloInicio,
+      cicloFin: f.cicloFin,
     }));
   }
 
-  /** Horas ya comprometidas del docente, sumadas de sus asignaciones vigentes. */
-  private async horasConsumidas(idDocente: string, idGrupoExcluir: string): Promise<number> {
-    const filas = await this.dataSource.query(
-      `SELECT COALESCE(SUM(horas_asignadas), 0)::int AS total
-         FROM "academic-schedule".asignacion_docente
-        WHERE id_docente = $1 AND id_grupo <> $2 AND estado = 'ASIGNADO'`,
-      [idDocente, idGrupoExcluir],
-    );
-    return Number(filas?.[0]?.total ?? 0);
+  /**
+   * Horas ya comprometidas del docente, SIN el grupo que se evalúa — EFDS-2306.
+   * Salen del registro único (la franja), con el cálculo único del contrato:
+   * cuentan también las franjas tomadas en el portal, que antes no se veían.
+   */
+  private horasConsumidas(
+    docente: { idDocente: string; vinculacion: string | null },
+    idGrupoExcluir: string,
+    token: string | null,
+  ): Promise<number> {
+    return this.docencia.total(docente.idDocente, docente.vinculacion, token, idGrupoExcluir);
   }
 
   /**
@@ -222,7 +231,7 @@ export class AsignacionesService {
     // Impacto real calculado por el contrato (RN-03), no un dato del cliente.
     grupo.horasRequeridas = await this.impactoDelGrupo(grupo, docente, token ?? null);
     const ocupadas = await this.franjasOcupadas(docente.idDocente);
-    const consumidas = await this.horasConsumidas(docente.idDocente, idGrupo);
+    const consumidas = await this.horasConsumidas(docente, idGrupo, token ?? null);
     const motivos = evaluarAsignacion(docente, grupo, ocupadas, consumidas);
 
     return { ...base, motivos, asignableAlGrupo: motivos.length === 0, horasImpacto: grupo.horasRequeridas };
@@ -265,7 +274,7 @@ export class AsignacionesService {
     // un bypass del tope. Un `horasRequeridas` del DTO se ignora a propósito.
     grupo.horasRequeridas = await this.impactoDelGrupo(grupo, docente, token ?? null);
     const ocupadas = await this.franjasOcupadas(docente.idDocente);
-    const consumidas = await this.horasConsumidas(docente.idDocente, dto.idGrupo);
+    const consumidas = await this.horasConsumidas(docente, dto.idGrupo, token ?? null);
 
     const motivos = evaluarAsignacion(docente, grupo, ocupadas, consumidas);
     if (motivos.length > 0) {

@@ -20,7 +20,7 @@ describe('DecisionEstudioPrevio', () => {
     vi.restoreAllMocks();
   });
 
-  it('devolver con archivo adjunta las correcciones después de devolver', async () => {
+  it('devolver con archivos adjunta todas las correcciones después de devolver', async () => {
     const devolver = vi.spyOn(contratacionService, 'devolver').mockResolvedValue({} as never);
     const subir = vi
       .spyOn(contratacionService, 'subirSoporteDevolucion')
@@ -31,12 +31,19 @@ describe('DecisionEstudioPrevio', () => {
     await userEvent.click(screen.getByRole('button', { name: /Devolver/ }));
     await userEvent.type(screen.getByLabelText(/Observaciones/), 'Falta el estudio de mercado.');
     const archivo = new File(['x'], 'correcciones.pdf', { type: 'application/pdf' });
-    await userEvent.upload(screen.getByLabelText('Documento con las correcciones'), archivo);
+    const anexo = new File(['y'], 'anexo-tecnico.docx', { type: 'application/msword' });
+    await userEvent.upload(screen.getByLabelText('Documentos con las correcciones'), [archivo, anexo]);
+    // Se pueden ir sumando y quitar uno a uno.
+    const sobra = new File(['z'], 'equivocado.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText('Documentos con las correcciones'), sobra);
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar equivocado.pdf' }));
     // El último «Devolver» es el que confirma, dentro del modal.
     await userEvent.click(screen.getAllByRole('button', { name: /^Devolver$/ }).at(-1)!);
 
     expect(devolver).toHaveBeenCalledWith('p-1', 'Falta el estudio de mercado.');
-    expect(subir).toHaveBeenCalledWith('p-1', '3.1', archivo);
+    expect(subir).toHaveBeenCalledTimes(2);
+    expect(subir).toHaveBeenNthCalledWith(1, 'p-1', '3.1', archivo);
+    expect(subir).toHaveBeenNthCalledWith(2, 'p-1', '3.1', anexo);
     expect(onDecidido).toHaveBeenCalled();
   });
 

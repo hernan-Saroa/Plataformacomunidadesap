@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsISO8601,
@@ -73,11 +73,14 @@ export class RegistrarActividadDto {
   /**
    * Solo si la actividad quedó configurada con `EXIGE_FIRMA`. Viaja como
    * string en el multipart, igual que `datos`, así que se parsea antes de
-   * validarse contra `FirmaOtpDto`.
+   * validarse contra `FirmaOtpDto`: como instancia, porque un objeto plano lo
+   * vacía el `whitelist` y la firma llegaba sin `fechaFirma`, dada por expirada.
    */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? plainToInstance(FirmaOtpDto, JSON.parse(value)) : value,
+  )
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;

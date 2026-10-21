@@ -1,9 +1,9 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage, diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { extname } from 'path';
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
 import { randomUUID } from 'crypto';
 import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
@@ -13,6 +13,8 @@ import { Public } from '../../auth/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentosService } from './rund-documentos.service';
+import { isTechnicalRundSupport } from './rund-expediente';
+import { rundDocumentalEnabled } from './rund-documental-feature';
 import { validateEvidenceType } from './rund-evidence-workflow';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import {
@@ -557,8 +559,8 @@ export class BancoDocentesController {
 
   @Public()
   @Post('submit/:token')
-  async submitFromToken(@Param('token') token: string, @Body() body: any) {
-    const result = await this.service.submitFromToken(token, body);
+  async submitFromToken(@Param('token') token: string, @Body() body: any, @Req() req?: any) {
+    const result = await this.service.submitFromToken(token, body, req?.ip);
     return { success: true, data: result };
   }
 
@@ -573,6 +575,35 @@ export class BancoDocentesController {
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
   async getDocumentCategories() {
     return { success: true, data: await this.documentos.listCategories() };
+  }
+
+  @Get('documentos/configuracion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  getDocumentConfiguration() {
+    return { success: true, data: this.documentos.configurationStatus() };
+  }
+
+  @Get(':id/documentos/:documentId/retencion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async getDocumentRetention(@Param('id') id: string, @Param('documentId') documentId: string) {
+    return { success: true, data: await this.documentos.getRetention(id, documentId) };
+  }
+
+  @Post(':id/documentos/:documentId/retencion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async manageDocumentRetention(@Param('id') id: string, @Param('documentId') documentId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.documentos.manageRetention(id, documentId, body, actor.actorId, actor.ip) };
+  }
+
+  /** REQ-RUND-F012 — Preparar o completar la estructura del expediente vacío. */
+  @Post(':id/expediente')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  async prepareExpediente(@Param('id') id: string, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.documentos.ensureExpediente(id, actor.actorId, actor.ip) };
   }
 
   /** REQ-RUND-F010 — Listar documentos vigentes (o su historial) del perfil. */
@@ -809,24 +840,7 @@ export class BancoDocentesController {
 
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
-  @UseInterceptors(FileInterceptor('file', {
-    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const docenteId = req.params.id || 'desconocido';
-        const docenteNombre = req.body.docenteNombre ? String(req.body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
-        const uploadPath = `./uploads/carpeta-digital/${docenteNombre}/RUND`;
-        if (!fs.existsSync(uploadPath)) {
-          fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
-        cb(null, `${randomName}${extname(file.originalname)}`);
-      }
-    })
-  }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
   async vincularSoporte(
@@ -836,80 +850,47 @@ export class BancoDocentesController {
     @Req() req: any,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    try {
-      validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
-      if (!file) throw new BadRequestException('Adjunte el archivo de soporte para registrar una carga documental.');
-      if (['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(body.tipoSoporte)) {
-        const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
-        if (!file) {
-          throw new BadRequestException('La gestion del perfil requiere un archivo de soporte.');
-        }
-        if (!allowedMimeTypes.has(file.mimetype) || file.size > 10 * 1024 * 1024) {
-          if ((file as any).path && fs.existsSync((file as any).path)) {
-            fs.unlinkSync((file as any).path);
-          }
-          throw new BadRequestException('El soporte del perfil debe ser PDF, JPG o PNG y pesar maximo 10 MB.');
-        }
+    validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
+    if (!file) throw new BadRequestException('Adjunte el archivo de soporte para registrar una carga documental.');
+    const technical = isTechnicalRundSupport(body.tipoSoporte);
+    const actor = this.requestActor(req);
+    const validacionTipo = await this.docTypeValidator.validate({
+      buffer: file.buffer, originalName: file.originalname, soporteCode: body.tipoSoporte,
+      expectedName: body.tipoNombre, expectedDescription: body.tipoDescripcion,
+    });
+    // F011/F012/F013 aplazadas: los soportes de gestión mantienen su flujo previo.
+    if (technical && !rundDocumentalEnabled()) {
+      if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype) || file.size > 10 * 1024 * 1024) {
+        throw new BadRequestException('El soporte del perfil debe ser PDF, JPG o PNG y pesar maximo 10 MB.');
       }
-      let validacionTipo: any = undefined;
-      if (file) {
-        body.nombreArchivo = file.originalname;
-        const docenteId = id || 'desconocido';
-        const docenteNombre = body.docenteNombre ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
-        body.documentoCarpetaId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file.filename}`;
-
-        // Validación SOFT de tipo de documento: escanea el PDF y compara contra
-        // palabras clave derivadas del código de soporte (+ nombre/descripción si vienen).
-        // No bloquea la carga; adjunta el veredicto a la respuesta para avisar al usuario.
-        validacionTipo = await this.docTypeValidator.validate({
-          filePath: (file as any).path,
-          originalName: file.originalname,
-          soporteCode: body.tipoSoporte,
-          expectedName: body.tipoNombre,
-          expectedDescription: body.tipoDescripcion,
-        });
-        if (validacionTipo.validated && !validacionTipo.matched) {
-          this.logger.warn(`[RUND] Soporte "${body.tipoSoporte}" del docente ${id}: posible tipo incorrecto (${validacionTipo.reason})`);
-        }
-      }
-
-      // REQ-RUND-F010: los soportes de la validación integral también forman
-      // parte del expediente documental versionado. Los soportes técnicos de
-      // edición/cambio de estado conservan su flujo histórico independiente.
-      if (file && !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(body.tipoSoporte)) {
-        const memoryFile = {
-          ...file,
-          buffer: fs.readFileSync((file as any).path),
-        } as Express.Multer.File;
-        try {
-          const existing = (await this.documentos.list(id))
-            .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
-          const actor = this.requestActor(req);
-          const document = existing
-            ? await this.documentos.replace(id, existing.id, memoryFile, actor.actorId, body.descripcion, actor.ip, body.campo)
-            : await this.documentos.create(id, {
-                categoria: body.categoria || this.supportCategory(bloque, body.tipoSoporte),
-                bloque,
-                tipoSoporte: body.tipoSoporte,
-                campo: body.campo,
-                descripcion: body.descripcion,
-              }, memoryFile, actor.actorId, actor.ip);
-          return { success: true, data: { ...this.documentos.protectMetadata(document, actor.fullAccess), validacionTipo } };
-        } finally {
-          if ((file as any).path && fs.existsSync((file as any).path)) fs.unlinkSync((file as any).path);
-        }
-      }
-      const result = await this.service.vincularSoporte(id, bloque, { ...body, cargadoPor: this.requestActor(req).actorId });
-      // validacionTipo se EMBEBE en data porque el apiClient del shell desenvuelve
-      // {success, data} y descartaría cualquier campo hermano de data.
-      const data = (result && typeof result === 'object' && !Array.isArray(result))
-        ? { ...result, validacionTipo }
-        : { resultado: result, validacionTipo };
-      return { success: true, data: protectRundSensitiveData(data, this.requestActor(req).fullAccess) };
-    } catch (e: any) {
-      if ((file as any)?.path && fs.existsSync((file as any).path)) fs.unlinkSync((file as any).path);
-      throw e;
+      const folder = body.docenteNombre
+        ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase()
+        : String(id).replace(/[^a-zA-Z0-9_-]/g, '');
+      const directory = `./uploads/carpeta-digital/${folder || 'desconocido'}/RUND`;
+      const filename = `${randomUUID()}${extname(file.originalname)}`;
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(`${directory}/${filename}`, file.buffer, { flag: 'wx' });
+      // Si se pierde la respuesta de la base, conservar el archivo evita romper una referencia confirmada.
+      const result = await this.service.vincularSoporte(id, bloque, { ...body,
+        nombreArchivo: file.originalname,
+        documentoCarpetaId: `/pta/api/v1/uploads/carpeta-digital/${folder || 'desconocido'}/RUND/${filename}`,
+        cargadoPor: actor.actorId,
+      });
+      return { success: true, data: protectRundSensitiveData({ ...result, validacionTipo }, actor.fullAccess) };
     }
+    const existing = technical ? undefined : (await this.documentos.list(id))
+      .find(document => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
+    const document = existing
+      ? await this.documentos.replace(id, existing.id, file, actor.actorId, body.descripcion, actor.ip, body.campo)
+      : await this.documentos.create(id, {
+          categoria: technical ? 'OTROS' : body.categoria || this.supportCategory(bloque, body.tipoSoporte),
+          bloque, tipoSoporte: body.tipoSoporte, campo: body.campo, descripcion: body.descripcion,
+        }, file, actor.actorId, actor.ip);
+    const data = this.documentos.protectMetadata(document, actor.fullAccess);
+    // Los modales de edición/estado esperan el ID del soporte, no el del archivo.
+    return { success: true, data: technical
+      ? { ...data, id: document.rundSoporteId, documentoPerfilId: document.id, documentoCarpetaId: data.contenidoUrl, validacionTipo }
+      : { ...data, validacionTipo } };
   }
 
   /** BR-047 — Verificar estado de activación del registro */
@@ -924,6 +905,7 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     const actorId = await this.service.authorizeAutogestionDocumentUpload(id, String(body.autogestionToken || ''));
+    if (isTechnicalRundSupport(body.tipoSoporte)) throw new ForbiddenException('Este soporte requiere gestión administrativa del perfil.');
     validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
     const existing = (await this.documentos.list(id))
       .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');

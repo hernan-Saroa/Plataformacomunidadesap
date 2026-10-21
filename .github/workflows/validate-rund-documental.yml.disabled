@@ -1,0 +1,48 @@
+name: Validate RUND documental
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/academic-work-plan-service/**'
+      - 'apps/mfe-pta/**'
+      - 'scripts/rund-documental/**'
+      - 'scripts/check-rund-documental-deploy.cjs'
+      - 'scripts/verify-rund-documental-compose.cjs'
+      - 'docker-compose*.yml'
+      - 'deploy.*.sh'
+      - '.github/workflows/validate-rund-documental.yml'
+  push:
+    paths:
+      - 'backend/academic-work-plan-service/**'
+      - 'apps/mfe-pta/**'
+      - 'scripts/rund-documental/**'
+      - 'scripts/check-rund-documental-deploy.cjs'
+      - 'scripts/verify-rund-documental-compose.cjs'
+      - 'docker-compose*.yml'
+      - 'deploy.*.sh'
+      - '.github/workflows/validate-rund-documental.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backend-and-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install backend dependencies
+        run: npm ci --prefix backend/academic-work-plan-service
+      - name: Build backend
+        run: npm run build --prefix backend/academic-work-plan-service
+      - name: Test RUND and authorization
+        working-directory: backend/academic-work-plan-service
+        run: node node_modules/jest/bin/jest.js --runInBand --watch=false pta/banco-docentes
+      - name: Test deployment checks without real services
+        run: node --test scripts/rund-documental/*.test.cjs scripts/verify-deploy-service-selection.test.cjs
+      - name: Validate Compose variants without starting containers
+        run: node scripts/verify-rund-documental-compose.cjs

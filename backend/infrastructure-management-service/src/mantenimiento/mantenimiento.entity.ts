@@ -45,6 +45,16 @@ export class SolicitudMantenimiento {
   @Column({ type: 'varchar', length: 150, nullable: true, name: 'responsable_asignado' })
   responsableAsignado: string;
 
+  // ==========================================================================
+  // EFDS-174X - OPCION A: Source of Truth tecnicos = auth.role (P3 / P4).
+  // id_tecnico_asignado = FK logico a auth.user.id_user del tecnico asignado.
+  // responsable_asignado se mantiene SOLO como display legacy temporal mientras
+  // el MFE migra el combo selector a enviar idTecnicoAsignado UUID.
+  // El servicio ESCRIBE AMBAS columnas durante el periodo de transicion.
+  // ==========================================================================
+  @Column({ type: 'uuid', nullable: true, name: 'id_tecnico_asignado' })
+  idTecnicoAsignado?: string;
+
   @Column({ type: 'date', nullable: true, name: 'fecha_programada' })
   fechaProgramada: string;
 

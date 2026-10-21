@@ -55,6 +55,11 @@ import {
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
 import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import {
+  RegistrarRevocatoriaSiifDto,
+  AplicarReduccionRpDto,
+} from '../../dto/revocatoria.dto';
+import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
 import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
 import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
@@ -68,6 +73,7 @@ import {
   SolicitarOtpFirmaDto,
   VerificarOtpFirmaDto,
   SolicitarFirmasDto,
+  RegistrarVoBoDuracionDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import { getClientIp } from '../../common/ip.util';
@@ -91,6 +97,38 @@ const SUPER_ADMIN_ROLES = [
   'SUPER_ADMINISTRADOR',
 ];
 
+const COORDINADOR_COMISIONES_ROLES = [
+  'COORDINADOR_COMISIONES_VIATICOS',
+  'COORDINADOR_GRUPO_COMISIONES',
+  'COORDINADOR_COMISIONES',
+  'COORDINADORA_GRUPO_COMISIONES',
+  'COORDINADORA_COMISIONES_VIATICOS',
+  'COORDINADOR_DE_COMISIONES',
+];
+
+function isCoordinadorComisiones(user: AuthenticatedRequest['user']): boolean {
+  if (!user) return false;
+  const rawRoles = Array.isArray(user.roles) ? user.roles : [];
+  const singleRole = user.role ? [user.role] : [];
+  const allRoles = [...rawRoles, ...singleRole];
+  const rawPermissions = Array.isArray(user.permissions) ? user.permissions : [];
+  const normalizedPermissions = rawPermissions.map((p: any) =>
+    typeof p === 'string' ? p : p?.code || '',
+  );
+
+  return (
+    allRoles.some((r) => {
+      const code = normalizeRoleCode(r);
+      return (
+        COORDINADOR_COMISIONES_ROLES.includes(code) ||
+        code.includes('COORDINADOR_COMISIONES') ||
+        code.includes('COORDINADOR_GRUPO_COMISIONES')
+      );
+    }) ||
+    normalizedPermissions.includes('travel_expenses.general.es_coordinador_comisiones')
+  );
+}
+
 function normalizeRoleCode(role: any): string {
   if (typeof role === 'string') {
     return role.toUpperCase().replace(/\s+/g, '_');
@@ -108,7 +146,10 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
   const rawRoles = Array.isArray(user.roles) ? user.roles : [];
   const singleRole = user.role ? [user.role] : [];
   const allRoles = [...rawRoles, ...singleRole];
-  return allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r)));
+  return (
+    allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r))) ||
+    isCoordinadorComisiones(user)
+  );
 }
 
 @Controller()
@@ -118,7 +159,7 @@ export class TravelExpensesController {
   private readonly logger = new Logger(TravelExpensesController.name);
   constructor(private readonly service: TravelExpensesService) {}
 
-  @Get('solicitudes')
+  @Get(['solicitudes', 'api/v1/solicitudes', 'requests/comisionado', 'api/v1/requests/comisionado'])
   @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
   @Header('Pragma', 'no-cache')
   @Header('Expires', '0')
@@ -126,6 +167,7 @@ export class TravelExpensesController {
     @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('soloComisionado') soloComisionado?: string,
   ) {
     const usuarioId = req.user?.userId;
     const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
@@ -134,15 +176,23 @@ export class TravelExpensesController {
         ? r.toUpperCase().replace(/\s+/g, '_')
         : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
     );
-    const superAdmin = normalizedRoles.some((r) =>
-      SUPER_ADMIN_ROLES.includes(r),
-    );
     const rawPermissions = Array.isArray(req.user?.permissions)
       ? req.user.permissions
       : [];
     const normalizedPermissions = rawPermissions.map((p: any) =>
       typeof p === 'string' ? p : p?.code || '',
     );
+    const isCoordinador =
+      normalizedRoles.some((r) =>
+        COORDINADOR_COMISIONES_ROLES.includes(r) ||
+        r.includes('COORDINADOR_COMISIONES') ||
+        r.includes('COORDINADOR_GRUPO_COMISIONES'),
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_coordinador_comisiones');
+
+    const superAdmin =
+      normalizedRoles.some((r) => SUPER_ADMIN_ROLES.includes(r)) ||
+      isCoordinador;
     const isControlViaticos =
       normalizedRoles.some(
         (r) => r === 'CONTROL_VIATICOS' || r === 'ROL_CONTROL_VIATICOS',
@@ -211,8 +261,30 @@ export class TravelExpensesController {
       normalizedPermissions.includes('es_comisionado') ||
       normalizedPermissions.includes('travel_expenses:read_own_requests');
 
+    const isJefeDependencia =
+      normalizedRoles.some(
+        (r) =>
+          r === 'JEFE' ||
+          r === 'JEFE_DEPENDENCIA' ||
+          r === 'SUPERVISOR',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_jefe_dependencia') ||
+      normalizedPermissions.includes('travel_expenses.general.es_jefe') ||
+      normalizedPermissions.includes('general.es_jefe');
+
+    const isGerenteProyecto =
+      normalizedRoles.some(
+        (r) =>
+          r === 'GERENTE' ||
+          r === 'GERENTE_PROYECTO',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_gerente_proyecto') ||
+      normalizedPermissions.includes('travel_expenses.general.es_gerente') ||
+      normalizedPermissions.includes('general.es_gerente');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const forzarSoloComisionado = soloComisionado === 'true' || soloComisionado === '1';
     const result = await this.service.obtenerSolicitudes(
       usuarioId,
       superAdmin,
@@ -224,6 +296,9 @@ export class TravelExpensesController {
       isTesoreria,
       isSst,
       isComisionado,
+      forzarSoloComisionado,
+      isJefeDependencia,
+      isGerenteProyecto,
     );
     return {
       data: result.data,
@@ -279,6 +354,30 @@ export class TravelExpensesController {
     };
   }
 
+  @Get('comisionados')
+  @Public()
+  @ApiOperation({
+    summary: 'Listar comisionados con filtro por dependencia y búsqueda opcional',
+    description:
+      'Retorna comisionados registrados en travel_expenses.comisionados, opcionalmente filtrados por idDependencia o término de búsqueda.',
+  })
+  @ApiQuery({
+    name: 'idDependencia',
+    required: false,
+    description: 'Filtrar por ID de la dependencia asignada',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Filtrar por texto en documento, nombre o cargo',
+  })
+  async listarComisionados(
+    @Query('idDependencia') idDependencia?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.listarComisionados(idDependencia, search);
+  }
+
   @Get('comisionados/:documento')
   @Public()
   @ApiOperation({
@@ -291,6 +390,11 @@ export class TravelExpensesController {
     description: 'Número de documento de identidad del funcionario',
     example: '1019283746',
   })
+  @ApiQuery({
+    name: 'idDependencia',
+    required: false,
+    description: 'ID de la dependencia del usuario enlace para restringir consulta solo a su dependencia',
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Comisionado encontrado o materializado exitosamente.',
@@ -299,8 +403,39 @@ export class TravelExpensesController {
     status: HttpStatus.NOT_FOUND,
     description: 'No se encontró el funcionario en ninguna base de datos.',
   })
-  consultarComisionado(@Param('documento') documento: string) {
-    return this.service.consultarComisionado(documento);
+  async consultarComisionado(
+    @Param('documento') documento: string,
+    @Query('idDependencia') idDependencia?: string,
+  ) {
+    const comisionado = await this.service.consultarComisionado(documento, idDependencia);
+    let estadoUsuario = {
+      esUsuario: false,
+      usuarioId: null as string | null,
+      rolesUsuario: [] as string[],
+      idPersona: null as string | null,
+      tieneRolComisionado: false,
+    };
+    try {
+      estadoUsuario = await this.service.identificarUsuarioComisionado(
+        comisionado?.numeroDocumento || documento,
+        comisionado?.email,
+      );
+    } catch {
+      // Si la consulta en auth falla o no está disponible, continuar con los datos del comisionado
+    }
+    return {
+      ...comisionado,
+      ...estadoUsuario,
+    };
+  }
+
+  @Get('comisionados/estado-usuario/:documento')
+  @Public()
+  @ApiOperation({
+    summary: 'Verificar si un comisionado ya tiene usuario y roles en auth-service',
+  })
+  identificarUsuarioComisionado(@Param('documento') documento: string) {
+    return this.service.identificarUsuarioComisionado(documento);
   }
 
   @Post('comisionados/:documento/cuentas-bancarias')
@@ -544,21 +679,34 @@ export class TravelExpensesController {
   @Permissions(
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
-    'travel_expenses:create_request',
-    'travel_expenses:read_requests',
-    'travel_expenses:read_inbox',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:read_extemporaneous_authorizations',
   )
   async obtenerBandejaFirmas(
+    @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('busqueda') busqueda?: string,
   ) {
+    const usuarioId = req.user?.userId;
+    const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const normalizedRoles = rawRoles.map((r: any) =>
+      typeof r === 'string'
+        ? r.toUpperCase().replace(/\s+/g, '_')
+        : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
+    );
+    const superAdmin = normalizedRoles.some((r) =>
+      SUPER_ADMIN_ROLES.includes(r),
+    );
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerBandejaFirmas(
       pageNum,
       limitNum,
       busqueda,
+      usuarioId,
+      superAdmin,
+      normalizedRoles,
     );
     return {
       success: true,
@@ -582,6 +730,11 @@ export class TravelExpensesController {
     'travel_expenses:create_request',
     'travel_expenses:read_requests',
     'travel_expenses:read_inbox',
+    'travel_expenses:verify_request',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:double_check_request',
+    'travel_expenses:read_siif_requested',
   )
   obtenerEstadoFirmas(@Param('id') id: string) {
     return this.service.obtenerEstadoFirmas(id);
@@ -598,6 +751,15 @@ export class TravelExpensesController {
     'travel_expenses:create_request',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:double_check_request',
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses.general.es_tesoreria',
+    'travel_expenses.general.es_presupuesto',
   )
   solicitarOtpFirma(
     @Param('id') id: string,
@@ -616,6 +778,15 @@ export class TravelExpensesController {
     'travel_expenses:create_request',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:double_check_request',
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses.general.es_tesoreria',
+    'travel_expenses.general.es_presupuesto',
   )
   verificarOtpFirma(
     @Param('id') id: string,
@@ -689,6 +860,133 @@ export class TravelExpensesController {
     return this.service.devolverFirmaAprobacion(id, dto.motivo, req.user?.userId);
   }
 
+  @Post('requests/:id/firmas/notificar-pendiente')
+  @ApiOperation({
+    summary: 'Envía alerta y recordatorio de firma de aprobación pendiente al rol que aún no ha firmado',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+  )
+  notificarFirmaPendiente(
+    @Param('id') id: string,
+    @Body('tipoFirmaPendiente') tipoFirmaPendiente: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.notificarFirmaPendiente(id, tipoFirmaPendiente, req.user?.userId);
+  }
+
+  @Post('requests/:id/vobo-duracion')
+  @ApiOperation({
+    summary:
+      'Registra el visto bueno (VoBo) o rechazo de comisión que supere 3 días calendario / 3.5 días de valor (Dirección Nacional / Director Territorial)',
+    description:
+      'Exige justificación y visto bueno institucional inmutable en trazabilidad para comisiones > 3 días calendario.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_authorizations',
+  )
+  registrarVoBoDuracion(
+    @Param('id') id: string,
+    @Body() dto: RegistrarVoBoDuracionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const roles = req.user?.roles || (req.user?.role ? [req.user.role] : []);
+    return this.service.registrarVoBoDuracion(id, dto, req.user?.userId, roles);
+  }
+
+  /**
+   * RF-REV-002 — Bandeja de solicitudes en estado SOLICITADA_SIIF.
+   *
+   * Devuelve el listado de solicitudes exportadas a SIIF que esperan la
+   * verificación de segundo nivel (revisor de Control Viáticos).
+   * Exige el permiso `travel_expenses:read_siif_requested`.
+   */
+  @Get('requests/siif-requested')
+  @Permissions('travel_expenses:read_siif_requested')
+  @ApiOperation({
+    summary: 'Obtener solicitudes en estado SOLICITADA_SIIF pendientes de segunda revisión',
+    description:
+      'Devuelve la lista de solicitudes exportadas a SIIF que esperan la verificación de segundo nivel (revisor de control).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de solicitudes pendientes de segunda revisión.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autenticado. Se requiere token Bearer válido.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No tiene permiso para consultar la bandeja de Control Viáticos.',
+  })
+  @ApiBearerAuth()
+  async obtenerSolicitudesSIIFRequested(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const result =
+      await this.service.obtenerSolicitudesSIIFRequested(pageNum, limitNum);
+    return {
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
+   *
+   * Endpoint oficial: GET /api/v1/requests/budget-inbox
+   * Alias: GET requests/budget-inbox, GET requests/budget/inbox
+   */
+  @Get(['requests/budget-inbox', 'api/v1/requests/budget-inbox', 'requests/budget/inbox'])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:read_all',
+  )
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Bandeja de comisiones para Grupo de Presupuesto (Etapa 7 — RF-PRE-001)',
+    description:
+      'Retorna comisiones pendientes de RP en estado AUTORIZADA / EN_PRESUPUESTO y comprometidas (COMPROMETIDA) con búsqueda, filtros y KPIs consolidados. Permite bypass total a SUPER_ADMIN.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de comisiones en Presupuesto y KPIs consolidados.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Permiso denegado (requiere travel_expenses:read_authorized o rol SUPER_ADMIN).',
+  })
+  @ApiBearerAuth()
+  async obtenerBandejaPresupuesto(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('estado') estado?: string,
+  ) {
+    const result = await this.service.obtenerBandejaPresupuesto(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      search,
+      estado,
+    );
+    return {
+      success: true,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get('requests/:id')
   @Permissions(
     'travel_expenses:sign_approval',
@@ -718,6 +1016,9 @@ export class TravelExpensesController {
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
     'travel_expenses:read_own_requests',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:reject_extemporaneous',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
@@ -856,7 +1157,7 @@ export class TravelExpensesController {
     return this.service.validarCamposObligatorios(tipo, datosCampos);
   }
 
-  @Get('solicitudes/:id/exportar/pdf')
+  @Get(['solicitudes/:id/exportar/pdf', 'requests/:id/exportar/pdf'])
   @Permissions(
     'travel_expenses:create_request',
     'travel_expenses:read_inbox',
@@ -883,6 +1184,12 @@ export class TravelExpensesController {
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
     'travel_expenses:read_own_requests',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:reject_extemporaneous',
+    'travel_expenses:read_approvals',
+    'travel_expenses:sign_approval',
+    'travel_expenses:return_approval',
   )
   async exportarFormato023(
     @Param('id') id: string,
@@ -1042,49 +1349,6 @@ export class TravelExpensesController {
       'Content-Length': Buffer.byteLength(result.csvContent, 'utf8'),
     });
     res.send(result.csvContent);
-  }
-
-  /**
-   * RF-REV-002 — Bandeja de solicitudes en estado SOLICITADA_SIIF.
-   *
-   * Devuelve el listado de solicitudes exportadas a SIIF que esperan la
-   * verificación de segundo nivel (revisor de Control Viáticos).
-   * Exige el permiso `travel_expenses:read_siif_requested`.
-   */
-  @Get('requests/siif-requested')
-  @Permissions('travel_expenses:read_siif_requested')
-  @ApiOperation({
-    summary: 'Obtener solicitudes en estado SOLICITADA_SIIF pendientes de segunda revisión',
-    description:
-      'Devuelve la lista de solicitudes exportadas a SIIF que esperan la verificación de segundo nivel (revisor de control).',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Lista de solicitudes pendientes de segunda revisión.',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'No autenticado. Se requiere token Bearer válido.',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'No tiene permiso para consultar la bandeja de Control Viáticos.',
-  })
-  @ApiBearerAuth()
-  async obtenerSolicitudesSIIFRequested(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
-    const result =
-      await this.service.obtenerSolicitudesSIIFRequested(pageNum, limitNum);
-    return {
-      data: result.data,
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-    };
   }
 
   /**
@@ -1409,6 +1673,10 @@ export class TravelExpensesController {
     'travel_expenses:authorize_expense',
     'travel_expenses:read_inbox',
     'travel_expenses:create_request',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_approvals',
+    'travel_expenses:sign_approval',
   )
   @ApiOperation({
     summary: 'Descargar PDF de Autorización de Gasto e Itinerario de Viaje (Etapa 6)',
@@ -1589,12 +1857,7 @@ export class TravelExpensesController {
    */
   @Post('requests/:id/cancel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(
-    'travel_expenses:cancel_request',
-    'travel_expenses:create_request',
-    'travel_expenses:read_inbox',
-    'travel_expenses:authorize_expense',
-  )
+  @Permissions('travel_expenses:cancel_request')
   @ApiOperation({
     summary: 'Cancelar comisión con trazabilidad (Etapa 6 — RF-AUT-003)',
     description:
@@ -1633,10 +1896,110 @@ export class TravelExpensesController {
       roles,
       dto,
     );
+    const esRevocatoria = result.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA;
     return {
       success: true,
       data: result,
-      message: 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      message: esRevocatoria
+        ? 'Proceso de revocatoria iniciado exitosamente. Pendiente de registro en SIIF Nación por Ordenador del Gasto.'
+        : 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación con reporte PDF (Ordenador del Gasto).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/revocatoria/registrar-siif
+   * Alias: POST requests/:id/revocatoria/registrar-siif
+   */
+  @Post(['requests/:id/revocatoria/registrar-siif', 'api/v1/requests/:id/revocatoria/registrar-siif'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('revocatoria')
+  @ApiOperation({
+    summary: 'Registrar revocatoria en SIIF Nación (Ordenador del Gasto)',
+    description:
+      'Registra el acto de revocatoria formal en SIIF Nación y almacena el PDF del reporte oficial. Si la comisión tiene RP, transiciona a solicitud de reducción de RP para Presupuesto; si no tiene RP, formaliza la revocatoria a REVOCADA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Revocatoria registrada exitosamente en SIIF Nación.',
+  })
+  @ApiBearerAuth()
+  async registrarRevocatoriaSiif(
+    @Param('id') id: string,
+    @Body() dto: RegistrarRevocatoriaSiifDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.registrarRevocatoriaSiif(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    const tieneRp = (result.camposAdicionales as any)?.procesoRevocatoria?.tieneRp;
+    return {
+      success: true,
+      data: result,
+      message: tieneRp
+        ? 'Revocatoria registrada en SIIF Nación. Solicitud de reducción de RP remitida al Grupo de Presupuesto con reporte PDF adjunto.'
+        : 'Revocatoria formalizada en SIIF Nación exitosamente (Comisión revocada sin RP).',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción de RP por Revocatoria en SIIF Nación (Grupo de Presupuesto).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/revocatoria/aplicar-reduccion-rp
+   * Alias: POST requests/:id/revocatoria/aplicar-reduccion-rp
+   */
+  @Post(['requests/:id/revocatoria/aplicar-reduccion-rp', 'api/v1/requests/:id/revocatoria/aplicar-reduccion-rp'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('revocatoria')
+  @ApiOperation({
+    summary: 'Aplicar reducción de RP en SIIF Nación por Revocatoria (Grupo de Presupuesto)',
+    description:
+      'Registra la reducción presupuestal del Registro Presupuestal (RP) en SIIF Nación tras revocatoria aprobada por el Ordenador con reporte PDF.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reducción de RP aplicada exitosamente y comisión revocada formalmente.',
+  })
+  @ApiBearerAuth()
+  async aplicarReduccionRpRevocatoria(
+    @Param('id') id: string,
+    @Body() dto: AplicarReduccionRpDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.aplicarReduccionRpRevocatoria(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Reducción de RP aplicada exitosamente en SIIF Nación. Proceso de revocatoria finalizado.',
       timestamp: new Date().toISOString(),
     };
   }
@@ -1699,53 +2062,6 @@ export class TravelExpensesController {
       success: true,
       data: result,
       message: 'Paquete de comisión enviado exitosamente a la bandeja del Grupo de Presupuesto.',
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
-   *
-   * Endpoint oficial: GET /api/v1/requests/budget-inbox
-   * Alias: GET requests/budget-inbox, GET requests/budget/inbox
-   */
-  @Get(['requests/budget-inbox', 'api/v1/requests/budget-inbox', 'requests/budget/inbox'])
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(
-    'travel_expenses:read_authorized',
-    'travel_expenses:read_budget',
-    'travel_expenses:read_all',
-  )
-  @ApiTags('presupuesto')
-  @ApiOperation({
-    summary: 'Bandeja de comisiones para Grupo de Presupuesto (Etapa 7 — RF-PRE-001)',
-    description:
-      'Retorna comisiones pendientes de RP en estado AUTORIZADA / EN_PRESUPUESTO y comprometidas (COMPROMETIDA) con búsqueda, filtros y KPIs consolidados. Permite bypass total a SUPER_ADMIN.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Listado de comisiones en Presupuesto y KPIs consolidados.',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Permiso denegado (requiere travel_expenses:read_authorized o rol SUPER_ADMIN).',
-  })
-  @ApiBearerAuth()
-  async obtenerBandejaPresupuesto(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('search') search?: string,
-    @Query('estado') estado?: string,
-  ) {
-    const result = await this.service.obtenerBandejaPresupuesto(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-      search,
-      estado,
-    );
-    return {
-      success: true,
-      ...result,
       timestamp: new Date().toISOString(),
     };
   }
@@ -1988,7 +2304,14 @@ export class TravelExpensesController {
     'api/v1/requests/:id/desembolso',
   ])
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('travel_expenses:process_payment', 'travel_expenses:register_payment', 'travel_expenses:create_obligation', 'travel_expenses:verify_request')
+  @Permissions(
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:create_obligation',
+    'travel_expenses:verify_request',
+    'travel_expenses:sign_approval',
+    'travel_expenses.general.es_tesoreria',
+  )
   @ApiTags('tesoreria')
   @ApiOperation({
     summary: 'Procesar desembolso y pago de comisión (Etapa 8 — RF-PAG-003)',

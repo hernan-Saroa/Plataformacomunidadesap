@@ -21,6 +21,7 @@ import {
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
+import { DocumentoRequerido } from '../../entities/documento-requerido.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
@@ -32,7 +33,12 @@ import { AlcanceService } from '../../auth/alcance.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
-import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
+import {
+  CambiarCuantiaDto,
+  CambiarModalidadDto,
+  CrearProcesoDto,
+  GuardarBorradorDto,
+} from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 import {
@@ -382,7 +388,11 @@ export class EstudioPrevioService implements OnModuleInit {
     if (acceso && proceso.createdBy !== acceso.userName) {
       const verTodos = await this.puedeVerTodos(acceso);
       const enElProceso =
-        verTodos || (await this.participacion.procesosDe(acceso)).includes(procesoId);
+        verTodos ||
+        (await this.participacion.procesosDe(acceso)).includes(procesoId) ||
+        // Quien evalúa no participa del proceso, pero tiene que abrirlo para
+        // llegar a la 6.3.
+        (await this.participacion.procesosDondeEvalua(acceso)).includes(procesoId);
 
       /**
        * Y la bandeja, que es la cuarta vía y la más fácil de olvidar.
@@ -447,7 +457,12 @@ export class EstudioPrevioService implements OnModuleInit {
     if (!verTodos) {
       mios.push({ createdBy: acceso!.userName });
 
-      const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
+      const alcanzables = new Set([
+        ...(await this.participacion.procesosDe(acceso!)),
+        // Y los que evalúa: el memorando lo designa sin repartirle el proceso,
+        // y sin esto no tendría cómo llegar a la 6.3.
+        ...(await this.participacion.procesosDondeEvalua(acceso!)),
+      ]);
       if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
       }
@@ -644,6 +659,128 @@ export class EstudioPrevioService implements OnModuleInit {
       /** Para que la pantalla explique en vez de esconder sin más. */
       motivo,
     };
+  }
+
+  /**
+   * Cambia la modalidad mientras el área arma el estudio previo.
+   *
+   * La modalidad se elige al crear el proceso, pero es en la 3.1 donde el área
+   * termina de entender qué va a contratar, y de la modalidad depende la lista
+   * de chequeo que tiene que cargar. Antes solo se corregía en la 3.5, cuando
+   * el estudio previo ya estaba enviado con los documentos de la otra.
+   *
+   * No se ratifica aparte: aprobar la 3.1 es ratificarla, y si no corresponde,
+   * el abogado devuelve el estudio previo diciendo cuál sí.
+   *
+   * Recalcula qué actividades recorre el proceso. Lo que ya se cargó para la
+   * modalidad anterior no se borra: la lista lo sigue enseñando aparte.
+   */
+  async cambiarModalidad(procesoId: string, dto: CambiarModalidadDto, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      const proceso = await this.validarEtapa(em, procesoId);
+
+      const modalidad = await em.findOne(Modalidad, {
+        where: { codigo: dto.modalidad, activa: true },
+      });
+      if (!modalidad) {
+        throw new BadRequestException(
+          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+        );
+      }
+      if (modalidad.codigo === proceso.modalidad) return;
+
+      // La misma regla que al crear el proceso: si la cuantía obliga a
+      // licitación pública, no se cuela una de menor cuantía por otra puerta.
+      await this.umbrales.exigirModalidadPermitida(proceso.valorEstimado ?? 0, modalidad);
+
+      const anterior = proceso.modalidad;
+      proceso.modalidad = modalidad.codigo;
+      await em.save(Proceso, proceso);
+
+      const actividadesCambiadas = await this.configuracionService.reaplicarModalidad(
+        em,
+        procesoId,
+        modalidad.codigo,
+      );
+
+      const actividad = await this.obtenerActividad(em, procesoId);
+      await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_MODALIDAD', acceso, {
+        modalidad: modalidad.codigo,
+        modalidadNombre: modalidad.nombre,
+        modalidadAnterior: anterior,
+        actividadesCambiadas,
+      });
+    });
+
+    return this.obtener(procesoId, acceso);
+  }
+
+  /**
+   * Corrige el valor estimado, y la modalidad si la nueva cuantía la cambia.
+   *
+   * El valor se digita al crear el proceso y un cero de más se colaba hasta
+   * el final: no había dónde corregirlo. Se corrige en el mismo margen que la
+   * modalidad —la 3.1 en borrador o devuelta—, que es también cuando el abogado
+   * puede devolver el estudio previo porque el valor no es el que es.
+   *
+   * Pasa por los mismos umbrales que al crear: si el valor nuevo obliga a
+   * licitación pública, una modalidad de menor cuantía se rechaza, la actual
+   * incluida. Por eso la modalidad viaja en la misma llamada.
+   */
+  async cambiarCuantia(procesoId: string, dto: CambiarCuantiaDto, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      const proceso = await this.validarEtapa(em, procesoId);
+
+      const codigo = dto.modalidad ?? proceso.modalidad;
+      // La nueva tiene que estar vigente; la que ya tenía el proceso se
+      // conserva aunque el catálogo la haya retirado después.
+      const modalidad = codigo
+        ? await em.findOne(Modalidad, {
+            where: dto.modalidad ? { codigo, activa: true } : { codigo },
+          })
+        : null;
+      if (dto.modalidad && !modalidad) {
+        throw new BadRequestException(
+          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+        );
+      }
+
+      const cambiaValor = dto.valorEstimado !== proceso.valorEstimado;
+      const cambiaModalidad = !!modalidad && modalidad.codigo !== proceso.modalidad;
+      if (!cambiaValor && !cambiaModalidad) return;
+
+      if (modalidad) await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
+
+      const valorAnterior = proceso.valorEstimado;
+      const modalidadAnterior = proceso.modalidad;
+      proceso.valorEstimado = dto.valorEstimado;
+      if (cambiaModalidad) proceso.modalidad = modalidad.codigo;
+      await em.save(Proceso, proceso);
+
+      const actividadesCambiadas = cambiaModalidad
+        ? await this.configuracionService.reaplicarModalidad(em, procesoId, modalidad.codigo)
+        : [];
+
+      const actividad = await this.obtenerActividad(em, procesoId);
+      if (cambiaValor) {
+        await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_VALOR', acceso, {
+          valorEstimado: dto.valorEstimado,
+          valorAnterior,
+        });
+      }
+      if (cambiaModalidad) {
+        await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_MODALIDAD', acceso, {
+          modalidad: modalidad.codigo,
+          modalidadNombre: modalidad.nombre,
+          modalidadAnterior,
+          actividadesCambiadas,
+        });
+      }
+    });
+
+    return this.obtener(procesoId, acceso);
   }
 
   /** Guarda sin validar obligatorios: el usuario puede dejarlo a medias. */
@@ -1091,11 +1228,11 @@ export class EstudioPrevioService implements OnModuleInit {
     // marcadas desde el aviso sin buscarlas en el expediente.
     const soportes = await soportesDeDevolucion(
       this.dataSource.manager,
-      revisiones.map((r) => r.soporteDocumentoId),
+      revisiones.flatMap((r) => r.soportesDocumentoIds ?? []),
     );
     return revisiones.map((r) => ({
       ...r,
-      soporte: r.soporteDocumentoId ? (soportes.get(r.soporteDocumentoId) ?? null) : null,
+      soportes: (r.soportesDocumentoIds ?? []).flatMap((id) => soportes.get(id) ?? []),
     }));
   }
 
@@ -1123,33 +1260,54 @@ export class EstudioPrevioService implements OnModuleInit {
      * Los anulados entran: un requisito sustituido dejó de cubrirlo, pero el
      * archivo siguió sin ser el entregable de la actividad.
      */
-    const requisitos = new Map(
-      (
-        await this.dataSource.getRepository(DocumentoProceso).find({ where: { procesoId } })
-      ).map((d) => [d.documentoId, d.codigo]),
-    );
+    const cargas = await this.dataSource
+      .getRepository(DocumentoProceso)
+      .find({ where: { procesoId } });
+    const requisitos = new Map(cargas.map((d) => [d.documentoId, d]));
+
+    /*
+     * Y cómo se llama ese requisito. El código solo lo entiende el sistema: el
+     * expediente agrupa por él y tiene que poder decir «Memorando de
+     * solicitud», no MEMORANDO_SOLICITUD. Por numeral y código, que es la
+     * llave del catálogo; se leen también los inactivos, porque un requisito
+     * retirado después no deja de nombrar lo que ya se cargó.
+     */
+    const catalogo = cargas.length
+      ? await this.dataSource.getRepository(DocumentoRequerido).find({
+          where: { codigo: In([...new Set(cargas.map((c) => c.codigo))]) },
+        })
+      : [];
+    const nombreRequisito = new Map(catalogo.map((r) => [`${r.numeral}|${r.codigo}`, r.nombre]));
 
     return {
       numeroExpediente: expediente.numeroExpediente,
       estado: expediente.estado,
       fechaApertura: expediente.fechaApertura,
-      documentos: documentos.map((d) => ({
-        id: d.id,
-        tipo: d.tipo,
-        nombre: d.nombre,
-        numeral: d.numeral,
-        /** Código del requisito que cubre; null si es un adjunto de la actividad. */
-        requisito: requisitos.get(d.id) ?? null,
-        mimeType: d.archivoMimeType,
-        tamano: d.archivoTamano ? Number(d.archivoTamano) : null,
-        hashSha256: d.hashSha256,
-        version: d.version,
-        subidoPor: d.subidoPor,
-        createdAt: d.createdAt,
-        // El snapshot se devuelve completo: es el estudio previo registrado
-        contenido: d.tipo === 'SNAPSHOT_FORMULARIO' ? d.contenidoSnapshot : undefined,
-        descargaUrl: d.archivoUrl ? `/files/${d.archivoUrl.split('/').pop()}` : undefined,
-      })),
+      documentos: documentos.map((d) => {
+        const carga = requisitos.get(d.id);
+        return {
+          id: d.id,
+          tipo: d.tipo,
+          nombre: d.nombre,
+          numeral: d.numeral,
+          /** Código del requisito que cubre; null si es un adjunto de la actividad. */
+          requisito: carga?.codigo ?? null,
+          requisitoNombre: carga
+            ? (nombreRequisito.get(`${carga.numeral}|${carga.codigo}`) ?? null)
+            : null,
+          /** Si otro archivo lo sustituyó como soporte del requisito. */
+          sustituido: !!carga?.anuladoAt,
+          mimeType: d.archivoMimeType,
+          tamano: d.archivoTamano ? Number(d.archivoTamano) : null,
+          hashSha256: d.hashSha256,
+          version: d.version,
+          subidoPor: d.subidoPor,
+          createdAt: d.createdAt,
+          // El snapshot se devuelve completo: es el estudio previo registrado
+          contenido: d.tipo === 'SNAPSHOT_FORMULARIO' ? d.contenidoSnapshot : undefined,
+          descargaUrl: d.archivoUrl ? `/files/${d.archivoUrl.split('/').pop()}` : undefined,
+        };
+      }),
     };
   }
 

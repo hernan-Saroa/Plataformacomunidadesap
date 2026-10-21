@@ -963,6 +963,7 @@ export function GestionNoticias() {
           fechaRegistro: news.createdAt || news.fechaRecepcion,
           fechaRecepcion: news.fechaRecepcion,
           fechaQueja: news.fechaQueja,  // Mostrar fecha de queja/notificación si existe
+          fechaHechos: news.fechaHechos, // ✅ Preservar fecha de hechos para edición
           conductas: news.conductas || [],
           descripcion: news.hechos || 'Sin descripción',
           hechos: news.hechos || '',
@@ -1083,13 +1084,23 @@ export function GestionNoticias() {
 
 
   const mapOrigenToEnum = (origen: string): any => {
+    if (!origen) return 'OFICIO';
     const mapping: Record<string, string> = {
       'Queja ciudadana': 'QUEJOSO',
-      'Informe servidor público': 'INFORME',
+      'Quejoso': 'QUEJOSO',
+      'QUEJOSO': 'QUEJOSO',
+      'Informe servidor público': 'OFICIO',
+      'Informante': 'QUEJOSO',
       'De oficio': 'OFICIO',
-      'Anónimo': 'ANONIMO'
+      'OFICIO': 'OFICIO',
+      'Anónimo': 'ANONIMO',
+      'ANONIMO': 'ANONIMO',
+      'Remisión por competencia': 'REMISION',
+      'REMISION': 'REMISION',
+      'Por determinar': 'POR_DETERMINAR',
+      'POR_DETERMINAR': 'POR_DETERMINAR',
     };
-    return mapping[origen] || 'OFICIO';
+    return mapping[origen] || mapping[origen.trim()] || origen;
   };
 
   const handleExportMain = () => {
@@ -1274,26 +1285,38 @@ export function GestionNoticias() {
       setLoading(true);
       const denunciantesArray = (data.denunciantes || []).map((d: any) => ({
         nombre: d.nombre || '',
-        cedula: d.identificacion || '',
+        cedula: d.identificacion || d.cedula || '',
+        identificacion: d.identificacion || d.cedula || '',
         direccion: d.direccion || '',
-        telefono: d.telefono || '',
-        correo: d.correo || '',
+        telefono: d.telefono || d.celular || '',
+        correo: d.correo || d.email || '',
         cargo: d.cargo || '',
-        entidad: d.entidad || '',
+        entidad: d.entidad || d.dependencia || '',
+        dependencia: d.dependencia || d.entidad || '',
         tipo: d.tipo || 'Denunciante',
         apoderado: d.apoderado,
       }));
       const disciplinablesArray = (data.denunciados || []).map((d: any) => ({
         nombre: d.nombre || '',
-        cedula: d.identificacion || '',
+        cedula: d.identificacion || d.cedula || '',
+        identificacion: d.identificacion || d.cedula || '',
         cargo: d.cargo || '',
-        dependencia: d.lugarHechos || '',
+        dependencia: d.lugarHechos || d.dependencia || '',
+        lugarHechos: d.lugarHechos || d.dependencia || '',
         apoderado: d.apoderado,
       }));
+      const currentUser = authService.getCurrentUser();
+      const usuarioNombre = currentUser?.nombre || currentUser?.nom_largo || currentUser?.username || currentUser?.email || 'Profesional';
+
+      const hechosFinal = (data.hechosSeparados && data.hechosSeparados.length > 0)
+        ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+        : (data.hechos || data.descripcionHechos || noticiaParaEditar.hechos || '');
+
       await disciplinaryService.updateNoticia(noticiaParaEditar.id, {
-        origen: data.origen,
+        origen: mapOrigenToEnum(data.origen),
         territorial: data.territorial,
-        hechos: data.descripcionHechos,
+        dependenciaDenunciado: disciplinablesArray[0]?.dependencia || disciplinablesArray[0]?.lugarHechos || data.dependenciaDenunciado || noticiaParaEditar.dependenciaDenunciado,
+        hechos: hechosFinal,
         denunciante: denunciantesArray,
         denunciantes: denunciantesArray,
         disciplinable: disciplinablesArray,
@@ -1301,9 +1324,12 @@ export function GestionNoticias() {
         conducta: data.conducta || data.conductaSeleccionada,
         conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
           ? data.conductas
-          : (data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : [])),
-        fechaHechos: data.fechaHechos || null,
-        fechaQueja: data.fechaQueja,
+          : (Array.isArray(data.conductasSeleccionadas) && data.conductasSeleccionadas.length > 0
+              ? data.conductasSeleccionadas
+              : (data.conducta || data.conductaSeleccionada ? [data.conducta || data.conductaSeleccionada] : [])),
+        fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : null,
+        fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : undefined,
+        usuario: usuarioNombre,
         // ✅ Documentos adjuntos
         adjuntosParaEliminar: data.adjuntosParaEliminar || [],
         archivosAdjuntos: data.archivosAdjuntos || [],
@@ -1450,12 +1476,14 @@ export function GestionNoticias() {
       'INFORMANTE': 'Informante',
       'OFICIO': 'De oficio',
       'REMISION': 'Remisión por competencia',
+      'POR_DETERMINAR': 'Por determinar',
       // Fallbacks
       'Anónimo': 'Anónimo',
       'Quejoso': 'Quejoso',
       'Informante': 'Informante',
       'De oficio': 'De oficio',
-      'Remisión por competencia': 'Remisión por competencia'
+      'Remisión por competencia': 'Remisión por competencia',
+      'Por determinar': 'Por determinar'
     }[origen] || 'Anónimo';
 
     const configs: Record<string, { bg: string; text: string }> = {
@@ -1463,7 +1491,8 @@ export function GestionNoticias() {
       'Quejoso': { bg: '#DBEAFE', text: '#1E40AF' },
       'Informante': { bg: '#E0E7FF', text: '#4338CA' },
       'De oficio': { bg: '#F3E8FF', text: '#6B21A8' },
-      'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' }
+      'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' },
+      'Por determinar': { bg: '#FEF3C7', text: '#92400E' }
     };
     const config = configs[normalized] || configs['Anónimo'];
 
@@ -1822,20 +1851,6 @@ export function GestionNoticias() {
                     </button>
                   )}
 
-                  {/* Botón Remitir por Competencia - solo si NO ha sido remitido */}
-                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
-                    <button
-                      onClick={() => {
-                        setNoticiaSeleccionada(noticia);
-                        setShowRemitirCompetenciaModal(true);
-                      }}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
-                      title="Remitir por competencia"
-                    >
-                      <Send className="w-4 h-4 text-purple-600" />
-                    </button>
-                  )}
-
                   {/* RF002: Botones de Revisión y Asignación */}
                   {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
                     <>
@@ -2013,6 +2028,9 @@ export function GestionNoticias() {
               setNoticiaSeleccionada(null);
             }}
             onDownload={async (url, filename) => {
+              if (!url || url.toLowerCase().includes('/preview') || url.toLowerCase() === 'preview') {
+                return;
+              }
               await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
             }}
           />

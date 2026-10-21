@@ -101,7 +101,10 @@ describe('PtaService - solicitudes de edición parcial', () => {
     }, authDocente)).rejects.toThrow(/tus propios PTA/i);
   });
 
-  it('al aprobar habilita únicamente los componentes solicitados', async () => {
+  it.each([true, false])('al aprobar habilita únicamente los componentes solicitados, con superusuario %s', async superusuario => {
+    const actor = superusuario ? authAdmin : { ...authAdmin, isSuperUser: false, approvesAll: false,
+      roles: ['APROBADOR_INVESTIGACION'], allowedComponents: ['investigacion'],
+      permissions: new Set(['pta.requests.edit.manage', 'pta.approve.investigacion']) };
     const service = Object.create(PtaService.prototype) as any;
     const solicitud = {
       id: 'sol-1',
@@ -178,7 +181,7 @@ describe('PtaService - solicitudes de edición parcial', () => {
     const result = await service.resolverSolicitudPTA(
       'sol-1',
       { decision: 'aprobado', motivo: 'Edición autorizada.' },
-      authAdmin,
+      actor,
     );
 
     expect(result.estado).toBe('aprobado');
@@ -216,7 +219,7 @@ describe('PtaService - solicitudes de edición parcial', () => {
       solicitudId: 'sol-1',
       decision: 'aprobado',
       resueltoPor: 'Administrador PTA',
-      resueltoPorRol: 'SUPER_ADMIN',
+      resueltoPorRol: actor.roles.join(', '),
       motivoResolucion: 'Edición autorizada.',
     });
   });

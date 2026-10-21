@@ -7,6 +7,7 @@ import { SaldoTiqueteEntity } from '../../../entities/tickets/saldo-tiquete.enti
 import { RutaRestringidaEntity } from '../../../entities/tickets/ruta-restringida.entity';
 import { ExcepcionTiqueteEntity } from '../../../entities/tickets/excepcion-tiquete.entity';
 import { LiquidationParamEntity } from '../../../entities/liquidation/liquidation-param.entity';
+import { TarifaReferenciaTiqueteEntity } from '../../../entities/tickets/tarifa-referencia-tiquete.entity';
 
 /**
  * Suite de pruebas unitarias y de integración del módulo de tiquetes
@@ -38,6 +39,7 @@ describe('TicketsService', () => {
       rutaRepo?: any;
       excepcionRepo?: any;
       paramRepo?: any;
+      tarifaRepo?: any;
       dataSource?: any;
     } = {},
   ) => {
@@ -53,7 +55,18 @@ describe('TicketsService', () => {
       },
       excepcionRepo = { create: jest.fn(), save: jest.fn(), find: jest.fn() },
       paramRepo = { findOne: jest.fn() },
-      dataSource = { transaction: jest.fn() },
+      tarifaRepo = {
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn((x: any) => x),
+        save: jest.fn(async (x: any) => ({ id: 1, ...x })),
+        count: jest.fn().mockResolvedValue(10),
+        ...overrides.tarifaRepo,
+      },
+      dataSource = {
+        transaction: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      },
     } = overrides;
 
     return Test.createTestingModule({
@@ -75,6 +88,10 @@ describe('TicketsService', () => {
         {
           provide: getRepositoryToken(LiquidationParamEntity),
           useValue: paramRepo,
+        },
+        {
+          provide: getRepositoryToken(TarifaReferenciaTiqueteEntity),
+          useValue: tarifaRepo,
         },
       ],
     }).compile();
@@ -492,4 +509,141 @@ describe('TicketsService', () => {
       expect(res.monto_reserva_con_holgura).toBe(500_000); // 400k * 1.25
     });
   });
+
+  describe('Matriz Paramétrica de Tarifas de Referencia (Modelo Híbrido)', () => {
+    it('consulta tarifa estimada desde la base de datos cuando existe coincidencia', async () => {
+      const tarifaRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 1,
+          origenIata: 'BOG',
+          origenCiudad: 'Bogotá',
+          destinoIata: 'MDE',
+          destinoCiudad: 'Medellín',
+          tarifaEstimada: 380_000,
+          tarifaMinima: 260_000,
+          tarifaMaxima: 520_000,
+          fuente: 'AMADEUS',
+          activo: true,
+        }),
+      };
+      const module = await createMockModule({ tarifaRepo });
+      const service = module.get<TicketsService>(TicketsService);
+
+      const res = await service.consultarTarifaEstimada('Bogotá D.C.', 'Medellín');
+      expect(res.origenIata).toBe('BOG');
+      expect(res.destinoIata).toBe('MDE');
+      expect(res.tarifaEstimada).toBe(380_000);
+      expect(res.encontrado).toBe(true);
+      expect(res.fuente).toBe('AMADEUS');
+    });
+
+    it('aplica benchmark institucional cuando la ruta no está registrada en DB', async () => {
+      const tarifaRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      const module = await createMockModule({ tarifaRepo });
+      const service = module.get<TicketsService>(TicketsService);
+
+      const res = await service.consultarTarifaEstimada('Bogotá', 'San Andrés');
+      expect(res.origenIata).toBe('BOG');
+      expect(res.destinoIata).toBe('ADZ');
+      expect(res.tarifaEstimada).toBeGreaterThan(0);
+      expect(res.encontrado).toBe(false);
+      expect(res.fuente).toBe('BENCHMARK_CCE');
+    });
+
+    it('permite crear y actualizar tarifas en la matriz paramétrica', async () => {
+      const tarifaRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn((x: any) => x),
+        save: jest.fn(async (x: any) => ({ id: 10, ...x })),
+      };
+      const module = await createMockModule({ tarifaRepo });
+      const service = module.get<TicketsService>(TicketsService);
+
+      const creada = await service.crearTarifaReferencia({
+        origenIata: 'BOG',
+        origenCiudad: 'Bogotá',
+        destinoIata: 'CLO',
+        destinoCiudad: 'Cali',
+        tarifaEstimada: 350_000,
+        fuente: 'MANUAL',
+      });
+      expect(creada.id).toBe(10);
+      expect(creada.tarifaEstimada).toBe(350_000);
+      expect(creada.origenIata).toBe('BOG');
+    });
+
+    it('sincroniza en lote las tarifas principales de forma idempotente', async () => {
+      const tarifaRepo = {
+        find: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            origenIata: 'BOG',
+            destinoIata: 'MDE',
+            tarifaEstimada: 300_000,
+            activo: true,
+          },
+        ]),
+        save: jest.fn(async (x: any) => ({ id: 1, ...x })),
+      };
+      const module = await createMockModule({ tarifaRepo });
+      const service = module.get<TicketsService>(TicketsService);
+
+      const resultadoSync = await service.sincronizarTarifasBatch();
+      expect(resultadoSync.totalRutas).toBe(1);
+      expect(resultadoSync.actualizadas).toBe(1);
+      expect(resultadoSync.fuente).toBeDefined();
+    });
+
+    it('resuelve tarifa estimada a partir de abreviación compuesta como "BOG-PEI" o "Bogotá - Pereira"', async () => {
+      const tarifaRepo = {
+        findOne: jest.fn().mockImplementation((opts: any) => {
+          const match = opts.where.some(
+            (w: any) =>
+              (w.origenIata === 'BOG' && w.destinoIata === 'PEI') ||
+              (w.origenIata === 'PEI' && w.destinoIata === 'BOG'),
+          );
+          if (match) {
+            return Promise.resolve({
+              id: 25,
+              origenIata: 'BOG',
+              origenCiudad: 'BOGOTÁ, D.C.',
+              destinoIata: 'PEI',
+              destinoCiudad: 'PEREIRA',
+              tarifaEstimada: 330_000,
+              tarifaMinima: 250_000,
+              tarifaMaxima: 430_000,
+              fuente: 'PARAMETRICO_ESAP',
+              activo: true,
+            });
+          }
+          return Promise.resolve(null);
+        }),
+      };
+      const module = await createMockModule({ tarifaRepo });
+      const service = module.get<TicketsService>(TicketsService);
+
+      // 1. Caso abreviación directa BOG-PEI en un solo parámetro
+      const resCompuesto = await service.consultarTarifaEstimada('BOG-PEI', '');
+      expect(resCompuesto.origenIata).toBe('BOG');
+      expect(resCompuesto.destinoIata).toBe('PEI');
+      expect(resCompuesto.tarifaEstimada).toBe(330_000);
+      expect(resCompuesto.encontrado).toBe(true);
+
+      // 2. Caso con espacios "BOG - PEI"
+      const resEspaciado = await service.consultarTarifaEstimada('BOG - PEI', '');
+      expect(resEspaciado.origenIata).toBe('BOG');
+      expect(resEspaciado.destinoIata).toBe('PEI');
+      expect(resEspaciado.tarifaEstimada).toBe(330_000);
+
+      // 3. Caso origen "Bogotá, D.C." y destino "Pereira"
+      const resCiudades = await service.consultarTarifaEstimada('Bogotá, D.C.', 'Pereira');
+      expect(resCiudades.origenIata).toBe('BOG');
+      expect(resCiudades.destinoIata).toBe('PEI');
+      expect(resCiudades.tarifaEstimada).toBe(330_000);
+    });
+  });
 });
+

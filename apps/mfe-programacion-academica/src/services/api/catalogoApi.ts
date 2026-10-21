@@ -1,4 +1,5 @@
 import { getApiGatewayBaseUrl } from '../../../config/environment';
+import { invalidarEscrituraProgramacion } from '../actualizacionProgramacion';
 
 /**
  * Cliente del catálogo académico (EFDS-1368).
@@ -64,17 +65,31 @@ async function pedir<T>(ruta: string): Promise<T> {
   return (cuerpo?.data ?? cuerpo) as T;
 }
 
-/** Programas visibles para el usuario; sin `nivel` devuelve los de todos sus niveles. */
-export function getProgramas(nivel?: NivelAcademico): Promise<ProgramaCatalogo[]> {
-  const query = nivel ? `?nivel=${encodeURIComponent(nivel)}` : '';
-  return pedir<ProgramaCatalogo[]>(`${BASE}/programas${query}`);
+/** Arma `?a=1&b=2` solo con lo que trae valor. */
+function consulta(params: Record<string, string | undefined>): string {
+  const partes = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`);
+  return partes.length ? `?${partes.join('&')}` : '';
 }
 
-/** Catálogo del programa agrupado por semestre del plan de estudios (AC-01). */
+/**
+ * Programas visibles para el usuario; sin `nivel` devuelve los de todos sus niveles.
+ * Con `idPeriodo`, solo los que tienen oferta CETAP activa en ese periodo (un periodo sin carga: vacío).
+ */
+export function getProgramas(nivel?: NivelAcademico, idPeriodo?: string): Promise<ProgramaCatalogo[]> {
+  return pedir<ProgramaCatalogo[]>(`${BASE}/programas${consulta({ nivel, periodo: idPeriodo })}`);
+}
+
+/**
+ * Catálogo del programa agrupado por semestre del plan de estudios (AC-01).
+ * Con `idPeriodo` y un programa sin oferta en él: `semestres: []` y `ofertadoEnPeriodo: false`.
+ */
 export function getCatalogoPorSemestre(
   idPrograma: string,
-): Promise<{ programa: any; semestres: SemestreCatalogo[] }> {
-  return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas`);
+  idPeriodo?: string,
+): Promise<{ programa: any; semestres: SemestreCatalogo[]; ofertadoEnPeriodo?: boolean }> {
+  return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas${consulta({ periodo: idPeriodo })}`);
 }
 
 // ─── Grupos (EFDS-1370) ─────────────────────────────────────────────────────
@@ -83,14 +98,26 @@ export interface Grupo {
   idGrupo: string;
   idAsignatura: string;
   idPeriodo: string | null;
+  idOfertaCetap: string | null;
   numeroGrupo: number;
   idDocente: string | null;
   cupoMaximo: number;
   estado: string;
   observaciones: string | null;
+  /** Ciclo de clases del grupo. El backend ya los devolvía; faltaba declararlos. */
+  fechaInicio: string | null;
+  fechaFin: string | null;
 }
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
+
+export interface OfertaCetapGrupo {
+  idOfertaCetap: string;
+  idPrograma: string;
+  idPeriodoAcademico: string;
+  cetap: { id: string; codigo: string; nombre: string };
+  territorial: { codigo: string | null; nombre: string | null; idSeccional: string | null };
+}
 
 async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -99,26 +126,55 @@ async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    if (res.status === 403) throw new Error('No tiene permisos para gestionar grupos de esta asignatura.');
-    // El backend explica el motivo (p. ej. contra qué sesión cruza la franja):
-    // se propaga tal cual, porque es lo que le dice al programador qué corregir.
+    // El backend explica el motivo (contra qué sesión cruza la franja, o qué
+    // permiso falta —crear un periodo exige el de administración—): se propaga
+    // TAL CUAL, porque es lo que le dice al usuario qué corregir. Este helper lo
+    // comparten grupos, horarios, asignaciones, aulas y ofertas; un 403 fijo de
+    // "grupos" mentía sobre las otras operaciones. El genérico queda de respaldo.
     let detalle = "";
     try { const cuerpo = await res.json(); detalle = cuerpo?.message || cuerpo?.error || ""; } catch { /* sin cuerpo util */ }
+    if (res.status === 403) {
+      throw new Error(detalle || 'No tiene permisos para completar esta operación.');
+    }
     throw new Error(detalle || `No se pudo completar la operación (error ${res.status}).`);
   }
-  const cuerpo = await res.json();
+  const cuerpo = res.status === 204 ? null : await res.json();
+  if (!['GET', 'HEAD'].includes((init.method ?? 'GET').toUpperCase())) {
+    invalidarEscrituraProgramacion(ruta);
+  }
   return (cuerpo?.data ?? cuerpo) as T;
 }
 
-export function getGrupos(idAsignatura: string): Promise<Grupo[]> {
-  return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}`, { method: 'GET' });
+export function getGrupo(idGrupo: string): Promise<Grupo> {
+  return pedirJson<Grupo>(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, { method: 'GET' });
+}
+
+export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Grupo[]> {
+  const q = idPeriodo ? `&periodo=${encodeURIComponent(idPeriodo)}` : '';
+  return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}${q}`, { method: 'GET' });
+}
+
+/** Ofertas activas del programa de la asignatura en el periodo seleccionado. */
+export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): Promise<OfertaCetapGrupo[]> {
+  return pedirJson<OfertaCetapGrupo[]>(
+    `${BASE_GRUPOS}/ofertas-cetap?asignatura=${encodeURIComponent(idAsignatura)}&periodo=${encodeURIComponent(idPeriodo)}`,
+    { method: 'GET' },
+  );
 }
 
 /** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
-export function crearGrupos(idAsignatura: string, cantidad: number): Promise<Grupo[]> {
+export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null, idOfertaCetap?: string | null): Promise<Grupo[]> {
   return pedirJson<Grupo[]>(BASE_GRUPOS, {
     method: 'POST',
-    body: JSON.stringify({ idAsignatura, cantidad }),
+    // El periodo del grupo es el seleccionado en la cabecera: sin él, el grupo
+    // nace huérfano (id_periodo NULL) y publicar/validar no lo alcanzan.
+    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null, ...(idOfertaCetap ? { idOfertaCetap } : {}) }),
+  });
+}
+
+export function actualizarOfertaCetapGrupo(idGrupo: string, idOfertaCetap: string | null): Promise<Grupo> {
+  return pedirJson<Grupo>(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, {
+    method: 'PATCH', body: JSON.stringify({ idOfertaCetap }),
   });
 }
 
@@ -147,7 +203,43 @@ export interface Sesion {
   estado: string;
 }
 
+/**
+ * Franja con su contexto ya resuelto por el servidor: programa, asignatura y
+ * docente vienen del JOIN, no de consultas por fila desde aquí.
+ */
+export interface FranjaConContexto extends Sesion {
+  numeroGrupo: number | null;
+  fechaInicioGrupo: string | null;
+  fechaFinGrupo: string | null;
+  asignatura: string | null;
+  programa: string | null;
+  docente: string | null;
+  /** Periodo al que pertenece (vía grupo). Null = sin periodo. */
+  idPeriodo: string | null;
+  periodoCodigo: string | null;
+}
+
 const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
+
+/**
+ * Sesiones del periodo indicado (si se pasa `idPeriodo`), o todas. Es lo que
+ * hace que cada vista pertenezca al periodo seleccionado en la cabecera.
+ */
+export function getTodasLasSesiones(idPeriodo?: string): Promise<FranjaConContexto[]> {
+  const q = idPeriodo ? `?periodo=${encodeURIComponent(idPeriodo)}` : '';
+  return pedirJson<FranjaConContexto[]>(`${BASE_HORARIOS}${q}`, { method: 'GET' });
+}
+
+/** Horas del grupo: programadas (Σ semanal × semanas) vs requeridas por catálogo (§1.3). */
+export interface HorasGrupo {
+  programadas: number | null;
+  requeridas: number | null;
+  semanas: number | null;
+  excede: boolean;
+}
+export function getHorasGrupo(idGrupo: string): Promise<HorasGrupo> {
+  return pedirJson<HorasGrupo>(`${BASE_HORARIOS}/grupo/${encodeURIComponent(idGrupo)}/horas`, { method: 'GET' });
+}
 
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
   return pedirJson<Sesion[]>(`${BASE_HORARIOS}?grupo=${encodeURIComponent(idGrupo)}`, { method: 'GET' });
@@ -286,8 +378,8 @@ export interface AsignaturaSnies {
 }
 
 /** Autocompletado por llave maestra. El código no existente devuelve error controlado. */
-export function getAsignaturaPorCodigo(codigo: string): Promise<AsignaturaSnies> {
-  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}`);
+export function getAsignaturaPorCodigo(codigo: string, idPeriodo?: string): Promise<AsignaturaSnies> {
+  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}${consulta({ periodo: idPeriodo })}`);
 }
 
 // ─── Aulas y disponibilidad (EFDS-1374) ─────────────────────────────────────
@@ -298,6 +390,21 @@ export interface Aula {
   sedeCodigo: string | null;
   capacidad: number | null;
   provisional: boolean;
+  tipo?: string | null;
+  piso?: number | null;
+  /** Territorial y CETAP del aula. */
+  territorial?: { codigo: string; nombre: string | null } | null;
+  cetap?: { codigo: string; nombre: string | null } | null;
+  /** Con filtro de oferta: la oferta (programa + CETAP + periodo) que se deduce al elegir esta aula. */
+  idOfertaCetap?: string | null;
+}
+
+/** Filtros de `GET /aulas`: por CETAP, por grupo, o por asignatura + periodo (solo las aulas válidas para la oferta). */
+export interface FiltroAulas {
+  cetap?: string;
+  grupo?: string;
+  asignatura?: string;
+  periodo?: string;
 }
 
 /** Franja ocupada de un aula: SOLO día y hora (RN-07, no revela qué la ocupa). */
@@ -309,18 +416,77 @@ export interface FranjaOcupadaAula {
 
 const BASE_AULAS = '/programacion-academica/api/v1/aulas';
 
-export function getAulas(): Promise<Aula[]> {
-  return pedirJson<Aula[]>(BASE_AULAS, { method: 'GET' });
+export function getAulas(filtros: FiltroAulas = {}): Promise<Aula[]> {
+  return pedirJson<Aula[]>(`${BASE_AULAS}${consulta({ ...filtros })}`, { method: 'GET' });
 }
 
-/** Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo. */
-export function getDisponibilidadAula(codigo: string): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
-  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad`, { method: 'GET' });
+/**
+ * Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo.
+ * Con `periodo` (o `grupo`) solo cuenta lo que ocupa el aula EN ESE CICLO de clases: el aula de
+ * otro periodo, con fechas que no se tocan, no aparece ocupada.
+ */
+export function getDisponibilidadAula(
+  codigo: string,
+  opciones: { periodo?: string; grupo?: string } = {},
+): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
+  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad${consulta({ ...opciones })}`, { method: 'GET' });
 }
 
 /** Publica la oferta del grupo. Exige aula en todas las franjas (cierra deuda de 1371). */
 export function publicarGrupo(idGrupo: string): Promise<{ publicado: boolean }> {
   return pedirJson(`${BASE_AULAS}/publicar/${encodeURIComponent(idGrupo)}`, { method: 'POST' });
+}
+
+/** Tipos de espacio válidos: el mismo conjunto cerrado del CHECK de la tabla. */
+export const TIPOS_AULA = ['aula', 'auditorio'] as const;
+export type TipoAula = (typeof TIPOS_AULA)[number];
+
+export interface CrearAulaDto {
+  codigo: string;
+  nombre: string;
+  capacidad: number | null;
+  /** Territorial (DT-xxx) y CETAP (CET-xxxx), elegidos de selectores (§3.3). */
+  sedeCodigo: string | null;
+  codigoCetap: string | null;
+  tipo: TipoAula | null;
+  piso: number | null;
+}
+
+export interface Territorial { id: number; codigo: string; nombre: string; }
+export interface Cetap { codigo: string; nombre: string; }
+
+/** Territoriales para el selector del formulario de aulas. */
+export function getTerritoriales(): Promise<Territorial[]> {
+  return pedirJson<Territorial[]>(`${BASE_AULAS}/territoriales`, { method: 'GET' });
+}
+/** CETAPs de una territorial (selector encadenado). */
+export function getCetaps(idTerritorial: number): Promise<Cetap[]> {
+  return pedirJson<Cetap[]>(`${BASE_AULAS}/cetaps?territorial=${encodeURIComponent(idTerritorial)}`, { method: 'GET' });
+}
+
+/**
+ * El código es la PK y no se renombra; por eso no viaja en la actualización.
+ * Parcial: solo los campos presentes se envían y el backend solo toca esos.
+ */
+export type ActualizarAulaDto = Partial<Omit<CrearAulaDto, 'codigo'>>;
+
+/**
+ * CRUD de aulas y capacidad (EFDS-1942). Administración del dato maestro: exige
+ * el permiso de administración; si falta, el backend responde 403 y el mensaje
+ * se muestra tal cual (pedirJson lo propaga verbatim).
+ */
+export function crearAula(dto: CrearAulaDto): Promise<Aula> {
+  return pedirJson<Aula>(BASE_AULAS, { method: 'POST', body: JSON.stringify(dto) });
+}
+
+export function actualizarAula(codigo: string, dto: ActualizarAulaDto): Promise<Aula> {
+  return pedirJson<Aula>(`${BASE_AULAS}/${encodeURIComponent(codigo)}`, {
+    method: 'PATCH', body: JSON.stringify(dto),
+  });
+}
+
+export function eliminarAula(codigo: string): Promise<{ eliminado: true }> {
+  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}`, { method: 'DELETE' });
 }
 
 // ─── Ofertas académicas (EFDS-1375) ─────────────────────────────────────────
@@ -333,6 +499,16 @@ export interface Oferta {
   fechaInicio: string | null;
   fechaFin: string | null;
   activo: boolean;
+  /** planeacion | activo | cerrado. `activo` es falso en los dos extremos. */
+  estado: string;
+}
+
+export interface CrearPeriodoDto {
+  codigo: string;
+  nombre: string;
+  tipo: string | null;
+  fechaInicio: string;
+  fechaFin: string;
 }
 
 const BASE_OFERTAS = '/programacion-academica/api/v1/ofertas';
@@ -344,4 +520,194 @@ export function getOfertas(): Promise<Oferta[]> {
 /** Consumo del docente por oferta vs tope (reusa el acumulado de 1373). */
 export function getConsumoPorOferta(documento: string): Promise<AcumuladoDocente> {
   return pedirJson<AcumuladoDocente>(`${BASE_OFERTAS}/consumo/${encodeURIComponent(documento)}`, { method: 'GET' });
+}
+
+// ─── Validación de cruces del histórico (3.9) ────────────────────────────────
+
+export interface CruceHistorico {
+  tipo: 'aula' | 'docente';
+  periodo: string;
+  dia: string;
+  horaInicio: string;
+  horaFin: string;
+  recurso: string;
+  asignaturaA: string;
+  asignaturaB: string;
+  programaA: string;
+  programaB: string;
+}
+
+export interface ValidacionHistorico {
+  origen: string;
+  periodos: string[];
+  resumen: { aula: number; docente: number; total: number };
+  cruces: CruceHistorico[];
+}
+
+/**
+ * Cruces detectados en la programación HISTÓRICA. No son fallas del sistema:
+ * el sistema no permite crearlos. Por eso van aparte del contador del panel.
+ */
+export function getCrucesHistoricos(periodoCodigo?: string): Promise<ValidacionHistorico> {
+  const q = periodoCodigo ? `?periodo=${encodeURIComponent(periodoCodigo)}` : '';
+  return pedirJson<ValidacionHistorico>(`/programacion-academica/api/v1/validacion/historico${q}`, { method: 'GET' });
+}
+
+/**
+ * Crea un periodo. Nace en 'planeacion': activar es un acto explícito aparte.
+ * Exige el permiso de administración del módulo; si falta, el backend responde
+ * 403 y el mensaje se muestra tal cual.
+ */
+export function crearPeriodo(dto: CrearPeriodoDto): Promise<Oferta> {
+  return pedirJson<Oferta>(BASE_OFERTAS, { method: 'POST', body: JSON.stringify(dto) });
+}
+
+/** Activa un periodo. Varios pueden estar activos a la vez. */
+export function activarPeriodo(idPeriodo: string): Promise<Oferta> {
+  return pedirJson<Oferta>(`${BASE_OFERTAS}/${encodeURIComponent(idPeriodo)}/activar`, { method: 'PATCH' });
+}
+
+// ─── Publicación de la programación (NUEVA-1 / EFDS-1937) ─────────────────────
+
+/**
+ * Estado de publicación de un periodo: conteo de sus franjas por etapa del
+ * ciclo PROGRAMADO → PUBLICADA → TOMADA. Es publicación, no oferta: la oferta es
+ * el periodo.
+ */
+export interface EstadoPublicacion {
+  idPeriodo: string;
+  programado: number;
+  publicada: number;
+  tomada: number;
+  aprobada: number;
+  total: number;
+  /** Franjas que impiden cerrar: ni aprobadas ni en excepción (EFDS-1941). */
+  pendientesCierre: number;
+}
+
+const BASE_PUBLICACIONES = '/programacion-academica/api/v1/publicaciones';
+
+export function getEstadoPublicacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}`, { method: 'GET' });
+}
+
+/** Publica: valida sin cruces y pasa las franjas PROGRAMADO a PUBLICADA. */
+export function publicarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/publicar`, { method: 'POST' });
+}
+
+/** Retira la publicación: solo si nadie tomó franjas (PUBLICADA → PROGRAMADO). */
+export function retirarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/retirar`, { method: 'POST' });
+}
+
+/** Cierra el periodo: exige todo aprobado o en excepción; queda inmutable (EFDS-1941). */
+export function cerrarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/cerrar`, { method: 'POST' });
+}
+
+/** Franja que impide cerrar el periodo (ni aprobada ni en excepción). */
+export interface PendienteCierre {
+  idFranja: string;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  estado: string;
+  asignatura: string | null;
+  programa: string | null;
+}
+
+export function getPendientesCierre(idPeriodo: string): Promise<PendienteCierre[]> {
+  return pedirJson<PendienteCierre[]>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/pendientes-cierre`, { method: 'GET' });
+}
+
+/** Marca una franja como excepción (no impide cerrar). */
+export function marcarExcepcion(idPeriodo: string, idFranja: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(
+    `${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/excepcion/${encodeURIComponent(idFranja)}`,
+    { method: 'POST', body: JSON.stringify({ excepcion: true }) },
+  );
+}
+
+// ─── Portal del docente (EFDS-1938) ──────────────────────────────────────────
+
+/** Franja tal como la ve el docente en el portal. */
+export interface FranjaPortal {
+  idFranja: string;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  tipoSesion: string;
+  aulaCodigo: string | null;
+  estado: string;
+  numeroGrupo: number | null;
+  asignatura: string | null;
+  programa: string | null;
+  /** Motivo de la devolución de la jefatura, si la franja está DEVUELTA. */
+  comentarioJefatura: string | null;
+  /** Periodo de la franja: el id de las rutas (plataforma o legado) y su código. */
+  idPeriodo?: string | null;
+  periodoCodigo?: string | null;
+}
+
+const BASE_PORTAL = '/programacion-academica/api/v1/portal-docente';
+
+/** Franjas publicadas que el docente puede tomar (excluye las que cruzan lo suyo). */
+export function getDisponiblesPortal(): Promise<FranjaPortal[]> {
+  return pedirJson<FranjaPortal[]>(`${BASE_PORTAL}/disponibles`, { method: 'GET' });
+}
+
+/** Franjas que el docente ya tomó (o le aprobaron). */
+export function getMisFranjasPortal(): Promise<FranjaPortal[]> {
+  return pedirJson<FranjaPortal[]>(`${BASE_PORTAL}/mis-franjas`, { method: 'GET' });
+}
+
+/** Acumulado del docente autenticado vs su tope (RN-04, solo lectura). */
+export function getAcumuladoPortal(): Promise<AcumuladoDocente> {
+  return pedirJson<AcumuladoDocente>(`${BASE_PORTAL}/acumulado`, { method: 'GET' });
+}
+
+/** Toma una franja: el backend usa transacción + lock de fila. */
+export function tomarFranja(idFranja: string): Promise<{ tomada: true }> {
+  return pedirJson(`${BASE_PORTAL}/tomar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
+}
+
+/** Suelta una franja tomada (solo si no está aprobada). */
+export function soltarFranja(idFranja: string): Promise<{ soltada: true }> {
+  return pedirJson(`${BASE_PORTAL}/soltar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
+}
+
+// ─── Aprobación de la jefatura territorial (EFDS-1939) ────────────────────────
+
+/** Franja pendiente de decisión de la jefatura, con su docente. */
+export interface FranjaAprobacion {
+  idFranja: string;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  aulaCodigo: string | null;
+  estado: string;
+  asignatura: string | null;
+  programa: string | null;
+  documentoDocente: string;
+  nombreDocente: string;
+}
+
+const BASE_JEFATURA = '/programacion-academica/api/v1/jefatura';
+
+/** Franjas tomadas por docentes de la territorial de la jefatura autenticada. */
+export function getPendientesJefatura(): Promise<FranjaAprobacion[]> {
+  return pedirJson<FranjaAprobacion[]>(`${BASE_JEFATURA}/pendientes`, { method: 'GET' });
+}
+
+/** Aprueba una franja (TOMADA → APROBADA). */
+export function aprobarFranja(idFranja: string): Promise<{ aprobada: true }> {
+  return pedirJson(`${BASE_JEFATURA}/aprobar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
+}
+
+/** Devuelve una franja con comentario obligatorio (TOMADA → PUBLICADA). */
+export function devolverFranja(idFranja: string, comentario: string): Promise<{ devuelta: true }> {
+  return pedirJson(`${BASE_JEFATURA}/devolver/${encodeURIComponent(idFranja)}`, {
+    method: 'POST', body: JSON.stringify({ comentario }),
+  });
 }

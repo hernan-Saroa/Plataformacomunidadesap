@@ -47,7 +47,6 @@ const GESTOR: [string, string][] = [
 const FINANCIERA: [string, string][] = [
   ['ver', 'E4'],
   ['editar', '4.2'],
-  ['editar', '4.3'],
   ['aprobar', '9.5'],
 ];
 

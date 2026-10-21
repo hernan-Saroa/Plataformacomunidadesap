@@ -6,6 +6,7 @@ import puppeteer from 'puppeteer';
 import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
 import { resolveLaborInternalGroup } from './labor-functions.utils';
+import { prepareTemplateVariables } from './labor-template-variables';
 
 type TemplateType = 'docente' | 'administrador';
 type TechnicalBonusCategory = string;
@@ -754,7 +755,10 @@ export class LaborCertificatePdfService {
     highlightVariables?: boolean;
     collectTemplateVariables?: (variables: LaborCertificateTemplateVariable[]) => void;
   }): string {
-    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml, technicalBonusTemplate } = params;
+    const { certificate, templateType, includeSalary, includeTechnicalBonus, technicalBonusTemplate } = params;
+    // Variables partidas por etiquetas o en minúsculas se dejan en su forma
+    // oficial antes de resolverlas. No se tocan espacios: se respeta el texto.
+    const templateHtml = prepareTemplateVariables(params.templateHtml || '');
     const includeFunctions = this.normalizeBoolean(
       params.includeFunctions,
       this.normalizeBoolean(certificate.include_functions, false),

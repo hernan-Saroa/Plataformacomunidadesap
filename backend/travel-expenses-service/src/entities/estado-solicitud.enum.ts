@@ -37,6 +37,8 @@ export enum EstadoSolicitud {
   AUTORIZACION_DIRECCION = 'AUTORIZACION_DIRECCION',
   EN_AUTORIZACION = 'EN_AUTORIZACION',
   AUTORIZADA = 'AUTORIZADA',
+  EN_REVOCATORIA = 'EN_REVOCATORIA',
+  REVOCADA = 'REVOCADA',
   CANCELADA = 'CANCELADA',
   EN_PRESUPUESTO = 'EN_PRESUPUESTO',
   COMPROMETIDA = 'COMPROMETIDA',
@@ -81,5 +83,7 @@ export const ESTADOS_SOLO_LECTURA: ReadonlySet<EstadoSolicitud> = new Set([
   EstadoSolicitud.LEGALIZADO,
   EstadoSolicitud.RECHAZADO,
   EstadoSolicitud.CANCELADA,
+  EstadoSolicitud.EN_REVOCATORIA,
+  EstadoSolicitud.REVOCADA,
 ]);
 

@@ -1,0 +1,809 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DataSource, EntityManager } from 'typeorm';
+import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
+import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
+import { NotificationClientService } from '../../common/notification-client.service';
+import { LegalizacionComisionEntity } from './entities/legalizacion-comision.entity';
+import { LegalizacionSoporteEntity } from './entities/legalizacion-soporte.entity';
+import { AccionRevision, LegalizacionRevisionEntity } from './entities/legalizacion-revision.entity';
+import { LegalizacionReversionEntity } from './entities/legalizacion-reversion.entity';
+import {
+  esSuperAdmin,
+  LegalizacionService,
+  SolicitudContexto,
+  UsuarioAutenticado,
+} from './legalizacion.service';
+import { fechaColombia } from './plazo-legalizacion.util';
+import { calcularViajeReal, ViajeReal } from './viaje-real.util';
+
+/** Evento que consumirá EFDS-1308 (reintegros) cuando el viaje fue menor. */
+export const EVENTO_REINTEGRO = 'commission.reintegro_required';
+
+export interface EventoReintegro {
+  solicitudId: string;
+  legalizacionId: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  valorPagado: number;
+  valorLegalizado: number;
+  valorReintegro: number;
+  diasComision: number | null;
+  diasReales: number | null;
+  /** Parte del reintegro por los días no viajados (GF-FO-032). null si no se pudo calcular. */
+  reintegroViajeCorto: number | null;
+  fechaInicioReal: string | null;
+  fechaFinReal: string | null;
+  usuarioId: string;
+}
+
+export type FiltroBandeja = 'POR_REVISAR' | 'DEVUELTAS' | 'CERRADAS';
+
+export interface RegistrarSiifDto {
+  numeroRegistroSiif: string;
+  fechaRegistroSiif: string;
+  valorLegalizado: number;
+  diasReales?: number | null;
+  observaciones?: string;
+}
+
+/**
+ * Resultado del registro en SIIF: cierre, o devolución al comisionado cuando el
+ * valor legalizado supera el pagado (no se registra ni se cierra).
+ */
+export type ResultadoRegistroSiif =
+  | {
+      devuelta: false;
+      legalizacionId: string;
+      estadoSolicitud: EstadoSolicitud;
+      cerradaEn: Date | null;
+      numeroRegistroSiif: string;
+      valorPagado: number;
+      valorLegalizado: number;
+      valorReintegro: number;
+    }
+  | {
+      devuelta: true;
+      legalizacionId: string;
+      estadoSolicitud: EstadoSolicitud;
+      observacionDevolucion: string;
+      valorPagado: number;
+      valorLegalizado: number;
+    };
+
+/**
+ * Viaje real según el GF-FO-032 V2, con las tarifas de la liquidación pagada.
+ * null si la legalización no tiene fechas reales (enviada antes de exigirlas).
+ */
+export function viajeRealDe(sol: SolicitudContexto, leg: LegalizacionComisionEntity): ViajeReal | null {
+  if (!leg.fechaInicioReal || !leg.fechaFinReal) return null;
+  return calcularViajeReal(String(leg.fechaInicioReal).slice(0, 10), String(leg.fechaFinReal).slice(0, 10), {
+    diasPernoctados: sol.dias_pernoctados as any,
+    tarifaDiaPernoctado: sol.tarifa_dia_pernoctado as any,
+    tarifaDiaNoPernoctado: sol.tarifa_dia_no_pernoctado as any,
+    totalPernoctados: sol.total_pernoctados as any,
+    totalNoPernoctados: sol.total_no_pernoctados as any,
+    valorPagado: (leg.valorPagado ?? sol.valor_pagado) as any,
+  });
+}
+
+const MIN_OBSERVACION = 10;
+
+/** SIIF no acepta tildes, eñes, punto y coma ni saltos de línea (mismo criterio que la Etapa 5). */
+export function textoSiif(valor: unknown): string {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[ñÑ]/g, (c) => (c === 'ñ' ? 'n' : 'N'))
+    .replace(/[;\r\n\t"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * EFDS-1310 — Revisión de la legalización por el analista, registro en SIIF y
+ * cierre del expediente.
+ *
+ * - No crea estados de la solicitud (C-2): la única transición es
+ *   PENDIENTE_LEGALIZACION → LEGALIZADO, al registrar en SIIF y cerrar.
+ * - Una devolución deja la solicitud en PENDIENTE_LEGALIZACION; la
+ *   legalización vuelve a quedar abierta para el comisionado y se marca en
+ *   devuelta_en / observacion_devolucion.
+ * - SIIF no es una API: como en las etapas 5, 7 y 8, se exporta un CSV y se
+ *   registra el número que el analista digita.
+ * - Cerrar vuelve el expediente inmutable; la base lo garantiza (migración 451).
+ */
+@Injectable()
+export class LegalizacionRevisionService {
+  private readonly logger = new Logger(LegalizacionRevisionService.name);
+
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly legalizaciones: LegalizacionService,
+    @Optional() private readonly notificationClient?: NotificationClientService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Acceso: analista asignado, con segregación de funciones
+  // ---------------------------------------------------------------------------
+
+  private async exigirRevisor(sol: SolicitudContexto, user: UsuarioAutenticado): Promise<void> {
+    if (esSuperAdmin(user)) return;
+    if (!user?.userId || sol.analista_asignado_id !== user.userId) {
+      throw new ForbiddenException('Solo el analista asignado a la comisión puede revisar su legalización.');
+    }
+    // SoD: quien revisa no puede ser quien radicó ni el propio comisionado.
+    if (sol.creado_por_usuario_id === user.userId) {
+      throw new ForbiddenException('Segregación de funciones: quien radicó la comisión no puede revisar su legalización.');
+    }
+    const doc = await this.legalizaciones.documentoDelUsuario(user.userId);
+    if (doc && doc === sol.comisionado_numero_documento) {
+      throw new ForbiddenException('Segregación de funciones: el comisionado no puede revisar su propia legalización.');
+    }
+  }
+
+  /** Bloquea la legalización para la transacción y valida que esté en revisión. */
+  private async bloquearEnRevision(
+    m: EntityManager,
+    solicitudId: string,
+    opciones: { permitirAprobada?: boolean } = {},
+  ): Promise<LegalizacionComisionEntity> {
+    const filas = await m.query(
+      `SELECT id FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = $1 FOR UPDATE`,
+      [solicitudId],
+    );
+    if (!filas[0]) throw new NotFoundException('Esta comisión no tiene legalización.');
+    const leg = await m.getRepository(LegalizacionComisionEntity).findOneOrFail({ where: { solicitudId } });
+    if (leg.cerradaEn) {
+      throw new BadRequestException('El expediente de legalización está cerrado: no admite cambios.');
+    }
+    if (!leg.fechaEnvio) {
+      throw new BadRequestException(
+        leg.devueltaEn
+          ? 'La legalización fue devuelta al comisionado y aún no la ha reenviado.'
+          : 'La legalización todavía no ha sido enviada a revisión.',
+      );
+    }
+    if (leg.revisionAprobadaEn && !opciones.permitirAprobada) {
+      throw new BadRequestException('La revisión ya fue aprobada: solo queda registrar en SIIF y cerrar.');
+    }
+    return leg;
+  }
+
+  private async registrar(
+    m: EntityManager,
+    legalizacionId: string,
+    accion: AccionRevision,
+    usuarioId: string,
+    extra: { soporteId?: string; observacion?: string | null; detalle?: Record<string, unknown> } = {},
+  ): Promise<void> {
+    const repo = m.getRepository(LegalizacionRevisionEntity);
+    await repo.save(
+      repo.create({
+        legalizacionId,
+        accion,
+        usuarioId,
+        soporteId: extra.soporteId ?? null,
+        observacion: extra.observacion ?? null,
+        detalle: extra.detalle ?? null,
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bandeja y detalle
+  // ---------------------------------------------------------------------------
+
+  async bandeja(user: UsuarioAutenticado, filtro: FiltroBandeja = 'POR_REVISAR') {
+    if (!user?.userId) throw new ForbiddenException('Usuario no autenticado.');
+    const condicion = {
+      POR_REVISAR: 'l.fecha_envio IS NOT NULL AND l.cerrada_en IS NULL',
+      DEVUELTAS: 'l.devuelta_en IS NOT NULL AND l.fecha_envio IS NULL AND l.cerrada_en IS NULL',
+      CERRADAS: 'l.cerrada_en IS NOT NULL',
+    }[filtro];
+    if (!condicion) throw new BadRequestException(`Filtro no válido: ${filtro}.`);
+
+    return this.dataSource.query(
+      `SELECT l.id AS "legalizacionId", s.id AS "solicitudId", s.consecutivo_unico AS "consecutivoUnico",
+              s.estado_solicitud AS "estadoSolicitud",
+              trim(concat_ws(' ', c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido)) AS "comisionadoNombre",
+              concat_ws(', ', s.destino_ciudad, s.destino_departamento) AS "destino",
+              to_char(s.fecha_inicio, 'YYYY-MM-DD') AS "fechaInicio",
+              to_char(s.fecha_fin, 'YYYY-MM-DD') AS "fechaFin",
+              s.valor_pagado::float AS "valorPagado",
+              l.fecha_envio AS "fechaEnvio", l.fecha_limite AS "fechaLimite",
+              (l.fecha_envio > l.fecha_limite) AS "enviadaFueraDePlazo",
+              l.numero_devoluciones AS "numeroDevoluciones", l.devuelta_en AS "devueltaEn",
+              l.revision_aprobada_en AS "revisionAprobadaEn", l.siif_exportado_en AS "siifExportadoEn",
+              l.cerrada_en AS "cerradaEn", l.numero_registro_siif AS "numeroRegistroSiif",
+              l.valor_reintegro::float AS "valorReintegro",
+              count(ls.id)::int AS "soportes",
+              count(ls.id) FILTER (WHERE ls.revision IS NULL)::int AS "sinRevisar",
+              count(ls.id) FILTER (WHERE ls.revision = 'RECHAZADO')::int AS "rechazados"
+         FROM travel_expenses.legalizaciones_comision l
+         JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+         JOIN travel_expenses.comisionados c ON c.id = s.comisionado_id
+         LEFT JOIN travel_expenses.legalizacion_soportes ls ON ls.legalizacion_id = l.id
+        WHERE ${condicion}
+          AND ($1::boolean OR s.analista_asignado_id = $2)
+        GROUP BY l.id, s.id, c.id
+        ORDER BY ${filtro === 'CERRADAS' ? 'l.cerrada_en DESC' : 'l.fecha_envio NULLS LAST, l.devuelta_en'}`,
+      [esSuperAdmin(user), user.userId],
+    );
+  }
+
+  async detalle(solicitudId: string, user: UsuarioAutenticado) {
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+    // El analista asignado ya tiene lectura en LegalizacionService (relación ANALISTA).
+    const detalle = await this.legalizaciones.detalle(solicitudId, user);
+    const historial = await this.dataSource.getRepository(LegalizacionRevisionEntity).find({
+      where: { legalizacionId: detalle.legalizacionId },
+      order: { creadoEn: 'ASC' },
+    });
+    const leg = await this.legalizaciones.cargarLegalizacion(solicitudId);
+    const todosRevisados = detalle.checklist.items.every((i) =>
+      i.soportes.every((s) => s.revision !== null),
+    );
+    const hayRechazos = detalle.checklist.items.some((i) => i.soportes.some((s) => s.revision === 'RECHAZADO'));
+    const reversionPendiente = await this.reversionPendiente(this.dataSource, leg.id);
+    const viajeReal = viajeRealDe(sol, leg);
+    const pagado = sol.valor_pagado == null ? null : Number(sol.valor_pagado);
+    return {
+      ...detalle,
+      puedeEditar: false,
+      numeroObligacion: sol.numero_obligacion,
+      codigoRp: sol.codigo_rp,
+      fechaPago: sol.fecha_pago_ymd,
+      diasComision: sol.dias_comision,
+      siifExportadoEn: leg.siifExportadoEn,
+      enRevision: Boolean(leg.fechaEnvio && !leg.cerradaEn),
+      puedeRevisar: Boolean(leg.fechaEnvio && !leg.cerradaEn && !leg.revisionAprobadaEn),
+      puedeAprobar:
+        Boolean(leg.fechaEnvio && !leg.cerradaEn && !leg.revisionAprobadaEn) &&
+        detalle.checklist.completo &&
+        todosRevisados &&
+        !hayRechazos,
+      puedeRegistrarSiif: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
+      puedeSolicitarReversion: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
+      reversionPendiente,
+      // GF-FO-032 V2: reintegro por viaje más corto y tope de lo legalizable.
+      viajeReal,
+      maximoLegalizable:
+        pagado !== null && viajeReal?.reintegroViajeCorto != null
+          ? Math.round((pagado - viajeReal.reintegroViajeCorto) * 100) / 100
+          : pagado,
+      historialRevision: historial,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revisión soporte por soporte
+  // ---------------------------------------------------------------------------
+
+  async revisarSoporte(
+    solicitudId: string,
+    soporteId: string,
+    dto: { decision: 'APROBADO' | 'RECHAZADO'; observacion?: string },
+    user: UsuarioAutenticado,
+  ) {
+    if (dto?.decision !== 'APROBADO' && dto?.decision !== 'RECHAZADO') {
+      throw new BadRequestException('La decisión debe ser APROBADO o RECHAZADO.');
+    }
+    const observacion = dto.observacion?.trim() || null;
+    if (dto.decision === 'RECHAZADO' && (!observacion || observacion.length < MIN_OBSERVACION)) {
+      throw new BadRequestException(
+        `Para rechazar un soporte explique el motivo (mínimo ${MIN_OBSERVACION} caracteres).`,
+      );
+    }
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    return this.dataSource.transaction(async (m) => {
+      const leg = await this.bloquearEnRevision(m, solicitudId);
+      const repo = m.getRepository(LegalizacionSoporteEntity);
+      const soporte = await repo.findOne({ where: { id: soporteId, legalizacionId: leg.id } });
+      if (!soporte) throw new NotFoundException('Soporte no encontrado en esta legalización.');
+
+      soporte.revision = dto.decision;
+      soporte.observacionRevision = observacion;
+      soporte.revisadoPorId = user.userId;
+      soporte.revisadoEn = new Date();
+      await repo.save(soporte);
+
+      await this.registrar(m, leg.id, dto.decision === 'APROBADO' ? 'SOPORTE_APROBADO' : 'SOPORTE_RECHAZADO', user.userId, {
+        soporteId,
+        observacion,
+        detalle: { nombreArchivo: soporte.nombreArchivoOriginal, sha256: soporte.sha256 },
+      });
+      return { soporteId, revision: soporte.revision, observacionRevision: soporte.observacionRevision };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Devolución al comisionado (C-2: sin estado nuevo)
+  // ---------------------------------------------------------------------------
+
+  async devolver(solicitudId: string, dto: { observacion: string }, user: UsuarioAutenticado) {
+    const observacion = dto?.observacion?.trim() || '';
+    if (observacion.length < MIN_OBSERVACION) {
+      throw new BadRequestException(
+        `La devolución requiere una observación para el comisionado (mínimo ${MIN_OBSERVACION} caracteres).`,
+      );
+    }
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    const leg = await this.dataSource.transaction(async (m) => {
+      const l = await this.bloquearEnRevision(m, solicitudId);
+      await this.aplicarDevolucion(m, l, sol, user.userId, observacion);
+      return l;
+    });
+
+    await this.notificarDevolucion(sol, observacion);
+    return { legalizacionId: leg.id, devueltaEn: leg.devueltaEn, numeroDevoluciones: leg.numeroDevoluciones };
+  }
+
+  /**
+   * Devuelve la legalización al comisionado: queda abierta para que corrija y
+   * reenvíe. Si la revisión ya estaba aprobada, la aprobación y la exportación a
+   * SIIF se deshacen, porque lo que el comisionado cambie debe revisarse de nuevo.
+   */
+  private async aplicarDevolucion(
+    m: EntityManager,
+    l: LegalizacionComisionEntity,
+    sol: SolicitudContexto,
+    usuarioId: string,
+    observacion: string,
+    detalle: Record<string, unknown> = {},
+  ): Promise<void> {
+    l.devueltaEn = new Date();
+    l.devueltaPorId = usuarioId;
+    l.observacionDevolucion = observacion;
+    l.numeroDevoluciones = (l.numeroDevoluciones ?? 0) + 1;
+    l.fechaEnvio = null;
+    l.enviadaPorId = null;
+    l.revisionAprobadaEn = null;
+    l.revisionAprobadaPorId = null;
+    l.siifExportadoEn = null;
+    l.siifExportadoPorId = null;
+    await m.getRepository(LegalizacionComisionEntity).save(l);
+
+    await this.registrar(m, l.id, 'DEVOLUCION', usuarioId, {
+      observacion,
+      detalle: { numeroDevolucion: l.numeroDevoluciones, ...detalle },
+    });
+    await m.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: l.solicitudId,
+      estadoAnterior: sol.estado_solicitud,
+      estadoNuevo: sol.estado_solicitud,
+      usuarioId,
+      comentarios: `[EFDS-1310] Legalización devuelta al comisionado: ${observacion}`.slice(0, 255),
+    });
+  }
+
+  private notificarDevolucion(sol: SolicitudContexto, observacion: string) {
+    return this.notificar(sol, {
+      tipo: 'VIATICOS_LEGALIZACION_DEVUELTA',
+      titulo: `Legalización devuelta: ${sol.consecutivo_unico}`,
+      mensaje: `El analista devolvió la legalización de ${sol.consecutivo_unico}: ${observacion}`,
+      color: '#dc2626',
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Aprobación de la revisión
+  // ---------------------------------------------------------------------------
+
+  async aprobar(solicitudId: string, user: UsuarioAutenticado) {
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    return this.dataSource.transaction(async (m) => {
+      const leg = await this.bloquearEnRevision(m, solicitudId);
+      const chk = await this.legalizaciones.checklist(sol, leg.id);
+      if (!chk.completo) {
+        throw new BadRequestException('El checklist no está completo: faltan soportes obligatorios.');
+      }
+      const soportes = chk.items.flatMap((i) => i.soportes);
+      const sinRevisar = soportes.filter((s) => s.revision === null).length;
+      const rechazados = soportes.filter((s) => s.revision === 'RECHAZADO').length;
+      if (sinRevisar || rechazados) {
+        throw new BadRequestException(
+          `No se puede aprobar: ${sinRevisar} soporte(s) sin revisar y ${rechazados} rechazado(s). ` +
+            'Revise todos los soportes; si alguno tiene errores, devuelva la legalización.',
+        );
+      }
+      leg.revisionAprobadaEn = new Date();
+      leg.revisionAprobadaPorId = user.userId;
+      await m.getRepository(LegalizacionComisionEntity).save(leg);
+      await this.registrar(m, leg.id, 'APROBACION', user.userId, { detalle: { soportesAprobados: soportes.length } });
+      return { legalizacionId: leg.id, revisionAprobadaEn: leg.revisionAprobadaEn, soportesAprobados: soportes.length };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // SIIF: CSV exportado + número digitado (patrón de las etapas 5, 7 y 8)
+  // ---------------------------------------------------------------------------
+
+  async exportarSiif(solicitudId: string, user: UsuarioAutenticado) {
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    return this.dataSource.transaction(async (m) => {
+      const leg = await this.bloquearEnRevision(m, solicitudId, { permitirAprobada: true });
+      if (!leg.revisionAprobadaEn) {
+        throw new BadRequestException('Apruebe la revisión de los soportes antes de exportar a SIIF.');
+      }
+      const chk = await this.legalizaciones.checklist(sol, leg.id);
+      const soportes = chk.items.flatMap((i) => i.soportes).length;
+
+      const columnas = [
+        'Consecutivo', 'Cedula', 'Nombre', 'NumeroObligacion', 'CodigoRP', 'FechaPago', 'ValorPagado',
+        'FechaInicio', 'FechaFin', 'DiasComision', 'SoportesAprobados', 'FechaAprobacionRevision', 'FechaExportacion',
+      ];
+      const ahora = new Date();
+      const fila = [
+        sol.consecutivo_unico,
+        sol.comisionado_numero_documento,
+        sol.comisionado_nombre,
+        sol.numero_obligacion,
+        sol.codigo_rp,
+        sol.fecha_pago_ymd,
+        Number(sol.valor_pagado ?? 0).toFixed(2),
+        sol.fecha_inicio_ymd,
+        sol.fecha_fin_ymd,
+        sol.dias_comision,
+        soportes,
+        fechaColombia(new Date(leg.revisionAprobadaEn)),
+        fechaColombia(ahora),
+      ].map(textoSiif);
+
+      leg.siifExportadoEn = ahora;
+      leg.siifExportadoPorId = user.userId;
+      await m.getRepository(LegalizacionComisionEntity).save(leg);
+      await this.registrar(m, leg.id, 'EXPORTACION_SIIF', user.userId);
+
+      return {
+        nombreArchivo: `SIIF_LEGALIZACION_${textoSiif(sol.consecutivo_unico)}_${fechaColombia(ahora).replace(/-/g, '')}.csv`,
+        contenido: `﻿${columnas.join(';')}\r\n${fila.join(';')}\r\n`,
+      };
+    });
+  }
+
+  /**
+   * Registra la legalización en SIIF y cierra el expediente, en una sola
+   * transacción: o queda LEGALIZADO y cerrado, o no cambia nada.
+   */
+  async registrarYCerrar(
+    solicitudId: string,
+    dto: RegistrarSiifDto,
+    user: UsuarioAutenticado,
+  ): Promise<ResultadoRegistroSiif> {
+    const numero = dto?.numeroRegistroSiif?.trim() || '';
+    const fecha = dto?.fechaRegistroSiif?.trim() || '';
+    const valorLegalizado = Number(dto?.valorLegalizado);
+    if (!Number.isFinite(valorLegalizado) || valorLegalizado < 0) {
+      throw new BadRequestException('El valor legalizado debe ser un número mayor o igual a cero.');
+    }
+    const diasReales = dto?.diasReales == null ? null : Number(dto.diasReales);
+    if (diasReales !== null && (!Number.isFinite(diasReales) || diasReales < 0)) {
+      throw new BadRequestException('Los días reales deben ser un número mayor o igual a cero.');
+    }
+
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    const r = await this.dataSource.transaction(async (m) => {
+      const [bloqueada] = await m.query(
+        `SELECT estado_solicitud, valor_pagado::text AS valor_pagado
+           FROM travel_expenses.solicitudes_comision WHERE id = $1 FOR UPDATE`,
+        [solicitudId],
+      );
+      const leg = await this.bloquearEnRevision(m, solicitudId, { permitirAprobada: true });
+      if (!leg.revisionAprobadaEn) {
+        throw new BadRequestException('Apruebe la revisión de los soportes antes de registrar en SIIF.');
+      }
+      if (await this.reversionPendiente(m, leg.id)) {
+        throw new BadRequestException(
+          'Hay una solicitud de reversión de la revisión pendiente: debe resolverse antes de registrar en SIIF.',
+        );
+      }
+      if (bloqueada?.estado_solicitud !== EstadoSolicitud.PENDIENTE_LEGALIZACION) {
+        throw new BadRequestException(
+          `La comisión debe estar en PENDIENTE_LEGALIZACION para cerrarse (estado actual: ${bloqueada?.estado_solicitud}).`,
+        );
+      }
+      if (bloqueada.valor_pagado == null) {
+        throw new BadRequestException('La comisión no tiene valor pagado registrado: no se puede calcular el reintegro.');
+      }
+      const valorPagado = Number(bloqueada.valor_pagado);
+      if (valorLegalizado > valorPagado) {
+        // No se registra en SIIF ni se cierra: vuelve al comisionado para corregir.
+        const observacion =
+          `El valor legalizado ($${valorLegalizado.toLocaleString('es-CO')}) supera el valor pagado ` +
+          `($${valorPagado.toLocaleString('es-CO')}). Revise los soportes de la legalización y reenvíela.` +
+          (dto.observaciones?.trim() ? ` Observación del analista: ${dto.observaciones.trim()}` : '');
+        await this.aplicarDevolucion(m, leg, sol, user.userId, observacion, {
+          motivo: 'VALOR_LEGALIZADO_SUPERA_PAGADO',
+          valorPagado,
+          valorLegalizado,
+        });
+        return { devuelta: true as const, leg, valorPagado, observacion };
+      }
+      if (!numero || numero.length > 100) {
+        throw new BadRequestException('Digite el número del registro de la legalización en SIIF Nación (máximo 100 caracteres).');
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00Z`).getTime())) {
+        throw new BadRequestException('La fecha del registro en SIIF debe tener el formato AAAA-MM-DD.');
+      }
+      if (fecha > fechaColombia(new Date())) {
+        throw new BadRequestException('La fecha del registro en SIIF no puede ser posterior a hoy.');
+      }
+      const viajeReal = viajeRealDe(sol, leg);
+      const reintegroViajeCorto = viajeReal?.reintegroViajeCorto ?? null;
+      if (reintegroViajeCorto && valorLegalizado > valorPagado - reintegroViajeCorto) {
+        const maximo = Math.round((valorPagado - reintegroViajeCorto) * 100) / 100;
+        throw new BadRequestException(
+          `Según las fechas reales del GF-FO-032 el viaje fue más corto (${viajeReal!.nochesReales} de ${viajeReal!.nochesPlaneadas} noches): ` +
+            `el reintegro por viaje más corto es $${reintegroViajeCorto.toLocaleString('es-CO')} y lo legalizado no puede superar ` +
+            `$${maximo.toLocaleString('es-CO')}.`,
+        );
+      }
+      const diasRegistrados = viajeReal ? viajeReal.diasReales : diasReales;
+      const valorReintegro = Math.round((valorPagado - valorLegalizado) * 100) / 100;
+      const cierre = new Date();
+
+      Object.assign(leg, {
+        numeroRegistroSiif: numero,
+        fechaRegistroSiif: fecha,
+        registradoSiifPorId: user.userId,
+        valorPagado: valorPagado.toFixed(2),
+        valorLegalizado: valorLegalizado.toFixed(2),
+        valorReintegro: valorReintegro.toFixed(2),
+        diasReales: diasRegistrados === null ? null : diasRegistrados.toFixed(2),
+        reintegroViajeCorto: reintegroViajeCorto === null ? null : reintegroViajeCorto.toFixed(2),
+        observacionesCierre: dto.observaciones?.trim() || null,
+        cerradaEn: cierre,
+        cerradaPorId: user.userId,
+      });
+      await m.getRepository(LegalizacionComisionEntity).save(leg);
+
+      const res = await m.query(
+        `UPDATE travel_expenses.solicitudes_comision
+            SET estado_solicitud = $2, actualizado_en = now()
+          WHERE id = $1 AND estado_solicitud = $3`,
+        [solicitudId, EstadoSolicitud.LEGALIZADO, EstadoSolicitud.PENDIENTE_LEGALIZACION],
+      );
+      if (Number(Array.isArray(res) ? res[1] : 0) !== 1) {
+        throw new BadRequestException('La comisión cambió de estado mientras se cerraba: intente de nuevo.');
+      }
+
+      await m.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId,
+        estadoAnterior: EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        estadoNuevo: EstadoSolicitud.LEGALIZADO,
+        usuarioId: user.userId,
+        comentarios: (
+          `[EFDS-1310] Legalización registrada en SIIF (${numero}) y expediente cerrado. ` +
+          `Legalizado $${valorLegalizado.toLocaleString('es-CO')}` +
+          (valorReintegro > 0 ? `; reintegro $${valorReintegro.toLocaleString('es-CO')}.` : '; sin reintegro.')
+        ).slice(0, 255),
+      });
+      await this.registrar(m, leg.id, 'REGISTRO_SIIF_Y_CIERRE', user.userId, {
+        observacion: leg.observacionesCierre,
+        detalle: {
+          numeroRegistroSiif: numero, fechaRegistroSiif: fecha, valorPagado, valorLegalizado, valorReintegro,
+          diasReales: diasRegistrados, reintegroViajeCorto,
+          fechaInicioReal: leg.fechaInicioReal, fechaFinReal: leg.fechaFinReal,
+        },
+      });
+      return { devuelta: false as const, leg, valorPagado, valorReintegro, diasRegistrados, reintegroViajeCorto };
+    });
+
+    if (r.devuelta) {
+      await this.notificarDevolucion(sol, r.observacion);
+      return {
+        devuelta: true,
+        legalizacionId: r.leg.id,
+        estadoSolicitud: EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        observacionDevolucion: r.observacion,
+        valorPagado: r.valorPagado,
+        valorLegalizado,
+      };
+    }
+
+    // Después del commit: quien escuche lee datos ya confirmados.
+    if (r.valorReintegro > 0) {
+      const evento: EventoReintegro = {
+        solicitudId,
+        legalizacionId: r.leg.id,
+        consecutivoUnico: sol.consecutivo_unico,
+        comisionadoId: sol.comisionado_id,
+        valorPagado: r.valorPagado,
+        valorLegalizado,
+        valorReintegro: r.valorReintegro,
+        diasComision: sol.dias_comision == null ? null : Number(sol.dias_comision),
+        diasReales: r.diasRegistrados,
+        reintegroViajeCorto: r.reintegroViajeCorto,
+        fechaInicioReal: r.leg.fechaInicioReal,
+        fechaFinReal: r.leg.fechaFinReal,
+        usuarioId: user.userId,
+      };
+      this.eventEmitter?.emit(EVENTO_REINTEGRO, evento);
+      this.logger.log(
+        `[EFDS-1310] ${sol.consecutivo_unico}: viaje menor, reintegro de $${r.valorReintegro} (evento ${EVENTO_REINTEGRO}).`,
+      );
+    }
+    await this.notificar(sol, {
+      tipo: 'VIATICOS_LEGALIZACION_CERRADA',
+      titulo: `Comisión legalizada: ${sol.consecutivo_unico}`,
+      mensaje:
+        `La legalización de ${sol.consecutivo_unico} quedó registrada en SIIF (${numero}) y el expediente cerrado.` +
+        (r.valorReintegro > 0 ? ` Debe reintegrar $${r.valorReintegro.toLocaleString('es-CO')}.` : ''),
+      color: '#059669',
+    });
+
+    return {
+      devuelta: false,
+      legalizacionId: r.leg.id,
+      estadoSolicitud: EstadoSolicitud.LEGALIZADO,
+      cerradaEn: r.leg.cerradaEn,
+      numeroRegistroSiif: numero,
+      valorPagado: r.valorPagado,
+      valorLegalizado,
+      valorReintegro: r.valorReintegro,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reversión de una revisión aprobada (antes del registro en SIIF)
+  // ---------------------------------------------------------------------------
+
+  private reversionPendiente(m: EntityManager | DataSource, legalizacionId: string) {
+    return m.getRepository(LegalizacionReversionEntity).findOne({ where: { legalizacionId, estado: 'PENDIENTE' } });
+  }
+
+  /**
+   * El analista que revisa pide revertir la aprobación. No cambia nada hasta que
+   * otra persona, con el permiso de aprobar reversiones, la apruebe.
+   */
+  async solicitarReversion(solicitudId: string, dto: { motivo: string }, user: UsuarioAutenticado) {
+    const motivo = dto?.motivo?.trim() || '';
+    if (motivo.length < MIN_OBSERVACION) {
+      throw new BadRequestException(`Explique por qué se debe revertir la aprobación (mínimo ${MIN_OBSERVACION} caracteres).`);
+    }
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    return this.dataSource.transaction(async (m) => {
+      const leg = await this.bloquearEnRevision(m, solicitudId, { permitirAprobada: true });
+      if (!leg.revisionAprobadaEn) {
+        throw new BadRequestException('La revisión no está aprobada: no hay nada que revertir.');
+      }
+      if (await this.reversionPendiente(m, leg.id)) {
+        throw new BadRequestException('Ya hay una solicitud de reversión pendiente para esta legalización.');
+      }
+      const repo = m.getRepository(LegalizacionReversionEntity);
+      const reversion = await repo.save(repo.create({ legalizacionId: leg.id, motivo, solicitadaPorId: user.userId }));
+      await this.registrar(m, leg.id, 'REVERSION_SOLICITADA', user.userId, {
+        observacion: motivo,
+        detalle: { reversionId: reversion.id },
+      });
+      return reversion;
+    });
+  }
+
+  /** Bandeja de quien aprueba: las solicitudes pendientes, salvo las propias. */
+  async reversionesPendientes(user: UsuarioAutenticado) {
+    return this.dataSource.query(
+      `SELECT r.id, r.motivo, r.solicitada_por_id AS "solicitadaPorId", r.solicitada_en AS "solicitadaEn",
+              l.solicitud_id AS "solicitudId", s.consecutivo_unico AS "consecutivoUnico",
+              TRIM(CONCAT_WS(' ', c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido)) AS "comisionadoNombre",
+              s.valor_pagado::float AS "valorPagado", l.revision_aprobada_en AS "revisionAprobadaEn",
+              l.siif_exportado_en AS "siifExportadoEn"
+         FROM travel_expenses.legalizacion_reversiones r
+         JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+         JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+         LEFT JOIN travel_expenses.comisionados c ON c.id = s.comisionado_id
+        WHERE r.estado = 'PENDIENTE' AND r.solicitada_por_id <> $1
+        ORDER BY r.solicitada_en`,
+      [user.userId],
+    );
+  }
+
+  /**
+   * Aprueba o rechaza una solicitud de reversión. Aprobar deshace la aprobación
+   * de la revisión y la exportación a SIIF: la legalización vuelve a revisión.
+   */
+  async resolverReversion(
+    reversionId: string,
+    dto: { decision: 'APROBAR' | 'RECHAZAR'; observacion?: string },
+    user: UsuarioAutenticado,
+  ) {
+    if (dto?.decision !== 'APROBAR' && dto?.decision !== 'RECHAZAR') {
+      throw new BadRequestException('La decisión debe ser APROBAR o RECHAZAR.');
+    }
+    const observacion = dto.observacion?.trim() || null;
+    if (dto.decision === 'RECHAZAR' && (observacion?.length ?? 0) < MIN_OBSERVACION) {
+      throw new BadRequestException(`El rechazo requiere una observación (mínimo ${MIN_OBSERVACION} caracteres).`);
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const filas: Array<{ solicitud_id: string }> = await m.query(
+        `SELECT l.solicitud_id
+           FROM travel_expenses.legalizacion_reversiones r
+           JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+          WHERE r.id = $1
+          FOR UPDATE OF r`,
+        [reversionId],
+      );
+      if (!filas[0]) throw new NotFoundException('Solicitud de reversión no encontrada.');
+      const repo = m.getRepository(LegalizacionReversionEntity);
+      const reversion = await repo.findOneOrFail({ where: { id: reversionId } });
+      if (reversion.estado !== 'PENDIENTE') {
+        throw new BadRequestException(`La solicitud de reversión ya fue resuelta (${reversion.estado}).`);
+      }
+      if (reversion.solicitadaPorId === user.userId) {
+        throw new ForbiddenException('Quien solicitó la reversión no puede resolverla: debe hacerlo otra persona.');
+      }
+      // Cerrada, la legalización es inmutable: la reversión ya no procede.
+      const leg = await this.bloquearEnRevision(m, filas[0].solicitud_id, { permitirAprobada: true });
+
+      const aprobar = dto.decision === 'APROBAR';
+      if (aprobar) {
+        leg.revisionAprobadaEn = null;
+        leg.revisionAprobadaPorId = null;
+        leg.siifExportadoEn = null;
+        leg.siifExportadoPorId = null;
+        await m.getRepository(LegalizacionComisionEntity).save(leg);
+      }
+      Object.assign(reversion, {
+        estado: aprobar ? 'APROBADA' : 'RECHAZADA',
+        resueltaPorId: user.userId,
+        resueltaEn: new Date(),
+        observacionResolucion: observacion,
+      });
+      await repo.save(reversion);
+      await this.registrar(m, leg.id, aprobar ? 'REVERSION_APROBADA' : 'REVERSION_RECHAZADA', user.userId, {
+        observacion,
+        detalle: { reversionId, solicitadaPorId: reversion.solicitadaPorId },
+      });
+      return { reversionId, estado: reversion.estado, solicitudId: filas[0].solicitud_id, legalizacionId: leg.id };
+    });
+  }
+
+  private async notificar(
+    sol: SolicitudContexto,
+    n: { tipo: string; titulo: string; mensaje: string; color: string },
+  ): Promise<void> {
+    if (!this.notificationClient || !sol.creado_por_usuario_id) return;
+    try {
+      await this.notificationClient.send({
+        id_usuario_destinatario: sol.creado_por_usuario_id,
+        tipo_notificacion: n.tipo,
+        titulo: n.titulo,
+        mensaje: n.mensaje,
+        icono: 'Receipt',
+        color: n.color,
+        prioridad: 'Alta',
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver legalización',
+        url_accion: '/viaticos',
+        datos_adicionales: { solicitudId: sol.id },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[EFDS-1310] No se pudo notificar ${n.tipo} de ${sol.consecutivo_unico}: ${err?.message}`);
+    }
+  }
+}

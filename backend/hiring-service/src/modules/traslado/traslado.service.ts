@@ -32,6 +32,15 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 export const NUMERAL_TRASLADO = '6.4';
 
 /**
+ * Las que cuelgan del informe trasladado: la recepción de subsanaciones (6.5)
+ * y sus respuestas (6.6).
+ *
+ * Aquí y no importadas de `subsanaciones.service`, que extiende este servicio:
+ * importarlas cerraría el ciclo entre los dos archivos.
+ */
+export const DEPENDEN_DEL_TRASLADO = ['6.5', '6.6'];
+
+/**
  * Parámetro de solo pruebas para saltar los plazos de espera (EFDS-2064).
  *
  * El término de subsanaciones y observaciones blinda un derecho del oferente
@@ -321,6 +330,7 @@ export class TrasladoService {
       await em.save(informe);
 
       await this.marcarActividad(em, procesoId, acceso);
+      await this.reabrirLasQueDependen(em, procesoId);
       await this.traza(em, procesoId, informe.id, 'ANULAR', acceso, {
         actividad: NUMERAL_TRASLADO,
         numero: informe.numero,
@@ -506,6 +516,29 @@ export class TrasladoService {
       acceso,
       firma,
     );
+  }
+
+  /**
+   * Devuelve a borrador la 6.5 y la 6.6 cuando el informe se anula.
+   *
+   * Lo que se recibió y se respondió era sobre el informe anulado. Si quedaran
+   * aprobadas, al trasladar el siguiente el riel las daría por cumplidas y
+   * abriría la 6.7 con el término del informe nuevo todavía corriendo, y sin
+   * un escrito nuevo nada las volvería a abrir.
+   */
+  private async reabrirLasQueDependen(em: EntityManager, procesoId: string) {
+    const actividades = await em.getRepository(ProcesoActividad).find({
+      where: { procesoId, numeral: In(DEPENDEN_DEL_TRASLADO) },
+    });
+
+    for (const actividad of actividades) {
+      // Lo que la modalidad excluye sigue excluido: anular no la hace aplicable.
+      if (actividad.estado === 'BORRADOR' || actividad.estado === 'NO_APLICA') continue;
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
+    }
   }
 
   protected async guardarDocumento(

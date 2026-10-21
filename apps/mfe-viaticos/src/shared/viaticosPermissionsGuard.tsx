@@ -28,6 +28,8 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
   JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
   GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
+  COMISIONADO: 'travel_expenses.general.es_comisionado',
+  COORDINADOR_COMISIONES: 'travel_expenses.general.es_coordinador_comisiones',
 } as const;
 
 export type ViaticosRoleKey = keyof typeof VIATICOS_PERMISOS_GENERALES;
@@ -83,6 +85,12 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'SUBDIRECCION_GESTION_CORPORATIVA',
       'SUBDIRECTOR_GESTION_CORPORATIVA',
       'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+      'SUBDIRECTOR_NACIONAL',
+      'SUBDIRECTOR',
+      'SUBDIRECCION_NACIONAL',
+      'SUBDIRECTOR_ACADEMICO',
+      'SUBDIRECTOR_PROYECCION',
+      'SUBDIRECTOR_ALTO_GOBIERNO',
     ],
     fallbackPermissions: [
       'travel_expenses:read_authorizations',
@@ -171,10 +179,8 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'LIDER_DEPENDENCIA',
     ],
     fallbackPermissions: [
-      'travel_expenses:sign_approval',
-      'travel_expenses:read_approvals',
-      'travel_expenses:read_requests',
       'travel_expenses:return_approval',
+      'travel_expenses:cancel_request',
     ],
     label: 'Jefe de Dependencia / Supervisor',
   },
@@ -187,12 +193,37 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'COORDINADOR_PROYECTO',
     ],
     fallbackPermissions: [
-      'travel_expenses:sign_approval',
-      'travel_expenses:read_approvals',
-      'travel_expenses:read_requests',
       'travel_expenses:return_approval',
     ],
     label: 'Gerente de Proyecto',
+  },
+  COMISIONADO: {
+    permission: VIATICOS_PERMISOS_GENERALES.COMISIONADO,
+    legacyRoles: ['COMISIONADO', 'ROL_COMISIONADO'],
+    fallbackPermissions: [
+      'travel_expenses:read_own_requests',
+      'es_comisionado',
+    ],
+    label: 'Comisionado',
+  },
+  COORDINADOR_COMISIONES: {
+    permission: VIATICOS_PERMISOS_GENERALES.COORDINADOR_COMISIONES,
+    legacyRoles: [
+      'COORDINADOR_COMISIONES_VIATICOS',
+      'COORDINADOR_GRUPO_COMISIONES',
+      'COORDINADOR_COMISIONES',
+      'COORDINADORA_GRUPO_COMISIONES',
+      'COORDINADORA_COMISIONES_VIATICOS',
+      'COORDINADOR_DE_COMISIONES',
+    ],
+    fallbackPermissions: [
+      'travel_expenses:manage_config',
+      'travel_expenses:cancel_request',
+      'travel_expenses:read_requests',
+      'travel_expenses:read_inbox',
+      'travel_expenses:paz_y_salvo.manage',
+    ],
+    label: 'Coordinador del Grupo de Comisiones y Viáticos (Administrador)',
   },
 };
 
@@ -225,12 +256,7 @@ export function hasViaticosRolePermission(
     return true;
   }
 
-  // 3. Fallback a permisos granulares de acción
-  if (config.fallbackPermissions.length > 0 && auth.hasAnyPermission([...config.fallbackPermissions])) {
-    return true;
-  }
-
-  // 4. Fallback legacy a roles quemados (por compatibilidad si aún no se refrescan tokens)
+  // 3. Verificación por roles legacy
   if (user.roles && user.roles.length > 0) {
     const hasLegacyRole = user.roles.some((r) =>
       config.legacyRoles.includes(r) ||
@@ -239,6 +265,39 @@ export function hasViaticosRolePermission(
     if (hasLegacyRole) {
       return true;
     }
+  }
+
+  // 4. Si se evalúa JEFE_DEPENDENCIA y el usuario tiene explícitamente rol de GERENTE, no es Jefe
+  if (roleKey === 'JEFE_DEPENDENCIA') {
+    const esGerente =
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      (user.roles && user.roles.some((r) => r.includes('GERENTE')));
+    if (esGerente) return false;
+  }
+
+  // Si se evalúa rol directivo (JEFE_DEPENDENCIA o GERENTE_PROYECTO), los roles operativos
+  // (Analista, Secretario, Control Viáticos, Enlace) no deben evaluarse como directivos por fallbacks.
+  if (roleKey === 'JEFE_DEPENDENCIA' || roleKey === 'GERENTE_PROYECTO') {
+    const esOperativo =
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.ANALISTA) ||
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.SECRETARIO) ||
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.CONTROL_VIATICOS) ||
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.ENLACE) ||
+      (user.roles &&
+        user.roles.some((r) =>
+          ['ANALISTA', 'ANALISTA_VIATICOS', 'SECRETARIO', 'SECRETARIO_VIATICOS', 'CONTROL_VIATICOS', 'ENLACE'].includes(r),
+        ));
+    if (esOperativo && !auth.hasPermission(config.permission)) {
+      const tieneLegacyDirectivo =
+        user.roles &&
+        user.roles.some((r) => ['JEFE_DEPENDENCIA', 'GERENTE_PROYECTO', 'DIRECTOR_TERRITORIAL'].includes(r));
+      if (!tieneLegacyDirectivo) return false;
+    }
+  }
+
+  // 5. Fallback a permisos granulares de acción
+  if (config.fallbackPermissions.length > 0 && auth.hasAnyPermission([...config.fallbackPermissions])) {
+    return true;
   }
 
   return false;
@@ -283,17 +342,38 @@ export const isJefeDependencia = (auth: AuthService = defaultAuthService): boole
 export const isGerenteProyecto = (auth: AuthService = defaultAuthService): boolean =>
   hasViaticosRolePermission(auth, 'GERENTE_PROYECTO');
 
+export const isComisionado = (auth: AuthService = defaultAuthService): boolean =>
+  hasViaticosRolePermission(auth, 'COMISIONADO');
+
+export const isCoordinadorComisiones = (auth: AuthService = defaultAuthService): boolean =>
+  hasViaticosRolePermission(auth, 'COORDINADOR_COMISIONES') || auth.isCoordinadorComisiones();
+
+export const isAdministradorViaticos = (auth: AuthService = defaultAuthService): boolean =>
+  auth.isSuperAdmin() || isCoordinadorComisiones(auth);
+
 export const canFirmarAprobacion = (auth: AuthService = defaultAuthService): boolean => {
   const user = auth.getCurrentUserSync();
   if (!user) return false;
   if (user.esAdmin) return true;
+
+  // Acceso exclusivo a usuarios con permiso general o rol directivo de Jefe, Gerente, Subdirector o Director Nacional
   return (
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+    auth.hasPermission('travel_expenses.general.es_jefe') ||
+    auth.hasPermission('general.es_jefe') ||
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+    auth.hasPermission('travel_expenses.general.es_gerente') ||
+    auth.hasPermission('general.es_gerente') ||
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+    auth.hasPermission('travel_expenses.general.es_subdirector') ||
+    auth.hasPermission('general.es_subdirector') ||
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+    auth.hasPermission('travel_expenses.general.es_director') ||
+    auth.hasPermission('general.es_director') ||
     isJefeDependencia(auth) ||
     isGerenteProyecto(auth) ||
     isSubdireccionCorporativa(auth) ||
-    isDireccionNacional(auth) ||
-    auth.hasPermission('travel_expenses:sign_approval') ||
-    auth.hasPermission('travel_expenses:read_approvals')
+    isDireccionNacional(auth)
   );
 };
 
@@ -317,11 +397,16 @@ export function useViaticosPermissions(auth: AuthService = defaultAuthService) {
     const esEnlace = isEnlaceDependencia(auth);
     const esJefe = isJefeDependencia(auth);
     const esGerente = isGerenteProyecto(auth);
+    const esComi = isComisionado(auth);
+    const esCoord = isCoordinadorComisiones(auth);
+    const esAdminViaticos = esSuperAdmin || esCoord;
     const puedeFirmar = canFirmarAprobacion(auth);
 
     return {
       user,
       esSuperAdmin,
+      esCoordinadorComisiones: esCoord,
+      esAdministradorViaticos: esAdminViaticos,
       esSecretario,
       esAnalista,
       esControlViaticos: esControl,
@@ -334,6 +419,7 @@ export function useViaticosPermissions(auth: AuthService = defaultAuthService) {
       esEnlaceDependencia: esEnlace,
       esJefeDependencia: esJefe,
       esGerenteProyecto: esGerente,
+      esComisionado: esComi,
       puedeFirmarAprobacion: puedeFirmar,
       hasPermission: (perm: string) => auth.hasPermission(perm),
       hasAnyPermission: (perms: string[]) => auth.hasAnyPermission(perms),

@@ -31,7 +31,6 @@ const SIN_DECORADOR: Record<string, string> = {
   'CausalContratacionController.elegir': 'quienDecide · aprobar 3.6',
   'ComiteContratacionController.registrar': 'quienDecide · aprobar 3.7',
   'ComiteContratacionController.noVa': 'quienDecide · aprobar 3.7',
-  'ModalidadProcesoController.decidir': 'quienDecide · aprobar 3.5',
   'ParticipacionController.asignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.reasignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.quitar': 'quien tomó el proceso o proceso.assign',

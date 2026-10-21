@@ -65,7 +65,12 @@ export default function CrearObligacionModal({
           ? Number(solicitud.valorObligacion)
           : solicitud.valorComprometido != null && solicitud.valorComprometido > 0
             ? Number(solicitud.valorComprometido)
-            : Number(solicitud.montoViaticos || 0) + Number(solicitud.montoGastosViaje || 0);
+            : Number(
+                solicitud.montoTotal ||
+                  Number(solicitud.montoViaticos || 0) +
+                    Number(solicitud.montoGastosViaje || 0) +
+                    Number(solicitud.costoEstimadoTiquete || 0),
+              );
 
       setValorObligacion(valorBase);
 

@@ -118,7 +118,9 @@ export default function ConsolidacionExpediente({
     : 'Comisionado';
   const dias = solicitud.diasComision ?? 1;
   const totalEstimado =
-    Number(solicitud.montoViaticos || 0) + Number(solicitud.montoGastosViaje || 0);
+    Number(solicitud.montoViaticos || 0) +
+    Number(solicitud.montoGastosViaje || 0) +
+    Number(solicitud.costoEstimadoTiquete || 0);
 
   const requiereTiquetes = Boolean(solicitud.requiereTiquetes);
   const estado = solicitud.estadoSolicitud || 'RADICADA';
@@ -292,9 +294,9 @@ export default function ConsolidacionExpediente({
             <Row label="Salario básico mensual" value={formatearMoneda(solicitud.salarioBasico)} />
           )}
           {solicitud.costoEstimadoTiquete > 0 && (
-            <Row label="Costo estimado del tiquete" value={formatearMoneda(solicitud.costoEstimadoTiquete)} />
+            <Row label="Costo de tiquetes aéreos (pasajes)" value={formatearMoneda(solicitud.costoEstimadoTiquete)} />
           )}
-          <Row label="Total estimado del expediente" value={formatearMoneda(totalEstimado)} strong />
+          <Row label="Total consolidado del expediente" value={formatearMoneda(totalEstimado)} strong />
         </div>
       </section>
 

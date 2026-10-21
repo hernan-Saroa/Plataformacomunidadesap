@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { existsSync, mkdirSync, unlinkSync, renameSync } from 'fs';
@@ -17,6 +17,14 @@ import { NotificacionesService } from '../notificaciones/notificaciones.service'
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ProgramaAnualRol4TareaSyncService } from './programa-anual-rol4-tarea-sync.service';
 import { ProgramaAnualVersionesService } from '../programa-anual-versiones/programa-anual-versiones.service';
+import { esSuperAdmin } from '../../auth/guards/permissions.guard';
+import {
+  ActorTarea,
+  actorEsResponsable,
+  nombresDeResponsables,
+  responsablesQueMandan,
+  tareasConSeguimientoCambiado,
+} from './responsable-de-tarea';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -672,6 +680,8 @@ export class PlanAnual5RolesService {
     actividadId: string,
     updateDto: Partial<CreateActividadDto>,
     usuarioId?: string,
+    /** Usuario del token, para saber si es el responsable de las tareas que cambia (EFDS-2322) */
+    actor?: any,
   ): Promise<ActividadPlanAnual5> {
     const actividad = await this.actividadRepository.findOne({
       where: { id: actividadId },
@@ -680,6 +690,10 @@ export class PlanAnual5RolesService {
 
     if (!actividad) {
       throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    if ((updateDto as any).tareas_seguimiento !== undefined) {
+      await this.verificarSeguimientoPorResponsable(actividad, (updateDto as any).tareas_seguimiento, actor, usuarioId);
     }
 
     // ========================================
@@ -969,24 +983,49 @@ export class PlanAnual5RolesService {
     }
 
     const vigenciaOriginal = plan.año;
+    const estadoOriginal = plan.estado;
 
     // Soft delete release pattern: usar estado válido para no violar CHECK.
     // El "eliminado lógico" se determina por año negativo.
     plan.estado = 'completado';
     // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
     // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
-    plan.año = -(Date.now() % 1000000000); 
+    plan.año = -(Date.now() % 1000000000);
 
-    await this.planRepository.save(plan);
+    // Las versiones y los ajustes del Programa Anual nacen con la aprobación de este plan:
+    // se esconden con él (mismo año negativo) para que la vigencia quede libre y el
+    // Programa Anual vuelva a "en elaboración". No se borran: quedan ligados al plan
+    // eliminado por trazabilidad. Las auditorías y el Universo Auditable no se tocan.
+    let versionesOcultas = 0;
+    let ajustesOcultos = 0;
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(plan);
+      if (vigenciaOriginal > 0) {
+        const versiones = await manager.query(
+          `UPDATE control_interno.version_programa_anual SET vigencia = $1 WHERE vigencia = $2`,
+          [plan.año, vigenciaOriginal],
+        );
+        const ajustes = await manager.query(
+          `UPDATE control_interno.programa_anual_ajuste SET vigencia = $1 WHERE vigencia = $2`,
+          [plan.año, vigenciaOriginal],
+        );
+        versionesOcultas = Number(Array.isArray(versiones) ? versiones[1] : 0) || 0;
+        ajustesOcultos = Number(Array.isArray(ajustes) ? ajustes[1] : 0) || 0;
+      }
+    });
 
     // Dejar traza explícita e imborrable en el Módulo de Auditoría (Historial interno)
     await this.registrarHistorial(
       plan.id,
       TipoEventoPlanAnual.CAMBIO_ESTADO,
       'Eliminación de Plan Anual',
-      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
+      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.` +
+        (versionesOcultas > 0 || ajustesOcultos > 0
+          ? ` Sus versiones (${versionesOcultas}) y ajustes (${ajustesOcultos}) del Programa Anual quedaron ocultos con el plan en la vigencia ${plan.año}.`
+          : ''),
       usuarioId,
-      JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
+      // estado_anterior admite 50 caracteres: va el estado que tenía el plan
+      String(estadoOriginal || '').slice(0, 50),
       'completado'
     );
   }
@@ -1179,6 +1218,73 @@ export class PlanAnual5RolesService {
 
   private readonly uuidRegexHistorial =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Solo el responsable de una tarea (o el del rol/actividad si no tiene) puede cambiarle
+   * lo de seguimiento: completarla, fecha de seguimiento, observaciones y evidencias.
+   * Agregar, quitar o reasignar tareas sigue con los permisos generales (EFDS-2322).
+   */
+  private async verificarSeguimientoPorResponsable(
+    actividad: ActividadPlanAnual5,
+    tareasNuevas: unknown,
+    actor: any,
+    usuarioId?: string,
+  ): Promise<void> {
+    if (esSuperAdmin(actor)) return;
+    const cambios = tareasConSeguimientoCambiado(actividad.tareas_seguimiento || [], tareasNuevas);
+    if (!cambios.length) return;
+
+    const idUsuario = actor?.userId ?? usuarioId;
+    const datos = await this.datosDelActor(idUsuario, actor);
+    for (const cambio of cambios) {
+      const responsables = responsablesQueMandan(cambio.anterior, actividad.rol, actividad);
+      if (actorEsResponsable(responsables, datos)) continue;
+      const aCargo = nombresDeResponsables(responsables);
+      const descripcion = String(cambio.anterior.descripcion || cambio.nueva.descripcion || '').trim();
+      throw new ForbiddenException(
+        `Solo el responsable puede hacer el seguimiento de la tarea "${descripcion}"${aCargo ? ` (a cargo de ${aCargo})` : ''}.`,
+      );
+    }
+  }
+
+  /** Persona, correo y nombre del usuario del token, para compararlo con los responsables. */
+  private async datosDelActor(idUsuario: unknown, actor: any): Promise<ActorTarea> {
+    const base: ActorTarea = {
+      userId: idUsuario != null ? String(idUsuario) : null,
+      email: actor?.email || null,
+      username: actor?.username || null,
+      nombre: actor?.nombre || actor?.name || null,
+    };
+    const raw = String(idUsuario ?? '').trim();
+    if (!this.uuidRegexHistorial.test(raw)) return base;
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT p.id_person::text AS id_person, p.nom_largo, p.nom_tercero, p.pri_apellido, p.seg_apellido, p.dir_email, u.username
+           FROM auth."user" u
+           JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user::text = $1
+          UNION ALL
+         SELECT p.id_person::text, p.nom_largo, p.nom_tercero, p.pri_apellido, p.seg_apellido, p.dir_email, NULL
+           FROM auth.personas p
+          WHERE p.id_person::text = $1
+          LIMIT 1`,
+        [raw],
+      );
+      const p = rows?.[0];
+      if (!p) return base;
+      const nombre = String(p.nom_largo || [p.nom_tercero, p.pri_apellido, p.seg_apellido].filter(Boolean).join(' ')).trim();
+      return {
+        ...base,
+        idPerson: p.id_person,
+        email: base.email || p.dir_email || null,
+        username: base.username || p.username || null,
+        nombre: nombre || base.nombre,
+      };
+    } catch (error) {
+      console.warn('[PlanAnual5RolesService] No se pudo leer la persona del usuario para el seguimiento de tareas:', error);
+      return base;
+    }
+  }
 
   /**
    * Resuelve auth.personas.id_person para historial_plan_anual.usuario_id (tipo UUID).

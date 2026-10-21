@@ -128,7 +128,7 @@ describe('AutorizacionInbox — RF-AUT-001 (Etapa 6)', () => {
     fireEvent.click(revisarBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Autorizar Comisión (AUTORIZADA)')).toBeDefined();
+      expect(screen.getByText(/Autorizar Comisión/i)).toBeDefined();
     });
   });
 });

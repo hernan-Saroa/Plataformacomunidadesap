@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowRight,
   BadgeCheck,
+  Bell,
   Briefcase,
   Building2,
   Calendar,
@@ -31,12 +33,14 @@ import {
   EstadoFirmasResponse,
   FirmanteRequerido,
   FirmarSolicitudPayload,
+  RegistrarVoBoDuracionPayload,
   SolicitudComisionResponse,
   TipoFirmaAprobacion,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 
 interface Props {
   solicitudId: string;
@@ -85,15 +89,10 @@ export default function ModalFirmasAprobacion({
   const [esAusencia, setEsAusencia] = useState(false);
   const [motivoAusencia, setMotivoAusencia] = useState('');
   const [comentarios, setComentarios] = useState('');
-  const [modoTrazo, setModoTrazo] = useState<'CANVAS' | 'SELLO'>('CANVAS');
-
-  // Estado del canvas de firma
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [haDibujado, setHaDibujado] = useState(false);
 
   // Acciones en progreso
   const [procesandoFirma, setProcesandoFirma] = useState(false);
+  const [enviandoAlerta, setEnviandoAlerta] = useState(false);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
@@ -111,8 +110,17 @@ export default function ModalFirmasAprobacion({
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
 
-  // Previsualización PDF Formato 023
+  // Modo rechazo de VoBo de Duración Extendida
+  const [modoRechazoVoBo, setModoRechazoVoBo] = useState(false);
+  const [motivoRechazoVoBo, setMotivoRechazoVoBo] = useState('');
+
+  // Previsualización PDF Formato 023 y Documentos Flotantes
   const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const {
+    documentosVisor,
+    abrirDocumentoVisor,
+    cerrarDocumentoVisor,
+  } = useVisorDocumentos();
 
   // Cargar estado de firmas y detalle de la solicitud
   const cargarEstado = async () => {
@@ -133,11 +141,93 @@ export default function ModalFirmasAprobacion({
         setSolicitudDetalle(completa);
       }
 
-      // Autoseleccionar el primer firmante pendiente
-      const pendiente = data.firmantes.find((f) => !f.firmado);
-      if (pendiente) {
-        setFirmanteSeleccionado(pendiente.tipo);
-        setCargoFirmante(pendiente.cargo || '');
+      // Asignar el rol que corresponde al usuario autenticado (priorizando el rol que falte por firmar)
+      const regla = (data as any)?.reglaDesplazamiento || 'REGULAR';
+      const requiereDirNacional =
+        regla === 'SUBDIRECTOR_NACIONAL' ||
+        regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+        regla === 'DIRECTOR_TERRITORIAL' ||
+        regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+      const requiereSubdirNacional =
+        regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+      const esDirNacUser = Boolean(authService.isDireccionNacional?.());
+      const esDirTerritorialUser = Boolean(authService.isDirectorTerritorial?.());
+      const esSubdirUser = Boolean(authService.isSubdireccionGestionCorporativa?.());
+      const esJefeRegularUser = Boolean(authService.isJefeDependencia?.());
+      const esGerenteUser = Boolean(authService.isGerenteProyecto?.());
+      const esAnalistaUser = Boolean(authService.isAnalista?.());
+      const esAdminUser = Boolean(authService.getCurrentUserSync()?.esAdmin) || Boolean(authService.isSuperAdmin?.());
+
+      const fJefe = data.firmantes.find((f: any) => f.tipo === 'JEFE_DEPENDENCIA');
+      const fGerente = data.firmantes.find((f: any) => f.tipo === 'GERENTE_PROYECTO');
+      const fVoBo = data.firmantes.find((f: any) => f.tipo === 'VOBO_DURACION');
+
+      const requiereVoBo = Boolean((data as any)?.requiereVoBoDuracion ?? (completa as any)?.camposAdicionales?.requiereVoBoDuracion);
+      const instanciaVoBo = (data as any)?.instanciaVoBoDuracion ?? (completa as any)?.camposAdicionales?.instanciaVoBoDuracion ?? 'DIRECCION_NACIONAL';
+      const puedeAsumirVoBo = esAdminUser || (instanciaVoBo === 'DIRECTOR_TERRITORIAL' ? esDirTerritorialUser : esDirNacUser);
+      const faltaVoBo = Boolean(requiereVoBo && fVoBo && !fVoBo.firmado);
+
+      const faltaJefe = Boolean(fJefe && !fJefe.firmado);
+      const faltaGerente = Boolean(fGerente && !fGerente.firmado);
+
+      // Jerarquía de aprobación: si la comisión requiere Director Nacional o Subdirector Nacional,
+      // el jefe de dependencia regular NO puede asumir la firma 1.
+      const puedeAsumirJefe =
+        esAdminUser ||
+        (requiereDirNacional
+          ? esDirNacUser
+          : requiereSubdirNacional
+          ? esSubdirUser
+          : esJefeRegularUser);
+      const puedeAsumirGerente = esAdminUser || esGerenteUser;
+
+      let miRol: TipoFirmaAprobacion = 'JEFE_DEPENDENCIA';
+      if (esAdminUser) {
+        if (faltaJefe && !faltaGerente) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else if (faltaGerente && !faltaJefe) {
+          miRol = 'GERENTE_PROYECTO';
+        } else if (faltaVoBo && !faltaJefe && !faltaGerente) {
+          miRol = 'VOBO_DURACION';
+        } else if (faltaJefe) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else if (faltaGerente) {
+          miRol = 'GERENTE_PROYECTO';
+        } else if (faltaVoBo) {
+          miRol = 'VOBO_DURACION';
+        } else {
+          miRol = data.firmantes.find((f: any) => !f.firmado)?.tipo || 'JEFE_DEPENDENCIA';
+        }
+      } else if (puedeAsumirVoBo && faltaVoBo && !puedeAsumirJefe && !puedeAsumirGerente) {
+        miRol = 'VOBO_DURACION';
+      } else if (puedeAsumirGerente && puedeAsumirJefe) {
+        // Usuario con ambos roles: priorizar el que falte por firmar
+        if (faltaGerente && !faltaJefe) {
+          miRol = 'GERENTE_PROYECTO';
+        } else if (faltaJefe && !faltaGerente) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else if (faltaJefe) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else {
+          miRol = 'GERENTE_PROYECTO';
+        }
+      } else if (puedeAsumirGerente) {
+        miRol = 'GERENTE_PROYECTO';
+      } else if (puedeAsumirJefe) {
+        miRol = 'JEFE_DEPENDENCIA';
+      } else if (puedeAsumirVoBo && faltaVoBo) {
+        miRol = 'VOBO_DURACION';
+      } else if (esAnalistaUser) {
+        miRol = 'ANALISTA';
+      } else {
+        const p = data.firmantes.find((f: any) => !f.firmado);
+        if (p) miRol = p.tipo;
+      }
+      setFirmanteSeleccionado(miRol);
+      const firmanteObj = data.firmantes.find((f: any) => f.tipo === miRol);
+      if (firmanteObj?.cargo) {
+        setCargoFirmante(firmanteObj.cargo);
       }
 
       // Pre-llenar datos de usuario autenticado
@@ -182,57 +272,7 @@ export default function ModalFirmasAprobacion({
     }
   }, [firmanteSeleccionado, estadoFirmas]);
 
-  // Canvas drawing handlers (mouse & touch)
-  const iniciarTrazo = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#003DA5';
-    ctx.beginPath();
-    ctx.moveTo(clientX - rect.left, clientY - rect.top);
-
-    setIsDrawing(true);
-    setHaDibujado(true);
-  };
-
-  const trazar = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-
-    ctx.lineTo(clientX - rect.left, clientY - rect.top);
-    ctx.stroke();
-  };
-
-  const detenerTrazo = () => {
-    setIsDrawing(false);
-  };
-
-  const limpiarCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHaDibujado(false);
-  };
-
-  // Generar estampa digital como fallback o alternativa limpia
+  // Generar estampa digital certificada institucional (conforme a Ley 527 de 1999)
   const generarEstampaDigital = (nombre: string, cargo: string): string => {
     const canvas = document.createElement('canvas');
     canvas.width = 400;
@@ -271,37 +311,52 @@ export default function ModalFirmasAprobacion({
     return canvas.toDataURL('image/png');
   };
 
-  // Preparar datos base de la firma
+  const obtenerNombreFirmanteFinal = () => {
+    if (nombreFirmante.trim() && !nombreFirmante.includes('@')) return nombreFirmante.trim();
+    const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+    const deUser =
+      (user as any)?.fullName ||
+      (user as any)?.full_name ||
+      [(user as any)?.firstName, (user as any)?.lastName].filter(Boolean).join(' ') ||
+      [user?.primerNombre, user?.segundoNombre, user?.primerApellido, user?.segundoApellido].filter(Boolean).join(' ') ||
+      user?.person?.full_name ||
+      (user?.person as any)?.nom_largo ||
+      [(user?.person as any)?.nom_tercero, (user?.person as any)?.pri_apellido, (user?.person as any)?.seg_apellido].filter(Boolean).join(' ') ||
+      user?.nombre ||
+      '';
+    if (deUser && !deUser.includes('@')) return deUser.trim();
+    const f = estadoFirmas?.firmantes.find((item) => item.tipo === miRolFirmante || item.tipo === firmanteSeleccionado);
+    if (f?.nombre && !f.nombre.includes('@')) return f.nombre;
+    if (firmanteSeleccionado === 'VOBO_DURACION' || miRolFirmante === 'VOBO_DURACION') {
+      return (estadoFirmas as any)?.tituloVoBoDuracion || 'Dirección Nacional / Territorial';
+    }
+    if (firmanteSeleccionado === 'JEFE_DEPENDENCIA' || miRolFirmante === 'JEFE_DEPENDENCIA') return 'Jefe de Dependencia / Supervisor';
+    if (firmanteSeleccionado === 'GERENTE_PROYECTO' || miRolFirmante === 'GERENTE_PROYECTO') return 'Gerente de Proyecto';
+    if (miRolFirmante === 'ANALISTA') return 'Analista de Viáticos';
+    return 'Funcionario Autorizador';
+  };
+
+  const obtenerCargoFirmanteFinal = () => {
+    if (cargoFirmante.trim()) return cargoFirmante.trim();
+    const f = estadoFirmas?.firmantes.find((item) => item.tipo === miRolFirmante || item.tipo === firmanteSeleccionado);
+    if (f?.cargo) return f.cargo;
+    if (firmanteSeleccionado === 'VOBO_DURACION' || miRolFirmante === 'VOBO_DURACION') {
+      return (estadoFirmas as any)?.tituloVoBoDuracion || 'Dirección Nacional / Director Territorial';
+    }
+    if (firmanteSeleccionado === 'JEFE_DEPENDENCIA' || miRolFirmante === 'JEFE_DEPENDENCIA') return 'Jefe de Dependencia / Supervisor';
+    if (firmanteSeleccionado === 'GERENTE_PROYECTO' || miRolFirmante === 'GERENTE_PROYECTO') return 'Gerente de Proyecto';
+    if (miRolFirmante === 'ANALISTA') return 'Analista de Viáticos';
+    return 'Funcionario Autorizador';
+  };
+
+  // Preparar datos base de la firma (resolución automática de firmante institucional)
   const prepararPayloadBase = (): FirmarSolicitudPayload | null => {
     setErrorAccion(null);
     setMensajeExito(null);
 
-    if (!nombreFirmante.trim()) {
-      setErrorAccion('Debe ingresar el nombre del firmante.');
-      return null;
-    }
-
-    if (!cargoFirmante.trim()) {
-      setErrorAccion('Debe ingresar el cargo oficial del firmante.');
-      return null;
-    }
-
-    if (esAusencia && !motivoAusencia.trim()) {
-      setErrorAccion('Debe especificar el motivo o justificación de la ausencia/desplazamiento.');
-      return null;
-    }
-
-    let firmaImagen: string | undefined = undefined;
-    if (modoTrazo === 'CANVAS') {
-      const canvas = canvasRef.current;
-      if (canvas && haDibujado) {
-        firmaImagen = canvas.toDataURL('image/png');
-      } else {
-        firmaImagen = generarEstampaDigital(nombreFirmante, cargoFirmante);
-      }
-    } else {
-      firmaImagen = generarEstampaDigital(nombreFirmante, cargoFirmante);
-    }
+    const nombreFinal = obtenerNombreFirmanteFinal();
+    const cargoFinal = obtenerCargoFirmanteFinal();
+    const firmaImagen = generarEstampaDigital(nombreFinal, cargoFinal);
 
     const userDoc =
       (currentUser as any)?.cedula ||
@@ -309,16 +364,16 @@ export default function ModalFirmasAprobacion({
       (currentUser as any)?.num_identificacion ||
       (currentUser as any)?.person?.num_identificacion ||
       (currentUser as any)?.person?.numeroDocumento ||
+      (currentUser as any)?.documento ||
       undefined;
 
     return {
-      tipoFirma: firmanteSeleccionado,
-      nombreFirmante: nombreFirmante.trim(),
-      cargoFirmante: cargoFirmante.trim(),
+      tipoFirma: miRolFirmante,
+      nombreFirmante: nombreFinal,
+      cargoFirmante: cargoFinal,
       documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
       firmaImagen,
-      esAusencia,
-      motivoAusencia: esAusencia ? motivoAusencia.trim() : undefined,
+      esAusencia: false,
       comentarios: comentarios.trim() || undefined,
     };
   };
@@ -332,7 +387,7 @@ export default function ModalFirmasAprobacion({
     setErrorAccion(null);
     try {
       const resp = await viaticosService.solicitarOtpFirma(solicitudId, {
-        tipoFirma: firmanteSeleccionado,
+        tipoFirma: miRolFirmante,
       });
       setOtpData({
         verificationId: resp.verificationId,
@@ -357,24 +412,53 @@ export default function ModalFirmasAprobacion({
     const base = prepararPayloadBase();
     if (!base) return false;
 
-    const payload: FirmarSolicitudPayload = {
-      ...base,
-      otp: firma.codigoOtp,
-      verificationId: otpData?.verificationId,
-      certificadoId: firma.certificado_id,
-      hashSha256: firma.hash,
-    };
-
     setProcesandoFirma(true);
     try {
+      if (miRolFirmante === 'VOBO_DURACION') {
+        const payloadVoBo: RegistrarVoBoDuracionPayload = {
+          decision: 'APROBADO',
+          comentarios: comentarios.trim() || undefined,
+          nombreFirmante: base.nombreFirmante,
+          cargoFirmante: base.cargoFirmante,
+          documentoIdentidad: base.documentoIdentidad,
+          firmaImagen: base.firmaImagen,
+          otp: firma.codigoOtp,
+          verificationId: otpData?.verificationId,
+          certificadoId: firma.certificado_id,
+          hashSha256: firma.hash,
+        };
+        const resp = await viaticosService.registrarVoBoDuracion(solicitudId, payloadVoBo);
+        setMensajeExito(resp.message || 'Visto Bueno de duración extendida registrado exitosamente.');
+        await cargarEstado();
+        onFirmadoExitoso?.();
+
+        if (resp.solicitud?.estado === 'SOLICITADO') {
+          onFirmasCompletadas?.(resp.solicitud);
+          setTimeout(() => {
+            cerrar();
+          }, 1800);
+        }
+        return true;
+      }
+
+      const payload: FirmarSolicitudPayload = {
+        ...base,
+        otp: firma.codigoOtp,
+        verificationId: otpData?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+      };
+
       const resp = await viaticosService.firmarSolicitud(solicitudId, payload);
       setMensajeExito(resp.mensaje);
-      limpiarCanvas();
       await cargarEstado();
       onFirmadoExitoso?.();
 
       if (resp.radicada) {
         onFirmasCompletadas?.(resp.solicitud);
+        setTimeout(() => {
+          cerrar();
+        }, 1800);
       }
       return true;
     } catch (e: any) {
@@ -385,6 +469,34 @@ export default function ModalFirmasAprobacion({
           'No fue posible registrar la firma digital de aprobación.',
       );
       throw e;
+    } finally {
+      setProcesandoFirma(false);
+    }
+  };
+
+  // Rechazar Visto Bueno de duración extendida
+  const handleRechazarVoBo = async () => {
+    if (!motivoRechazoVoBo.trim()) {
+      setErrorAccion('Debe ingresar el motivo detallado de rechazo del Visto Bueno.');
+      return;
+    }
+    setProcesandoFirma(true);
+    setErrorAccion(null);
+    try {
+      const resp = await viaticosService.registrarVoBoDuracion(solicitudId, {
+        decision: 'RECHAZADO',
+        comentarios: motivoRechazoVoBo.trim(),
+      });
+      setMensajeExito(resp.message || 'Visto Bueno de duración extendida rechazado.');
+      setModoRechazoVoBo(false);
+      await cargarEstado();
+    } catch (e: any) {
+      console.error('Error rechazando VoBo:', e);
+      setErrorAccion(
+        e?.response?.data?.message ||
+          e?.message ||
+          'No fue posible registrar el rechazo del Visto Bueno.',
+      );
     } finally {
       setProcesandoFirma(false);
     }
@@ -424,7 +536,30 @@ export default function ModalFirmasAprobacion({
     }
   };
 
-  // Previsualizar Formato 023
+  // Previsualizar Formato 023 en visor flotante / mitad de pantalla
+  const handlePrevisualizarFormato023Flotante = async () => {
+    setDescargandoPdf(true);
+    try {
+      const blob = await viaticosService.exportarFormato023(
+        solicitudId,
+        consecutivoUnico || '023',
+      );
+      const url = window.URL.createObjectURL(blob);
+      abrirDocumentoVisor({
+        url,
+        nombre: `Formato 023 — ${consecutivoUnico || codigoSolicitud || 'comision'}.pdf`,
+        tipo: 'Formato 023 Oficial',
+        mime: 'application/pdf',
+      });
+    } catch (e) {
+      console.error('Error visualizando Formato 023 en visor flotante:', e);
+      setErrorAccion('No fue posible abrir el Formato 023 en el visor flotante.');
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
+
+  // Previsualizar / Descargar Formato 023 directamente
   const handleDescargarFormato023 = async () => {
     setDescargandoPdf(true);
     try {
@@ -452,15 +587,151 @@ export default function ModalFirmasAprobacion({
   );
   const esReglaEspecial = estadoFirmas?.reglaDesplazamiento && estadoFirmas.reglaDesplazamiento !== 'REGULAR';
   const todasFirmadas = Boolean(estadoFirmas?.completado);
+  const regla = estadoFirmas?.reglaDesplazamiento || 'REGULAR';
+  const requiereDirNacional =
+    regla === 'SUBDIRECTOR_NACIONAL' ||
+    regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+    regla === 'DIRECTOR_TERRITORIAL' ||
+    regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+  const requiereSubdirNacional =
+    regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
 
   const currentUser = authService.getCurrentUserSync();
-  const esJefe = Boolean(authService.isJefeDependencia?.()) || Boolean(authService.isSubdireccionGestionCorporativa?.()) || Boolean(authService.isDireccionNacional?.()) || Boolean(currentUser?.esAdmin);
-  const esGerente = Boolean(authService.isGerenteProyecto?.()) || Boolean(currentUser?.esAdmin);
-  const esAnalista = Boolean(authService.isAnalista?.()) || Boolean(currentUser?.esAdmin);
-  const puedeFirmar = Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista;
+  const esDirNac = Boolean(authService.isDireccionNacional?.());
+  const esDirTerritorial = Boolean(authService.isDirectorTerritorial?.());
+  const esSubdir = Boolean(authService.isSubdireccionGestionCorporativa?.());
+  const esJefe = Boolean(authService.isJefeDependencia?.());
+  const esGerente = Boolean(authService.isGerenteProyecto?.());
+  const esAnalista = Boolean(authService.isAnalista?.());
+  const esAdmin = Boolean(currentUser?.esAdmin) || Boolean(authService.isSuperAdmin?.());
+  const esEnlace = Boolean(authService.isEnlaceDependencia?.());
+
+  // VoBo de duración extendida (>3 días calendario / >= 3.5 días de valor)
+  const firmanteVoBo = estadoFirmas?.firmantes.find((f) => f.tipo === 'VOBO_DURACION');
+  const requiereVoBoDuracion = Boolean(estadoFirmas?.requiereVoBoDuracion ?? (solicitudDetalle as any)?.camposAdicionales?.requiereVoBoDuracion);
+  const voboData = estadoFirmas?.voboDuracion ?? (solicitudDetalle as any)?.camposAdicionales?.voboDuracion;
+  const voboAprobado = voboData?.estado === 'APROBADO' || Boolean(firmanteVoBo?.firmado);
+  const voboRechazado = voboData?.estado === 'RECHAZADO';
+  const instanciaVoBo = estadoFirmas?.instanciaVoBoDuracion ?? (solicitudDetalle as any)?.camposAdicionales?.instanciaVoBoDuracion ?? 'DIRECCION_NACIONAL';
+  const tituloVoBo = estadoFirmas?.tituloVoBoDuracion ?? (instanciaVoBo === 'DIRECTOR_TERRITORIAL' ? 'Director Territorial' : 'Dirección Nacional');
+  const justificacionDuracion = estadoFirmas?.justificacionDuracion ?? (solicitudDetalle as any)?.camposAdicionales?.justificacionDuracion ?? '';
+  const diasCalendario = estadoFirmas?.diasCalendario ?? (solicitudDetalle as any)?.camposAdicionales?.diasCalendario;
+  const diasValor = estadoFirmas?.diasValor ?? (solicitudDetalle as any)?.camposAdicionales?.diasValor;
+
+  const puedeFirmarComoVoBo =
+    Boolean(
+      esAdmin || (instanciaVoBo === 'DIRECTOR_TERRITORIAL' ? esDirTerritorial : esDirNac),
+    ) && Boolean(requiereVoBoDuracion && !voboAprobado);
+
+  // Regla de secuencia estricta: si la comisión supera los 3 días calendario (>= 3.5 días de valor),
+  // antes de habilitar las firmas de aprobación de Jefe y Gerente, debe contar obligatoriamente con el VoBo previo aprobado.
+  const voboBloqueaFirmasJefeGerente = Boolean(requiereVoBoDuracion && !voboAprobado);
+
+  // Permisos efectivos de firma según roles y reglas de desplazamiento jerárquico:
+  // - Si el comisionado es Subdirector Nacional o Director Territorial: firma Director Nacional (el jefe habitual NO puede firmar)
+  // - Si el comisionado es Director Nacional: firma Subdirector Nacional (el jefe habitual NO puede firmar)
+  // - Si es regular: firma Jefe de Dependencia
+  // NOTA: Si requiere VoBo y no está aprobado, Jefe y Gerente quedan bloqueados hasta que se apruebe el VoBo.
+  const puedeFirmarComoJefe =
+    Boolean(
+      esAdmin ||
+        (requiereDirNacional ? esDirNac : requiereSubdirNacional ? esSubdir : esJefe),
+    ) && Boolean(firmante1 && !firmante1.firmado) && !voboBloqueaFirmasJefeGerente;
+  const puedeFirmarComoGerente =
+    Boolean(esAdmin || esGerente) &&
+    Boolean(firmante2 && !firmante2.firmado) &&
+    !voboBloqueaFirmasJefeGerente;
+  const puedeFirmarComoAnalista =
+    Boolean(esAdmin || esAnalista) &&
+    Boolean(firmante3 && !firmante3.firmado) &&
+    !voboBloqueaFirmasJefeGerente;
+
+  const esJefeBloqueadoPorRegla =
+    !esAdmin &&
+    esJefe &&
+    !puedeFirmarComoJefe &&
+    Boolean(firmante1 && !firmante1.firmado) &&
+    (requiereDirNacional || requiereSubdirNacional);
+
+  // Rol específico con el que firma el usuario autenticado (respeta selección explícita del usuario)
+  let miRolFirmante: TipoFirmaAprobacion = firmanteSeleccionado || 'JEFE_DEPENDENCIA';
+  if (miRolFirmante === 'GERENTE_PROYECTO' && !puedeFirmarComoGerente && puedeFirmarComoJefe) {
+    miRolFirmante = 'JEFE_DEPENDENCIA';
+  } else if (miRolFirmante === 'JEFE_DEPENDENCIA' && !puedeFirmarComoJefe && puedeFirmarComoGerente) {
+    miRolFirmante = 'GERENTE_PROYECTO';
+  } else if (!esAdmin && puedeFirmarComoGerente && !puedeFirmarComoJefe) {
+    miRolFirmante = 'GERENTE_PROYECTO';
+  } else if (!esAdmin && puedeFirmarComoJefe && !puedeFirmarComoGerente) {
+    miRolFirmante = 'JEFE_DEPENDENCIA';
+  } else if (!esAdmin && puedeFirmarComoVoBo && !puedeFirmarComoJefe && !puedeFirmarComoGerente) {
+    miRolFirmante = 'VOBO_DURACION';
+  } else if (!esAdmin && esAnalista && !puedeFirmarComoJefe && !puedeFirmarComoGerente && !puedeFirmarComoVoBo) {
+    miRolFirmante = 'ANALISTA';
+  }
+
+  // Firmante correspondiente a mi rol y estado de mi firma
+  const miFirmanteObj = estadoFirmas?.firmantes.find((f) => f.tipo === miRolFirmante);
+  const miFirmaFirmada = Boolean(
+    miRolFirmante === 'VOBO_DURACION' ? voboAprobado : miFirmanteObj?.firmado
+  );
+  const miTituloRol =
+    miFirmanteObj?.titulo ||
+    (miRolFirmante === 'VOBO_DURACION'
+      ? tituloVoBo
+      : miRolFirmante === 'JEFE_DEPENDENCIA'
+      ? (requiereDirNacional ? 'Director Nacional' : requiereSubdirNacional ? 'Subdirector Nacional' : 'Jefe de Dependencia / Supervisor')
+      : miRolFirmante === 'GERENTE_PROYECTO'
+      ? 'Gerente de Proyecto'
+      : 'Analista de Viáticos');
+
+  // Rol del otro firmante para alertas
+  const otroFirmanteTipo: TipoFirmaAprobacion =
+    miRolFirmante === 'JEFE_DEPENDENCIA' ? 'GERENTE_PROYECTO' : 'JEFE_DEPENDENCIA';
+  const otroFirmanteObj = estadoFirmas?.firmantes.find((f) => f.tipo === otroFirmanteTipo);
+  const otroFirmantePendiente = Boolean(otroFirmanteObj && !otroFirmanteObj.firmado);
+  const otroFirmanteTitulo =
+    otroFirmanteObj?.titulo ||
+    (otroFirmanteTipo === 'JEFE_DEPENDENCIA'
+      ? (requiereDirNacional ? 'Director Nacional' : requiereSubdirNacional ? 'Subdirector Nacional' : 'Jefe de Dependencia / Supervisor')
+      : 'Gerente de Proyecto');
+
+  const puedeFirmar =
+    !esEnlace &&
+    (puedeFirmarComoJefe || puedeFirmarComoGerente || puedeFirmarComoAnalista || puedeFirmarComoVoBo);
+
+  // Enviar alerta y recordatorio de firma pendiente al otro rol
+  const handleEnviarAlerta = async (tipoDestino?: TipoFirmaAprobacion) => {
+    const destinoFinal: TipoFirmaAprobacion = tipoDestino || otroFirmanteTipo;
+    const firmanteDestino = estadoFirmas?.firmantes.find((f) => f.tipo === destinoFinal);
+    const tituloDestino =
+      firmanteDestino?.titulo ||
+      (destinoFinal === 'JEFE_DEPENDENCIA'
+        ? 'Jefe de Dependencia / Supervisor'
+        : 'Gerente de Proyecto');
+
+    setEnviandoAlerta(true);
+    setErrorAccion(null);
+    setMensajeExito(null);
+    try {
+      const resp = await viaticosService.notificarFirmaPendiente(
+        solicitudId,
+        destinoFinal,
+      );
+      setMensajeExito(
+        resp?.mensaje || `Alerta y recordatorio de firma enviado exitosamente a ${tituloDestino}.`,
+      );
+    } catch (e: any) {
+      console.error('Error enviando alerta:', e);
+      setErrorAccion(e?.message || 'No fue posible enviar la alerta al firmante pendiente.');
+    } finally {
+      setEnviandoAlerta(false);
+    }
+  };
+  const totalFirmasRequeridas = requiereVoBoDuracion ? 3 : 2;
   const firmasRegistradasCount =
     (firmante1?.firmado ? 1 : 0) +
     (firmante2?.firmado ? 1 : 0) +
+    (requiereVoBoDuracion && voboAprobado ? 1 : 0) +
     (firmante3?.firmado ? 1 : 0);
 
   const formatearMonedaLocal = (valor: number | undefined | null) => {
@@ -495,16 +766,16 @@ export default function ModalFirmasAprobacion({
     : solicitudDetalle?.nombreComisionado || 'Funcionario en Comisión';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200/90 max-h-[94vh] overflow-y-auto space-y-5">
-        {/* Encabezado */}
-        <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-50 text-[#003DA5] rounded-2xl">
-              <FileSignature className="w-6 h-6" />
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl max-w-4xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col h-[88vh] max-h-[88vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        {/* Encabezado Fijo */}
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 via-white to-blue-50/20">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-blue-50 text-[#003DA5] rounded-xl shrink-0">
+              <FileSignature className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
                   Control Previo a Radicación
                 </span>
@@ -512,82 +783,99 @@ export default function ModalFirmasAprobacion({
                   {consecutivoUnico || estadoFirmas?.consecutivoUnico || 'GF-FO-023'}
                 </span>
               </div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 truncate mt-0.5">
                 Firmas de Aprobación de la Solicitud
               </h3>
-              <p className="text-xs text-slate-500">
-                Aprobación obligatoria por Jefe de Dependencia/Supervisor y Gerente de Proyecto antes de radicar.
-              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={cerrar}
-            className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg hover:bg-slate-100 transition-colors"
-            aria-label="Cerrar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePrevisualizarFormato023Flotante}
+              disabled={descargandoPdf}
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+              title="Ver Formato 023 en visor flotante / mitad de pantalla"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Visor Formato 023</span>
+            </button>
+            <button
+              type="button"
+              onClick={cerrar}
+              className="p-1.5 text-slate-400 hover:text-slate-600 font-bold rounded-lg hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+              aria-label="Cerrar"
+              title="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {cargando && (
-          <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-            <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-semibold">Cargando estado de firmas y validaciones institucionales…</p>
-          </div>
-        )}
-
-        {errorCarga && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{errorCarga}</span>
-          </div>
-        )}
-
+        {/* Pestañas fijas bajo el encabezado */}
         {!cargando && estadoFirmas && (
-          <>
-            {/* Pestañas: 1. Revisión de Solicitud y Soportes · 2. Firmas y Decisión */}
-            <div className="flex border-b border-slate-200 gap-2">
-              <button
-                type="button"
-                onClick={() => setPestaña('REVISION')}
-                className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-                  pestaña === 'REVISION'
-                    ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                <span>1. Revisión de la Solicitud y Soportes</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPestaña('FIRMAS')}
-                className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-                  pestaña === 'FIRMAS'
-                    ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <FileSignature className="w-4 h-4" />
-                <span>2. Firmas y Decisión de Aprobación</span>
-                {todasFirmadas ? (
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                    Firmado
-                  </span>
-                ) : (
-                  <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                    Pendiente
-                  </span>
-                )}
-              </button>
-            </div>
+          <div className="flex border-b border-slate-200 px-6 pt-2 shrink-0 bg-white gap-2">
+            <button
+              type="button"
+              onClick={() => setPestaña('REVISION')}
+              className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+                pestaña === 'REVISION'
+                  ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>1. Revisión de la Solicitud y Soportes</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPestaña('FIRMAS')}
+              className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+                pestaña === 'FIRMAS'
+                  ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <FileSignature className="w-4 h-4" />
+              <span>2. Firmas y Decisión de Aprobación</span>
+              {todasFirmadas ? (
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  Firmado
+                </span>
+              ) : (
+                <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  Pendiente
+                </span>
+              )}
+            </button>
+          </div>
+        )}
 
-            {/* ========================================================================= */}
-            {/* PESTAÑA 1: REVISIÓN DE LA SOLICITUD, ITINERARIO Y DOCUMENTOS */}
-            {/* ========================================================================= */}
-            {pestaña === 'REVISION' && (
-              <div className="space-y-4 pt-1">
+        {/* Cuerpo del Modal con Scroll Interno Bounded */}
+        <div 
+          className="px-6 py-4 space-y-4 text-xs overflow-y-auto flex-1 min-h-0 scrollbar-thin"
+          style={{ maxHeight: 'calc(88vh - 120px)', overscrollBehavior: 'contain' }}
+        >
+          {cargando && (
+            <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+              <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-semibold">Cargando estado de firmas y validaciones institucionales…</p>
+            </div>
+          )}
+
+          {errorCarga && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{errorCarga}</span>
+            </div>
+          )}
+
+          {!cargando && estadoFirmas && (
+            <>
+              {/* ========================================================================= */}
+              {/* PESTAÑA 1: REVISIÓN DE LA SOLICITUD, ITINERARIO Y DOCUMENTOS */}
+              {/* ========================================================================= */}
+              {pestaña === 'REVISION' && (
+                <div className="space-y-4 pt-1">
                 {/* Tarjeta del Funcionario Comisionado */}
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -655,6 +943,77 @@ export default function ModalFirmasAprobacion({
                   </p>
                 </div>
 
+                {/* Banner de Duración Extendida y Justificación institucional */}
+                {requiereVoBoDuracion && (
+                  <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl space-y-2.5 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-amber-900 font-black text-xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Comisión de Duración Extendida (&gt; 3 días calendario / ≥ 3.5 días de valor)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {diasCalendario !== undefined && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200/80 text-amber-900">
+                            {diasCalendario} días calendario
+                          </span>
+                        )}
+                        {diasValor !== undefined && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-300/80 text-amber-950">
+                            {diasValor} días de valor
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Conforme al reglamento de viáticos de la ESAP, las comisiones al interior del país que superen 3 días calendario requieren justificación obligatoria y Visto Bueno (VoBo) de <strong>{tituloVoBo}</strong> antes de continuar.
+                    </p>
+
+                    {justificacionDuracion ? (
+                      <div className="bg-white/90 p-3 rounded-xl border border-amber-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wide block mb-1">
+                          Justificación de la Duración Registrada:
+                        </span>
+                        <p className="text-xs text-slate-800 font-medium italic leading-relaxed">
+                          &ldquo;{justificacionDuracion}&rdquo;
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Falta justificación obligatoria de duración extendida.</span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-200/60 text-[11px]">
+                      <span className="text-slate-600 font-medium">Estado del Visto Bueno:</span>
+                      {voboAprobado ? (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Aprobado por {voboData?.nombreFirmante || tituloVoBo}</span>
+                        </span>
+                      ) : voboRechazado ? (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 inline-flex items-center gap-1">
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Rechazado: {voboData?.comentarios || 'Sin observaciones'}</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Pendiente de VoBo por {tituloVoBo}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {Boolean((solicitudDetalle as any)?.camposAdicionales?.eximidoVoBoDocente || estadoFirmas?.eximidoVoBoDocente) && (
+                  <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-center gap-2 shadow-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span><strong>Docente Eximido de VoBo de Duración:</strong> Comisión con propósito docente/académico conforme a la normativa.</span>
+                  </div>
+                )}
+
                 {/* Itinerario y Fechas */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -715,7 +1074,7 @@ export default function ModalFirmasAprobacion({
                   <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block">
                     Liquidación Estimada de Gastos
                   </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="bg-white p-3 rounded-xl border border-slate-200">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">Viáticos</span>
                       <span className="font-mono font-bold text-slate-800 text-sm">
@@ -728,12 +1087,20 @@ export default function ModalFirmasAprobacion({
                         {formatearMonedaLocal(solicitudDetalle?.montoGastosViaje || 0)}
                       </span>
                     </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Tiquetes Aéreos</span>
+                      <span className="font-mono font-bold text-sky-800 text-sm">
+                        {formatearMonedaLocal(solicitudDetalle?.costoEstimadoTiquete || 0)}
+                      </span>
+                    </div>
                     <div className="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/30">
-                      <span className="text-[10px] uppercase font-bold text-emerald-700 block">Monto Total Estimado</span>
+                      <span className="text-[10px] uppercase font-bold text-emerald-700 block">Monto Total Consolidado</span>
                       <span className="font-mono font-black text-emerald-700 text-base">
                         {formatearMonedaLocal(
-                          (Number(solicitudDetalle?.montoViaticos) || 0) +
-                            (Number(solicitudDetalle?.montoGastosViaje) || 0) ||
+                          (Number(solicitudDetalle?.montoTotal) || 0) ||
+                            (Number(solicitudDetalle?.montoViaticos) || 0) +
+                              (Number(solicitudDetalle?.montoGastosViaje) || 0) +
+                              (Number(solicitudDetalle?.costoEstimadoTiquete) || 0) ||
                             (Number(solicitudDetalle?.montoTotalEstimado) || 0),
                         )}
                       </span>
@@ -743,22 +1110,35 @@ export default function ModalFirmasAprobacion({
 
                 {/* Soportes y Documentos Adjuntos */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <Paperclip className="w-4 h-4 text-[#003DA5]" />
                       <h5 className="text-xs font-black uppercase tracking-wider text-slate-800">
                         Soportes y Documentos Adjuntos ({solicitudDetalle?.documentosSoporte?.length || 0})
                       </h5>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleDescargarFormato023}
-                      disabled={descargandoPdf}
-                      className="px-3 py-1.5 bg-blue-50 text-[#003DA5] hover:bg-blue-100 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      {descargandoPdf ? 'Generando…' : 'Previsualizar Formato 023 (PDF)'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePrevisualizarFormato023Flotante}
+                        disabled={descargandoPdf}
+                        className="px-3 py-1.5 bg-blue-50 text-[#003DA5] hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                        title="Ver Formato 023 en visor flotante / mitad de pantalla"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        {descargandoPdf ? 'Cargando…' : 'Visor Formato 023'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDescargarFormato023}
+                        disabled={descargandoPdf}
+                        className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                        title="Descargar Formato 023 en PDF"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        PDF 023
+                      </button>
+                    </div>
                   </div>
 
                   {Array.isArray(solicitudDetalle?.documentosSoporte) && solicitudDetalle.documentosSoporte.length > 0 ? (
@@ -770,25 +1150,43 @@ export default function ModalFirmasAprobacion({
                             <div className="flex items-center gap-2.5 min-w-0">
                               <FileText className="w-4 h-4 text-rose-500 shrink-0" />
                               <div className="truncate">
-                                <p className="text-xs font-bold text-slate-800 truncate" title={doc.nombreArchivo}>
-                                  {doc.nombreArchivo}
+                                <p className="text-xs font-bold text-slate-800 truncate" title={doc.nombreArchivo || doc.nombreArchivoOriginal}>
+                                  {doc.nombreArchivo || doc.nombreArchivoOriginal}
                                 </p>
                                 <p className="text-[10px] text-slate-400">
                                   {doc.tipoDocumento || 'Soporte PDF'}
                                 </p>
                               </div>
                             </div>
-                            {url && (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 text-slate-500 hover:text-[#003DA5] hover:bg-white rounded-lg transition-colors shrink-0"
-                                title="Abrir soporte en pestaña nueva"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {url && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      abrirDocumentoVisor({
+                                        url,
+                                        nombre: doc.nombreArchivo || doc.nombreArchivoOriginal || 'Documento Soporte',
+                                        tipo: doc.tipoDocumento || 'Soporte',
+                                      })
+                                    }
+                                    className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-[#003DA5] hover:border-blue-300 transition-colors cursor-pointer"
+                                    title="Ver en visor flotante / mitad de pantalla"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 text-slate-500 hover:text-[#003DA5] hover:bg-white rounded-lg transition-colors cursor-pointer"
+                                    title="Abrir soporte en pestaña nueva"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                </>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -800,53 +1198,146 @@ export default function ModalFirmasAprobacion({
                   )}
                 </div>
 
-                {/* Botones de Decisión en Revisión */}
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
-                  {puedeFirmar ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModoDevolucion(true);
-                          setPestaña('FIRMAS');
-                        }}
-                        className="px-4 py-2 border border-rose-300 text-rose-700 bg-rose-50/40 hover:bg-rose-100 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <RotateCcw className="w-4 h-4 text-rose-600" />
-                        <span>Devolver al Enlace con Observaciones</span>
-                      </button>
+                {/* Firmas Digitales Verificadas (Elaboración y Aprobaciones) */}
+                {(() => {
+                  const firmaElaboro =
+                    estadoFirmas?.firmaElaboro ||
+                    solicitudDetalle?.camposAdicionales?.firmaElaboro ||
+                    null;
+                  const tieneAlgunaFirma =
+                    Boolean(firmaElaboro) ||
+                    Boolean(firmante1?.firmado) ||
+                    Boolean(firmante2?.firmado) ||
+                    Boolean(firmante3?.firmado);
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModoDevolucion(false);
-                          setPestaña('FIRMAS');
-                        }}
-                        className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-black inline-flex items-center gap-2 transition-all shadow-md shadow-blue-900/10 cursor-pointer"
-                      >
-                        <span>Continuar a Firmar Solicitud</span>
-                        <PenTool className="w-4 h-4" />
-                      </button>
-                    </>
-                  ) : (
-                    <div className="w-full flex items-center justify-between gap-3">
-                      <div className="text-xs text-slate-500 italic flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Perfil Enlace: Consulta de expediente y seguimiento de firmas de aprobación</span>
+                  if (!tieneAlgunaFirma) return null;
+
+                  return (
+                    <div className="bg-gradient-to-br from-slate-50 via-white to-blue-50/20 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-black text-xs text-slate-800">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                          <span>Firmas Digitales Verificadas en el Trámite</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Validadas con OTP
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModoDevolucion(false);
-                          setPestaña('FIRMAS');
-                        }}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors cursor-pointer"
-                      >
-                        <span>Ver Estado de Firmas</span>
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {/* Elaboró - Enlace */}
+                        {firmaElaboro && (
+                          <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
+                            <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider block">
+                              1. Elaboró (Enlace)
+                            </span>
+                            <p className="font-black text-slate-900 truncate">
+                              {firmaElaboro.nombreFirmante || 'Enlace de Dependencia'}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {firmaElaboro.cargoFirmante || 'Enlace de Dependencia'}
+                              {firmaElaboro.documentoIdentidad ? ` · C.C. ${firmaElaboro.documentoIdentidad}` : ''}
+                            </p>
+                            <div className="pt-1 flex items-center justify-between text-[10px] text-emerald-700">
+                              <span className="inline-flex items-center gap-1 font-bold">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Verificada
+                              </span>
+                              <span className="font-mono text-slate-400">{formatearFechaAmigable(firmaElaboro.fechaFirma)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Aprobó - Jefe */}
+                        {firmante1?.firmado && (
+                          <div className="bg-white border border-emerald-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
+                            <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
+                              2. {firmante1.titulo || 'Jefe de Dependencia'}
+                            </span>
+                            <p className="font-black text-slate-900 truncate">
+                              {firmante1.nombreFirmante || firmante1.firma?.nombreFirmante || 'Servidor Autorizado'}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {firmante1.cargoFirmante || firmante1.firma?.cargoFirmante || firmante1.cargo}
+                              {(firmante1.documentoIdentidad || firmante1.firma?.documentoIdentidad)
+                                ? ` · C.C. ${firmante1.documentoIdentidad || firmante1.firma?.documentoIdentidad}`
+                                : ''}
+                            </p>
+                            <div className="pt-1 flex items-center justify-between text-[10px] text-emerald-700">
+                              <span className="inline-flex items-center gap-1 font-bold">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Verificada
+                              </span>
+                              <span className="font-mono text-slate-400">
+                                {formatearFechaAmigable(firmante1.fechaFirma || firmante1.firma?.fechaFirma)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Aprobó - Gerente */}
+                        {firmante2?.firmado && (
+                          <div className="bg-white border border-emerald-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
+                            <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider block">
+                              3. {firmante2.titulo || 'Gerente de Proyecto'}
+                            </span>
+                            <p className="font-black text-slate-900 truncate">
+                              {firmante2.nombreFirmante || firmante2.firma?.nombreFirmante || 'Servidor Autorizado'}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {firmante2.cargoFirmante || firmante2.firma?.cargoFirmante || firmante2.cargo}
+                              {(firmante2.documentoIdentidad || firmante2.firma?.documentoIdentidad)
+                                ? ` · C.C. ${firmante2.documentoIdentidad || firmante2.firma?.documentoIdentidad}`
+                                : ''}
+                            </p>
+                            <div className="pt-1 flex items-center justify-between text-[10px] text-emerald-700">
+                              <span className="inline-flex items-center gap-1 font-bold">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Verificada
+                              </span>
+                              <span className="font-mono text-slate-400">
+                                {formatearFechaAmigable(firmante2.fechaFirma || firmante2.firma?.fechaFirma)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Revisó - Analista */}
+                        {firmante3?.firmado && (
+                          <div className="bg-white border border-emerald-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
+                            <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
+                              4. {firmante3.titulo || 'Analista de Viáticos'}
+                            </span>
+                            <p className="font-black text-slate-900 truncate">
+                              {firmante3.nombreFirmante || firmante3.firma?.nombreFirmante || 'Servidor Autorizado'}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {firmante3.cargoFirmante || firmante3.firma?.cargoFirmante || firmante3.cargo}
+                            </p>
+                            <div className="pt-1 flex items-center justify-between text-[10px] text-emerald-700">
+                              <span className="inline-flex items-center gap-1 font-bold">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Verificada
+                              </span>
+                              <span className="font-mono text-slate-400">
+                                {formatearFechaAmigable(firmante3.fechaFirma || firmante3.firma?.fechaFirma)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  );
+                })()}
+
+                {/* Botón único de decisión en Revisión: Continuar y Firmar */}
+                <div className="pt-3 flex justify-end border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoDevolucion(false);
+                      setPestaña('FIRMAS');
+                    }}
+                    className="px-6 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-black inline-flex items-center gap-2 transition-all shadow-md shadow-blue-900/10 cursor-pointer"
+                  >
+                    <span>Continuar y Firmar</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
@@ -896,16 +1387,14 @@ export default function ModalFirmasAprobacion({
                       <h4 className="text-xs sm:text-sm font-black text-slate-800">
                         {todasFirmadas
                           ? 'Flujo de Aprobación Completado Satisfactoriamente'
-                          : firmasRegistradasCount === 1
-                          ? 'Flujo en Proceso: 1 de 2 Firmas Registradas'
-                          : 'Flujo Pendiente: Se requieren 2 firmas para formalizar la radicación'}
+                          : `Flujo en Proceso: ${firmasRegistradasCount} de ${totalFirmasRequeridas} Aprobaciones Registradas`}
                       </h4>
                     </div>
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-black inline-flex items-center gap-1.5 ${
                         todasFirmadas
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          : firmasRegistradasCount === 1
+                          : firmasRegistradasCount > 0
                           ? 'bg-blue-100 text-blue-800 border border-blue-200'
                           : 'bg-amber-100 text-amber-800 border border-amber-200'
                       }`}
@@ -913,24 +1402,19 @@ export default function ModalFirmasAprobacion({
                       {todasFirmadas ? (
                         <>
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>2 de 2 Firmas · RADICADA</span>
-                        </>
-                      ) : firmasRegistradasCount === 1 ? (
-                        <>
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>1 de 2 Firmas · PENDIENTE 1 FIRMA</span>
+                          <span>{totalFirmasRequeridas} de {totalFirmasRequeridas} Firmas · ENVIADA A SECRETARÍA</span>
                         </>
                       ) : (
                         <>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>0 de 2 Firmas · PENDIENTE AMBAS</span>
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{firmasRegistradasCount} de {totalFirmasRequeridas} Firmas Registradas</span>
                         </>
                       )}
                     </span>
                   </div>
 
-                  {/* Stepper visual de pasos 1 y 2 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Stepper visual de pasos */}
+                  <div className={`grid grid-cols-1 ${requiereVoBoDuracion ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 pt-1`}>
                     {/* Paso 1 */}
                     <div
                       className={`p-3 rounded-xl border transition-all ${
@@ -958,7 +1442,7 @@ export default function ModalFirmasAprobacion({
                           <p className="text-xs font-black truncate">{firmante1?.titulo}</p>
                           <p className="text-[10px] opacity-80 truncate">
                             {firmante1?.firmado
-                              ? `Firmado: ${firmante1.firma?.nombreFirmante}`
+                              ? `Firmado por: ${firmante1.nombreFirmante || firmante1.firma?.nombreFirmante || 'Servidor Autorizado'}`
                               : 'Pendiente de firma y visto bueno'}
                           </p>
                         </div>
@@ -992,12 +1476,54 @@ export default function ModalFirmasAprobacion({
                           <p className="text-xs font-black truncate">{firmante2?.titulo}</p>
                           <p className="text-[10px] opacity-80 truncate">
                             {firmante2?.firmado
-                              ? `Firmado: ${firmante2.firma?.nombreFirmante}`
+                              ? `Firmado por: ${firmante2.nombreFirmante || firmante2.firma?.nombreFirmante || 'Servidor Autorizado'}`
                               : 'Pendiente de firma y visto bueno'}
                           </p>
                         </div>
                       </div>
                     </div>
+
+                    {/* Paso 3: VoBo Duración Extendida */}
+                    {requiereVoBoDuracion && (
+                      <div
+                        className={`p-3 rounded-xl border transition-all ${
+                          voboAprobado
+                            ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                            : voboRechazado
+                            ? 'bg-rose-50/80 border-rose-300 text-rose-950'
+                            : firmanteSeleccionado === 'VOBO_DURACION'
+                            ? 'bg-blue-50/80 border-[#003DA5] text-blue-950 ring-2 ring-blue-500/20'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-black ${
+                              voboAprobado
+                                ? 'bg-emerald-600 text-white'
+                                : voboRechazado
+                                ? 'bg-rose-600 text-white'
+                                : 'bg-amber-500 text-white'
+                            }`}
+                          >
+                            {voboAprobado ? <CheckCircle2 className="w-4 h-4" /> : voboRechazado ? <XCircle className="w-4 h-4" /> : '3'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider opacity-75">
+                              Paso 3 · VoBo &gt; 3 Días
+                            </p>
+                            <p className="text-xs font-black truncate">{tituloVoBo}</p>
+                            <p className="text-[10px] opacity-80 truncate">
+                              {voboAprobado
+                                ? `Aprobado por: ${voboData?.nombreFirmante || 'Servidor Autorizado'}`
+                                : voboRechazado
+                                ? `Rechazado: ${voboData?.comentarios || 'Sin observaciones'}`
+                                : 'Pendiente de VoBo'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1008,32 +1534,79 @@ export default function ModalFirmasAprobacion({
                   Aprobación por Componente
                 </h4>
                 <span className="text-[11px] font-medium text-slate-500">
-                  {todasFirmadas ? '2 de 2 aprobadas' : firmasRegistradasCount === 1 ? '1 de 2 aprobadas' : '0 de 2 aprobadas'}
+                  {todasFirmadas ? `${totalFirmasRequeridas} de ${totalFirmasRequeridas} aprobadas` : `${firmasRegistradasCount} de ${totalFirmasRequeridas} aprobadas`}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {esJefeBloqueadoPorRegla && (
+                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3 text-amber-900 text-xs shadow-xs">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-xs uppercase tracking-wide text-amber-900">
+                      Aprobación Reservada por Jerarquía Institucional
+                    </p>
+                    <p className="text-[11px] leading-relaxed">
+                      {requiereDirNacional && (
+                        <>
+                          Dado que el comisionado ejerce como{' '}
+                          <strong className="font-bold">
+                            {regla.includes('TERRITORIAL') ? 'Director Territorial' : 'Subdirector Nacional'}
+                          </strong>
+                          , la aprobación como superior jerárquico corresponde exclusivamente al{' '}
+                          <strong className="font-bold">Director Nacional</strong>. El jefe de dependencia habitual no está habilitado para firmar esta solicitud.
+                        </>
+                      )}
+                      {requiereSubdirNacional && (
+                        <>
+                          Dado que el comisionado es el <strong className="font-bold">Director Nacional</strong>, la aprobación institucional
+                          como superior jerárquico corresponde exclusivamente al <strong className="font-bold">Subdirector Nacional</strong>. El jefe de dependencia habitual no está habilitado para firmar esta solicitud.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className={`grid grid-cols-1 ${requiereVoBoDuracion ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
                 {/* Firmante 1: Jefe / Supervisor / Director */}
                 <div
+                  onClick={() => {
+                    if (puedeFirmarComoJefe) {
+                      setFirmanteSeleccionado('JEFE_DEPENDENCIA');
+                      if (firmante1?.cargo) setCargoFirmante(firmante1.cargo);
+                    }
+                  }}
                   className={`p-4 rounded-xl border text-center transition-all ${
+                    puedeFirmarComoJefe ? 'cursor-pointer hover:border-[#003DA5]' : ''
+                  } ${
                     firmante1?.firmado
                       ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                      : miRolFirmante === 'JEFE_DEPENDENCIA'
+                      ? 'bg-blue-50/40 border-[#003DA5] ring-2 ring-[#003DA5]/20 shadow-xs'
                       : 'bg-white border-slate-200'
                   }`}
                 >
-                  <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                  <div className="text-[11px] font-black text-[#003DA5] uppercase tracking-wider mb-2">
                     {firmante1?.titulo || 'JEFE DE DEPENDENCIA — SUPERVISOR'}
                   </div>
 
-                  <div className={`text-sm font-bold mb-1 min-h-[20px] ${
-                    firmante1?.firmado ? 'text-[#111827]' : 'text-[#9CA3AF]'
+                  <div className={`text-sm font-black mb-1 min-h-[20px] ${
+                    firmante1?.firmado ? 'text-slate-900' : 'text-[#9CA3AF]'
                   }`}>
-                    {firmante1?.firmado ? (firmante1.firma?.nombreFirmante || 'Servidor Autorizado') : '—'}
+                    {firmante1?.firmado
+                      ? (firmante1.nombreFirmante || firmante1.firma?.nombreFirmante || 'Servidor Autorizado')
+                      : '—'}
                   </div>
 
-                  {firmante1?.firmado && firmante1.firma?.documentoIdentidad ? (
+                  {firmante1?.firmado && (firmante1.cargoFirmante || firmante1.firma?.cargoFirmante) && (
+                    <div className="text-[11px] font-semibold text-slate-600 mb-1">
+                      {firmante1.cargoFirmante || firmante1.firma?.cargoFirmante}
+                    </div>
+                  )}
+
+                  {firmante1?.firmado && (firmante1.documentoIdentidad || firmante1.firma?.documentoIdentidad) ? (
                     <div className="text-[11px] font-medium text-slate-500 mb-2">
-                      C.C. {firmante1.firma.documentoIdentidad}
+                      C.C. {firmante1.documentoIdentidad || firmante1.firma?.documentoIdentidad}
                     </div>
                   ) : null}
 
@@ -1041,7 +1614,7 @@ export default function ModalFirmasAprobacion({
                     {firmante1?.firmado ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        Aprobado
+                        Firma Digital Verificada
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
@@ -1051,17 +1624,17 @@ export default function ModalFirmasAprobacion({
                   </div>
 
                   <div className="text-xs text-[#9CA3AF] mt-1">
-                    {firmante1?.firmado && firmante1.firma?.fechaFirma
-                      ? formatearFechaAmigable(firmante1.firma.fechaFirma)
+                    {firmante1?.firmado && (firmante1.fechaFirma || firmante1.firma?.fechaFirma)
+                      ? formatearFechaAmigable(firmante1.fechaFirma || firmante1.firma?.fechaFirma)
                       : '—'}
                   </div>
 
-                  {firmante1?.firmado && firmante1.firma && (
+                  {firmante1?.firmado && (
                     <div className="mt-3 pt-2 border-t border-emerald-100 text-[10px] text-slate-400 space-y-0.5">
                       <p className="font-mono text-[9px] text-[#003DA5]">
-                        Cert: {firmante1.firma.certificadoId || 'ESAP-CERT-VIAT'}
+                        Cert: {firmante1.certificadoId || firmante1.firma?.certificadoId || 'ESAP-CERT-VIAT'}
                       </p>
-                      {firmante1.firma.esAusencia && (
+                      {firmante1.firma?.esAusencia && (
                         <p className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9px]">
                           En ausencia: {firmante1.firma.motivoAusencia}
                         </p>
@@ -1069,44 +1642,71 @@ export default function ModalFirmasAprobacion({
                     </div>
                   )}
 
-                  {!firmante1?.firmado && !todasFirmadas && puedeFirmar && esJefe && (
+                  {!firmante1?.firmado && !todasFirmadas && (
                     <div className="mt-3 pt-2 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => setFirmanteSeleccionado('JEFE_DEPENDENCIA')}
-                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                          firmanteSeleccionado === 'JEFE_DEPENDENCIA'
-                            ? 'bg-[#003DA5] text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        Firmar como {firmante1?.titulo}
-                      </button>
+                      {miRolFirmante !== 'JEFE_DEPENDENCIA' && miFirmaFirmada ? (
+                        <button
+                          type="button"
+                          disabled={enviandoAlerta}
+                          onClick={() => void handleEnviarAlerta('JEFE_DEPENDENCIA')}
+                          className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
+                          title="Enviar alerta y recordatorio por correo y notificación en sistema"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          <span>
+                            {enviandoAlerta
+                              ? 'Enviando alerta…'
+                              : `Enviar Alerta al ${firmante1?.titulo || 'Jefe de Dependencia'}`}
+                          </span>
+                        </button>
+                      ) : miRolFirmante === 'JEFE_DEPENDENCIA' && !miFirmaFirmada ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#003DA5]">
+                          <FileSignature className="w-3.5 h-3.5" /> Su firma requerida (Ver abajo)
+                        </span>
+                      ) : null}
                     </div>
                   )}
                 </div>
 
                 {/* Firmante 2: Gerente de Proyecto */}
                 <div
+                  onClick={() => {
+                    if (puedeFirmarComoGerente) {
+                      setFirmanteSeleccionado('GERENTE_PROYECTO');
+                      if (firmante2?.cargo) setCargoFirmante(firmante2.cargo);
+                    }
+                  }}
                   className={`p-4 rounded-xl border text-center transition-all ${
+                    puedeFirmarComoGerente ? 'cursor-pointer hover:border-[#003DA5]' : ''
+                  } ${
                     firmante2?.firmado
                       ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                      : miRolFirmante === 'GERENTE_PROYECTO'
+                      ? 'bg-blue-50/40 border-[#003DA5] ring-2 ring-[#003DA5]/20 shadow-xs'
                       : 'bg-white border-slate-200'
                   }`}
                 >
-                  <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                  <div className="text-[11px] font-black text-[#003DA5] uppercase tracking-wider mb-2">
                     {firmante2?.titulo || 'GERENTE DE PROYECTO / CONVENIO'}
                   </div>
 
-                  <div className={`text-sm font-bold mb-1 min-h-[20px] ${
-                    firmante2?.firmado ? 'text-[#111827]' : 'text-[#9CA3AF]'
+                  <div className={`text-sm font-black mb-1 min-h-[20px] ${
+                    firmante2?.firmado ? 'text-slate-900' : 'text-[#9CA3AF]'
                   }`}>
-                    {firmante2?.firmado ? (firmante2.firma?.nombreFirmante || 'Servidor Autorizado') : '—'}
+                    {firmante2?.firmado
+                      ? (firmante2.nombreFirmante || firmante2.firma?.nombreFirmante || 'Servidor Autorizado')
+                      : '—'}
                   </div>
 
-                  {firmante2?.firmado && firmante2.firma?.documentoIdentidad ? (
+                  {firmante2?.firmado && (firmante2.cargoFirmante || firmante2.firma?.cargoFirmante) && (
+                    <div className="text-[11px] font-semibold text-slate-600 mb-1">
+                      {firmante2.cargoFirmante || firmante2.firma?.cargoFirmante}
+                    </div>
+                  )}
+
+                  {firmante2?.firmado && (firmante2.documentoIdentidad || firmante2.firma?.documentoIdentidad) ? (
                     <div className="text-[11px] font-medium text-slate-500 mb-2">
-                      C.C. {firmante2.firma.documentoIdentidad}
+                      C.C. {firmante2.documentoIdentidad || firmante2.firma?.documentoIdentidad}
                     </div>
                   ) : null}
 
@@ -1114,7 +1714,7 @@ export default function ModalFirmasAprobacion({
                     {firmante2?.firmado ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        Aprobado
+                        Firma Digital Verificada
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
@@ -1124,17 +1724,17 @@ export default function ModalFirmasAprobacion({
                   </div>
 
                   <div className="text-xs text-[#9CA3AF] mt-1">
-                    {firmante2?.firmado && firmante2.firma?.fechaFirma
-                      ? formatearFechaAmigable(firmante2.firma.fechaFirma)
+                    {firmante2?.firmado && (firmante2.fechaFirma || firmante2.firma?.fechaFirma)
+                      ? formatearFechaAmigable(firmante2.fechaFirma || firmante2.firma?.fechaFirma)
                       : '—'}
                   </div>
 
-                  {firmante2?.firmado && firmante2.firma && (
+                  {firmante2?.firmado && (
                     <div className="mt-3 pt-2 border-t border-emerald-100 text-[10px] text-slate-400 space-y-0.5">
                       <p className="font-mono text-[9px] text-[#003DA5]">
-                        Cert: {firmante2.firma.certificadoId || 'ESAP-CERT-VIAT'}
+                        Cert: {firmante2.certificadoId || firmante2.firma?.certificadoId || 'ESAP-CERT-VIAT'}
                       </p>
-                      {firmante2.firma.esAusencia && (
+                      {firmante2.firma?.esAusencia && (
                         <p className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9px]">
                           En ausencia: {firmante2.firma.motivoAusencia}
                         </p>
@@ -1142,19 +1742,28 @@ export default function ModalFirmasAprobacion({
                     </div>
                   )}
 
-                  {!firmante2?.firmado && !todasFirmadas && puedeFirmar && esGerente && (
+                  {!firmante2?.firmado && !todasFirmadas && (
                     <div className="mt-3 pt-2 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => setFirmanteSeleccionado('GERENTE_PROYECTO')}
-                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                          firmanteSeleccionado === 'GERENTE_PROYECTO'
-                            ? 'bg-[#003DA5] text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        Firmar como Gerente de Proyecto
-                      </button>
+                      {miRolFirmante !== 'GERENTE_PROYECTO' && miFirmaFirmada ? (
+                        <button
+                          type="button"
+                          disabled={enviandoAlerta}
+                          onClick={() => void handleEnviarAlerta('GERENTE_PROYECTO')}
+                          className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
+                          title="Enviar alerta y recordatorio por correo y notificación en sistema"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          <span>
+                            {enviandoAlerta
+                              ? 'Enviando alerta…'
+                              : `Enviar Alerta al ${firmante2?.titulo || 'Gerente de Proyecto'}`}
+                          </span>
+                        </button>
+                      ) : miRolFirmante === 'GERENTE_PROYECTO' && !miFirmaFirmada ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#003DA5]">
+                          <FileSignature className="w-3.5 h-3.5" /> Su firma requerida (Ver abajo)
+                        </span>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -1172,15 +1781,23 @@ export default function ModalFirmasAprobacion({
                       {firmante3.titulo || 'ANALISTA DE VIÁTICOS'}
                     </div>
 
-                    <div className={`text-sm font-bold mb-1 min-h-[20px] ${
-                      firmante3.firmado ? 'text-[#111827]' : 'text-[#9CA3AF]'
+                    <div className={`text-sm font-black mb-1 min-h-[20px] ${
+                      firmante3.firmado ? 'text-slate-900' : 'text-[#9CA3AF]'
                     }`}>
-                      {firmante3.firmado ? (firmante3.firma?.nombreFirmante || 'Servidor Autorizado') : '—'}
+                      {firmante3.firmado
+                        ? (firmante3.nombreFirmante || firmante3.firma?.nombreFirmante || 'Servidor Autorizado')
+                        : '—'}
                     </div>
 
-                    {firmante3.firmado && firmante3.firma?.documentoIdentidad ? (
+                    {firmante3.firmado && (firmante3.cargoFirmante || firmante3.firma?.cargoFirmante) && (
+                      <div className="text-[11px] font-semibold text-slate-600 mb-1">
+                        {firmante3.cargoFirmante || firmante3.firma?.cargoFirmante}
+                      </div>
+                    )}
+
+                    {firmante3.firmado && (firmante3.documentoIdentidad || firmante3.firma?.documentoIdentidad) ? (
                       <div className="text-[11px] font-medium text-slate-500 mb-2">
-                        C.C. {firmante3.firma.documentoIdentidad}
+                        C.C. {firmante3.documentoIdentidad || firmante3.firma?.documentoIdentidad}
                       </div>
                     ) : null}
 
@@ -1188,7 +1805,7 @@ export default function ModalFirmasAprobacion({
                       {firmante3.firmado ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          Aprobado
+                          Firma Digital Verificada
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
@@ -1211,19 +1828,141 @@ export default function ModalFirmasAprobacion({
                       </div>
                     )}
 
-                    {!firmante3.firmado && !todasFirmadas && puedeFirmar && esAnalista && (
+                    {!firmante3.firmado && !todasFirmadas && miRolFirmante === 'ANALISTA' && !miFirmaFirmada && (
                       <div className="mt-3 pt-2 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => setFirmanteSeleccionado('ANALISTA')}
-                          className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                            firmanteSeleccionado === 'ANALISTA'
-                              ? 'bg-[#003DA5] text-white shadow-xs'
-                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                          }`}
-                        >
-                          Firmar como Analista
-                        </button>
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#003DA5]">
+                          <FileSignature className="w-3.5 h-3.5" /> Su firma requerida (Ver abajo)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Firmante VoBo: Dirección Nacional o Director Territorial (Duración > 3 días) */}
+                {requiereVoBoDuracion && (
+                  <div
+                    onClick={() => {
+                      if (puedeFirmarComoVoBo) {
+                        setFirmanteSeleccionado('VOBO_DURACION');
+                        setCargoFirmante(tituloVoBo);
+                      }
+                    }}
+                    className={`p-4 rounded-xl border text-center transition-all ${
+                      puedeFirmarComoVoBo ? 'cursor-pointer hover:border-[#003DA5]' : ''
+                    } ${
+                      voboAprobado
+                        ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                        : voboRechazado
+                        ? 'bg-rose-50 border-rose-200 shadow-xs'
+                        : miRolFirmante === 'VOBO_DURACION'
+                        ? 'bg-blue-50/40 border-[#003DA5] ring-2 ring-[#003DA5]/20 shadow-xs'
+                        : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <div className="text-[11px] font-black text-[#003DA5] uppercase tracking-wider mb-2">
+                      {`VOBO — ${tituloVoBo.toUpperCase()} (>3 DÍAS)`}
+                    </div>
+
+                    <div className={`text-sm font-black mb-1 min-h-[20px] ${
+                      voboAprobado ? 'text-slate-900' : voboRechazado ? 'text-rose-900' : 'text-[#9CA3AF]'
+                    }`}>
+                      {voboAprobado
+                        ? (voboData?.nombreFirmante || 'Servidor Autorizado')
+                        : voboRechazado
+                        ? 'Visto Bueno No Otorgado'
+                        : '—'}
+                    </div>
+
+                    {voboAprobado && voboData?.cargoFirmante && (
+                      <div className="text-[11px] font-semibold text-slate-600 mb-1">
+                        {voboData.cargoFirmante}
+                      </div>
+                    )}
+
+                    {voboAprobado && voboData?.documentoIdentidad ? (
+                      <div className="text-[11px] font-medium text-slate-500 mb-2">
+                        C.C. {voboData.documentoIdentidad}
+                      </div>
+                    ) : null}
+
+                    {justificacionDuracion && (
+                      <div className="my-2 p-2 bg-amber-50/70 border border-amber-200/80 rounded-lg text-left">
+                        <span className="text-[9px] font-bold text-amber-900 uppercase block">
+                          Justificación ({diasCalendario || '3+'} días cal.):
+                        </span>
+                        <p className="text-[10px] text-slate-700 italic line-clamp-2">
+                          &ldquo;{justificacionDuracion}&rdquo;
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-center my-2">
+                      {voboAprobado ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          VoBo Digital Aprobado
+                        </span>
+                      ) : voboRechazado ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-100 text-rose-800 text-xs font-semibold">
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          VoBo Rechazado
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
+                          Pendiente por autorizar
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-[#9CA3AF] mt-1">
+                      {voboAprobado && voboData?.fechaFirma
+                        ? formatearFechaAmigable(voboData.fechaFirma)
+                        : '—'}
+                    </div>
+
+                    {voboAprobado && (
+                      <div className="mt-3 pt-2 border-t border-emerald-100 text-[10px] text-slate-400 space-y-0.5">
+                        <p className="font-mono text-[9px] text-[#003DA5]">
+                          Cert: {voboData?.certificadoId || 'ESAP-VOBO-DUR'}
+                        </p>
+                        {voboData?.comentarios && (
+                          <p className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded text-[9px]">
+                            Obs: {voboData.comentarios}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {voboRechazado && voboData?.comentarios && (
+                      <div className="mt-3 pt-2 border-t border-rose-200 text-[10px] text-rose-800 bg-rose-50 p-1.5 rounded">
+                        <p className="font-bold">Motivo del rechazo:</p>
+                        <p className="italic">{voboData.comentarios}</p>
+                      </div>
+                    )}
+
+                    {!voboAprobado && !voboRechazado && !todasFirmadas && (
+                      <div className="mt-3 pt-2 border-t border-slate-100">
+                        {miRolFirmante === 'VOBO_DURACION' && !miFirmaFirmada ? (
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#003DA5]">
+                            <FileSignature className="w-3.5 h-3.5" /> Su VoBo requerido (Ver abajo)
+                          </span>
+                        ) : puedeFirmarComoVoBo ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFirmanteSeleccionado('VOBO_DURACION');
+                              setCargoFirmante(tituloVoBo);
+                            }}
+                            className="w-full py-2 px-3 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                          >
+                            <FileSignature className="w-3.5 h-3.5" />
+                            <span>Emitir Visto Bueno</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            Requiere competencia de {tituloVoBo}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1239,8 +1978,8 @@ export default function ModalFirmasAprobacion({
                   <span>Flujo de Firmas de Aprobación Completado</span>
                 </div>
                 <p className="text-xs leading-relaxed">
-                  Surtido el flujo de firmas y las validaciones correspondientes, la solicitud ha sido incorporada
-                  y queda formalmente en estado <strong>RADICADA</strong>.
+                  Surtido el flujo de firmas de aprobación y las validaciones correspondientes, la solicitud no requiere
+                  reprocesos y pasa directamente a la <strong>Secretaría de Viáticos</strong> para su priorización y asignación a analista.
                 </p>
                 <div className="pt-2 flex items-center gap-2">
                   <button
@@ -1263,165 +2002,213 @@ export default function ModalFirmasAprobacion({
               </div>
             )}
 
-            {/* Formulario de Firma Activa (si faltan firmas y el usuario puede firmar) */}
-            {!todasFirmadas && !modoDevolucion && puedeFirmar && (
+            {/* Si el usuario tiene rol de firma y YA firmó su parte */}
+            {miFirmaFirmada && !modoDevolucion && (
+              <div className="space-y-4">
+                {/* Banner de confirmación con datos de la firma verificada */}
+                {(() => {
+                  const nombreFirmado =
+                    miFirmanteObj?.nombreFirmante ||
+                    miFirmanteObj?.firma?.nombreFirmante ||
+                    currentUser?.nombreCompleto ||
+                    obtenerNombreFirmanteFinal();
+                  const cargoFirmado =
+                    miFirmanteObj?.cargoFirmante ||
+                    miFirmanteObj?.firma?.cargoFirmante ||
+                    obtenerCargoFirmanteFinal();
+                  const fechaFirma =
+                    miFirmanteObj?.fechaFirma || miFirmanteObj?.firma?.fechaFirma;
+                  const certId =
+                    miFirmanteObj?.certificadoId || miFirmanteObj?.firma?.certificadoId;
+                  const docId =
+                    miFirmanteObj?.documentoIdentidad || miFirmanteObj?.firma?.documentoIdentidad;
+
+                  return (
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 shadow-xs">
+                      <div className="p-2 bg-emerald-600 text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1 text-xs min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h5 className="font-black text-emerald-950 text-sm">
+                            Firma Digital Verificada y Certificada
+                          </h5>
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                            Validación OTP Exitosa
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-900 font-bold">
+                          Firmante:{' '}
+                          <span className="underline decoration-emerald-400 font-black">{nombreFirmado}</span>
+                          {cargoFirmado ? ` — ${cargoFirmado}` : ''}
+                          {docId ? ` (C.C. ${docId})` : ''}
+                        </p>
+                        <p className="text-[11px] text-emerald-800">
+                          Rol institucional: <strong>{miTituloRol}</strong>
+                          {fechaFirma ? ` · Fecha: ${formatearFechaAmigable(fechaFirma)}` : ''}
+                          {certId ? ` · Certificado: ${certId}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Si el otro rol aún tiene su firma pendiente */}
+                {otroFirmantePendiente && !todasFirmadas && (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-2.5 text-xs text-amber-950">
+                        <div className="p-2 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-extrabold">Firma pendiente por: {otroFirmanteTitulo}</p>
+                          <p className="text-[11px] text-amber-800">
+                            La solicitud se mantendrá en estado <strong>PENDIENTE_FIRMAS</strong> en su bandeja hasta que se complete esta firma para avanzar a <strong>SOLICITADO</strong>.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 flex-wrap justify-end">
+                        {((miRolFirmante === 'GERENTE_PROYECTO' && puedeFirmarComoJefe) ||
+                          (miRolFirmante === 'JEFE_DEPENDENCIA' && puedeFirmarComoGerente)) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFirmanteSeleccionado(otroFirmanteTipo);
+                              if (otroFirmanteObj?.cargo) setCargoFirmante(otroFirmanteObj.cargo);
+                            }}
+                            className="w-full sm:w-auto px-4 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-blue-900/20 cursor-pointer"
+                          >
+                            <FileSignature className="w-3.5 h-3.5" />
+                            <span>Firmar como {otroFirmanteTitulo}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={enviandoAlerta}
+                          onClick={() => void handleEnviarAlerta()}
+                          className="w-full sm:w-auto px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 shadow-md shadow-amber-500/20 cursor-pointer"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          <span>
+                            {enviandoAlerta
+                              ? 'Enviando alerta…'
+                              : `Enviar Alerta`}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200">
+                      <span className="text-[11px] text-slate-500 font-medium text-center sm:text-left">
+                        Podrá seguir consultando este expediente en la bandeja de firmas con el badge de espera hasta que pase a <strong>SOLICITADO</strong>.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={cerrar}
+                        className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Aceptar y Volver a la Bandeja
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {errorAccion && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{errorAccion}</span>
+                  </div>
+                )}
+
+                {mensajeExito && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-semibold flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                    <span>{mensajeExito}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Formulario de Firma Activa: SOLO aparece si el usuario puede firmar y NO ha firmado aún */}
+            {!todasFirmadas && !modoDevolucion && puedeFirmar && !miFirmaFirmada && (
               <div className="border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 bg-slate-50/50">
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
                   <div className="flex items-center gap-2">
-                    <PenTool className="w-4 h-4 text-[#003DA5]" />
+                    <ShieldCheck className="w-4 h-4 text-[#003DA5]" />
                     <h4 className="text-xs sm:text-sm font-black text-slate-800">
-                      Registro de Firma:{' '}
-                      <span className="text-[#003DA5]">
-                        {firmanteSeleccionado === 'JEFE_DEPENDENCIA'
-                          ? firmante1?.titulo || 'Jefe de Dependencia / Supervisor'
-                          : firmanteSeleccionado === 'GERENTE_PROYECTO'
-                          ? firmante2?.titulo || 'Gerente de Proyecto'
-                          : firmante3?.titulo || 'Analista de Viáticos'}
-                      </span>
+                      Aprobación Digital con Validación OTP:{' '}
+                      <span className="text-[#003DA5]">{miTituloRol}</span>
                     </h4>
                   </div>
-                  <div className="inline-flex p-0.5 bg-slate-200 rounded-xl text-[10px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setModoTrazo('CANVAS')}
-                      className={`px-2.5 py-1 rounded-lg transition-colors ${
-                        modoTrazo === 'CANVAS'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Trazar Firma (Pad)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModoTrazo('SELLO')}
-                      className={`px-2.5 py-1 rounded-lg transition-colors ${
-                        modoTrazo === 'SELLO'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Estampa Electrónica
-                    </button>
-                  </div>
+                  {((puedeFirmarComoJefe && puedeFirmarComoGerente) || puedeFirmarComoVoBo) && (
+                    <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-xl border border-slate-300 flex-wrap">
+                      {puedeFirmarComoJefe && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFirmanteSeleccionado('JEFE_DEPENDENCIA');
+                            if (firmante1?.cargo) setCargoFirmante(firmante1.cargo);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            miRolFirmante === 'JEFE_DEPENDENCIA'
+                              ? 'bg-[#003DA5] text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Firmar como Jefe
+                        </button>
+                      )}
+                      {puedeFirmarComoGerente && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFirmanteSeleccionado('GERENTE_PROYECTO');
+                            if (firmante2?.cargo) setCargoFirmante(firmante2.cargo);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            miRolFirmante === 'GERENTE_PROYECTO'
+                              ? 'bg-[#003DA5] text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Firmar como Gerente
+                        </button>
+                      )}
+                      {puedeFirmarComoVoBo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFirmanteSeleccionado('VOBO_DURACION');
+                            setCargoFirmante(tituloVoBo);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            miRolFirmante === 'VOBO_DURACION'
+                              ? 'bg-[#003DA5] text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          VoBo {instanciaVoBo === 'DIRECTOR_TERRITORIAL' ? 'Dir. Territorial' : 'Dir. Nacional'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                    {obtenerNombreFirmanteFinal()}
+                  </span>
                 </div>
 
-                {/* Campos de Nombre y Cargo */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nombre Completo del Firmante <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={nombreFirmante}
-                      onChange={(e) => setNombreFirmante(e.target.value)}
-                      placeholder="Ej. Dr. Carlos Arturo Mendoza"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Cargo Oficial del Firmante <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={cargoFirmante}
-                      onChange={(e) => setCargoFirmante(e.target.value)}
-                      placeholder="Ej. Director Nacional / Subdirector Nacional G.C."
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                    />
-                  </div>
-                </div>
-
-                {/* Checkbox de ausencia o desplazamiento */}
-                {firmanteSeleccionado === 'JEFE_DEPENDENCIA' && (
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={esAusencia}
-                        onChange={(e) => setEsAusencia(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded text-[#003DA5] border-slate-300 focus:ring-[#003DA5]"
-                      />
-                      <span className="text-xs text-slate-700 font-semibold">
-                        Firma en ausencia o por desplazamiento del titular de la dependencia
-                      </span>
-                    </label>
-                    {esAusencia && (
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                          Justificación de la Ausencia / Desplazamiento <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={motivoAusencia}
-                          onChange={(e) => setMotivoAusencia(e.target.value)}
-                          placeholder="Ej. Titular en comisión oficial en territorio según resolución 482"
-                          className="w-full px-3 py-1.5 border border-amber-300 rounded-lg text-xs bg-amber-50/40 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Pad de trazo interactivo o preview de estampa */}
-                {modoTrazo === 'CANVAS' ? (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-700">
-                        Dibuje su firma en el panel:
-                      </label>
-                      <button
-                        type="button"
-                        onClick={limpiarCanvas}
-                        className="text-[10px] text-slate-500 hover:text-red-600 font-bold inline-flex items-center gap-1"
-                      >
-                        <RotateCcw className="w-3 h-3" /> Limpiar trazo
-                      </button>
-                    </div>
-                    <div className="border-2 border-dashed border-slate-300 rounded-2xl bg-white overflow-hidden shadow-inner">
-                      <canvas
-                        ref={canvasRef}
-                        width={600}
-                        height={160}
-                        onMouseDown={iniciarTrazo}
-                        onMouseMove={trazar}
-                        onMouseUp={detenerTrazo}
-                        onMouseLeave={detenerTrazo}
-                        onTouchStart={iniciarTrazo}
-                        onTouchMove={trazar}
-                        onTouchEnd={detenerTrazo}
-                        className="w-full h-36 touch-none cursor-crosshair"
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-400 italic">
-                      * Puede dibujar el trazo con ratón o pantalla táctil. Si no dibuja trazo, el sistema estampará automáticamente la firma electrónica certificada institucional.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-1">
-                    <p className="text-[11px] font-bold text-slate-700 mb-1">Previsualización de Estampa:</p>
-                    <div className="p-3 bg-slate-50 border-2 border-slate-300 rounded-xl font-mono text-[11px] text-slate-800 space-y-0.5">
-                      <p className="font-bold text-[#003DA5]">ESAP — FIRMADO DIGITALMENTE</p>
-                      <p className="font-bold">{nombreFirmante || '[Nombre del Firmante]'}</p>
-                      <p className="text-slate-600">{cargoFirmante || '[Cargo Oficial]'}</p>
-                      <p className="text-[9px] text-slate-400">FECHA: {new Date().toLocaleString('es-CO')}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Comentarios opcionales */}
+                {/* Observaciones opcionales */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Comentarios u Observaciones de la Aprobación (opcional)
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Observaciones de la Aprobación <span className="text-slate-400 font-normal">(Opcional)</span>
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     value={comentarios}
                     onChange={(e) => setComentarios(e.target.value)}
-                    placeholder="Ej. Solicitud revisada y autorizada para el cumplimiento de objetivos institucionales."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                    placeholder="Escriba aquí sus observaciones o comentarios sobre la comisión (opcional)..."
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:bg-white bg-white transition-all resize-none shadow-xs"
                   />
                 </div>
 
@@ -1441,36 +2228,49 @@ export default function ModalFirmasAprobacion({
 
                 {/* Botones de acción del formulario */}
                 <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setModoDevolucion(true)}
-                    className="px-3.5 py-2 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Devolver con Observaciones
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setModoDevolucion(true)}
+                      className="px-3.5 py-2 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Devolver con Observaciones
+                    </button>
+                    {miRolFirmante === 'VOBO_DURACION' && (
+                      <button
+                        type="button"
+                        onClick={() => setModoRechazoVoBo(true)}
+                        className="px-3.5 py-2 border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" /> Rechazar VoBo
+                      </button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleDescargarFormato023}
+                      onClick={handlePrevisualizarFormato023Flotante}
                       disabled={descargandoPdf}
-                      className="px-3.5 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                      title="Previsualizar formato GF-FO-023 en PDF"
+                      className="px-3.5 py-2 border border-blue-200 bg-blue-50/60 text-[#003DA5] hover:bg-blue-100 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                      title="Ver formato GF-FO-023 en visor interactivo (flotante / mitad de pantalla)"
                     >
                       <Eye className="w-3.5 h-3.5 text-[#003DA5]" />
-                      {descargandoPdf ? 'Generando…' : 'Ver Formato 023'}
+                      {descargandoPdf ? 'Cargando…' : 'Visor Formato 023'}
                     </button>
                     <button
                       type="button"
                       disabled={procesandoFirma || solicitandoOtp}
                       onClick={() => void handleIniciarFirmaOtp()}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-emerald-600/20"
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-emerald-600/20 cursor-pointer"
                     >
                       <ShieldCheck className="w-4 h-4" />
                       {solicitandoOtp
                         ? 'Enviando OTP…'
                         : procesandoFirma
                         ? 'Firmando y validando…'
+                        : miRolFirmante === 'VOBO_DURACION'
+                        ? 'Aprobar VoBo con Validación OTP'
                         : 'Firmar con Validación OTP'}
                     </button>
                   </div>
@@ -1478,8 +2278,30 @@ export default function ModalFirmasAprobacion({
               </div>
             )}
 
+            {/* Aviso específico si la firma de Jefe y Gerente está bloqueada a la espera de VoBo Previo */}
+            {!todasFirmadas && !modoDevolucion && !modoRechazoVoBo && !puedeFirmar && voboBloqueaFirmasJefeGerente && (esJefe || esGerente || esAdmin) && (
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl text-amber-950 space-y-2.5 shadow-xs">
+                <div className="flex items-center gap-2.5 font-black text-xs text-amber-950">
+                  <div className="p-2 bg-amber-500 text-white rounded-xl shrink-0 shadow-xs">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-extrabold text-sm text-amber-950">
+                      Fase 1 en Proceso: En espera de Visto Bueno Previo ({tituloVoBo})
+                    </h5>
+                    <p className="text-[11px] text-amber-800 font-medium">
+                      Esta comisión supera los 3 días calendario ({diasCalendario || 'más de 3'} días cal. / {diasValor || '≥3.5'} días valor).
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs leading-relaxed text-amber-900 pl-10">
+                  Conforme a la directriz institucional de la ESAP, <strong>antes de que el Jefe de Dependencia y el Gerente de Proyecto puedan firmar la aprobación</strong>, el expediente debe contar con el Visto Bueno (VoBo) favorable emitido por <strong>{tituloVoBo}</strong>. Una vez aprobado dicho visto bueno, el formulario de firma digital con OTP se habilitará automáticamente para su suscripción.
+                </p>
+              </div>
+            )}
+
             {/* Aviso informativo para rol Enlace o usuarios sin rol de firma */}
-            {!todasFirmadas && !modoDevolucion && !puedeFirmar && (
+            {!todasFirmadas && !modoDevolucion && !modoRechazoVoBo && !puedeFirmar && !(voboBloqueaFirmasJefeGerente && (esJefe || esGerente || esAdmin)) && (
               <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl text-amber-950 space-y-2">
                 <div className="flex items-center gap-2 font-black text-xs">
                   <Clock className="w-4 h-4 text-amber-700 shrink-0" />
@@ -1488,6 +2310,65 @@ export default function ModalFirmasAprobacion({
                 <p className="text-[11px] leading-relaxed text-amber-900">
                   Usted está consultando este expediente con perfil de <strong>Enlace de Dependencia (Solo Lectura)</strong>. El Enlace no realiza acciones de firma; la aprobación previa es suscrita de forma obligatoria por el Jefe de Dependencia/Supervisor y el Gerente de Proyecto antes de la radicación formal de la solicitud.
                 </p>
+              </div>
+            )}
+
+            {/* Panel de Rechazo de VoBo de Duración Extendida */}
+            {modoRechazoVoBo && (
+              <div className="p-4 border border-rose-200 bg-rose-50/50 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-black text-xs text-rose-800">
+                    <XCircle className="w-4 h-4 text-rose-600" />
+                    <span>Rechazar Visto Bueno de Duración Extendida ({tituloVoBo})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModoRechazoVoBo(false)}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Al rechazar el Visto Bueno, quedará registrado formalmente en la trazabilidad institucional con su usuario y motivo. La solicitud no podrá avanzar a radicación formal mientras no cuente con el VoBo aprobado.
+                </p>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Motivo formal de rechazo del Visto Bueno <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={motivoRechazoVoBo}
+                    onChange={(e) => setMotivoRechazoVoBo(e.target.value)}
+                    placeholder="Explique las razones institucionales por las cuales no se otorga el VoBo a la duración solicitada…"
+                    className="w-full px-3 py-2 border border-rose-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white"
+                  />
+                </div>
+
+                {errorAccion && (
+                  <p className="text-xs text-red-700 font-semibold bg-red-100 p-2 rounded-lg">
+                    {errorAccion}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setModoRechazoVoBo(false)}
+                    className="px-3.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    Volver al formulario
+                  </button>
+                  <button
+                    type="button"
+                    disabled={procesandoFirma || !motivoRechazoVoBo.trim()}
+                    onClick={() => void handleRechazarVoBo()}
+                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    {procesandoFirma ? 'Registrando rechazo…' : 'Confirmar Rechazo de VoBo'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1553,7 +2434,14 @@ export default function ModalFirmasAprobacion({
             )}
           </>
         )}
+        </div>
       </div>
+
+      {/* Visor de documentos flotante, movible, minimizable y divisible */}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
+      />
 
       {/* Modal Institucional de Firma Digital con Validación OTP */}
       {modalFirmaDigitalAbierta && (
@@ -1568,10 +2456,12 @@ export default function ModalFirmasAprobacion({
               ? `${solicitudDetalle.fechaInicio} al ${solicitudDetalle.fechaFin}`
               : ''
           }
-          firmanteNombre={nombreFirmante.trim()}
-          firmanteCargo={cargoFirmante.trim()}
+          firmanteNombre={obtenerNombreFirmanteFinal()}
+          firmanteCargo={obtenerCargoFirmanteFinal()}
           etapaLabel={
-            firmanteSeleccionado === 'JEFE_DEPENDENCIA'
+            firmanteSeleccionado === 'VOBO_DURACION'
+              ? `Visto Bueno Duración Extendida (${tituloVoBo})`
+              : firmanteSeleccionado === 'JEFE_DEPENDENCIA'
               ? 'Aprobación Jefe de Dependencia / Supervisor'
               : firmanteSeleccionado === 'GERENTE_PROYECTO'
               ? 'Aprobación Gerente de Proyecto / Convenio'

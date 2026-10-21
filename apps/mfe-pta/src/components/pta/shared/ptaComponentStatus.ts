@@ -35,7 +35,9 @@ export function getPtaComponentInfo(pta: any, key: string): any | null {
 
 /**
  * Estado único para tarjetas, detalle e impresiones.
- * La aplicabilidad (horas > 0) se evalúa antes que el estado global del PTA:
+ * La aplicabilidad se evalúa antes que el estado global del PTA. El backend
+ * indica si hay contenido, incluidas Complementarias configuradas sin horas;
+ * para respuestas anteriores se conservan las horas como respaldo:
  * un PTA aprobado nunca convierte un componente vacío en "Aprobado".
  */
 export function getPtaComponentDisplayStatus(
@@ -48,13 +50,13 @@ export function getPtaComponentDisplayStatus(
   if (info?.requiere_reaprobacion && (backendStatus === 'pendiente' || backendStatus === 'devuelto')) return backendStatus;
   if (backendStatus === 'no_aplica') return 'no_aplica';
 
-  if (info?.horas != null) {
+  if (info?.aplica !== true && info?.horas != null) {
     const hours = Number(info.horas);
     if (Number.isFinite(hours) && hours <= 0) return 'no_aplica';
   }
 
   const hoursField = HOURS_FIELD[key as PtaCollapsedComponentKey];
-  if (pta?.[hoursField] != null) {
+  if (info?.aplica !== true && pta?.[hoursField] != null) {
     const hours = Number(pta[hoursField]);
     if (Number.isFinite(hours) && hours <= 0) return 'no_aplica';
   }
@@ -96,9 +98,9 @@ export function getPtaApprovalDisplayStatus(pta: any, approval: any): PtaCompone
     return approval.estado;
   }
   if (approval?.aplica === false || status === 'no_aplica') return 'no_aplica';
-  if (approval?.horas != null && Number.isFinite(Number(approval.horas)) && Number(approval.horas) <= 0) return 'no_aplica';
+  if (approval?.aplica !== true && approval?.horas != null && Number.isFinite(Number(approval.horas)) && Number(approval.horas) <= 0) return 'no_aplica';
   const collapsed = getPtaComponentDisplayStatus(pta, getPtaCollapsedKey(String(approval?.componente || '')));
-  if (collapsed === 'no_aplica') return 'no_aplica';
+  if (approval?.aplica !== true && collapsed === 'no_aplica') return 'no_aplica';
   // Compatibility with historical responses, never infer emptiness from the actor alone.
   if (approval?.horas == null && approval?.aplica == null &&
       /sin actividades/i.test(String(approval?.comentarios || approval?.comentario || approval?.observaciones || ''))) return 'no_aplica';

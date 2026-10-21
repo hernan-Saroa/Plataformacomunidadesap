@@ -75,11 +75,11 @@ describe('PanelCausal · elegir la causal', () => {
 
   it('con la modalidad sin ratificar no deja elegir, y dice por qué', async () => {
     // La lista es la de la modalidad ratificada: elegir antes dejaría en el
-    // expediente una causal de una modalidad que el proceso puede dejar de
-    // tener en la 3.5.
+    // expediente una causal de una modalidad que el área todavía puede
+    // cambiar en la 3.1.
     pintar(estado({ puedeElegir: false, motivoNoElige: 'MODALIDAD_SIN_RATIFICAR' }));
 
-    expect(await screen.findByText(/ratificar la modalidad en la 3.5/)).toBeInTheDocument();
+    expect(await screen.findByText(/Primero hay que aprobar el estudio previo/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Elegir la causal/ })).toBeNull();
   });
 

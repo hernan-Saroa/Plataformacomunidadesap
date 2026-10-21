@@ -1,4 +1,8 @@
-import { codigoDesdeNombre, codigoLibre } from './documentos-requeridos.service';
+import {
+  codigoDesdeNombre,
+  codigoLibre,
+  exigirArchivoSiEsDeConsulta,
+} from './documentos-requeridos.service';
 
 /**
  * El código con el que las entregas citan un documento requerido (EFDS-2066).
@@ -38,5 +42,23 @@ describe('codigoLibre', () => {
   it('numera cuando ya está ocupado, en vez de chocar con el UNIQUE', () => {
     expect(codigoLibre('MEMORANDO', ['MEMORANDO'])).toBe('MEMORANDO_2');
     expect(codigoLibre('MEMORANDO', ['MEMORANDO', 'MEMORANDO_2'])).toBe('MEMORANDO_3');
+  });
+});
+
+/**
+ * Los documentos solo de consulta (095): se ofrecen para descargar y no se
+ * cargan, así que sin archivo no tienen nada que mostrar.
+ */
+describe('exigirArchivoSiEsDeConsulta', () => {
+  it('rechaza uno de consulta sin formato', () => {
+    expect(() => exigirArchivoSiEsDeConsulta(true, null)).toThrow(/solo de consulta/);
+  });
+
+  it('acepta uno de consulta con formato', () => {
+    expect(() => exigirArchivoSiEsDeConsulta(true, 'BS-GU-001')).not.toThrow();
+  });
+
+  it('no le pide formato a los que se cargan', () => {
+    expect(() => exigirArchivoSiEsDeConsulta(false, null)).not.toThrow();
   });
 });

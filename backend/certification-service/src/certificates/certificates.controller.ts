@@ -366,11 +366,13 @@ export class CertificatesController {
   async getCertificadoPdf(
     @Param('id') id: string,
     @Query('publicBaseUrl') publicBaseUrl: string | undefined,
+    @Query('includeSalary') includeSalary: string | undefined,
+    @Query('includeTechnicalBonus') includeTechnicalBonus: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { buffer, filename } = await this.certificatesService.generateCertificadoPdfBufferById(
       id,
-      { publicBaseUrl },
+      { publicBaseUrl, includeSalary, includeTechnicalBonus },
     );
     res.set({
       'Content-Type': 'application/pdf',

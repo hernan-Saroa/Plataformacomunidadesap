@@ -61,6 +61,13 @@ export class DocumentoRequerido {
   @Column({ default: true })
   obligatorio: boolean;
 
+  /**
+   * Solo de consulta: la actividad ofrece el archivo para leerlo y no pide
+   * nada de vuelta (migración 095). Nunca es obligatorio.
+   */
+  @Column({ default: false })
+  informativo: boolean;
+
   @Column({ default: 0 })
   orden: number;
 

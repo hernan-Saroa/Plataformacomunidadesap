@@ -37,6 +37,7 @@ import {
   Check,
   Upload,
   ArrowLeftRight,
+  GraduationCap,
   X,
 } from 'lucide-react';
 import {
@@ -57,8 +58,10 @@ import {
   SolicitudPendiente023,
   TicketValidationResult,
   TipoTransporteTiquete,
+  TarifaEstimadaResult,
 } from '../types/viaticos';
-import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
+import { ConfigTipoComisionado, CampoFormulario, ConfigJornadaLaboral } from '../types/parametrizacion';
+import { obtenerJornadaLaboralActiva } from '../utils/diasHabilesUtils';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
@@ -92,6 +95,7 @@ import {
   validarFechasSolicitud,
   validarSecuenciaItinerario,
   siguienteDiaISO,
+  evaluarVoBoDuracion,
 } from '../utils/viaticosUtils';
 
 interface Props {
@@ -186,6 +190,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
+  const [comisionadosDependencia, setComisionadosDependencia] = useState<Comisionado[]>([]);
+  const [cargandoComisionadosDep, setCargandoComisionadosDep] = useState(false);
   const [solicitudesPendientes023, setSolicitudesPendientes023] = useState<SolicitudPendiente023[]>([]);
   const [consultando, setConsultando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
@@ -196,10 +202,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const { festivos } = useFestivos();
   // Historial de cuentas bancarias y selección
   const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('');
+  const [configJornada, setConfigJornada] = useState<ConfigJornadaLaboral | null>(null);
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
     radicadoFueraJornada: boolean;
+    anticipacionMinimaRequerida?: number;
+    horaCorteAplicada?: string;
   } | null>(null);
   const [alertaSolapamiento, setAlertaSolapamiento] = useState<{
     mensaje: string;
@@ -261,6 +270,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     devCode?: string;
   } | null>(null);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
+  const [actividadDocente, setActividadDocente] = useState<'DICTAR_CLASE' | 'OTRA_ACTIVIDAD'>('DICTAR_CLASE');
+  const [agendaActividadesDocente, setAgendaActividadesDocente] = useState<string>('');
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
   const refTokenCiudades = useRef(0);
@@ -279,6 +290,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   } | null>(null);
   const [subiendoExcepcion, setSubiendoExcepcion] = useState(false);
   const [errorExcepcion, setErrorExcepcion] = useState<string | null>(null);
+  const [tarifaEstimadaReferencia, setTarifaEstimadaReferencia] = useState<TarifaEstimadaResult | null>(null);
   const refTokenValidacionTiquete = useRef(0);
 
   // ========== Estado RF-LIQ-005 (Saldo Presupuestal por Dependencia - Informativo) ==========
@@ -478,16 +490,95 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const costoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
     setAsignacionesBasicas(salarioBasico > 0 ? [salarioBasico] : []);
     setMontoEstimadoTiquete(costoEstimadoTiquete);
+
+    // Hidratar comisionado si hace falta información en el payload
+    let comisionadoCompleto = solicitud.comisionado;
+    if (!comisionadoCompleto && (solicitud.comisionadoId || (solicitud as any).cedulaComisionado)) {
+      try {
+        const idOCed = (solicitud as any).cedulaComisionado || solicitud.comisionadoId;
+        const resCom = await viaticosService.consultarComisionado(idOCed);
+        if (resCom) comisionadoCompleto = resCom;
+      } catch (err) {
+        console.warn('No se pudo reconsultar comisionado:', err);
+      }
+    }
+
+    const {
+      origenCiudad: syncOrigenCiudad,
+      origenDepartamento: syncOrigenDepto,
+      destinoCiudad: syncDestinoCiudad,
+      destinoDepartamento: syncDestinoDepto,
+      fechaInicio: syncFechaInicio,
+      fechaFin: syncFechaFin,
+      diasComision: syncDias,
+    } = sincronizarItinerarioFormulario(solicitud.itinerario || []);
+
+    const rawAdic = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
+    const ctas = comisionadoCompleto?.cuentasBancarias || [];
+    const ctaComisionado = ctas.find((c) => c.esPrincipal) || ctas[0];
+
+    const bco =
+      rawAdic.entidad_bancaria ||
+      rawAdic.entidadBancaria ||
+      rawAdic.banco ||
+      ctaComisionado?.banco ||
+      '';
+    const cta =
+      rawAdic.num_cuenta ||
+      rawAdic.numeroCuenta ||
+      rawAdic.numCuenta ||
+      rawAdic.cuentaBancaria ||
+      ctaComisionado?.numeroCuenta ||
+      '';
+    const tip =
+      rawAdic.tipo_cuenta ||
+      rawAdic.tipoCuenta ||
+      ctaComisionado?.tipoCuenta ||
+      '';
+
+    if (ctaComisionado?.id) {
+      setCuentaBancariaSeleccionadaId(ctaComisionado.id);
+    }
+
+    const cargoEncontrado =
+      rawAdic.cargoEsap ||
+      rawAdic.cargo ||
+      rawAdic.cargoInstitucional ||
+      rawAdic.cargoComisionado ||
+      (solicitud as any).cargo ||
+      comisionadoCompleto?.cargo ||
+      (comisionadoCompleto?.cargos && comisionadoCompleto.cargos.length > 0 ? comisionadoCompleto.cargos[0].cargo : '') ||
+      '';
+
+    const idCargoEncontrado =
+      (solicitud as any).idCargo ||
+      rawAdic.idCargo ||
+      comisionadoCompleto?.idCargo ||
+      (comisionadoCompleto?.cargos && comisionadoCompleto.cargos.length > 0 ? comisionadoCompleto.cargos[0].idCargo : undefined);
+
+    if (cargoEncontrado) {
+      setCargoActualSeleccionado(cargoEncontrado);
+    }
+
+    const idDep = (solicitud as any).idDependencia ?? comisionadoCompleto?.idDependencia;
+    if (idDep) {
+      setDependenciaId(String(idDep));
+    }
+
     setForm({
-      documentoComisionado: solicitud.comisionado?.numeroDocumento || '',
-      comisionadoId: solicitud.comisionadoId || solicitud.comisionado?.id || '',
+      documentoComisionado: comisionadoCompleto?.numeroDocumento || (solicitud as any).cedulaComisionado || '',
+      nombreComisionado: comisionadoCompleto
+        ? formatearNombreComisionado(comisionadoCompleto)
+        : (solicitud as any).nombreComisionado || '',
+      tipoComisionado: comisionadoCompleto?.tipoComisionado || (solicitud as any).tipoComisionado || 'FUNCIONARIO',
+      comisionadoId: solicitud.comisionadoId || comisionadoCompleto?.id || '',
       objetoComision: solicitud.objetoComision || '',
-      origenCiudad: solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
-      origenDepartamento: '',
-      destinoCiudad: solicitud.destinoCiudad || '',
-      destinoDepartamento: solicitud.destinoDepartamento || '',
-      fechaInicio: solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : '',
-      fechaFin: solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : '',
+      origenCiudad: syncOrigenCiudad || solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
+      origenDepartamento: syncOrigenDepto || solicitud.origenDepartamento || '',
+      destinoCiudad: syncDestinoCiudad || solicitud.destinoCiudad || '',
+      destinoDepartamento: syncDestinoDepto || solicitud.destinoDepartamento || '',
+      fechaInicio: syncFechaInicio || (solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : ''),
+      fechaFin: syncFechaFin || (solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : ''),
       rubroPresupuestal: solicitud.rubroPresupuestal || '',
       numeroCdp: (solicitud as any).numeroCdp || '',
       fechaCdp: (solicitud as any).fechaCdp || '',
@@ -495,7 +586,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       requiereTiquetes: Boolean(solicitud.requiereTiquetes),
       montoViaticos: Number(solicitud.montoViaticos || 0),
       montoGastosViaje: Number(solicitud.montoGastosViaje || 0),
-      diasComision: solicitud.diasComision ?? 1,
+      diasComision: syncDias || solicitud.diasComision || 1,
       salarioBasico,
       costoEstimadoTiquete,
       aceptaHabeasData: true,
@@ -509,33 +600,58 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
-      camposAdicionales: (() => {
-        const raw = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
-        const bco = raw.entidad_bancaria || raw.entidadBancaria || raw.banco || '';
-        const cta = raw.num_cuenta || raw.numeroCuenta || raw.numCuenta || raw.cuentaBancaria || '';
-        const tip = raw.tipo_cuenta || raw.tipoCuenta || '';
-        const cargoEncontrado = raw.cargoEsap || raw.cargo || raw.cargoInstitucional || raw.cargoComisionado || solicitud.comisionado?.cargo || '';
-        if (cargoEncontrado) {
-          setCargoActualSeleccionado(cargoEncontrado);
-        }
-        return {
-          ...raw,
-          ...(cargoEncontrado ? { cargoEsap: cargoEncontrado, cargo: cargoEncontrado, cargoInstitucional: cargoEncontrado, cargoComisionado: cargoEncontrado } : {}),
-          ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
-          ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
-          ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
-        };
-      })(),
+      camposAdicionales: {
+        ...rawAdic,
+        ...(cargoEncontrado
+          ? {
+              cargoEsap: cargoEncontrado,
+              cargo: cargoEncontrado,
+              cargoInstitucional: cargoEncontrado,
+              cargoComisionado: cargoEncontrado,
+              ...(idCargoEncontrado ? { idCargo: idCargoEncontrado } : {}),
+            }
+          : {}),
+        ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+        ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta, numero_cuenta: cta } : {}),
+        ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+        obligacion_tributaria:
+          rawAdic.obligacion_tributaria !== undefined && rawAdic.obligacion_tributaria !== null
+            ? Boolean(rawAdic.obligacion_tributaria)
+            : Boolean(comisionadoCompleto?.esFacturadorElectronico ?? false),
+      },
+      cuentaBancariaSeleccionada: ctaComisionado
+        ? {
+            id: ctaComisionado.id,
+            banco: bco,
+            tipoCuenta: tip || 'AHORROS',
+            numeroCuenta: cta,
+            urlCertificadoBancario: ctaComisionado.urlCertificadoBancario,
+            nombreArchivoCertificado: ctaComisionado.nombreArchivoCertificado,
+            esPrincipal: ctaComisionado.esPrincipal,
+          }
+        : undefined,
+      cargoSeleccionado: cargoEncontrado
+        ? {
+            idCargo: idCargoEncontrado,
+            cargo: cargoEncontrado,
+            salario: salarioBasico,
+          }
+        : undefined,
       itinerario: solicitud.itinerario || [],
-      idDependencia: (solicitud as any).idDependencia ?? solicitud.comisionado?.idDependencia ?? undefined,
+      idDependencia: idDep != null ? Number(idDep) : undefined,
     });
-    if (solicitud.comisionado) {
-      setComisionado(solicitud.comisionado);
+
+    if (comisionadoCompleto) {
+      setComisionado(comisionadoCompleto);
       await cargarChecklist(
-        solicitud.esInternacional ? 'INTERNACIONAL' : solicitud.comisionado.tipoComisionado,
+        solicitud.esInternacional ? 'INTERNACIONAL' : comisionadoCompleto.tipoComisionado,
       );
     }
-    setPaso(PASOS.length - 1);
+    if (solicitud.estadoSolicitud === 'DEVUELTA') {
+      setPaso(2);
+    } else {
+      setPaso(PASOS.length - 1);
+    }
   };
 
   useEffect(() => {
@@ -543,6 +659,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(1);
       setForm(formInicialNuevaSolicitud());
       setComisionado(null);
+      setComisionadosDependencia([]);
+      setCargandoComisionadosDep(false);
       setSolicitudesPendientes023([]);
       setConsultando(false);
       setErrorConsulta(null);
@@ -690,9 +808,50 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   /**
+   * Resuelve el id numérico de la dependencia propia del usuario enlace.
+   */
+  const idDependenciaUsuario: number | null = useMemo(() => {
+    if (usuarioActual?.dependencia?.idDependencia != null) {
+      const n = Number(usuarioActual.dependencia.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (usuarioActual?.dependencia?.codDependencia) {
+      const match = dependencias.find((d) => d.codDependencia === usuarioActual.dependencia?.codDependencia);
+      if (match?.idDependencia != null) {
+        const n = Number(match.idDependencia);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    }
+    if (dependenciaId) {
+      const match = dependencias.find(
+        (d) => d.codDependencia === dependenciaId || String(d.idDependencia) === String(dependenciaId),
+      );
+      if (match?.idDependencia != null) return Number(match.idDependencia);
+    }
+    return null;
+  }, [usuarioActual?.dependencia, dependencias, dependenciaId]);
+
+  const depEnlaceActual = useMemo(() => {
+    return (
+      dependencias.find((d) => Number(d.idDependencia) === Number(idDependenciaUsuario)) ||
+      (usuarioActual?.dependencia
+        ? {
+            idDependencia: usuarioActual.dependencia.idDependencia,
+            codDependencia: usuarioActual.dependencia.codDependencia,
+            nomDependencia: usuarioActual.dependencia.nomDependencia,
+          }
+        : null)
+    );
+  }, [dependencias, idDependenciaUsuario, usuarioActual?.dependencia]);
+
+  /**
    * Resuelve el id numérico de la dependencia activa para consultar cargos (N:M auth.dependencias_cargos).
    */
   const idDependenciaActual: number | null = useMemo(() => {
+    // Si es enlace (no superadmin), está estrictamente restringido a su propia dependencia
+    if (!puedeElegirDependencia() && idDependenciaUsuario != null) {
+      return idDependenciaUsuario;
+    }
     if (form.idDependencia != null && form.idDependencia !== '') {
       const n = Number(form.idDependencia);
       if (!isNaN(n) && n > 0) return n;
@@ -716,7 +875,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (!isNaN(n) && n > 0) return n;
     }
     return null;
-  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia]);
+  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia, idDependenciaUsuario]);
 
   // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
   useEffect(() => {
@@ -748,6 +907,38 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       isSubscribed = false;
     };
   }, [idDependenciaActual]);
+
+  // Cargar lista de comisionados de la dependencia (para enlaces, los de su dependencia; para admin, los de la dependencia activa)
+  useEffect(() => {
+    const idDepAListar = !puedeElegirDependencia() ? idDependenciaUsuario : idDependenciaActual;
+    if (!idDepAListar || typeof viaticosService.listarComisionados !== 'function') {
+      setComisionadosDependencia([]);
+      setCargandoComisionadosDep(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setCargandoComisionadosDep(true);
+
+    viaticosService
+      .listarComisionados(idDepAListar)
+      .then((lista) => {
+        if (isSubscribed) {
+          setComisionadosDependencia(lista || []);
+        }
+      })
+      .catch((err) => {
+        console.warn('Error cargando comisionados de la dependencia:', err);
+        if (isSubscribed) setComisionadosDependencia([]);
+      })
+      .finally(() => {
+        if (isSubscribed) setCargandoComisionadosDep(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [idDependenciaUsuario, idDependenciaActual]);
 
   const cambiarDependencia = (idDep: number | string | null) => {
     const numId = idDep ? Number(idDep) : null;
@@ -890,6 +1081,37 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return parametrizacion.camposOcultos.includes(clave);
   };
 
+  const obtenerLimiteCampo = (clave: string): number => {
+    const definido = camposCatalogo.find((c) => c.clave === clave);
+    if (definido?.limiteCaracteres !== undefined && definido?.limiteCaracteres !== null && definido.limiteCaracteres > 0) {
+      return definido.limiteCaracteres;
+    }
+    return 250;
+  };
+
+  const renderContadorCaracteres = (valor: string | undefined | null, limite: number) => {
+    const longitud = (valor || '').length;
+    const esCritico = longitud >= limite;
+    const esCercano = longitud >= limite * 0.85;
+
+    return (
+      <div className="flex items-center justify-between text-[10px] mt-1">
+        <span
+          className={`font-mono transition-colors ${
+            esCritico ? 'text-red-600 font-bold' : esCercano ? 'text-amber-600 font-semibold' : 'text-slate-400'
+          }`}
+        >
+          {longitud} / {limite} car.
+        </span>
+        {esCritico && (
+          <span className="text-[10px] text-red-600 font-bold flex items-center gap-0.5">
+            Límite alcanzado
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const actualizarAsignacionBasica = (indice: number, valor: number) => {
     setAsignacionesBasicas((prev) => {
       const nueva = [...prev];
@@ -988,8 +1210,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.destinoDepartamento, departamentos, ciudadesDepto]);
 
-  const consultarComisionado = async () => {
-    const documento = form.documentoComisionado.trim();
+  const consultarComisionado = async (docParam?: string) => {
+    const documento = (typeof docParam === 'string' ? docParam : form.documentoComisionado).trim();
     if (!documento) {
       setErrorConsulta('Ingrese el número de documento del funcionario.');
       return;
@@ -1000,14 +1222,46 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setSolicitudesPendientes023([]);
     setHabeasPendiente(false);
     setHabeasMarcado(false);
+
+    const esAdmin = puedeElegirDependencia() || esSuperAdminViaticos || Boolean(esSuperAdmin);
+    const idDepFiltro = !esAdmin ? idDependenciaUsuario : undefined;
+
     try {
-      const resultado = await viaticosService.consultarComisionado(documento);
+      const resultado = await viaticosService.consultarComisionado(documento, idDepFiltro);
       if (!resultado) {
         setErrorConsulta(
           `No se encontró un comisionado con documento ${documento} en ESAP. Verifique el número o contacte al administrador.`,
         );
         return;
       }
+
+      // Restricción estricta de dependencia para enlaces: verificar que pertenezca a su misma dependencia
+      if (!esAdmin && idDependenciaUsuario != null) {
+        if (
+          resultado.idDependencia != null &&
+          resultado.idDependencia !== '' &&
+          Number(resultado.idDependencia) !== Number(idDependenciaUsuario)
+        ) {
+          const depComisionado = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
+          const depUsuario =
+            dependencias.find((d) => Number(d.idDependencia) === Number(idDependenciaUsuario)) ||
+            usuarioActual?.dependencia;
+          const nomDepComisionado = depComisionado?.nomDependencia || `Dependencia ${resultado.idDependencia}`;
+          const nomDepUsuario = depUsuario?.nomDependencia || 'su dependencia';
+
+          setErrorConsulta(
+            `El funcionario con documento ${documento} (${formatearNombreComisionado(resultado)}) pertenece a otra dependencia (${nomDepComisionado}). Como enlace de ${nomDepUsuario}, solo puede consultar y comisionar personal de su propia dependencia.`,
+          );
+          setComisionado(null);
+          return;
+        }
+
+        // Si no tiene dependencia en BD, asignarla a la del enlace
+        if (resultado.idDependencia == null || resultado.idDependencia === '') {
+          resultado.idDependencia = Number(idDependenciaUsuario);
+        }
+      }
+
       setComisionado(resultado);
       const pendientes = resultado.solicitudesPendientes || [];
       setSolicitudesPendientes023(pendientes);
@@ -1174,8 +1428,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
         return {
           ...prev,
+          documentoComisionado: documento,
+          nombreComisionado: formatearNombreComisionado(resultado),
+          tipoComisionado: resultado.tipoComisionado || prev.tipoComisionado || 'FUNCIONARIO',
           comisionadoId: resultado.id,
-          idDependencia: resultado.idDependencia ?? prev.idDependencia,
+          idDependencia: !esAdmin && idDependenciaUsuario != null ? idDependenciaUsuario : (resultado.idDependencia ?? prev.idDependencia),
           salarioBasico: salarioInicial > 0 ? salarioInicial : prev.salarioBasico,
           cargoSeleccionado: cargoComisionado
             ? {
@@ -1193,7 +1450,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (cargoComisionado) {
         setCargoActualSeleccionado(cargoComisionado);
       }
-      if (resultado.idDependencia != null) {
+      if (resultado.idDependencia != null && esAdmin) {
         const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
         if (depEncontrada?.codDependencia) {
           setDependenciaId(depEncontrada.codDependencia);
@@ -1204,7 +1461,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       }
     } catch (e: any) {
       console.error('Error consultando comisionado:', e);
-      // Mensaje proveniente del backend (origen único ESAP).
+      // Mensaje proveniente del backend (origen único ESAP o validación de dependencia).
       setErrorConsulta(
         e?.message ||
           'Ocurrió un error al consultar el comisionado. Intente nuevamente.',
@@ -1225,17 +1482,25 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   );
 
   useEffect(() => {
+    void obtenerJornadaLaboralActiva().then((cfg) => {
+      setConfigJornada(cfg);
+    });
+  }, []);
+
+  useEffect(() => {
     if (paso === PASOS.length && form.fechaInicio) {
-      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos);
+      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos, configJornada);
       setAlertaAnticipacion({
         extemporanea: validacion?.extemporanea ?? false,
         diasHabiles: validacion?.diasHabiles ?? 0,
         radicadoFueraJornada: validacion?.radicadoFueraJornada ?? false,
+        anticipacionMinimaRequerida: validacion?.anticipacionMinimaRequerida ?? 14,
+        horaCorteAplicada: validacion?.horaCorteAplicada ?? '16:30',
       });
     } else {
       setAlertaAnticipacion(null);
     }
-  }, [paso, form.fechaInicio, festivos]);
+  }, [paso, form.fechaInicio, festivos, configJornada]);
 
   useEffect(() => {
     if (form.fechaInicio && form.fechaFin) {
@@ -1308,14 +1573,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   useEffect(() => {
     if (!form.requiereTiquetes) {
       setValidacionTiquete(null);
+      setTarifaEstimadaReferencia(null);
       return;
     }
     const { origenCiudad: origenItinerario, destinoCiudad: destinoItinerario } = obtenerOrigenDestinoItinerario();
-    if (!destinoItinerario || !origenItinerario || !dependenciaId) {
+    if (!destinoItinerario || !origenItinerario) {
       return;
     }
     const token = ++refTokenValidacionTiquete.current;
+
+    if (!dependenciaId) {
+      return;
+    }
+
     setValidandoTiquete(true);
+
     void viaticosService
       .validarTiquete({
         dependenciaId,
@@ -1387,6 +1659,52 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
   };
 
+  // Evaluación institucional de VoBo de duración (> 3 días calendario / 3.5 días valor)
+  const evaluacionVoBoDuracion = useMemo(() => {
+    const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+    const agendaDocenteFinal =
+      agendaActividadesDocente ||
+      form.camposAdicionales?.agendaActividadesDocente ||
+      form.camposAdicionales?.agenda ||
+      '';
+    const justificacionDocenteFinal =
+      actividadDocente === 'DICTAR_CLASE'
+        ? `Dictado directo de clase / cátedra o módulo presencial: ${agendaDocenteFinal || 'Actividad lectiva presencial'}`
+        : agendaDocenteFinal;
+
+    return evaluarVoBoDuracion({
+      fechaInicio: fechaInicio || form.fechaInicio,
+      fechaFin: fechaFin || form.fechaFin,
+      diasComision: form.diasComision,
+      diasPernoctados: form.diasPernoctados,
+      diasNoPernoctados: form.diasNoPernoctados,
+      tipoComisionado: comisionado?.tipoComisionado,
+      cargoComisionado: form.cargo || comisionado?.cargo,
+      dependenciaNombre: form.camposAdicionales?.dependenciaSolicitante || (comisionado as any)?.dependencia || '',
+      esInternacional: form.esInternacional,
+      objetoComision: form.objetoComision,
+      agenda: agendaDocenteFinal,
+      justificacionAgenda: agendaDocenteFinal,
+      justificacionDocente: justificacionDocenteFinal,
+    });
+  }, [
+    form.itinerario,
+    form.fechaInicio,
+    form.fechaFin,
+    form.diasComision,
+    form.diasPernoctados,
+    form.diasNoPernoctados,
+    comisionado?.tipoComisionado,
+    form.cargo,
+    comisionado?.cargo,
+    form.camposAdicionales,
+    (comisionado as any)?.dependencia,
+    form.esInternacional,
+    form.objetoComision,
+    actividadDocente,
+    agendaActividadesDocente,
+  ]);
+
   const validarCamposDinamicosObligatorios = (): string | null => {
     const obligatorios = camposCatalogo.filter(
       (c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave) && esCampoObligatorio(c.clave),
@@ -1395,6 +1713,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const val = form.camposAdicionales?.[campo.clave];
       if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
         return `Por favor complete el campo obligatorio: "${campo.etiqueta}".`;
+      }
+    }
+    return null;
+  };
+
+  const validarLimitesDeCaracteres = (): string | null => {
+    const limiteObjeto = obtenerLimiteCampo('objetoComision');
+    if (form.objetoComision && form.objetoComision.length > limiteObjeto) {
+      return `El objeto de la comisión supera el límite de ${limiteObjeto} caracteres (actual: ${form.objetoComision.length}).`;
+    }
+    const limiteRubro = obtenerLimiteCampo('rubroPresupuestal');
+    if (form.rubroPresupuestal && form.rubroPresupuestal.length > limiteRubro) {
+      return `El rubro presupuestal supera el límite de ${limiteRubro} caracteres (actual: ${form.rubroPresupuestal.length}).`;
+    }
+    const limiteCdp = obtenerLimiteCampo('numeroCdp');
+    if (form.numeroCdp && form.numeroCdp.length > limiteCdp) {
+      return `El número de CDP supera el límite de ${limiteCdp} caracteres (actual: ${form.numeroCdp.length}).`;
+    }
+
+    for (const campo of camposCatalogo) {
+      if (!campo.activo || camposEstandar.has(campo.clave) || esCampoOculto(campo.clave)) continue;
+      const val = form.camposAdicionales?.[campo.clave];
+      if (typeof val === 'string' && val.length > 0) {
+        const limite = campo.limiteCaracteres && campo.limiteCaracteres > 0 ? campo.limiteCaracteres : 250;
+        if (val.length > limite) {
+          return `El campo "${campo.etiqueta}" supera el límite de ${limite} caracteres (actual: ${val.length}).`;
+        }
       }
     }
     return null;
@@ -1442,6 +1787,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (errCamposDinamicos) {
         setErrorValidacion(errCamposDinamicos);
         return;
+      }
+      const errLimites = validarLimitesDeCaracteres();
+      if (errLimites) {
+        setErrorValidacion(errLimites);
+        return;
+      }
+      if (evaluacionVoBoDuracion.aplica) {
+        const just = (form.justificacionDuracion || form.camposAdicionales?.justificacionDuracion || '').trim();
+        if (!just || just.length < 10) {
+          setErrorValidacion(
+            `Por superar tres (3) días calendario (${evaluacionVoBoDuracion.diasCalendario} días cal. / ${evaluacionVoBoDuracion.diasValor} días valor), debe registrar una justificación detallada (mínimo 10 caracteres) para el visto bueno obligatorio de ${evaluacionVoBoDuracion.tituloInstancia}.`,
+          );
+          return;
+        }
       }
       if (comisionado && parametrizacion) {
         const documentosObligatorios = parametrizacion.documentos
@@ -1501,6 +1860,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion(errCamposDinamicos);
       return;
     }
+    const errLimites = validarLimitesDeCaracteres();
+    if (errLimites) {
+      setErrorValidacion(errLimites);
+      return;
+    }
+    if (evaluacionVoBoDuracion.aplica) {
+      const just = (form.justificacionDuracion || form.camposAdicionales?.justificacionDuracion || '').trim();
+      if (!just || just.length < 10) {
+        setErrorValidacion(
+          `La comisión supera los tres (3) días calendario (${evaluacionVoBoDuracion.diasCalendario} días cal. / ${evaluacionVoBoDuracion.diasValor} días valor) y requiere obligatoriamente una justificación detallada para el visto bueno de ${evaluacionVoBoDuracion.tituloInstancia}.`,
+        );
+        return;
+      }
+    }
 
     // ── Validación de duplicidad / solapamiento por cédula y fechas ──────────
     // Al intentar guardar y continuar al cargue de soportes, se verifica duplicidad.
@@ -1555,10 +1928,38 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
       const cargoFinal =
         cargoActualSeleccionado ||
+        form.cargoSeleccionado?.cargo ||
         form.camposAdicionales?.cargoEsap ||
         form.camposAdicionales?.cargo ||
+        form.camposAdicionales?.cargoInstitucional ||
+        form.camposAdicionales?.cargoComisionado ||
         comisionado?.cargo ||
+        (comisionado?.cargos && comisionado.cargos.length > 0 ? comisionado.cargos[0].cargo : '') ||
         '';
+
+      const cargoEncontradoObj =
+        cargosDisponibles.find(
+          (c) =>
+            c.nomCargo?.trim().toLowerCase() === cargoFinal?.trim().toLowerCase() ||
+            String(c.idCargo) === String(cargoFinal),
+        ) ||
+        (comisionado?.cargos || []).find(
+          (c) => c.cargo?.trim().toLowerCase() === cargoFinal?.trim().toLowerCase(),
+        );
+
+      const idCargoFinal =
+        form.cargoSeleccionado?.idCargo ||
+        form.camposAdicionales?.idCargo ||
+        (form as any).idCargo ||
+        cargoEncontradoObj?.idCargo ||
+        comisionado?.idCargo ||
+        undefined;
+
+      if (!cargoFinal || !cargoFinal.trim()) {
+        setErrorValidacion('Debe seleccionar o registrar el cargo institucional del comisionado antes de continuar.');
+        setEnviando(false);
+        return;
+      }
 
       const payload = mapearARequestCreacion(
         {
@@ -1584,6 +1985,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   cargo: cargoFinal,
                   cargoInstitucional: cargoFinal,
                   cargoComisionado: cargoFinal,
+                  ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
+                }
+              : {}),
+            ...(esComisionadoDocente
+              ? {
+                  actividadDocente,
+                  agendaActividadesDocente,
+                  agenda: agendaActividadesDocente || form.camposAdicionales?.agenda,
+                  justificacionAgenda: agendaActividadesDocente || form.camposAdicionales?.justificacionAgenda,
+                  justificacionDocente:
+                    actividadDocente === 'DICTAR_CLASE'
+                      ? `Dictar clase o módulo académico presencial: ${agendaActividadesDocente || 'Actividad lectiva presencial'}`
+                      : agendaActividadesDocente,
                 }
               : {}),
           },
@@ -1593,11 +2007,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         true,
         form.tipoComision || 'TERRESTRE',
       );
-      if (solicitudBorrador) {
-        // Ya existe un borrador: actualizar los campos editables (fechas,
-        // destino, montos, etc.) para no perder los cambios al volver atrás.
+      const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+      if (idExistente) {
+        // Ya existe una solicitud (borrador o devuelta para subsanar):
+        // actualizar los campos editables sin crear un nuevo registro.
         const actualizada = await viaticosService.actualizarSolicitud(
-          solicitudBorrador.id,
+          idExistente,
           {
             objetoComision: form.objetoComision,
             destinoCiudad,
@@ -1615,7 +2030,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
             cargo: cargoFinal || undefined,
-            idCargo: cargoObj?.idCargo ?? undefined,
+            idCargo: idCargoFinal,
             tipoComision: (() => {
                 if (form.esInternacional) return 'INTERNACIONAL';
                 const tramos = form.itinerario || [];
@@ -1691,9 +2106,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         0,
                       ),
                   ),
-                fechaAutoliquidacion:
+                 fechaAutoliquidacion:
                   prevAdic.fechaAutoliquidacion ||
                   new Date().toISOString().split('T')[0],
+                ...(esComisionadoDocente
+                  ? {
+                      actividadDocente,
+                      agendaActividadesDocente,
+                      agenda: agendaActividadesDocente || prevAdic.agenda,
+                      justificacionAgenda: agendaActividadesDocente || prevAdic.justificacionAgenda,
+                      justificacionDocente:
+                        actividadDocente === 'DICTAR_CLASE'
+                          ? `Dictar clase o módulo académico presencial: ${agendaActividadesDocente || 'Actividad lectiva presencial'}`
+                          : agendaActividadesDocente,
+                    }
+                  : {}),
               };
             })(),
             itinerario: (form.itinerario || []).map((r) => {
@@ -1716,9 +2143,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         );
         setSolicitudBorrador({
           ...actualizada,
-          comisionado: solicitudBorrador.comisionado,
+          comisionado: (actualizada as any).comisionado || solicitudBorrador?.comisionado || solicitudAResumir?.comisionado || comisionado,
           documentosSoporte: (actualizada.documentosSoporte ||
-            solicitudBorrador.documentosSoporte ||
+            solicitudBorrador?.documentosSoporte ||
+            solicitudAResumir?.documentosSoporte ||
             []) as DocumentoSoporte[],
         });
       } else {
@@ -1733,21 +2161,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(3);
     } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      const msg = e?.response?.data?.message || e?.message;
-      setErrorValidacion(
-        Array.isArray(msg)
-          ? msg.join(', ')
-          : typeof msg === 'string' && msg.length > 0
-            ? msg
-            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
-      );
+      let msg = e?.response?.data?.message || e?.message;
+      if (Array.isArray(msg)) {
+        msg = msg.join(', ');
+      }
+      if (
+        !msg ||
+        typeof msg !== 'string' ||
+        msg.includes('is not defined') ||
+        msg.includes('Cannot read') ||
+        msg.includes('Network Error') ||
+        msg.includes('Failed to fetch')
+      ) {
+        msg = 'No fue posible guardar la solicitud. Por favor verifique que los campos obligatorios del itinerario y cargo estén completos e intente nuevamente.';
+      }
+      setErrorValidacion(msg);
     } finally {
       setEnviando(false);
     }
   };
 
   const subirDocumentoEspecifico = async (codigo: string, archivo: File) => {
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorDocumentos('No hay una solicitud activa para cargar documentos.');
       return;
     }
@@ -1760,7 +2196,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setErrorDocumentos(null);
     try {
       const doc = await viaticosService.subirDocumento(
-        solicitudBorrador.id,
+        idExistente,
         codigo,
         archivo,
         tipoMime,
@@ -1828,7 +2264,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const eliminarDocumentoEspecifico = async (doc: DocumentoFormItem) => {
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorDocumentos('No hay una solicitud activa para gestionar documentos.');
       return;
     }
@@ -1843,7 +2280,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setEliminandoDoc(true);
     setErrorDocumentos(null);
     try {
-      await viaticosService.eliminarDocumento(solicitudBorrador.id, doc.id);
+      await viaticosService.eliminarDocumento(idExistente, doc.id);
       setForm((prev) => ({
         ...prev,
         documentos: (prev.documentos || []).filter((d) => d.id !== doc.id),
@@ -1859,16 +2296,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const obtenerNombreEnlace = () => {
     const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
     const resolvedUser = user && typeof (user as any).then !== 'function' ? user : null;
-    const nombre = [
-      resolvedUser?.primerNombre,
-      resolvedUser?.segundoNombre,
-      resolvedUser?.primerApellido,
-      resolvedUser?.segundoApellido,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-    return nombre || resolvedUser?.nombre || usuarioActual?.username || 'Enlace de Dependencia';
+    const nombre =
+      (resolvedUser as any)?.fullName ||
+      (resolvedUser as any)?.full_name ||
+      [(resolvedUser as any)?.firstName, (resolvedUser as any)?.lastName].filter(Boolean).join(' ') ||
+      [
+        resolvedUser?.primerNombre,
+        resolvedUser?.segundoNombre,
+        resolvedUser?.primerApellido,
+        resolvedUser?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.person?.full_name ||
+      (resolvedUser?.person as any)?.nom_largo ||
+      [
+        (resolvedUser?.person as any)?.nom_tercero,
+        (resolvedUser?.person as any)?.pri_apellido,
+        (resolvedUser?.person as any)?.seg_apellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.nombre ||
+      '';
+    if (nombre && !nombre.includes('@')) return nombre.trim();
+    return 'Enlace de Dependencia';
   };
 
   const finalizarSolicitud = async () => {
@@ -1887,7 +2341,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de radicar.');
       return;
     }
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorValidacion('Debe guardar el borrador antes de radicar.');
       return;
     }
@@ -1902,7 +2357,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setSolicitandoOtpEnlace(true);
     setErrorValidacion(null);
     try {
-      const resp = await viaticosService.solicitarOtpFirma(solicitudBorrador.id, {
+      const resp = await viaticosService.solicitarOtpFirma(idExistente, {
         tipoFirma: 'ENLACE_ELABORO',
       });
       setOtpDataEnlace({
@@ -1927,7 +2382,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   // Manejo de firma digital completada por el Enlace (OTP validado + hash generado)
   const handleFirmaEnlaceCompleta = async (firma: FirmaDigitalData) => {
-    if (!solicitudBorrador) return false;
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) return false;
     setFinalizando(true);
     setErrorValidacion(null);
     try {
@@ -1940,7 +2396,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         (user as any)?.person?.numeroDocumento ||
         undefined;
 
-      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id, {
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(idExistente, {
         otp: firma.codigoOtp,
         verificationId: otpDataEnlace?.verificationId,
         certificadoId: firma.certificado_id,
@@ -1948,6 +2404,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         nombreFirmante: firma.firmante,
         cargoFirmante: firma.cargo,
         documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
+        justificacionDuracion: form.justificacionDuracion || form.camposAdicionales?.justificacionDuracion,
       });
       onSolicitudCreada(conFirmas);
       onCerrar();
@@ -2127,11 +2584,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     );
   }, [saldosPresupuesto, infoComisionadoCompleta.depCodigo, infoComisionadoCompleta.depNombre, dependenciaId]);
 
+  const esComisionadoDocente = useMemo(() => {
+    const tipo = (comisionado?.tipoComisionado || form.tipoComisionado || '').toUpperCase();
+    const cargo = (form.cargo || comisionado?.cargo || cargoActualSeleccionado || '').toLowerCase();
+    return (
+      tipo === 'DOCENTE' ||
+      cargo.includes('docente') ||
+      cargo.includes('profesor') ||
+      cargo.includes('capacitador')
+    );
+  }, [comisionado?.tipoComisionado, form.tipoComisionado, form.cargo, comisionado?.cargo, cargoActualSeleccionado]);
+
   const esModoConsolidacion = Boolean(
     solicitudAResumir &&
-      (ESTADOS_CONSOLIDABLES as readonly string[]).includes(
-        solicitudAResumir.estadoSolicitud,
-      ),
+      solicitudAResumir.estadoSolicitud === 'RADICADA',
   );
 
   if (esModoConsolidacion && solicitudAResumir) {
@@ -2157,8 +2623,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <Plane className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Nueva Solicitud de Comisión de Servicios</h3>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                {solicitudAResumir?.estadoSolicitud === 'DEVUELTA'
+                  ? `Subsanar Solicitud de Comisión (${solicitudAResumir.consecutivoUnico || 'DEVUELTA'})`
+                  : 'Nueva Solicitud de Comisión de Servicios'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
                 {comisionado && (
                   <span className="ml-2 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                     {comisionado.tipoComisionado}
@@ -2176,6 +2646,28 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             ✕
           </button>
         </div>
+
+        {solicitudAResumir?.motivoDevolucion && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3 text-amber-900 shadow-xs">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                  Solicitud Devuelta para Subsanación
+                </span>
+                <span className="text-[11px] bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  {solicitudAResumir.consecutivoUnico || solicitudAResumir.id}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                <strong>Motivo / Observaciones del revisor:</strong> {solicitudAResumir.motivoDevolucion}
+              </p>
+              <p className="text-[11px] text-amber-700">
+                Ajuste los datos u observaciones señaladas en cada paso. Al finalizar en el Paso 4, la solicitud se remitirá nuevamente al flujo de firmas de aprobación para que el Jefe de Dependencia y el Gerente de Proyecto la avalen.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mb-5">
           {PASOS.map((nombre, idx) => {
@@ -2299,6 +2791,59 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 1. Datos del Funcionario Comisionado
               </h4>
+
+              {!puedeElegirDependencia() && depEnlaceActual && (
+                <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200/90 dark:border-blue-800/60 rounded-xl text-xs text-blue-950 dark:text-blue-100 shadow-2xs">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600/10 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-blue-900 dark:text-blue-200 truncate">
+                      Dependencia del Enlace:{' '}
+                      <span className="font-extrabold text-blue-950 dark:text-white">
+                        {depEnlaceActual.nomDependencia || depEnlaceActual.codDependencia}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-blue-700/80 dark:text-blue-300/80">
+                      Como enlace de dependencia, solo puede consultar y comisionar personal asignado a su dependencia.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {comisionadosDependencia.length > 0 && (
+                <div>
+                  <label className={labelCls} htmlFor="comisionado-dependencia-select">
+                    Comisionados Registrados de la Dependencia
+                    <span className="text-[11px] font-normal text-slate-500 ml-1.5">
+                      ({comisionadosDependencia.length} disponible{comisionadosDependencia.length === 1 ? '' : 's'})
+                    </span>
+                  </label>
+                  <SearchableSelect
+                    id="comisionado-dependencia-select"
+                    options={comisionadosDependencia.map((c) => ({
+                      value: c.numeroDocumento,
+                      label: `${formatearNombreComisionado(c)} — CC ${c.numeroDocumento}`,
+                      sublabel: `${c.cargo || 'Funcionario'} · ${c.tipoComisionado || 'FUNCIONARIO'}`,
+                    }))}
+                    value={form.documentoComisionado}
+                    onChange={(docVal) => {
+                      if (docVal) {
+                        actualizar('documentoComisionado', docVal);
+                        void consultarComisionado(docVal);
+                      }
+                    }}
+                    placeholder="Buscar y seleccionar comisionado de su dependencia..."
+                    loading={cargandoComisionadosDep}
+                    emptyText="No se encontraron comisionados"
+                    allowClear
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Seleccione un comisionado de la lista o ingrese el documento a continuación para consultar otro funcionario.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className={labelCls} htmlFor="documentoComisionado">
                   {renderLabel('documentoComisionado', 'Documento de Identidad')}
@@ -2321,7 +2866,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   />
                   <button
                     type="button"
-                    onClick={consultarComisionado}
+                    onClick={() => void consultarComisionado()}
                     disabled={consultando}
                     className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-sm font-bold inline-flex items-center gap-1.5 shrink-0 transition-all shadow-xs disabled:opacity-50"
                   >
@@ -2352,12 +2897,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         </p>
                       </div>
                     </div>
-                    {infoComisionadoCompleta.origen && (
-                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                        <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {infoComisionadoCompleta.origen && (
+                        <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                          <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
+                        </span>
+                      )}
+                      {comisionado?.esUsuario ? (
+                        <span
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300 inline-flex items-center gap-1"
+                          title={comisionado.rolesUsuario && comisionado.rolesUsuario.length > 0 ? `Roles actuales: ${comisionado.rolesUsuario.join(', ')}` : 'Usuario registrado en ESAP'}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                          {comisionado.tieneRolComisionado
+                            ? 'Usuario Comisionado Activo'
+                            : 'Usuario ESAP (se asignará rol Comisionado)'}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1"
+                          title="Se registrará su usuario en el servicio de autenticación con rol Comisionado al crear la solicitud"
+                        >
+                          <User className="w-3.5 h-3.5 text-amber-600" />
+                          Usuario nuevo (se creará cuenta automáticamente)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs sm:text-sm">
@@ -2934,7 +3500,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         value={idDependenciaActual ? String(idDependenciaActual) : ''}
                         onChange={(val) => cambiarDependencia(val)}
                         placeholder="Seleccionar dependencia..."
-                        disabled={!puedeElegirDependencia() && Boolean(comisionado?.idDependencia)}
+                        disabled={!puedeElegirDependencia()}
                         emptyText="No hay dependencias registradas"
                       />
                       {infoComisionadoCompleta.depNombre && (
@@ -3097,60 +3663,129 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </h5>
                 </div>
 
-                {!esCampoOculto('objetoComision') && (
-                  <div>
-                    <label className={labelCls} htmlFor="objetoComision">
-                      {renderLabel('objetoComision', 'Objeto / Justificación de la comisión')}
-                    </label>
-                    <textarea
-                      id="objetoComision"
-                      required={esCampoObligatorio('objetoComision')}
-                      rows={3}
-                      placeholder="Describa el objetivo institucional de la comisión..."
-                      value={form.objetoComision}
-                      onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value))}
-                      className={inputCls}
-                    />
-                    <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                      {AYUDA_OBJETO_SIIF}
-                    </p>
+                {!esCampoOculto('objetoComision') && (() => {
+                  const limiteObjeto = obtenerLimiteCampo('objetoComision');
+                  return (
+                    <div>
+                      <label className={labelCls} htmlFor="objetoComision">
+                        {renderLabel('objetoComision', 'Objeto / Justificación de la comisión')}
+                      </label>
+                      <textarea
+                        id="objetoComision"
+                        required={esCampoObligatorio('objetoComision')}
+                        rows={3}
+                        maxLength={limiteObjeto}
+                        placeholder="Describa el objetivo institucional de la comisión..."
+                        value={form.objetoComision}
+                        onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value, limiteObjeto))}
+                        className={inputCls}
+                      />
+                      {renderContadorCaracteres(form.objetoComision, limiteObjeto)}
+                      <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        {AYUDA_OBJETO_SIIF}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Banner y Justificación obligatoria de duración extendida (>3 días calendario / 3.5 días valor) */}
+                {evaluacionVoBoDuracion.aplica && (
+                  <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border-2 border-amber-300 dark:border-amber-700/70 rounded-xl space-y-3 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 rounded-lg shrink-0 mt-0.5">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h6 className="text-xs font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                            Comisión con Duración Superior a 3 Días Calendario (3,5 Días de Valor)
+                          </h6>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
+                            VoBo Requerido: {evaluacionVoBoDuracion.tituloInstancia}
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                          Esta solicitud registra una duración de <strong>{evaluacionVoBoDuracion.diasCalendario} días calendario</strong> ({evaluacionVoBoDuracion.diasValor} días de valor) para {comisionado?.tipoComisionado || 'el comisionado'}. Conforme a la normativa institucional de la ESAP, <strong>el sistema exige una justificación detallada y el Visto Bueno (VoBo) obligatorio de {evaluacionVoBoDuracion.tituloInstancia}</strong> antes de continuar.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="justificacionDuracion" className="block text-xs font-bold text-amber-950 dark:text-amber-100 mb-1">
+                        Justificación de la duración extendida <span className="text-red-600 font-bold">*</span>
+                      </label>
+                      <textarea
+                        id="justificacionDuracion"
+                        rows={3}
+                        required
+                        value={form.justificacionDuracion || ''}
+                        onChange={(e) => setForm((prev) => ({ ...prev, justificacionDuracion: e.target.value }))}
+                        placeholder={`Describa detalladamente los motivos y compromisos institucionales que justifican la permanencia por más de 3 días calendario. Esta justificación será revisada y avalada con VoBo formal por ${evaluacionVoBoDuracion.tituloInstancia}...`}
+                        className="w-full px-3 py-2 text-xs border border-amber-300 dark:border-amber-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner"
+                      />
+                      <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                        <span className="font-medium">Mínimo 10 caracteres obligatorios para avanzar.</span>
+                        <span className="font-semibold">{(form.justificacionDuracion || '').length} caracteres</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Exención docente informada */}
+                {evaluacionVoBoDuracion.esEximidoDocente && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/25 border border-emerald-300 dark:border-emerald-800/60 rounded-xl flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Docente Eximido de VoBo de Duración: </span>
+                      Por desarrollar actividad académica de dictado de clase o registrar agenda justificada ({evaluacionVoBoDuracion.diasCalendario} días calendario / {evaluacionVoBoDuracion.diasValor} días de valor), la normativa exime a los docentes y docentes capacitadores del trámite de VoBo ante {evaluacionVoBoDuracion.tituloInstancia}.
+                    </div>
                   </div>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {!esCampoOculto('rubroPresupuestal') && (
-                    <div>
-                      <label className={labelCls} htmlFor="rubroPresupuestal">
-                        {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
-                      </label>
-                      <input
-                        id="rubroPresupuestal"
-                        type="text"
-                        required={esCampoObligatorio('rubroPresupuestal')}
-                        placeholder="Ej. Rubro 01"
-                        value={form.rubroPresupuestal}
-                        onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                  )}
-                  {!esCampoOculto('numeroCdp') && (
-                    <div>
-                      <label className={labelCls} htmlFor="numeroCdp">
-                        {renderLabel('numeroCdp', 'Número de CDP')}
-                      </label>
-                      <input
-                        id="numeroCdp"
-                        type="text"
-                        required={esCampoObligatorio('numeroCdp')}
-                        placeholder="Ej. CDP-2026-00123"
-                        value={form.numeroCdp || ''}
-                        onChange={(e) => actualizar('numeroCdp', e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                  )}
+                  {!esCampoOculto('rubroPresupuestal') && (() => {
+                    const limiteRubro = obtenerLimiteCampo('rubroPresupuestal');
+                    return (
+                      <div>
+                        <label className={labelCls} htmlFor="rubroPresupuestal">
+                          {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
+                        </label>
+                        <input
+                          id="rubroPresupuestal"
+                          type="text"
+                          maxLength={limiteRubro}
+                          required={esCampoObligatorio('rubroPresupuestal')}
+                          placeholder="Ej. Rubro 01"
+                          value={form.rubroPresupuestal}
+                          onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
+                          className={inputCls}
+                        />
+                        {renderContadorCaracteres(form.rubroPresupuestal, limiteRubro)}
+                      </div>
+                    );
+                  })()}
+                  {!esCampoOculto('numeroCdp') && (() => {
+                    const limiteCdp = obtenerLimiteCampo('numeroCdp');
+                    return (
+                      <div>
+                        <label className={labelCls} htmlFor="numeroCdp">
+                          {renderLabel('numeroCdp', 'Número de CDP')}
+                        </label>
+                        <input
+                          id="numeroCdp"
+                          type="text"
+                          maxLength={limiteCdp}
+                          required={esCampoObligatorio('numeroCdp')}
+                          placeholder="Ej. CDP-2026-00123"
+                          value={form.numeroCdp || ''}
+                          onChange={(e) => actualizar('numeroCdp', e.target.value)}
+                          className={inputCls}
+                        />
+                        {renderContadorCaracteres(form.numeroCdp, limiteCdp)}
+                      </div>
+                    );
+                  })()}
                   {!esCampoOculto('fechaCdp') && (
                     <div>
                       <label className={labelCls} htmlFor="fechaCdp">
@@ -3203,6 +3838,75 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       onChange={(valor) => setCategoriaInvestigador(valor)}
                       placeholder="Seleccione categoría"
                     />
+                  </div>
+                )}
+
+                {/* Actividad y Agenda Académica Docente (Regla de Exención VoBo >3 Días) */}
+                {esComisionadoDocente && (
+                  <div className="p-4 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="w-4 h-4 text-[#003DA5] dark:text-blue-400 shrink-0" />
+                      <h6 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                        Actividad y Agenda Académica Docente
+                      </h6>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Para docentes y docentes capacitadores en actividades de dictar clase, la normativa de la ESAP exime del trámite de VoBo ante Dirección Nacional o Territorial. Si viaja para otras actividades no lectivas y supera los 3 días calendario (3.5 días valor), se requerirá la justificación y VoBo previo.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelCls} htmlFor="actividadDocenteSelect">
+                          Naturaleza de la Actividad <span className="text-red-500">*</span>
+                        </label>
+                        <SearchableSelect
+                          id="actividadDocenteSelect"
+                          options={[
+                            {
+                              value: 'DICTAR_CLASE',
+                              label: 'Dictar clase / cátedra o módulo presencial',
+                              sublabel: 'Exime del VoBo de Dirección Nacional/Territorial por labor docente directa',
+                            },
+                            {
+                              value: 'OTRA_ACTIVIDAD',
+                              label: 'Otras actividades (comités, asesorías, eventos)',
+                              sublabel: 'Requiere VoBo de duración si la comisión supera los 3 días calendario',
+                            },
+                          ]}
+                          value={actividadDocente}
+                          onChange={(val) => {
+                            const nuevaAct = (val as 'DICTAR_CLASE' | 'OTRA_ACTIVIDAD') || 'DICTAR_CLASE';
+                            setActividadDocente(nuevaAct);
+                            actualizar('camposAdicionales', {
+                              ...(form.camposAdicionales || {}),
+                              actividadDocente: nuevaAct,
+                            });
+                          }}
+                          placeholder="Seleccione la actividad docente"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className={labelCls} htmlFor="agendaActividadesDocente">
+                          Agenda de Actividades Académicas y Clases <span className="text-slate-400 font-normal">(Programación horaria, asignaturas o sedes)</span>
+                        </label>
+                        <textarea
+                          id="agendaActividadesDocente"
+                          rows={2}
+                          value={agendaActividadesDocente}
+                          onChange={(e) => {
+                            setAgendaActividadesDocente(e.target.value);
+                            actualizar('camposAdicionales', {
+                              ...(form.camposAdicionales || {}),
+                              agendaActividadesDocente: e.target.value,
+                              agenda: e.target.value,
+                              justificacionAgenda: e.target.value,
+                              justificacionDocente: e.target.value,
+                            });
+                          }}
+                          placeholder="Ejemplo: Viernes 18:00 a 22:00 y Sábado 08:00 a 17:00 Módulo de Gestión Pública Territorial, Salón 201 Sede..."
+                          className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -3323,6 +4027,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           }
 
                           if (campo.tipoCampo === 'TEXTAREA') {
+                            const limiteTextarea = campo.limiteCaracteres && campo.limiteCaracteres > 0 ? campo.limiteCaracteres : 250;
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2">
                                 <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -3332,11 +4037,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   id={`campo_${campo.clave}`}
                                   required={obligatorio}
                                   rows={2}
+                                  maxLength={limiteTextarea}
                                   placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                   value={String(valorActual)}
                                   onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
                                   className={inputCls}
                                 />
+                                {renderContadorCaracteres(String(valorActual), limiteTextarea)}
                               </div>
                             );
                           }
@@ -3396,6 +4103,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             campo.clave === 'entidad_bancaria' ||
                             campo.clave === 'banco';
 
+                          const limiteInput = campo.limiteCaracteres && campo.limiteCaracteres > 0 ? campo.limiteCaracteres : 250;
+                          const esTipoTexto = !campo.tipoCampo || campo.tipoCampo === 'TEXT' || campo.tipoCampo === 'EMAIL' || campo.tipoCampo === 'NUMBER';
+
                           return (
                             <div key={campo.clave}>
                               <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -3406,6 +4116,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
                                 list={esCampoBanco ? 'bancos-colombia-list' : undefined}
                                 required={obligatorio}
+                                maxLength={esTipoTexto ? limiteInput : undefined}
                                 placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
                                 onChange={(e) => {
@@ -3414,6 +4125,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 }}
                                 className={inputCls}
                               />
+                              {esTipoTexto && renderContadorCaracteres(String(valorActual), limiteInput)}
                               {esCampoBanco && (
                                 <datalist id="bancos-colombia-list">
                                   {LISTA_BANCOS_COLOMBIA.map((b) => (
@@ -3690,17 +4402,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         })()}
                     </div>
 
-                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                    {(form.montoViaticos > 0 || (form.montoGastosViaje || 0) > 0) && (
                       <div className="bg-[#003DA5] text-white rounded-xl px-6 py-5 shadow-sm border border-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="space-y-1">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200">
                             Total Estimado de la Comisión
                           </p>
                           <p className="text-2xl font-black text-white tracking-tight">
-                            {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                            {formatearMoneda(form.montoViaticos + (form.montoGastosViaje || 0))}
                           </p>
                           <p className="text-xs text-blue-100 font-medium">
-                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje)})
+                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje || 0)})
                           </p>
                         </div>
                         <div className="sm:text-right shrink-0">
@@ -4264,6 +4976,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </span>
                   </div>
                 )}
+                {form.requiereTiquetes && (
+                  <div className="flex justify-between px-4 py-2.5 bg-blue-50/30">
+                    <span className="text-slate-500 font-bold flex items-center gap-1.5">
+                      <Plane className="w-3.5 h-3.5 text-blue-600" />
+                      Tiquetes Aéreos
+                    </span>
+                    <span className="text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
+                      Requiere Tiquetes (Cotización institucional en Control de Viáticos)
+                    </span>
+                  </div>
+                )}
                 {!esCampoOculto('montoViaticos') && (
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="text-slate-400 font-bold">Total Viáticos (Sec. 3)</span>
@@ -4276,11 +4999,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
                   </div>
                 )}
-                {!esCampoOculto('montoViaticos') && !esCampoOculto('montoGastosViaje') && (
+                {(!esCampoOculto('montoViaticos') || !esCampoOculto('montoGastosViaje')) && (
                   <div className="flex justify-between px-4 py-2.5 bg-slate-50 font-bold">
                     <span className="text-slate-700">TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS*</span>
                     <span className="font-black text-slate-900 text-sm">
-                      {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                      {formatearMoneda(form.montoViaticos + (form.montoGastosViaje || 0))}
                     </span>
                   </div>
                 )}
@@ -4404,12 +5127,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <div className="space-y-2">
                   {alertaAnticipacion.extemporanea && (
                     <p className="text-xs text-red-700 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de 14 días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
+                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de{' '}
+                      {alertaAnticipacion.anticipacionMinimaRequerida || 14} días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
                     </p>
                   )}
                   {alertaAnticipacion.radicadoFueraJornada && (
                     <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      Radicación fuera de horario laboral: el trámite iniciará formalmente el siguiente día hábil.
+                      Radicación fuera de horario laboral{alertaAnticipacion.horaCorteAplicada ? ` (jornada hasta las ${alertaAnticipacion.horaCorteAplicada} h)` : ''}: el trámite iniciará formalmente el siguiente día hábil.
                     </p>
                   )}
                 </div>

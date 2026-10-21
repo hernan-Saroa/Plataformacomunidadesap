@@ -1,4 +1,12 @@
 import { BancoDocentesService } from './banco-docentes.service';
+import { rundPrivacyPolicy } from './rund-privacy-policy';
+
+const originalDocumentalEnabled = process.env.RUND_DOCUMENTAL_ENABLED;
+beforeEach(() => { process.env.RUND_DOCUMENTAL_ENABLED = 'true'; });
+afterEach(() => {
+  if (originalDocumentalEnabled === undefined) delete process.env.RUND_DOCUMENTAL_ENABLED;
+  else process.env.RUND_DOCUMENTAL_ENABLED = originalDocumentalEnabled;
+});
 
 function createService(overrides: {
   docenteRepo?: Record<string, jest.Mock>;
@@ -101,6 +109,7 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
     const auditSpy = jest.spyOn(service, 'logSensitiveDataAccess').mockResolvedValue(undefined);
 
     const response = await service.submitFromToken('a'.repeat(64), {
+      terminosAceptados: true, politicaTratamientoHuella: rundPrivacyPolicy().huella,
       documentNumber: '******4050',
       documento_identidad: '******4050',
       puntajeSalarial: 999999,
@@ -117,6 +126,7 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
       rejectExisting: false,
       relaxValidation: true,
       audit: expect.objectContaining({
+        metadata: expect.objectContaining({ habeasData: expect.objectContaining({ aceptada: true, texto: rundPrivacyPolicy().texto, huella: rundPrivacyPolicy().huella }) }),
         canalOrigen: 'AUTOGESTION',
         soporteId: 'invitacion-1',
       }),

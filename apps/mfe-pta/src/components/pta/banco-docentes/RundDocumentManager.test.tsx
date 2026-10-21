@@ -5,7 +5,7 @@ import { RundDocumentManager } from './RundDocumentManager';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { toast } from 'sonner';
 
-vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
+vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const docs = [
@@ -20,6 +20,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiClient.get).mockImplementation(async (url: string) => url.endsWith('/categorias')
     ? [{ codigo: 'IDENTIDAD', nombre: 'Identidad' }, { codigo: 'TITULOS', nombre: 'Títulos' }]
+    : url.endsWith('/configuracion') ? { habilitado: true }
     : url.endsWith('historial=true') ? [...docs, old] : docs);
   vi.mocked(apiClient.upload).mockResolvedValue({ success: true });
   vi.mocked(apiClient.delete).mockResolvedValue({ success: true });
@@ -27,6 +28,51 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Biblioteca compacta de documentos RUND', () => {
+  it.each(['disabled', 'older-backend', 'unavailable'])('oculta la ampliación pendiente con %s y conserva el listado y las acciones previas', async mode => {
+    const previous = vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async url => {
+      if (!url.endsWith('/configuracion')) return previous(url);
+      if (mode === 'unavailable') throw new Error('404');
+      return mode === 'disabled' ? { habilitado: false } : {};
+    });
+    render(<RundDocumentManager {...props} />);
+    await screen.findByText('Maestría.pdf');
+    expect(screen.queryByRole('button', { name: 'Preparar expediente' })).toBeNull();
+    expect(screen.queryByText(/TRD pendiente|Almacenamiento provisional|configuración documental/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Agregar documento' })).toBeTruthy();
+    expect(row('Maestría.pdf').getByTitle('Descargar')).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it('informa al administrador que el almacenamiento es provisional y la TRD está pendiente', async () => {
+    const previous = vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async url => url.endsWith('/configuracion')
+      ? { data: { habilitado: true, proveedor: 'LOCAL', almacenamientoProvisional: true, escrituraConfigurada: true, trd: { estado: 'PENDIENTE_TRD' } } }
+      : previous(url));
+    render(<RundDocumentManager {...props} />);
+    expect(await screen.findByText(/Almacenamiento provisional local/)).toBeTruthy();
+    expect(screen.getByText(/TRD pendiente/)).toBeTruthy();
+    expect(await screen.findByText('Maestría.pdf')).toBeTruthy();
+  });
+  it('prepara un expediente vacío solo por acción del administrador', async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({ preparado: true });
+    render(<RundDocumentManager {...props} />);
+    await screen.findByText('Maestría.pdf');
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar expediente' }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/docente-1/expediente', {}));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it('conserva las evidencias administrativas consultables, sin reemplazo ni eliminación', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async url => url.endsWith('/categorias') ? [] : [{
+      ...docs[0], soporteGestion: true, tipoSoporte: 'soporte_edicion_perfil',
+    }]);
+    render(<RundDocumentManager {...props} />);
+    await screen.findByText('Identificación.pdf');
+    expect(row('Identificación.pdf').getByTitle('Visualizar')).toBeTruthy();
+    expect(row('Identificación.pdf').queryByTitle('Reemplazar PDF')).toBeNull();
+    expect(row('Identificación.pdf').queryByTitle('Eliminar')).toBeNull();
+  });
   it('bloquea una selección anterior si el dato dejó de estar disponible', async () => {
     const view = render(<RundDocumentManager {...props} />);
     await screen.findByText('Identificación.pdf');

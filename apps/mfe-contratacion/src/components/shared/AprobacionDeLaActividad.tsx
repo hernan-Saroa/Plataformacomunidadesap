@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowRight, Check, ClipboardCheck, Paperclip, Undo2 } from 'lucide-react';
+import { ArrowRight, Check, ClipboardCheck, Undo2 } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { useFirma } from './useFirma';
 import { HistorialRevisiones } from './HistorialRevisiones';
+import { ElegirSoportes } from './ElegirSoportes';
 
 interface Props {
   procesoId: string;
@@ -104,8 +105,8 @@ export function AprobacionDeLaActividad({
   const a = usarAprobacion(procesoId, numeral, onCambio, recargarToken);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
-  /** Las correcciones marcadas que acompañan la devolución (migración 091). */
-  const [soporte, setSoporte] = useState<File | null>(null);
+  /** Las correcciones marcadas que acompañan la devolución (migraciones 091 y 093). */
+  const [soportes, setSoportes] = useState<File[]>([]);
 
   /**
    * La firma es de quien aprueba, no de quien envió: cada quien firma su
@@ -244,24 +245,12 @@ export function AprobacionDeLaActividad({
                   aria-label="Observaciones de la devolución"
                   className={campo}
                 />
-                <label className="flex items-center gap-1.5 text-[11.5px] font-bold text-slate-600 cursor-pointer">
-                  <Paperclip className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 truncate">
-                    {soporte ? soporte.name : 'Adjuntar las correcciones (opcional)'}
-                  </span>
-                  <input
-                    type="file"
-                    className="sr-only"
-                    aria-label="Documento con las correcciones"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx"
-                    onChange={(e) => setSoporte(e.target.files?.[0] ?? null)}
-                  />
-                </label>
+                <ElegirSoportes archivos={soportes} onCambio={setSoportes} />
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
                     className={`${secundario} justify-center w-full`}
-                    onClick={() => a.devolver(motivo, soporte)}
+                    onClick={() => a.devolver(motivo, soportes)}
                     disabled={a.guardando || !motivo.trim()}
                   >
                     <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />

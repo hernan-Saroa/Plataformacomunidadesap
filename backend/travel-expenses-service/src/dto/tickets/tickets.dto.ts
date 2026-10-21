@@ -231,3 +231,118 @@ export class UpdateHolguraTiqueteDto {
   @Max(100)
   holguraPorcentaje: number;
 }
+
+/**
+ * Payload para crear una tarifa paramétrica de referencia de tiquetes.
+ */
+export class CreateTarifaReferenciaDto {
+  @IsString()
+  @Length(1, 100)
+  origenCiudad: string;
+
+  @IsString()
+  @Length(1, 100)
+  destinoCiudad: string;
+
+  @IsString()
+  @Length(2, 10)
+  origenIata: string;
+
+  @IsString()
+  @Length(2, 10)
+  destinoIata: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaEstimada: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaMinima?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaMaxima?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  fuente?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  notas?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
+/**
+ * Payload para actualizar una tarifa paramétrica de referencia de tiquetes.
+ */
+export class UpdateTarifaReferenciaDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  origenCiudad?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  destinoCiudad?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 10)
+  origenIata?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 10)
+  destinoIata?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaEstimada?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaMinima?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaMaxima?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  fuente?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  notas?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
+/**
+ * Query params para consultar la tarifa estimada de una ruta.
+ */
+export class ConsultarTarifaEstimadaDto {
+  @IsString()
+  origen: string;
+
+  @IsString()
+  destino: string;
+}
+

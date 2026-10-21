@@ -20,6 +20,7 @@ import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
 
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../../dto/segunda-revision-observaciones.dto';
+import { TipoFirmaAprobacion } from '../../../dto/firmar-solicitud.dto';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -71,6 +72,7 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+        obtenerCamposFormulario: jest.fn().mockResolvedValue([]),
       },
       humanResourcesClient = {
         consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
@@ -562,6 +564,97 @@ describe('TravelExpensesService', () => {
         /vinculación laboral\/contractual está vencida/i,
       );
     });
+
+    it('debe rechazar con BadRequestException si el comisionado pertenece a otra dependencia que la solicitada', async () => {
+      const comisionadoOtraDep = {
+        ...mockComisionado,
+        id: 'com-dep-2',
+        numeroDocumento: '10203040',
+        idDependencia: 2,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoOtraDep),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      // Enlace de dependencia 1 consulta comisionado de dependencia 2
+      await expect(
+        svc.consultarComisionado('10203040', 1),
+      ).rejects.toThrow(/está asignado a otra dependencia/);
+    });
+
+    it('debe permitir consultar comisionado cuando coincide con la dependencia solicitada', async () => {
+      const comisionadoMismaDep = {
+        ...mockComisionado,
+        id: 'com-dep-1',
+        numeroDocumento: '10203040',
+        idDependencia: 1,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoMismaDep),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('10203040', 1);
+      expect(res.idDependencia).toBe(1);
+    });
+
+    it('debe asociar la dependencia del enlace si el comisionado local no tenía idDependencia asignada', async () => {
+      const comisionadoSinDep = {
+        ...mockComisionado,
+        id: 'com-sin-dep',
+        numeroDocumento: '10203040',
+        idDependencia: null,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoSinDep),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('10203040', 3);
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ idDependencia: 3 }),
+      );
+      expect(res.idDependencia).toBe(3);
+    });
+  });
+
+  describe('listarComisionados', () => {
+    it('debe filtrar comisionados por idDependencia y término de búsqueda', async () => {
+      const qb = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          { id: 'com-1', numeroDocumento: '123', idDependencia: 5 },
+        ]),
+      };
+      const comisionadoRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.listarComisionados(5, 'carlos');
+      expect(comisionadoRepo.createQueryBuilder).toHaveBeenCalledWith('c');
+      expect(qb.andWhere).toHaveBeenCalledWith('c.idDependencia = :depNum', { depNum: 5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('com-1');
+    });
   });
 
 
@@ -876,7 +969,7 @@ describe('TravelExpensesService', () => {
       expect(result.data[0].numeroObligacion).toBe('OBL-SIIF-2026-001');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosTesoreria)',
-        { estadosTesoreria: ['OBLIGADA', 'PAGADA'] },
+        { estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
       );
     });
 
@@ -912,11 +1005,70 @@ describe('TravelExpensesService', () => {
 
       const result = await svc.obtenerSolicitudes('user-sst-01', false, 1, 20, false, false, false, false, true);
 
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].estadoSolicitud).toBe('PAGADA');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosSst)',
-        { estadosSst: ['OBLIGADA', 'PAGADA'] },
+        { estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
+      );
+    });
+
+    it('debe filtrar solicitudes por dependencia cuando el usuario es Secretario de Viáticos', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-sec-01',
+        consecutivoUnico: 'COM-2026-0001',
+        idDependencia: 5,
+        estadoSolicitud: 'SOLICITADO',
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        query: jest.fn().mockResolvedValue([{ id_dependencia: 5 }]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await svc.obtenerSolicitudes('user-sec-01', false, 1, 20, false, false, true);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(s.id_dependencia = :secDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :secDepId))',
+        { secDepId: 5 },
+      );
+    });
+
+    it('debe filtrar solicitudes con 1=0 si el Secretario no tiene dependencia configurada', async () => {
+      const qb = mockSolicitudQb([]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await svc.obtenerSolicitudes('user-sec-02', false, 1, 20, false, false, true);
+
+      expect(qb.andWhere).toHaveBeenCalledWith('1 = 0');
+    });
+
+    it('debe filtrar solicitudes por dependencia para Jefe de Dependencia o Gerente', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-jefe-01',
+        consecutivoUnico: 'COM-2026-0002',
+        idDependencia: 3,
+        estadoSolicitud: 'PENDIENTE_FIRMAS',
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        query: jest.fn().mockResolvedValue([{ id_dependencia: 3 }]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await svc.obtenerSolicitudes('user-jefe-01', false, 1, 20, false, false, false, false, false, false, false, true, false);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(s.id_dependencia = :dirDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :dirDepId))',
+        { dirDepId: 3 },
       );
     });
   });
@@ -2289,17 +2441,17 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       );
 
       expect(result.consultaRutFacturador).toBe(true);
-      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-001',
-          estadoNuevo: EstadoSolicitud.VERIFICADA,
-          comentarios: expect.stringContaining('VERIFICACION_ANALISTA'),
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          comentarios: expect.stringContaining('transferida a Control de Viáticos'),
         }),
       );
     });
 
-    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a VERIFICADA', async () => {
+    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a SOLICITADA_SIIF', async () => {
       const solicitud = {
         id: 'sol-ext-001',
         consecutivoUnico: 'COM-2026-0012',
@@ -2361,12 +2513,12 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         { seguridadSocialVigente: true, consultaRutFacturador: false },
       );
 
-      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-ext-001',
           estadoAnterior: EstadoSolicitud.EXTEMPORANEA,
-          estadoNuevo: EstadoSolicitud.VERIFICADA,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
         }),
       );
     });
@@ -2915,15 +3067,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.solicitud.siifExportado).toBe(true);
       expect(result.solicitud.fechaExportacionSiif).toBeDefined();
       expect(result.solicitud.usuarioExportadorId).toBe('analista-001');
-      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
-      expect(historialRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          solicitudId: 'sol-001',
-          estadoAnterior: EstadoSolicitud.VERIFICADA,
-          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-          comentarios: 'Exportado a SIIF Nacion',
-        }),
-      );
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
     });
 
     it('debe permitir re-exportar a SIIF sin límite incluso si ya fue exportada previamente', async () => {
@@ -2986,7 +3130,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
       expect(res.solicitud.siifExportado).toBe(true);
-      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
       expect(res.csvContent).toContain('123456789');
     });
 
@@ -3233,7 +3377,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       const result = await svc.exportarSIIF('sol-001', 'admin-001', ['SUPER_ADMIN']);
 
-      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
     });
 
     it('RF-REV-003: debe bloquear exportacion SIIF si el comisionado contratista es facturador electronico y no tiene factura adjunta', async () => {
@@ -3386,7 +3530,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
-      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
       expect(res.solicitud.siifExportado).toBe(true);
     });
   });
@@ -3820,6 +3964,101 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.analistaVerificadorNombre).toBeNull();
       expect(result.fechaVerificacionPrimerNivel).toBeNull();
     });
+
+    it('debe consultar tarifa estimada y validar tiquete resolviendo itinerario BOG-PEI cuando requiereTiquetes es true', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        idDependencia: 42,
+        requiereTiquetes: true,
+        costoEstimadoTiquete: 0,
+        destinoCiudad: 'Pereira',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionado: { id: 'com-001', idDependencia: 42 },
+        itinerario: [
+          {
+            origenCiudad: 'Bogotá, D.C.',
+            destinoCiudad: 'Pereira',
+            tipoTransporte: 'AEREO',
+          },
+          {
+            origenCiudad: 'Pereira',
+            destinoCiudad: 'Bogotá, D.C.',
+            tipoTransporte: 'AEREO',
+          },
+        ],
+      } as any;
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ total: '100000', cantidad: '1' }),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const documentoRepo = {
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        documentoRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const mockTicketsService = {
+        consultarTarifaEstimada: jest.fn().mockResolvedValue({
+          encontrado: true,
+          origen: 'Bogotá',
+          destino: 'Pereira',
+          origenIata: 'BOG',
+          destinoIata: 'PEI',
+          tarifaEstimada: 330000,
+          tarifaMinima: 280000,
+          tarifaMaxima: 420000,
+          fuente: 'API_AMADEUS',
+        }),
+        validarTiquete: jest.fn().mockResolvedValue({
+          is_valid: true,
+          nivel_alerta: 'VERDE',
+          monto_reserva_con_holgura: 759000,
+        }),
+      };
+      (svc as any)['ticketsService'] = mockTicketsService;
+
+      const result = await svc.obtenerSolicitudControlViaticos('sol-001');
+
+      expect(mockTicketsService.consultarTarifaEstimada).toHaveBeenCalledWith('Bogotá, D.C.', 'Pereira');
+      expect(mockTicketsService.validarTiquete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dependenciaId: '42',
+          origenCiudad: 'Bogotá, D.C.',
+          destinoCiudad: 'Pereira',
+          montoEstimadoTiquete: 660000, // 330.000 * 2 (ida y vuelta)
+        }),
+      );
+      expect(result.tarifaEstimada).toBeDefined();
+      expect(result.tarifaEstimada.tarifaEstimada).toBe(330000);
+      expect(result.validacionTiquete).toBeDefined();
+      expect(result.validacionTiquete.is_valid).toBe(true);
+    });
   });
 
   describe('verificarSegundaRevision', () => {
@@ -3908,6 +4147,60 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
       expect(solicitud.observacionesSegundaRevision).toBe('');
+    });
+
+    it('debe validar OTP y registrar firma digital de Control Viáticos al verificar', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(true);
+
+      const result = await svc.verificarSegundaRevision(
+        'sol-001',
+        'revisor-control',
+        ['CONTROL_VIATICOS'],
+        {
+          observaciones: 'Control cruzado aprobado con OTP',
+          otp: '123456',
+          certificadoId: 'CERT-CV-001',
+          nombreRevisor: 'Lic. Andrés Cepeda',
+          cargoRevisor: 'Revisor de Control Viáticos',
+        } as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(svc.verificarOtpFirma).toHaveBeenCalledWith(
+        expect.objectContaining({ code: '123456' }),
+      );
+      expect(solicitud.camposAdicionales.revisorControlNombre).toBe('Lic. Andrés Cepeda');
+      expect(solicitud.camposAdicionales.firmaControlViaticos).toBeDefined();
+      expect(solicitud.camposAdicionales.firmaControlViaticos.tipo).toBe(TipoFirmaAprobacion.CONTROL_VIATICOS);
+      expect(solicitud.camposAdicionales.firmaControlViaticos.otpVerificado).toBe(true);
+    });
+
+    it('debe lanzar BadRequestException si el código OTP de Control Viáticos es inválido', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(false);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {
+            observaciones: 'Control cruzado',
+            otp: '000000',
+          } as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('debe lanzar NotFoundException cuando la solicitud no existe', async () => {
@@ -4618,6 +4911,9 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           { observaciones: 'Aprobación presupuestal y de itinerario confirmada' },
         );
 
+        // Esperar a que el despacho asíncrono de notificaciones se complete
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
         // Verificación de estado y campos de auditoría
         expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
         expect(solicitud.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
@@ -4655,6 +4951,114 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
           }),
         );
+
+        // Verificación de notificación al grupo de presupuesto
+        expect(notificationClient.notifyByRole).toHaveBeenCalledWith(
+          'PRESUPUESTO',
+          expect.objectContaining({
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PRESUPUESTO',
+            datos_adicionales: expect.objectContaining({
+              solicitudId: 'sol-aut-001',
+            }),
+          }),
+        );
+      });
+
+      it('debe validar OTP y registrar firma digital de Subdirección al autorizar', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn().mockImplementation(async (s) => s),
+        };
+
+        const histRepo = { save: jest.fn().mockResolvedValue({}) };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity) => {
+                if (entity === SolicitudHistorialEstadoEntity) return histRepo;
+                return solRepo;
+              }),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(true);
+
+        const resultado = await svc.autorizarComision(
+          'sol-aut-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          {
+            observaciones: 'Visto bueno con firma OTP',
+            otp: '654321',
+            verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+            certificadoId: 'CERT-SUBDIR-999',
+            hashSha256: 'hash-sha-256-subdirector',
+          },
+        );
+
+        expect(svc.verificarOtpFirma).toHaveBeenCalledWith({
+          verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+          code: '654321',
+          consume: true,
+        });
+        expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
+        expect(resultado.camposAdicionales?.firmaSubdireccion).toBeDefined();
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.tipo).toBe('SUBDIRECCION');
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.certificadoId).toBe('CERT-SUBDIR-999');
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.otpVerificado).toBe(true);
+      });
+
+      it('debe lanzar BadRequestException si el código OTP de Subdirección es inválido', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn(),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(false);
+
+        await expect(
+          svc.autorizarComision(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {
+              otp: '000000',
+              verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+            },
+          ),
+        ).rejects.toThrow(BadRequestException);
       });
 
       it('debe lanzar BadRequestException si la comisión no está en EN_AUTORIZACION', async () => {
@@ -5108,6 +5512,114 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        // Garantizar que todo el contenido del Formato 023 (incluyendo firmas y trazabilidad) encaja en 1 página
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe incluir la firma digital verificada de Tesorería y el desglose de tiquetes aéreos en 1 página', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.PAGADA),
+          id: 'sol-023-tesoreria',
+          consecutivoUnico: 'SOL-2026-0005',
+          creadoPorUsuarioId: 'user-radicador-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorId: 'user-autorizador-1',
+          numeroRp: '2026-09-17_RP_9988',
+          fechaRp: new Date(),
+          fechaPago: new Date(),
+          numeroOrdenPago: 'OP-SIIF-99123',
+          valorPagado: 1450000,
+          montoViaticos: 800000,
+          montoGastosViaje: 200000,
+          costoEstimadoTiquete: 450000,
+          comisionado: {
+            primerNombre: 'Sandra',
+            primerApellido: 'Martínez',
+            numeroDocumento: '1023456789',
+          },
+          camposAdicionales: {
+            firmaTesoreria: {
+              tipo: 'TESORERIA',
+              nombreFirmante: 'Felipe Tesorería',
+              documentoIdentidad: '79123456',
+              cargoFirmante: 'Profesional Universitario - Tesorería',
+              fechaFirma: new Date().toISOString(),
+              usuarioId: 'user-tesorero-1',
+              estado: 'FIRMADO',
+              certificadoId: 'CERT-TES-8899',
+            },
+          },
+          diasPernoctados: 2,
+          tarifaDiaPernoctado: 300000,
+          totalPernoctados: 600000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 150000,
+          totalNoPernoctados: 150000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = { findOne: jest.fn().mockResolvedValue(solicitud) };
+        const dataSource = { query: jest.fn().mockResolvedValue([{ nom_largo: 'Funcionario' }]) };
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-tesoreria');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe incluir la firma de compromiso del Grupo de Presupuesto y mantener 1 página (extemporánea)', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.COMPROMETIDA),
+          id: 'sol-023-pres',
+          consecutivoUnico: 'SOL-2026-0099',
+          creadoPorUsuarioId: 'user-radicador-1',
+          autorizadorId: 'user-autorizador-1',
+          autorizadorDireccionId: 'user-dir-1',
+          fechaAutorizacionDireccion: new Date(),
+          extemporanea: true,
+          codigoRp: '20260916_RP_12345',
+          numeroRp: '12345',
+          valorComprometido: 1000000,
+          expedidoRpPorId: 'user-pres-1',
+          fechaExpedicionRp: new Date(),
+          comisionado: {
+            primerNombre: 'Ana',
+            primerApellido: 'García',
+            numeroDocumento: '52987654',
+          },
+          camposAdicionales: {
+            firmaPresupuesto: {
+              tipo: 'PRESUPUESTO',
+              nombreFirmante: 'Laura Presupuesto',
+              documentoIdentidad: '1012345678',
+              cargoFirmante: 'Profesional de Presupuesto',
+              fechaFirma: new Date().toISOString(),
+              usuarioId: 'user-pres-1',
+              estado: 'FIRMADO',
+              certificadoId: 'CERT-PRES-001',
+            },
+          },
+          diasPernoctados: 1,
+          tarifaDiaPernoctado: 250000,
+          totalPernoctados: 250000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 125000,
+          totalNoPernoctados: 125000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = { findOne: jest.fn().mockResolvedValue(solicitud) };
+        const dataSource = { query: jest.fn().mockResolvedValue([{ nom_largo: 'Funcionario' }]) };
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-pres');
+
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 correctamente cuando la comisión está en estado RADICADA', async () => {
@@ -5148,6 +5660,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 con desglose de transporte y dejar campos vacíos si no han ocurrido los procesos', async () => {
@@ -5201,6 +5714,128 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe generar el Formato 023 incluyendo tanto al Analista (Revisó) como al Revisor de Control Viáticos (2do Nivel)', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.VERIFICADA),
+          id: 'sol-023-ambos-revisores',
+          consecutivoUnico: 'SOL-2026-0004',
+          creadoPorUsuarioId: 'user-enlace-1',
+          analistaAsignadoId: 'user-analista-1',
+          revisorControlId: 'user-control-1',
+          fechaRevision: new Date(),
+          fechaSegundaRevision: new Date(),
+          camposAdicionales: {
+            nombreAnalista: 'Marcela Castro (Analista)',
+            revisorControlNombre: 'David Muñoz (Control)',
+            firmaAnalista: {
+              nombreFirmante: 'Marcela Castro',
+              certificadoId: 'CERT-ANA-01',
+              fechaFirma: new Date().toISOString(),
+            },
+            firmaControlViaticos: {
+              nombreFirmante: 'David Muñoz',
+              certificadoId: 'CERT-CTRL-02',
+              fechaFirma: new Date().toISOString(),
+            },
+          },
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            numeroDocumento: '79123456',
+            tipoComisionado: 'CONTRATISTA',
+          },
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-ambos-revisores');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe generar el Formato 023 para comisión extemporánea mostrando aval de Dirección Nacional y visto bueno de Subdirección en 1 página', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.AUTORIZADA),
+          id: 'sol-023-extemporanea',
+          consecutivoUnico: 'SOL-2026-EXT-001',
+          extemporanea: true,
+          creadoPorUsuarioId: 'user-enlace-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorDireccionId: 'user-dir-nacional',
+          autorizadorId: 'user-subdirector-1',
+          fechaAutorizacionDireccion: new Date(),
+          fechaAutorizacion: new Date(),
+          justificacionDireccion: 'Se autoriza por necesidad del servicio en zona territorial',
+          decisionDireccion: 'AUTORIZADO',
+          camposAdicionales: {
+            firmaDireccionNacional: {
+              tipo: 'DIRECCION_NACIONAL',
+              nombreFirmante: 'Dr. Jorge Vargas Muñoz',
+              cargoFirmante: 'Director Nacional',
+              certificadoId: 'CERT-DIR-001',
+              fechaFirma: new Date().toISOString(),
+              firmadoDigitalmente: true,
+            },
+            firmaSubdireccion: {
+              tipo: 'SUBDIRECCION',
+              nombreFirmante: 'Dra. Patricia Silva',
+              cargoFirmante: 'Subdirectora de Gestión Corporativa',
+              certificadoId: 'CERT-SUB-001',
+              fechaFirma: new Date().toISOString(),
+              firmadoDigitalmente: true,
+            },
+          },
+          comisionado: {
+            primerNombre: 'Laura',
+            primerApellido: 'Méndez',
+            numeroDocumento: '10203040',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          montoViaticos: 500000,
+          montoGastosViaje: 100000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockImplementation(async (query: string, params: any[]) => {
+            const uid = params?.[0];
+            if (uid === 'user-enlace-1') return [{ nom_largo: 'Enlace Solicitante' }];
+            if (uid === 'user-revisor-1') return [{ nom_largo: 'Revisor Control' }];
+            if (uid === 'user-dir-nacional') return [{ nom_largo: 'Dr. Jorge Vargas Muñoz' }];
+            if (uid === 'user-subdirector-1') return [{ nom_largo: 'Dra. Patricia Silva' }];
+            return [];
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-extemporanea');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe lanzar NotFoundException si la solicitud no existe al exportar Formato 023', async () => {
@@ -5310,7 +5945,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(resultado.firmante2.tipo).toBe('GERENTE_PROYECTO');
       });
 
-      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona a estado RADICADA', async () => {
+      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona directamente a Secretaría de Viáticos (SOLICITADO / EXTEMPORANEA)', async () => {
         const solicitud = {
           id: 'sol-firmas-completa',
           consecutivoUnico: 'SOL-2026-999',
@@ -5360,13 +5995,311 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         );
 
         expect(resultadoFirma2.radicada).toBe(true);
-        expect(resultadoFirma2.solicitud.estadoSolicitud).toBe(EstadoSolicitud.RADICADA);
-        expect(resultadoFirma2.mensaje).toContain('RADICADA');
+        expect([EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA]).toContain(
+          resultadoFirma2.solicitud.estadoSolicitud,
+        );
+        expect(resultadoFirma2.mensaje).toContain('Secretaría de Viáticos');
         expect(historialRepo.save).toHaveBeenCalledWith(
           expect.objectContaining({
-            estadoNuevo: EstadoSolicitud.RADICADA,
+            estadoNuevo: expect.stringMatching(/SOLICITADO|EXTEMPORANEA/),
           }),
         );
+      });
+
+      it('firmarAprobacionSolicitud: debe rechazar con BadRequestException si el jefe o gerente pertenece a una dependencia distinta a la de la solicitud', async () => {
+        const solicitud = {
+          id: 'sol-dep-diff',
+          consecutivoUnico: 'SOL-2026-888',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 5,
+          camposAdicionales: { firmasAprobacion: [] },
+          comisionado: { primerNombre: 'Pedro', primerApellido: 'Gómez', idDependencia: 5 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn(),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 1 }]), // Firmante es de dependencia 1
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-dep-diff',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Dr. Jefe Dep 1',
+              cargoFirmante: 'Jefe Dependencia 1',
+            },
+            'user-jefe-dep1',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('firmarAprobacionSolicitud: debe permitir la firma si la dependencia del firmante coincide con la solicitud', async () => {
+        const solicitud = {
+          id: 'sol-dep-same',
+          consecutivoUnico: 'SOL-2026-889',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 5,
+          camposAdicionales: { firmasAprobacion: [] },
+          comisionado: { primerNombre: 'Pedro', primerApellido: 'Gómez', idDependencia: 5 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 5 }]), // Mismo id_dependencia
+        };
+
+        const historialRepo = {
+          save: jest.fn().mockResolvedValue({ id: 'h-2' }),
+        };
+
+        const dataSource = {
+          getRepository: jest.fn().mockReturnValue(historialRepo),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-dep-same',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Dr. Jefe Dep 5',
+            cargoFirmante: 'Jefe Dependencia 5',
+          },
+          'user-jefe-dep5',
+          ['JEFE_DEPENDENCIA'],
+        );
+
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].tipo).toBe('JEFE_DEPENDENCIA');
+      });
+
+      it('firmarAprobacionSolicitud: rechaza a jefe regular si el comisionado es Subdirector Nacional y permite al Director Nacional', async () => {
+        const solicitud = {
+          id: 'sol-subdirector-desp',
+          consecutivoUnico: 'SOL-2026-SUB',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 10,
+          camposAdicionales: {
+            reglaDesplazamiento: 'DESPLAZAMIENTO_SUBDIRECTOR_GC',
+            cargo: 'Subdirector Nacional',
+            firmasAprobacion: [],
+          },
+          comisionado: { primerNombre: 'Subdirector', primerApellido: 'Nacional', idDependencia: 10 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 10 }]),
+        };
+        const historialRepo = { save: jest.fn().mockResolvedValue({ id: 'h-sub' }) };
+        const dataSource = { getRepository: jest.fn().mockReturnValue(historialRepo) };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // 1. Jefe regular de la dependencia intenta firmar -> debe ser rechazado
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-subdirector-desp',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Jefe Habitual',
+              cargoFirmante: 'Jefe de Oficina',
+            },
+            'user-jefe-regular',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(/el comisionado es Subdirector Nacional o tiene cargo de Dirección Territorial.*Director Nacional/);
+
+        // 2. Director Nacional intenta firmar -> debe ser aprobado
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-subdirector-desp',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Director General',
+            cargoFirmante: 'Director Nacional',
+          },
+          'user-dir-nal',
+          ['DIRECTOR_NACIONAL'],
+        );
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].cargoFirmante).toBe('Director Nacional');
+      });
+
+      it('firmarAprobacionSolicitud: rechaza a jefe regular si el comisionado es Director Nacional y permite al Subdirector Nacional', async () => {
+        const solicitud = {
+          id: 'sol-dir-desp',
+          consecutivoUnico: 'SOL-2026-DIR',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 1,
+          camposAdicionales: {
+            reglaDesplazamiento: 'DESPLAZAMIENTO_DIRECTOR_NACIONAL',
+            cargo: 'Director General Nacional',
+            firmasAprobacion: [],
+          },
+          comisionado: { primerNombre: 'Director', primerApellido: 'General', idDependencia: 1 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 1 }]),
+        };
+        const historialRepo = { save: jest.fn().mockResolvedValue({ id: 'h-dir' }) };
+        const dataSource = { getRepository: jest.fn().mockReturnValue(historialRepo) };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // 1. Jefe regular intenta firmar -> debe ser rechazado
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-dir-desp',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Jefe Habitual',
+              cargoFirmante: 'Jefe de Dependencia',
+            },
+            'user-jefe-regular',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(/el comisionado es el Director Nacional.*Subdirector Nacional/);
+
+        // 2. Subdirector Nacional intenta firmar -> debe ser aprobado
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-dir-desp',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Subdirector General',
+            cargoFirmante: 'Subdirector Nacional',
+          },
+          'user-subdir-nal',
+          ['SUBDIRECTOR_NACIONAL'],
+        );
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].cargoFirmante).toBe('Subdirector Nacional');
+      });
+
+      it('firmarAprobacionSolicitud: rechaza a jefe territorial si el comisionado es Director Territorial y permite al Director Nacional', async () => {
+        const solicitud = {
+          id: 'sol-territorial-desp',
+          consecutivoUnico: 'SOL-2026-TER',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 20,
+          camposAdicionales: {
+            reglaDesplazamiento: 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL',
+            cargo: 'Director Territorial Antioquia',
+            firmasAprobacion: [],
+          },
+          comisionado: { primerNombre: 'Director', primerApellido: 'Territorial Antioquia', idDependencia: 20 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 20 }]),
+        };
+        const historialRepo = { save: jest.fn().mockResolvedValue({ id: 'h-ter' }) };
+        const dataSource = { getRepository: jest.fn().mockReturnValue(historialRepo) };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // 1. Jefe territorial regular intenta firmar -> debe ser rechazado
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-territorial-desp',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Coordinador Territorial',
+              cargoFirmante: 'Líder de Dependencia Territorial',
+            },
+            'user-jefe-ter',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(/el comisionado es Subdirector Nacional o tiene cargo de Dirección Territorial.*Director Nacional/);
+
+        // 2. Director Nacional intenta firmar -> debe ser aprobado
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-territorial-desp',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Director Nacional',
+            cargoFirmante: 'Director Nacional',
+          },
+          'user-dir-nal',
+          ['DIRECTOR_NACIONAL'],
+        );
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].cargoFirmante).toBe('Director Nacional');
+      });
+
+      it('obtenerBandejaFirmas: filtra por la dependencia del usuario cuando no es superadmin', async () => {
+        const qb = {
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue([
+            {
+              id: 'sol-bandeja-1',
+              consecutivoUnico: 'SOL-2026-111',
+              estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+              idDependencia: 5,
+            },
+          ]),
+        };
+
+        const solicitudRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue(qb),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 5 }]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await svc.obtenerBandejaFirmas(1, 20, undefined, 'user-jefe-5', false);
+
+        expect(qb.andWhere).toHaveBeenCalledWith(
+          '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
+          { depUsuario: 5 },
+        );
+      });
+
+      it('devolverFirmaAprobacion: debe rechazar con BadRequestException si el usuario pertenece a una dependencia distinta', async () => {
+        const solicitud = {
+          id: 'sol-dev-diff',
+          consecutivoUnico: 'SOL-2026-777',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 5,
+          camposAdicionales: {},
+          comisionado: { primerNombre: 'Pedro', primerApellido: 'Gómez', idDependencia: 5 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn(),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 2 }]), // Dependencia 2 vs Solicitud 5
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.devolverFirmaAprobacion('sol-dev-diff', 'Falta soporte de agenda', 'user-jefe-dep2'),
+        ).rejects.toThrow(BadRequestException);
       });
 
       it('solicitarFirmasAprobacion: dispara notificaciones a directivos (Jefe/Gerente) y al comisionado', async () => {
@@ -5387,8 +6320,9 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           },
           objetoComision: 'Capacitación territorial en Girardot',
           destinoCiudad: 'Girardot',
-          destinoDepartamento: 'Cundinamarca',
-          camposAdicionales: {},
+          camposAdicionales: {
+            justificacionDuracion: 'Capacitación integral programada para fortalecimiento territorial institucional.',
+          },
         } as any;
 
         const qbMock: any = {
@@ -5512,5 +6446,51 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(qbMock.andWhere).toHaveBeenCalled();
       });
     });
+
+    describe('validarLimitesCaracteres — Validación dinámica de límite de caracteres por campo', () => {
+      it('debe rechazar cuando un campo supera su límite configurado', async () => {
+        const configService = {
+          obtenerCamposFormulario: jest.fn().mockResolvedValue([
+            {
+              clave: 'objetoComision',
+              etiqueta: 'Objeto de la Comisión',
+              activo: true,
+              limiteCaracteres: 50,
+            },
+          ]),
+        };
+        const module = await createMockModuleEtapa5({ configService });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.validarLimitesCaracteres({
+          objetoComision: 'A'.repeat(60),
+        });
+
+        expect(res.errores).toHaveLength(1);
+        expect(res.errores[0]).toContain('supera el límite permitido de 50 caracteres');
+      });
+
+      it('debe aceptar cuando los campos respetan el límite configurado o el valor por defecto', async () => {
+        const configService = {
+          obtenerCamposFormulario: jest.fn().mockResolvedValue([
+            {
+              clave: 'objetoComision',
+              etiqueta: 'Objeto de la Comisión',
+              activo: true,
+              limiteCaracteres: 500,
+            },
+          ]),
+        };
+        const module = await createMockModuleEtapa5({ configService });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.validarLimitesCaracteres({
+          objetoComision: 'A'.repeat(300),
+        });
+
+        expect(res.errores).toHaveLength(0);
+      });
+    });
   });
 });
+

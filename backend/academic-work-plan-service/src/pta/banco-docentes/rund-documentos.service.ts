@@ -13,6 +13,10 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { RundDocumentStorageService } from './rund-document-storage.service';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { RUND_SENSITIVE_FIELDS } from './banco-docentes-sensitive-data';
+import { isTechnicalRundSupport, RUND_STANDARD_FOLDERS } from './rund-expediente';
+import { readRetentionPolicy, retentionReport, retentionSnapshot } from './rund-retention';
+import { rundPrivacyPolicy } from './rund-privacy-policy';
+import { requireRundDocumental, rundDocumentalEnabled } from './rund-documental-feature';
 
 type DocumentUploadData = {
   categoria: string;
@@ -28,6 +32,88 @@ export class RundDocumentosService {
     private readonly dataSource: DataSource,
     private readonly storage: RundDocumentStorageService,
   ) {}
+
+  configurationStatus() {
+    if (!rundDocumentalEnabled()) return { habilitado: false, disposicionAutomatica: false };
+    let trd: { estado: string; version?: string };
+    try {
+      const policy = readRetentionPolicy();
+      trd = policy ? { estado: 'CONFIGURADA', version: policy.version } : { estado: 'PENDIENTE_TRD' };
+    } catch { trd = { estado: 'CONFIGURACION_INVALIDA' }; }
+    let privacidad: string;
+    try { privacidad = rundPrivacyPolicy().configurada ? 'CONFIGURADA' : 'PENDIENTE_POLITICA_INSTITUCIONAL'; }
+    catch { privacidad = 'CONFIGURACION_INVALIDA'; }
+    return { habilitado: true, ...this.storage.configurationStatus(), trd, privacidad, disposicionAutomatica: false };
+  }
+
+  private async retentionState(queryable: Pick<DataSource, 'query'>, document: any) {
+    const logs = await queryable.query(`SELECT accion, metadata FROM academic_work_plan."RundAprobacionLog"
+      WHERE docente_id = $1 AND canal_origen = 'RUND_DOCUMENTAL'
+        AND (soporte_id = $2 OR (soporte_id = $3 AND accion IN ('SUSPENDER_RETENCION','LEVANTAR_SUSPENSION')))
+      ORDER BY "createdAt" DESC, id DESC`, [document.docente_id, document.id, document.documento_logico_id]);
+    const snapshot = logs.find((l: any) => l.metadata?.trd?.estado === 'ASIGNADA')?.metadata.trd || { estado: 'PENDIENTE_TRD' };
+    const event = logs.find((l: any) => l.accion === 'REGISTRAR_EVENTO_TRD' && l.metadata?.huellaTrd === snapshot.huella);
+    const hold = logs.find((l: any) => ['SUSPENDER_RETENCION', 'LEVANTAR_SUSPENSION'].includes(l.accion));
+    return retentionReport(snapshot, event?.metadata?.fechaEvento, hold?.accion === 'SUSPENDER_RETENCION');
+  }
+
+  async getRetention(docenteId: string, documentId: string) {
+    requireRundDocumental();
+    const docente = await this.requireDocente(docenteId);
+    const document = await this.requireDocument(docente.id, documentId, false);
+    return this.retentionState(this.dataSource, document);
+  }
+
+  async manageRetention(docenteId: string, documentId: string, input: any, actorId: string, ip?: string) {
+    requireRundDocumental();
+    if (!['ASIGNAR_TRD', 'REGISTRAR_EVENTO_TRD', 'SUSPENDER_RETENCION', 'LEVANTAR_SUSPENSION'].includes(input?.accion)
+      || typeof input?.motivo !== 'string' || !input.motivo.trim() || input.motivo.length > 1000) {
+      throw new BadRequestException('Indique una acción de retención y su motivo (máximo 1000 caracteres).');
+    }
+    const docente = await this.requireDocente(docenteId);
+    const runner = this.dataSource.createQueryRunner();
+    await runner.connect();
+    try {
+      await runner.startTransaction();
+      await lockEvidenceProfile(runner, docente.id);
+      const document = await this.requireDocument(docente.id, documentId, false);
+      const state = await this.retentionState(runner, document);
+      const metadata: any = { motivo: input.motivo.trim() };
+      if (input.accion === 'ASIGNAR_TRD') {
+        metadata.trd = retentionSnapshot(document.categoria_codigo, document.tipo_soporte);
+        if (metadata.trd.estado !== 'ASIGNADA') throw new ConflictException('No hay una TRD configurada para este documento.');
+      }
+      if (input.accion === 'REGISTRAR_EVENTO_TRD') {
+        if (state.trd.estado !== 'ASIGNADA') throw new ConflictException('Asigne primero la TRD aprobada.');
+        const date = new Date(input.fechaEvento);
+        if (typeof input.fechaEvento !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(input.fechaEvento)
+          || !Number.isFinite(date.getTime()) || date.getTime() > Date.now()
+          || input.evento !== state.trd.regla.eventoInicio) throw new BadRequestException('Evento o fecha de inicio TRD inválidos.');
+        Object.assign(metadata, { fechaEvento: date.toISOString(), evento: input.evento, huellaTrd: state.trd.huella });
+      }
+      const logicalAction = ['SUSPENDER_RETENCION', 'LEVANTAR_SUSPENSION'].includes(input.accion);
+      await this.insertAudit(runner, { docenteId: docente.id, bloque: 'DOCUMENTAL', accion: input.accion,
+        actorId, ip, soporteId: logicalAction ? document.documento_logico_id : document.id, metadata });
+      const result = await this.retentionState(runner, document);
+      await runner.commitTransaction();
+      return result;
+    } catch (error) {
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      throw error;
+    } finally { await runner.release(); }
+  }
+
+  async ensureExpediente(docenteId: string, actorId: string, ip?: string) {
+    requireRundDocumental();
+    const docente = await this.requireDocente(docenteId);
+    await this.storage.ensureExpediente(docente.persona_id || docente.id);
+    await this.insertAudit(this.dataSource as any, {
+      docenteId: docente.id, bloque: 'DOCUMENTAL', accion: 'PREPARAR_EXPEDIENTE', actorId, ip,
+      metadata: { estructuraVersion: 1, carpetas: RUND_STANDARD_FOLDERS },
+    });
+    // No expone rutas internas, credenciales ni identificadores de OpenKM.
+    return { docenteId: docente.id, preparado: true, estructuraVersion: 1, carpetas: RUND_STANDARD_FOLDERS };
+  }
 
   async listCategories() {
     return this.dataSource.query(
@@ -78,13 +164,15 @@ export class RundDocumentosService {
   ) {
     const docente = await this.requireDocente(docenteId);
     const category = await this.requireCategory(data.categoria);
-    this.validatePdf(file, category);
+    const technical = isTechnicalRundSupport(data.tipoSoporte);
+    if (technical) requireRundDocumental();
+    this.validateFile(file, category, technical);
     if (data.tipoSoporte) {
       data = { ...data, bloque: String(data.bloque || this.categoryBlock(category.codigo)).toUpperCase() };
       validateEvidenceType(data.bloque!, data.tipoSoporte!);
     }
 
-    if (data.tipoSoporte) {
+    if (data.tipoSoporte && !technical) {
       const existing = await this.dataSource.query(
         `SELECT id FROM academic_work_plan."RundDocumentoPerfil"
          WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'
@@ -100,24 +188,25 @@ export class RundDocumentosService {
     const id = randomUUID();
     const logicalId = randomUUID();
     const checksum = this.checksum(file!.buffer);
-    const stored = await this.storage.store({
-      content: file!.buffer,
-      documentNumber: docente.document_number,
-      category: category.codigo,
-      logicalId,
-      version: 1,
-    });
+    const trd = rundDocumentalEnabled() ? retentionSnapshot(category.codigo, data.tipoSoporte) : undefined;
+    let commitAttempted = false;
+    let stored: Awaited<ReturnType<RundDocumentStorageService['store']>> | undefined;
     const runner = this.dataSource.createQueryRunner();
-    await runner.connect();
-    await runner.startTransaction();
     try {
+      await runner.connect();
+      await runner.startTransaction();
       await lockEvidenceProfile(runner, docente.id);
       await assertRundEvidenceData(runner, docente.id, data.tipoSoporte, data.campo);
-      if (data.tipoSoporte) {
+      if (data.tipoSoporte && !technical) {
         const duplicates = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil"
           WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'`, [docente.id, data.tipoSoporte]);
         if (duplicates.length) throw new ConflictException('Ya existe un soporte vigente. Actualice y use Reemplazar.');
       }
+      stored = await this.storage.store({
+        content: file!.buffer, expedienteId: docente.persona_id || docente.id, documentNumber: docente.document_number,
+        category: category.codigo, supportType: data.tipoSoporte,
+        logicalId, version: 1, mimeType: file!.mimetype,
+      });
       const soporteId = data.tipoSoporte
         ? await this.upsertRundSupport(runner, {
             docenteId: docente.id,
@@ -134,16 +223,16 @@ export class RundDocumentosService {
            descripcion, version, nombre_archivo, mime_type, tamano_bytes, checksum_sha256,
            proveedor_almacenamiento, almacenamiento_id, almacenamiento_ruta, estado,
            rund_soporte_id, creado_por, "createdAt"
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,'application/pdf',$9,$10,$11,$12,$13,'ACTIVO',$14,$15,NOW())
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$16,$9,$10,$11,$12,$13,'ACTIVO',$14,$15,NOW())
          RETURNING *`,
         [
           id, logicalId, docente.id, category.codigo, data.bloque || null,
           data.tipoSoporte || null, this.cleanDescription(data.descripcion), file!.originalname,
           file!.size, checksum, stored.provider, stored.storageId, stored.storagePath,
-          soporteId, actorId,
+          soporteId, actorId, file!.mimetype,
         ],
       );
-      if (soporteId) await resetEvidenceBlock(runner, docente.id, data.bloque!, actorId);
+      if (soporteId && !technical) await resetEvidenceBlock(runner, docente.id, data.bloque!, actorId);
       await this.insertAudit(runner, {
         docenteId: docente.id,
         bloque: data.bloque || 'DOCUMENTAL',
@@ -151,13 +240,14 @@ export class RundDocumentosService {
         actorId,
         soporteId: id,
         ip,
-        metadata: { categoria: category.codigo, version: 1, nombreArchivo: file!.originalname, proveedor: stored.provider },
+        metadata: { categoria: category.codigo, version: 1, nombreArchivo: file!.originalname, proveedor: stored.provider, trd },
       });
+      commitAttempted = true;
       await runner.commitTransaction();
       return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: 1 });
     } catch (error) {
-      await runner.rollbackTransaction();
-      await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      if (stored && !commitAttempted) await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
       throw error;
     } finally {
       await runner.release();
@@ -175,10 +265,13 @@ export class RundDocumentosService {
   ) {
     const docente = await this.requireDocente(docenteId);
     const current = await this.requireDocument(docente.id, documentId, true);
+    this.assertMutableDocument(current);
     const category = await this.requireCategory(current.categoria_codigo);
     this.validatePdf(file, category);
     const nextVersion = Number(current.version) + 1;
     const nextId = randomUUID();
+    const trd = rundDocumentalEnabled() ? retentionSnapshot(current.categoria_codigo, current.tipo_soporte) : undefined;
+    let commitAttempted = false;
     let stored: Awaited<ReturnType<RundDocumentStorageService['store']>> | undefined;
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
@@ -190,8 +283,10 @@ export class RundDocumentosService {
       if (!active) throw new ConflictException('El documento fue reemplazado o eliminado. Actualice el listado.');
       stored = await this.storage.store({
         content: file!.buffer,
+        expedienteId: docente.persona_id || docente.id,
         documentNumber: docente.document_number,
         category: current.categoria_codigo,
+        supportType: current.tipo_soporte,
         logicalId: current.documento_logico_id,
         version: nextVersion,
       });
@@ -240,13 +335,15 @@ export class RundDocumentosService {
           versionNueva: nextVersion,
           nombreArchivo: file!.originalname,
           proveedor: stored.provider,
+          trd,
         },
       });
+      commitAttempted = true;
       await runner.commitTransaction();
       return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: nextVersion });
     } catch (error) {
-      await runner.rollbackTransaction();
-      if (stored) await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      if (stored && !commitAttempted) await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
       throw error;
     } finally {
       await runner.release();
@@ -256,6 +353,7 @@ export class RundDocumentosService {
   async remove(docenteId: string, documentId: string, actorId: string, ip?: string) {
     const docente = await this.requireDocente(docenteId);
     const current = await this.requireDocument(docente.id, documentId, true);
+    this.assertMutableDocument(current);
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
@@ -320,7 +418,7 @@ export class RundDocumentosService {
 
   private async requireDocente(identifier: string) {
     const rows = await this.dataSource.query(
-      `SELECT d.id, COALESCE(p.num_identificacion, d.id::text) AS document_number
+      `SELECT d.id, d."personaId" AS persona_id, COALESCE(p.num_identificacion, d.id::text) AS document_number
        FROM academic_work_plan."Docente" d
        LEFT JOIN auth.personas p ON p.id_person = d."personaId"
        WHERE d.id::text = $1 OR d."personaId"::text = $1 OR p.num_identificacion = $1
@@ -373,6 +471,26 @@ export class RundDocumentosService {
     }
   }
 
+  private assertMutableDocument(document: any): void {
+    if (isTechnicalRundSupport(document.tipo_soporte)) {
+      throw new ConflictException('El soporte de una edición o cambio de estado se conserva como evidencia. Cargue otro soporte desde la gestión del perfil.');
+    }
+  }
+
+  private validateFile(file: Express.Multer.File | undefined, category: any, technical: boolean): void {
+    if (!technical || file?.mimetype === 'application/pdf') return this.validatePdf(file, category);
+    const content = file?.buffer;
+    const extension = extname(file?.originalname || '').toLowerCase();
+    const jpeg = file?.mimetype === 'image/jpeg' && ['.jpg', '.jpeg'].includes(extension)
+      && content?.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+    const png = file?.mimetype === 'image/png' && extension === '.png'
+      && content?.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const max = Math.min(10 * 1024 * 1024, Number(process.env.RUND_DOCUMENT_MAX_SIZE_BYTES || category.tamano_maximo_bytes || 10 * 1024 * 1024));
+    if ((!jpeg && !png) || !file || !Number.isFinite(max) || file.size > max) {
+      throw new BadRequestException('El soporte del perfil debe ser PDF, JPG o PNG válido y respetar el tamaño máximo permitido (hasta 10 MB).');
+    }
+  }
+
   private async upsertRundSupport(runner: QueryRunner, input: {
     docenteId: string;
     bloque: string;
@@ -387,7 +505,7 @@ export class RundDocumentosService {
       [input.docenteId, input.tipoSoporte],
     );
     const contentUrl = this.contentUrl(input.docenteId, input.documentId);
-    if (existing[0]) {
+    if (existing[0] && !isTechnicalRundSupport(input.tipoSoporte)) {
       await runner.query(
         `UPDATE academic_work_plan."RundSoporteCampo"
          SET bloque = $1, documento_perfil_id = $2, documento_carpeta_id = $3,
@@ -412,7 +530,7 @@ export class RundDocumentosService {
     await runner.query(
       `INSERT INTO academic_work_plan."RundAprobacionLog"
        (id, docente_id, bloque, accion, actor_id, canal_origen, soporte_id, ip, metadata, "createdAt")
-       VALUES ($1,$2,$3,$4,$5,'RUND_DOCUMENTAL',$6,$7,$8::jsonb,NOW())`,
+       VALUES ($1,$2,$3,$4,$5,'RUND_DOCUMENTAL',$6,$7,$8::jsonb,clock_timestamp())`,
       [randomUUID(), entry.docenteId, entry.bloque, entry.accion, entry.actorId, entry.soporteId, entry.ip || null, JSON.stringify(entry.metadata || {})],
     );
   }
@@ -426,6 +544,7 @@ export class RundDocumentosService {
       categoriaNombre: row.categoria_nombre || row.categoria_codigo,
       bloque: row.bloque,
       tipoSoporte: row.tipo_soporte,
+      soporteGestion: isTechnicalRundSupport(row.tipo_soporte),
       descripcion: row.descripcion,
       version: Number(row.version),
       totalVersiones: Number(row.total_versiones || row.version || 1),
@@ -465,7 +584,7 @@ export class RundDocumentosService {
   private categoryBlock(category: string) {
     if (category === 'IDENTIDAD') return 'IDENTIDAD';
     if (category === 'TITULOS') return 'FORMACION';
-    if (['CONTRATOS', 'RESOLUCIONES'].includes(category)) return 'VINCULACION';
+    if (['CONTRATOS', 'RESOLUCIONES', 'ACTOS_ADMINISTRATIVOS'].includes(category)) return 'VINCULACION';
     if (category === 'AUTORIZACIONES') return 'TRANSVERSAL';
     return 'ACADEMICO';
   }

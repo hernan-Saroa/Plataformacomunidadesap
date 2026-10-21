@@ -15,6 +15,7 @@ import { TicketsModule } from '../tickets/tickets.module';
 import { SecondLevelSodGuard } from '../../common/second-level-sod.guard';
 import { AuthorizationSodGuard } from '../../common/authorization-sod.guard';
 import { SodGuard } from '../../common/sod.guard';
+import { PendientesService } from '../legalizacion/pendientes.service';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SodGuard } from '../../common/sod.guard';
     SecondLevelSodGuard,
     AuthorizationSodGuard,
     SodGuard,
+    PendientesService,
   ],
   exports: [TravelExpensesService],
 })

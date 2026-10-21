@@ -209,6 +209,8 @@ describe('RF-AUT-002 — Etapa 6: Autorizar Comisiones Extemporáneas (Direcció
         send: jest.fn().mockResolvedValue(true),
         sendToRole: jest.fn().mockResolvedValue(true),
         notifyByRole: jest.fn().mockResolvedValue(true),
+        notifyUser: jest.fn().mockResolvedValue(true),
+        notifyByPermission: jest.fn().mockResolvedValue(true),
         sendEmail: jest.fn().mockResolvedValue(true),
       };
 
@@ -698,17 +700,20 @@ describe('RF-AUT-002 — Etapa 6: Autorizar Comisiones Extemporáneas (Direcció
         { justificacion: 'Aval institucional', esDelegado: true },
       );
 
-      expect(notificationClientMock.send).toHaveBeenCalledWith(
+      expect(notificationClientMock.notifyUser).toHaveBeenCalledWith(
+        'enlace-1',
         expect.objectContaining({
-          id_usuario_destinatario: 'enlace-1',
           tipo_notificacion: 'VIATICOS_EXTEMPORANEA_AUTORIZADA',
         }),
+        expect.any(Object),
       );
-      expect(notificationClientMock.notifyByRole).toHaveBeenCalledWith(
-        'SUBDIRECCION_GESTION_CORPORATIVA',
+      expect(notificationClientMock.notifyByPermission).toHaveBeenCalledWith(
+        'travel_expenses.general.es_subdireccion_corporativa',
         expect.objectContaining({
           tipo_notificacion: 'VIATICOS_EXTEMPORANEA_EN_SUBDIRECCION',
         }),
+        expect.any(Object),
+        expect.anything(),
       );
     });
 
@@ -745,12 +750,66 @@ describe('RF-AUT-002 — Etapa 6: Autorizar Comisiones Extemporáneas (Direcció
         { justificacion: 'No se acredita caso fortuito o urgencia' },
       );
 
-      expect(notificationClientMock.send).toHaveBeenCalledWith(
+      expect(notificationClientMock.notifyUser).toHaveBeenCalledWith(
+        'enlace-1',
         expect.objectContaining({
-          id_usuario_destinatario: 'enlace-1',
           tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
         }),
+        expect.any(Object),
       );
+    });
+
+    it('debe validar OTP y registrar firma digital de Dirección Nacional al autorizar', async () => {
+      const mockSolicitud: any = {
+        id: 'sol-otp-dir-01',
+        consecutivoUnico: 'COM-2026-OTP-01',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.AUTORIZACION_DIRECCION,
+        comisionadoId: 'pasajero-1',
+        creadoPorUsuarioId: 'enlace-1',
+        camposAdicionales: {},
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(mockSolicitud),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+          save: jest.fn().mockImplementation((val) => Promise.resolve(val)),
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+      jest.spyOn(serviceInstance, 'verificarOtpFirma').mockReturnValue(true);
+
+      const res = await serviceInstance.autorizarComisionExtemporanea(
+        'sol-otp-dir-01',
+        'dir-user-01',
+        ['DIRECCION_NACIONAL'],
+        {
+          justificacion: 'Aprobación con firma digital y validación OTP',
+          esDelegado: false,
+          otp: '654321',
+          verificationId: 'viat:sol-otp-dir-01:DIRECCION_NACIONAL:dir-user-01',
+          certificadoId: 'CERT-DIR-001',
+          hashSha256: 'sha256:hash-direccion-nacional',
+        },
+      );
+
+      expect(serviceInstance.verificarOtpFirma).toHaveBeenCalledWith({
+        verificationId: 'viat:sol-otp-dir-01:DIRECCION_NACIONAL:dir-user-01',
+        code: '654321',
+        consume: true,
+      });
+      expect(res.camposAdicionales.firmaDireccionNacional).toBeDefined();
+      expect(res.camposAdicionales.firmaDireccionNacional.tipo).toBe('DIRECCION_NACIONAL');
+      expect(res.camposAdicionales.firmaDireccionNacional.otpVerificado).toBe(true);
+      expect(res.camposAdicionales.firmaDireccionNacional.certificadoId).toBe('CERT-DIR-001');
     });
 
     it('obtenerBandejaDireccionNacional: auto-enruta solicitudes extemporáneas en VERIFICADA a AUTORIZACION_DIRECCION', async () => {

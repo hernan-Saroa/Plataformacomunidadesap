@@ -2,18 +2,19 @@
  * Utilidades estándar para el cómputo de Días Hábiles, Términos y Tiempo Límite en Viáticos.
  *
  * Reglas Institucionales ESAP:
- * 1. Los días hábiles excluyen estrictamente sábados (6) y domingos (0).
+ * 1. Los días hábiles excluyen días no laborables (sábados y domingos por defecto, o configurables).
  * 2. Los días hábiles excluyen los días festivos nacionales oficiales de Colombia,
  *    almacenados y administrados centralizadamente en `auth` (`auth.festivos_colombia`).
  * 3. Aritmética de fechas normalizada en UTC / formato ISO YYYY-MM-DD para evitar desfases
  *    de zona horaria entre servidor y cliente.
  * 4. Plazos y tiempo límite:
- *    - Anticipación de radicación: mínimo 14 días hábiles previos (RF-EXT-001).
- *    - Modalidad de pago RP: >= 5 días hábiles previos = AVANCE; < 5 = RECONOCIMIENTO_POSTERIOR (RF-PRE-003).
- *    - Plazos de gestión y control de vencimientos (SLA).
+ *    - Anticipación de radicación: configurable (por defecto 14 días hábiles previos RF-EXT-001).
+ *    - Modalidad de pago RP: configurable (por defecto >= 5 días hábiles previos = AVANCE; < 5 = RECONOCIMIENTO_POSTERIOR RF-PRE-003).
+ *    - Horario de corte para radicación institucional: configurable (por defecto 16:30 h).
  */
 
 import apiClient from '../services/api/apiClient';
+import type { ConfigJornadaLaboral } from '../types/parametrizacion';
 
 /** Estado del tiempo límite o plazo legal/administrativo */
 export type EstadoTiempoLimite = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_PLAZO';
@@ -27,6 +28,19 @@ export const DIAS_HABILES_ANTICIPACION_MINIMA = 14;
 /** Umbral institucional para pago como anticipo (AVANCE) en expedición de RP */
 export const DIAS_HABILES_UMBRAL_AVANCE_RP = 5;
 
+/** Jornada laboral estándar por defecto */
+export const JORNADA_LABORAL_DEFAULT: ConfigJornadaLaboral = {
+  id: 0,
+  codigo: 'DEFAULT',
+  nombre: 'Jornada Laboral Institucional',
+  horaInicio: '08:00',
+  horaFin: '16:30',
+  diasLaborales: [1, 2, 3, 4, 5],
+  diasAnticipacionMinima: 14,
+  diasUmbralAvance: 5,
+  activo: true,
+};
+
 // Cache en memoria para festivos consultados desde Auth
 interface FestivosCache {
   year: number | 'ALL';
@@ -36,6 +50,13 @@ interface FestivosCache {
 
 let festivosMemoryCache: FestivosCache | null = null;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hora
+
+// Cache en memoria para jornada laboral activa
+interface JornadaCache {
+  config: ConfigJornadaLaboral;
+  timestamp: number;
+}
+let jornadaMemoryCache: JornadaCache | null = null;
 
 /**
  * Normaliza cualquier entrada de fecha a una cadena 'YYYY-MM-DD'.
@@ -76,12 +97,16 @@ export function aFechaUtc(ymd: string | Date): Date {
 }
 
 /**
- * Retorna true si la fecha corresponde a sábado o domingo.
+ * Retorna true si la fecha NO corresponde a un día laboral.
+ * Por defecto evalúa sábado (6) o domingo (0). Si se provee `diasLaborales`, evalúa pertenencia.
  */
-export function esFinDeSemana(fecha: string | Date): boolean {
+export function esFinDeSemana(fecha: string | Date, diasLaborales?: number[]): boolean {
   const d = aFechaUtc(fecha);
   if (Number.isNaN(d.getTime())) return false;
-  const diaSemana = d.getUTCDay(); // 0 = Domingo, 6 = Sábado
+  const diaSemana = d.getUTCDay(); // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+  if (Array.isArray(diasLaborales) && diasLaborales.length > 0) {
+    return !diasLaborales.includes(diaSemana);
+  }
   return diaSemana === 0 || diaSemana === 6;
 }
 
@@ -131,13 +156,14 @@ export function esDiaFestivo(
 }
 
 /**
- * Retorna true si la fecha es día hábil (no es fin de semana ni festivo).
+ * Retorna true si la fecha es día hábil (no es día de descanso semanal ni festivo).
  */
 export function esDiaHabil(
   fecha: string | Date,
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
+  diasLaborales?: number[],
 ): boolean {
-  if (esFinDeSemana(fecha)) return false;
+  if (esFinDeSemana(fecha, diasLaborales)) return false;
   return !esDiaFestivo(fecha, festivos);
 }
 
@@ -156,9 +182,10 @@ export function siguienteDia(fecha: string | Date): string {
 export function siguienteDiaHabil(
   fecha: string | Date,
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
+  diasLaborales?: number[],
 ): string {
   let cur = siguienteDia(fecha);
-  while (!esDiaHabil(cur, festivos)) {
+  while (!esDiaHabil(cur, festivos, diasLaborales)) {
     cur = siguienteDia(cur);
   }
   return cur;
@@ -176,6 +203,10 @@ export interface ContarDiasHabilesOptions {
    * - 'rango_completo': Incluye tanto la fecha de inicio como la fecha fin (días hábiles de duración).
    */
   modo?: 'previos' | 'terminos_legales' | 'rango_completo';
+  /**
+   * Días hábiles de la semana permitidos (por defecto 1 a 5: Lunes a Viernes).
+   */
+  diasLaborales?: number[];
 }
 
 /**
@@ -184,7 +215,7 @@ export interface ContarDiasHabilesOptions {
  * @param desde Fecha de inicio (Date o YYYY-MM-DD)
  * @param hasta Fecha final (Date o YYYY-MM-DD)
  * @param festivos Conjunto opcional de festivos; si no se provee, utiliza el caché en memoria
- * @param options Configuración de inclusión/exclusión de extremos (por defecto 'previos')
+ * @param options Configuración de inclusión/exclusión de extremos y días laborales
  */
 export function contarDiasHabiles(
   desde: string | Date,
@@ -196,9 +227,11 @@ export function contarDiasHabiles(
   const ymdHasta = aYMD(hasta);
 
   if (!ymdDesde || !ymdHasta) return 0;
+  const diasLaborales = options?.diasLaborales;
+
   if (ymdHasta <= ymdDesde) {
     if (options?.modo === 'rango_completo' && ymdHasta === ymdDesde) {
-      return esDiaHabil(ymdDesde, festivos) ? 1 : 0;
+      return esDiaHabil(ymdDesde, festivos, diasLaborales) ? 1 : 0;
     }
     return 0;
   }
@@ -214,7 +247,7 @@ export function contarDiasHabiles(
     // Incluye desde
     while (cursor.getTime() <= fin.getTime()) {
       const ymdCur = aYMD(cursor);
-      if (esDiaHabil(ymdCur, festivosSet)) {
+      if (esDiaHabil(ymdCur, festivosSet, diasLaborales)) {
         habiles++;
       }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -227,7 +260,7 @@ export function contarDiasHabiles(
     cursor.setUTCDate(cursor.getUTCDate() + 1);
     while (cursor.getTime() <= fin.getTime()) {
       const ymdCur = aYMD(cursor);
-      if (esDiaHabil(ymdCur, festivosSet)) {
+      if (esDiaHabil(ymdCur, festivosSet, diasLaborales)) {
         habiles++;
       }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -239,7 +272,7 @@ export function contarDiasHabiles(
   cursor.setUTCDate(cursor.getUTCDate() + 1);
   while (cursor.getTime() < fin.getTime()) {
     const ymdCur = aYMD(cursor);
-    if (esDiaHabil(ymdCur, festivosSet)) {
+    if (esDiaHabil(ymdCur, festivosSet, diasLaborales)) {
       habiles++;
     }
     cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -256,23 +289,23 @@ export function calcularDiasHabilesPrevios(
   fechaReferencia: string | Date,
   fechaInicioViaje: string | Date,
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
+  diasLaborales?: number[],
 ): number {
-  return contarDiasHabiles(fechaReferencia, fechaInicioViaje, festivos, { modo: 'previos' });
+  return contarDiasHabiles(fechaReferencia, fechaInicioViaje, festivos, {
+    modo: 'previos',
+    diasLaborales,
+  });
 }
 
 /**
  * Suma un número determinado de días hábiles a una fecha dada,
- * saltando fines de semana y festivos oficiales.
- *
- * @param desde Fecha de inicio
- * @param dias Cantidad de días hábiles a sumar
- * @param festivos Conjunto opcional de festivos
- * @returns Fecha de vencimiento en formato 'YYYY-MM-DD'
+ * saltando días no laborales y festivos oficiales.
  */
 export function sumarDiasHabiles(
   desde: string | Date,
   dias: number,
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
+  diasLaborales?: number[],
 ): string {
   if (dias <= 0) return aYMD(desde);
 
@@ -282,7 +315,7 @@ export function sumarDiasHabiles(
 
   while (sumados < dias) {
     fecha = siguienteDia(fecha);
-    if (esDiaHabil(fecha, festivosSet)) {
+    if (esDiaHabil(fecha, festivosSet, diasLaborales)) {
       sumados++;
     }
   }
@@ -292,15 +325,12 @@ export function sumarDiasHabiles(
 
 /**
  * Calcula los días hábiles restantes entre hoy (o fecha de referencia) y la fecha de vencimiento.
- * Retorna un valor con signo:
- *  > 0 : Quedan días hábiles para vencer
- *  = 0 : Vence hoy
- *  < 0 : Vencido hace N días hábiles
  */
 export function calcularDiasHabilesRestantes(
   fechaVencimiento: string | Date,
   fechaReferencia: string | Date = new Date(),
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
+  diasLaborales?: number[],
 ): number {
   const ymdVenc = aYMD(fechaVencimiento);
   const ymdRef = aYMD(fechaReferencia);
@@ -309,10 +339,16 @@ export function calcularDiasHabilesRestantes(
   if (ymdVenc === ymdRef) return 0;
 
   if (ymdVenc > ymdRef) {
-    return contarDiasHabiles(ymdRef, ymdVenc, festivos, { modo: 'terminos_legales' });
+    return contarDiasHabiles(ymdRef, ymdVenc, festivos, {
+      modo: 'terminos_legales',
+      diasLaborales,
+    });
   }
 
-  return -contarDiasHabiles(ymdVenc, ymdRef, festivos, { modo: 'terminos_legales' });
+  return -contarDiasHabiles(ymdVenc, ymdRef, festivos, {
+    modo: 'terminos_legales',
+    diasLaborales,
+  });
 }
 
 /**
@@ -350,17 +386,19 @@ export function calcularTiempoLimite(
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
   diasAviso: number = DIAS_AVISO_POR_VENCER_DEFAULT,
   fechaActual: string | Date = new Date(),
+  diasLaborales?: number[],
 ): ResultadoTiempoLimite {
   const ymdInicio = aYMD(fechaInicio);
   const ymdActual = aYMD(fechaActual);
   const festivosSet = normalizarFestivosSet(festivos || festivosMemoryCache?.festivos);
 
-  const fechaVencimiento = sumarDiasHabiles(ymdInicio, diasPlazo, festivosSet);
-  const diasRestantes = calcularDiasHabilesRestantes(fechaVencimiento, ymdActual, festivosSet);
+  const fechaVencimiento = sumarDiasHabiles(ymdInicio, diasPlazo, festivosSet, diasLaborales);
+  const diasRestantes = calcularDiasHabilesRestantes(fechaVencimiento, ymdActual, festivosSet, diasLaborales);
   const estado = clasificarEstadoPlazo(diasRestantes, diasAviso);
 
   const diasHabilesTranscurridos = contarDiasHabiles(ymdInicio, ymdActual, festivosSet, {
     modo: 'terminos_legales',
+    diasLaborales,
   });
 
   return {
@@ -369,9 +407,25 @@ export function calcularTiempoLimite(
     diasPlazo,
     diasRestantes,
     estado,
-    esDiaHabilHoy: esDiaHabil(ymdActual, festivosSet),
+    esDiaHabilHoy: esDiaHabil(ymdActual, festivosSet, diasLaborales),
     diasHabilesTranscurridos,
   };
+}
+
+/**
+ * Convierte un string de hora 'HH:mm' a minutos transcurridos en el día.
+ */
+export function convertirHoraAMinutos(horaStr?: string, defaultMinutos: number = 16 * 60 + 30): number {
+  if (!horaStr) return defaultMinutos;
+  const parts = horaStr.trim().split(':');
+  if (parts.length >= 2) {
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      return h * 60 + m;
+    }
+  }
+  return defaultMinutos;
 }
 
 /**
@@ -383,40 +437,57 @@ export interface ResultadoAnticipacionRadicacion {
   radicadoFueraJornada: boolean;
   fechaEfectivaRadicacion: string;
   fechaInicioViaje: string;
+  anticipacionMinimaRequerida: number;
+  horaCorteAplicada: string;
+  horaInicioAplicada: string;
 }
 
 /**
- * Valida la anticipación de radicación de una comisión frente a los 14 días hábiles requeridos por la ESAP.
- * Si se radica fuera de horario laboral (después de las 16:30 o en fin de semana / festivo),
+ * Valida la anticipación de radicación de una comisión frente a los días hábiles requeridos.
+ * Totalmente paramétrica: utiliza la jornada activa configurada en BD o por defecto (16:30, [1..5], 14 días).
+ * Si se radica fuera de horario laboral (después de la hora de corte o en día no hábil),
  * el cómputo de términos inicia formalmente el siguiente día hábil.
  */
 export function validarAnticipacionRadicacion(
   fechaInicioViaje: string | Date,
   festivos?: ReadonlySet<string> | string[] | Array<{ fecha?: string }>,
   fechaRadicacion: Date = new Date(),
+  configJornada?: Partial<ConfigJornadaLaboral> | null,
 ): ResultadoAnticipacionRadicacion | null {
   const ymdInicio = aYMD(fechaInicioViaje);
   if (!ymdInicio) return null;
 
   const festivosSet = normalizarFestivosSet(festivos || festivosMemoryCache?.festivos);
+  const cfg = configJornada || jornadaMemoryCache?.config || JORNADA_LABORAL_DEFAULT;
 
-  // Determinar corte de jornada laboral (16:30 o fin de semana o festivo)
+  const horaCorteStr = cfg.horaFin || '16:30';
+  const horaInicioStr = cfg.horaInicio || '08:00';
+  const minutosCorte = convertirHoraAMinutos(horaCorteStr, 16 * 60 + 30);
+  const minutosInicio = convertirHoraAMinutos(horaInicioStr, 8 * 60);
+  const diasLaborales = cfg.diasLaborales || [1, 2, 3, 4, 5];
+  const diasMinimos = typeof cfg.diasAnticipacionMinima === 'number' ? cfg.diasAnticipacionMinima : DIAS_HABILES_ANTICIPACION_MINIMA;
+
   const ahora = fechaRadicacion instanceof Date ? fechaRadicacion : new Date(fechaRadicacion);
-  const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+  const horaActualMinutos = ahora.getHours() * 60 + ahora.getMinutes();
   const ymdHoy = aYMD(ahora);
 
-  const esFinSem = esFinDeSemana(ymdHoy);
+  const esNoLaboral = esFinDeSemana(ymdHoy, diasLaborales);
   const esFestivoHoy = esDiaFestivo(ymdHoy, festivosSet);
-  const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinSem || esFestivoHoy;
+
+  const fueraDeHora = horaActualMinutos >= minutosCorte || horaActualMinutos < minutosInicio;
+  const radicadoFueraJornada = fueraDeHora || esNoLaboral || esFestivoHoy;
 
   // Fecha efectiva de inicio del trámite: si fue fuera de jornada, salta al siguiente día hábil
   const fechaEfectiva = radicadoFueraJornada
-    ? siguienteDiaHabil(ymdHoy, festivosSet)
+    ? siguienteDiaHabil(ymdHoy, festivosSet, diasLaborales)
     : ymdHoy;
 
   // Cómputo de días hábiles previos entre la fecha efectiva y el inicio del viaje
-  const diasHabiles = contarDiasHabiles(fechaEfectiva, ymdInicio, festivosSet, { modo: 'previos' });
-  const extemporanea = diasHabiles < DIAS_HABILES_ANTICIPACION_MINIMA;
+  const diasHabiles = contarDiasHabiles(fechaEfectiva, ymdInicio, festivosSet, {
+    modo: 'previos',
+    diasLaborales,
+  });
+  const extemporanea = diasHabiles < diasMinimos;
 
   return {
     extemporanea,
@@ -424,6 +495,9 @@ export function validarAnticipacionRadicacion(
     radicadoFueraJornada,
     fechaEfectivaRadicacion: fechaEfectiva,
     fechaInicioViaje: ymdInicio,
+    anticipacionMinimaRequerida: diasMinimos,
+    horaCorteAplicada: horaCorteStr,
+    horaInicioAplicada: horaInicioStr,
   };
 }
 
@@ -477,6 +551,33 @@ export async function obtenerFestivosAuth(year?: number): Promise<Set<string>> {
 }
 
 /**
+ * Obtiene la configuración de jornada laboral activa desde el microservicio de viáticos.
+ * Con caché en memoria y fallback a valores por defecto institucionales.
+ */
+export async function obtenerJornadaLaboralActiva(): Promise<ConfigJornadaLaboral> {
+  const now = Date.now();
+  if (jornadaMemoryCache && now - jornadaMemoryCache.timestamp < CACHE_TTL_MS) {
+    return jornadaMemoryCache.config;
+  }
+
+  try {
+    const res: any = await apiClient.get('/viaticos/api/v1/parametrizacion/jornada-laboral/activa');
+    const config: ConfigJornadaLaboral = res?.data || res || JORNADA_LABORAL_DEFAULT;
+    jornadaMemoryCache = {
+      config,
+      timestamp: now,
+    };
+    return config;
+  } catch (error) {
+    console.warn(
+      '[diasHabilesUtils] No se pudo cargar la jornada laboral activa desde el servicio, usando fallback institucional:',
+      error,
+    );
+    return JORNADA_LABORAL_DEFAULT;
+  }
+}
+
+/**
  * Obtiene los festivos actualmente en caché (sin realizar llamada asíncrona).
  */
 export function obtenerFestivosEnMemoria(): Set<string> {
@@ -484,8 +585,9 @@ export function obtenerFestivosEnMemoria(): Set<string> {
 }
 
 /**
- * Limpia el caché en memoria de festivos.
+ * Limpia el caché en memoria de festivos y jornada laboral.
  */
 export function limpiarCacheFestivos(): void {
   festivosMemoryCache = null;
+  jornadaMemoryCache = null;
 }

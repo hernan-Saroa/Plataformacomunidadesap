@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronRight, Layers, Loader2, Lock, Search } from 'lucide-react';
+import { BookOpen, ChevronRight, Layers, Loader2, Lock, Search, X } from 'lucide-react';
 
 import {
   getCatalogoPorSemestre,
@@ -26,7 +26,7 @@ const NIVELES: Array<{ valor: NivelAcademico; etiqueta: string }> = [
   { valor: 'posgrado', etiqueta: 'Posgrado' },
 ];
 
-export function SelectorCatalogo() {
+export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; irACarga?: () => void }) {
   const [programas, setProgramas] = useState<ProgramaCatalogo[]>([]);
   const [cargandoProgramas, setCargandoProgramas] = useState(true);
   const [errorProgramas, setErrorProgramas] = useState('');
@@ -38,21 +38,33 @@ export function SelectorCatalogo() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState('');
   const [busqueda, setBusqueda] = useState('');
-  // EFDS-1370: la asignatura elegida abre su gestión de grupos debajo del plan.
+  // EFDS-1370 / 3.1: la asignatura elegida abre su gestión de grupos en modal.
   const [asignaturaSel, setAsignaturaSel] = useState<AsignaturaCatalogo | null>(null);
+
+  // Escape cierra el modal, como cualquier diálogo de la plataforma.
+  useEffect(() => {
+    if (!asignaturaSel) return;
+    const alTeclear = (e: KeyboardEvent) => { if (e.key === 'Escape') setAsignaturaSel(null); };
+    window.addEventListener('keydown', alTeclear);
+    return () => window.removeEventListener('keydown', alTeclear);
+  }, [asignaturaSel]);
 
   // Un solo llamado sin `nivel`: el backend ya devuelve únicamente los programas
   // de los niveles autorizados, y de ahí se derivan las opciones del selector.
+  // El catálogo es del PERIODO seleccionado: solo salen los programas con oferta CETAP en él.
+  // Al cambiar de periodo se vuelve a pedir y se limpia la selección anterior.
   useEffect(() => {
     let cancelado = false;
     setCargandoProgramas(true);
     setErrorProgramas('');
-    getProgramas()
+    setNivel('');
+    setProgramaId('');
+    getProgramas(undefined, idPeriodo || undefined)
       .then((data) => { if (!cancelado) setProgramas(data); })
       .catch((err) => { if (!cancelado) setErrorProgramas(err?.message || 'No se pudo cargar el catálogo.'); })
       .finally(() => { if (!cancelado) setCargandoProgramas(false); });
     return () => { cancelado = true; };
-  }, []);
+  }, [idPeriodo]);
 
   /** Solo los niveles con programas visibles: si no hay, el nivel no se ofrece. */
   const nivelesDisponibles = useMemo(
@@ -71,12 +83,12 @@ export function SelectorCatalogo() {
     setCargandoCatalogo(true);
     setErrorCatalogo('');
     setSemestres(null);
-    getCatalogoPorSemestre(programaId)
+    getCatalogoPorSemestre(programaId, idPeriodo || undefined)
       .then((data) => { if (!cancelado) setSemestres(data.semestres); })
       .catch((err) => { if (!cancelado) setErrorCatalogo(err?.message || 'No se pudo cargar el catálogo.'); })
       .finally(() => { if (!cancelado) setCargandoCatalogo(false); });
     return () => { cancelado = true; };
-  }, [programaId]);
+  }, [programaId, idPeriodo]);
 
   const semestresFiltrados = useMemo(() => {
     if (!semestres) return null;
@@ -111,6 +123,23 @@ export function SelectorCatalogo() {
     );
   }
 
+  // Sin programas para el periodo: no es un tema de permisos (eso es un 403, que se muestra arriba),
+  // es que el periodo no tiene oferta cargada. Se dice, y se dice dónde cargarla.
+  if (nivelesDisponibles.length === 0 && idPeriodo) {
+    return (
+      <div className="p-6 rounded-xl border border-blue-200 bg-blue-50 text-blue-900" role="status">
+        <div>
+          <p className="font-bold text-sm">Este periodo no tiene oferta cargada</p>
+          <p className="text-sm mt-1">
+            El catálogo de un periodo muestra los programas que se dictan en él. Aún no hay oferta CETAP para
+            este periodo: cárguela con el Excel en la sección «Periodos».
+          </p>
+          {irACarga && <button type="button" onClick={irACarga} className="mt-3 text-sm font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
+        </div>
+      </div>
+    );
+  }
+
   if (nivelesDisponibles.length === 0) {
     return (
       <div className="p-6 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 flex items-start gap-3">
@@ -128,7 +157,7 @@ export function SelectorCatalogo() {
   return (
     <div className="flex flex-col gap-5">
       {/* EFDS-1369: la vía directa cuando ya se conoce el código. */}
-      <BuscarPorCodigo />
+      <BuscarPorCodigo idPeriodo={idPeriodo} />
 
       {/* Cascada: nivel → programa */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
@@ -210,10 +239,11 @@ export function SelectorCatalogo() {
             </div>
           </div>
 
-          {semestresFiltrados.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">
-              El programa no tiene asignaturas que coincidan.
-            </p>
+          {semestresFiltrados.length === 0 || semestresFiltrados.every((s) => s.asignaturas.length === 0) ? (
+            <div className="p-6 text-sm text-slate-600">
+              <p>{busqueda.trim() ? 'No hay asignaturas que coincidan con la búsqueda.' : 'Este programa no tiene asignaturas cargadas. Para programarlo en este periodo, carga su Excel desde Periodos.'}</p>
+              {!busqueda.trim() && irACarga && <button type="button" onClick={irACarga} className="mt-3 font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
+            </div>
           ) : (
             <div className="divide-y divide-slate-100">
               {semestresFiltrados.map((s) => (
@@ -257,12 +287,39 @@ export function SelectorCatalogo() {
 
       {/* EFDS-1370: los grupos cuelgan de la asignatura elegida. El horario, a su
           vez, colgará del grupo — no de la asignatura (RN-11). */}
+      {/* 3.1 — La gestión de grupos abre en MODAL, no debajo del plan.
+          Antes se renderizaba al final de la página: con 74 asignaturas quedaba
+          fuera de pantalla y el clic parecía no hacer nada. La funcionalidad
+          estaba; lo que faltaba era que se viera. */}
       {asignaturaSel && (
-        <GestionGrupos
-          idAsignatura={asignaturaSel.id}
-          nombreAsignatura={asignaturaSel.nombre}
-          codigoAsignatura={asignaturaSel.codigo}
-        />
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Grupos de ${asignaturaSel.nombre}`}
+          onClick={() => setAsignaturaSel(null)}
+        >
+          <div
+            className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setAsignaturaSel(null)}
+              aria-label="Cerrar"
+              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <GestionGrupos
+              idAsignatura={asignaturaSel.id}
+              nombreAsignatura={asignaturaSel.nombre}
+              codigoAsignatura={asignaturaSel.codigo}
+              idPeriodo={idPeriodo}
+              irACarga={irACarga}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

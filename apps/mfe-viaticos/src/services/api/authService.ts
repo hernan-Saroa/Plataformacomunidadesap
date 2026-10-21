@@ -22,6 +22,15 @@ export const ROLES_ANALISTA_VIATICOS = [
   'ANALISTA_VIATICOS',
 ];
 
+export const ROLES_COORDINADOR_COMISIONES = [
+  'COORDINADOR_COMISIONES_VIATICOS',
+  'COORDINADOR_GRUPO_COMISIONES',
+  'COORDINADOR_COMISIONES',
+  'COORDINADORA_GRUPO_COMISIONES',
+  'COORDINADORA_COMISIONES_VIATICOS',
+  'COORDINADOR_DE_COMISIONES',
+] as const;
+
 /**
  * Permisos generales inmutables por rol funcional en Viáticos (Migración 441).
  * Evitan depender de códigos de rol modificables administrativamente.
@@ -39,12 +48,20 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
   JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
   GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
+  COMISIONADO: 'travel_expenses.general.es_comisionado',
+  COORDINADOR_COMISIONES: 'travel_expenses.general.es_coordinador_comisiones',
 } as const;
 
 export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
   'SUBDIRECCION_GESTION_CORPORATIVA',
   'SUBDIRECTOR_GESTION_CORPORATIVA',
   'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+  'SUBDIRECTOR_NACIONAL',
+  'SUBDIRECTOR',
+  'SUBDIRECCION_NACIONAL',
+  'SUBDIRECTOR_ACADEMICO',
+  'SUBDIRECTOR_PROYECCION',
+  'SUBDIRECTOR_ALTO_GOBIERNO',
 ] as const;
 
 export const ROLES_DIRECCION_NACIONAL = [
@@ -64,6 +81,7 @@ export interface DependenciaUsuario {
 export interface UsuarioActual {
   userId: string;
   username: string;
+  fullName?: string;
   email?: string;
   /** Códigos de rol normalizados a forma canónica (ej. 'SUPER_ADMIN'). */
   roles: string[];
@@ -230,16 +248,24 @@ export class AuthService {
       cached?.sub ||
       '';
 
+    const fullName =
+      cached?.fullName ||
+      cached?.full_name ||
+      data?.fullName ||
+      data?.full_name ||
+      (persona?.first_name && persona?.last_name ? `${persona.first_name} ${persona.last_name}` : '') ||
+      persona?.full_name ||
+      '';
+
     return {
       userId,
       username:
         data?.username ||
-        data?.email ||
         cached?.username ||
-        cached?.fullName ||
-        cached?.full_name ||
-        persona?.full_name ||
+        data?.email ||
+        cached?.email ||
         '',
+      fullName: fullName && !fullName.includes('@') ? fullName : undefined,
       email: data?.email || cached?.email || persona?.email,
       roles,
       permissions,
@@ -267,6 +293,18 @@ export class AuthService {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
+    if (this.isCoordinadorComisiones()) {
+      if (
+        permission === 'travel_expenses:manage_config' ||
+        permission === 'travel_expenses:cancel_request' ||
+        permission === 'travel_expenses:read_requests' ||
+        permission === 'travel_expenses:read_inbox' ||
+        permission === 'travel_expenses:paz_y_salvo.manage' ||
+        permission === VIATICOS_PERMISOS_GENERALES.COORDINADOR_COMISIONES
+      ) {
+        return true;
+      }
+    }
     return user.permissions.includes(permission);
   }
 
@@ -281,7 +319,48 @@ export class AuthService {
   isSuperAdmin(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
-    return user.esAdmin || user.roles.some((r) => /SUPER.*ADMIN|ADMIN/.test(r));
+    // Comparación exacta: un rol que solo contenga ADMIN (p. ej.
+    // COORDINADOR_ADMINISTRATIVO_FINANCIERO) no es superadministrador.
+    return user.esAdmin || user.roles.some((r) => (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r));
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol de Administrador de Viáticos
+   * (Coordinador del Grupo de Comisiones).
+   * Cuenta con permisos plenos para ver solicitudes, cancelarlas y gestionar configuraciones.
+   */
+  isCoordinadorComisiones(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.permissions.includes(VIATICOS_PERMISOS_GENERALES.COORDINADOR_COMISIONES)) return true;
+    return user.roles.some((r) =>
+      (ROLES_COORDINADOR_COMISIONES as readonly string[]).includes(r) ||
+      r.includes('COORDINADOR_COMISIONES') ||
+      r.includes('COORDINADOR_GRUPO_COMISIONES')
+    );
+  }
+
+  /**
+   * Determina si el usuario tiene rol de Administrador en el módulo de Viáticos.
+   * Abarca tanto al Super Administrador general como al Administrador del Módulo
+   * (Coordinador del Grupo de Comisiones).
+   */
+  isAdministradorViaticos(): boolean {
+    return this.isSuperAdmin() || this.isCoordinadorComisiones();
+  }
+
+  /**
+   * Determina si el usuario puede ver y modificar las configuraciones del módulo.
+   */
+  canManageConfig(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    return (
+      user.esAdmin ||
+      this.isSuperAdmin() ||
+      this.isCoordinadorComisiones() ||
+      this.hasPermission('travel_expenses:manage_config')
+    );
   }
 
   /**
@@ -351,11 +430,23 @@ export class AuthService {
   isSubdireccionGestionCorporativa(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) {
-      return this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
-        this.hasPermission('travel_expenses:read_authorizations');
+      if (this.isDireccionNacional()) return false;
+      return (
+        this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+        this.hasPermission('travel_expenses.general.es_subdirector') ||
+        this.hasPermission('general.es_subdirector') ||
+        this.hasPermission('travel_expenses:read_authorizations')
+      );
     }
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION)) return true;
+    if (this.isDireccionNacional()) return false;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+      this.hasPermission('travel_expenses.general.es_subdirector') ||
+      this.hasPermission('general.es_subdirector')
+    ) {
+      return true;
+    }
     if (
       this.hasPermission('travel_expenses:read_authorizations') ||
       this.hasPermission('travel_expenses:authorize_expense')
@@ -364,7 +455,38 @@ export class AuthService {
     }
     return user.roles.some((r) =>
       (ROLES_SUBDIRECCION_GESTION_CORPORATIVA as readonly string[]).includes(r) ||
-      r.includes('SUBDIRECCION_GESTION_CORPORATIVA'),
+      r.includes('SUBDIRECCION_GESTION_CORPORATIVA') ||
+      ((r.includes('SUBDIRECTOR') || r.includes('SUBDIRECCION')) && !r.includes('TERRITORIAL')),
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene función de Ordenador del Gasto
+   * (Subdirección de Gestión Corporativa, Dirección Nacional o roles afines de Ordenación).
+   */
+  isOrdenadorGasto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin || this.isSuperAdmin()) return true;
+    if (this.isSubdireccionGestionCorporativa() || this.isDireccionNacional()) return true;
+    return user.roles.some((r) =>
+      r.includes('ORDENADOR') ||
+      r.includes('SUBDIRECCION') ||
+      r.includes('DIRECCION_GENERAL') ||
+      r.includes('DIRECTOR_GENERAL'),
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el cargo o rol de Dirección Territorial.
+   */
+  isDirectorTerritorial(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    return user.roles.some(
+      (r) =>
+        ['DIRECTOR_TERRITORIAL', 'DIRECCION_TERRITORIAL'].includes(r) ||
+        (r.includes('TERRITORIAL') && (r.includes('DIRECTOR') || r.includes('JEFE'))),
     );
   }
 
@@ -378,12 +500,20 @@ export class AuthService {
     if (!user) {
       return (
         this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+        this.hasPermission('travel_expenses.general.es_director') ||
+        this.hasPermission('general.es_director') ||
         this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
         this.hasPermission('travel_expenses:authorize_extemporaneous')
       );
     }
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL)) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+      this.hasPermission('travel_expenses.general.es_director') ||
+      this.hasPermission('general.es_director')
+    ) {
+      return true;
+    }
     if (
       this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
       this.hasPermission('travel_expenses:authorize_extemporaneous')
@@ -400,19 +530,22 @@ export class AuthService {
   /**
    * Determina si el usuario autenticado tiene permiso para cancelar una
    * comisión (RF-AUT-003, Etapa 6).
+   * Autorizado para: Jefe de Dependencia, Super Administrador o Coordinador Grupo de Comisiones (Administrador de Viáticos).
    */
   canCancelarComision(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
-    if (user.esAdmin) return true;
-    return user.permissions.some((p) =>
-      ['travel_expenses:cancel_request',
-        'travel_expenses:create_request',
-        'travel_expenses:read_inbox',
-        'travel_expenses:authorize_expense',
-        'travel_expenses:*',
-        '*'].includes(p),
-    );
+    if (user.esAdmin || this.isSuperAdmin() || this.isCoordinadorComisiones()) return true;
+    if (this.isJefeDependencia()) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.COORDINADOR_COMISIONES) ||
+      this.hasPermission('travel_expenses:cancel_request')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -513,6 +646,21 @@ export class AuthService {
   }
 
   /**
+   * Determina si el usuario de Tesorería puede generar la firma digital de desembolso (Etapa 8 — RF-PAG-003).
+   * Requiere el permiso `travel_expenses:sign_approval` asignado por la Migración 504.
+   */
+  canFirmarTesoreria(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isTesoreria() ||
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:process_payment')
+    );
+  }
+
+  /**
    * Determina si el usuario pertenece al área de Seguridad y Salud en el Trabajo (SST) (Etapa 8 — RF-PAG-002).
    * Prioriza el permiso inmutable específico `travel_expenses.general.es_sst` (Migración 441).
    */
@@ -572,18 +720,43 @@ export class AuthService {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA)) return true;
     if (
-      this.hasPermission('travel_expenses:sign_approval') ||
-      this.hasPermission('travel_expenses:read_approvals')
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe') ||
+      this.hasPermission('general.es_jefe')
     ) {
       return true;
     }
-    return user.roles.some((r) =>
-      ['JEFE_DEPENDENCIA', 'SUPERVISOR', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
-      r.includes('JEFE') ||
-      r.includes('SUPERVISOR'),
+
+    // Si el usuario es explícitamente Gerente de Proyecto (por rol o permiso de Gerente), no es Jefe
+    const esGerente =
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      this.hasPermission('travel_expenses.general.es_gerente') ||
+      this.hasPermission('general.es_gerente') ||
+      user.roles.some((r) =>
+        ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
+        r.includes('GERENTE'),
+      );
+    if (esGerente) return false;
+
+    // Si el usuario es rol operativo (Analista, Secretario, Control Viáticos, Enlace),
+    // no debe ser considerado Jefe de Dependencia a menos que tenga el rol/permiso explícito
+    const esOperativo =
+      this.isAnalista() ||
+      this.isSecretario() ||
+      this.isControlViaticos() ||
+      this.isEnlaceDependencia();
+
+    const tieneRolJefe = user.roles.some((r) =>
+      ['JEFE_DEPENDENCIA', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
+      (r.includes('JEFE') && !r.includes('CONTROL')) ||
+      (!esOperativo && (r === 'SUPERVISOR' || r.includes('SUPERVISOR'))),
     );
+    if (tieneRolJefe) return true;
+
+    // No se usan fallbacks genéricos de travel_expenses:sign_approval / read_approvals
+    // porque esos permisos se asignaron a analistas y control de viáticos para validaciones OTP.
+    return false;
   }
 
   /**
@@ -594,10 +767,10 @@ export class AuthService {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO)) return true;
     if (
-      this.hasPermission('travel_expenses:sign_approval') ||
-      this.hasPermission('travel_expenses:read_approvals')
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      this.hasPermission('travel_expenses.general.es_gerente') ||
+      this.hasPermission('general.es_gerente')
     ) {
       return true;
     }
@@ -608,19 +781,60 @@ export class AuthService {
   }
 
   /**
-   * Determina si el usuario puede firmar aprobaciones del Formato 023.
+   * Determina si el usuario puede firmar aprobaciones del Formato 023 y ver la bandeja de firmas.
+   * Reservado exclusivamente para directivos: Jefe de Dependencia, Gerente de Proyecto,
+   * Subdirección Nacional (Gestión Corporativa) y Dirección Nacional (más Super Admin).
+   * Los roles de Analista, Secretario, Control Viáticos y Enlace están expresamente excluidos.
    */
   canFirmarAprobacion(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
+
+    // Acceso exclusivo a usuarios con permiso general o rol directivo de Jefe, Gerente, Subdirector o Director Nacional
     return (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe') ||
+      this.hasPermission('general.es_jefe') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      this.hasPermission('travel_expenses.general.es_gerente') ||
+      this.hasPermission('general.es_gerente') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+      this.hasPermission('travel_expenses.general.es_subdirector') ||
+      this.hasPermission('general.es_subdirector') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+      this.hasPermission('travel_expenses.general.es_director') ||
+      this.hasPermission('general.es_director') ||
       this.isJefeDependencia() ||
       this.isGerenteProyecto() ||
       this.isSubdireccionGestionCorporativa() ||
-      this.isDireccionNacional() ||
-      this.hasPermission('travel_expenses:sign_approval') ||
-      this.hasPermission('travel_expenses:read_approvals')
+      this.isDireccionNacional()
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol / función de Comisionado.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_comisionado` (Migración 452).
+   */
+  isComisionado(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) {
+      return (
+        this.hasPermission(VIATICOS_PERMISOS_GENERALES.COMISIONADO) ||
+        this.hasPermission('es_comisionado') ||
+        this.hasPermission('travel_expenses:read_own_requests')
+      );
+    }
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.COMISIONADO) ||
+      this.hasPermission('es_comisionado') ||
+      this.hasPermission('travel_expenses:read_own_requests')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['COMISIONADO', 'ROL_COMISIONADO'].includes(r) ||
+      r.includes('COMISIONADO'),
     );
   }
 
@@ -646,14 +860,26 @@ export class AuthService {
       const esAdmin = roles.some((r) =>
       (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
     );
+      const personObj = cached?.person || cached?.user?.person;
+      const fullName =
+        cached?.fullName ||
+        cached?.full_name ||
+        (cached?.firstName && cached?.lastName ? `${cached.firstName} ${cached.lastName}` : '') ||
+        personObj?.full_name ||
+        personObj?.fullName ||
+        personObj?.nom_largo ||
+        [personObj?.nom_tercero, personObj?.pri_apellido, personObj?.seg_apellido].filter(Boolean).join(' ') ||
+        '';
+
       return {
         userId: cached?.id_user || cached?.userId || cached?.id || '',
-        username: cached?.username || cached?.fullName || cached?.full_name || '',
+        username: cached?.username || '',
+        fullName: fullName && !fullName.includes('@') ? fullName.trim() : undefined,
         email: cached?.email,
         roles,
         permissions,
         esAdmin,
-        person: cached?.person || cached?.user?.person,
+        person: personObj,
       };
     } catch {
       return null;

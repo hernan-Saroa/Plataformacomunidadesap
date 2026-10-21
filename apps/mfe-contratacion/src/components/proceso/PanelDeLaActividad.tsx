@@ -32,7 +32,6 @@ import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
-import { PanelModalidad } from '../modalidad/PanelModalidad';
 import { PanelCausal } from '../causal/PanelCausal';
 import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
 import {
@@ -58,7 +57,6 @@ import {
   NUMERAL_INFORME_FINAL,
   NUMERAL_LIQUIDACION,
   NUMERAL_MIPYME,
-  NUMERAL_MODALIDAD,
   NUMERAL_MODIFICACIONES,
   NUMERAL_OBSERVACIONES,
   NUMERAL_OFERTAS,
@@ -109,11 +107,7 @@ export function PanelDeLaActividad({
 }: Props) {
   return (
     <>
-      {numeral === NUMERAL_MODALIDAD ? (
-        // La 3.5 deja de ser constancia: definir la modalidad es
-        // ratificar la que el área eligió, o devolverla para corregirla.
-        <PanelModalidad procesoId={procesoId} onCambio={onCambio} />
-      ) : numeral === NUMERAL_CAUSAL ? (
+      {numeral === NUMERAL_CAUSAL ? (
         // La 3.6 deja de ser constancia: la causal es una calificación
         // jurídica que se elige del catálogo de la modalidad, no una
         // fecha con una nota.

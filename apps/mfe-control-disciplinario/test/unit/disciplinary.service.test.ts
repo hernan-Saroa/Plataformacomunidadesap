@@ -24,6 +24,7 @@ vi.mock('../../config/environment', () => ({
   MICROSERVICE_URLS: {},
   buildApiUrl: vi.fn((path: string) => path),
   getServiceUrl: vi.fn(() => 'http://localhost:3000'),
+  getApiGatewayBaseUrl: vi.fn(() => 'http://localhost:3000'),
 }));
 
 describe('disciplinaryService unit API contract', () => {
@@ -34,12 +35,12 @@ describe('disciplinaryService unit API contract', () => {
   it('crea una noticia disciplinaria con FormData y archivos adjuntos', async () => {
     const { disciplinaryService } = await import('../../services/api/disciplinary.service');
     const file = new File(['contenido'], 'soporte.pdf', { type: 'application/pdf' });
-    mockApiClient.upload.mockResolvedValue(createdNews);
+    mockApiClient.post.mockResolvedValue(createdNews);
 
     const result = await disciplinaryService.radicarNoticia(createNewsDto, [file]);
 
-    expect(mockApiClient.upload).toHaveBeenCalledTimes(1);
-    const [endpoint, formData] = mockApiClient.upload.mock.calls[0];
+    expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+    const [endpoint, formData] = mockApiClient.post.mock.calls[0];
 
     expect(endpoint).toBe('/control-disciplinario/api/v1/disciplinary-news');
     expect(formData).toBeInstanceOf(FormData);

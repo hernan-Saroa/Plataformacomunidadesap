@@ -56,7 +56,7 @@ describe('RevisionDeActividad · estudio previo', () => {
     vi.spyOn(contratacionService, 'actividades').mockResolvedValue([
       { numeral: '3.1', nombre: 'Estudio previo', etapa: 3, aplica: true, estado: 'EN_REVISION' },
       { numeral: '3.3', nombre: 'Radicación', etapa: 3, aplica: true, estado: 'APROBADO' },
-      { numeral: '3.5', nombre: 'Definir modalidad de contratación', etapa: 3, aplica: true, estado: 'BORRADOR' },
+      { numeral: '3.6', nombre: 'Causal de contratación', etapa: 3, aplica: true, estado: 'BORRADOR' },
     ] as never);
     vi.spyOn(contratacionService, 'participacion').mockResolvedValue({
       contratacion: { nombre: 'Laura Pineda', esMio: false },
@@ -97,7 +97,7 @@ describe('RevisionDeActividad · estudio previo', () => {
     expect(await screen.findByText('Tu decisión')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aprobar/ })).toBeInTheDocument();
     expect(
-      await screen.findByText(/Definir modalidad de contratación · Gestor de contratación/),
+      await screen.findByText(/Causal de contratación · Gestor de contratación/),
     ).toBeInTheDocument();
   });
 
@@ -121,61 +121,5 @@ describe('RevisionDeActividad · estudio previo', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Ver el proceso completo/ }));
 
     expect(onVerProceso).toHaveBeenCalledWith('3.1');
-  });
-});
-
-/**
- * La 3.5 se decide con los botones de su propio panel, no con el bloque
- * genérico. La revisión pintaba el panel en solo lectura y dejaba al abogado
- * sin con qué ratificar: tenía que ir a la ficha del proceso a hacerlo.
- */
-describe('RevisionDeActividad · modalidad (3.5)', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    olvidarResponsables();
-    fijarAlcance({ alcances: [{ accion: 'aprobar', lugar: '3.5' }], transversales: [] });
-    vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
-      estudio({ estado: 'APROBADO' }) as never,
-    );
-    vi.spyOn(contratacionService, 'actividades').mockResolvedValue([
-      { numeral: '3.1', nombre: 'Estudio previo', etapa: 3, aplica: true, estado: 'APROBADO' },
-      { numeral: '3.5', nombre: 'Definir modalidad de contratación', etapa: 3, aplica: true, estado: 'EN_REVISION' },
-    ] as never);
-    vi.spyOn(contratacionService, 'participacion').mockResolvedValue({
-      contratacion: { nombre: 'Laura Pineda', esMio: false },
-      abogado: { nombre: 'Diana Castro', esMio: true },
-      financiera: null,
-    } as never);
-    vi.spyOn(contratacionService, 'responsables').mockResolvedValue([] as never);
-    vi.spyOn(contratacionService, 'revisiones').mockResolvedValue([] as never);
-    vi.spyOn(contratacionService, 'modalidades').mockResolvedValue([] as never);
-    vi.spyOn(contratacionService, 'firmaDeActividad').mockResolvedValue({ requiereFirma: false } as never);
-    vi.spyOn(contratacionService, 'modalidadDelProceso').mockResolvedValue({
-      modalidad: 'MINIMA_CUANTIA',
-      modalidadNombre: 'Mínima Cuantía',
-      valorEstimado: 20000000,
-      estado: 'EN_REVISION',
-      puedeCorregir: false,
-      puedeDecidir: true,
-      abogado: { nombre: 'Diana Castro', usuarioNombre: 'diana@esap' },
-      motivoNoDecide: null,
-      revisiones: [],
-    } as never);
-  });
-
-  it('deja ratificar o devolver desde la revisión', async () => {
-    render(
-      <RevisionDeActividad
-        procesoId="p-1"
-        numeral="3.5"
-        volverA="Por revisar"
-        onVolver={vi.fn()}
-        onVerProceso={vi.fn()}
-      />,
-    );
-
-    expect(await screen.findByRole('button', { name: /Ratificar/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /Devolver para corregir/ })).toBeEnabled();
-    expect(screen.getByText(/Se toma en el panel de la actividad/)).toBeInTheDocument();
   });
 });

@@ -18,12 +18,14 @@ import {
   Info,
   Award,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import authService from '../services/api/authService';
 import { SolicitudViatico } from '../types/viaticos';
 import { formatearMoneda, formatearNombreComisionado } from '../utils/viaticosUtils';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 
 interface Props {
   onVerDetalle?: (solicitud: SolicitudViatico) => void;
@@ -41,24 +43,55 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const [filtroRegla, setFiltroRegla] = useState<string>(filtroReglaEspecial ? 'REGLA_ESPECIAL' : 'TODAS');
   const [solicitudParaFirmar, setSolicitudParaFirmar] = useState<any | null>(null);
   const [modalFirmasAbierta, setModalFirmasAbierta] = useState<boolean>(false);
-  const [modalModoDevolucion, setModalModoDevolucion] = useState<boolean>(false);
   const [descargandoPdfId, setDescargandoPdfId] = useState<string | null>(null);
 
+  const {
+    documentosVisor,
+    abrirDocumentoVisor,
+    cerrarDocumentoVisor,
+  } = useVisorDocumentos();
+
   const usuario = authService.getCurrentUserSync();
-  const esSuperAdmin = usuario?.esAdmin || authService.isSuperAdmin();
-  const esJefe = authService.isJefeDependencia();
-  const esGerente = authService.isGerenteProyecto();
-  const esSubdir = authService.isSubdireccionGestionCorporativa();
-  const esDirNac = authService.isDireccionNacional();
-  const esAnalista = Boolean(authService.isAnalista?.());
-  const puedeFirmar =
-    esSuperAdmin ||
-    esJefe ||
-    esGerente ||
-    esSubdir ||
-    esDirNac ||
-    esAnalista ||
-    authService.canFirmarAprobacion?.();
+  const esSuperAdmin = Boolean(usuario?.esAdmin || authService.isSuperAdmin());
+
+  // Validación directa: Si tiene rol/permiso general es_jefe, es_gerente, es_subdirector o es_director
+  const esJefe =
+    authService.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+    authService.hasPermission('travel_expenses.general.es_jefe') ||
+    authService.hasPermission('general.es_jefe') ||
+    authService.isJefeDependencia();
+
+  const esGerente =
+    authService.hasPermission('travel_expenses.general.es_gerente_proyecto') ||
+    authService.hasPermission('travel_expenses.general.es_gerente') ||
+    authService.hasPermission('general.es_gerente') ||
+    authService.isGerenteProyecto();
+
+  const esSubdir =
+    authService.hasPermission('travel_expenses.general.es_subdireccion_corporativa') ||
+    authService.hasPermission('travel_expenses.general.es_subdirector') ||
+    authService.hasPermission('general.es_subdirector') ||
+    authService.isSubdireccionGestionCorporativa();
+
+  const esDirNac =
+    authService.hasPermission('travel_expenses.general.es_direccion_nacional') ||
+    authService.hasPermission('travel_expenses.general.es_director') ||
+    authService.hasPermission('general.es_director') ||
+    authService.isDireccionNacional();
+
+  const esDirTerritorial =
+    authService.hasPermission('travel_expenses.general.es_director_territorial') ||
+    authService.hasPermission('travel_expenses.general.es_director_seccional') ||
+    (usuario?.roles || []).some((r: any) => {
+      const norm = String(typeof r === 'string' ? r : r?.code || '').toLowerCase();
+      return norm.includes('territorial') && norm.includes('director');
+    }) ||
+    (usuario?.cargo || '').toLowerCase().includes('director territorial') ||
+    (usuario?.cargo || '').toLowerCase().includes('directora territorial');
+
+  // Si tiene alguno de estos roles/permisos directivos, muestra la bandeja; de lo contrario no.
+  const puedeVerBandeja = esSuperAdmin || esJefe || esGerente || esSubdir || esDirNac || esDirTerritorial;
+  const puedeFirmar = puedeVerBandeja;
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -79,8 +112,127 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   };
 
   useEffect(() => {
+    if (!puedeVerBandeja) {
+      setCargando(false);
+      return;
+    }
     cargarSolicitudes();
-  }, [busqueda]);
+  }, [busqueda, puedeVerBandeja]);
+
+  // Determina si una solicitud está pendiente de la firma del usuario actual
+  const faltaMiFirma = (s: any): boolean => {
+    const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
+      ? s.camposAdicionales.firmasAprobacion
+      : [];
+    const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+    const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+
+    // Validación de VoBo de duración extendida (>3 días calendario / 3.5 días valor)
+    const requiereVoBo = Boolean(s.camposAdicionales?.requiereVoBoDuracion);
+    const voboAprobado = s.camposAdicionales?.voboDuracion?.estado === 'APROBADO';
+    const instanciaVoBo = s.camposAdicionales?.instanciaVoBoDuracion || 'DIRECCION_NACIONAL';
+
+    let faltaVoBo = false;
+    if (requiereVoBo && !voboAprobado) {
+      if (instanciaVoBo === 'DIRECTOR_TERRITORIAL') {
+        faltaVoBo = esSuperAdmin || esDirTerritorial;
+      } else {
+        faltaVoBo = esSuperAdmin || esDirNac;
+      }
+    }
+
+    if (esSuperAdmin) {
+      if (requiereVoBo && !voboAprobado) {
+        return true;
+      }
+      return !tieneJefe || !tieneGerente;
+    }
+
+    // Si la comisión requiere VoBo de duración extendida (>3 días calendario / >=3.5 días valor)
+    // y aún NO ha sido aprobado, el expediente se encuentra en Fase 1 (espera de VoBo).
+    // Ni el Jefe ni el Gerente pueden firmar todavía; solo la autoridad que otorga el VoBo
+    // (Dirección Nacional o Director Territorial) tiene la acción pendiente.
+    if (requiereVoBo && !voboAprobado) {
+      return faltaVoBo;
+    }
+
+    // Fase 2 (VoBo aprobado) o Comisiones sin VoBo (<= 3 días cal. / <= 3.5 días valor):
+    // Pasa directo a firmas de Jefe y Gerente de Proyecto.
+    const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
+    const requiereDirNacional =
+      regla === 'SUBDIRECTOR_NACIONAL' ||
+      regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+      regla === 'DIRECTOR_TERRITORIAL' ||
+      regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+    const requiereSubdirNacional =
+      regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+    const faltaGerente = !tieneGerente && esGerente;
+
+    let faltaJefe = false;
+    if (!tieneJefe) {
+      if (requiereDirNacional) {
+        faltaJefe = esDirNac;
+      } else if (requiereSubdirNacional) {
+        faltaJefe = esSubdir;
+      } else {
+        // En flujo regular, solo el jefe de dependencia (el jefe habitual no puede firmar cuando se requiere Director/Subdirector Nacional)
+        faltaJefe = esJefe && !requiereDirNacional && !requiereSubdirNacional;
+      }
+    }
+
+    return faltaJefe || faltaGerente;
+  };
+
+  // Determina si el usuario actual ya registró su firma en la solicitud
+  const yaFirme = (s: any): boolean => {
+    const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
+      ? s.camposAdicionales.firmasAprobacion
+      : [];
+    const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
+    const requiereDirNacional =
+      regla === 'SUBDIRECTOR_NACIONAL' ||
+      regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+      regla === 'DIRECTOR_TERRITORIAL' ||
+      regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+    const requiereSubdirNacional =
+      regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+    const requiereVoBo = Boolean(s.camposAdicionales?.requiereVoBoDuracion);
+    const voboAprobado = s.camposAdicionales?.voboDuracion?.estado === 'APROBADO';
+    const instanciaVoBo = s.camposAdicionales?.instanciaVoBoDuracion || 'DIRECCION_NACIONAL';
+
+    if (requiereVoBo && voboAprobado) {
+      if (instanciaVoBo === 'DIRECTOR_TERRITORIAL' && esDirTerritorial) return true;
+      if (instanciaVoBo === 'DIRECCION_NACIONAL' && esDirNac) return true;
+    }
+
+    if (esGerente && firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO')) {
+      return true;
+    }
+
+    const firmaJefeRegistrada = firmas.some(
+      (f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO',
+    );
+
+    if (firmaJefeRegistrada) {
+      if (requiereDirNacional && esDirNac) return true;
+      if (requiereSubdirNacional && esSubdir) return true;
+      if (!requiereDirNacional && !requiereSubdirNacional && esJefe) return true;
+      if (esSuperAdmin) return true;
+    }
+
+    return false;
+  };
+
+  // Determina si la solicitud tiene 1 firma registrada y está esperando la restante
+  const estaEnEsperaOtraFirma = (s: any): boolean => {
+    const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
+      ? s.camposAdicionales.firmasAprobacion
+      : [];
+    const validas = firmas.filter((f: any) => f.estado !== 'RECHAZADO');
+    return validas.length === 1;
+  };
 
   const solicitudesFiltradas = useMemo(() => {
     return solicitudes.filter((s) => {
@@ -91,27 +243,21 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       if (filtroRegla === 'REGULAR') {
         return regla === 'REGULAR';
       }
+      if (filtroRegla === 'POR_FIRMAR') {
+        return faltaMiFirma(s);
+      }
+      if (filtroRegla === 'EN_ESPERA') {
+        return estaEnEsperaOtraFirma(s);
+      }
       if (filtroRegla === 'MIS_PENDIENTES') {
-        // Filtrar pendientes según el rol del usuario
-        const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
-          ? s.camposAdicionales.firmasAprobacion
-          : [];
-        if (esAnalista && !esJefe && !esGerente && !esSubdir && !esDirNac) {
-          return !firmas.some(
-            (f: any) =>
-              f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS',
-          );
-        }
-        if (esGerente && !esJefe && !esSubdir && !esDirNac) {
-          return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO');
-        }
-        if (esJefe || esSubdir || esDirNac) {
-          return !firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA');
-        }
+        // En Mis Pendientes se muestran tanto las que le faltan su firma
+        // como las que el usuario ya firmó pero siguen esperando la otra firma
+        // hasta que formalicen y pasen a estado SOLICITADO
+        return faltaMiFirma(s) || (yaFirme(s) && estaEnEsperaOtraFirma(s));
       }
       return true;
     });
-  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esAnalista]);
+  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esSuperAdmin]);
 
   const pendientesTotales = solicitudes.length;
   const conReglaEspecial = solicitudes.filter(
@@ -120,13 +266,20 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const conUnaFirma = solicitudes.filter(
     (s) =>
       Array.isArray(s.camposAdicionales?.firmasAprobacion) &&
-      s.camposAdicionales.firmasAprobacion.length === 1,
+      s.camposAdicionales.firmasAprobacion.filter((f: any) => f.estado !== 'RECHAZADO').length === 1,
   ).length;
+  const enEsperaCount = conUnaFirma;
+  const porFirmarCount = useMemo(
+    () => solicitudes.filter(faltaMiFirma).length,
+    [solicitudes, esSuperAdmin, esGerente, esJefe, esSubdir, esDirNac],
+  );
   const montoAcumulado = solicitudes.reduce(
     (acc, curr) =>
       acc +
-      (Number(curr.montoViaticos || 0) || 0) +
-      (Number(curr.montoGastosViaje || 0) || 0),
+      (Number(curr.montoTotal || curr.montoTotalEstimado) ||
+        (Number(curr.montoViaticos || 0) || 0) +
+          (Number(curr.montoGastosViaje || 0) || 0) +
+          (Number(curr.costoEstimadoTiquete || 0) || 0)),
     0,
   );
 
@@ -155,11 +308,30 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     }
   };
 
+  const handlePrevisualizar023 = async (sol: any) => {
+    try {
+      setDescargandoPdfId(sol.id);
+      const blob = await viaticosService.exportarFormato023(sol.id, sol.codigoSolicitud || sol.codigo);
+      const url = window.URL.createObjectURL(blob);
+      abrirDocumentoVisor({
+        url,
+        nombre: `Formato 023 — ${sol.codigoSolicitud || sol.codigo || 'comision'}.pdf`,
+        tipo: 'Formato 023 Oficial',
+        mime: 'application/pdf',
+      });
+    } catch (err: any) {
+      console.error('Error previsualizando Formato 023:', err);
+      alert('No fue posible abrir el Formato 023 en el visor flotante.');
+    } finally {
+      setDescargandoPdfId(null);
+    }
+  };
+
   const obtenerBadgeRegla = (sol: any) => {
     const regla = sol.camposAdicionales?.reglaDesplazamiento;
     const desc = sol.camposAdicionales?.descripcionReglaDesplazamiento;
 
-    if (regla === 'SUBDIRECTOR_NACIONAL') {
+    if (regla === 'SUBDIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -171,7 +343,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         </span>
       );
     }
-    if (regla === 'DIRECTOR_NACIONAL') {
+    if (regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -183,7 +355,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         </span>
       );
     }
-    if (regla === 'DIRECTOR_TERRITORIAL') {
+    if (regla === 'DIRECTOR_TERRITORIAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -207,14 +379,83 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     );
   };
 
+  const obtenerBadgeVoBo = (sol: any) => {
+    const requiere = Boolean(sol.camposAdicionales?.requiereVoBoDuracion);
+    const eximidoDoc = Boolean(sol.camposAdicionales?.eximidoVoBoDocente);
+    const vobo = sol.camposAdicionales?.voboDuracion;
+    const instancia = sol.camposAdicionales?.tituloVoBoDuracion || (sol.camposAdicionales?.instanciaVoBoDuracion === 'DIRECTOR_TERRITORIAL' ? 'Director Territorial' : 'Dirección Nacional');
+
+    if (requiere) {
+      if (vobo?.estado === 'APROBADO') {
+        return (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300"
+            title={`VoBo otorgado por ${vobo.nombreFirmante || instancia} (${vobo.cargoFirmante || ''}) - Certificado: ${vobo.certificadoId || 'Digital'}`}
+          >
+            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+            VoBo Duración: Aprobado ({instancia})
+          </span>
+        );
+      }
+      if (vobo?.estado === 'RECHAZADO') {
+        return (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-300"
+            title={`VoBo rechazado por ${instancia}: ${vobo.comentarios || 'Sin observaciones'}`}
+          >
+            <X className="w-3 h-3 text-rose-600" />
+            VoBo Duración: Rechazado
+          </span>
+        );
+      }
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs animate-pulse"
+          title={`Comisión > 3 días calendario (${sol.camposAdicionales?.diasCalendario || 'N/D'} días cal. / ${sol.camposAdicionales?.diasValor || 'N/D'} días valor). Requiere VoBo previo de ${instancia}.`}
+        >
+          <AlertTriangle className="w-3 h-3 text-amber-600" />
+          Requiere VoBo: {instancia} (&gt;3 días)
+        </span>
+      );
+    }
+
+    if (eximidoDoc) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300"
+          title="Docente o docente capacitador eximido de VoBo de duración por dictado de clase o agenda"
+        >
+          <ShieldCheck className="w-3 h-3 text-slate-500" />
+          Eximido VoBo (Docente en clase / agenda)
+        </span>
+      );
+    }
+
+    return null;
+  };
+
+  if (!puedeVerBandeja) {
+    return (
+      <div className="bg-white rounded-2xl border border-amber-200 p-8 text-center shadow-xs">
+        <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-3">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Acceso Exclusivo para Directivos Firmantes</h2>
+        <p className="text-sm text-slate-500 mt-1 max-w-lg mx-auto">
+          Esta bandeja de firmas de aprobación previa a radicación (Formato 023) está reservada exclusivamente para el Jefe de Dependencia, Gerente de Proyecto, Subdirección de Gestión Corporativa y Dirección Nacional.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Banner Institucional con Estilo Garantizado */}
       <div
         className="rounded-2xl p-6 shadow-xl relative overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 60%, #0B192C 100%)',
-          borderLeft: '6px solid #F59E0B',
+          background: 'linear-gradient(135deg, #002266 0%, #003DA5 55%, #155DFC 100%)',
+          borderLeft: '6px solid #6591f2ff',
           color: '#FFFFFF',
         }}
       >
@@ -234,7 +475,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                   </h1>
                   <span
                     className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                    style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#FCD34D' }}
+                    style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#f4d779ff' }}
                   >
                     Previo a Radicación
                   </span>
@@ -293,7 +534,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
           </div>
           <div className="flex items-center gap-1.5">
             <Info className="w-4 h-4 text-amber-400" />
-            <span>Surtido el flujo de firmas, la solicitud pasa automáticamente a estado <strong>RADICADA</strong>.</span>
+            <span>Surtido el flujo de firmas, la solicitud pasa automáticamente a la <strong>Secretaría de Viáticos</strong> (estado SOLICITADO / EXTEMPORÁNEA).</span>
           </div>
         </div>
       </div>
@@ -358,20 +599,38 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
-            type="text"
+            type="search"
+            name="search_filtro_firmas_query"
+            id="search_filtro_firmas_query"
+            autoComplete="new-password"
+            data-lpignore="true"
+            data-form-type="other"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar por código, cédula, comisionado, destino..."
-            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            className="w-full pl-9 pr-9 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
           />
+          {busqueda && (
+            <button
+              type="button"
+              onClick={() => setBusqueda('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 cursor-pointer transition-colors"
+              title="Limpiar búsqueda"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-500 uppercase">Filtrar:</span>
-          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 flex-wrap">
             <button
               onClick={() => setFiltroRegla('TODAS')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'TODAS'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -381,17 +640,39 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             </button>
             <button
               onClick={() => setFiltroRegla('MIS_PENDIENTES')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'MIS_PENDIENTES'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
+              title="Solicitudes que requieren su firma o que ya firmó y están en espera de la otra firma"
             >
-              Mis Pendientes
+              Mis Solicitudes
+            </button>
+            <button
+              onClick={() => setFiltroRegla('POR_FIRMAR')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                filtroRegla === 'POR_FIRMAR'
+                  ? 'bg-white text-amber-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Pendientes de Mi Firma ({porFirmarCount})
+            </button>
+            <button
+              onClick={() => setFiltroRegla('EN_ESPERA')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                filtroRegla === 'EN_ESPERA'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Solicitudes con 1 de 2 firmas que esperan la firma restante para pasar a SOLICITADO"
+            >
+              En Espera de Otra Firma ({enEsperaCount})
             </button>
             <button
               onClick={() => setFiltroRegla('REGLA_ESPECIAL')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'REGLA_ESPECIAL'
                   ? 'bg-white text-purple-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -401,7 +682,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             </button>
             <button
               onClick={() => setFiltroRegla('REGULAR')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'REGULAR'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -434,9 +715,17 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       ) : solicitudesFiltradas.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-slate-800">No hay comisiones pendientes de firma</h3>
+          <h3 className="text-base font-semibold text-slate-800">
+            {filtroRegla === 'POR_FIRMAR'
+              ? 'No tiene firmas pendientes por realizar'
+              : filtroRegla === 'EN_ESPERA'
+              ? 'No hay solicitudes en espera de otra firma'
+              : 'No hay comisiones en este criterio de búsqueda'}
+          </h3>
           <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
-            Todas las solicitudes en curso cuentan con sus firmas de aprobación debidamente suscritas o no coinciden con los criterios de búsqueda actuales.
+            {filtroRegla === 'POR_FIRMAR'
+              ? 'Todas las comisiones asignadas a su rol cuentan con su firma estampada. Puede consultar las solicitudes en espera de la otra firma en la pestaña correspondiente o ver la lista general en "Todas".'
+              : 'Las solicitudes suscritas avanzan automáticamente a estado SOLICITADO una vez completadas las dos firmas de aprobación.'}
           </p>
         </div>
       ) : (
@@ -446,8 +735,9 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             const firmas = Array.isArray(sol.camposAdicionales?.firmasAprobacion)
               ? sol.camposAdicionales.firmasAprobacion
               : [];
-            const firmaJefe = firmas.find((f: any) => f.tipo === 'JEFE_DEPENDENCIA');
-            const firmaGerente = firmas.find((f: any) => f.tipo === 'GERENTE_PROYECTO');
+            const firmaJefe = firmas.find((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+            const firmaGerente = firmas.find((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+            const firmaElaboro = sol.camposAdicionales?.firmaElaboro || null;
             const tieneFirma1 = Boolean(firmaJefe);
             const tieneFirma2 = Boolean(firmaGerente);
 
@@ -464,14 +754,45 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         {sol.consecutivoUnico || sol.codigoSolicitud || sol.codigo || 'SIN CÓDIGO'}
                       </span>
                       {obtenerBadgeRegla(sol)}
-                      <span
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                        style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
-                      >
-                        <Clock className="w-3 h-3" />
-                        PENDIENTE_FIRMAS
-                      </span>
+                      {obtenerBadgeVoBo(sol)}
+                      {tieneFirma1 && tieneFirma2 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          2 de 2 Firmas · COMPLETADO
+                        </span>
+                      ) : tieneFirma1 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          1 de 2 Firmas · Pendiente Gerente de Proyecto
+                        </span>
+                      ) : tieneFirma2 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          1 de 2 Firmas · Pendiente Jefe de Dependencia
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
+                        >
+                          <Clock className="w-3 h-3" />
+                          0 de 2 Firmas · Pendiente de Aprobación
+                        </span>
+                      )}
                     </div>
+
+                    {/* Banner informativo si el usuario ya firmó pero sigue esperando la otra firma */}
+                    {yaFirme(sol) && estaEnEsperaOtraFirma(sol) && (
+                      <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl px-3.5 py-2 text-xs text-emerald-950 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                        <span className="inline-flex items-center gap-1.5 font-bold">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          Usted ya registró su firma institucional en esta comisión.
+                        </span>
+                        <span className="text-[11px] text-emerald-800">
+                          Visible en bandeja hasta que {tieneFirma2 ? 'el Jefe de Dependencia' : 'el Gerente de Proyecto'} firme y avance a <strong>SOLICITADO</strong>.
+                        </span>
+                      </div>
+                    )}
 
                     {/* Fila de Comisionado */}
                     {(() => {
@@ -528,9 +849,11 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                           Monto Estimado:{' '}
                           <strong className="text-emerald-700">
                             {formatearMoneda(
-                              (Number(sol.montoViaticos) || 0) +
-                              (Number(sol.montoGastosViaje) || 0) ||
-                              sol.montoTotalEstimado || sol.montoTotal || 0
+                              sol.montoTotal ||
+                                sol.montoTotalEstimado ||
+                                (Number(sol.montoViaticos) || 0) +
+                                  (Number(sol.montoGastosViaje) || 0) +
+                                  (Number(sol.costoEstimadoTiquete) || 0),
                             )}
                           </strong>
                         </span>
@@ -542,6 +865,19 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                       <p className="text-xs text-slate-600 italic bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                         &ldquo;{sol.objetoComision}&rdquo;
                       </p>
+                    )}
+
+                    {/* Justificación de Duración Extendida (>3 días calendario / 3.5 días valor) */}
+                    {sol.camposAdicionales?.justificacionDuracion && (
+                      <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900 space-y-1">
+                        <div className="flex items-center gap-1 font-bold text-amber-800">
+                          <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Justificación de Duración Extendida (&gt; 3 días calendario):</span>
+                        </div>
+                        <p className="italic pl-4 text-slate-700">
+                          &ldquo;{sol.camposAdicionales.justificacionDuracion}&rdquo;
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -572,10 +908,18 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         )}
                       </div>
                       {tieneFirma1 && (
-                        <p className="text-[11px] text-slate-600">
-                          <strong>{firmaJefe.nombreFirmante}</strong> ({firmaJefe.cargoFirmante}) ·{' '}
-                          <span className="text-slate-500">{new Date(firmaJefe.fechaFirma).toLocaleDateString('es-CO')}</span>
-                        </p>
+                        <div className="text-[11px] text-slate-700 font-medium">
+                          <p>
+                            <strong>{firmaJefe.nombreFirmante || firmaJefe.nombre || 'Servidor Autorizado'}</strong>
+                            {firmaJefe.emailFirmante ? (
+                              <span className="text-slate-500 font-normal"> ({firmaJefe.emailFirmante})</span>
+                            ) : null}
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            {firmaJefe.cargoFirmante ? `${firmaJefe.cargoFirmante} · ` : ''}
+                            {new Date(firmaJefe.fechaFirma).toLocaleDateString('es-CO')}
+                          </p>
+                        </div>
                       )}
                     </div>
 
@@ -600,19 +944,77 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         )}
                       </div>
                       {tieneFirma2 && (
-                        <p className="text-[11px] text-slate-600">
-                          <strong>{firmaGerente.nombreFirmante}</strong> ({firmaGerente.cargoFirmante}) ·{' '}
-                          <span className="text-slate-500">{new Date(firmaGerente.fechaFirma).toLocaleDateString('es-CO')}</span>
-                        </p>
+                        <div className="text-[11px] text-slate-700 font-medium">
+                          <p>
+                            <strong>{firmaGerente.nombreFirmante || firmaGerente.nombre || 'Servidor Autorizado'}</strong>
+                            {firmaGerente.emailFirmante ? (
+                              <span className="text-slate-500 font-normal"> ({firmaGerente.emailFirmante})</span>
+                            ) : null}
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            {firmaGerente.cargoFirmante ? `${firmaGerente.cargoFirmante} · ` : ''}
+                            {new Date(firmaGerente.fechaFirma).toLocaleDateString('es-CO')}
+                          </p>
+                        </div>
                       )}
                     </div>
+
+                    {/* VoBo Institucional de Duración Extendida (>3 días calendario / 3.5 días valor) */}
+                    {sol.camposAdicionales?.requiereVoBoDuracion && (() => {
+                      const vobo = sol.camposAdicionales?.voboDuracion;
+                      const tieneVoBo = vobo?.estado === 'APROBADO';
+                      const esRechazado = vobo?.estado === 'RECHAZADO';
+                      const inst = sol.camposAdicionales?.tituloVoBoDuracion || (sol.camposAdicionales?.instanciaVoBoDuracion === 'DIRECTOR_TERRITORIAL' ? 'Director Territorial' : 'Dirección Nacional');
+
+                      return (
+                        <div className={`p-2.5 rounded-lg border text-xs space-y-1 transition-all ${
+                          tieneVoBo
+                            ? 'bg-[#F0FDF4] border-[#BBF7D0]'
+                            : esRechazado
+                            ? 'bg-rose-50 border-rose-200'
+                            : 'bg-amber-50/80 border-amber-300'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-700">
+                              3. VoBo ({inst}):
+                            </span>
+                            {tieneVoBo ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#065F46] font-bold text-[10px]">
+                                <CheckCircle2 className="w-3 h-3 text-[#065F46]" />
+                                Aprobado
+                              </span>
+                            ) : esRechazado ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">
+                                <X className="w-3 h-3 text-rose-600" />
+                                Rechazado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] animate-pulse">
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                VoBo Requerido
+                              </span>
+                            )}
+                          </div>
+                          {tieneVoBo && (
+                            <div className="text-[11px] text-slate-700 font-medium">
+                              <p>
+                                <strong>{vobo.nombreFirmante || inst}</strong>
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                {vobo.cargoFirmante ? `${vobo.cargoFirmante} · ` : ''}
+                                {vobo.fechaVoBo ? new Date(vobo.fechaVoBo).toLocaleDateString('es-CO') : ''}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Botones de Acción */}
                     <div className="pt-2 flex flex-col gap-2">
                       <button
                         onClick={() => {
                           setSolicitudParaFirmar(sol);
-                          setModalModoDevolucion(false);
                           setModalFirmasAbierta(true);
                         }}
                         className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all hover:brightness-110 active:scale-98 cursor-pointer"
@@ -633,29 +1035,23 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
 
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => handlePrevisualizar023(sol)}
+                          disabled={descargandoPdfId === sol.id}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                          title="Ver Formato 023 en visor flotante / mitad de pantalla"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Ver 023</span>
+                        </button>
+                        <button
                           onClick={() => handleDescargarPdf(sol)}
                           disabled={descargandoPdfId === sol.id}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
                           title="Descargar versión PDF del Formato 023"
                         >
                           <FileDown className={`w-3.5 h-3.5 ${descargandoPdfId === sol.id ? 'animate-bounce' : ''}`} />
                           PDF 023
                         </button>
-
-                        {puedeFirmar && (
-                          <button
-                            onClick={() => {
-                              setSolicitudParaFirmar(sol);
-                              setModalModoDevolucion(true);
-                              setModalFirmasAbierta(true);
-                            }}
-                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
-                            title="Devolver al enlace con observaciones para subsanación"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                            Devolver
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -672,14 +1068,20 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
           solicitudId={solicitudParaFirmar.id}
           codigoSolicitud={solicitudParaFirmar.codigoSolicitud || solicitudParaFirmar.codigo}
           solicitudInicial={solicitudParaFirmar}
-          modoInicialDevolucion={modalModoDevolucion}
+          modoInicialDevolucion={false}
           isOpen={modalFirmasAbierta}
           onClose={() => {
             setModalFirmasAbierta(false);
-            setModalModoDevolucion(false);
             setSolicitudParaFirmar(null);
           }}
           onFirmadoExitoso={() => {
+            setBusqueda('');
+            cargarSolicitudes();
+          }}
+          onFirmasCompletadas={() => {
+            setModalFirmasAbierta(false);
+            setSolicitudParaFirmar(null);
+            setBusqueda('');
             cargarSolicitudes();
           }}
           onSolicitudDevuelta={() => {
@@ -687,6 +1089,12 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
           }}
         />
       )}
+
+      {/* Visor de documentos flotante y divisible */}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
+      />
     </div>
   );
 };

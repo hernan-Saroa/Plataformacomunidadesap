@@ -50,7 +50,8 @@ export interface RevisionEstudioPrevio {
   versionRevisada: number;
   revisadoPor: string;
   createdAt: string;
-  soporte?: SoporteDeDevolucion | null;
+  /** Las correcciones marcadas que acompañan una devolución (puede haber varias). */
+  soportes?: SoporteDeDevolucion[];
 }
 
 /** Definición de un campo del formulario; llega del backend, no está en código. */
@@ -74,6 +75,14 @@ export interface Persona {
   id: string;
   nombre: string;
   email?: string;
+  /** Cargo en auth.cargos; `null` si gestión de personas aún no se lo asignó. */
+  cargo?: string | null;
+}
+
+/** Cargo de auth.cargos, el catálogo que administra estructura organizacional. */
+export interface Cargo {
+  id: string;
+  nombre: string;
 }
 
 /** Dependencia de auth.dependencias, el catálogo transversal de la ESAP. */
@@ -517,39 +526,14 @@ export interface RevisionDelProceso {
   motivo: MotivoNoDecide | null;
 }
 
-// --------------------- modalidad del proceso · 3.5 (EFDS-1183) -------------
-
-/** Lo que el abogado dijo de la modalidad cada vez. */
-export interface RevisionModalidad {
-  decision: 'APROBADO' | 'DEVUELTO';
-  observaciones: string | null;
-  revisadoPor: string;
-  createdAt: string;
-}
-
-export interface EstadoModalidadProceso {
-  modalidad: string | null;
-  modalidadNombre: string | null;
-  /** La cuantía, que es contra lo que se comprueba cuál corresponde. */
-  valorEstimado: number | null;
-  estado: EstadoActividad;
-  /** El área puede cambiarla y mandarla: en borrador o devuelta. */
-  puedeCorregir: boolean;
-  /** A quien mira le toca ratificarla. */
-  puedeDecidir: boolean;
-  abogado: { nombre: string; usuarioNombre: string } | null;
-  motivoNoDecide: MotivoNoDecide | null;
-  revisiones: RevisionModalidad[];
-}
-
 // ------------------ causal de contratación · 3.6 (3.5.1 de la matriz) ------
 
 /**
  * Por qué la 3.6 no está abierta, aparte de quién sea el que mira.
  *
  * - `NO_APLICA`: la matriz no marca la causal en la modalidad del proceso.
- * - `MODALIDAD_SIN_RATIFICAR`: la 3.5 aún puede cambiar la modalidad de cuya
- *   lista sale la causal.
+ * - `MODALIDAD_SIN_RATIFICAR`: la 3.1 no está aprobada, así que el área aún
+ *   puede cambiar la modalidad de cuya lista sale la causal.
  * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya sustentó la
  *   solicitud de CDP.
  */
@@ -768,6 +752,10 @@ export interface DocumentoExpediente {
    * aparecería en el expediente como si fuera otro estudio previo.
    */
   requisito?: string | null;
+  /** Nombre del requisito en el catálogo, para no enseñar el código. */
+  requisitoNombre?: string | null;
+  /** Si otro archivo lo sustituyó como soporte del requisito. */
+  sustituido?: boolean;
   mimeType?: string;
   tamano?: number | null;
   hashSha256: string;
@@ -1075,6 +1063,8 @@ export interface DocumentoDeLaActividad {
   descripcion: string | null;
   /** Los opcionales se ofrecen, pero no traban el avance. */
   obligatorio: boolean;
+  /** Solo de consulta: se descarga su plantilla y no se carga nada. */
+  informativo: boolean;
   /**
    * Si la exigencia es decisión del área o lectura del procedimiento que el
    * equipo aún no ha contrastado con el formato oficial.
@@ -1099,6 +1089,50 @@ export interface DocumentoDeLaActividad {
     subidoPor: string | null;
     cargadoAt: string;
   } | null;
+  /** Las versiones que se sustituyeron, de la más reciente a la más vieja. */
+  anteriores?: VersionSustituida[];
+}
+
+/** Una entrega de un documento que se reemplazó por otra. */
+export interface VersionSustituida {
+  id: string;
+  documentoId: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  subidoPor: string | null;
+  cargadoAt: string;
+  sustituidoAt: string;
+  sustituidoPor: string | null;
+}
+
+/**
+ * Un archivo que adjuntó quien devolvió la actividad: son sus observaciones,
+ * no un anexo del gestor.
+ */
+export interface SoporteDelRevisor {
+  id: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  revisadoPor: string;
+  devueltaAt: string;
+}
+
+/**
+ * Lo entregado para un requisito que el proceso ya no pide, porque el área
+ * cambió la modalidad en la 3.1. No cuenta ni se exige, pero no se pierde.
+ */
+export interface DocumentoDeOtraModalidad {
+  id: string;
+  documentoId: string;
+  /** El requisito que cubría con la modalidad anterior. */
+  requisito: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  subidoPor: string | null;
+  cargadoAt: string;
 }
 
 /**
@@ -1113,6 +1147,10 @@ export interface EstadoDocumentosActividad {
   tipologia: string | null;
   documentos: DocumentoDeLaActividad[];
   adicionales: DocumentoCargado[];
+  /** Lo que adjuntó quien devolvió la actividad, aparte de lo del gestor. */
+  soportesDelRevisor?: SoporteDelRevisor[];
+  /** Lo que se cargó para la modalidad anterior y la lista de ahora no pide. */
+  deOtraModalidad?: DocumentoDeOtraModalidad[];
   /** Los obligatorios que todavía no están. */
   faltantes: { codigo: string; nombre: string }[];
   completo: boolean;
@@ -1132,6 +1170,8 @@ export interface DocumentoRequeridoConfig {
   nombre: string;
   descripcion: string | null;
   obligatorio: boolean;
+  /** Solo de consulta: el gestor lo descarga y no carga nada. */
+  informativo: boolean;
   /** Modalidades a las que se pide; vacío = todas. */
   modalidades: string[];
   /** Tipologías contractuales (3.1) a las que se pide; vacío = todas. */
@@ -1159,6 +1199,7 @@ export interface DatosDocumentoRequerido {
   descripcion?: string | null;
   plantillaCodigo?: string | null;
   obligatorio?: boolean;
+  informativo?: boolean;
   modalidades?: string[];
   tipologias?: string[];
   orden?: number;
@@ -3427,7 +3468,7 @@ export interface ElementoPorRevisar {
    * actividad, quien nombra su regla de aprobación; y las pólizas, las
    * modificaciones y las cuentas de cobro se deciden una por una.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'MODALIDAD' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
   procesoId: string;

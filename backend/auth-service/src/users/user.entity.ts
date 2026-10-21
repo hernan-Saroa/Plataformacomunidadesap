@@ -32,6 +32,9 @@ export class User {
   @Column({ type: 'numeric', precision: 6, scale: 0, nullable: true })
   token: string | null;
 
+  @Column({ name: 'signature_otp_context', type: 'varchar', length: 128, nullable: true })
+  signatureOtpContext: string | null;
+
   @Column({
     name: 'token_microsoft',
     type: 'varchar',

@@ -28,6 +28,7 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
     permisos: string[] = [],
     enProcesos: string[] = [],
     enBandeja = false,
+    evaluando: string[] = [],
   ) => {
     const dataSource = {
       getRepository: () => ({ findOne: async () => proceso }),
@@ -37,6 +38,7 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
     // reparto: quien lo tomó y el abogado asignado no lo radicaron.
     const participacion = {
       procesosDe: async () => enProcesos,
+      procesosDondeEvalua: async () => evaluando,
       estaEnLaBandeja: async () => enBandeja,
       // La cuarta vía: una solicitud de CDP sin atender también alcanza el
       // proceso. Aquí siempre en falso —estos casos son sobre el reparto—, pero
@@ -117,6 +119,14 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
     // proceso que les toca trabajar.
     await expect(
       servicio(ajeno, [], ['p-1']).obtenerProceso('p-1', quien('yo@esap.edu.co')),
+    ).resolves.toBe(ajeno);
+  });
+
+  it('y a quien está en su comité evaluador, aunque no participe del proceso', async () => {
+    // El memorando lo designa sin repartirle el proceso: sin esto vería su
+    // nombre en el comité y el proceso le respondería 404 al ir a la 6.3.
+    await expect(
+      servicio(ajeno, [], [], false, ['p-1']).obtenerProceso('p-1', quien('yo@esap.edu.co')),
     ).resolves.toBe(ajeno);
   });
 

@@ -408,7 +408,7 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
 
   const detalle = t.detalle ?? {};
   const numeral = typeof detalle.numeral === 'string' ? detalle.numeral : null;
-  // El panel de la modalidad llama suyo al numeral: 'actividad'.
+  // El comité, al reabrir una actividad, llama suyo al numeral: 'actividad'.
   const enActividad = typeof detalle.actividad === 'string' ? detalle.actividad : numeral;
 
   const ocurrido = (evento: EventoAviso, en: string | null): EventoOcurrido | null =>
@@ -442,14 +442,6 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
       return ocurrido('APROBADA', numeral);
     case 'aprobacion_actividad:DEVOLVER':
       return ocurrido('DEVUELTA', numeral);
-    // La modalidad (3.5) tiene su propio panel y su propia traza: sin estos
-    // tres casos, enviarla a aprobación y decidirla no avisaban a nadie.
-    case 'modalidad_proceso:ENVIAR':
-      return ocurrido('ENVIADA_A_APROBACION', enActividad);
-    case 'modalidad_proceso:APROBAR':
-      return ocurrido('APROBADA', enActividad);
-    case 'modalidad_proceso:DEVOLVER':
-      return ocurrido('DEVUELTA', enActividad);
 
     /*
      * El comité de contratación (3.7).

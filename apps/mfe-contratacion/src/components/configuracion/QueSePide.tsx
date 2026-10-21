@@ -42,8 +42,7 @@ const ICONO: Record<Peticion, typeof FileUp> = {
  */
 const CON_PANEL_PROPIO: Record<string, string> = {
   '4.1': 'la solicitud del CDP',
-  '4.2': 'la verificación del CDP',
-  '4.3': 'la expedición del CDP',
+  '4.2': 'la expedición del CDP',
   '5.1': 'los documentos del proceso',
   '5.2': 'la publicación del proyecto de pliego',
   '5.3': 'las observaciones al pliego',

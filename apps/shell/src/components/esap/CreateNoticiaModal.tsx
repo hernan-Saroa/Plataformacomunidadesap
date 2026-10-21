@@ -172,8 +172,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [formData, setFormData] = useState({
     origen: origenInicial,
-    fechaQueja: (noticiaToEdit?.fechaQueja || noticiaToEdit?.fechaRecepcion)?.split('T')[0],
-    fechaHechos: noticiaToEdit?.fechaHechos || '',
+    fechaQueja: (noticiaToEdit?.fechaQueja || noticiaToEdit?.fechaRecepcion)
+      ? String(noticiaToEdit.fechaQueja || noticiaToEdit.fechaRecepcion).split('T')[0]
+      : '',
+    fechaHechos: noticiaToEdit?.fechaHechos
+      ? String(noticiaToEdit.fechaHechos).split('T')[0]
+      : '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
       nombre: noticiaToEdit?.denunciado?.nombre || noticiaToEdit?.disciplinable?.nombre || '',
@@ -429,7 +433,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [porDeterminar, setPorDeterminar] = useState({
     // Paso 1
     // En edición: si el origen guardado es POR_DETERMINAR, mostrar el checkbox marcado
-    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR') : false,
+    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR' || noticiaToEdit?.origen === 'Por determinar') : false,
     // En edición: si el valor guardado es 'Por determinar', mostrar el checkbox marcado
     territorial: isEditMode ? (noticiaToEdit?.territorial === 'Por determinar') : false,
     // En modo edición, si no hay fechaHechos guardada se marca "Por determinar" para no bloquear el wizard
@@ -1338,7 +1342,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           onClick={() => handleEditarDenunciado(denunciado)}
                           variant="outline"
                           size="sm"
-                          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                          className="border-amber-600 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
                         >
                           <Pencil className="w-3 h-3 mr-1" />
                           Editar
@@ -1596,7 +1600,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   <Button
                     onClick={handleAgregarDenunciado}
                     variant="outline"
-                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
+                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
                   >
                     {editingDenunciadoId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {editingDenunciadoId ? 'Actualizar Denunciado' : 'Agregar Denunciado'}
@@ -1608,7 +1612,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         resetDenunciadoForm();
                       }}
                       variant="ghost"
-                      className="w-full text-gray-600 hover:text-gray-800"
+                      className="w-full text-gray-600 hover:text-gray-800 hover:bg-gray-100"
                     >
                       Cancelar Edición
                     </Button>
@@ -1775,7 +1779,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           onClick={() => handleEditarDenunciante(denunciante)}
                           variant="outline"
                           size="sm"
-                          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                          className="border-amber-600 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
                         >
                           <Pencil className="w-3 h-3 mr-1" />
                           Editar
@@ -2162,7 +2166,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   <Button
                     onClick={handleAgregarDenunciante}
                     variant="outline"
-                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
+                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
                   >
                     {editingDenuncianteId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {editingDenuncianteId ? 'Actualizar Denunciante' : 'Agregar Denunciante'}
@@ -2174,7 +2178,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         resetDenuncianteForm();
                       }}
                       variant="ghost"
-                      className="w-full text-gray-600 hover:text-gray-800"
+                      className="w-full text-gray-600 hover:text-gray-800 hover:bg-gray-100"
                     >
                       Cancelar Edición
                     </Button>
@@ -2291,7 +2295,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       onClick={handleAgregarHecho}
                       variant="outline"
                       size="sm"
-                      className="border-blue-600 text-blue-700 hover:bg-blue-50"
+                      className="border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
                     >
                       <Plus className="w-4 h-4 mr-1.5" />
                       Agregar Hecho
@@ -2627,6 +2631,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
           <Button
             onClick={currentStep === 1 ? onClose : () => setCurrentStep(currentStep - 1)}
             variant="outline"
+            className="border-gray-300 text-gray-700 hover:bg-gray-100 hover:text-gray-900"
           >
             {currentStep === 1 ? 'Cancelar' : 'Anterior'}
           </Button>
@@ -2634,14 +2639,14 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
           {currentStep < 4 ? (
             <Button
               onClick={handleNextStep}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              className="bg-[#003DA5] hover:bg-[#002d7a] text-white"
             >
               Siguiente
             </Button>
           ) : (
             <Button
               onClick={handleSave}
-              style={{ background: '#10B981', color: '#FFFFFF' }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               Guardar Noticia
             </Button>

@@ -12,6 +12,7 @@ import { NUMERALES_CON_DECISION_EN_EL_PANEL } from '../proceso/actividadesConPan
 import { DecisionEstudioPrevio } from '../estudio-previo/DecisionEstudioPrevio';
 import { destinoDeLaSituacion } from '../proceso/situacionDelProceso';
 import { LecturaEstudioPrevio } from './LecturaEstudioPrevio';
+import { VerEstudioPrevio } from './VerEstudioPrevio';
 
 interface Props {
   procesoId: string;
@@ -114,6 +115,12 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
               {estudio.proceso.expediente ? ` · Expediente ${estudio.proceso.expediente}` : ''}
             </p>
           </div>
+          {/* Revisando la 3.1 ya se está leyendo: el botón sería un eco. */}
+          {!esEstudio && (
+            <span className="self-center">
+              <VerEstudioPrevio estudio={estudio} procesoId={procesoId} />
+            </span>
+          )}
           <button
             type="button"
             onClick={() => onVerProceso(numeral)}
@@ -192,8 +199,9 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                   {estudio.revision?.puedeDecidir ? (
                     <>
                       <p className="text-[12px] text-slate-500 m-0">
-                        Lee el estudio y sus documentos antes de resolver. Devolver pide observaciones y
-                        admite un archivo con las correcciones.
+                        Lee el estudio y sus documentos antes de resolver. Aprobarlo ratifica la
+                        modalidad. Devolver pide observaciones y admite un archivo con las
+                        correcciones.
                       </p>
                       {destino ? (
                         <p className="text-[12px] text-slate-600 m-0 flex items-start gap-1.5">
@@ -207,6 +215,7 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                         procesoId={procesoId}
                         variante="tarjeta"
                         pasaA={destino}
+                        modalidad={estudio.proceso.modalidadNombre}
                         onDecidido={releer}
                       />
                     </>

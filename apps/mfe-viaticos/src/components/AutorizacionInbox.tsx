@@ -6,6 +6,7 @@ import {
   Clock,
   CreditCard,
   DollarSign,
+  Download,
   Eye,
   FileCheck,
   Filter,
@@ -25,6 +26,7 @@ import { SolicitudAutorizacion } from '../types/viaticos';
 import { formatearMoneda } from '../utils/viaticosUtils';
 import AutorizacionGastoModal from './AutorizacionGastoModal';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 
 export const AutorizacionInbox: React.FC = () => {
   const [pestanaActiva, setPestanaActiva] = useState<'autorizaciones' | 'firmas-023'>('autorizaciones');
@@ -37,6 +39,7 @@ export const AutorizacionInbox: React.FC = () => {
   const [totalRegistros, setTotalRegistros] = useState<number>(0);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudAutorizacion | null>(null);
   const [modalAbierta, setModalAbierta] = useState<boolean>(false);
+  const { documentosVisor, abrirDocumentoVisor, cerrarDocumentoVisor } = useVisorDocumentos();
   const [ancho, setAncho] = useState<number>(
     typeof window !== 'undefined' ? window.innerWidth : 1024,
   );
@@ -88,6 +91,45 @@ export const AutorizacionInbox: React.FC = () => {
   const abrirModal = (sol: SolicitudAutorizacion) => {
     setSolicitudSeleccionada(sol);
     setModalAbierta(true);
+  };
+
+  const handlePrevisualizar023 = async (sol: SolicitudAutorizacion) => {
+    try {
+      const blob = await viaticosService.exportarFormato023(
+        sol.id,
+        sol.consecutivoUnico || '023',
+      );
+      const url = window.URL.createObjectURL(blob);
+      abrirDocumentoVisor({
+        url,
+        nombre: `Formato 023 — ${sol.consecutivoUnico || 'comision'}.pdf`,
+        tipo: 'Formato 023 Oficial',
+        mime: 'application/pdf',
+      });
+    } catch (err: any) {
+      console.error('Error previsualizando Formato 023:', err);
+      setError('No fue posible abrir el Formato 023 en el visor flotante.');
+    }
+  };
+
+  const handleDescargar023 = async (sol: SolicitudAutorizacion) => {
+    try {
+      const blob = await viaticosService.exportarFormato023(
+        sol.id,
+        sol.consecutivoUnico || '023',
+      );
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Formato_023_${sol.consecutivoUnico || 'comision'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+    } catch (err: any) {
+      console.error('Error descargando Formato 023:', err);
+      setError('No fue posible descargar el archivo PDF del Formato 023.');
+    }
   };
 
   const totalPaginas = Math.ceil(totalRegistros / 20) || 1;
@@ -554,28 +596,48 @@ export const AutorizacionInbox: React.FC = () => {
 
                         {/* Botón de acción */}
                         <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => abrirModal(sol)}
-                            style={
-                              estaAutorizada
-                                ? { backgroundColor: '#F1F5F9', color: '#334155' }
-                                : { backgroundColor: '#003DA5', color: '#ffffff' }
-                            }
-                            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs hover:opacity-90 active:scale-95 cursor-pointer"
-                          >
-                            {estaAutorizada ? (
-                              <>
-                                <Eye className="h-3.5 w-3.5" />
-                                <span>Ver Itinerario</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileCheck className="h-3.5 w-3.5 text-white" />
-                                <span>Revisar y Autorizar</span>
-                              </>
-                            )}
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handlePrevisualizar023(sol)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                              title="Previsualizar Formato 023 en visor flotante"
+                            >
+                              <FileSignature className="w-3.5 h-3.5 text-[#003DA5]" />
+                              <span className="hidden sm:inline">023</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDescargar023(sol)}
+                              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                              title="Descargar Formato 023 en PDF"
+                              aria-label="Descargar Formato 023"
+                            >
+                              <Download className="w-3.5 h-3.5 text-slate-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => abrirModal(sol)}
+                              style={
+                                estaAutorizada
+                                  ? { backgroundColor: '#F1F5F9', color: '#334155' }
+                                  : { backgroundColor: '#003DA5', color: '#ffffff' }
+                              }
+                              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs hover:opacity-90 active:scale-95 cursor-pointer"
+                            >
+                              {estaAutorizada ? (
+                                <>
+                                  <Eye className="h-3.5 w-3.5" />
+                                  <span>Ver Detalle / 023</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FileCheck className="h-3.5 w-3.5 text-white" />
+                                  <span>Revisar y Autorizar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -623,6 +685,12 @@ export const AutorizacionInbox: React.FC = () => {
         isOpen={modalAbierta}
         onClose={() => setModalAbierta(false)}
         onSuccess={() => cargarSolicitudes(paginaActual)}
+      />
+
+      {/* Visor Flotante Multiventana Formato 023 */}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
       />
         </>
       )}

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, ChevronDown, Undo2 } from 'lucide-react';
 
 import { RevisionDeActividad } from './usarAprobacion';
-import { VerSoporte } from './VerSoporte';
+import { VerSoportes } from './VerSoporte';
 import { momento } from './fechas';
 
 /**
@@ -86,7 +86,7 @@ export function HistorialRevisiones({
                     {r.observaciones}
                   </p>
                 ) : null}
-                {r.soporte ? <VerSoporte soporte={r.soporte} /> : null}
+                <VerSoportes soportes={r.soportes} />
               </div>
             </li>
           ))}

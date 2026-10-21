@@ -21,12 +21,14 @@ import {
   XCircle,
   Building2,
   FileSignature,
+  Download,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudAutorizacion } from '../types/viaticos';
 import { formatearMoneda } from '../utils/viaticosUtils';
 import AutorizacionDireccionModal from './AutorizacionDireccionModal';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 
 export const AutorizacionDireccionInbox: React.FC = () => {
   const [pestanaActiva, setPestanaActiva] = useState<'extemporaneas' | 'firmas-023'>('extemporaneas');
@@ -42,6 +44,46 @@ export const AutorizacionDireccionInbox: React.FC = () => {
   const [ancho, setAncho] = useState<number>(
     typeof window !== 'undefined' ? window.innerWidth : 1024,
   );
+  const { documentosVisor, abrirDocumentoVisor, cerrarDocumentoVisor } = useVisorDocumentos();
+
+  const handlePrevisualizar023 = async (sol: SolicitudAutorizacion) => {
+    try {
+      const blob = await viaticosService.exportarFormato023(
+        sol.id,
+        sol.consecutivoUnico || '023',
+      );
+      const url = window.URL.createObjectURL(blob);
+      abrirDocumentoVisor({
+        url,
+        nombre: `Formato 023 — ${sol.consecutivoUnico || 'comision'}.pdf`,
+        tipo: 'Formato 023 Oficial',
+        mime: 'application/pdf',
+      });
+    } catch (err) {
+      console.error('Error previsualizando Formato 023:', err);
+      alert('No fue posible abrir el Formato 023 en el visor.');
+    }
+  };
+
+  const handleDescargar023 = async (sol: SolicitudAutorizacion) => {
+    try {
+      const blob = await viaticosService.exportarFormato023(
+        sol.id,
+        sol.consecutivoUnico || '023',
+      );
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Formato_023_${sol.consecutivoUnico || 'comision'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+    } catch (err) {
+      console.error('Error descargando Formato 023:', err);
+      alert('No fue posible descargar el archivo PDF del Formato 023.');
+    }
+  };
 
   useEffect(() => {
     const handleResize = () => setAncho(window.innerWidth);
@@ -448,14 +490,34 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                       </td>
 
                       <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => abrirModal(sol)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-all hover:scale-105"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>{estaPendiente ? 'Revisar y Decidir' : 'Ver Detalles'}</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handlePrevisualizar023(sol)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                            title="Previsualizar Formato 023 en visor flotante"
+                          >
+                            <FileSignature className="w-3.5 h-3.5 text-purple-600" />
+                            <span className="hidden sm:inline">023</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDescargar023(sol)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                            title="Descargar Formato 023 en PDF"
+                            aria-label="Descargar Formato 023"
+                          >
+                            <Download className="w-3.5 h-3.5 text-slate-600" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => abrirModal(sol)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>{estaPendiente ? 'Revisar y Decidir' : 'Ver Detalles'}</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -504,6 +566,12 @@ export const AutorizacionDireccionInbox: React.FC = () => {
         onSuccess={() => {
           cargarSolicitudes(paginaActual);
         }}
+      />
+
+      {/* Visor Flotante de Documentos Formato 023 */}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
       />
         </>
       )}

@@ -32,3 +32,16 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 });
+
+if (typeof globalThis.indexedDB === 'undefined') {
+  (globalThis as any).indexedDB = {
+    open: vi.fn(() => ({
+      onupgradeneeded: null,
+      onsuccess: null,
+      onerror: null,
+      result: {
+        transaction: vi.fn(),
+      },
+    })),
+  };
+}

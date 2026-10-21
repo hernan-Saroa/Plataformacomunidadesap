@@ -64,6 +64,11 @@ Las acciones `CARGAR_DOCUMENTO`, `REEMPLAZAR_DOCUMENTO` y `ELIMINAR_DOCUMENTO` s
 
 ## OpenKM y almacenamiento local
 
+La estructura para archivos nuevos y los soportes administrativos se amplía en
+[F011/F012 — Expediente OpenKM](REQ-RUND-F011-F012-expediente-openkm.md). La ruta
+por cédula descrita abajo corresponde a la estructura anterior y sigue siendo
+válida para leer documentos ya registrados.
+
 Cuando existe `OPENKM_BASE_URL`, el servicio utiliza Basic Auth y las rutas REST oficiales de OpenKM para crear carpetas, cargar, leer y eliminar. La estructura es:
 
 `/okm:root/RUND/{cedula}/{categoria}/{documentoLogicoId}/v{version}.pdf`

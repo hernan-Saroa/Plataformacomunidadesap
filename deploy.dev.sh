@@ -111,19 +111,32 @@ BACKEND_DEV_SERVICES=(
     chatbot-service
 )
 
+# La validación documental requiere ENABLED=true y PERSISTENT=true; por defecto queda aplazada.
+source "$(dirname "${BASH_SOURCE[0]}")/scripts/rund-documental/deploy-guard.sh"
+
 compose_dev() {
+    local rund_compose_args=()
+    if [ "${RUND_DOCUMENTAL_ENABLED:-false}" = "true" ] && [ "${RUND_DOCUMENTAL_PERSISTENT:-false}" = "true" ]; then
+        rund_compose_args=(-f docker-compose.rund-documental.yml)
+        rund_documental_preflight dev "$@" || return $?
+    fi
     ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
-    docker compose -f "$COMPOSE_FILE_DEV" --env-file .env.dev "$@"
+    docker compose -f "$COMPOSE_FILE_DEV" "${rund_compose_args[@]}" --env-file .env.dev "$@"
 }
 
 compose_dev_mfe() {
+    local rund_compose_args=()
+    if [ "${RUND_DOCUMENTAL_ENABLED:-false}" = "true" ] && [ "${RUND_DOCUMENTAL_PERSISTENT:-false}" = "true" ]; then
+        rund_compose_args=(-f docker-compose.rund-documental.yml)
+        rund_documental_preflight dev "$@" || return $?
+    fi
     FRONTEND_APP_DOCKERFILE="${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}" \
     FRONTEND_NETWORK_KEY="superapp-net" \
     FRONTEND_CONTAINER_SUFFIX="-dev" \
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
     FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
     ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
-    docker compose -f "$COMPOSE_FILE_DEV" -f "$COMPOSE_FILE_MFE" --env-file .env.dev "$@"
+    docker compose -f "$COMPOSE_FILE_DEV" -f "$COMPOSE_FILE_MFE" "${rund_compose_args[@]}" --env-file .env.dev "$@"
 }
 
 compose_dev_mfe_prebuilt() {

@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -28,6 +29,8 @@ import {
   ReservarSaldoTiqueteDto,
   LiberarSaldoTiqueteDto,
   UpdateHolguraTiqueteDto,
+  CreateTarifaReferenciaDto,
+  UpdateTarifaReferenciaDto,
 } from '../../dto/tickets/tickets.dto';
 
 /**
@@ -197,4 +200,69 @@ export class TicketsController {
   eliminarRuta(@Param('id') id: string) {
     return this.ticketsService.eliminarRutaRestringida(Number(id));
   }
+
+  // ---------- Matriz Paramétrica de Tarifas de Referencia de Tiquetes ----------
+
+  @Get('tarifas-referencia')
+  @ApiOperation({ summary: 'Obtiene todas las tarifas de referencia registradas' })
+  obtenerTarifasReferencia() {
+    return this.ticketsService.obtenerTarifasReferencia();
+  }
+
+  @Get('tarifas-referencia/:id')
+  @ApiOperation({ summary: 'Obtiene el detalle de una tarifa de referencia' })
+  obtenerTarifaReferenciaPorId(@Param('id') id: string) {
+    return this.ticketsService.obtenerTarifaReferenciaPorId(Number(id));
+  }
+
+  @Post('tarifas-referencia')
+  @Permissions('travel_expenses:manage_config')
+  @ApiOperation({ summary: 'Crea o actualiza una tarifa de referencia para una ruta' })
+  crearTarifaReferencia(@Body() dto: CreateTarifaReferenciaDto) {
+    return this.ticketsService.crearTarifaReferencia(dto);
+  }
+
+  @Put('tarifas-referencia/:id')
+  @Permissions('travel_expenses:manage_config')
+  @ApiOperation({ summary: 'Actualiza una tarifa de referencia' })
+  actualizarTarifaReferencia(
+    @Param('id') id: string,
+    @Body() dto: UpdateTarifaReferenciaDto,
+  ) {
+    return this.ticketsService.actualizarTarifaReferencia(Number(id), dto);
+  }
+
+  @Delete('tarifas-referencia/:id')
+  @Permissions('travel_expenses:manage_config')
+  @ApiOperation({ summary: 'Elimina lógicamente una tarifa de referencia' })
+  eliminarTarifaReferencia(@Param('id') id: string) {
+    return this.ticketsService.eliminarTarifaReferencia(Number(id));
+  }
+
+  @Get('tarifa-estimada')
+  @ApiOperation({
+    summary: 'Consulta tarifa estimada de referencia por origen y destino',
+    description:
+      'Resuelve IATA y busca en la matriz paramétrica de tarifas de referencia local (0ms de latencia). ' +
+      'Si no existe en DB, recurre al benchmark institucional paramétrico.',
+  })
+  consultarTarifaEstimada(
+    @Query('origen') origen: string,
+    @Query('destino') destino: string,
+  ) {
+    return this.ticketsService.consultarTarifaEstimada(origen, destino);
+  }
+
+  @Post('sincronizar-tarifas')
+  @Permissions('travel_expenses:manage_config')
+  @ApiOperation({
+    summary: 'Sincronización batch de tarifas de referencia con APIs / benchmark',
+    description:
+      'Actualiza en bloque las tarifas de las rutas aéreas principales de Colombia ' +
+      'utilizando el modelo híbrido (consulta periódica/on-demand).',
+  })
+  sincronizarTarifas() {
+    return this.ticketsService.sincronizarTarifasBatch();
+  }
 }
+

@@ -12,11 +12,12 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Upload, File, Download, Trash2, Edit2, Plus, AlertCircle, 
-  Save, Loader2, Files, Clock, Info
+  Save, Loader2, Files, Clock, Info, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
 import type { TipoOficio, PlantillaArchivo } from './SeccionPlantillasOficiosUnificada';
+import { ModalVisorPlantilla } from './ModalVisorPlantilla';
 
 interface ModalGestionarPlantillasOficioProps {
   tipoOficio: TipoOficio;
@@ -39,6 +40,7 @@ export function ModalGestionarPlantillasOficio({
   
   const [modalAgregarPlantilla, setModalAgregarPlantilla] = useState(false);
   const [plantillaEditando, setPlantillaEditando] = useState<PlantillaArchivo | null>(null);
+  const [plantillaParaVer, setPlantillaParaVer] = useState<PlantillaArchivo | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   // Actualizar plantillas cuando cambie tipoOficio
@@ -132,51 +134,49 @@ export function ModalGestionarPlantillasOficio({
     try {
       // Si hay un archivo nuevo en alguna plantilla, subirlo al backend
       for (const plantilla of plantillas) {
-        // Buscar si hay un archivo que fue seleccionado y tiene URL local (blob)
-        if (plantilla.url && plantilla.url.startsWith('blob:')) {
+        if (plantilla.file || (plantilla.url && plantilla.url.startsWith('blob:'))) {
           try {
-            // Descargar el blob para obtener el archivo
-            const response = await fetch(plantilla.url);
-            const blob = await response.blob();
-            
-            // Crear un archivo a partir del blob
-            const fileName = plantilla.nombreArchivo;
-            const fileType = blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            
-            // Crear el archivo usando la clase File global
-            const file = new globalThis.File([blob], fileName, { type: fileType });
-            
-            // Usar el servicio para subir el archivo (específico para oficios)
-            // Enviar también los campos adicionales del plantilla
-            const uploadedData = await disciplinaryService.uploadOficioPlantilla(
-              tipoOficio.id,
-              file,
-              plantilla.nombre,
-              plantilla.descripcion,
-              plantilla.version,
-              plantilla.activo ? 'activo' : 'inactivo'
-            );
-            
-            // Actualizar la URL con la respuesta del servidor
-            plantilla.url = uploadedData.plantilla || plantilla.url;
-            plantilla.nombre = uploadedData.nombre_plantilla || plantilla.nombre;
+            let fileToUpload = plantilla.file;
+            if (!fileToUpload && plantilla.url) {
+              const response = await fetch(plantilla.url);
+              const blob = await response.blob();
+              const fileName = plantilla.nombreArchivo || 'plantilla.docx';
+              const fileType = blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+              fileToUpload = new globalThis.File([blob], fileName, { type: fileType });
+            }
+
+            if (fileToUpload) {
+              const uploadedData = await disciplinaryService.uploadOficioPlantilla(
+                tipoOficio.id,
+                fileToUpload,
+                plantilla.nombre,
+                plantilla.descripcion,
+                plantilla.version,
+                plantilla.activo ? 'activo' : 'inactivo'
+              );
+              
+              plantilla.url = uploadedData.plantilla || (uploadedData as any)?.data?.plantilla || plantilla.url;
+              plantilla.nombre = uploadedData.nombre_plantilla || (uploadedData as any)?.data?.nombre_plantilla || plantilla.nombre;
+              plantilla.nombreArchivo = fileToUpload.name;
+              (plantilla as any).yaSincronizado = true;
+              plantilla.file = undefined;
+            }
           } catch (uploadError) {
-            console.error('Error subiendo archivo:', uploadError);
-            // Continuar con la siguiente plantilla aunque falle la subida
+            console.error('Error subiendo archivo de plantilla de oficio:', uploadError);
+            toast.error('Error al subir el archivo de plantilla');
+            throw uploadError;
           }
         }
       }
       
-      // Convertir de array a objeto único (el backend espera un solo plantilla por oficio)
-      const plantillaPrincipal = plantillas.length > 0 ? plantillas[0] : null;
-      onGuardar(plantillas);
+      await onGuardar(plantillas);
       toast.success('Cambios guardados', {
         description: `${plantillas.length} plantilla(s) configurada(s)`
       });
       onCerrar();
     } catch (error) {
       console.error('Error al guardar:', error);
-      toast.error('Error al guardar cambios');
+      toast.error('Error al guardar cambios de plantilla');
     } finally {
       setGuardando(false);
     }
@@ -345,6 +345,17 @@ export function ModalGestionarPlantillasOficio({
                                 />
                               </button>
 
+                              {(plantilla.url || plantilla.file) && (
+                                <button
+                                  onClick={() => setPlantillaParaVer(plantilla)}
+                                  disabled={guardando}
+                                  className="p-1.5 rounded-lg hover:bg-purple-50 text-purple-600 transition-colors disabled:opacity-50"
+                                  title="Previsualizar"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              )}
+
                               <button
                                 onClick={() => handleDescargarPlantilla(plantilla)}
                                 disabled={guardando || !plantilla.url}
@@ -441,6 +452,20 @@ export function ModalGestionarPlantillasOficio({
             setPlantillaEditando(null);
           }}
           plantillaEdicion={plantillaEditando}
+        />
+      )}
+
+      {/* Modal Visor de Plantilla */}
+      {plantillaParaVer && (
+        <ModalVisorPlantilla
+          isOpen={!!plantillaParaVer}
+          onClose={() => setPlantillaParaVer(null)}
+          titulo={tipoOficio.nombre}
+          subtitulo={`Plantilla: ${plantillaParaVer.nombre}`}
+          descripcion={plantillaParaVer.descripcion || tipoOficio.descripcion}
+          tipoPlantilla="oficio"
+          plantillas={[plantillaParaVer]}
+          colorTema="#8B5CF6"
         />
       )}
     </>
@@ -541,12 +566,12 @@ function ModalFormularioPlantillaOficio({
   };
 
   const procesarArchivo = (file: File) => {
-    const extensionesPermitidas = ['.doc', '.docx', '.dotx', '.rtf'];
+    const extensionesPermitidas = ['.doc', '.docx', '.dotx', '.rtf', '.pdf'];
     const extension = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!extensionesPermitidas.includes(extension)) {
       toast.error('Formato no permitido', {
-        description: 'Solo se permiten archivos Word (.doc, .docx, .dotx, .rtf)'
+        description: 'Solo se permiten archivos Word (.doc, .docx, .dotx, .rtf) o PDF (.pdf)'
       });
       return;
     }
@@ -590,7 +615,7 @@ function ModalFormularioPlantillaOficio({
     setGuardando(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       const plantilla: Omit<PlantillaArchivo, 'id' | 'fechaCreacion' | 'fechaModificacion'> = {
         nombre: formData.nombre.trim(),
@@ -599,7 +624,8 @@ function ModalFormularioPlantillaOficio({
         url: archivo ? URL.createObjectURL(archivo) : archivoExistente?.url || '',
         tamano: archivo ? archivo.size : archivoExistente?.tamano || 0,
         version: formData.version.trim(),
-        activo: formData.activo
+        activo: formData.activo,
+        file: archivo || undefined
       };
 
       onGuardar(plantilla);

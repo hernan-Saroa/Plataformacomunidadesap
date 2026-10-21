@@ -112,21 +112,92 @@
   .detalle-proceso {
     grid-template-columns: 15rem minmax(0, 1fr);
   }
+}
 
-  /* Sin ancho para una tercera columna, el expediente va debajo, completo. */
-  .detalle-proceso.con-expediente > .panel-expediente {
-    grid-column: 1 / -1;
+/*
+ * Riel plegado: solo los puntos de estado. Apilado van en fila, debajo de la
+ * cabecera; con columnas, en una tira angosta que le devuelve al formulario
+ * casi todo el ancho del riel.
+ */
+.riel-plegado__cabeza {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .625rem .75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.riel-plegado__puntos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .125rem;
+  padding: .375rem;
+}
+
+@media (min-width: 1280px) {
+  .detalle-proceso.riel-plegado {
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+  }
+
+  .riel-plegado__cabeza {
+    flex-direction: column;
+    gap: .25rem;
+    padding: .625rem 0;
+  }
+
+  .riel-plegado__puntos {
+    flex-direction: column;
+    align-items: center;
   }
 }
 
-@media (min-width: 1600px) {
-  .detalle-proceso.con-expediente {
-    grid-template-columns: 15rem minmax(0, 1fr) 19rem;
+/* ------------------------------------------------ expediente del proceso --- */
+
+/*
+ * Pantalla propia del expediente: índice de etapas a la izquierda y los
+ * documentos agrupados a la derecha. Apilado por debajo de 1024px, donde el
+ * índice no deja sitio a nombres de archivo legibles.
+ */
+.expediente-proceso {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .75rem;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .expediente-proceso {
+    grid-template-columns: 15rem minmax(0, 1fr);
   }
 
-  .detalle-proceso.con-expediente > .panel-expediente {
-    grid-column: auto;
+  .expediente-proceso__indice {
+    position: sticky;
+    top: 1rem;
   }
+}
+
+.expediente-proceso__num {
+  width: 1.25rem;
+}
+
+.expediente-proceso__etapa {
+  scroll-margin-top: 1rem;
+}
+
+.expediente-proceso__buscar {
+  width: 14rem;
+  max-width: 50vw;
+  border: 0;
+  outline: none;
+}
+
+/* Cada requisito con sus archivos, colgando de una línea: se lee como un
+   punto de la lista de chequeo y no como más documentos sueltos. */
+.expediente-proceso__requisito {
+  margin: 0 0 .25rem .75rem;
+  padding-left: .5rem;
+  border-left: 2px solid #e0edff;
 }
 
 /* ======================================================================

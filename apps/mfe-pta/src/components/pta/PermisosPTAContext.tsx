@@ -219,7 +219,7 @@ export function deriveFromGranular(
   }
   // Un revisor puro también necesita Gestión para ejecutar la preaprobación del
   // PTA. La pestaña Solicitudes PTA, en cambio, se concede exclusivamente por
-  // pta.requests.edit.manage (mapeado arriba); los permisos pta.review.* solo
+  // pta.requests.edit.manage (mapeado arriba); los permisos de revisión o aprobación
   // determinan qué componentes verá y podrá resolver una vez dentro.
   if (puedeRevisar) {
     vistasSet.add('gestion');

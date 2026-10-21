@@ -75,7 +75,7 @@ export function UserExpandedView({
                 </div>
                 <div className="flex-1">
                   <p className="text-xs text-gray-500 mb-0.5">Documento</p>
-                  <p className="text-sm font-semibold text-gray-900">{user.documentType} {user.documentNumber}</p>
+                  <p className="text-sm font-semibold text-gray-900">{user.identificationType} {user.identification_number}</p>
                 </div>
               </div>
 

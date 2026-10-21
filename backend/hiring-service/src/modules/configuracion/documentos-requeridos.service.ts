@@ -38,6 +38,21 @@ export function codigoLibre(base: string, ocupados: string[]): string {
 }
 
 /**
+ * Un documento de consulta sin archivo no tiene nada que mostrar.
+ *
+ * Los que se cargan pueden ir sin plantilla —el gestor sube lo suyo—, pero el
+ * de consulta es justo el archivo que se ofrece: sin él la fila quedaría como
+ * un título suelto en la lista.
+ */
+export function exigirArchivoSiEsDeConsulta(informativo: boolean, plantillaCodigo: string | null) {
+  if (informativo && !plantillaCodigo) {
+    throw new BadRequestException(
+      'Un documento solo de consulta necesita el archivo que se va a ofrecer: elige o sube su formato',
+    );
+  }
+}
+
+/**
  * Administra qué documentos pide cada actividad (EFDS-2066).
  *
  * Es la otra cara de `DocumentosActividadService`: aquel responde qué le pide
@@ -77,6 +92,7 @@ export class DocumentosRequeridosService {
         nombre: f.nombre,
         descripcion: f.descripcion ?? null,
         obligatorio: f.obligatorio,
+        informativo: f.informativo,
         modalidades: f.modalidades,
         tipologias: f.tipologias,
         orden: f.orden,
@@ -104,6 +120,9 @@ export class DocumentosRequeridosService {
 
       const existentes = await em.getRepository(DocumentoRequerido).find({ where: { numeral } });
       const nombre = dto.nombre.trim();
+      const informativo = dto.informativo ?? false;
+      const plantillaCodigo = dto.plantillaCodigo?.trim() || null;
+      exigirArchivoSiEsDeConsulta(informativo, plantillaCodigo);
 
       const fila = em.getRepository(DocumentoRequerido).create({
         numeral,
@@ -113,8 +132,10 @@ export class DocumentosRequeridosService {
         ),
         nombre,
         descripcion: dto.descripcion?.trim() || null,
-        plantillaCodigo: dto.plantillaCodigo?.trim() || null,
-        obligatorio: dto.obligatorio ?? true,
+        plantillaCodigo,
+        informativo,
+        // Lo que solo se lee no puede trabar nada.
+        obligatorio: informativo ? false : (dto.obligatorio ?? true),
         modalidades: dto.modalidades ?? [],
         tipologias: dto.tipologias ?? [],
         // Al final de la lista si no se dice otra cosa.
@@ -142,6 +163,9 @@ export class DocumentosRequeridosService {
       if (dto.nombre !== undefined) fila.nombre = dto.nombre.trim();
       if (dto.descripcion !== undefined) fila.descripcion = dto.descripcion?.trim() || null;
       if (dto.obligatorio !== undefined) fila.obligatorio = dto.obligatorio;
+      if (dto.informativo !== undefined) fila.informativo = dto.informativo;
+      if (fila.informativo) fila.obligatorio = false;
+      exigirArchivoSiEsDeConsulta(fila.informativo, fila.plantillaCodigo);
       if (dto.modalidades !== undefined) fila.modalidades = dto.modalidades;
       if (dto.tipologias !== undefined) fila.tipologias = dto.tipologias;
       if (dto.orden !== undefined) fila.orden = dto.orden;
@@ -187,6 +211,7 @@ export class DocumentosRequeridosService {
           descripcion: origen.descripcion,
           plantillaCodigo: origen.plantillaCodigo,
           obligatorio: origen.obligatorio,
+          informativo: origen.informativo,
           modalidades: origen.modalidades,
           tipologias: origen.tipologias,
           orden: Math.max(0, ...existentes.map((e) => e.orden)) + 10,

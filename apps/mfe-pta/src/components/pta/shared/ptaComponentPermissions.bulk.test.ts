@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PTA_BULK_APPROVAL_GROUPS, PTA_COMPONENT_KEYS } from './ptaComponentPermissions';
+import { PTA_BULK_APPROVAL_GROUPS, PTA_COMPONENT_KEYS, hasComponentApprovalData, PTA_COMPLEMENTARIAS_COMPONENT_KEYS } from './ptaComponentPermissions';
 
 describe('grupos de aprobación masiva PTA', () => {
   it('mantiene una correspondencia exacta entre permiso, botón y componente', () => {
@@ -16,5 +16,13 @@ describe('grupos de aprobación masiva PTA', () => {
 
     expect(pregrado?.componentKeys).toEqual(['academica_pregrado']);
     expect(complementarias?.componentKeys).toEqual(['complementarias_pregrado']);
+  });
+
+  it.each(PTA_COMPLEMENTARIAS_COMPONENT_KEYS)('incluye %s sin horas en la bandeja correspondiente, conservando separados los demás ámbitos', key => {
+    const pta = {
+      complementarias_por_componente: Object.fromEntries(PTA_COMPLEMENTARIAS_COMPONENT_KEYS.map(k => [k, 0])),
+      complementarias_con_contenido: Object.fromEntries(PTA_COMPLEMENTARIAS_COMPONENT_KEYS.map(k => [k, k === key])),
+    };
+    expect(PTA_COMPLEMENTARIAS_COMPONENT_KEYS.filter(k => hasComponentApprovalData(pta, k))).toEqual([key]);
   });
 });

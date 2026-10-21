@@ -20,7 +20,7 @@ vi.mock('../../../../shell/src/services/api/offlineCache', () => ({
   },
 }));
 
-const mockedApiClient = apiClient as ReturnType<typeof vi.fn> & {
+const mockedApiClient = apiClient as unknown as ReturnType<typeof vi.fn> & {
   get: ReturnType<typeof vi.fn>;
   post: ReturnType<typeof vi.fn>;
 };

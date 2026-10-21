@@ -6,13 +6,14 @@ import { Documento } from './entities/documento.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { AuthModule } from '../../auth/auth.module';
 import { OnlyOfficeService } from '../common/onlyoffice.service';
+import { VistaPreviaController } from './vista-previa.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Documento, Auditoria]),
     AuthModule,
   ],
-  controllers: [DocumentosController],
+  controllers: [DocumentosController, VistaPreviaController],
   providers: [DocumentosService, OnlyOfficeService],
   exports: [DocumentosService, TypeOrmModule],
 })

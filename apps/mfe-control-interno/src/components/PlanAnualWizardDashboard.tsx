@@ -10,7 +10,7 @@ import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, AlertTriangle, BookOpen, Download, FileText,
   Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
-  ChevronDown, ChevronUp, Calendar, Clock, Search, Edit3, GripVertical, Lock, Save, Bell
+  ChevronDown, ChevronUp, Calendar, Clock, Search, Edit3, GripVertical, Lock, Save, Bell, PenLine
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -33,6 +33,7 @@ import {
   type FrecuenciaPuntoControl 
 } from './ModalConfiguracionPuntosControl';
 import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
+import { VistaAprobadorPlanAnual } from './VistaAprobadorPlanAnual';
 
 // a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
@@ -63,7 +64,8 @@ import {
 } from './services/pdfESAPHeader';
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
-import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
+import { fechaSeguimientoTarea, fechaCompletadaLegible } from './services/fechaSeguimientoTarea';
+import { actorDeSesion, actorEsResponsable, nombresDeResponsables, responsablesQueMandan } from './services/responsableDeTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
 import { camposDeSincronizacion, corteDeLaFecha, cortesComoPeriodos, esTareaAutomaticaDelRol4, esTareaDelProgramaAnual, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, repartirTareasAutomaticasEnCortes, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
@@ -1284,32 +1286,31 @@ function FechaSeguimientoTareaChip({
   const [borrador, setBorrador] = useState(valor);
   useEffect(() => setBorrador(valor), [valor]);
   const texto = valor ? new Date(`${valor}T00:00:00`).toLocaleDateString('es-CO') : 'Sin fecha';
-  const clases = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200';
   if (!editable) {
-    return <span className={clases} title="Fecha de seguimiento de la tarea">📅 Seguimiento: {texto}</span>;
+    return (
+      <span className="text-[10px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white" title="Fecha de seguimiento de la tarea">
+        {texto}
+      </span>
+    );
   }
+  // Mismo campo que en el asistente del plan
   return (
-    <label
-      className={clases}
+    <input
+      type="date"
+      value={borrador}
+      aria-label="Fecha de seguimiento de la tarea"
       title="Fecha de seguimiento: por defecto el último día del mes siguiente al corte. Puede cambiarla."
       onClick={(e) => e.stopPropagation()}
-    >
-      📅 Seguimiento:
-      <input
-        type="date"
-        value={borrador}
-        aria-label="Fecha de seguimiento de la tarea"
-        onChange={(e) => setBorrador(e.target.value)}
-        onBlur={() => {
-          if (borrador && borrador !== valor) onCambiar(borrador);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-        className="bg-transparent border-0 p-0 text-[11px] font-semibold text-purple-700 focus:outline-none"
-        style={{ width: 112 }}
-      />
-    </label>
+      onChange={(e) => setBorrador(e.target.value)}
+      onBlur={() => {
+        if (borrador && borrador !== valor) onCambiar(borrador);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white"
+      style={{ width: 110 }}
+    />
   );
 }
 
@@ -6628,8 +6629,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const puedeExportarPlan = puedeRealizar('plan-anual', 'export');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
-  /** Backend permite DELETE con permiso edit o delete; la UI debe coincidir. */
-  const puedeEliminarPlanEnUI = puedeEliminarPlan || puedeEditarPlan || esSuperUsuario;
+  /** Eliminar el plan pide el permiso de eliminar; editar no basta, igual que en el backend (EFDS-2282). */
+  const puedeEliminarPlanEnUI = puedeEliminarPlan || esSuperUsuario;
   const puedeVerPlan = puedeRealizar('plan-anual', 'view');
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
@@ -6712,6 +6713,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   };
 
   const solicitarEliminarPlan = (planObjetivo: PlanAnual) => {
+    if (!puedeEliminarPlanEnUI) {
+      toast.error('Su rol no tiene el permiso para eliminar planes');
+      return;
+    }
     if (!esEstadoPlanBorrador(planObjetivo.estado)) {
       toast.error('Solo se pueden eliminar planes en borrador');
       return;
@@ -6800,7 +6805,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     setExportando(null);
   };
 
-  const handleExportarPDF = async () => {
+  // `soloArchivo`: devuelve el PDF sin descargarlo, para la vista previa del aprobador (EFDS-2320)
+  const handleExportarPDF = async ({ soloArchivo = false }: { soloArchivo?: boolean } = {}): Promise<Blob | null> => {
+    let archivo: Blob | null = null;
     setExportando('pdf');
     setMostrarModalExportacion(false);
     try {
@@ -7171,14 +7178,53 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         currentY = (doc as any).lastAutoTable.finalY + 8;
       });
 
-      doc.save(`Plan-Anual-Auditoria-${vigencia}-Detallado.pdf`);
-      toast.success('PDF detallado generado', { description: 'Incluye todas las tareas de seguimiento y evaluación.' });
+      if (soloArchivo) {
+        archivo = doc.output('blob');
+      } else {
+        doc.save(`Plan-Anual-Auditoria-${vigencia}-Detallado.pdf`);
+        toast.success('PDF detallado generado', { description: 'Incluye todas las tareas de seguimiento y evaluación.' });
+      }
     } catch (error) {
       console.error('Error generando PDF:', error);
       toast.error('Error al generar PDF', { description: 'Ocurrió un error al procesar el documento' });
     }
     setExportando(null);
+    return archivo;
   };
+
+  // Quien solo aprueba (sin editar ni activar el plan) entra a una página para
+  // revisar el Plan y el Programa Anual y firmar (EFDS-2320)
+  const esVistaAprobador = puedeAprobarPlan && !puedeEditarPlan && !puedeActivarPlan && !esSuperUsuario;
+  if (esVistaAprobador) {
+    return (
+      <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
+        <div className="max-w-7xl mx-auto">
+          <VistaAprobadorPlanAnual
+            plan={plan as any}
+            planesDisponibles={planesDisponibles as any}
+            onCambiarPlan={onCambiarPlan}
+            generarPdfPlan={() => handleExportarPDF({ soloArchivo: true })}
+            descargarPdfPlan={() => { void handleExportarPDF(); }}
+            descargarExcelPlan={() => { void handleExportarExcel(); }}
+            exportandoPlan={exportando}
+            bloqueAprobacion={
+              <SeccionAprobacion
+                key={`aprobar-${plan.id}`}
+                plan={plan}
+                onActualizar={onActualizar}
+                onRefetchPlan={onRefetchPlan}
+                puedeAprobarPlan={puedeAprobarPlan}
+                puedeActivarPlan={puedeActivarPlan}
+                puedeEditarPlan={puedeEditarPlan}
+                aprobadoresComite={aprobadoresComite}
+                modo="aprobador"
+              />
+            }
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -7324,7 +7370,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
                 <div className="space-y-3">
                   <button
-                    onClick={handleExportarPDF}
+                    onClick={() => handleExportarPDF()}
                     disabled={!!exportando}
                     className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-[#2962FF] hover:bg-blue-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -7806,6 +7852,7 @@ function SeccionGestionYSeguimiento({
       responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
       fechaLimite: t.fechaEntrega || (t as any).fechaLimite || (t as any).fecha_limite || null,
       fechaCompletada: t.fechaCompletado || (t as any).fechaCompletada || (t as any).fecha_completada || null,
+      completadaPor: (t as any).completadaPor || (t as any).completada_por || null,
       // Campos extendidos para no perder requisitos/evidencias al recargar
       requiereAdjuntos: !!t.requiereAdjuntos,
       requiereObservaciones: !!t.requiereObservaciones,
@@ -7839,15 +7886,41 @@ function SeccionGestionYSeguimiento({
     return puedeEditarPlan || puedeSeguimiento;
   };
 
+  // Completar, fechar, observar y adjuntar evidencias de una tarea es solo de su responsable; sin
+  // responsable propio, de los del rol y la actividad. Los demás la ven. Misma regla del backend (EFDS-2322)
+  const puedeIntervenirTarea = (rol: any, actividad: any, tarea: any): boolean => {
+    if (esSuperUsuario) return true;
+    const actor = actorDeSesion(currentUser);
+    if (!actor) return false;
+    return actorEsResponsable(responsablesQueMandan(tarea, rol, actividad), actor);
+  };
+  const motivoTareaAjena = (rol: any, actividad: any, tarea: any): string => {
+    const nombres = nombresDeResponsables(responsablesQueMandan(tarea, rol, actividad));
+    return nombres
+      ? `Solo su responsable (${nombres}) puede hacer el seguimiento de esta tarea`
+      : 'Solo el responsable puede hacer el seguimiento de esta tarea';
+  };
+  const asegurarResponsableDeTarea = (rolNumero: number, actividadId: string | number, tareaId: string): boolean => {
+    const rol = plan.roles.find((r) => r.numero === rolNumero);
+    const actividad = rol?.actividades.find((a) => a.id === actividadId);
+    const tarea = ((actividad as any)?.tareasSeguimiento || []).find((t: any) => t.id === tareaId);
+    if (!rol || !actividad || !tarea || puedeIntervenirTarea(rol, actividad, tarea)) return true;
+    toast.error(motivoTareaAjena(rol, actividad, tarea));
+    return false;
+  };
+
   // Agregar nueva tarea de seguimiento a una actividad
   const agregarTareaSeguimiento = async (
     rolNumero: number,
     actividadId: string | number,
     puntoControlId?: string,
-  ) => {
-    if (!nuevaTarea.descripcion.trim()) {
+    // Fila "Nueva tarea" de cada corte, igual a la del asistente (EFDS-2237)
+    datos?: typeof nuevaTarea,
+  ): Promise<boolean> => {
+    const t = datos ?? nuevaTarea;
+    if (!t.descripcion.trim()) {
       toast.error('La descripción de la tarea es obligatoria');
-      return;
+      return false;
     }
     setGuardandoTarea(true);
     try {
@@ -7856,13 +7929,13 @@ function SeccionGestionYSeguimiento({
       const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
       const nuevaTareaObj: TareaSeguimiento = {
         id: `tarea-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        descripcion: nuevaTarea.descripcion.trim(),
+        descripcion: t.descripcion.trim(),
         completada: false,
-        responsables: nuevaTarea.responsable ? [nuevaTarea.responsable] : [],
-        fechaEntrega: nuevaTarea.fechaLimite || undefined,
+        responsables: t.responsable ? [t.responsable] : [],
+        fechaEntrega: t.fechaLimite || undefined,
         observaciones: '',
-        requiereAdjuntos: nuevaTarea.requiereAdjuntos,
-        requiereObservaciones: nuevaTarea.requiereObservaciones,
+        requiereAdjuntos: t.requiereAdjuntos,
+        requiereObservaciones: t.requiereObservaciones,
         ...(puntoControlId ? { puntoControlId } : {}),
       };
       const tareasActualizadas = [...tareasActuales, nuevaTareaObj];
@@ -7888,11 +7961,14 @@ function SeccionGestionYSeguimiento({
       setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
       setFormTareaActividadId(null);
       setFormTareaCorteKey(null);
+      setGuardandoTarea(false);
+      return true;
     } catch (err) {
       console.error('Error al agregar tarea:', err);
       toast.error('Error al agregar la tarea');
     }
     setGuardandoTarea(false);
+    return false;
   };
 
   // Toggle completar tarea (verifica requisitos)
@@ -7902,6 +7978,7 @@ function SeccionGestionYSeguimiento({
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
     const tarea = tareasActuales.find(t => t.id === tareaId);
     if (!tarea) return;
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     // Si quiere completar, verificar requisitos
     if (!tarea.completada) {
       if (tarea.requiereAdjuntos && (!tarea.adjuntosTarea || tarea.adjuntosTarea.length === 0)) {
@@ -7913,8 +7990,20 @@ function SeccionGestionYSeguimiento({
         return;
       }
     }
-    const tareasActualizadas = tareasActuales.map(t => 
-      t.id === tareaId ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString() : undefined } : t
+    // La fecha de completada es el día local (no el ISO en UTC, que de noche cae al día siguiente)
+    // y queda aparte de la fecha de seguimiento configurada (EFDS-2324)
+    const completarAhora = !tarea.completada;
+    const nombreUsuario = String(currentUser?.nombre || currentUser?.nombre_completo || currentUser?.fullName || currentUser?.email || currentUser?.username || '').trim();
+    const tareasActualizadas = tareasActuales.map(t =>
+      t.id === tareaId
+        ? {
+            ...t,
+            completada: completarAhora,
+            fechaCompletado: completarAhora ? new Date().toLocaleDateString('en-CA') : undefined,
+            fechaCompletada: undefined,
+            completadaPor: completarAhora ? nombreUsuario || undefined : undefined,
+          }
+        : t
     );
 
     const actividadConTareas = { ...actividadActual, tareasSeguimiento: tareasActualizadas } as Actividad;
@@ -7987,6 +8076,7 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     const tareasActualizadas = tareasActuales.map(t => (t.id === tareaId ? { ...t, fechaEntrega: fecha } : t));
     await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
     toast.success('Fecha de seguimiento actualizada');
@@ -8069,6 +8159,7 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     const lineaNueva = `[${new Date().toLocaleString('es-CO')}] ${comentario.trim()}`;
     const tareasActualizadas = tareasActuales.map((t) => {
       if (t.id !== tareaId) return t;
@@ -8104,6 +8195,7 @@ function SeccionGestionYSeguimiento({
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
     const nuevosAdjuntos: { id: string; nombre: string; url: string; fecha: string }[] = [];
 
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     const toastId = toast.loading(`Subiendo ${files.length} archivo(s)...`);
     try {
       for (const file of Array.from(files)) {
@@ -8142,6 +8234,7 @@ function SeccionGestionYSeguimiento({
       toast.error('No se puede eliminar: el archivo no está vinculado al servidor');
       return;
     }
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     if (!window.confirm(`¿Eliminar la evidencia "${adjunto.nombre}"?`)) return;
 
     const actividadActual = plan.roles
@@ -9279,11 +9372,6 @@ function SeccionGestionYSeguimiento({
       {/* Planes registrados (historial + plan actual) */}
       {planesEnHistorial.length > 0 && (
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-          {hayBorradoresEnLista && !puedeEliminarPlan && (
-            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
-              Hay planes en borrador, pero tu usuario no tiene permiso <code className="text-[10px]">control-interno.plan-anual.delete</code> ni <code className="text-[10px]">.edit</code>. Pide al administrador que te asigne uno de esos permisos para ver el botón eliminar.
-            </div>
-          )}
           <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
             <div>
               <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -9291,8 +9379,9 @@ function SeccionGestionYSeguimiento({
                 Planes registrados
               </h3>
               <p className="text-xs text-gray-500 mt-1">
-                El plan que estás viendo está marcado. Cada fila en <strong>borrador</strong> puede eliminarse (verificación OTP por correo).
-                {historialColapsado && hayBorradoresEnLista && (
+                El plan que estás viendo está marcado.
+                {puedeEliminarPlan && <> Cada fila en <strong>borrador</strong> puede eliminarse (verificación OTP por correo).</>}
+                {puedeEliminarPlan && historialColapsado && hayBorradoresEnLista && (
                   <span className="block mt-1 text-amber-700 font-medium">Expande el historial para ver el botón eliminar.</span>
                 )}
               </p>
@@ -9453,94 +9542,10 @@ function SeccionGestionYSeguimiento({
         // Solo contar actividades activas (activo !== false) para estadísticas
         const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
 
-        // S& DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
-        const liderazgoVerTodos = puedeAprobarPlan || esSuperUsuario || puedeEditarPlan || puedeAsignarActividades;
-
-        // S& FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
-        const actividadesVisibles = actividadesActivas.filter(actividad => {
-          if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
-          
-          // Leer datos del usuario - usar fallback si currentUser no tiene campos de identidad
-          const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
-          const user = hasIdentity ? currentUser : (() => {
-            try {
-              const u = (window as any).__esap_auth_cache;
-              if (!u) return currentUser;
-              return {
-                ...(currentUser || {}),
-                ...u,
-                nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || u?.nombre || '',
-                email: u?.person?.email || u?.email || '',
-                idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
-              };
-            } catch (_e) { return currentUser; }
-          })();
-          if (!user) return false;
-          
-          const currentName = user.nombre || user.nombres || user.name || '';
-          const currentEmail = user.email || user.correo || '';
-          // Recopilar todos los posibles IDs del usuario actual
-          const possibleIds = [
-            user.id, user.idPerson, user.idPersona, 
-            user.documento, user.sub, user.userId
-          ].filter(Boolean).map(String);
-
-          // Función helper para comparar identidad (acepta objeto O string)
-          const matchesUser = (r: any) => {
-            if (!r) return false;
-            // Si r es un string directo (nombre), comparar por palabras
-            if (typeof r === 'string') {
-              if (!currentName) return false;
-              const rWords = r.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? r.toLowerCase() : currentName.toLowerCase();
-              return shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w));
-            }
-            // Comparar por ID
-            if (r.id && possibleIds.includes(String(r.id))) return true;
-            // Comparar por email
-            if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
-            // Comparar por nombre (basado en palabras)
-            const rName = r.nombre || r.name || r.fullName || '';
-            if (rName && currentName) {
-              const rWords = rName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? rName.toLowerCase() : currentName.toLowerCase();
-              if (shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w))) return true;
-            }
-            return false;
-          };
-
-          const isMainResp = matchesUser(actividad.responsable);
-          const isRespAdicional = actividad.responsables?.some(matchesUser);
-          const isApoyo = actividad.responsablesApoyo?.some(matchesUser);
-          // También verificar si el usuario es responsable del ROL (hereda visibilidad)
-          const isRolResp = (rol as any).responsables?.some(matchesUser);
-
-          return isMainResp || isRespAdicional || isApoyo || isRolResp;
-        });
-
-        // Diagnóstico de matching (solo primer rol, primera actividad)
-        if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
-          const a0 = actividadesActivas[0];
-          const r = a0.responsable;
-          console.log('x [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') + 
-            ' | responsable.nombre=' + (r?.nombre || r?.name || (typeof r === 'string' ? r : 'null')) +
-            ' | responsable.email=' + (r?.email || 'null') +
-            ' | responsables[0]=' + JSON.stringify(a0.responsables?.[0] || null) +
-            ' | rolResp=' + JSON.stringify((rol as any).responsables?.[0] || null) +
-            ' | currentUser.nombre=' + (currentUser?.nombre || 'null') +
-            ' | currentUser.email=' + (currentUser?.email || 'null') +
-            ' | currentUser.ids=' + JSON.stringify([currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean)) +
-            ' | visibles=' + actividadesVisibles.length + '/' + actividadesActivas.length);
-        }
-
-        // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
-        if (!liderazgoVerTodos && actividadesVisibles.length === 0) {
-           return null;
-        }
+        // Todos los auditores ven las actividades y tareas de todos los roles; lo que se
+        // restringe es completar o editar las tareas ajenas (EFDS-2322). Antes cada auditor
+        // solo veía las actividades en las que era responsable.
+        const actividadesVisibles = actividadesActivas;
 
         const totalActividades = actividadesVisibles.length;
         const asignadas = actividadesVisibles.filter(a => a.responsable !== null).length;
@@ -10004,40 +10009,55 @@ function SeccionGestionYSeguimiento({
                                                       : 'Pendiente'}
                                               </span>
                                             </div>
-                                            <div className="flex flex-wrap gap-3 text-[10px] text-gray-600">
-                                              <span className="flex items-center gap-1">
-                                                <Calendar className="w-3 h-3 text-orange-500" />
-                                                Corte: {fechaCorte.toLocaleDateString('es-CO')}
-                                              </span>
+                                            {/* Inicio y fin del corte, como en el asistente del plan (EFDS-2237) */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div className="flex items-center gap-1.5">
+                                                <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                <span className="text-[11px] text-gray-700">
+                                                  <span className="text-[9px] text-gray-400 uppercase">Inicio: </span>
+                                                  <span className="font-semibold">{fechaCorte.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                </span>
+                                              </div>
                                               {fechaSeg && (
-                                                <span className="flex items-center gap-1">
-                                                  <Clock className="w-3 h-3 text-purple-500" />
-                                                  Seguimiento hasta: {fechaSeg.toLocaleDateString('es-CO')}
-                                                </span>
-                                              )}
-                                              {tareasDelCorte.length > 0 && (
-                                                <span className="text-indigo-700 font-medium">
-                                                  Tareas del corte: {tareasHechas}/{tareasDelCorte.length}
-                                                  {tareasHechas === tareasDelCorte.length && tareasDelCorte.length > 0 && !cumplido && (
-                                                    <span className="text-amber-700 ml-1">(marca todas completadas)</span>
-                                                  )}
-                                                </span>
+                                                <div className="flex items-center gap-1.5">
+                                                  <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                  <span className="text-[11px] text-gray-700">
+                                                    <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
+                                                    <span className="font-semibold">{fechaSeg.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                  </span>
+                                                </div>
                                               )}
                                             </div>
                                           </div>
                                         </div>
 
-                                        {/* Tareas del corte: observaciones y evidencias por tarea */}
-                                        <div className="mt-2 pt-2 border-t border-dashed border-indigo-100 space-y-2">
-                                          <p className="text-[10px] font-bold text-indigo-700 uppercase">
-                                            Tareas del corte ({tareasHechas}/{tareasDelCorte.length})
-                                          </p>
+                                        {/* Tareas del corte, en el mismo recuadro del asistente; aquí además se marcan, se suben evidencias y se registran observaciones */}
+                                        <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
+                                          <div className="flex items-center justify-between">
+                                            <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                              <span className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'linear-gradient(to bottom right, #22c55e, #059669)' }}>
+                                                <Check className="w-3 h-3 text-white" />
+                                              </span>
+                                              Tareas de este corte
+                                              {tareasDelCorte.length > 0 && (
+                                                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">
+                                                  {tareasHechas}/{tareasDelCorte.length}
+                                                </span>
+                                              )}
+                                            </p>
+                                            {tareasHechas === tareasDelCorte.length && tareasDelCorte.length > 0 && !cumplido && (
+                                              <span className="text-[10px] text-amber-700">Todas completadas</span>
+                                            )}
+                                          </div>
                                           {tareasDelCorte.length === 0 && (
-                                            <p className="text-[10px] text-gray-500 italic">Sin tareas. Usa «+ Agregar tarea».</p>
+                                            <p className="text-[10px] text-gray-500 italic">Sin tareas. Agregue una en «Nueva tarea».</p>
                                           )}
                                           {tareasDelCorte.map((tarea) => {
                                             const cantAdj = tarea.adjuntosTarea?.length || 0;
                                             const tieneObs = !!(tarea.observaciones || '').trim();
+                                            // Solo el responsable de la tarea hace su seguimiento (EFDS-2322)
+                                            const puedeTocar = puedeGestionarTareas(rol) && puedeIntervenirTarea(rol, actividad, tarea);
+                                            const motivoAjena = puedeTocar ? '' : motivoTareaAjena(rol, actividad, tarea);
                                             return (
                                               <div
                                                 key={tarea.id}
@@ -10050,10 +10070,11 @@ function SeccionGestionYSeguimiento({
                                                   <button
                                                     type="button"
                                                     onClick={() =>
-                                                      puedeGestionarTareas(rol) &&
+                                                      puedeTocar &&
                                                       toggleCompletarTarea(rol.numero, actividad.id, tarea.id)
                                                     }
-                                                    disabled={!puedeGestionarTareas(rol)}
+                                                    disabled={!puedeTocar}
+                                                    title={motivoAjena || (tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada')}
                                                     className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${
                                                       tarea.completada
                                                         ? 'bg-green-500 border-green-500 text-white'
@@ -10070,18 +10091,63 @@ function SeccionGestionYSeguimiento({
                                                     {tarea.descripcion}
                                                   </p>
                                                 </div>
-                                                {/* Fecha de seguimiento de la tarea (editable) y, en las automáticas del Rol 4, el fin de su auditoría o plan (EFDS-2237) */}
+                                                {/* Responsable de la tarea y, en las automáticas del Rol 4, el fin de su auditoría o plan (EFDS-2237) */}
                                                 <div className="ml-7 mt-1.5 flex flex-wrap items-center gap-1.5">
-                                                  <FechaSeguimientoTareaChip
-                                                    fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
-                                                    editable={puedeGestionarTareas(rol)}
-                                                    onCambiar={(f) => cambiarFechaSeguimientoTarea(rol.numero, actividad.id, tarea.id, f)}
-                                                  />
+                                                  {(() => {
+                                                    const tieneResp = tarea.responsables && tarea.responsables.length > 0;
+                                                    const rolResps = (rol as any).responsables as Auditor[] | undefined;
+                                                    const nombres = tieneResp
+                                                      ? tarea.responsables!
+                                                          .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
+                                                          .filter(Boolean)
+                                                      : (rolResps || []).map((r) => r.nombre).filter(Boolean);
+                                                    const esDelRol = !tieneResp && nombres.length > 0;
+                                                    const iniciales = (nombres[0] || '').split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                                                    return nombres.length > 0 ? (
+                                                      <span
+                                                        className="inline-flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 rounded-full border font-medium text-gray-900"
+                                                        style={{ background: '#eff6ff', borderColor: '#bfdbfe', fontSize: 12 }}
+                                                        title={esDelRol ? 'Sin responsable propio: se muestra el responsable del rol' : 'Responsable de la tarea'}
+                                                      >
+                                                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ background: (rol as any).color || '#7c3aed' }}>
+                                                          {iniciales}
+                                                        </span>
+                                                        {nombres.join(', ')}
+                                                        {esDelRol && <span className="text-[8px] bg-teal-100 text-teal-700 px-1 rounded font-bold">ROL</span>}
+                                                      </span>
+                                                    ) : (
+                                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-500 border border-dashed border-gray-300">
+                                                        👤 Sin responsable
+                                                      </span>
+                                                    );
+                                                  })()}
+                                                  {puedeGestionarTareas(rol) && !puedeTocar && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200" title={motivoAjena}>
+                                                      🔒 Solo su responsable
+                                                    </span>
+                                                  )}
                                                   {esTareaAutomaticaDelRol4(tarea) && (tarea as any).fechaLimite && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-600" title={esTareaDelProgramaAnual(tarea) ? 'Fin de la auditoría' : 'Fecha límite del plan de mejoramiento'}>
                                                       ⏰ Límite: {new Date(`${String((tarea as any).fechaLimite).slice(0, 10)}T00:00:00`).toLocaleDateString('es-CO')}
                                                     </span>
                                                   )}
+                                                  {/* La fecha real de completada va aparte de la fecha de seguimiento configurada (EFDS-2324) */}
+                                                  {tarea.completada && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200" title="Fecha en que se completó la tarea">
+                                                      ✓ {fechaCompletadaLegible(tarea) ? `Completada el ${fechaCompletadaLegible(tarea)}` : 'Completada'}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                {/* Fecha de seguimiento a la derecha, como en el asistente del plan (EFDS-2237) */}
+                                                <div className="ml-7 mt-2 pt-1.5 border-t border-gray-100 flex items-center gap-4 flex-wrap">
+                                                  <span className="text-[10px] text-gray-500">Fecha de seguimiento</span>
+                                                  <div className="ml-auto flex items-center gap-1" title="Fecha de seguimiento">
+                                                    <FechaSeguimientoTareaChip
+                                                      fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
+                                                      editable={puedeTocar}
+                                                      onCambiar={(f) => cambiarFechaSeguimientoTarea(rol.numero, actividad.id, tarea.id, f)}
+                                                    />
+                                                  </div>
                                                 </div>
                                                 <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
                                                   <button
@@ -10100,7 +10166,9 @@ function SeccionGestionYSeguimiento({
                                                         );
                                                       input.click();
                                                     }}
-                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                                                    disabled={!puedeTocar}
+                                                    title={motivoAjena || 'Subir archivos de evidencia para esta tarea'}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                                       cantAdj > 0
                                                         ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium'
                                                         : 'bg-gray-50 text-gray-600 border-dashed border-gray-300'
@@ -10115,7 +10183,9 @@ function SeccionGestionYSeguimiento({
                                                       setComentarioTareaId(tarea.id);
                                                       setTextoComentarioTarea('');
                                                     }}
-                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                                                    disabled={!puedeTocar}
+                                                    title={motivoAjena || 'Escribir observación de esta tarea'}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                                       tieneObs
                                                         ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
                                                         : 'bg-gray-50 text-gray-600 border-dashed border-gray-300'
@@ -10126,7 +10196,7 @@ function SeccionGestionYSeguimiento({
                                                 </div>
                                                 <ListaEvidenciasTarea
                                                   adjuntos={tarea.adjuntosTarea || []}
-                                                  puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                                  puedeEliminar={puedeGestionarEvidenciasTarea(rol) && puedeTocar}
                                                   onEliminar={(adj) =>
                                                     eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
                                                   }
@@ -10181,66 +10251,65 @@ function SeccionGestionYSeguimiento({
                                               </div>
                                             );
                                           })}
-                                        </div>
-
-                                        {puedeGestionarTareas(rol) && plan.estado !== 'BORRADOR' && (
-                                          formTareaCorteKey === formKey ? (
-                                            <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg space-y-2" onClick={(e) => e.stopPropagation()}>
-                                              <input
-                                                type="text"
-                                                value={nuevaTarea.descripcion}
-                                                onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
-                                                placeholder="Descripción de la tarea *"
-                                                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md"
-                                              />
-                                              {/* Fecha de seguimiento: por defecto el mes siguiente al corte, editable (EFDS-2237) */}
-                                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                                <span className="font-semibold">Fecha de seguimiento</span>
+                                        
+                                        {/* Agregar tarea al corte: misma fila que en el asistente del plan (EFDS-2237) */}
+                                        {puedeGestionarTareas(rol) && plan.estado !== 'BORRADOR' && (() => {
+                                          const sel = (k: string) => document.querySelector<HTMLInputElement>(`[data-${k}="${formKey}"]`);
+                                          const agregar = async () => {
+                                            const input = sel('aprob-tarea');
+                                            if (!input || !input.value.trim()) {
+                                              toast.error('Escriba la descripción de la tarea');
+                                              input?.focus();
+                                              return;
+                                            }
+                                            const ok = await agregarTareaSeguimiento(rol.numero, actividad.id, pc.id, {
+                                              descripcion: input.value.trim(),
+                                              responsable: '',
+                                              fechaLimite: sel('aprob-fecha')?.value || fechaSeguimientoPorDefecto(pc) || '',
+                                              requiereObservaciones: false,
+                                              requiereAdjuntos: false,
+                                            });
+                                            if (ok) input.value = '';
+                                          };
+                                          return (
+                                            <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                              <div className="flex items-center gap-3 px-1">
+                                                <span className="text-[10px] text-gray-500">Fecha de seguimiento de la nueva tarea</span>
+                                                <div className="ml-auto">
+                                                  <input
+                                                    type="date"
+                                                    data-aprob-fecha={formKey}
+                                                    key={`aprob-fecha-${pc.id}-${pc.fechaSeguimiento}`}
+                                                    defaultValue={fechaSeguimientoPorDefecto(pc)}
+                                                    className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white"
+                                                    style={{ width: 110 }}
+                                                    title="Fecha de seguimiento: por defecto el último día del mes siguiente al corte"
+                                                  />
+                                                </div>
+                                              </div>
+                                              <div className="flex gap-1.5">
                                                 <input
-                                                  type="date"
-                                                  value={nuevaTarea.fechaLimite}
-                                                  onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaLimite: e.target.value })}
-                                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white"
+                                                  type="text"
+                                                  data-aprob-tarea={formKey}
+                                                  placeholder="✏️ Nueva tarea…"
+                                                  className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400"
+                                                  onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }}
                                                 />
-                                              </label>
-                                              <div className="flex justify-end gap-2">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setFormTareaCorteKey(null);
-                                                    setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
-                                                  }}
-                                                  className="px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-700"
-                                                >
-                                                  Cancelar
-                                                </button>
-                                                {/* Color fijo: la clase de Tailwind no venía en los estilos del módulo y el botón quedaba blanco (EFDS-2237) */}
+                                                {/* Color fijo: así se ve aunque falte la clase en los estilos del módulo */}
                                                 <button
                                                   type="button"
                                                   disabled={guardandoTarea}
-                                                  onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id, pc.id)}
-                                                  className="px-2 py-1 text-xs font-bold rounded disabled:opacity-50"
-                                                  style={{ background: '#0d9488', color: '#ffffff' }}
+                                                  onClick={agregar}
+                                                  className="px-2.5 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm flex-shrink-0 disabled:opacity-60"
+                                                  style={{ background: 'linear-gradient(to right, #16a34a, #059669)', color: '#ffffff' }}
                                                 >
-                                                  {guardandoTarea ? 'Guardando...' : 'Guardar tarea'}
+                                                  <Plus className="w-3 h-3" /> {guardandoTarea ? 'Agregando…' : 'Agregar'}
                                                 </button>
                                               </div>
                                             </div>
-                                          ) : (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setFormTareaCorteKey(formKey);
-                                                setFormTareaActividadId(null);
-                                                setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: fechaSeguimientoPorDefecto(pc) || '', requiereAdjuntos: false, requiereObservaciones: false });
-                                              }}
-                                              className="mt-2 text-[10px] font-semibold text-teal-700 hover:text-teal-900"
-                                            >
-                                              + Agregar tarea a este corte
-                                            </button>
-                                          )
-                                        )}
+                                          );
+                                        })()}
+                                        </div>
 
                                       </div>
                                     );
@@ -10274,7 +10343,10 @@ function SeccionGestionYSeguimiento({
                                   const estaProxima = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 7 && !tarea.completada;
                                   const cantAdjuntos = tarea.adjuntosTarea?.length || 0;
                                   const tieneObservacion = tarea.observaciones && tarea.observaciones.trim();
-                                  
+                                  // Solo el responsable de la tarea hace su seguimiento (EFDS-2322)
+                                  const puedeTocar = puedeGestionarTareas(rol) && puedeIntervenirTarea(rol, actividad, tarea);
+                                  const motivoAjena = puedeTocar ? '' : motivoTareaAjena(rol, actividad, tarea);
+
                                   return (
                                     <div key={tarea.id} className={`p-3 rounded-lg border transition-colors ${
                                       tarea.completada ? 'bg-green-50/60 border-green-200' : 
@@ -10285,11 +10357,12 @@ function SeccionGestionYSeguimiento({
                                       {/* Fila 1: Checkbox + Descripción */}
                                       <div className="flex items-start gap-2.5">
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); puedeGestionarTareas(rol) && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
-                                          disabled={!puedeGestionarTareas(rol)}
+                                          onClick={(e) => { e.stopPropagation(); puedeTocar && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
+                                          disabled={!puedeTocar}
+                                          title={motivoAjena || (tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada')}
                                           className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                                             tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
-                                          } ${puedeGestionarTareas(rol) ? 'cursor-pointer' : 'cursor-default'}`}
+                                          } ${puedeTocar ? 'cursor-pointer' : 'cursor-default'}`}
                                         >
                                           {tarea.completada && (
                                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
@@ -10338,6 +10411,11 @@ function SeccionGestionYSeguimiento({
                                           );
                                         })()}
 
+                                        {puedeGestionarTareas(rol) && !puedeTocar && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200" title={motivoAjena}>
+                                            🔒 Solo su responsable
+                                          </span>
+                                        )}
                                         {/* 📎 Adjuntos  SIEMPRE visible */}
                                         <button
                                           type="button"
@@ -10351,12 +10429,13 @@ function SeccionGestionYSeguimiento({
                                             };
                                             input.click();
                                           }}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                          disabled={!puedeTocar}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                             cantAdjuntos > 0
                                               ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium hover:bg-purple-100'
                                               : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
                                           }`}
-                                          title="Subir archivos de evidencia para esta tarea"
+                                          title={motivoAjena || 'Subir archivos de evidencia para esta tarea'}
                                         >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                                           {cantAdjuntos > 0 ? `${cantAdjuntos} evidencia${cantAdjuntos !== 1 ? 's' : ''}` : 'Adjuntar evidencia'}
@@ -10369,21 +10448,22 @@ function SeccionGestionYSeguimiento({
                                             setComentarioTareaId(tarea.id);
                                             setTextoComentarioTarea('');
                                           }}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                          disabled={!puedeTocar}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                             tieneObservacion
                                               ? 'bg-amber-50 text-amber-700 border-amber-200 font-medium hover:bg-amber-100'
                                               : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
                                           }`}
-                                          title="Escribir observación de esta tarea"
+                                          title={motivoAjena || 'Escribir observación de esta tarea'}
                                         >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
                                           {tieneObservacion ? 'Añadir otra observación' : 'Observación'}
                                         </button>
 
-                                        {/* S& Completada */}
+                                        {/* Fecha real de completada, aparte de la fecha de seguimiento configurada (EFDS-2324) */}
                                         {tarea.completada && (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
-                                            {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200" title="Fecha en que se completó la tarea">
+                                            ✓ {fechaCompletadaLegible(tarea) ? `Completada el ${fechaCompletadaLegible(tarea)}` : 'Completada'}
                                           </span>
                                         )}
 
@@ -10410,7 +10490,7 @@ function SeccionGestionYSeguimiento({
 
                                       <ListaEvidenciasTarea
                                         adjuntos={tarea.adjuntosTarea || []}
-                                        puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                        puedeEliminar={puedeGestionarEvidenciasTarea(rol) && puedeTocar}
                                         onEliminar={(adj) =>
                                           eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
                                         }
@@ -11987,7 +12067,7 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
   DEVUELTO: 'borrador', // Backend doesn't have devuelto yet, fallback to borrador
 };
 
-function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, aprobadoresComite = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; aprobadoresComite?: Auditor[]; }) {
+function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, aprobadoresComite = [], modo = 'completo' }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; aprobadoresComite?: Auditor[]; /** 'aprobador': solo el bloque de firma (EFDS-2320) */ modo?: 'completo' | 'aprobador'; }) {
   const [guardando, setGuardando] = useState(false);
   const [notificandoResponsable, setNotificandoResponsable] = useState(false);
   const currentUser = (window as any).__esap_auth_cache || null;
@@ -12600,6 +12680,240 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   // Cuando el plan fue DEVUELTO (subsanación), estas condiciones ya se cumplieron al enviarlo inicialmente.
   const validacionesExtraRequeridas = fueDevuelto ? true : tieneProcesos;
   const puedeEnviarRevision = porcentajeAsignacion === 100 && equipo.length > 0 && validacionesExtraRequeridas;
+
+  // ── Vista del aprobador (EFDS-2320): solo el bloque de firma de la propuesta ──
+  const miRegistroComite = historial.find((h: any) => {
+    const emA = (h.email || '').trim().toLowerCase();
+    if (emailSesion && emA && emailSesion === emA) return true;
+    const aid = h.auditorId != null ? String(h.auditorId) : '';
+    return !!(aid && idsSesion.some((id) => id === aid));
+  });
+  const fechaCorta = (valor?: string) =>
+    valor ? new Date(valor).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+  const estadoFirmaAprobador = (() => {
+    if (miRegistroComite?.estado === 'APROBADA') {
+      return { tono: 'ok', texto: `Usted firmó la aprobación${(miRegistroComite as any).fecha ? ` el ${fechaCorta((miRegistroComite as any).fecha)}` : ''}.` };
+    }
+    if (miRegistroComite?.estado === 'OBSERVADA') {
+      return { tono: 'alerta', texto: 'Usted registró observaciones. El responsable del plan debe atenderlas y volver a enviarlo al comité.' };
+    }
+    if (plan.estado === 'APROBADO' || plan.estado === 'VIGENTE') {
+      return { tono: 'ok', texto: `El plan fue aprobado${plan.fechaAprobacion ? ` el ${fechaCorta(plan.fechaAprobacion)}` : ''}.` };
+    }
+    if (plan.estado === 'BORRADOR') {
+      return { tono: 'info', texto: 'El plan aún no se ha enviado al comité. Recibirá una notificación cuando esté listo para su firma.' };
+    }
+    if (plan.estado === 'DEVUELTO') {
+      return { tono: 'alerta', texto: 'El plan fue devuelto con observaciones del comité y está en ajustes.' };
+    }
+    if (plan.estado === 'EN_REVISION' && !esMiTurnoComoAprobador) {
+      return { tono: 'info', texto: 'La firma es en orden: podrá firmar cuando los miembros anteriores del comité hayan firmado.' };
+    }
+    return null;
+  })();
+  const puedeFirmarAhora = plan.estado === 'EN_REVISION' && puedeAprobarPlan && esMiTurnoComoAprobador && !!aprobadorMiTurno;
+
+  const bloqueFirmaAprobador = (
+    <div className="rounded-xl border-2 p-5 flex flex-col md:flex-row md:items-center gap-4" style={{ borderColor: '#b7e4d3', backgroundColor: '#eefaf5' }}>
+      <div className="flex items-start gap-4 flex-1 min-w-0">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#d3f2e5' }}>
+          <Shield className="w-6 h-6" style={{ color: '#0f8a5f' }} />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-base font-bold text-gray-900">Aprobación</h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Una vez haya revisado el Plan Anual y el Programa Anual, realice la firma de aprobación.
+            La firma aprueba el Plan Anual y la Programación Anual asociada para la vigencia {vigenciaPlan}.
+          </p>
+          {estadoFirmaAprobador && !puedeFirmarAhora && (
+            <p
+              className="text-sm font-semibold mt-2 flex items-center gap-1.5"
+              style={{ color: estadoFirmaAprobador.tono === 'ok' ? '#0f8a5f' : estadoFirmaAprobador.tono === 'alerta' ? '#b45309' : '#1d4ed8' }}
+            >
+              {estadoFirmaAprobador.tono === 'ok' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              {estadoFirmaAprobador.texto}
+            </p>
+          )}
+        </div>
+      </div>
+      {puedeFirmarAhora && aprobadorMiTurno && (
+        <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setModalObservacion({ isOpen: true, auditorId: aprobadorMiTurno.id, texto: '' })}
+            disabled={guardando}
+            className="px-5 py-3 rounded-lg border-2 bg-white text-sm font-semibold transition-colors disabled:opacity-50"
+            style={{ borderColor: '#e5c3c3', color: '#b42318' }}
+          >
+            Observar
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAprobarAuditor(aprobadorMiTurno.id, aprobadorMiTurno.nombre, aprobadorMiTurno.email)}
+            disabled={guardando}
+            className="px-8 py-3 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-2 shadow-md transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: '#2962FF' }}
+          >
+            {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenLine className="w-5 h-5" />}
+            Firmar y aprobar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  // Observación, subsanación y firma OTP: los usan la vista completa y la del aprobador (EFDS-2320)
+  const modalesAprobacion = (
+    <>
+        {/* Modal / Dialogo de Observación (Render Flotante Top-Level Z-Index) */}
+        <AnimatePresence>
+          {modalObservacion.isOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
+            >
+              <motion.div 
+                initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg border-2 border-red-100"
+              >
+                <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2 text-red-700">
+                  <AlertCircle className="w-5 h-5"/> Registrar Observación
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  El plan será devuelto al estado inicial (DEVUELTO) para que el responsable lo corrija y lo vuelva a enviar.
+                </p>
+                <textarea
+                  className="w-full h-32 p-3 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none resize-none text-sm transition-all"
+                  placeholder="Detalle exactamente los ajustes requeridos..."
+                  value={modalObservacion.texto}
+                  onChange={(e) => setModalObservacion(prev => ({ ...prev, texto: e.target.value }))}
+                  autoFocus
+                />
+                <div className="flex gap-3 justify-end mt-6">
+                  <button 
+                    onClick={() => setModalObservacion({ isOpen: false, auditorId: null, texto: '' })} 
+                    className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    disabled={!modalObservacion.texto.trim()} 
+                    onClick={handleRechazarObservacion} 
+                    className="px-5 py-2.5 font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
+                  >
+                    Confirmar y Devolver
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {modalSubsanar.isOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
+            >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 text-green-600">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Ajustes Realizados y Subsanación</h3>
+                    <p className="text-sm text-gray-500">Comunique los ajustes a los miembros del comité</p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100 italic">
+                  Dado que el plan ya fue firmado por usted y las firmas previas aún son vinculantes, su re-envío de ajustes omitirá una doble validación de OTP y pasará de inmediato a la fase de revisión.
+                </p>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Selecciona la(s) observación(es) a responder:
+                  </label>
+                  <div className="space-y-2 max-h-36 overflow-y-auto border border-gray-200 rounded-xl p-3 bg-gray-50">
+                    {historial.filter(h => h.estado === 'OBSERVADA').map((obs) => {
+                      const isChecked = modalSubsanar.selectedAuditorIds.includes(obs.auditorId);
+                      return (
+                        <label key={obs.auditorId} className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-100/50 p-1.5 rounded transition-colors border border-transparent hover:border-gray-200">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setModalSubsanar(prev => {
+                                const newIds = checked 
+                                  ? [...prev.selectedAuditorIds, obs.auditorId]
+                                  : prev.selectedAuditorIds.filter(id => id !== obs.auditorId);
+                                return { ...prev, selectedAuditorIds: newIds };
+                              });
+                            }}
+                            className="mt-1 rounded text-green-600 focus:ring-green-500 border-gray-300 w-4 h-4 cursor-pointer"
+                          />
+                          <div className="flex-1">
+                            <span className="font-bold text-gray-900 text-xs">{obs.auditorNombre}</span>
+                            <p className="text-xs text-gray-600 bg-white border border-gray-200 p-2 rounded mt-1 italic font-normal leading-relaxed">
+                              "{obs.observacion}"
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <textarea
+                  className="w-full h-24 p-3 border-2 border-gray-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-100 outline-none resize-none text-sm transition-all"
+                  placeholder="Detalle exactamente los ajustes que ha realizado en respuesta a las observaciones planteadas..."
+                  value={modalSubsanar.texto}
+                  onChange={(e) => setModalSubsanar(prev => ({ ...prev, texto: e.target.value }))}
+                  autoFocus
+                />
+                <div className="flex gap-3 justify-end mt-6">
+                  <button 
+                    onClick={() => setModalSubsanar({ isOpen: false, texto: '', selectedAuditorIds: [] })} 
+                    className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    disabled={!modalSubsanar.texto.trim() || modalSubsanar.selectedAuditorIds.length === 0} 
+                    onClick={handleConfirmarSubsanacion} 
+                    className="px-5 py-2.5 font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
+                  >
+                    Confirmar y Re-enviar
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <ModalFirmaOTP
+          isOpen={modalOTPConfig.isOpen}
+          onClose={() => setModalOTPConfig(prev => ({ ...prev, isOpen: false }))}
+          onSuccess={procesarAccionOTP}
+          userName={modalOTPConfig.userName}
+          userEmail={modalOTPConfig.userEmail}
+          accionDetalle={modalOTPConfig.detalle}
+        />
+    </>
+  );
+
+  if (modo === 'aprobador') {
+    return (
+      <>
+        {bloqueFirmaAprobador}
+        {modalesAprobacion}
+      </>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6 relative">
@@ -13438,144 +13752,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
         </div>
       </div>
       
-      {/* Modal / Dialogo de Observación (Render Flotante Top-Level Z-Index) */}
-      <AnimatePresence>
-        {modalObservacion.isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg border-2 border-red-100"
-            >
-              <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2 text-red-700">
-                <AlertCircle className="w-5 h-5"/> Registrar Observación
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                El plan será devuelto al estado inicial (DEVUELTO) para que el responsable lo corrija y lo vuelva a enviar.
-              </p>
-              <textarea
-                className="w-full h-32 p-3 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none resize-none text-sm transition-all"
-                placeholder="Detalle exactamente los ajustes requeridos..."
-                value={modalObservacion.texto}
-                onChange={(e) => setModalObservacion(prev => ({ ...prev, texto: e.target.value }))}
-                autoFocus
-              />
-              <div className="flex gap-3 justify-end mt-6">
-                <button 
-                  onClick={() => setModalObservacion({ isOpen: false, auditorId: null, texto: '' })} 
-                  className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  disabled={!modalObservacion.texto.trim()} 
-                  onClick={handleRechazarObservacion} 
-                  className="px-5 py-2.5 font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  Confirmar y Devolver
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {modalSubsanar.isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 text-green-600">
-                  <Shield className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Ajustes Realizados y Subsanación</h3>
-                  <p className="text-sm text-gray-500">Comunique los ajustes a los miembros del comité</p>
-                </div>
-              </div>
-              
-              <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100 italic">
-                Dado que el plan ya fue firmado por usted y las firmas previas aún son vinculantes, su re-envío de ajustes omitirá una doble validación de OTP y pasará de inmediato a la fase de revisión.
-              </p>
-
-              <div className="mb-4">
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Selecciona la(s) observación(es) a responder:
-                </label>
-                <div className="space-y-2 max-h-36 overflow-y-auto border border-gray-200 rounded-xl p-3 bg-gray-50">
-                  {historial.filter(h => h.estado === 'OBSERVADA').map((obs) => {
-                    const isChecked = modalSubsanar.selectedAuditorIds.includes(obs.auditorId);
-                    return (
-                      <label key={obs.auditorId} className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-100/50 p-1.5 rounded transition-colors border border-transparent hover:border-gray-200">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setModalSubsanar(prev => {
-                              const newIds = checked 
-                                ? [...prev.selectedAuditorIds, obs.auditorId]
-                                : prev.selectedAuditorIds.filter(id => id !== obs.auditorId);
-                              return { ...prev, selectedAuditorIds: newIds };
-                            });
-                          }}
-                          className="mt-1 rounded text-green-600 focus:ring-green-500 border-gray-300 w-4 h-4 cursor-pointer"
-                        />
-                        <div className="flex-1">
-                          <span className="font-bold text-gray-900 text-xs">{obs.auditorNombre}</span>
-                          <p className="text-xs text-gray-600 bg-white border border-gray-200 p-2 rounded mt-1 italic font-normal leading-relaxed">
-                            "{obs.observacion}"
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <textarea
-                className="w-full h-24 p-3 border-2 border-gray-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-100 outline-none resize-none text-sm transition-all"
-                placeholder="Detalle exactamente los ajustes que ha realizado en respuesta a las observaciones planteadas..."
-                value={modalSubsanar.texto}
-                onChange={(e) => setModalSubsanar(prev => ({ ...prev, texto: e.target.value }))}
-                autoFocus
-              />
-              <div className="flex gap-3 justify-end mt-6">
-                <button 
-                  onClick={() => setModalSubsanar({ isOpen: false, texto: '', selectedAuditorIds: [] })} 
-                  className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  disabled={!modalSubsanar.texto.trim() || modalSubsanar.selectedAuditorIds.length === 0} 
-                  onClick={handleConfirmarSubsanacion} 
-                  className="px-5 py-2.5 font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  Confirmar y Re-enviar
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <ModalFirmaOTP
-        isOpen={modalOTPConfig.isOpen}
-        onClose={() => setModalOTPConfig(prev => ({ ...prev, isOpen: false }))}
-        onSuccess={procesarAccionOTP}
-        userName={modalOTPConfig.userName}
-        userEmail={modalOTPConfig.userEmail}
-        accionDetalle={modalOTPConfig.detalle}
-      />
+      {modalesAprobacion}
     </motion.div>
   );
 }

@@ -12,7 +12,7 @@ const pdfFile = {
   buffer: Buffer.from('%PDF-1.7\n'),
 } as Express.Multer.File;
 
-const docente = { id: '11111111-1111-1111-1111-111111111111', document_number: '123456' };
+const docente = { id: '11111111-1111-1111-1111-111111111111', persona_id: '22222222-2222-4222-8222-222222222222', document_number: '123456' };
 const category = {
   codigo: 'TITULOS',
   nombre: 'Títulos',
@@ -38,6 +38,16 @@ function transaction(queryImplementation: (sql: string, params?: any[]) => any) 
 
 describe('RundDocumentosService - ciclo CRUD documental', () => {
   afterEach(() => delete process.env.RUND_DOCUMENT_MAX_SIZE_BYTES);
+
+  it('conserva el archivo si se pierde la respuesta de COMMIT, evitando borrar una carga posiblemente confirmada', async () => {
+    const runner = transaction(sql => sql.includes('INSERT INTO academic_work_plan."RundDocumentoPerfil"') ? [{ id: 'doc-v1' }] : []);
+    runner.commitTransaction.mockRejectedValue(new Error('CONNECTION_LOST'));
+    const db = { query: jest.fn().mockResolvedValueOnce([docente]).mockResolvedValueOnce([category]), createQueryRunner: () => runner };
+    const storage = { store: jest.fn().mockResolvedValue({ provider: 'OPENKM', storageId: 'doc', storagePath: '/okm:root/RUND/doc' }), remove: jest.fn() };
+    await expect(new RundDocumentosService(db as any, storage as any).create(docente.id, { categoria: 'TITULOS' }, pdfFile, 'actor'))
+      .rejects.toThrow('CONNECTION_LOST');
+    expect(storage.remove).not.toHaveBeenCalled();
+  });
 
   it('carga el PDF, crea la versión 1 y registra actor e IP', async () => {
     const runner = transaction((sql) => {
@@ -84,7 +94,7 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
 
     expect(result).toEqual(expect.objectContaining({ id: 'doc-v1', version: 1, estado: 'ACTIVO' }));
     expect(storage.store).toHaveBeenCalledWith(expect.objectContaining({
-      documentNumber: '123456',
+      expedienteId: docente.persona_id,
       category: 'TITULOS',
       version: 1,
     }));

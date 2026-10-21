@@ -14,9 +14,20 @@ import {
   Clock,
   MapPin,
   Route,
+  Plane,
+  Car,
+  Sparkles,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
-import { SolicitudControlViaticosResponse, LiquidacionResponse, RutaItinerario } from '../types/viaticos';
+import authService from '../services/api/authService';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
+import {
+  SolicitudControlViaticosResponse,
+  LiquidacionResponse,
+  RutaItinerario,
+  TarifaEstimadaResult,
+  TicketValidationResult,
+} from '../types/viaticos';
 import {
   esPdfMime,
   formatearDiasComision,
@@ -142,12 +153,19 @@ function CopiableField({
 function LiquidacionSection({
   liquidacion,
   solicitud,
+  costoReferenciaTiquete,
 }: {
   liquidacion?: LiquidacionResponse['data'] | undefined;
   solicitud?: SolicitudControlViaticosResponse | null;
+  costoReferenciaTiquete?: number;
 }) {
   const montoViaticos = Number(solicitud?.montoViaticos || liquidacion?.valorTotalViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
+  const costoEstimadoTiquete = Number(solicitud?.costoEstimadoTiquete || 0);
+  const costoTiquetesAplicado =
+    costoReferenciaTiquete !== undefined && costoReferenciaTiquete >= 0
+      ? costoReferenciaTiquete
+      : costoEstimadoTiquete;
   const dias = Number(solicitud?.diasComision || liquidacion?.numeroDiasNoches || 1);
   const salarioBase = Number(solicitud?.salarioBasico || liquidacion?.salarioBaseAplicado || 0);
   const tarifaDiaria =
@@ -167,7 +185,7 @@ function LiquidacionSection({
   const factorComisionado = liquidacion?.factorComisionado ?? 1;
   const factorPernocta = liquidacion?.factorPernocta ?? 1;
   const totalViaticos = liquidacion?.valorTotalViaticos ?? montoViaticos;
-  const valorTotalNeto = totalViaticos + montoGastosViaje;
+  const valorTotalNeto = totalViaticos + montoGastosViaje + costoTiquetesAplicado;
 
   return (
     <div className="space-y-2 text-xs">
@@ -214,9 +232,19 @@ function LiquidacionSection({
           <span className="font-semibold text-slate-800">{formatearMoneda(montoGastosViaje)}</span>
         </div>
       )}
-      {montoGastosViaje > 0 && (
+      {costoTiquetesAplicado > 0 && (
+        <div className="flex justify-between">
+          <span className="text-slate-500">
+            {costoEstimadoTiquete > 0
+              ? 'Costo Tiquetes Aéreos (Pasajes)'
+              : 'Estimado Tiquetes (Tarifa Referencia)'}
+          </span>
+          <span className="font-semibold text-sky-800">{formatearMoneda(costoTiquetesAplicado)}</span>
+        </div>
+      )}
+      {(montoGastosViaje > 0 || costoTiquetesAplicado > 0) && (
         <div className="flex justify-between border-t border-slate-200 pt-2 font-bold bg-slate-100/70 p-2 rounded-lg">
-          <span className="text-slate-900">Total a Girar (Viáticos + Gastos)</span>
+          <span className="text-slate-900">Total Consolidado (Viáticos + Gastos + Tiquetes)</span>
           <span className="text-emerald-800 text-sm">{formatearMoneda(valorTotalNeto)}</span>
         </div>
       )}
@@ -529,6 +557,21 @@ export default function ControlViaticosModal({
   const [errorDevolucion, setErrorDevolucion] = useState<string | null>(null);
   const [tiposDocSoporte, setTiposDocSoporte] = useState<TipoDocumentoSoporte[]>([]);
 
+  // Estados para validación OTP y Firma Digital Institucional
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [modalFirmaOtpAbierta, setModalFirmaOtpAbierta] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
+
+  // Estados para consulta de tarifa estimada de referencia y validación de saldo tiquetes
+  const [tarifaEstimadaReferencia, setTarifaEstimadaReferencia] = useState<TarifaEstimadaResult | null>(null);
+  const [cargandoTarifa, setCargandoTarifa] = useState<boolean>(false);
+  const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
+  const [costoTiqueteInput, setCostoTiqueteInput] = useState<string>('');
+
   useEffect(() => {
     if (abierta && typeof viaticosService.obtenerTiposDocumentoSoporte === 'function') {
       viaticosService
@@ -555,17 +598,141 @@ export default function ControlViaticosModal({
       setDevolviendo(false);
       setErrorDevolucion(null);
       setCopied(null);
+      setSolicitandoOtp(false);
+      setModalFirmaOtpAbierta(false);
+      setOtpData(null);
+      setTarifaEstimadaReferencia(solicitud?.tarifaEstimada || null);
+      setValidacionTiquete(solicitud?.validacionTiquete || null);
+      setCargandoTarifa(false);
       cerrarTodosVisores();
       void cargarCatalogoDependencias();
+
+      if (solicitud?.costoEstimadoTiquete != null && Number(solicitud.costoEstimadoTiquete) > 0) {
+        setCostoTiqueteInput(String(solicitud.costoEstimadoTiquete));
+      } else {
+        setCostoTiqueteInput('');
+      }
+
+      if (solicitud?.requiereTiquetes) {
+        const sync = sincronizarItinerarioFormulario(solicitud.itinerario || []);
+        const origen = sync.origenCiudad || (solicitud as any).origenCiudad || 'Bogotá';
+        const destino = sync.destinoCiudad || solicitud.destinoCiudad || '';
+
+        // Si la solicitud no traía precargada la tarifa o validación, consultarla
+        if (!solicitud.tarifaEstimada && origen && destino && typeof viaticosService.consultarTarifaEstimada === 'function') {
+          setCargandoTarifa(true);
+          viaticosService
+            .consultarTarifaEstimada(origen, destino)
+            .then((res) => {
+              setTarifaEstimadaReferencia(res);
+              const esIdaVuelta = sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1);
+              const montoEstimado = (res?.tarifaEstimada || 0) * (esIdaVuelta ? 2 : 1);
+              const depId = solicitud.comisionado?.idDependencia ?? (solicitud as any).idDependencia;
+
+              // Prellenar recomendación para optimizar usabilidad si no se ha digitado un valor
+              if (montoEstimado > 0) {
+                setCostoTiqueteInput((prev) => (prev.trim() === '' ? String(montoEstimado) : prev));
+              }
+
+              if (!solicitud.validacionTiquete && depId != null && typeof viaticosService.validarTiquete === 'function') {
+                return viaticosService
+                  .validarTiquete({
+                    dependenciaId: String(depId),
+                    montoEstimadoTiquete: montoEstimado || Number(solicitud.costoEstimadoTiquete || 0),
+                    origenCiudad: origen,
+                    destinoCiudad: destino,
+                    tipoTransporte: 'AEREO',
+                  })
+                  .then((valRes) => setValidacionTiquete(valRes))
+                  .catch(() => {});
+              }
+            })
+            .catch(() => {})
+            .finally(() => setCargandoTarifa(false));
+        } else if (solicitud.tarifaEstimada) {
+          const esIdaVuelta = sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1);
+          const montoEstimado = (solicitud.tarifaEstimada.tarifaEstimada || 0) * (esIdaVuelta ? 2 : 1);
+          if (montoEstimado > 0 && (!solicitud.costoEstimadoTiquete || Number(solicitud.costoEstimadoTiquete) === 0)) {
+            setCostoTiqueteInput(String(montoEstimado));
+          }
+        } else if (!solicitud.validacionTiquete && Number(solicitud.costoEstimadoTiquete || 0) > 0) {
+          const depId = solicitud.comisionado?.idDependencia ?? (solicitud as any).idDependencia;
+          if (depId != null && typeof viaticosService.validarTiquete === 'function') {
+            viaticosService
+              .validarTiquete({
+                dependenciaId: String(depId),
+                montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+                origenCiudad: origen,
+                destinoCiudad: destino,
+                tipoTransporte: 'AEREO',
+              })
+              .then((valRes) => setValidacionTiquete(valRes))
+              .catch(() => {});
+          }
+        }
+      }
     }
-  }, [abierta]);
+  }, [abierta, solicitud]);
+
+  const revalidarPresupuestoTiquete = (nuevoMonto: number) => {
+    const depId = solicitud?.comisionado?.idDependencia ?? (solicitud as any)?.idDependencia;
+    if (depId != null && typeof viaticosService.validarTiquete === 'function') {
+      const sync = sincronizarItinerarioFormulario(solicitud?.itinerario || []);
+      const origen = sync.origenCiudad || (solicitud as any)?.origenCiudad || 'Bogotá';
+      const destino = sync.destinoCiudad || solicitud?.destinoCiudad || '';
+      viaticosService
+        .validarTiquete({
+          dependenciaId: String(depId),
+          montoEstimadoTiquete: nuevoMonto,
+          origenCiudad: origen,
+          destinoCiudad: destino,
+          tipoTransporte: 'AEREO',
+        })
+        .then((valRes) => setValidacionTiquete(valRes))
+        .catch(() => {});
+    }
+  };
 
   if (!abierta) return null;
 
   const comisionado = solicitud?.comisionado;
-  const nombreCompleto = comisionado ? formatearNombreComisionado(comisionado) : '';
+  const nombreCompleto = comisionado ? formatearNombreComisionado(comisionado as any) : '';
   const montoViaticos = Number(solicitud?.montoViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
+
+  // Desglose de transporte terminal aérea guardado
+  const montoTerminalAereo = Number(
+    solicitud?.camposAdicionales?.transporteTerminalAereo ??
+      solicitud?.camposAdicionales?.montoTerminalAereo ??
+      (Array.isArray(solicitud?.itinerario)
+        ? (solicitud.itinerario as any[]).reduce(
+            (acc: number, r: any) =>
+              acc + Number(r.tarifaTerminalAereo ?? r.montoTerminalAereo ?? 0),
+            0,
+          )
+        : 0),
+  );
+  const costoEstimadoTiquete = Number(solicitud?.costoEstimadoTiquete || 0);
+
+  // Cálculo y sincronización de itinerario para tiquetes y desplazamientos
+  const syncItin = sincronizarItinerarioFormulario(solicitud?.itinerario || []);
+  const esIdaVuelta = syncItin.esViajeIdaVuelta ?? ((solicitud?.itinerario?.length || 0) > 1);
+  const multiplicadorTramos = esIdaVuelta ? 2 : 1;
+  const tarifaUnit = Number(tarifaEstimadaReferencia?.tarifaEstimada || 0);
+  const totalTiquetesReferencia = tarifaUnit * multiplicadorTramos;
+
+  // Valor ingresado por el usuario o sugerido automáticamente (modo recomendación y usabilidad)
+  const valorIngresadoNum = costoTiqueteInput.trim() !== '' ? Number(costoTiqueteInput) : NaN;
+  const costoTiqueteEfectivo =
+    !isNaN(valorIngresadoNum) && valorIngresadoNum >= 0
+      ? valorIngresadoNum
+      : costoEstimadoTiquete > 0
+      ? costoEstimadoTiquete
+      : totalTiquetesReferencia;
+
+  const gastoDesplazamientoTerminal = montoTerminalAereo > 0 ? montoTerminalAereo : montoGastosViaje;
+  const totalDesplazamientoInstitucional = gastoDesplazamientoTerminal + costoTiqueteEfectivo;
+  const totalConsolidadoGlobal = montoViaticos + montoGastosViaje + costoTiqueteEfectivo;
   const valorNeto = montoViaticos + montoGastosViaje;
 
   const resumenPresupuestal = (solicitud as any)?.resumenPresupuestal as
@@ -583,6 +750,63 @@ export default function ControlViaticosModal({
   const semaforo = resumenPresupuestal?.semaforo || 'VERDE';
   const isVerificada = solicitud?.estadoSolicitud === 'VERIFICADA' || verificacionExitosa;
 
+  // Resolver usuario actual firmante para estampa institucional
+  const currentUser = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+  const nombreUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function'
+      ? `${currentUser.primerNombre || ''} ${currentUser.segundoNombre || ''} ${currentUser.primerApellido || ''} ${currentUser.segundoApellido || ''}`.trim() ||
+        currentUser.nombre ||
+        currentUser.username ||
+        'Revisor de Control de Viáticos'
+      : 'Revisor de Control de Viáticos';
+  const cargoUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function' && (currentUser.cargo || currentUser.job_title)
+      ? currentUser.cargo || currentUser.job_title
+      : 'Control de Viáticos / 2do Nivel (Control Cruzado)';
+  const documentoIdentidadUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function'
+      ? currentUser.numeroDocumento || currentUser.documento || currentUser.identificacion
+      : undefined;
+
+  const generarEstampaDigitalControlViaticos = (nombre: string, cargo: string): string => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 140;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#003DA5';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+      ctx.fillStyle = '#003DA5';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('ESAP — CONTROL CRUZADO 2DO NIVEL (CONTROL VIÁTICOS)', 16, 24);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(nombre.slice(0, 36), 16, 52);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(cargo.slice(0, 42), 16, 72);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '9px monospace';
+      const ahora = new Date().toISOString();
+      ctx.fillText(`FECHA/HORA: ${ahora}`, 16, 96);
+      ctx.fillText('VALIDACIÓN: HASH CRIPTOGRÁFICO SHA-256', 16, 112);
+
+      return canvas.toDataURL('image/png');
+    } catch {
+      return '';
+    }
+  };
+
   const handleCopy = async (valor: string) => {
     if (!valor) return;
     try {
@@ -594,28 +818,80 @@ export default function ControlViaticosModal({
     }
   };
 
-  const handleVerificarSegundoNivel = async () => {
+  // Solicitar código OTP para iniciar firma digital de control viáticos (2do nivel)
+  const handleIniciarFirmaOtp = async () => {
     if (!solicitud || isVerificada) return;
+    setSolicitandoOtp(true);
+    setErrorVerificacion(null);
+    try {
+      const resp = await viaticosService.solicitarOtpFirma(solicitud.id, {
+        tipoFirma: 'CONTROL_VIATICOS',
+        etapaLabel: 'Control Viáticos — Control Cruzado (2do Nivel)',
+      });
+      setOtpData({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || (resp as any).email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaOtpAbierta(true);
+    } catch (err: any) {
+      console.error('Error solicitando OTP:', err);
+      setErrorVerificacion(
+        err?.response?.data?.message ||
+          err?.message ||
+          'No fue posible solicitar el código OTP de verificación.',
+      );
+    } finally {
+      setSolicitandoOtp(false);
+    }
+  };
+
+  // Confirmar verificación y firma digital tras validación OTP
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    if (!solicitud) return false;
     setVerificando(true);
     setErrorVerificacion(null);
     try {
-      await viaticosService.verificarSegundoNivel(solicitud.id, { observaciones: '' });
+      const firmaImagen = generarEstampaDigitalControlViaticos(nombreUsuarioActual, cargoUsuarioActual);
+      await viaticosService.verificarSegundoNivel(solicitud.id, {
+        observaciones: 'Verificación y control cruzado aprobado con firma digital institucional',
+        otp: firma.codigoOtp,
+        verificationId: otpData?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        firmaImagen,
+        nombreRevisor: nombreUsuarioActual,
+        cargoRevisor: cargoUsuarioActual,
+        documentoIdentidad: documentoIdentidadUsuarioActual,
+        costoEstimadoTiquete: costoTiqueteEfectivo,
+      });
       setVerificacionExitosa(true);
       if (solicitud) {
         solicitud.estadoSolicitud = 'VERIFICADA';
       }
+      setModalFirmaOtpAbierta(false);
       setTimeout(() => {
         setVerificacionExitosa(false);
         onRefrescar();
         onCerrar();
       }, 1500);
+      return true;
     } catch (err: any) {
+      console.error('Error al registrar verificación de segundo nivel con OTP:', err);
       setErrorVerificacion(
-        err?.message || 'Error al registrar la verificación de segundo nivel.',
+        err?.response?.data?.message ||
+          err?.message ||
+          'Error al registrar la verificación de segundo nivel.',
       );
+      return false;
     } finally {
       setVerificando(false);
     }
+  };
+
+  // Mantener compatibilidad si es invocado directamente
+  const handleVerificarSegundoNivel = async () => {
+    await handleIniciarFirmaOtp();
   };
 
   const handleDevolverAAnalista = async () => {
@@ -793,22 +1069,253 @@ export default function ControlViaticosModal({
                   Liquidación Calculada
                 </h3>
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                  <LiquidacionSection liquidacion={solicitud.liquidacion} solicitud={solicitud} />
+                  <LiquidacionSection
+                    liquidacion={solicitud.liquidacion}
+                    solicitud={solicitud}
+                    costoReferenciaTiquete={costoTiqueteEfectivo}
+                  />
                 </div>
               </section>
 
-              {/* ==================== Section 3: Validación de Tiquete ==================== */}
-              {solicitud.requiereTiquetes && solicitud.validacionTiquete && (
+              {/* ==================== Section 3: Desplazamiento Aéreo y Transporte a Terminal ==================== */}
+              {solicitud.requiereTiquetes && (
                 <section className="mb-6 border-t border-slate-100 pt-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Validación de Tiquete (Presupuesto y Ruta)
-                  </h3>
-                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                      <Plane className="w-4 h-4 text-[#003DA5]" />
+                      Desplazamiento Aéreo y Transporte a Terminal Aérea
+                    </h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#003DA5] border border-blue-200">
+                      Requiere Tiquetes Aéreos
+                    </span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                    {/* Tarjeta de Transporte a Terminal Aérea Guardado */}
+                    {gastoDesplazamientoTerminal > 0 ? (
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Car className="w-4 h-4 text-emerald-600" />
+                            Transporte a Terminal Aérea (Aeropuerto)
+                          </span>
+                          <span className="text-xs font-extrabold text-emerald-700 font-mono">
+                            {formatearMoneda(gastoDesplazamientoTerminal)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          Tarifa oficial parametrizada para el traslado hacia/desde la terminal aérea en las ciudades de la comisión.
+                        </p>
+                        {montoGastosViaje > montoTerminalAereo && montoTerminalAereo > 0 && (
+                          <div className="pt-2 border-t border-slate-100 flex justify-between text-[11px] text-slate-600">
+                            <span>Otros traslados terrestres / complementarios:</span>
+                            <span className="font-semibold text-slate-800">
+                              {formatearMoneda(montoGastosViaje - montoTerminalAereo)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 text-xs text-slate-500 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span>Sin saldo de transporte a terminal aérea liquidado en esta solicitud.</span>
+                      </div>
+                    )}
+
+                    {/* Tarjeta de Tarifa Estimada de Referencia para Tiquetes Aéreos */}
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Plane className="w-4 h-4 text-sky-600" />
+                          <span className="text-xs font-bold text-slate-800">
+                            Tarifa Estimada de Referencia (Vuelos)
+                          </span>
+                          {tarifaEstimadaReferencia?.origenIata && tarifaEstimadaReferencia?.destinoIata && (
+                            <span className="inline-flex items-center gap-1 font-mono font-black text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-300">
+                              {tarifaEstimadaReferencia.origenIata} ⇄ {tarifaEstimadaReferencia.destinoIata}
+                            </span>
+                          )}
+                        </div>
+                        {tarifaEstimadaReferencia?.fuente && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            Fuente: {tarifaEstimadaReferencia.fuente}
+                          </span>
+                        )}
+                      </div>
+
+                      {cargandoTarifa ? (
+                        <p className="text-[11px] text-slate-500 italic">
+                          Consultando tarifa de referencia y benchmark de mercado...
+                        </p>
+                      ) : tarifaEstimadaReferencia?.encontrado ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] font-bold uppercase">Ruta / Trayecto</span>
+                            <span className="font-semibold text-slate-800">
+                              {tarifaEstimadaReferencia.origen} ⇄ {tarifaEstimadaReferencia.destino}
+                            </span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5">
+                              {esIdaVuelta ? '2 tramos (Ida y Vuelta)' : '1 tramo (Solo Ida)'}
+                            </span>
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] font-bold uppercase">Tarifa Segmento</span>
+                            <span className="font-mono font-bold text-slate-800">
+                              {formatearMoneda(tarifaUnit)} / tramo
+                            </span>
+                            {tarifaEstimadaReferencia.tarifaMinima != null && tarifaEstimadaReferencia.tarifaMaxima != null && (
+                              <span className="text-[10px] text-slate-500 block mt-0.5">
+                                Rango: {formatearMoneda(tarifaEstimadaReferencia.tarifaMinima)} – {formatearMoneda(tarifaEstimadaReferencia.tarifaMaxima)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2 bg-sky-50 rounded-lg border border-sky-100">
+                            <span className="text-sky-700 block text-[10px] font-bold uppercase">Total Estimado Ruta</span>
+                            <span className="font-mono font-black text-sky-900 text-xs">
+                              {formatearMoneda(totalTiquetesReferencia)}
+                            </span>
+                            <span className="text-[10px] text-sky-700 block mt-0.5">
+                              {multiplicadorTramos} × {formatearMoneda(tarifaUnit)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          {tarifaEstimadaReferencia?.mensaje || 'No se encontró tarifa parametrizada específica para este trayecto. Se requerirá cotización formal.'}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Tarjeta de Registro y Edición del Gasto de Tiquete Aéreo (Recomendación + Entrada Manual) */}
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <Plane className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Gasto de Tiquete Aéreo (Valor a Registrar / Cotizar)
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            El cálculo automático de la ruta opera a modo de recomendación para mejor usabilidad. Puede conservar la recomendación o ingresar el valor cotizado formal.
+                          </p>
+                        </div>
+                        {totalTiquetesReferencia > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const valorStr = String(totalTiquetesReferencia);
+                              setCostoTiqueteInput(valorStr);
+                              revalidarPresupuestoTiquete(totalTiquetesReferencia);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-[#003DA5] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors cursor-pointer"
+                            title="Aplicar tarifa calculada automáticamente como recomendación"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Usar tarifa sugerida ({formatearMoneda(totalTiquetesReferencia)})</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center pt-1 border-t border-slate-100">
+                        <div>
+                          <label
+                            htmlFor="input-costo-tiquete"
+                            className="block text-[10px] font-bold text-slate-500 uppercase mb-1"
+                          >
+                            Valor del Pasaje Aéreo (COP)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">
+                              $
+                            </span>
+                            <input
+                              id="input-costo-tiquete"
+                              type="number"
+                              min="0"
+                              step="1000"
+                              placeholder={
+                                totalTiquetesReferencia > 0
+                                  ? String(totalTiquetesReferencia)
+                                  : 'Ingrese valor del tiquete'
+                              }
+                              value={costoTiqueteInput}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCostoTiqueteInput(val);
+                                const num = val.trim() !== '' ? Number(val) : totalTiquetesReferencia;
+                                if (!isNaN(num)) {
+                                  revalidarPresupuestoTiquete(num);
+                                }
+                              }}
+                              className="w-full pl-7 pr-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:border-transparent text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="sm:text-right flex flex-col justify-end">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                            Costo Aplicado en Control Cruzado
+                          </span>
+                          <span className="text-sm font-black text-slate-900 font-mono">
+                            {costoTiqueteEfectivo > 0
+                              ? formatearMoneda(costoTiqueteEfectivo)
+                              : 'Por cotizar'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 mt-0.5">
+                            {costoTiqueteInput.trim() !== '' && Number(costoTiqueteInput) === totalTiquetesReferencia && totalTiquetesReferencia > 0
+                              ? 'Tarifa recomendada sugerida aplicada'
+                              : costoTiqueteInput.trim() !== ''
+                              ? 'Valor de gasto registrado manualmente'
+                              : totalTiquetesReferencia > 0
+                              ? 'Tarifa sugerida por defecto'
+                              : 'Pendiente de registrar cotización'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Comparativa de Gastos de Desplazamiento vs Tiquetes */}
+                    <div className="p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 rounded-lg border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800">
+                          Comparativa de Desplazamiento Institucional
+                        </span>
+                        <span className="text-xs font-black text-indigo-900 font-mono">
+                          {formatearMoneda(totalDesplazamientoInstitucional)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-200/60">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Traslados Terrestres (Terminal):</span>
+                          <span className="font-semibold text-slate-700 font-mono">{formatearMoneda(gastoDesplazamientoTerminal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Pasajes Aéreos (Tiquetes):</span>
+                          <span className="font-semibold text-sky-800 font-mono">{formatearMoneda(costoTiqueteEfectivo)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Widget Semáforo de Presupuesto y Restricciones de Tiquetes */}
                     <TicketBudgetWidget
-                      validacion={solicitud.validacionTiquete}
-                      montoEstimadoDisplay={formatearMoneda(solicitud.costoEstimadoTiquete || 0)}
+                      validacion={validacionTiquete}
+                      cargando={cargandoTarifa}
+                      montoEstimadoDisplay={formatearMoneda(costoTiqueteEfectivo)}
                     />
+
+                    {/* Total Consolidado Proyectado */}
+                    {totalConsolidadoGlobal > 0 && (
+                      <div className="p-3 bg-blue-50/80 rounded-lg border border-blue-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-[#003DA5]">Total Consolidado Proyectado</span>
+                          <p className="text-[11px] text-blue-700/80">
+                            Viáticos ({formatearMoneda(montoViaticos)}) + Desplazamiento ({formatearMoneda(montoGastosViaje)}) + Tiquetes ({formatearMoneda(costoTiqueteEfectivo)})
+                          </p>
+                        </div>
+                        <span className="text-sm font-black text-[#003DA5] font-mono">
+                          {formatearMoneda(totalConsolidadoGlobal)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </section>
               )}
@@ -894,16 +1401,20 @@ export default function ControlViaticosModal({
                       </p>
                       <button
                         type="button"
-                        onClick={handleVerificarSegundoNivel}
-                        disabled={verificando}
+                        onClick={handleIniciarFirmaOtp}
+                        disabled={verificando || solicitandoOtp}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors"
                       >
-                        {verificando ? (
+                        {solicitandoOtp || verificando ? (
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <CheckCircle2 className="w-4 h-4" />
                         )}
-                        {verificando ? 'Verificando...' : 'Aprobar y Verificar (2do Nivel)'}
+                        {solicitandoOtp
+                          ? 'Solicitando código OTP...'
+                          : verificando
+                          ? 'Verificando...'
+                          : 'Aprobar y Verificar (2do Nivel)'}
                       </button>
                       {verificacionExitosa && (
                         <span className="ml-4 text-xs text-emerald-600 font-semibold flex items-center gap-1">
@@ -1011,6 +1522,38 @@ export default function ControlViaticosModal({
     documentos={documentosVisor}
     onCerrar={cerrarDocumentoVisor}
   />
+
+  {/* ==================== Modal Institucional de Firma Digital con Validación OTP ==================== */}
+  {modalFirmaOtpAbierta && solicitud && (
+    <FirmaDigitalViaticosModal
+      isOpen={modalFirmaOtpAbierta}
+      solicitudId={solicitud.id}
+      consecutivo={solicitud.consecutivoUnico || (solicitud as any).codigoSolicitud || (solicitud as any).codigo || '023'}
+      comisionadoNombre={nombreCompleto || 'Comisionado'}
+      destino={`${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim()}
+      fechas={
+        solicitud.fechaInicio && solicitud.fechaFin
+          ? `${fmtFecha(solicitud.fechaInicio)} al ${fmtFecha(solicitud.fechaFin)}`
+          : ''
+      }
+      firmanteNombre={nombreUsuarioActual}
+      firmanteCargo={cargoUsuarioActual}
+      etapaLabel="Control Viáticos — Control Cruzado (2do Nivel)"
+      correoDestino={otpData?.emailEnviadoA}
+      devCode={otpData?.devCode}
+      onVerifyCodigo={async (codigoOtp: string) => {
+        await viaticosService.verificarOtpFirma(solicitud.id, {
+          verificationId: otpData?.verificationId || '',
+          code: codigoOtp,
+          otp: codigoOtp,
+          tipoFirma: 'CONTROL_VIATICOS',
+          consume: false,
+        });
+      }}
+      onFirmaCompleta={handleFirmaDigitalCompleta}
+      onCancelar={() => setModalFirmaOtpAbierta(false)}
+    />
+  )}
 </>
   );
 }

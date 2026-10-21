@@ -19,6 +19,8 @@ export enum AutoType {
   AUTO_INHIBITORIO = 'AUTO_INHIBITORIO',
   AUTO_PRORROGA = 'AUTO_PRORROGA',
   AUTO_FORMULACION_PLIEGO = 'AUTO_FORMULACION_PLIEGO',
+  AUTO_REMISION_COMPETENCIA = 'AUTO_REMISION_COMPETENCIA',
+  AUTO_REMISION = 'AUTO_REMISION',
   // Dynamic apertura types will be validated by pattern
   AUTO_APERTURA = 'AUTO_APERTURA', // Base type for validation
 
@@ -153,6 +155,12 @@ export class LegalAuto {
 
   @Column({ type: 'uuid', nullable: true, name: 'radicador_asignado_id' })
   radicadorAsignadoId: string | null; // ID del radicador/secretario asignado a este auto
+
+  @Column({ name: 'entidad_destino', type: 'varchar', length: 255, nullable: true })
+  entidadDestino: string | null;
+
+  @Column({ name: 'entidad_destino_email', type: 'varchar', length: 255, nullable: true })
+  entidadDestinoEmail: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

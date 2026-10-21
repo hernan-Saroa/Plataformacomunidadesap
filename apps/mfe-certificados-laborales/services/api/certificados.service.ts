@@ -554,10 +554,24 @@ export const certificadosService = {
       );
     },
 
-    async obtenerPDFBlob(id: string): Promise<Blob> {
+    async obtenerPDFBlob(
+      id: string,
+      options?: {
+        includeSalary?: boolean;
+        includeTechnicalBonus?: boolean;
+      },
+    ): Promise<Blob> {
+      // Sin override el backend usa lo persistido al emitir el certificado.
+      const params: Record<string, boolean> = {};
+      if (typeof options?.includeSalary === 'boolean') {
+        params.includeSalary = options.includeSalary;
+      }
+      if (typeof options?.includeTechnicalBonus === 'boolean') {
+        params.includeTechnicalBonus = options.includeTechnicalBonus;
+      }
       return apiClient.getBlob(
         `${SERVICE_PREFIX}/certificates/certificados/${id}/pdf`,
-        undefined,
+        Object.keys(params).length ? params : undefined,
         { skipErrorToast: true },
       );
     },

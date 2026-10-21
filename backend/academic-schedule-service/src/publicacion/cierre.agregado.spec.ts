@@ -1,0 +1,117 @@
+import { Client } from 'pg';
+
+import { PublicacionService } from './publicacion.service.js';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
+/**
+ * NUEVA-5b / EFDS-1941 :: cerrar el periodo.
+ *
+ * Canario AGREGADO sobre la base real. Afirma los INVARIANTES del cierre:
+ *   · no se cierra mientras haya una franja ni APROBADA ni en excepción;
+ *   · marcarla como excepción la deja de contar y permite cerrar;
+ *   · al cerrar, el periodo queda 'cerrado';
+ *   · un periodo cerrado es inmutable: no se vuelve a cerrar.
+ */
+const conexion = {
+  host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT || 55432),
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASS || process.env.DB_PASSWORD || 'postgres',
+  database: process.env.DB_NAME || 'esap_db',
+};
+
+const S = 'academic-schedule';
+
+describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
+  let client: Client | null = null;
+  let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
+  let idPeriodo = '';
+  let idGrupo = '';
+  const F: Record<string, string> = {};
+
+  const servicio = () => new PublicacionService({
+    query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
+  } as any);
+
+  // Horas distintas: dos sesiones del mismo grupo a la vez son un cruce que la API
+  // prohíbe (y que el canario de cruces vivos, EFDS-2307, vería en paralelo).
+  const insertar = async (etq: string, estado: string, hora = '06:00') => {
+    const r = await client!.query(
+      `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, aula_codigo, estado)
+       VALUES ($1,'DOMINGO',$3::time,($3::time + interval '1 hour'),'mediada_tecnologia',NULL,$2) RETURNING id_franja`,
+      [idGrupo, estado, hora]);
+    F[etq] = r.rows[0].id_franja;
+  };
+
+  beforeAll(async () => {
+    try {
+      client = new Client(conexion);
+      await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
+      const cod = `QA-CIE-${Date.now().toString().slice(-7)}`;
+      const p = await client.query(
+        `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
+         VALUES ($1,'Periodo QA cierre','periodo_regular','2028-02-01','2028-06-15','activo') RETURNING id_periodo`, [cod]);
+      idPeriodo = p.rows[0].id_periodo;
+      const g = await client.query(
+        `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
+         VALUES (${idAsig},$1,906,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+      idGrupo = g.rows[0].id_grupo;
+      await insertar('APROB', 'APROBADA');
+      await insertar('TOM', 'TOMADA', '07:00'); // pendiente: ni aprobada ni excepción
+      hayBase = true;
+    } catch (e) {
+        // Solo la FALTA DE BASE se omite. Un fixture que falla (clave foránea, columna) se grita: antes se
+        // saltaba en silencio y dejaba la conexión abierta dentro de una transacción abortada.
+        const conectado = !!(client as any)?._connected;
+        if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+        client = null; hayBase = false;
+        if (conectado) throw e;
+    }
+  });
+
+  afterAll(async () => {
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    if (client) await client.end();
+  });
+
+  const siHayBase = (nombre: string, fn: () => Promise<void>) =>
+    it(nombre, async () => {
+      if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
+    });
+
+  siHayBase('no se cierra mientras haya una franja ni aprobada ni en excepcion', async () => {
+    const svc = servicio();
+    const est = await svc.estado(idPeriodo);
+    expect(est.aprobada).toBe(1);
+    expect(est.pendientesCierre).toBe(1); // la TOMADA
+    await expect(svc.cerrar(idPeriodo)).rejects.toThrow(/no se puede cerrar/i);
+  });
+
+  siHayBase('marcar la pendiente como excepcion permite cerrar; el periodo queda cerrado', async () => {
+    const svc = servicio();
+    const tras = await svc.marcarExcepcion(idPeriodo, F['TOM'], true);
+    expect(tras.pendientesCierre).toBe(0);
+
+    await svc.cerrar(idPeriodo);
+    const { rows } = await client!.query(
+      `SELECT estado FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [idPeriodo]);
+    expect(rows[0].estado).toBe('cerrado');
+  });
+
+  siHayBase('un periodo cerrado es inmutable: no se vuelve a cerrar', async () => {
+    await expect(servicio().cerrar(idPeriodo)).rejects.toThrow(/ya está cerrad[ao]/i);
+  });
+});

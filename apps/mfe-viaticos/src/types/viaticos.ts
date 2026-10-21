@@ -20,6 +20,8 @@ export type EstadoSolicitudViatico =
   | 'AUTORIZACION_DIRECCION'
   | 'EN_AUTORIZACION'
   | 'AUTORIZADA'
+  | 'EN_REVOCATORIA'
+  | 'REVOCADA'
   | 'CANCELADA'
   | 'EN_PRESUPUESTO'
   | 'COMPROMETIDA'
@@ -113,6 +115,7 @@ export interface FormNuevaSolicitud {
   cargoSeleccionado?: CargoComisionado | null;
   cargo?: string;
   idCargo?: number;
+  justificacionDuracion?: string;
 }
 
 export interface CuentaBancariaComisionado {
@@ -212,6 +215,11 @@ export interface Comisionado {
   cuentasBancarias?: CuentaBancariaComisionado[];
   cargos?: CargoComisionado[];
   solicitudesPendientes?: SolicitudPendiente023[];
+  esUsuario?: boolean;
+  usuarioId?: string | null;
+  rolesUsuario?: string[];
+  idPersona?: string | null;
+  tieneRolComisionado?: boolean;
 }
 
 export interface DocumentoSoporte {
@@ -290,6 +298,8 @@ export interface SolicitudComisionResponse {
   };
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
+  tarifaEstimada?: TarifaEstimadaResult | null;
+  validacionTiquete?: TicketValidationResult | null;
 }
 
 /**
@@ -347,6 +357,7 @@ export interface CreateSolicitudRequest {
   cargoSeleccionado?: CargoComisionado | null;
   cargo?: string;
   idCargo?: number;
+  justificacionDuracion?: string;
 }
 
 /**
@@ -387,6 +398,7 @@ export interface SolicitudListaResponse {
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
+  montoTotal?: number;
   diasComision: number;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
@@ -456,12 +468,51 @@ export interface CrearObligacionDto {
 export interface ProcesarPagoDto {
   fechaPago: string;
   valorPagado: number;
+  costoEstimadoTiquete?: number;
   soportePagoPath?: string;
   soporteDesembolsoPath?: string;
   numeroOrdenPago?: string;
   comprobantePago?: string;
   observacionesPago?: string;
   modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
+  nombreFirmante?: string;
+  cargoFirmante?: string;
+}
+
+export type OrigenReintegro = 'COMISION_NO_REALIZADA' | 'VIAJE_MENOR';
+export type EstadoReintegro = 'PENDIENTE' | 'REGISTRADO';
+
+export interface ReintegroComision {
+  id: string;
+  solicitudId: string;
+  consecutivoUnico: string | null;
+  comisionado: { numeroDocumento: string; nombre: string } | null;
+  destinoCiudad: string | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  origen: OrigenReintegro;
+  estado: EstadoReintegro;
+  valorPagado: number;
+  valorAReintegrar: number;
+  diasComision: number | null;
+  diasEjecutados: number | null;
+  valorReintegrado: number | null;
+  fechaReintegro: string | null;
+  soportePath: string | null;
+  observaciones: string | null;
+  fechaRegistro: string | null;
+}
+
+export interface RegistrarReintegroDto {
+  valorReintegrado: number;
+  fechaReintegro: string;
+  soportePath: string;
+  observaciones?: string;
 }
 
 export interface BandejaSecretarioResponse {
@@ -504,6 +555,9 @@ export interface SolicitudViatico {
   montoSolicitadoViaticos: number;
   montoSolicitadoGastosViaje: number;
   montoTotalEstimado: number;
+  montoViaticos?: number;
+  montoGastosViaje?: number;
+  costoEstimadoTiquete?: number;
   estado: EstadoSolicitudViatico;
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
@@ -546,6 +600,12 @@ export interface SolicitudViatico {
   numeroOrdenPago?: string | null;
   observacionesPago?: string | null;
   pagadoPorId?: string | null;
+  consecutivoUnico?: string | null;
+  montoTotal?: number | null;
+  observacionesRp?: string | null;
+  soporteRpPath?: string | null;
+  camposAdicionales?: Record<string, any> | null;
+  procesoRevocatoria?: ProcesoRevocatoriaData | null;
 }
 
 /** Registro de notificación formal enviada al área de SST (RF-PAG-002) */
@@ -783,6 +843,44 @@ export interface CreateExcepcionTiqueteRequest {
   comentarios?: string;
 }
 
+export interface TarifaReferenciaTiquete {
+  id: number;
+  origenCiudad: string;
+  destinoCiudad: string;
+  origenIata: string;
+  destinoIata: string;
+  tarifaEstimada: number;
+  tarifaMinima?: number | null;
+  tarifaMaxima?: number | null;
+  fuente: string;
+  notas?: string | null;
+  ultimaActualizacion?: string;
+  activo: boolean;
+}
+
+export interface TarifaEstimadaResult {
+  encontrado: boolean;
+  origen: string;
+  destino: string;
+  origenIata: string | null;
+  destinoIata: string | null;
+  tarifaEstimada: number;
+  tarifaMinima: number | null;
+  tarifaMaxima: number | null;
+  fuente: string | null;
+  ultimaActualizacion: string | null;
+  mensaje: string;
+}
+
+export interface SincronizarTarifasResult {
+  totalRutas: number;
+  actualizadas: number;
+  fuente: string;
+  mensaje: string;
+  rutasActualizadas: Array<{ ruta: string; tarifa: number; fuente: string }>;
+}
+
+
 // =========================================================================
 // RF-LIQ-004 — Consolidación y cierre de expediente (Etapa 3)
 // =========================================================================
@@ -991,6 +1089,14 @@ export interface BandejaControlViaticosResponse {
 /** Payload para verificar en segundo nivel (Control Cruzado). */
 export interface VerificarSegundoNivelRequest {
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
+  nombreRevisor?: string;
+  cargoRevisor?: string;
+  documentoIdentidad?: string;
 }
 
 /** Respuesta al verificar en segundo nivel. */
@@ -1046,6 +1152,11 @@ export interface SolicitudControlViatico {
 
 export interface AutorizarComisionRequest {
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
 }
 
 export interface AutorizarComisionResponse {
@@ -1092,7 +1203,11 @@ export interface SolicitudAutorizacion {
   costoEstimadoTiquete: number;
   montoViaticos: number;
   montoGastosViaje: number;
+  totalComision?: number;
   montoTotal: number;
+  ciudadOrigen?: string | null;
+  sedeOrigen?: string | null;
+  tipoTransporte?: string | null;
   estadoSolicitud: EstadoSolicitudViatico;
   extemporanea?: boolean;
   motivoDevolucion?: string | null;
@@ -1164,8 +1279,15 @@ export interface ExpedirRpPayload {
   fechaRp: string;
   valorComprometido: number;
   rubro: string;
+  rubroPresupuestal?: string;
   codigoRp?: string;
+  soporteRpPath?: string;
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
 }
 
 export interface ItemCargaMasivaRp {
@@ -1206,6 +1328,7 @@ export interface BandejaPresupuestoResponse {
   kpis: {
     pendientesRp: number;
     comprometidas: number;
+    pendientesReduccion?: number;
     totalComprometido: number;
   };
   timestamp: string;
@@ -1219,7 +1342,11 @@ export type TipoFirmaAprobacion =
   | 'JEFE_DEPENDENCIA'
   | 'GERENTE_PROYECTO'
   | 'ENLACE_ELABORO'
-  | 'ANALISTA';
+  | 'ANALISTA'
+  | 'CONTROL_VIATICOS'
+  | 'PRESUPUESTO'
+  | 'TESORERIA'
+  | 'VOBO_DURACION';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;
@@ -1246,6 +1373,12 @@ export interface FirmanteRequerido {
   descripcion: string;
   esRequerido: boolean;
   firmado: boolean;
+  nombreFirmante?: string | null;
+  cargoFirmante?: string | null;
+  documentoIdentidad?: string | null;
+  fechaFirma?: string | null;
+  certificadoId?: string | null;
+  hashSha256?: string | null;
   firma: FirmaAprobacionRegistrada | null;
 }
 
@@ -1256,9 +1389,32 @@ export interface EstadoFirmasResponse {
   reglaDesplazamiento: string;
   descripcionRegla: string;
   firmantes: FirmanteRequerido[];
+  firmaElaboro?: FirmaAprobacionRegistrada | null;
+  elaboro?: string | null;
   completado: boolean;
   requiereFirmasParaRadicar: boolean;
   mensaje: string;
+  // Campos VoBo Duración:
+  requiereVoBoDuracion?: boolean;
+  instanciaVoBoDuracion?: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL';
+  tituloVoBoDuracion?: string;
+  motivoVoBoDuracion?: string;
+  justificacionDuracion?: string | null;
+  diasCalendario?: number;
+  diasValor?: number;
+  eximidoVoBoDocente?: boolean;
+  voboDuracion?: {
+    estado: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+    instancia?: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL';
+    tituloInstancia?: string;
+    aprobadoPorId?: string;
+    nombreFirmante?: string;
+    cargoFirmante?: string;
+    documentoIdentidad?: string;
+    certificadoId?: string;
+    fechaVoBo?: string;
+    comentarios?: string;
+  } | null;
 }
 
 export interface FirmarSolicitudPayload {
@@ -1310,7 +1466,70 @@ export interface SolicitarFirmasPayload {
   nombreFirmante?: string;
   cargoFirmante?: string;
   documentoIdentidad?: string;
+  justificacionDuracion?: string;
 }
 
+export interface RegistrarVoBoDuracionPayload {
+  decision: 'APROBADO' | 'RECHAZADO';
+  comentarios?: string;
+  firmaImagen?: string;
+  otp?: string;
+  verificationId?: string;
+  cargoFirmante?: string;
+  nombreFirmante?: string;
+  documentoIdentidad?: string;
+  certificadoId?: string;
+}
 
+export interface ProcesoRevocatoriaData {
+  fase: 'PENDIENTE_REGISTRO_ORDENADOR' | 'PENDIENTE_REDUCCION_PRESUPUESTO' | 'REVOCADA';
+  solicitadoPor: {
+    usuarioId: string;
+    nombre: string;
+    motivo: string;
+    fecha: string;
+  };
+  tieneRp: boolean;
+  numeroRp?: string | null;
+  codigoRp?: string | null;
+  valorComprometido?: number | null;
+  registroSiif?: {
+    numeroActo: string;
+    fechaActo: string;
+    justificacion: string;
+    registradoPorId: string;
+    fechaRegistro: string;
+    reportePdfId?: string;
+    reportePdfNombre?: string;
+    reportePdfUrl?: string;
+  };
+  reduccionPresupuesto?: {
+    numeroOperacionReduccion: string;
+    fechaReduccion: string;
+    valorReducido: number;
+    observaciones?: string | null;
+    aplicadoPorId: string;
+    fechaAplicacion: string;
+    soportePdfId?: string;
+    soportePdfNombre?: string;
+    soportePdfUrl?: string;
+  };
+  fechaFinalizacion?: string;
+}
 
+export interface RegistrarRevocatoriaSiifPayload {
+  numeroActoRevocatoria: string;
+  fechaActoRevocatoria: string;
+  justificacion: string;
+  reporteRevocatoriaPdfBase64: string;
+  nombreArchivoPdf?: string;
+}
+
+export interface AplicarReduccionRpPayload {
+  numeroOperacionReduccion: string;
+  fechaReduccion: string;
+  valorReducido: number;
+  observaciones?: string;
+  soporteReduccionPdfBase64?: string;
+  nombreArchivoSoporte?: string;
+}

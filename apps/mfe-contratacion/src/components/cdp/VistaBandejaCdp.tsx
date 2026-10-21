@@ -14,12 +14,11 @@ const NUMERAL_SOLICITUD = '4.1';
  * La actividad que toca según en qué punto esté la solicitud.
  *
  * Entrar siempre por la 4.1 obligaría a quien ya la tomó a buscar en el riel la
- * que sigue: si está verificada, lo que le falta es expedir, y ahí es donde
- * tiene que caer.
+ * que sigue. Desde la 096 verificar y expedir son la misma actividad, la 4.2.
  */
 const NUMERAL_SEGUN_ESTADO: Record<string, string> = {
   SOLICITADO: '4.2',
-  VERIFICADO: '4.3',
+  VERIFICADO: '4.2',
 };
 
 const formatoPesos = new Intl.NumberFormat('es-CO', {

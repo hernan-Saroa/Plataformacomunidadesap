@@ -6,6 +6,7 @@ import { SaldoTiqueteEntity } from '../../entities/tickets/saldo-tiquete.entity'
 import { RutaRestringidaEntity } from '../../entities/tickets/ruta-restringida.entity';
 import { ExcepcionTiqueteEntity } from '../../entities/tickets/excepcion-tiquete.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
+import { TarifaReferenciaTiqueteEntity } from '../../entities/tickets/tarifa-referencia-tiquete.entity';
 
 /**
  * Módulo de gestión de tiquetes con restricciones y saldo presupuestal
@@ -18,6 +19,7 @@ import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-p
       RutaRestringidaEntity,
       ExcepcionTiqueteEntity,
       LiquidationParamEntity,
+      TarifaReferenciaTiqueteEntity,
     ]),
   ],
   controllers: [TicketsController],

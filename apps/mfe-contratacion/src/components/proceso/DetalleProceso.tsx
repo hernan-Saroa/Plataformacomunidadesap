@@ -6,7 +6,6 @@ import {
   ClipboardCheck,
   FilePen,
   FileText,
-  FolderOpen,
   ClipboardList,
   ListChecks,
   ShieldCheck,
@@ -35,7 +34,7 @@ import {
   TIENEN_PANEL,
 } from './actividadesConPanel';
 import { etapaEnCurso } from '../procesos/etapaEnCurso';
-import { PanelExpediente } from '../estudio-previo/PanelExpediente';
+import { ExpedienteDelProceso } from './ExpedienteDelProceso';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
@@ -48,6 +47,7 @@ import { useResponsables } from '../../auth/responsables';
 import { EntradaSituacion, situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
 import { FichaDelProceso } from './FichaDelProceso';
+import { VerEstudioPrevio } from '../revision/VerEstudioPrevio';
 import { usePlazos } from '../../hooks/usePlazos';
 
 /**
@@ -200,6 +200,8 @@ interface Props {
   volverA?: string;
 }
 
+const CLAVE_RIEL_PLEGADO = 'contratacion:riel-plegado';
+
 export function DetalleProceso({
   procesoId,
   onVolver,
@@ -218,7 +220,7 @@ export function DetalleProceso({
    * algo concreto —desde «Mi trabajo», una alerta o la franja— entra directo a
    * trabajar esa actividad.
    */
-  const [vista, setVista] = useState<'seguimiento' | 'trabajo'>(
+  const [vista, setVista] = useState<'seguimiento' | 'trabajo' | 'expediente'>(
     actividadInicial ? 'trabajo' : 'seguimiento',
   );
   /**
@@ -229,7 +231,27 @@ export function DetalleProceso({
    * se refresca, deshaciendo lo que el gestor acabara de elegir.
    */
   const [abiertaLaPrimera, setAbiertaLaPrimera] = useState(false);
-  const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  /**
+   * El riel plegado deja solo los puntos y le cede el ancho al formulario.
+   * Es preferencia de quien mira, no del proceso: se recuerda en el navegador
+   * y, si el almacenamiento no responde, se arranca desplegado.
+   */
+  const [rielPlegado, setRielPlegado] = useState(() => {
+    try {
+      return localStorage.getItem(CLAVE_RIEL_PLEGADO) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const alternarRiel = () =>
+    setRielPlegado((plegado) => {
+      try {
+        localStorage.setItem(CLAVE_RIEL_PLEGADO, plegado ? '0' : '1');
+      } catch {
+        // Sin almacenamiento se pliega igual; solo no se recuerda.
+      }
+      return !plegado;
+    });
   /**
    * Qué etapa se está mirando. Nula hasta que alguien elija: mientras tanto se
    * muestra la del proceso, que es donde se trabaja al entrar.
@@ -799,6 +821,9 @@ export function DetalleProceso({
                 <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">{ficha}</p>
               )}
             </div>
+            {/* En la cabecera y no en la 3.1: se consulta desde cualquier
+                actividad sin perder el sitio. */}
+            <VerEstudioPrevio estudio={datos} procesoId={procesoId} />
           </div>
 
           <FranjaSituacion
@@ -816,6 +841,9 @@ export function DetalleProceso({
                 [
                   { id: 'seguimiento' as const, etiqueta: 'Seguimiento' },
                   { id: 'trabajo' as const, etiqueta: 'Trabajar' },
+                  // Pantalla propia y no columna lateral: en la columna era una
+                  // sola lista y no se sabía de qué actividad era cada archivo.
+                  { id: 'expediente' as const, etiqueta: 'Expediente' },
                 ]
               ).map((v) => (
                 <button
@@ -898,22 +926,7 @@ export function DetalleProceso({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => setExpedienteAbierto((v) => !v)}
-              aria-expanded={expedienteAbierto}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
-                border transition-colors ${
-                  expedienteAbierto
-                    ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
-                    : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
-                }`}
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              Expediente
-            </button>
-
-            {/* El expediente de trabajo deja subir y borrar; este solo se lee, y
+            {/* El expediente deja subir y borrar; la auditoría solo se lee, y
                 trae además la trazabilidad y el historial (EFDS-1186). */}
             <button
               type="button"
@@ -933,16 +946,23 @@ export function DetalleProceso({
         </div>
       </div>
 
-      {/* A ancho completo y no en la columna del expediente: la trazabilidad y
-          el historial no caben en una barra lateral. */}
+      {/* A ancho completo: la trazabilidad y el historial no caben en una
+          barra lateral. */}
       {auditoriaAbierta && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] mb-4">
           <PanelAuditoria procesoId={procesoId} />
         </div>
       )}
 
-      {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
-      {vista === 'seguimiento' ? (
+      {/* Seguimiento · riel y superficie de trabajo · expediente. */}
+      {vista === 'expediente' ? (
+        <ExpedienteDelProceso
+          procesoId={procesoId}
+          editable={!aprobado && !enRevision}
+          actividades={actividades}
+          recargarToken={tokenExpediente}
+        />
+      ) : vista === 'seguimiento' ? (
         <>
           <FichaDelProceso
             procesoId={procesoId}
@@ -956,24 +976,19 @@ export function DetalleProceso({
             onCambio={() => setTokenExpediente((t) => t + 1)}
             motivoDe={motivoDe}
           />
-          {expedienteAbierto && (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <PanelExpediente
-                procesoId={procesoId}
-                editable={!aprobado && !enRevision}
-                recargarToken={tokenExpediente}
-              />
-            </div>
-          )}
         </>
       ) : (
-      <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
+      <div
+        className={`detalle-proceso ${rielPlegado ? 'riel-plegado' : ''}`}
+      >
         <RielActividades
           etapa={etapaVista}
           etapaActual={etapaActual}
           actividades={actividadesDelRiel}
           seleccionada={expandida}
           onSeleccionar={abrirActividad}
+          plegado={rielPlegado}
+          onAlternarPlegado={alternarRiel}
         />
 
         <div className="min-w-0">
@@ -1073,16 +1088,6 @@ export function DetalleProceso({
         {/* Aquí ya no se decide: aprobar o devolver se hace en la pantalla de
             revisión, que enseña lo enviado en solo lectura y la decisión al
             lado. El aviso de arriba lleva a ella a quien le toca. */}
-
-        {expedienteAbierto && (
-          <div className="panel-expediente bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-            <PanelExpediente
-              procesoId={procesoId}
-              editable={!aprobado && !enRevision}
-              recargarToken={tokenExpediente}
-            />
-          </div>
-        )}
       </div>
 
       )}

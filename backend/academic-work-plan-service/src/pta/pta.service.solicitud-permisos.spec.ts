@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { PTA_MANAGE_EDIT_REQUESTS_PERMISSION } from './auth/pta-permissions.constants';
+import { PTA_MANAGE_EDIT_REQUESTS_PERMISSION, PTA_COMPONENT_KEYS, COMPONENT_PERMISSION,
+  TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT } from './auth/pta-permissions.constants';
+import { PtaPermissionsService } from './auth/pta-permissions.service';
 import { PtaService } from './pta.service';
 
 const auth = (
@@ -25,6 +27,52 @@ const auth = (
 });
 
 describe('PtaService - permiso de solicitudes de edición', () => {
+  it('combina áreas de revisión y aprobación sin habilitar áreas ajenas ni omitir el permiso funcional', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const qb = { andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(), getMany: jest.fn().mockResolvedValue([{
+        id: 'sol-mixta', tipoSolicitud: 'edicion_componentes', estado: 'pendiente',
+        componentes: ['docencia', 'investigacion', 'extension', 'complementarias'],
+      }]) };
+    service.solicitudRepo = { createQueryBuilder: jest.fn().mockReturnValue(qb) };
+    service.enrichSolicitudesPta = jest.fn(async (rows: any[]) => rows);
+    const actor = auth([PTA_MANAGE_EDIT_REQUESTS_PERMISSION, 'pta.review.academica.pregrado', 'pta.approve.investigacion'],
+      ['academica_pregrado:general'], ['investigacion']);
+    const result = await service.getSolicitudesPTA(undefined, actor);
+    expect(result[0].componentes).toEqual(['docencia', 'investigacion']);
+    service.solicitudRepo.findOne = jest.fn().mockResolvedValue({ id: 'sol-mixta', ptaId: 'pta-1',
+      tipoSolicitud: 'edicion_componentes', estado: 'pendiente', componentes: ['extension'] });
+    await expect(service.resolverSolicitudPTA('sol-mixta', { decision: 'aprobado', componentes: ['extension'] }, actor))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it.each(PTA_COMPONENT_KEYS)('el aprobador de %s con el permiso funcional ve solo su área de edición, sin adquirir revisión', async componente => {
+    const permiso = TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[componente]?.approve.pregrado || COMPONENT_PERMISSION[componente];
+    const resolver = new PtaPermissionsService({ query: jest.fn().mockResolvedValue([
+      { role_code: 'ROL_PERSONALIZADO', permission_code: PTA_MANAGE_EDIT_REQUESTS_PERMISSION },
+      { role_code: 'ROL_PERSONALIZADO', permission_code: permiso },
+    ]) } as any);
+    const permisos = await resolver.resolveForUser('aprobador');
+    const actor = { ...auth([], [], []), ...permisos };
+    const service = Object.create(PtaService.prototype) as any;
+    const qb = { andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(), getMany: jest.fn().mockResolvedValue([
+        { id: 'sol-edicion', tipoSolicitud: 'edicion_componentes', estado: 'pendiente',
+          componentes: ['docencia', 'investigacion', 'extension', 'complementarias'] },
+        { id: 'sol-creacion', tipoSolicitud: 'creacion', estado: 'pendiente' },
+      ]) };
+    service.solicitudRepo = { createQueryBuilder: jest.fn().mockReturnValue(qb) };
+    service.enrichSolicitudesPta = jest.fn(async (rows: any[]) => rows);
+    const area = componente.startsWith('academica_') ? 'docencia'
+      : componente.startsWith('ext_') ? 'extension'
+      : componente.startsWith('complementarias') ? 'complementarias' : 'investigacion';
+    const solicitudes = await service.getSolicitudesPTA({ estado: 'pendiente' }, actor);
+    expect(solicitudes).toEqual([expect.objectContaining({ id: 'sol-edicion', componentes: [area], componentesTotal: 4 })]);
+    expect(qb.andWhere).toHaveBeenCalledWith('(s.componentes @> CAST(:solicitudComponente0 AS jsonb))',
+      { solicitudComponente0: JSON.stringify([area]) });
+    expect(actor.allowedReviewSubsecciones).toEqual([]);
+    expect(actor.allowedComponents).toEqual([componente]);
+  });
+
   it('limita la bandeja a solicitudes de edición para el permiso funcional', async () => {
     const service = Object.create(PtaService.prototype) as any;
     const qb = {
@@ -242,12 +290,18 @@ describe('PtaService - permiso de solicitudes de edición', () => {
     ['pta.review.extension.capacitacion', ['ext_capacitacion:general'], 'extension', 'docencia', 'aprobado'],
     ['pta.review.complementarias.pregrado', ['complementarias_pregrado:docencia'], 'complementarias', 'docencia', 'aprobado'],
     ['pta.review.investigacion', ['investigacion:general'], 'investigacion', 'docencia', 'denegado'],
+    ['pta.approve.academica.pregrado', [], 'docencia', 'investigacion', 'aprobado', ['academica_pregrado']],
+    ['pta.approve.investigacion', [], 'investigacion', 'docencia', 'aprobado', ['investigacion']],
+    ['pta.approve.extension.capacitacion', [], 'extension', 'docencia', 'aprobado', ['ext_capacitacion']],
+    ['pta.approve.complementarias.pregrado', [], 'complementarias', 'docencia', 'aprobado', ['complementarias_pregrado']],
+    ['pta.approve.investigacion', [], 'investigacion', 'docencia', 'denegado', ['investigacion']],
   ])('%s registra %s únicamente en su componente y conserva pendiente el ajeno', async (
     permiso,
     allowedReviewSubsecciones,
     componentePropio,
     componenteAjeno,
     decision,
+    allowedComponents = [],
   ) => {
     const service = Object.create(PtaService.prototype) as any;
     const solicitud = {
@@ -283,7 +337,7 @@ describe('PtaService - permiso de solicitudes de edición', () => {
     const result = await service.resolverSolicitudPTA(
       solicitud.id,
       { decision, componentes: [componentePropio], motivo: decision === 'denegado' ? 'No procede.' : undefined },
-      auth([PTA_MANAGE_EDIT_REQUESTS_PERMISSION, permiso], allowedReviewSubsecciones),
+      auth([PTA_MANAGE_EDIT_REQUESTS_PERMISSION, permiso], allowedReviewSubsecciones, allowedComponents),
     );
 
     expect(result).toMatchObject({ resolucionParcial: true, componentesPendientes: [componenteAjeno] });
@@ -327,7 +381,7 @@ describe('PtaService - permiso de solicitudes de edición', () => {
     )).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('pta.review.all consulta todas las áreas solicitadas', async () => {
+  it.each(['pta.review.all', 'pta.approve.all'])('%s con permiso funcional consulta todas las áreas solicitadas', async permiso => {
     const service = Object.create(PtaService.prototype) as any;
     const qb = {
       andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(),
@@ -341,7 +395,7 @@ describe('PtaService - permiso de solicitudes de edición', () => {
 
     const result = await service.getSolicitudesPTA(
       undefined,
-      auth([PTA_MANAGE_EDIT_REQUESTS_PERMISSION, 'pta.review.all'], []),
+      auth([PTA_MANAGE_EDIT_REQUESTS_PERMISSION, permiso], []),
     );
 
     expect(result[0].componentes).toEqual(['docencia', 'investigacion', 'extension', 'complementarias']);

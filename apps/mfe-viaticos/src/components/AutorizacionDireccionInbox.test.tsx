@@ -64,6 +64,7 @@ vi.mock('../services/api/viaticosService', () => ({
     rechazarComisionExtemporanea: vi.fn(),
     descargarPdfTiqueteItinerario: vi.fn(),
     obtenerUrlArchivo: vi.fn((url: string) => url),
+    exportarFormato023: vi.fn(),
   },
   viaticosService: {
     obtenerBandejaDireccionNacional: vi.fn(),
@@ -71,6 +72,7 @@ vi.mock('../services/api/viaticosService', () => ({
     rechazarComisionExtemporanea: vi.fn(),
     descargarPdfTiqueteItinerario: vi.fn(),
     obtenerUrlArchivo: vi.fn((url: string) => url),
+    exportarFormato023: vi.fn(),
   },
 }));
 
@@ -85,6 +87,19 @@ describe('AutorizacionDireccionInbox — RF-AUT-002 (Etapa 6)', () => {
       page: 1,
       limit: 10,
     });
+    (viaticosService.exportarFormato023 as any).mockResolvedValue(
+      new Blob(['fake-pdf'], { type: 'application/pdf' }),
+    );
+    if (!window.URL.createObjectURL) {
+      window.URL.createObjectURL = vi.fn(() => 'blob:http://localhost/fake-blob');
+    } else {
+      vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-blob');
+    }
+    if (!window.URL.revokeObjectURL) {
+      window.URL.revokeObjectURL = vi.fn();
+    } else {
+      vi.spyOn(window.URL, 'revokeObjectURL').mockReturnValue(undefined as any);
+    }
   });
 
   it('renderiza la bandeja de Dirección Nacional y sus KPI cards', async () => {
@@ -198,4 +213,30 @@ describe('AutorizacionDireccionInbox — RF-AUT-002 (Etapa 6)', () => {
       );
     });
   });
+
+  it('permite previsualizar y descargar el Formato 023 directamente desde la bandeja', async () => {
+    render(<AutorizacionDireccionInbox />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/COM-2026-EXT-0001/i).length).toBeGreaterThan(0);
+    });
+
+    const btnVer023 = screen.getAllByTitle(/Previsualizar Formato 023|Ver Formato 023/i)[0];
+    fireEvent.click(btnVer023);
+
+    await waitFor(() => {
+      expect(viaticosService.exportarFormato023).toHaveBeenCalledWith(
+        'sol-ext-001',
+        'COM-2026-EXT-0001',
+      );
+    });
+
+    const btnDescargar023 = screen.getAllByTitle(/Descargar Formato 023/i)[0];
+    fireEvent.click(btnDescargar023);
+
+    await waitFor(() => {
+      expect(viaticosService.exportarFormato023).toHaveBeenCalledTimes(2);
+    });
+  });
 });
+

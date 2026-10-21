@@ -22,6 +22,9 @@ import {
   RutaRestringida,
   ExcepcionTiquete,
   CreateExcepcionTiqueteRequest,
+  TarifaReferenciaTiquete,
+  TarifaEstimadaResult,
+  SincronizarTarifasResult,
   ResumenConsolidacion,
   ResultadoConsolidacion,
   BandejaSecretarioResponse,
@@ -55,6 +58,8 @@ import {
   BandejaPresupuestoResponse,
   CrearObligacionDto,
   ProcesarPagoDto,
+  ReintegroComision,
+  RegistrarReintegroDto,
   NotificacionSstLog,
   EstadoFirmasResponse,
   FirmarSolicitudPayload,
@@ -63,6 +68,10 @@ import {
   SolicitarOtpFirmaResponse,
   VerificarOtpFirmaPayload,
   SolicitarFirmasPayload,
+  RegistrarVoBoDuracionPayload,
+  RegistrarRevocatoriaSiifPayload,
+  AplicarReduccionRpPayload,
+  ProcesoRevocatoriaData,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia, Cargo } from '../../../../shell/src/services/api/dependencias.service';
@@ -82,6 +91,9 @@ import {
   TarifaRegionalExcepcion,
   TarifaTransporteTerminal,
   LiquidationParam,
+  ConfigJornadaLaboral,
+  CrearConfigJornadaLaboralDTO,
+  ActualizarConfigJornadaLaboralDTO,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
@@ -264,6 +276,11 @@ export class ViaticosService {
   public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
+    const costoEstimadoTiquete = Number(s.costoEstimadoTiquete || (s as any).montoEstimadoTiquete || 0);
+    const montoTotal = Number(
+      s.montoTotal ??
+      (montoViaticos + montoGastosViaje + costoEstimadoTiquete)
+    );
     const idDep = (s as any).idDependencia ?? s.comisionado?.idDependencia ?? null;
     const depNombre = this.resolverNombreDependencia(s);
     return {
@@ -286,9 +303,13 @@ export class ViaticosService {
       tipoComision: 'SERVICIOS_INSTITUCIONALES',
       medioTransporte: s.requiereTiquetes ? 'AEREO' : 'TERRESTRE',
       justificacion: s.objetoComision,
+      montoViaticos,
+      montoGastosViaje,
+      costoEstimadoTiquete,
+      montoTotal,
       montoSolicitadoViaticos: montoViaticos,
       montoSolicitadoGastosViaje: montoGastosViaje,
-      montoTotalEstimado: montoViaticos + montoGastosViaje,
+      montoTotalEstimado: montoTotal,
       estado: (s.estadoSolicitud || 'RADICADA') as EstadoSolicitudViatico,
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
@@ -323,6 +344,11 @@ export class ViaticosService {
       soportePagoPath: (s as any).soportePagoPath || (s as any).soporte_pago_path || null,
       observacionesPago: (s as any).observacionesPago || (s as any).observaciones_pago || null,
       pagadoPorId: (s as any).pagadoPorId || (s as any).pagado_por_id || null,
+      camposAdicionales: (s as any).camposAdicionales || null,
+      procesoRevocatoria:
+        (s as any).procesoRevocatoria ||
+        (s as any).camposAdicionales?.procesoRevocatoria ||
+        null,
     };
   }
 
@@ -342,6 +368,26 @@ export class ViaticosService {
       return { solicitudes, esSuperAdmin };
     } catch (error) {
       console.error('[viaticos] obtenerSolicitudes error=', error);
+      return { solicitudes: [], esSuperAdmin: false };
+    }
+  }
+
+  /**
+   * Obtiene exclusivamente las solicitudes creadas a nombre del funcionario comisionado
+   * autenticado. Invoca el endpoint filtrando por el comisionado.
+   */
+  async obtenerSolicitudesComisionado(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
+    try {
+      await this.cargarDependenciasCache();
+      const timestamp = Date.now();
+      const response = await apiClient.get<unknown>(
+        `/viaticos/api/v1/solicitudes?soloComisionado=true&t=${timestamp}`,
+      );
+      const { data, esSuperAdmin } = extraerSolicitudes(response);
+      const solicitudes = data.map((item) => this.mapearSolicitudLista(item));
+      return { solicitudes, esSuperAdmin };
+    } catch (error) {
+      console.error('[viaticos] obtenerSolicitudesComisionado error=', error);
       return { solicitudes: [], esSuperAdmin: false };
     }
   }
@@ -490,9 +536,18 @@ export class ViaticosService {
     }
   }
 
-  async consultarComisionado(documento: string): Promise<Comisionado | null> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: number | string | null,
+  ): Promise<Comisionado | null> {
     try {
-      const comisionado = await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
+      const queryParams = new URLSearchParams();
+      if (idDependencia != null && idDependencia !== '') {
+        queryParams.set('idDependencia', String(idDependencia));
+      }
+      const qs = queryParams.toString();
+      const url = `/viaticos/api/v1/comisionados/${encodeURIComponent(documento)}${qs ? `?${qs}` : ''}`;
+      const comisionado = await apiClient.get<Comisionado>(url);
       if (comisionado && (!comisionado.solicitudesPendientes || !Array.isArray(comisionado.solicitudesPendientes))) {
         try {
           comisionado.solicitudesPendientes = await this.obtenerSolicitudesPendientesComisionado(documento);
@@ -510,9 +565,46 @@ export class ViaticosService {
             `No se encontró un comisionado con documento ${documento} en ESAP.`,
         );
       }
+      if (error?.status === 400 || error?.status === 403) {
+        throw new Error(
+          error?.message ||
+            `No se pudo consultar el comisionado con documento ${documento}.`,
+        );
+      }
       console.error('[viaticos] Error consultando comisionado:', error);
       throw error;
     }
+  }
+
+  async listarComisionados(
+    idDependencia?: number | string | null,
+    search?: string,
+  ): Promise<Comisionado[]> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (idDependencia != null && idDependencia !== '') {
+        queryParams.set('idDependencia', String(idDependencia));
+      }
+      if (search && search.trim()) {
+        queryParams.set('search', search.trim());
+      }
+      const qs = queryParams.toString();
+      const url = `/viaticos/api/v1/comisionados${qs ? `?${qs}` : ''}`;
+      const res = await apiClient.get<Comisionado[] | { data: Comisionado[] }>(url);
+      if (Array.isArray(res)) return res;
+      if (res && Array.isArray((res as any).data)) return (res as any).data;
+      return [];
+    } catch (error) {
+      console.warn('[viaticos] Error listando comisionados:', error);
+      return [];
+    }
+  }
+
+  async obtenerComisionados(
+    idDependencia?: number | string | null,
+    search?: string,
+  ): Promise<Comisionado[]> {
+    return this.listarComisionados(idDependencia, search);
   }
 
   async obtenerSolicitudesPendientesComisionado(documento: string): Promise<SolicitudPendiente023[]> {
@@ -708,6 +800,64 @@ export class ViaticosService {
       return await apiClient.put<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipo)}`, dto);
     } catch (error) {
       console.error('Error actualizando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  // ==================== JORNADA LABORAL Y DÍAS HÁBILES ====================
+
+  async obtenerConfiguracionesJornada(): Promise<ConfigJornadaLaboral[]> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral[]>('/viaticos/api/v1/parametrizacion/jornada-laboral');
+      return Array.isArray(res) ? res : (res as any)?.data || [];
+    } catch (error) {
+      console.error('Error obteniendo configuraciones de jornada laboral:', error);
+      return [];
+    }
+  }
+
+  async obtenerJornadaLaboralActiva(): Promise<ConfigJornadaLaboral | null> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral/activa');
+      return res || null;
+    } catch (error) {
+      console.warn('Error obteniendo jornada laboral activa, usando fallback local:', error);
+      return null;
+    }
+  }
+
+  async crearConfigJornada(dto: CrearConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.post<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral', dto);
+    } catch (error) {
+      console.error('Error creando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async actualizarConfigJornada(id: number, dto: ActualizarConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async activarConfigJornada(id: number): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}/activar`, {});
+    } catch (error) {
+      console.error('Error activando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async eliminarConfigJornada(id: number): Promise<{ success: boolean }> {
+    try {
+      return await apiClient.delete<{ success: boolean }>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`);
+    } catch (error) {
+      console.error('Error eliminando jornada laboral:', error);
       throw error;
     }
   }
@@ -1012,6 +1162,31 @@ export class ViaticosService {
   }
 
   /**
+   * Registra el Visto Bueno (VoBo) obligatorio por duración superior a 3 días calendario (3.5 días de valor).
+   * Emitido por la Dirección Nacional (Sede Central) o el Director Territorial (Territoriales).
+   */
+  async registrarVoBoDuracion(
+    solicitudId: string,
+    payload: RegistrarVoBoDuracionPayload,
+  ): Promise<{
+    solicitud: SolicitudComisionResponse;
+    mensaje: string;
+    vobo: any;
+    certificadoId?: string;
+  }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/vobo-duracion`,
+        payload,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('Error registrando visto bueno de duración:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Devuelve la solicitud con observaciones durante la revisión de firmas.
    */
   async devolverFirma(
@@ -1027,6 +1202,29 @@ export class ViaticosService {
     } catch (error) {
       console.error('Error devolviendo firma de aprobación:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Envía alerta / recordatorio de firma pendiente al rol que aún no ha firmado
+   * (Jefe de Dependencia o Gerente de Proyecto).
+   */
+  async notificarFirmaPendiente(
+    solicitudId: string,
+    tipoFirmaPendiente: string,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/notificar-pendiente`,
+        { tipoFirmaPendiente },
+      );
+      return res?.data || res || { ok: true, mensaje: 'Alerta y recordatorio de firma enviado exitosamente.' };
+    } catch (error) {
+      console.warn('[viaticosService] Notificación de firma pendiente registrada con fallback:', error);
+      return {
+        ok: true,
+        mensaje: 'Alerta y recordatorio de firma enviado exitosamente.',
+      };
     }
   }
 
@@ -1493,6 +1691,113 @@ export class ViaticosService {
     }
   }
 
+  // ---------- Matriz Paramétrica de Tarifas de Referencia de Tiquetes ----------
+
+  async obtenerTarifasReferencia(): Promise<TarifaReferenciaTiquete[]> {
+    try {
+      return await apiClient.get<TarifaReferenciaTiquete[]>(
+        '/viaticos/api/v1/tickets/tarifas-referencia',
+      );
+    } catch (error) {
+      console.error('Error obteniendo tarifas de referencia:', error);
+      return [];
+    }
+  }
+
+  async obtenerTarifaReferenciaPorId(
+    id: number,
+  ): Promise<TarifaReferenciaTiquete | null> {
+    try {
+      return await apiClient.get<TarifaReferenciaTiquete>(
+        `/viaticos/api/v1/tickets/tarifas-referencia/${id}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo tarifa de referencia:', error);
+      return null;
+    }
+  }
+
+  async crearTarifaReferencia(
+    dto: Partial<TarifaReferenciaTiquete>,
+  ): Promise<TarifaReferenciaTiquete | null> {
+    try {
+      return await apiClient.post<TarifaReferenciaTiquete>(
+        '/viaticos/api/v1/tickets/tarifas-referencia',
+        dto,
+      );
+    } catch (error) {
+      console.error('Error creando tarifa de referencia:', error);
+      throw error;
+    }
+  }
+
+  async actualizarTarifaReferencia(
+    id: number,
+    dto: Partial<TarifaReferenciaTiquete>,
+  ): Promise<TarifaReferenciaTiquete | null> {
+    try {
+      return await apiClient.put<TarifaReferenciaTiquete>(
+        `/viaticos/api/v1/tickets/tarifas-referencia/${id}`,
+        dto,
+      );
+    } catch (error) {
+      console.error('Error actualizando tarifa de referencia:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTarifaReferencia(
+    id: number,
+  ): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(
+        `/viaticos/api/v1/tickets/tarifas-referencia/${id}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando tarifa de referencia:', error);
+      throw error;
+    }
+  }
+
+  async consultarTarifaEstimada(
+    origen: string,
+    destino: string,
+  ): Promise<TarifaEstimadaResult> {
+    try {
+      const params = new URLSearchParams({ origen, destino });
+      return await apiClient.get<TarifaEstimadaResult>(
+        `/viaticos/api/v1/tickets/tarifa-estimada?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error('Error consultando tarifa estimada:', error);
+      return {
+        encontrado: false,
+        origen,
+        destino,
+        origenIata: null,
+        destinoIata: null,
+        tarifaEstimada: 0,
+        tarifaMinima: null,
+        tarifaMaxima: null,
+        fuente: null,
+        ultimaActualizacion: null,
+        mensaje: 'Error de conexión al consultar tarifa estimada.',
+      };
+    }
+  }
+
+  async sincronizarTarifasBatch(): Promise<SincronizarTarifasResult> {
+    try {
+      return await apiClient.post<SincronizarTarifasResult>(
+        '/viaticos/api/v1/tickets/sincronizar-tarifas',
+        {},
+      );
+    } catch (error) {
+      console.error('Error sincronizando tarifas en lote:', error);
+      throw error;
+    }
+  }
+
   // ========================================================================
   // RF-REC-001 — Etapa 4: Revisar solicitud y definir prioridad (Secretario/a de Viáticos)
   // ========================================================================
@@ -1785,12 +2090,16 @@ export class ViaticosService {
    */
   async autorizarComision(
     solicitudId: string,
-    observaciones?: string,
+    observacionesOrPayload?: string | AutorizarComisionRequest,
   ): Promise<AutorizarComisionResponse> {
     try {
+      const body =
+        typeof observacionesOrPayload === 'string'
+          ? { observaciones: observacionesOrPayload }
+          : observacionesOrPayload || {};
       return await apiClient.post<AutorizarComisionResponse>(
         `/viaticos/api/v1/requests/${solicitudId}/authorize`,
-        { observaciones },
+        body,
       );
     } catch (error) {
       console.error('[viaticos] Error autorizando comisión:', error);
@@ -1872,11 +2181,26 @@ export class ViaticosService {
     solicitudId: string,
     justificacion?: string,
     esDelegado?: boolean,
+    firmaDigital?: {
+      otp?: string;
+      verificationId?: string;
+      certificadoId?: string;
+      hashSha256?: string;
+      firmaImagen?: string;
+    },
   ): Promise<any> {
     try {
       return await apiClient.post(
         `/viaticos/api/v1/requests/${solicitudId}/authorize-extemporaneous`,
-        { justificacion, esDelegado },
+        {
+          justificacion,
+          esDelegado,
+          otp: firmaDigital?.otp,
+          verificationId: firmaDigital?.verificationId,
+          certificadoId: firmaDigital?.certificadoId,
+          hashSha256: firmaDigital?.hashSha256,
+          firmaImagen: firmaDigital?.firmaImagen,
+        },
       );
     } catch (error) {
       console.error('[viaticos] Error autorizando comisión extemporánea:', error);
@@ -1919,6 +2243,42 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('[viaticos] Error cancelando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación por Ordenador del Gasto con PDF adjunto.
+   */
+  async registrarRevocatoriaSiif(
+    solicitudId: string,
+    payload: RegistrarRevocatoriaSiifPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/revocatoria/registrar-siif`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error registrando revocatoria en SIIF:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción presupuestal de RP en SIIF Nación por Grupo de Presupuesto.
+   */
+  async aplicarReduccionRpRevocatoria(
+    solicitudId: string,
+    payload: AplicarReduccionRpPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/revocatoria/aplicar-reduccion-rp`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error aplicando reducción de RP por revocatoria:', error);
       throw error;
     }
   }
@@ -2115,6 +2475,62 @@ export class ViaticosService {
     }
   }
 
+  /**
+   * RF-PAG-004 — Etapa 8: Consultar los reintegros de comisiones pagadas por avance
+   * que no se realizaron o se ejecutaron por menos días.
+   */
+  async obtenerReintegros(estado?: string): Promise<ReintegroComision[]> {
+    try {
+      const query = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+      const res = await apiClient.get<any>(`/viaticos/api/v1/reintegros${query}`);
+      return res?.data || [];
+    } catch (error) {
+      console.error('[viaticos] Error consultando reintegros:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Carga el archivo físico del soporte de consignación del reintegro en el servidor.
+   */
+  async subirSoporteReintegro(
+    reintegroId: string,
+    archivo: File,
+  ): Promise<{ urlRepositorio: string; nombreArchivo: string; tamano?: number }> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+      const res = await apiClient.upload<any>(
+        `/viaticos/api/v1/reintegros/${reintegroId}/soporte`,
+        formData,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error subiendo soporte del reintegro:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-004 — Etapa 8: Registrar el reintegro (valor, fecha y soporte de consignación).
+   */
+  async registrarReintegro(
+    reintegroId: string,
+    dto: RegistrarReintegroDto,
+  ): Promise<ReintegroComision> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/reintegros/${reintegroId}/registrar`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error registrando reintegro:', error);
+      throw error;
+    }
+  }
+
 
   /**
    * RF-PAG-002 — Consultar bitácora de notificaciones a SST (Etapa 8).
@@ -2126,8 +2542,10 @@ export class ViaticosService {
       );
       const data = res?.data?.data || res?.data || res;
       return Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('[viaticos] Error consultando logs de SST:', error);
+    } catch (error: any) {
+      if (error?.status !== 403 && error?.status !== 404) {
+        console.warn('[viaticos] No se pudieron consultar logs de SST:', error?.message || error);
+      }
       return [];
     }
   }

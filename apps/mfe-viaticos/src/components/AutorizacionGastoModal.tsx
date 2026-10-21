@@ -6,9 +6,12 @@ import {
   CheckCircle2,
   DollarSign,
   Download,
+  ExternalLink,
+  Eye,
   FileCheck,
   FileSignature,
   FileText,
+  Key,
   LoaderCircle,
   MapPin,
   Plane,
@@ -21,6 +24,52 @@ import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import { SolicitudAutorizacion } from '../types/viaticos';
 import { formatearMoneda } from '../utils/viaticosUtils';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
+
+// Generar estampa digital certificada institucional para la Subdirección de Gestión Corporativa
+const generarEstampaDigitalSubdireccion = (nombre: string, cargo: string): string => {
+  try {
+    const canvas = document.createElement('canvas');
+    if (!canvas || typeof canvas.getContext !== 'function') return '';
+    canvas.width = 400;
+    canvas.height = 140;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    // Fondo limpio
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Borde azul institucional ESAP
+    ctx.strokeStyle = '#003DA5';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+    // Texto de encabezado de seguridad
+    ctx.fillStyle = '#003DA5';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('ESAP — SUBDIRECCIÓN DE GESTIÓN — FIRMA DIGITAL', 16, 24);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(nombre.slice(0, 36), 16, 52);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(cargo.slice(0, 42), 16, 72);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px monospace';
+    const ahora = new Date().toISOString();
+    ctx.fillText(`FECHA/HORA: ${ahora}`, 16, 96);
+    ctx.fillText('VALIDACIÓN: HASH SHA-256 + VALIDACIÓN OTP', 16, 112);
+
+    return canvas.toDataURL('image/png');
+  } catch {
+    return '';
+  }
+};
 
 interface AutorizacionGastoModalProps {
   solicitud: SolicitudAutorizacion | null;
@@ -39,15 +88,95 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mostrarConfirmacionDevolucion, setMostrarConfirmacionDevolucion] = useState(false);
-  const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [accionExitosa, setAccionExitosa] = useState<string | null>(null);
+
+  // Estados para Formato 023 y visor flotante
+  const { documentosVisor, abrirDocumentoVisor, cerrarDocumentoVisor } = useVisorDocumentos();
+  const [descargando023, setDescargando023] = useState(false);
+
+  // Estados para proceso de firma digital con validación OTP
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [modalFirmaOtpAbierta, setModalFirmaOtpAbierta] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
 
   if (!isOpen || !solicitud) return null;
 
+  const currentUser = authService.getCurrentUserSync();
   const estaAutorizada = solicitud.estadoSolicitud === 'AUTORIZADA';
   const extemporaneaSinAval =
     Boolean(solicitud.extemporanea) &&
     (solicitud.decisionDireccion !== 'AUTORIZADA' || !solicitud.autorizadorDireccionId);
+
+  // Iniciar flujo de firma digital con validación OTP
+  const handleIniciarFirmaOtp = async () => {
+    if (extemporaneaSinAval || estaAutorizada || procesando) return;
+    setSolicitandoOtp(true);
+    setError(null);
+    try {
+      const resp = await viaticosService.solicitarOtpFirma(solicitud.id, {
+        tipoFirma: 'SUBDIRECCION',
+        etapaLabel: 'Autorización Corporativa de Gasto (RF-AUT-001)',
+      });
+      setOtpData({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || (resp as any).email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaOtpAbierta(true);
+    } catch (err: any) {
+      console.error('Error solicitando OTP:', err);
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          'No fue posible solicitar el código OTP de verificación para Subdirección.',
+      );
+    } finally {
+      setSolicitandoOtp(false);
+    }
+  };
+
+  // Confirmar firma digital y autorización formal
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    setProcesando(true);
+    setError(null);
+    try {
+      const nombreFirmante =
+        currentUser?.person?.full_name || currentUser?.username || 'Subdirección de Gestión';
+      const cargoFirmante = 'Subdirector(a) de Gestión Corporativa';
+      const firmaImagen = generarEstampaDigitalSubdireccion(nombreFirmante, cargoFirmante);
+
+      await viaticosService.autorizarComision(solicitud.id, {
+        observaciones,
+        otp: firma.codigoOtp,
+        verificationId: otpData?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        firmaImagen,
+      });
+      setAccionExitosa(
+        `Comisión autorizada exitosamente con firma digital OTP (Certificado: ${firma.certificado_id}). Notificaciones enviadas.`,
+      );
+      setModalFirmaOtpAbierta(false);
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 1600);
+      return true;
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          'Error al emitir la autorización corporativa con firma digital.',
+      );
+      return false;
+    } finally {
+      setProcesando(false);
+    }
+  };
 
   const handleAutorizar = async () => {
     if (extemporaneaSinAval) {
@@ -105,24 +234,60 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
     }
   };
 
-  const handleDescargarPdf = async () => {
-    setDescargandoPdf(true);
+  // Previsualizar Formato 023 oficial en visor flotante
+  const handlePrevisualizar023 = async () => {
+    if (!solicitud) return;
+    setDescargando023(true);
+    setError(null);
     try {
-      const blob = await viaticosService.descargarPdfTiqueteItinerario(solicitud.id);
+      const blob = await viaticosService.exportarFormato023(
+        solicitud.id,
+        solicitud.consecutivoUnico || '023',
+      );
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Autorizacion-Itinerario-${solicitud.consecutivoUnico}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      console.error('Error descargando PDF:', err);
+      abrirDocumentoVisor({
+        url,
+        nombre: `Formato 023 — ${solicitud.consecutivoUnico || 'comision'}.pdf`,
+        tipo: 'Formato 023 Oficial',
+        mime: 'application/pdf',
+      });
+    } catch (err: any) {
+      console.error('Error previsualizando Formato 023:', err);
+      setError('No fue posible abrir el Formato 023 en el visor flotante.');
     } finally {
-      setDescargandoPdf(false);
+      setDescargando023(false);
     }
   };
+
+  // Descargar Formato 023 oficial en PDF
+  const handleDescargar023 = async () => {
+    if (!solicitud) return;
+    setDescargando023(true);
+    setError(null);
+    try {
+      const blob = await viaticosService.exportarFormato023(
+        solicitud.id,
+        solicitud.consecutivoUnico || '023',
+      );
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Formato_023_${solicitud.consecutivoUnico || 'comision'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+    } catch (err: any) {
+      console.error('Error descargando Formato 023:', err);
+      setError('No fue posible descargar el archivo PDF del Formato 023.');
+    } finally {
+      setDescargando023(false);
+    }
+  };
+
+  // Retrocompatibilidad con referencias internas o tests
+  const handleDescargarPdf = handleDescargar023;
+  const descargandoPdf = descargando023;
 
   const fechaInicioFormateada = new Date(solicitud.fechaInicio).toLocaleDateString('es-CO', {
     day: '2-digit',
@@ -134,10 +299,6 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
     month: 'short',
     year: 'numeric',
   });
-
-  const currentUser = typeof (authService as any).getCurrentUserSync === 'function'
-    ? (authService as any).getCurrentUserSync()
-    : null;
 
   const nombreSubdirector =
     solicitud.autorizadorNombre ||
@@ -164,18 +325,23 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto"
+      style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-autorizacion-titulo"
     >
-      <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] my-auto">
+      <div
+        className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col h-[88vh] max-h-[88vh] animate-in fade-in zoom-in-95 duration-200"
+        style={{ height: '88vh', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      >
         {/* Cabecera institucional con Estilo Protegido (Garantiza fondo azul y contraste permanente) */}
         <div
-          className="px-5 sm:px-6 py-4 sm:py-5 flex items-center justify-between shrink-0"
+          className="px-5 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between shrink-0"
           style={{
             background: 'linear-gradient(135deg, #002266 0%, #003DA5 100%)',
             color: '#ffffff',
+            flexShrink: 0,
           }}
         >
           <div className="flex items-center space-x-3 min-w-0">
@@ -203,33 +369,64 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               </h2>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-2 text-white/80 hover:bg-white/15 hover:text-white transition-colors cursor-pointer shrink-0 ml-2"
-            aria-label="Cerrar modal"
-          >
-            <X className="h-5 w-5" />
-          </button>
+
+          {/* Botones de acción de cabecera: Formato 023 y Cerrar */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePrevisualizar023}
+              disabled={descargando023}
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 border border-white/20 transition-all cursor-pointer disabled:opacity-50"
+              title="Previsualizar Formato 023 en visor flotante / mitad de pantalla"
+            >
+              {descargando023 ? (
+                <LoaderCircle className="w-3.5 h-3.5 animate-spin text-amber-300" />
+              ) : (
+                <Eye className="w-3.5 h-3.5 text-blue-200" />
+              )}
+              <span className="hidden md:inline">Previsualizar 023</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDescargar023}
+              disabled={descargando023}
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white text-[#003DA5] hover:bg-blue-50 font-bold text-xs flex items-center gap-1.5 border border-white transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+              title="Descargar Formato 023 en PDF"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Descargar Reporte 023</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-2 text-white/80 hover:bg-white/15 hover:text-white transition-colors cursor-pointer shrink-0 ml-1"
+              aria-label="Cerrar modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Mensaje de éxito / error */}
         {accionExitosa && (
-          <div className="m-4 sm:m-6 rounded-xl bg-emerald-50 border border-emerald-300 p-4 text-emerald-900 flex items-center space-x-3 shrink-0 text-xs sm:text-sm">
+          <div className="m-3 sm:m-4 rounded-xl bg-emerald-50 border border-emerald-300 p-3.5 text-emerald-900 flex items-center space-x-3 shrink-0 text-xs sm:text-sm">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
             <p className="font-semibold">{accionExitosa}</p>
           </div>
         )}
 
         {error && (
-          <div className="m-4 sm:m-6 rounded-xl bg-red-50 border border-red-300 p-4 text-red-900 flex items-center space-x-3 shrink-0 text-xs sm:text-sm">
+          <div className="m-3 sm:m-4 rounded-xl bg-red-50 border border-red-300 p-3.5 text-red-900 flex items-center space-x-3 shrink-0 text-xs sm:text-sm">
             <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
             <p className="font-semibold">{error}</p>
           </div>
         )}
 
-        {/* Cuerpo del modal con scroll interno suave */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
+        {/* Cuerpo del modal con scroll interno garantizado */}
+        <div
+          className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 text-slate-800 scrollbar-thin"
+          style={{ flex: '1 1 0%', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain' }}
+        >
           {/* Banner de Comisión Extemporánea */}
           {solicitud.extemporanea && (
             extemporaneaSinAval ? (
@@ -302,6 +499,8 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
                 </span>
               </div>
             </div>
+
+            
           </div>
 
           {/* Tarjeta 2: Itinerario y Objeto */}
@@ -391,43 +590,75 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
             </div>
           </div>
 
-          {/* Tarjeta 4: Soportes y Trazabilidad */}
+          {/* Tarjeta 4: Soportes y Documentos del Expediente */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-2">
                 <FileText className="h-4 w-4 text-slate-400" />
                 <span>4. Soportes y Documentos del Expediente</span>
               </h3>
-              <button
-                type="button"
-                onClick={handleDescargarPdf}
-                disabled={descargandoPdf}
-                style={{ backgroundColor: '#EEF2FF', color: '#003DA5', borderColor: '#C7D2FE' }}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all shadow-2xs hover:bg-blue-100 cursor-pointer w-fit"
-              >
-                {descargandoPdf ? (
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Download className="h-3.5 w-3.5" />
-                )}
-                <span>Descargar PDF Itinerario Oficial</span>
-              </button>
+              <span className="text-[11px] text-slate-500 font-medium">
+                {solicitud.documentosSoporte?.length || 0} documento(s) adjunto(s)
+              </span>
             </div>
             {solicitud.documentosSoporte && solicitud.documentosSoporte.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {solicitud.documentosSoporte.map((doc, idx) => (
-                  <div
-                    key={doc.id || idx}
-                    className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-xs"
-                  >
-                    <div className="flex items-center space-x-2 truncate">
-                      <FileText className="h-4 w-4 text-[#003DA5] shrink-0" />
-                      <span className="font-semibold text-slate-800 truncate">
-                        {doc.tipoDocumento} — {doc.nombreArchivoOriginal || 'Documento adjunto'}
-                      </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {solicitud.documentosSoporte.map((doc, idx) => {
+                  const rawUrl = (doc as any).urlRepositorio || (doc as any).urlArchivo || (doc as any).url;
+                  const url = viaticosService.obtenerUrlArchivo(rawUrl);
+                  return (
+                    <div
+                      key={doc.id || idx}
+                      className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors gap-2"
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                        <FileText className="h-4 w-4 text-[#003DA5] shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <span
+                            className="font-semibold text-slate-800 text-xs truncate block"
+                            title={doc.nombreArchivoOriginal || 'Documento adjunto'}
+                          >
+                            {doc.nombreArchivoOriginal || 'Documento adjunto'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono block">
+                            {doc.tipoDocumento}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {url && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                abrirDocumentoVisor({
+                                  url,
+                                  nombre: doc.nombreArchivoOriginal || 'Documento de Soporte',
+                                  tipo: doc.tipoDocumento || 'Soporte',
+                                  mime: doc.tipoMime,
+                                })
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-[#003DA5] hover:border-blue-300 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                              title="Previsualizar soporte en visor flotante / mitad de pantalla"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Ver</span>
+                            </button>
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors shadow-2xs"
+                              title="Abrir en pestaña nueva o descargar"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-slate-500 italic">No hay documentos de soporte adjuntos.</p>
@@ -513,6 +744,17 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
                     </p>
                   </div>
 
+                  {solicitud.extemporanea && solicitud.justificacionDireccion && (
+                    <div className="bg-purple-50 p-2.5 rounded-lg border border-purple-200 text-[11px]">
+                      <span className="font-bold text-purple-900 block text-[10px] uppercase mb-0.5">
+                        Observaciones / Justificación Dirección Nacional (Extemporánea):
+                      </span>
+                      <p className="text-slate-700 italic">
+                        "{solicitud.justificacionDireccion}"
+                      </p>
+                    </div>
+                  )}
+
                   {solicitud.observacionesAutorizacion ? (
                     <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-[11px]">
                       <span className="font-bold text-emerald-900 block text-[10px] uppercase mb-0.5">
@@ -565,7 +807,10 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
         </div>
 
         {/* Acciones del pie de página adaptadas a móviles y escritorios */}
-        <div className="bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+        <div
+          className="bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0"
+          style={{ flexShrink: 0 }}
+        >
           <button
             type="button"
             onClick={onClose}
@@ -588,8 +833,8 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={handleAutorizar}
-                disabled={procesando || extemporaneaSinAval}
+                onClick={handleIniciarFirmaOtp}
+                disabled={procesando || solicitandoOtp || extemporaneaSinAval}
                 title={
                   extemporaneaSinAval
                     ? 'Requiere previa aprobación formal de la Dirección Nacional'
@@ -602,12 +847,12 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
                 }
                 className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 text-xs sm:text-sm font-black rounded-xl shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer"
               >
-                {procesando ? (
+                {solicitandoOtp || procesando ? (
                   <LoaderCircle className="h-4 w-4 animate-spin text-white" />
                 ) : (
-                  <CheckCircle2 className="h-4 w-4 text-white" />
+                  <Award className="h-4 w-4 text-amber-300" />
                 )}
-                <span>Autorizar Comisión (AUTORIZADA)</span>
+                <span>Autorizar Comisión (Firma OTP)</span>
               </button>
             </div>
           )}
@@ -647,6 +892,46 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modal Institucional de Firma Digital con Validación OTP */}
+      {modalFirmaOtpAbierta && solicitud && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaOtpAbierta}
+          solicitudId={solicitud.id}
+          consecutivo={solicitud.consecutivoUnico || '023'}
+          comisionadoNombre={solicitud.comisionado?.nombreCompleto || 'Comisionado'}
+          destino={`${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? `, ${solicitud.destinoDepartamento}` : ''}`.trim()}
+          fechas={
+            solicitud.fechaInicio && solicitud.fechaFin
+              ? `${solicitud.fechaInicio} al ${solicitud.fechaFin}`
+              : ''
+          }
+          firmanteNombre={
+            currentUser?.person?.full_name || currentUser?.username || 'Subdirección de Gestión'
+          }
+          firmanteCargo="Subdirector(a) de Gestión Corporativa"
+          etapaLabel="Autorización Corporativa de Gasto (RF-AUT-001)"
+          correoDestino={otpData?.emailEnviadoA}
+          devCode={otpData?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            await viaticosService.verificarOtpFirma(solicitud.id, {
+              verificationId: otpData?.verificationId || '',
+              code: codigoOtp,
+              otp: codigoOtp,
+              tipoFirma: 'SUBDIRECCION',
+              consume: false,
+            });
+          }}
+          onFirmaCompleta={handleFirmaDigitalCompleta}
+          onCancelar={() => setModalFirmaOtpAbierta(false)}
+        />
+      )}
+
+      {/* Visor Flotante Multiventana Formato 023 */}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
+      />
     </div>
   );
 };

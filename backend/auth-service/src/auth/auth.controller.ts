@@ -198,7 +198,7 @@ export class AuthController {
   @Post('signature-otp/verify')
   @HttpCode(200)
   verifySignatureOtp(@Req() req, @Body() dto: VerifySignatureOtpDto) {
-    return this.authService.verifySignatureOtp(req.user, dto.code);
+    return this.authService.verifySignatureOtp(req.user, dto.code, dto.context);
   }
 
   @Public()

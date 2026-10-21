@@ -132,10 +132,25 @@ export class UpdateMantenimientoEstadoDto {
   @IsNotEmpty()
   estado: string;
 
-  @ApiPropertyOptional({ example: 'Ing. Carlos Pérez' })
+  // ==========================================================================
+  // EFDS-174X - OPCION A. Columna legacy temporal.
+  // PREFERIR idTecnicoAsignado (UUID auth.user.id_user) por encima del string.
+  // Si envian ambos, se guarda idTecnicoAsignado y este display se sobreescribe
+  // con el JOIN nombre de persona del usuario.
+  // ==========================================================================
+  @ApiPropertyOptional({ example: 'Ing. Carlos Pérez', deprecated: true, description: 'Deprecated: usar idTecnicoAsignado UUID. Se conserva temporal para transicion FE MFE.' })
   @IsString()
   @IsOptional()
   responsableAsignado?: string;
+
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-1234-5678-9abc-def012345678',
+    description:
+      'FK logica a auth.user.id_user del técnico asignado para ejecutar la solicitud. Source of Truth = roles P3/P4 en auth-service. Reemplaza responsableAsignado (deprecated).',
+  })
+  @IsUUID('4')
+  @IsOptional()
+  idTecnicoAsignado?: string;
 
   @ApiPropertyOptional({ example: 'Se completó el cambio de gas y filtro' })
   @IsString()
@@ -153,13 +168,28 @@ export class UpdateMantenimientoEstadoDto {
 // ---------------------------------------------------------------------------
 
 export class IniciarValoracionDto {
+  // ==========================================================================
+  // EFDS-174X - Legacy temporal. Preferir idTecnicoForzado UUID.
+  // Si envian ambos se prioriza idTecnicoForzado y tecnicoCodigoForzado se
+  // ignora o se deriva display desde JOIN persona.
+  // ==========================================================================
   @ApiPropertyOptional({
+    deprecated: true,
     description:
-      'Opcional: si Encargado UMI inicia la valoración en nombre de un técnico, enviar el código del técnico asignado. Si no envía, usa el responsable actual.',
+      'Deprecated: usar idTecnicoForzado UUID. Código TEC-xxx solo mantenido por compatibilidad transitoria mientras FE migra combo selector.',
   })
   @IsString()
   @IsOptional()
   tecnicoCodigoForzado?: string;
+
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-1234-5678-9abc-def012345678',
+    description:
+      'Opcional: si Encargado UMI inicia la valoración en nombre de un técnico, enviar id_user auth. Si no envía, usa el responsable asignado actual.',
+  })
+  @IsUUID('4')
+  @IsOptional()
+  idTecnicoForzado?: string;
 }
 
 export class ValoracionInsumoDto {
@@ -294,4 +324,59 @@ export class ConfirmarRecepcionInsumosDto {
   @IsString()
   @IsOptional()
   observaciones?: string;
+}
+
+// ============================================================================
+// EFDS-174X - OPCION A. Nuevos DTOs técnicos desde auth roles P3/P4.
+// Reemplazan la entidad CatalogoItem TECNICO_MANTENIMIENTO que se eliminó en
+// la migración 025. Source of Truth = auth.user + auth.personas + user_roles.
+// ============================================================================
+
+export class TecnicoUmiFromAuthDto {
+  @ApiProperty({ example: 'a1b2c3d4-1234-5678-9abc-def012345678', description: 'PK auth.user.id_user (UUID v4). Usar como idTecnicoAsignado en mantenimiento.' })
+  idUser: string;
+
+  @ApiProperty({ example: 'd2e4f6a8-0000-0000-0000-000000000001', description: 'PK auth.personas.id_person = persona_id oficial.' })
+  idPerson: string;
+
+  @ApiProperty({ example: 'Daniel Porky Apellido' })
+  nombreDisplay: string;
+
+  @ApiProperty({ example: 'daniel.porky@esap.edu.co', description: 'IGUAL a user.username. Para contacto directo.' })
+  email: string;
+
+  @ApiPropertyOptional({ example: '+57 300 123 4567' })
+  telefono?: string;
+
+  @ApiProperty({ enum: ['P3', 'P4'], description: 'P3 = TECNICO_ELECTRICO_ESPECIALIZADO (solo categorias electricas CS_002). P4 = TECNICO_UMI_MULTIPROPOSITO (resto categorías CS_001,CS_003..). Hard constraint project_memory.' })
+  roleCod: 'P3' | 'P4';
+
+  @ApiProperty({ example: true, description: 'Estado auth.user.is_active. Si false, NO aparece en combos para asignación nueva.' })
+  isActive: boolean;
+
+  @ApiPropertyOptional({ example: 'SECCIONAL_CALI_03' })
+  codigoSeccional?: string;
+
+  @ApiPropertyOptional({ example: 'SEDE_CENTRAL' })
+  codigoSede?: string;
+
+  @ApiProperty({ example: 2, description: 'Conteo carga vigente: mantenimientos WHERE id_tecnico_asignado = idUser y estado IN (RECIBIDA, ASIGNADA, EN_PROGRESO, EN_ANALISIS).' })
+  cargaVigente: number;
+
+  @ApiProperty({ example: true, description: 'Flag operativo para licencia / vacaciones temporal (sin tocar auth.user.is_active). Si false, tecnico NO entra en motor sugerencia ni combos asignacion. Default true.' })
+  isDisponibleAsignacion: boolean;
+}
+
+export class AsignarTecnicoPayload {
+  @ApiProperty({ example: 'a1b2c3d4-1234-5678-9abc-def012345678' })
+  @IsUUID('4')
+  idTecnicoAsignado: string;
+
+  @ApiPropertyOptional({ example: 'Ing. Porky', deprecated: true, description: 'Deprecated: display legacy se calcula desde JOIN persona. Ignorado si envian idTecnicoAsignado valido.' })
+  @IsOptional()
+  responsableAsignadoDisplay?: string;
+
+  @ApiPropertyOptional({ example: 'Asignacion manual P2 analista' })
+  @IsOptional()
+  observacionesAsignacion?: string;
 }

@@ -100,17 +100,6 @@ describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
     });
   });
 
-  it('la modalidad, que decide en su propio panel, también avisa', () => {
-    // La 3.5 no pasa por la aprobación genérica: escribe su traza aparte, y
-    // sin traducirla enviarla y decidirla no avisaban a nadie.
-    const de = (accion: string) =>
-      eventosDeTraza(traza({ entidad: 'modalidad_proceso', accion: accion as any, detalle: { actividad: '3.5' } }))[0];
-
-    expect(de('ENVIAR')).toMatchObject({ evento: 'ENVIADA_A_APROBACION', numeral: '3.5' });
-    expect(de('APROBAR')).toMatchObject({ evento: 'APROBADA', numeral: '3.5' });
-    expect(de('DEVOLVER')).toMatchObject({ evento: 'DEVUELTA', numeral: '3.5' });
-  });
-
   it('registrar donde hay aprobadores es enviar a aprobación', () => {
     // El registro no deja un evento de envío aparte: sin esto, «se envía a
     // aprobación» nunca se habría disparado en las actividades de registro.

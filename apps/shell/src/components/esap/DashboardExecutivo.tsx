@@ -1,23 +1,31 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Users, Building2, GraduationCap, FolderOpen, Shield, Activity,
   AlertCircle, Loader2, RefreshCw, TrendingUp, TrendingDown,
   Globe, BarChart3, ArrowUpRight, ArrowDownRight,
   FileText, Target, Eye, Gauge, ExternalLink, BookOpen,
   Zap, ArrowRight, FileCheck, ClipboardList, Award,
-  AlertOctagon, Clock,
+  AlertOctagon, Clock, Maximize2, Minimize2, Upload,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Line, Legend,
 } from 'recharts';
 import dashboardService from '../../services/api/dashboard.service';
+import { authService } from '../../services/api/authService';
 import { motion } from 'motion/react';
+
+// ═══════ PERMISOS ═══════
+const PERMISSION_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view';
+const PERMISSION_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit';
+const PERMISSION_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view';
+const PERMISSION_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit';
 
 // ═══════ TYPES ═══════
 interface DashboardExecutivoProps { onNavigateToModule?: (moduleId: string) => void; }
-type ViewTab = 'estrategico' | 'operacional';
+type ViewTab = 'estrategico' | 'operacional' | 'panel_seguimiento' | 'desarrollo_otic';
 
 // ═══════ CONSTANTS ═══════
 const C = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16','#D946EF'];
@@ -148,6 +156,227 @@ function ModuleCard({ mod, onClick }: { mod: any; onClick: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// HTML TEMPLATE VIEWER COMPONENT
+// ═══════════════════════════════════════════════════════════════
+interface DashboardHtmlViewerProps {
+  templateName: 'panel_seguimiento' | 'desarrollo_otic';
+  title: string;
+  description: string;
+  canEdit?: boolean;
+}
+
+function DashboardHtmlViewer({ templateName, title, description, canEdit = false }: DashboardHtmlViewerProps) {
+  const [reloadKey, setReloadKey] = useState(0);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const queryParams = new URLSearchParams();
+  if (canEdit) {
+    queryParams.set('canEdit', 'true');
+  }
+  if (reloadKey) {
+    queryParams.set('t', String(reloadKey));
+  }
+  const queryString = queryParams.toString();
+  const url = `${dashboardService.getTemplateUrl(templateName)}${queryString ? `?${queryString}` : ''}`;
+
+  const handleReload = () => {
+    setIframeLoading(true);
+    setReloadKey(Date.now());
+  };
+
+  const handleOpenNewTab = () => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      const text = await file.text();
+
+      if (!text.includes('<html') && !text.includes('<!DOCTYPE') && !text.includes('<div') && !text.includes('<body')) {
+        toast.error('Archivo no válido', {
+          description: 'El archivo seleccionado debe ser un documento HTML.',
+        });
+        return;
+      }
+
+      await dashboardService.uploadTemplate(templateName, text);
+      toast.success('Plantilla actualizada', {
+        description: `Se reemplazó el archivo HTML de ${title} correctamente.`,
+      });
+
+      // Recargar el iframe inmediatamente para mostrar los nuevos datos
+      setIframeLoading(true);
+      setReloadKey(Date.now());
+    } catch (err: any) {
+      console.error('Error al subir plantilla HTML:', err);
+      toast.error('Error al cargar la plantilla', {
+        description: err.message || 'No se pudo guardar el archivo en el servidor.',
+      });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(750);
+
+  const ajustarAltura = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const altura = Math.max(
+        doc.documentElement.scrollHeight,
+        doc.body?.scrollHeight ?? 0
+      );
+      setIframeHeight(altura);
+    } catch (error) {
+      console.warn('No se pudo obtener la altura del iframe:', error);
+    }
+  };
+
+  return (
+    <div className={`flex flex-col gap-3 transition-all ${isFullscreen ? 'fixed inset-0 z-50 bg-slate-100 p-4' : 'w-full'}`}>
+      {/* Barra de control superior */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-4 py-3 rounded-lg border border-gray-200/80 shadow-sm">
+        <div>
+          <h2 className="text-sm font-black text-gray-900 tracking-tight flex items-center gap-2">
+            <span>{title}</span>
+            <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full bg-blue-50 text-[#003DA5] border border-blue-200/60">
+              Vista Integrada
+            </span>
+          </h2>
+          <p className="text-[11px] text-gray-500 mt-0.5">{description}</p>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {canEdit && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".html,text/html"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#003DA5] hover:bg-[#002D7A] border border-[#003DA5] rounded-xl transition-all shadow-2xs hover:shadow-sm disabled:opacity-50 cursor-pointer"
+                title="Cargar y reemplazar el archivo HTML con la nueva versión editada"
+              >
+                {isUploading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                <span>{isUploading ? 'Cargando...' : 'Cargar'}</span>
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={handleReload}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all shadow-2xs hover:text-[#003DA5]"
+            title="Recargar panel con los datos más recientes del archivo HTML"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${iframeLoading ? 'animate-spin text-[#003DA5]' : ''}`} />
+            <span>Actualizar</span>
+          </button>
+
+          <button
+            onClick={handleOpenNewTab}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all shadow-2xs hover:text-[#003DA5]"
+            title="Abrir este dashboard en una ventana o pestaña completa"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Pestaña nueva</span>
+          </button>
+
+        </div>
+      </div>
+
+      {/* Contenedor del Iframe con Loader */}
+      <div
+        className="relative w-full rounded-2xl border border-gray-200/80 bg-white shadow-sm"
+        style={{
+          minHeight: '750px',
+          height: iframeHeight,
+        }}
+      >
+        {iframeLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/90 backdrop-blur-xs">
+            <div className="relative">
+              <div className="w-12 h-12 rounded-full border-3 border-blue-100 border-t-[#003DA5] animate-spin mx-auto" />
+              <Loader2 className="w-5 h-5 text-[#003DA5] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+
+            <p className="text-xs font-bold text-gray-800 mt-3">
+              Cargando visualización de {title}...
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Sincronizando plantilla y datos interactivos
+            </p>
+          </div>
+        )}
+
+        <iframe
+          ref={iframeRef}
+          key={url}
+          src={url}
+          title={title}
+          className="block w-full border-0 rounded-lg"
+          style={{
+            height: `${iframeHeight}px`,
+          }}
+          onLoad={() => {
+            ajustarAltura();
+            try {
+              iframeRef.current?.contentWindow?.postMessage({ type: 'SET_PERMISSIONS', canEdit }, '*');
+              const doc = iframeRef.current?.contentDocument;
+              if (doc) {
+                const btnEdicion = doc.querySelector<HTMLElement>('[data-tab="edicion"]');
+                const editLinks = doc.querySelectorAll<HTMLElement>('.edit-link');
+                const btnUploadExcel = doc.querySelector<HTMLElement>('#btnUploadExcel');
+                const btnSaveHtml = doc.querySelector<HTMLElement>('#btnSaveHtml');
+                if (!canEdit) {
+                  doc.body.classList.add('no-edit');
+                  if (btnEdicion) btnEdicion.style.display = 'none';
+                  if (btnUploadExcel) btnUploadExcel.style.display = 'none';
+                  if (btnSaveHtml) btnSaveHtml.style.display = 'none';
+                  editLinks.forEach(el => el.style.display = 'none');
+                } else {
+                  doc.body.classList.remove('no-edit');
+                  if (btnEdicion) btnEdicion.style.display = '';
+                  if (btnUploadExcel) btnUploadExcel.style.display = '';
+                  if (btnSaveHtml) btnSaveHtml.style.display = '';
+                  editLinks.forEach(el => el.style.display = '');
+                }
+              }
+            } catch (err) {
+              console.warn('Error sincronizando permisos en iframe:', err);
+            }
+            setIframeLoading(false);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoProps) {
@@ -155,6 +384,22 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
   const [error, setError] = useState<string|null>(null);
   const [stats, setStats] = useState<any>(null);
   const [viewTab, setViewTab] = useState<ViewTab>('estrategico');
+
+  // Permisos: SUPER_ADMIN tiene acceso total, o usuario con permiso explícito de view / edit
+  const isSuperAdmin = authService.isSuperAdmin();
+  const canViewPanelSeguimiento = isSuperAdmin || authService.hasPermission(PERMISSION_PANEL_SEGUIMIENTO_VIEW);
+  const canViewDesarrolloOtic = isSuperAdmin || authService.hasPermission(PERMISSION_DESARROLLO_OTIC_VIEW);
+  const canEditPanelSeguimiento = isSuperAdmin || authService.hasPermission(PERMISSION_PANEL_SEGUIMIENTO_EDIT);
+  const canEditDesarrolloOtic = isSuperAdmin || authService.hasPermission(PERMISSION_DESARROLLO_OTIC_EDIT);
+
+  // Si la pestaña actual no está permitida para el usuario, volver a 'estrategico'
+  useEffect(() => {
+    if (viewTab === 'panel_seguimiento' && !canViewPanelSeguimiento) {
+      setViewTab('estrategico');
+    } else if (viewTab === 'desarrollo_otic' && !canViewDesarrolloOtic) {
+      setViewTab('estrategico');
+    }
+  }, [viewTab, canViewPanelSeguimiento, canViewDesarrolloOtic]);
 
   const nav = useCallback((sid: string) => { onNavigateToModule?.(sid); }, [onNavigateToModule]);
 
@@ -309,13 +554,39 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
           </div>
         </div>
 
-        <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl w-fit">
+        <div className="flex items-center bg-gray-100/80 rounded-xl" style={{justifyContent: "space-between"}}>
+          <div className="flex items-center gap-1 p-1 rounded-xl w-fit">
           {([{ v: 'estrategico' as ViewTab, l: '📊 Estratégico', d: 'KPIs, tendencias, predicciones' }, { v: 'operacional' as ViewTab, l: '⚙️ Operacional', d: 'Detalle por módulo' }]).map(t => (
             <button key={t.v} onClick={() => setViewTab(t.v)} className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === t.v ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
               <span className="text-sm font-bold">{t.l}</span>
               <span className="text-[9px] text-gray-400">{t.d}</span>
             </button>
           ))}
+          </div>
+          {(canViewPanelSeguimiento || canViewDesarrolloOtic) && (
+            <div className="flex items-center gap-1 p-1 rounded-xl w-fit">
+              {canViewPanelSeguimiento && (
+                <button
+                  key="panel_seguimiento"
+                  onClick={() => setViewTab('panel_seguimiento')}
+                  className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === 'panel_seguimiento' ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <span className="text-sm font-bold">📈 Panel Seguimiento</span>
+                  <span className="text-[9px] text-gray-400">Estado consolidado de la implementación</span>
+                </button>
+              )}
+              {canViewDesarrolloOtic && (
+                <button
+                  key="desarrollo_otic"
+                  onClick={() => setViewTab('desarrollo_otic')}
+                  className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === 'desarrollo_otic' ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <span className="text-sm font-bold">🛠️ Desarrollo OTIC</span>
+                  <span className="text-[9px] text-gray-400">Trazabilidad de Procesos</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -522,6 +793,26 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
             {modules.map(mod => <ModuleCard key={mod.key} mod={mod} onClick={() => nav(mod.sid)} />)}
           </div>
         </div>
+      )}
+
+      {/* PLAN DE SEGUIMIENTO */}
+      {viewTab === 'panel_seguimiento' && canViewPanelSeguimiento && (  
+        <DashboardHtmlViewer
+          templateName="panel_seguimiento"
+          title="Panel de Seguimiento"
+          description="Estado consolidado de la implementación, metas y compromisos estratégicos"
+          canEdit={canEditPanelSeguimiento}
+        />
+      )}
+
+      {/* DESARROLLO OTIC */}
+      {viewTab === 'desarrollo_otic' && canViewDesarrolloOtic && (
+        <DashboardHtmlViewer
+          templateName="desarrollo_otic"
+          title="Portafolio BI de Desarrollo OTIC"
+          description="Trazabilidad de procesos, desarrollos e iniciativas institucionales"
+          canEdit={canEditDesarrolloOtic}
+        />
       )}
     </div>
   );

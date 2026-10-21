@@ -456,6 +456,8 @@ export interface CreateAutoDto {
     documentType?: string;
     documentSize?: number;
     etapaDestino?: string;
+    entidadDestino?: string;
+    entidadDestinoEmail?: string;
 }
 
 export interface DocumentoExpediente {
@@ -659,7 +661,8 @@ class DisciplinaryService {
      * Envía un correo con la información de la noticia a la entidad destinataria
      */
     async remitirPorCompetencia(data: {
-        newsId: string;
+        newsId?: string;
+        processId?: string;
         radicado?: string;
         emailDestinatario: string;
         entidadDestino: string;
@@ -888,7 +891,7 @@ class DisciplinaryService {
      */
     async descargarIndiceElectronico(
         processId: string,
-        expediente: { radicado: string; asunto?: string; responsable?: string },
+        expediente: { radicado: string; asunto?: string; responsable?: string; numeroExpediente?: string; codigoIdentificacionExpediente?: string; codigoSerie?: string; nombreSerie?: string; serie?: string; codigoSubserie?: string; nombreSubserie?: string; subserie?: string; tieneSubserie?: boolean },
         documentos: Array<{
             descripcionPrincipal?: string;
             tipologiaDocumental?: string;

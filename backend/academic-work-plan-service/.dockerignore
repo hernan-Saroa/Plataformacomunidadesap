@@ -1,0 +1,15 @@
+# El contexto del backend es esta carpeta, no la raíz del monorepo.
+node_modules
+dist
+build
+coverage
+.git
+.env
+.env.*
+!.env.example
+uploads
+tmp
+temp
+logs
+*.log
+*.tsbuildinfo
