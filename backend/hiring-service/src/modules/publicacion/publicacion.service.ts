@@ -25,6 +25,7 @@ import {
   PERMISO_PLAZO_TERMINAR,
   tienePermiso,
 } from '../../auth/permisos';
+import { OfertasService } from '../ofertas/ofertas.service';
 import { AlcanceService } from '../../auth/alcance.service';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from './dias-habiles';
 import { festivosEntre } from './festivos-colombia';
@@ -43,6 +44,8 @@ export class PublicacionService {
     private readonly dataSource: DataSource,
     /** Quién puede registrar la publicación (migración 083). */
     private readonly alcance: AlcanceService,
+    /** Donde no hay apertura (mínima cuantía), la publicación abre la recepción. */
+    private readonly ofertas: OfertasService,
   ) {}
 
   // ------------------------------------------------------- calendario ------
@@ -412,6 +415,11 @@ export class PublicacionService {
       // Se cierra de una: el registro ya trae su evidencia, que era lo único
       // que faltaba para darla por cumplida.
       await this.marcarActividad(em, procesoId, 'APROBADO', acceso);
+
+      // En la modalidad sin apertura (5.7) el plazo de ofertas corre desde
+      // aquí; donde sí la hay, `abrirRecepcion` no encuentra de dónde contar
+      // y no hace nada, y la recepción la abre la apertura como siempre.
+      await this.ofertas.abrirRecepcion(procesoId, acceso, em);
 
       await this.traza(em, procesoId, publicacion.id, 'PUBLICAR', acceso, {
         fechaPublicacion: dto.fechaPublicacion,
