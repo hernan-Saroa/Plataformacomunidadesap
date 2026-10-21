@@ -20,12 +20,16 @@ export interface PasoDelFlujo {
  * sola y no hay que preguntarle al servidor, por cada una de las sesenta y
  * tres, si alguien le configuró un aprobador.
  *
+ * `NO_APLICA` también la termina: es como queda la 3.7 cuando se deja
+ * constancia de que el proceso no pasó por comité, y el servidor la cuenta como
+ * cerrada. Sin esto la 4.2 se quedaba esperando a la 3.7 para siempre.
+ *
  * Lo demás no termina nada: `BORRADOR` es trabajo empezado, `EN_REVISION` está
  * esperando y `DEVUELTO` pide volver a ella. Dejar que la siguiente arranque
  * sobre cualquiera de los tres sería trabajar sobre algo que puede caerse.
  */
 export function estaTerminada(paso: PasoDelFlujo): boolean {
-  return paso.estado === 'APROBADO';
+  return paso.estado === 'APROBADO' || paso.estado === 'NO_APLICA';
 }
 
 /**
@@ -85,6 +89,15 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
   '5.5': ['5.3'],
   '5.6': ['5.3'],
   '5.13': ['5.3', '5.7'],
+  // Supervisor (8.2), RP, garantías y ARL solo piden el contrato firmado: el
+  // backend no exige más (`admiteSupervisor`, `admiteRp`, `admiteLegalizacion`).
+  // La 8.6 sí espera a las cuatro, porque comunica que están cumplidas.
+  '8.3': ['8.1'],
+  '8.4': ['8.1'],
+  '8.5': ['8.1'],
+  // La publicación corre desde la firma (Decreto 1082): no espera a la
+  // legalización ni al acta de inicio, que la matriz numera antes.
+  '8.8': ['8.1'],
   '9.5': ['9.1'],
 };
 

@@ -23,6 +23,7 @@ import { SoloLectura, AvisoSoloLectura } from '../shared/SoloLectura';
 import { momento as fechaDelMomento } from '../shared/fechas';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { VersionDelFlujo } from './VersionDelFlujo';
+import { cuentaEnElAvance } from './formaDeLaActividad';
 import { PanelSupervision } from '../supervision/PanelSupervision';
 import { OrigenEnElPaa } from '../paa/OrigenEnElPaa';
 
@@ -96,11 +97,14 @@ export function FichaDelProceso({
     return ETAPAS.filter((e) => mapa.has(e.numero)).map((e) => {
       const lista = mapa.get(e.numero)!;
       const aplicables = lista.filter((a) => a.estado !== 'no_aplica');
+      // Las permanentes y las eventuales se listan, pero no cuentan en el «x de y».
+      const enLaFila = aplicables.filter((a) => cuentaEnElAvance(a.numeral));
       return {
         etapa: e,
         actividades: aplicables,
         noAplican: lista.length - aplicables.length,
-        hechas: aplicables.filter((a) => a.estado === 'aprobada').length,
+        hechas: enLaFila.filter((a) => a.estado === 'aprobada').length,
+        total: enLaFila.length,
       };
     });
   }, [actividades]);
@@ -150,8 +154,8 @@ export function FichaDelProceso({
           Recorrido del proceso
         </h3>
         <ol className="m-0 p-0 list-none">
-          {porEtapa.map(({ etapa, actividades: lista, noAplican, hechas }) => {
-            const completa = lista.length > 0 && hechas === lista.length;
+          {porEtapa.map(({ etapa, actividades: lista, noAplican, hechas, total }) => {
+            const completa = total > 0 && hechas === total;
             const actual = etapa.numero === etapaActual;
             const abierta = abiertas.has(etapa.numero);
             return (
@@ -176,7 +180,7 @@ export function FichaDelProceso({
                       Etapa {etapa.numero} · {etapa.nombre}
                     </span>
                     <span className="block text-[12px] text-slate-500">
-                      {lista.length ? `${hechas} de ${lista.length} hechas` : 'Nada aplica a esta modalidad'}
+                      {lista.length ? `${hechas} de ${total} hechas` : 'Nada aplica a esta modalidad'}
                       {actual ? ' · aquí va el proceso' : ''}
                     </span>
                   </span>

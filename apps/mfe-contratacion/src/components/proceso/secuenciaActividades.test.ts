@@ -253,12 +253,42 @@ describe('motivoDelBloqueo · con dependencia declarada', () => {
 });
 
 describe('estaTerminada', () => {
-  it('solo APROBADO termina una actividad', () => {
+  it('APROBADO y NO_APLICA terminan una actividad', () => {
     expect(estaTerminada(paso('3.1', { estado: 'APROBADO' }))).toBe(true);
+    expect(estaTerminada(paso('3.7', { estado: 'NO_APLICA' }))).toBe(true);
 
     for (const estado of ['BORRADOR', 'EN_REVISION', 'DEVUELTO', null, undefined]) {
       expect(estaTerminada(paso('3.1', { estado }))).toBe(false);
     }
+  });
+
+  it('con el contrato firmado se abren a la vez supervisor, RP, garantías y ARL', () => {
+    const flujo = [
+      paso('8.1', { estado: 'APROBADO' }),
+      paso('8.2'),
+      paso('8.3'),
+      paso('8.4'),
+      paso('8.5'),
+      paso('8.6'),
+    ];
+
+    const disponibles = actividadesDisponibles(flujo);
+    expect(['8.2', '8.3', '8.4', '8.5'].every((n) => disponibles.has(n))).toBe(true);
+    // La comunicación de inicio dice que están cumplidas: espera a las cuatro.
+    expect(disponibles.has('8.6')).toBe(false);
+  });
+
+  it('la constancia de que no pasó por comité no deja la 4.2 esperando', () => {
+    // La 3.7 sigue aplicando a la modalidad, pero quedó en NO_APLICA porque el
+    // valor no supera el umbral. La 4.2 tiene que abrirse.
+    const flujo = [
+      paso('3.6', { estado: 'APROBADO' }),
+      paso('3.7', { estado: 'NO_APLICA' }),
+      paso('4.2'),
+    ];
+
+    expect(actividadesDisponibles(flujo).has('4.2')).toBe(true);
+    expect(motivoDelBloqueo('4.2', flujo)).toBeNull();
   });
 });
 

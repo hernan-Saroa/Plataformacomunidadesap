@@ -17,8 +17,10 @@ import { ActividadProceso, EstadoParticipacion,
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
+import { cuentaEnElAvance, formaDe } from './formaDeLaActividad';
 import {
   actividadesDisponibles,
+  estaTerminada,
   motivoDelBloqueo,
   NUNCA_BLOQUEA,
   PasoDelFlujo,
@@ -322,7 +324,8 @@ export function DetalleProceso({
     | { tipo: 'revision' }
     | { tipo: 'fin' }
     | { tipo: 'bloqueado'; motivo: string }
-    | { tipo: 'siguiente'; numeral: string; nombre: string }
+    // `ademas`: las otras del mismo grupo en paralelo que ya se pueden trabajar.
+    | { tipo: 'siguiente'; numeral: string; nombre: string; ademas?: string[] }
     | { tipo: 'reabierta'; numeral: string; nombre: string }
     | null
   >(null);
@@ -415,7 +418,9 @@ export function DetalleProceso({
     const indice = flujoActual.findIndex((p) => p.numeral === actual.numeral);
     const siguiente = flujoActual
       .slice(indice + 1)
-      .find((p) => p.aplica && p.construida && p.estado !== 'APROBADO');
+      // Las permanentes y las eventuales no son «lo que sigue»: están abiertas
+      // aparte, y mandar a ellas escondería el paso que de verdad falta.
+      .find((p) => p.aplica && p.construida && !estaTerminada(p) && cuentaEnElAvance(p.numeral));
 
     if (!siguiente) {
       setAvisoPaso({ tipo: 'fin' });
@@ -425,8 +430,34 @@ export function DetalleProceso({
     const nombreSiguiente =
       catalogo.find((a: any) => a.numeral === siguiente.numeral)?.nombre ?? siguiente.numeral;
 
-    if (actividadesDisponibles(flujoActual).has(siguiente.numeral)) {
-      setAvisoPaso({ tipo: 'siguiente', numeral: siguiente.numeral, nombre: nombreSiguiente });
+    const disponibles = actividadesDisponibles(flujoActual);
+    if (disponibles.has(siguiente.numeral)) {
+      // Si lo que sigue es un grupo en paralelo, se dice que hay varias: no
+      // hay una «siguiente», cualquiera de ellas lo es.
+      const forma = formaDe(siguiente.numeral);
+      const ademas =
+        forma.tipo === 'en_paralelo'
+          ? flujoActual
+              .filter((p) => {
+                const otra = formaDe(p.numeral);
+                return (
+                  p.numeral !== siguiente.numeral &&
+                  otra.tipo === 'en_paralelo' &&
+                  otra.grupo === forma.grupo &&
+                  p.aplica &&
+                  p.construida &&
+                  !estaTerminada(p) &&
+                  disponibles.has(p.numeral)
+                );
+              })
+              .map((p) => catalogo.find((a: any) => a.numeral === p.numeral)?.nombre ?? p.numeral)
+          : [];
+      setAvisoPaso({
+        tipo: 'siguiente',
+        numeral: siguiente.numeral,
+        nombre: nombreSiguiente,
+        ademas,
+      });
     } else {
       setAvisoPaso({
         tipo: 'bloqueado',
@@ -734,7 +765,8 @@ export function DetalleProceso({
   for (const act of actividadesDelRiel) {
     const numero = act.etapa ?? 3;
     if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
-    if (act.estado === 'no_aplica') continue;
+    // Las permanentes y las eventuales no tienen un «hecho» que sumar.
+    if (act.estado === 'no_aplica' || !cuentaEnElAvance(act.numeral)) continue;
     avance[numero].aplicables += 1;
     if (act.estado === 'aprobada') avance[numero].completas += 1;
   }
@@ -1179,6 +1211,14 @@ export function DetalleProceso({
               {avisoPaso.numeral} · {avisoPaso.nombre}
             </strong>
             .
+            {!!avisoPaso.ademas?.length && (
+              <>
+                {' '}
+                También puedes seguir con{' '}
+                <strong className="font-bold">{avisoPaso.ademas.join(', ')}</strong>: van en
+                cualquier orden.
+              </>
+            )}
           </p>
         )}
         {/* Volver atrás no es «el siguiente paso»: es una actividad que ya
