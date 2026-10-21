@@ -2211,6 +2211,19 @@ export interface SupervisorContrato {
   /** Nulo mientras no quede constancia de que se le aviso (matriz 8.2). */
   alertaEnviadaAt: string | null;
   acto: { nombre: string; url: string | null } | null;
+  /** Lo que se le mandó en el correo además del acto (124). */
+  anexos?: { nombre: string; url: string | null }[];
+  mensajeCorreo?: string | null;
+}
+
+/** Si salió el correo de la designación (124) y, si no, por qué. */
+export interface ResultadoCorreoSupervisor {
+  enviado: boolean;
+  para: string | null;
+  adjuntos: string[];
+  /** Los que no cupieron en el correo: quedan en el expediente. */
+  quedanFuera: string[];
+  motivo: string | null;
 }
 
 /** Quien supervisO antes; se conserva porque respondiO por ese periodo. */
@@ -2241,6 +2254,8 @@ export interface EstadoSupervision {
   /** El aviso que pide la matriz sigue pendiente. */
   avisoPendiente: boolean;
   historial: SupervisionRelevada[];
+  /** Solo en la respuesta de designar, reasignar o reenviar: cómo le fue al correo. */
+  correo?: ResultadoCorreoSupervisor;
 }
 
 /** Lo que la pantalla envia al designar. */
@@ -2249,6 +2264,8 @@ export interface DatosSupervisor {
   usuarioId: string;
   cargo?: string;
   fechaDesignacion: string;
+  /** Lo que se le escribe en el correo de la designación (124). */
+  mensaje?: string;
   firma?: EvidenciaFirmaOtp;
 }
 

@@ -477,11 +477,14 @@ export class NotificadorService implements OnApplicationBootstrap {
         return filas.map((f: any) => f.id);
       }
       case 'SUPERVISOR': {
+        // La cuenta designada (121); las designaciones de antes solo tienen la
+        // persona, y `cuentasDe` la traduce.
         const filas = await this.dataSource.query(
-          `SELECT s.persona_id::text AS id
+          `SELECT COALESCE(s.usuario_id::text, s.persona_id::text) AS id
              FROM hiring.supervisiones_contrato s
              JOIN hiring.contratos k ON k.id = s.contrato_id
-            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE' AND s.persona_id IS NOT NULL`,
+            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE'
+              AND COALESCE(s.usuario_id, s.persona_id) IS NOT NULL`,
           [ocurrido.procesoId],
         );
         return filas.map((f: any) => f.id);

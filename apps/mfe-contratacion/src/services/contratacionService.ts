@@ -934,10 +934,14 @@ export const contratacionService = {
   candidatosASupervisor: (procesoId: string, q = '') =>
     pedir<CandidatoAPuesto[]>(`/procesos/${procesoId}/supervision/candidatos?q=${encodeURIComponent(q)}`),
 
-  /** Designa al supervisor con el acto administrativo que lo nombra. */
-  designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File) => {
+  /**
+   * Designa al supervisor con el acto administrativo que lo nombra. Le sale un
+   * correo con el acto y los `adjuntos` (124).
+   */
+  designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File, adjuntos: File[] = []) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
+    for (const adjunto of adjuntos) cuerpo.append('adjuntos', adjunto);
     // La firma se serializa aparte: `String({...})` la volvería «[object Object]».
     const { firma, ...resto } = datos;
 
@@ -966,9 +970,10 @@ export const contratacionService = {
    * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
    * (EFDS-1169). En dos pasos el contrato quedaría sin quien lo vigile.
    */
-  reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File) => {
+  reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File, adjuntos: File[] = []) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
+    for (const adjunto of adjuntos) cuerpo.append('adjuntos', adjunto);
     const { firma, ...resto } = datos;
 
     for (const [clave, valor] of Object.entries(resto)) {
@@ -983,7 +988,21 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
-  /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
+  /**
+   * Le vuelve a mandar el correo al supervisor vigente (124), con documentos
+   * nuevos si se agregan: se suman a los que ya se le habían mandado.
+   */
+  reenviarCorreoSupervisor: (procesoId: string, mensaje: string, adjuntos: File[] = []) => {
+    const cuerpo = new FormData();
+    for (const adjunto of adjuntos) cuerpo.append('adjuntos', adjunto);
+    if (mensaje.trim()) cuerpo.append('mensaje', mensaje.trim());
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/correo`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja constancia de que se le comunicó la designación por fuera (matriz 8.2). */
   avisarSupervisor: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
       method: 'POST',

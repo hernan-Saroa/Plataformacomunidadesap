@@ -39,6 +39,16 @@ export class DesignarSupervisorDto {
   @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
   fechaDesignacion: string;
 
+  /**
+   * Lo que quien designa le quiere decir en el correo (124). El correo sale
+   * igual sin él: lleva el contrato, el proceso y el acto.
+   */
+  @ApiPropertyOptional({ description: 'Mensaje para el supervisor en el correo de la designación' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  mensaje?: string;
+
   /** Solo si la 8.2 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
@@ -72,4 +82,16 @@ export class ReasignarSupervisorDto extends DesignarSupervisorDto {
   @MinLength(10, { message: 'El motivo debe explicar el cambio, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;
+}
+
+/**
+ * Volver a mandarle el correo al supervisor vigente (124): porque no salió, o
+ * para mandarle documentos que faltaban. Los nuevos se suman a los de antes.
+ */
+export class ReenviarCorreoSupervisorDto {
+  @ApiPropertyOptional({ description: 'Mensaje para el supervisor; sin él, el de la designación' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  mensaje?: string;
 }
