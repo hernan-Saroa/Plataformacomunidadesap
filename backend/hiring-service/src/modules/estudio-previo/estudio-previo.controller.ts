@@ -162,7 +162,10 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/aprobar')
-  @Puede('aprobar', '3.4')
+  // En la 3.1 y no en la 3.4: la ronda que decide quién aprueba es la de la
+  // 3.1 y mira ese permiso. Con la 3.4 aquí, quien la ronda dejaba decidir
+  // —un puesto elegido por tener «aprobar la 3.1»— recibía un rechazo.
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Aprobar el estudio previo (numeral 3.4)',
     description: 'Solo aplica si está en revisión. Tras aprobarlo no admite cambios.',
@@ -176,7 +179,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/devolver')
-  @Puede('aprobar', '3.4')
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Devolver el estudio previo con observaciones (numeral 3.4)',
     description: 'Regresa a borrador para que el gestor corrija y lo reenvíe.',
@@ -190,7 +193,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/negar')
-  @Puede('aprobar', '3.4')
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Negar el proceso (numeral 3.4)',
     description:

@@ -24,14 +24,15 @@ import { RegistroActividadController } from '../modules/registro-actividad/regis
 const RUTA = { param: 'numeral' };
 
 const ESPERADO: [string, any, string, string | string[], unknown][] = [
-  // Etapa 3 · estudio previo. La revisión es la 3.4: la decide el abogado,
-  // no quien diligenció la 3.1.
+  // Etapa 3 · estudio previo. Se decide con «aprobar» en la 3.1, donde la
+  // ficha dice quién la aprueba: la ronda ya mira ese permiso, y pedir la 3.4
+  // dejaba al aprobador con el botón a la vista y la petición rechazada.
   ['estudio previo', EstudioPrevioController, 'crearProceso', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'guardar', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'enviar', 'editar', '3.1'],
-  ['estudio previo', EstudioPrevioController, 'aprobar', 'aprobar', '3.4'],
-  ['estudio previo', EstudioPrevioController, 'devolver', 'aprobar', '3.4'],
-  ['estudio previo', EstudioPrevioController, 'negar', 'aprobar', '3.4'],
+  ['estudio previo', EstudioPrevioController, 'aprobar', 'aprobar', '3.1'],
+  ['estudio previo', EstudioPrevioController, 'devolver', 'aprobar', '3.1'],
+  ['estudio previo', EstudioPrevioController, 'negar', 'aprobar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'adjuntar', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'retirarAdjunto', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'reemplazarAdjunto', 'editar', '3.1'],
