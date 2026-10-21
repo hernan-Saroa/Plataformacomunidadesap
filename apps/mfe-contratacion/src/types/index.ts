@@ -2311,8 +2311,9 @@ export interface PublicacionDelContrato {
 }
 
 export interface EstadoPublicacionContrato {
-  legalizado: boolean;
-  motivoNoLegalizado: string | null;
+  /** Firmado por las dos partes: desde ahí corre el plazo de publicación. */
+  suscrito: boolean;
+  motivoNoSuscrito: string | null;
   contrato?: { numero: string; objeto: string };
   plazo: { diasHabiles: number; fundamento: string | null; confirmado: boolean };
   publicaciones: PublicacionDelContrato[];
