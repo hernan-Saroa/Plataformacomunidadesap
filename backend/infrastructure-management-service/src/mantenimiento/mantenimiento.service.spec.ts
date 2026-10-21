@@ -90,6 +90,119 @@ describe('create requiere usuario autenticado', () => {
   });
 });
 
+describe('subirEvidencia con solicitud existente', () => {
+  it('permite al solicitante original adjuntar evidencia adicional aunque llegue sin roles', async () => {
+    const mantenimientoRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        idSolicitud: 'sol-1',
+        usuarioSolicitanteId: 'usr-sol-1',
+        usuarioSolicitanteEmail: 'solicitante@esap.edu.co',
+        solicitanteEmail: 'solicitante@esap.edu.co',
+      }),
+    } as any;
+    const evidenciaRepo = {
+      create: jest.fn((d) => d),
+      save: jest.fn(async (rows) => rows),
+    } as any;
+    const storage = {
+      subirArchivo: jest.fn().mockResolvedValue({
+        rutaObjeto: 'mantenimiento/2026/10/test.pdf',
+        bucket: 'local',
+        urlPublica: '/services/infraestructura/uploads/mantenimiento/2026/10/test.pdf',
+        urlPresigned: '/services/infraestructura/uploads/mantenimiento/2026/10/test.pdf',
+        vencimientoPresigned: null,
+      }),
+    } as any;
+    const s = servicio({ mantenimientoRepo, evidenciaRepo, storage });
+
+    const out = await s.subirEvidencia({
+      nombreOriginal: 'test.pdf',
+      buffer: Buffer.from('pdf'),
+      mimeType: 'application/pdf',
+      tamanoBytes: 3,
+      idSolicitud: 'sol-1',
+      notas: 'evidencia_adicional_actor',
+      user: {
+        userId: '',
+        email: 'solicitante@esap.edu.co',
+        roles: [],
+      } as any,
+    });
+
+    expect(out).toBeTruthy();
+    expect(storage.subirArchivo).toHaveBeenCalled();
+    expect(evidenciaRepo.save).toHaveBeenCalled();
+  });
+
+  it('permite al tecnico asignado adjuntar evidencia de valoracion o cierre', async () => {
+    const mantenimientoRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        idSolicitud: 'sol-tec-1',
+        usuarioSolicitanteId: 'usr-sol-x',
+        usuarioSolicitanteEmail: 'solicitante@esap.edu.co',
+        solicitanteEmail: 'solicitante@esap.edu.co',
+        idTecnicoAsignado: '75d2d892-b54f-4d64-b57d-2a1cfc2b2f1c',
+        responsableAsignado: 'TEC-ELEC-001 · Tecnico Electricista',
+      }),
+    } as any;
+    const evidenciaRepo = {
+      create: jest.fn((d) => d),
+      save: jest.fn(async (rows) => rows),
+    } as any;
+    const storage = {
+      subirArchivo: jest.fn().mockResolvedValue({
+        rutaObjeto: 'mantenimiento/2026/10/test-tec.jpg',
+        bucket: 'local',
+        urlPublica: '/services/infraestructura/uploads/mantenimiento/2026/10/test-tec.jpg',
+        urlPresigned: '/services/infraestructura/uploads/mantenimiento/2026/10/test-tec.jpg',
+        vencimientoPresigned: null,
+      }),
+    } as any;
+    const s = servicio({ mantenimientoRepo, evidenciaRepo, storage });
+
+    const out = await s.subirEvidencia({
+      nombreOriginal: 'test-tec.jpg',
+      buffer: Buffer.from('jpg'),
+      mimeType: 'image/jpeg',
+      tamanoBytes: 3,
+      idSolicitud: 'sol-tec-1',
+      notas: 'valoracion_campo',
+      user: {
+        userId: '75d2d892-b54f-4d64-b57d-2a1cfc2b2f1c',
+        email: 'tecnico.electricista@esap.edu.co',
+        roles: ['TECNICO_ELECTRICO_ESPECIALIZADO'],
+      } as any,
+    });
+
+    expect(out).toBeTruthy();
+    expect(storage.subirArchivo).toHaveBeenCalled();
+    expect(evidenciaRepo.save).toHaveBeenCalled();
+  });
+
+  it('rechaza cuando intentan ligar evidencia sin identidad autenticada', async () => {
+    const mantenimientoRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        idSolicitud: 'sol-2',
+        usuarioSolicitanteId: 'usr-sol-2',
+        usuarioSolicitanteEmail: 'sol2@esap.edu.co',
+        solicitanteEmail: 'sol2@esap.edu.co',
+      }),
+    } as any;
+    const s = servicio({ mantenimientoRepo });
+
+    await expect(
+      s.subirEvidencia({
+        nombreOriginal: 'test.pdf',
+        buffer: Buffer.from('pdf'),
+        mimeType: 'application/pdf',
+        tamanoBytes: 3,
+        idSolicitud: 'sol-2',
+        user: undefined,
+      }),
+    ).rejects.toThrow(/Usuario autenticado requerido/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Reglas de sede
 // ---------------------------------------------------------------------------

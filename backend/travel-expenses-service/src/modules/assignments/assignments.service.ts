@@ -247,7 +247,7 @@ export class AssignmentsService {
       const qb = manager
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
-        .setLock('pessimistic_write');
+        .setLock('pessimistic_write', undefined, ['s']);
 
       if (typeof qb.leftJoinAndSelect === 'function') {
         qb.leftJoinAndSelect('s.comisionado', 'c');

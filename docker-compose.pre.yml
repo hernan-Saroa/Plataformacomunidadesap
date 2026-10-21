@@ -37,6 +37,8 @@ services:
       - "9000:80"
     environment:
       - JWT_ENABLED=false
+      - ALLOW_PRIVATE_IP_ADDRESS=true
+      - ALLOW_META_IP_ADDRESS=true
     volumes:
       - onlyoffice-data-pre:/var/www/onlyoffice/Data
       - onlyoffice-logs-pre:/var/log/onlyoffice
@@ -249,7 +251,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3004
-      CERTIFICATION_EMAIL_SAFE_MODE: 'true'
+      CERTIFICATION_EMAIL_SAFE_MODE: "true"
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
 
       DB_HOST: db
