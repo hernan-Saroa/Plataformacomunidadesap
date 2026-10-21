@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
 # Argumento para la URL del API (se pasa en build time)
 ARG VITE_API_URL=https://comunidadesap.esap.edu.co/services
-ARG VITE_ONLYOFFICE_URL=https://comunidadesap.esap.edu.co
+ARG VITE_ONLYOFFICE_URL=/onlyoffice
 ARG VITE_MICROSOFT_TENANT_ID=
 ARG VITE_MICROSOFT_CLIENT_ID=
 ARG VITE_LOGIN_OPTIONS=both
