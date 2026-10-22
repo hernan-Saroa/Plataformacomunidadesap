@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID, MinLength, MaxLength, IsIn, ArrayMinSize, ValidateNested } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID, MinLength, MaxLength, IsIn, ArrayMinSize, ValidateNested, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -95,6 +95,26 @@ export class CreateMantenimientoDto {
   @IsString()
   @IsOptional()
   prioridad?: string;
+
+  // ===== EFDS-1735..1739 Fase 3: Bien Asignado a Funcionario =====
+  @ApiPropertyOptional({ example: false, description: 'Indica si el mantenimiento afecta un bien asignado a un funcionario específico.' })
+  @IsOptional()
+  esBienAsignadoFuncionario?: boolean;
+
+  @ApiPropertyOptional({ example: 'Dr. Roberto Gómez', description: 'Nombre del funcionario al que está asignado el bien.' })
+  @IsOptional()
+  @IsString()
+  nombreFuncionarioBienAsignado?: string;
+
+  @ApiPropertyOptional({ example: 'ESAP-INV-2024-8891', description: 'Placa o serial de inventario del bien.' })
+  @IsOptional()
+  @IsString()
+  placaInventarioBien?: string;
+
+  @ApiPropertyOptional({ example: 'https://storage/soporte-autorizacion.pdf', description: 'URL del soporte o autorización del funcionario.' })
+  @IsOptional()
+  @IsString()
+  soporteBienAsignadoUrl?: string;
 }
 
 export class RemitirATIDto {
@@ -326,6 +346,26 @@ export class ConfirmarRecepcionInsumosDto {
   observaciones?: string;
 }
 
+export class NotaRecepcionInsumosTecnicoDto {
+  @ApiProperty({
+    enum: ['COMPLETA', 'PARCIAL', 'OBSERVADA'],
+    example: 'COMPLETA',
+    description: 'Resultado de la verificación de entrega de insumos por el técnico.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['COMPLETA', 'PARCIAL', 'OBSERVADA'])
+  resultado: 'COMPLETA' | 'PARCIAL' | 'OBSERVADA';
+
+  @ApiPropertyOptional({
+    example: 'Se reciben 3 tubos de 4 solicitados. Se inicia instalación con lo disponible.',
+    description: 'Observaciones técnicas del estado de los insumos entregados.',
+  })
+  @IsString()
+  @IsOptional()
+  observaciones?: string;
+}
+
 // ============================================================================
 // EFDS-174X - OPCION A. Nuevos DTOs técnicos desde auth roles P3/P4.
 // Reemplazan la entidad CatalogoItem TECNICO_MANTENIMIENTO que se eliminó en
@@ -379,4 +419,35 @@ export class AsignarTecnicoPayload {
   @ApiPropertyOptional({ example: 'Asignacion manual P2 analista' })
   @IsOptional()
   observacionesAsignacion?: string;
+
+  @ApiPropertyOptional({ enum: ['MENOR', 'MAYOR'], example: 'MENOR', description: 'Clasificación del mantenimiento: MENOR (directo UMI) o MAYOR (escalamiento coordinación).' })
+  @IsOptional()
+  @IsIn(['MENOR', 'MAYOR'])
+  clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+
+  @ApiPropertyOptional({ example: false, description: 'Indica si requiere proceso de contratación o compras centralizadas.' })
+  @IsOptional()
+  requiereContratacion?: boolean;
+}
+
+export class RegistrarVoBoDto {
+  @ApiPropertyOptional({ example: true, description: 'Visto Bueno aprobado (true) u observado (false).' })
+  @IsOptional()
+  @IsBoolean()
+  aprobado?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Alias para compatibilidad frontend (true/false).' })
+  @IsOptional()
+  @IsBoolean()
+  voboAprobado?: boolean;
+
+  @ApiPropertyOptional({ example: 'Diagnóstico y alcance técnico revisados y aprobados según estándar UMI.', description: 'Observaciones de la revisión del visto bueno.' })
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
+
+  @ApiPropertyOptional({ example: 'Diagnóstico y alcance técnico revisados.', description: 'Alias para observaciones.' })
+  @IsOptional()
+  @IsString()
+  voboObservaciones?: string;
 }

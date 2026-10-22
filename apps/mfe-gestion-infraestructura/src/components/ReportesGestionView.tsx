@@ -508,7 +508,7 @@ export const ReportesGestionView: React.FC = () => {
                       <th className="p-2 font-semibold text-right">Curso</th>
                       <th className="p-2 font-semibold text-right">Venc</th>
                       <th className="p-2 font-semibold text-right">Calif promedio</th>
-                      <th className="p-2 font-semibold text-right">Acc</th>
+                      <th className="p-2 font-semibold text-right"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -542,10 +542,10 @@ export const ReportesGestionView: React.FC = () => {
               </div>
             </div>
 
-            {/* Tabla 2: Rendimiento Técnicos */}
+            {/* Tabla 2: Atención y Cumplimiento por Técnico */}
             <div className="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-slate-900">Rendimiento Técnicos</h3>
+                <h3 className="text-sm font-bold text-slate-900">Atención y Cumplimiento por Técnico</h3>
                 <span className="text-[11px] font-semibold text-slate-500">{reporte.porTecnico.length} técnicos</span>
               </div>
               <div className="overflow-x-auto max-h-80 overflow-y-auto">
@@ -557,7 +557,7 @@ export const ReportesGestionView: React.FC = () => {
                       <th className="p-2 font-semibold text-right">Compl</th>
                       <th className="p-2 font-semibold text-right">Curso</th>
                       <th className="p-2 font-semibold text-right">Carga HOY</th>
-                      <th className="p-2 font-semibold text-right">Calif promedio</th>
+                      <th className="p-2 font-semibold text-right">Satisfacción servicio</th>
                     </tr>
                   </thead>
                   <tbody>
