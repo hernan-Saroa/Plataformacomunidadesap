@@ -1,7 +1,10 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
+import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
-import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
+import { RundEvidenceWorkflow, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
+import { RundIncorporacion } from './rund-incorporacion';
+import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } from './rund-registration-history';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
@@ -926,6 +929,8 @@ function buildAuthBancoDocenteResponse(row: any) {
     observaciones: row.observaciones ?? null,
     id_rund: row.id_rund || row.idRund || null,
     idRund: row.id_rund || row.idRund || null,
+    estadoAprobacion: row.estado_aprobacion || 'PENDIENTE_APROBACION',
+    completitud: row.completitud || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1179,6 +1184,8 @@ export class BancoDocentesService implements OnModuleInit {
           d."updatedAt" AS docente_updated_at,
           d.observaciones AS observaciones,
           d."idRund" AS id_rund,
+          d."estadoAprobacion" AS estado_aprobacion,
+          d.completitud,
           d.estado AS estado,
           ARRAY(
             SELECT DISTINCT r2.code
@@ -1210,7 +1217,9 @@ export class BancoDocentesService implements OnModuleInit {
   private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }, params: any[]) {
     const conditions: string[] = [];
 
-    if (filters.territorial) {
+    if (filters.territorial === 'SIN_TERRITORIAL') {
+      conditions.push(`COALESCE(NULLIF(TRIM(territorial), ''), NULLIF(TRIM(auth_territorial), '')) IS NULL`);
+    } else if (filters.territorial) {
       params.push(filters.territorial);
       const idx = params.length;
       conditions.push(`(
@@ -1218,6 +1227,8 @@ export class BancoDocentesService implements OnModuleInit {
         OR territorial_id::text = $${idx}
         OR auth_territorial ILIKE $${idx}
         OR territorial ILIKE $${idx}
+        OR ${territorialLookupSql('territorial')} = ${territorialLookupSql(`$${idx}::text`)}
+        OR ${territorialLookupSql('auth_territorial')} = ${territorialLookupSql(`$${idx}::text`)}
         OR EXISTS (
           SELECT 1 FROM auth.seccionales filtro_sec
           WHERE filtro_sec.id_seccional::text = $${idx}
@@ -1226,7 +1237,9 @@ export class BancoDocentesService implements OnModuleInit {
       )`);
     }
 
-    if (filters.dedicacion) {
+    if (filters.dedicacion === 'SIN_DEDICACION') {
+      conditions.push(`NULLIF(TRIM(dedicacion_codigo), '') IS NULL`);
+    } else if (filters.dedicacion) {
       params.push(filters.dedicacion);
       conditions.push(`dedicacion_codigo = $${params.length}`);
     }
@@ -1402,17 +1415,18 @@ export class BancoDocentesService implements OnModuleInit {
     );
   }
 
-  private async createBulkSupport(support: BulkSupport, actorId: string, ip?: string): Promise<string> {
+  private async createBulkSupport(support: BulkSupport, actorId: string, ip?: string, trace?: any): Promise<string> {
     const id = randomUUID();
     const sha256 = createHash('sha256').update(support.content).digest('hex');
     await this.dataSource.query(
       `INSERT INTO academic_work_plan."RundCargaMasiva"
        (id, nombre_archivo, tipo_mime, tamano_bytes, sha256, contenido,
         actor_id, justificacion, ip, estado, resumen, "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PROCESANDO', '{}'::jsonb, NOW(), NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PROCESANDO', $10::jsonb, NOW(), NOW())`,
       [
         id, support.fileName, support.mimeType, support.content.length, sha256,
         support.content, actorId, support.justificacion || 'Carga masiva de perfiles docentes RUND', ip || null,
+        JSON.stringify(trace ? { trazabilidad: trace } : {}),
       ],
     );
     return id;
@@ -1879,6 +1893,8 @@ export class BancoDocentesService implements OnModuleInit {
           metadata: {
             ...(options.audit.metadata || {}),
             periodoCarga: docente.periodoCarga || null,
+            registro: registrationSnapshot(rawPayload, { fullName: finalFullName, documentNumber: payload.documentNumber,
+              email: emailFinal, periodoCarga: docente.periodoCarga }),
             camposModificados: action === 'insert'
               ? ['num_identificacion', ...Object.keys(docenteData)]
               : [...personaChangedFields, ...changedFields],
@@ -1924,6 +1940,7 @@ export class BancoDocentesService implements OnModuleInit {
         usuarioId: authUser.id_user,
         documentNumber: payload.documentNumber!,
         fullName: finalFullName,
+        periodoCarga: docente.periodoCarga || null,
         email: emailFinal,
         territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
@@ -2040,7 +2057,7 @@ export class BancoDocentesService implements OnModuleInit {
 
     const bulkSupportId = options.dryRun
       ? null
-      : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip);
+      : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip, bulkRegistrationTrace(preparedRows));
 
     let finalResults: any[] = [];
     let finalErrors: any[] = [];
@@ -2048,12 +2065,13 @@ export class BancoDocentesService implements OnModuleInit {
     const processRows = async (manager?: any) => {
       const queryRunner = manager || this.dataSource;
       const duplicateValidation = await this.validateBulkDocumentDuplicates(preparedRows, queryRunner);
+      const duplicateErrors = duplicateValidation.errors.map(error => ({ ...error, processedAt: new Date().toISOString() }));
       if (duplicateValidation.errors.length > 0 && !options.omitErrors && !options.dryRun) {
-        return { results: [], errors: duplicateValidation.errors };
+        return { results: [], errors: duplicateErrors };
       }
 
       const results: any[] = [];
-      const errors: any[] = [...duplicateValidation.errors];
+      const errors: any[] = [...duplicateErrors];
       for (let i = 0; i < preparedRows.length; i++) {
         if (duplicateValidation.blockedRowIndexes.has(i)) continue;
         const row = { ...preparedRows[i] };
@@ -2080,7 +2098,7 @@ export class BancoDocentesService implements OnModuleInit {
               },
             },
           });
-          results.push(result);
+          results.push({ ...result, processedAt: new Date().toISOString() });
           if (useRowSavepoint) {
             await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
             await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
@@ -2102,6 +2120,7 @@ export class BancoDocentesService implements OnModuleInit {
           }
 
           errors.push({ 
+            processedAt: new Date().toISOString(),
             row: row.__sourceRowNumber, 
             fila: row.__sourceRowNumber,
             hoja: 'CARGA_DOCENTES',
@@ -2139,7 +2158,8 @@ export class BancoDocentesService implements OnModuleInit {
       if (bulkSupportId) {
         await this.finishBulkSupport(
           bulkSupportId,
-          { total: preparedRows.length, error: String(error?.message || 'Error no controlado') },
+          { total: preparedRows.length, error: String(error?.message || 'Error no controlado'),
+            trazabilidad: bulkRegistrationTrace(preparedRows) },
           'FALLIDA',
         ).catch((auditError: any) => {
           this.logger.error(`No fue posible marcar como fallida la carga ${bulkSupportId}: ${auditError?.message || auditError}`);
@@ -2168,6 +2188,7 @@ export class BancoDocentesService implements OnModuleInit {
           updated: summary.updated,
           unchanged: summary.unchanged,
           errors: summary.errors,
+          trazabilidad: bulkRegistrationTrace(preparedRows, finalResults, finalErrors),
         },
         summary.errors > 0 ? 'COMPLETADA_CON_ERRORES' : 'COMPLETADA',
       );
@@ -2180,12 +2201,20 @@ export class BancoDocentesService implements OnModuleInit {
     const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50));
     return this.dataSource.query(
       `SELECT id, nombre_archivo, tipo_mime, tamano_bytes, sha256, actor_id,
-              justificacion, ip, estado, resumen, "createdAt", "updatedAt"
+              justificacion, ip, estado, resumen - 'trazabilidad' AS resumen, "createdAt", "updatedAt"
        FROM academic_work_plan."RundCargaMasiva"
        ORDER BY "createdAt" DESC
        LIMIT $1`,
       [safeLimit],
     );
+  }
+
+  async getRegistrationHistory(query: any) {
+    return new RundRegistrationHistory(this.dataSource).list(query);
+  }
+
+  async getRegistrationHistoryDetail(tipo: string, id: string, query: any) {
+    return new RundRegistrationHistory(this.dataSource).detail(tipo, id, query);
   }
 
   async getBulkSupport(cargaId: string): Promise<{ fileName: string; mimeType: string; content: Buffer }> {
@@ -2295,6 +2324,10 @@ export class BancoDocentesService implements OnModuleInit {
       return this.dataSource.transaction(execute);
     }
     return execute({ query: this.dataSource.query.bind(this.dataSource) });
+  }
+
+  async guardarIncorporacion(id: string, body: any, actorId: string, ip?: string) {
+    return new RundIncorporacion(this.dataSource).save(await this.resolveDocenteId(id), body, actorId, ip);
   }
 
   async updateDocente(id: string, body: any) {
@@ -2428,11 +2461,11 @@ export class BancoDocentesService implements OnModuleInit {
     const porDedicacion = await this.dataSource.query(`
       ${baseSql}
       SELECT
-        COALESCE(dedicacion_codigo, 'SIN_DEDICACION') AS dedicacion,
+        COALESCE(NULLIF(TRIM(dedicacion_codigo), ''), 'SIN_DEDICACION') AS dedicacion,
         COUNT(*)::int AS total
       FROM auth_docentes
       ${d.w}
-      GROUP BY COALESCE(dedicacion_codigo, 'SIN_DEDICACION')
+      GROUP BY COALESCE(NULLIF(TRIM(dedicacion_codigo), ''), 'SIN_DEDICACION')
       ORDER BY total DESC
     `, d.p);
 
@@ -3055,7 +3088,6 @@ export class BancoDocentesService implements OnModuleInit {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   private static readonly BLOQUES = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'] as const;
-  private static readonly BLOQUES_OBLIGATORIOS = ['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'] as const;
 
   /**
    * BR-039 â€” CatÃ¡logo de tipos de soporte vÃ¡lidos por bloque.
@@ -3132,20 +3164,33 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     // Cargar soportes por bloque
-    const soportes = await this.dataSource.query(
+    const soportes = await withCurrentEvidenceDocuments(this.dataSource, docenteId, await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1 ORDER BY bloque ASC, "createdAt" DESC`,
       [docenteId],
-    );
+    ));
 
     const soportesPorBloque: Record<string, any[]> = {};
+    const names = await resolveRundActorNames(this.dataSource, [
+      ...bloques.flatMap((block: any) => [block.cargado_por, block.revisado_por]),
+      ...soportes.flatMap((support: any) => [support.cargado_por,
+        ...Object.values(support.revisiones_campos || {}).map((decision: any) => decision.revisadoPor)]),
+    ]);
     for (const s of soportes) {
       if (!soportesPorBloque[s.bloque]) soportesPorBloque[s.bloque] = [];
-      soportesPorBloque[s.bloque].push(s);
+      soportesPorBloque[s.bloque].push({ ...s,
+        cargadoPorNombre: rundActorName(names, s.cargado_por),
+        revisiones_campos: Object.fromEntries(Object.entries(s.revisiones_campos || {}).map(([key, decision]: [string, any]) => [key, {
+          ...decision, revisadoPorNombre: decision.revisadoPor ? rundActorName(names, decision.revisadoPor) : null,
+        }])),
+      });
     }
 
     return bloques.map((b: any) => ({
       ...b,
+      cargadoPorNombre: b.cargado_por ? rundActorName(names, b.cargado_por) : null,
+      revisadoPorNombre: b.revisado_por ? rundActorName(names, b.revisado_por) : null,
       soportes: soportesPorBloque[b.bloque] || [],
+      puedeDevolver: canReturnEvidenceBlock(b.bloque, soportesPorBloque[b.bloque] || []),
       tiposSoporteRequeridos: BancoDocentesService.CATALOGO_SOPORTE[b.bloque] || [],
     }));
   }
@@ -3177,15 +3222,15 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   /**
-   * BR-043 â€” Aprobar un bloque (maker-checker: aprobador â‰  cargador).
+   * Aprobar un bloque con permisos RUND y trazabilidad del actor.
    * BR-038 â€” Verifica que exista al menos un soporte para bloques crÃ­ticos.
    */
-  async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string, ip?: string) {
-    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, undefined, ip);
+  async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string, ip?: string, blockVersion?: number) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, undefined, ip, blockVersion);
   }
 
-  async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string, ip?: string) {
-    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, observacion ?? '', ip);
+  async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string, ip?: string, blockVersion?: number) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, observacion ?? '', ip, blockVersion);
   }
 
   async revisarSoporte(docenteId: string, bloque: string, soporteId: string, data: any, actorId: string, ip?: string) {
@@ -3237,28 +3282,9 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async verificarActivacion(docenteId: string): Promise<{ activable: boolean; completitud: Record<string, string> }> {
     docenteId = await this.resolveDocenteId(docenteId);
-    const bloques = await this.dataSource.query(
-      `SELECT bloque, estado FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1`,
-      [docenteId],
-    );
-
-    const completitud: Record<string, string> = {};
-    for (const b of bloques) {
-      completitud[b.bloque] = b.estado;
-    }
 
     // Verificar que todos los bloques obligatorios estÃ©n aprobados
-    const activable = BancoDocentesService.BLOQUES_OBLIGATORIOS.every(
-      (b) => completitud[b] === 'Aprobado',
-    );
-
-    const nuevoEstado = Object.values(completitud).includes('Devuelto') ? 'DEVUELTO' : activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."Docente" SET "estadoAprobacion" = $1, completitud = $2 WHERE id = $3`,
-      [nuevoEstado, JSON.stringify(completitud), docenteId],
-    );
-
-    return { activable: nuevoEstado === 'ACTIVO_RUND', completitud };
+    return new RundEvidenceWorkflow(this.dataSource).refreshSummary(docenteId);
   }
 
   /**
@@ -3621,11 +3647,13 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async getAuditoria(docenteId: string, limit = 50): Promise<any[]> {
     docenteId = await this.resolveDocenteId(docenteId);
-    return this.auditLogRepo.find({
+    const logs = await this.auditLogRepo.find({
       where: { docenteId },
       order: { createdAt: 'DESC' },
       take: limit,
     });
+    const names = await resolveRundActorNames(this.dataSource, logs.map(log => log.actorId));
+    return logs.map(log => ({ ...log, actorNombre: rundActorName(names, log.actorId) }));
   }
 
   /**

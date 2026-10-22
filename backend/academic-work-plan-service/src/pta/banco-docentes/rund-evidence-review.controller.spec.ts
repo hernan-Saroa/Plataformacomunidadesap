@@ -14,10 +14,10 @@ describe('Identidad del revisor documental', () => {
   it('aplica el mismo actor autenticado a la aprobación y devolución del espacio', async () => {
     const service = { aprobarBloque: jest.fn(), devolverBloque: jest.fn() };
     const controller = new BancoDocentesController(service as any, {} as any);
-    await controller.aprobarBloque('docente', 'CONTACTO', request);
-    await controller.devolverBloque('docente', 'CONTACTO', request, 'Corrija el teléfono.');
-    expect(service.aprobarBloque).toHaveBeenCalledWith('docente', 'CONTACTO', 'REVISOR_AUTENTICADO', '127.0.0.1');
-    expect(service.devolverBloque).toHaveBeenCalledWith('docente', 'CONTACTO', 'REVISOR_AUTENTICADO', 'Corrija el teléfono.', '127.0.0.1');
+    await controller.aprobarBloque('docente', 'CONTACTO', request, 2);
+    await controller.devolverBloque('docente', 'CONTACTO', request, 'Corrija el teléfono.', 3);
+    expect(service.aprobarBloque).toHaveBeenCalledWith('docente', 'CONTACTO', 'REVISOR_AUTENTICADO', '127.0.0.1', 2);
+    expect(service.devolverBloque).toHaveBeenCalledWith('docente', 'CONTACTO', 'REVISOR_AUTENTICADO', 'Corrija el teléfono.', '127.0.0.1', 3);
   });
 
   it('rechaza una revisión sin acceso al archivo original', async () => {

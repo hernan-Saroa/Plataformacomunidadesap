@@ -22,8 +22,7 @@ export type PTAModuleProps = {
   initialView?: string;
 };
 
-function deriveIsSuperUser(userRoles?: string[], userEmail?: string) {
-  if (userEmail && String(userEmail).toLowerCase().trim() === 'desarrollo.ccd@esap.edu.co') return true;
+function deriveIsSuperUser(userRoles?: string[]) {
   if (!Array.isArray(userRoles)) return false;
   // Solo el rol EXACTO SUPER_ADMIN es superusuario (alineado con el backend y con
   // PermisosPTAContext). Un rol que solo contenga "admin" en el nombre NO debe
@@ -44,7 +43,7 @@ export function PTAModule({
   initialView,
 }: PTAModuleProps) {
   const title = useMemo(() => 'Backoffice PTA', []);
-  const isSuperUser = deriveIsSuperUser(userRoles, userEmail);
+  const isSuperUser = deriveIsSuperUser(userRoles);
 
   return (
     <AuthProvider

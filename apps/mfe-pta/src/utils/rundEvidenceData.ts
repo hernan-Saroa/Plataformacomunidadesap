@@ -28,3 +28,35 @@ export function canUploadRundField(block: string, field: { tipoSoporte: string; 
   const keys = fields[field.revisionId || field.tipoSoporte] || [];
   return (tarjeta.bloques?.[block]?.campos || []).some((item: any) => keys.includes(item.campo) && !item.restringido && hasRundData(item.valor));
 }
+
+export type RundEvidenceOption = {
+  block: string;
+  type: string;
+  label: string;
+  dataSummary?: string;
+  hint?: string;
+  fields?: { label: string; value: string }[];
+};
+
+/** Un archivo puede respaldar varias filas; conserva sus datos sin duplicar la carga. */
+export function groupRundEvidenceOptions(options: RundEvidenceOption[]): RundEvidenceOption[] {
+  const sharedLabels: Record<string, string> = {
+    documento_identidad: 'Documento de identidad',
+    contrato: 'Acto administrativo / contrato de vinculación',
+    acto_administrativo_dedicacion: 'Acto administrativo de dedicación',
+  };
+  const groups = new Map<string, RundEvidenceOption>();
+  for (const option of options) {
+    if (!option.type) continue;
+    const key = `${option.block}:${option.type}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { ...option, label: sharedLabels[option.type] || option.label, fields: [] };
+      groups.set(key, group);
+    }
+    for (const field of option.fields || []) {
+      if (!group.fields!.some(existing => existing.label === field.label)) group.fields!.push({ ...field });
+    }
+  }
+  return [...groups.values()];
+}

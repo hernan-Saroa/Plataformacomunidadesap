@@ -25,6 +25,9 @@ describe('BancoDocentesService - carga masiva trazable REQ-RUND-F001', () => {
     const upsertSpy = jest.spyOn(service, 'upsertDocente').mockResolvedValue({
       action: 'insert',
       docenteId: '11111111-1111-4111-8111-111111111111',
+      sourceRowNumber: 2,
+      periodoCarga: '2026-2',
+      fullName: 'Docente de Prueba',
     } as any);
 
     const result = await service.bulkUpsert([{ DOCUMENTO_IDENTIDAD: '1020304050' }], {
@@ -50,6 +53,10 @@ describe('BancoDocentesService - carga masiva trazable REQ-RUND-F001', () => {
       }),
     }));
     expect(String(dataSource.query.mock.calls.at(-1)?.[0])).toContain('UPDATE academic_work_plan."RundCargaMasiva"');
+    const receipt = JSON.parse(dataSource.query.mock.calls.at(-1)?.[1][2]);
+    expect(receipt.trazabilidad.registros).toEqual([expect.objectContaining({
+      nombre: 'Docente de Prueba', periodo: '2026-2', resultado: 'CREADO', fila: 2,
+    })]);
   });
 
   it('bloquea cédulas repetidas dentro del mismo archivo', async () => {

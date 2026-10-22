@@ -18,9 +18,10 @@ describe('Archivos estáticos RUND: URLs históricas, JWT y auditoría', () => {
       await request(app).get(path).expect(401);
       const denied = await request(app).get(path).set('Cookie', `esap_access_token=${token('DOCENTE')}`).expect(403);
       expect(denied.text).not.toContain('1020304050');
-      expect(db.query).toHaveBeenCalledTimes(2);
+      const audits = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO'));
+      expect(audits).toHaveLength(2);
       expect(JSON.stringify(db.query.mock.calls)).not.toContain('1020304050');
-      expect(db.query.mock.calls[1][1]).toContain('DENEGADO');
+      expect(audits[1][1]).toContain('DENEGADO');
     },
   );
 
@@ -32,9 +33,21 @@ describe('Archivos estáticos RUND: URLs históricas, JWT y auditoría', () => {
     expect(db.query.mock.calls[0][1]).toContain('COMPLETO');
   });
 
+  it.each(['RUND_CARGADOR', 'RUND_APROBADOR'])('autoriza el original histórico para %s solo con permiso explícito del servidor', async role => {
+    db.query.mockImplementation(async (sql: string) => sql.includes('SELECT DISTINCT p.code') ? [{ code: 'banco-docentes.rund.sensitive.view' }] : []);
+    await request(app).get('/uploads/rund-documentos/original.pdf').set('Authorization', `Bearer ${token(role)}`).expect(200, binary);
+    const audits = db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO'));
+    expect(audits[0][1]).toContain('COMPLETO');
+  });
+
   it('conserva intactos los adjuntos ajenos al RUND', async () => {
     await request(app).get('/uploads/solicitudes-pta/adjunto.pdf').expect(200, binary);
     expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it.each(['carga', 'revision', 'incorporacion'])('el permiso funcional %s autoriza originales sin depender del nombre del rol', async profile => {
+    db.query.mockImplementation(async (sql: string) => sql.includes('SELECT DISTINCT p.code') ? [{ code: `banco-docentes.rund.${profile}` }] : []);
+    await request(app).get('/uploads/rund-documentos/original.pdf').set('Authorization', `Bearer ${token('PERSONALIZADO')}`).expect(200, binary);
   });
 
   it('no entrega el archivo si falla la auditoría', async () => {

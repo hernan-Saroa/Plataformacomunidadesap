@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BancoDocentesPTA } from './BancoDocentesPTA';
 import { getBancoDocentes } from '../../../services/api/ptaApi';
@@ -11,14 +11,68 @@ vi.mock('../../../services/api/ptaApi', () => ({
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: {
   get: vi.fn().mockResolvedValue([{ codigo: '2026-2', estado: 'en_curso' }]),
 } }));
-vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: () => true }) }));
+let grantedPermissions: string[] | null = null;
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: (permission: string) => grantedPermissions === null || grantedPermissions.includes(permission) }) }));
 vi.mock('../../../utils/bancoDocentesExcel', () => ({ downloadBancoDocentesTemplate: vi.fn() }));
 vi.mock('./BancoDocenteDetalleInline', () => ({ BancoDocenteDetalleInline: () => <tr><td>Detalle abierto</td></tr> }));
 vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null }));
 vi.mock('./BancoDocenteEstadoModal', () => ({ BancoDocenteEstadoModal: () => null }));
 vi.mock('./BancoDocentesBulkUpload', () => ({ BancoDocentesBulkUpload: () => null }));
 vi.mock('./TableroInvitacionesRUND', () => ({ TableroInvitacionesRUND: () => null }));
-afterEach(cleanup);
+vi.mock('./RundRegistrationHistory', () => ({ RundRegistrationHistory: ({ periodoCarga }: any) => <div>Historial del periodo {periodoCarga}</div> }));
+afterEach(() => { cleanup(); localStorage.removeItem('esap_user'); sessionStorage.removeItem('esap_user'); });
+beforeEach(() => { grantedPermissions = null; });
+
+it('abre trazabilidad con el periodo del encabezado y conserva el regreso al listado', async () => {
+  grantedPermissions = ['banco-docentes.rund.carga'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [], total: 0, pages: 0 } } as any);
+  render(<BancoDocentesPTA />);
+  fireEvent.click(screen.getByRole('button', { name: 'Trazabilidad' }));
+  expect(await screen.findByText('Historial del periodo 2026-2')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Listado de Docentes' }));
+  expect(screen.queryByText(/Historial del periodo/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Carga Masiva' })).toBeTruthy();
+});
+
+it.each([
+  { permissions: ['banco-docentes.rund.view','banco-docentes.rund.edit','banco-docentes.rund.documents.manage'], create: false, edit: true },
+  { permissions: ['banco-docentes.rund.view','banco-docentes.rund.validate'], create: false, edit: false },
+  { permissions: ['banco-docentes.rund.manage'], create: true, edit: true },
+  { permissions: ['banco-docentes.rund.carga'], create: true, edit: true },
+  { permissions: ['banco-docentes.rund.revision'], create: false, edit: false },
+  { permissions: ['banco-docentes.rund.incorporacion'], create: false, edit: false },
+  { permissions: ['banco-docentes.rund.carga', 'banco-docentes.rund.revision'], create: true, edit: true },
+])('ajusta creación y edición a los permisos de la API: $permissions', async ({ permissions, create, edit }) => {
+  grantedPermissions = permissions;
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: {
+    data: [{ id: 'docente-1', nombre_completo: 'DOCENTE DE PRUEBA', estado: 'ACTIVO' }], total: 1, pages: 1,
+  } } as any);
+  render(<BancoDocentesPTA />);
+  await screen.findByText('DOCENTE DE PRUEBA');
+  expect(Boolean(screen.queryByRole('button', { name: 'Crear Docente (Canal 2)' }))).toBe(create);
+  expect(Boolean(screen.queryByTitle('Editar docente'))).toBe(edit);
+});
+
+it.each(['localStorage', 'sessionStorage'])('ignora un Super Admin anterior guardado en %s', async storage => {
+  window[storage as 'localStorage' | 'sessionStorage'].setItem('esap_user', JSON.stringify({ roles: ['SUPER_ADMIN'], email: 'desarrollo.ccd@esap.edu.co' }));
+  grantedPermissions = ['banco-docentes.rund.revision'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: {
+    data: [{ id: 'docente-1', nombre_completo: 'DOCENTE DE PRUEBA', estado: 'ACTIVO' }], total: 1, pages: 1,
+  } } as any);
+  render(<BancoDocentesPTA />);
+  await screen.findByText('DOCENTE DE PRUEBA');
+  expect(screen.queryByRole('button', { name: 'Crear Docente (Canal 2)' })).toBeNull();
+  expect(screen.queryByTitle('Editar docente')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Carga Masiva' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Invitaciones', exact: true })).toBeNull();
+});
+
+it('administración RUND ofrece importación e invitaciones que la API permite', async () => {
+  grantedPermissions = ['banco-docentes.rund.manage'];
+  render(<BancoDocentesPTA />);
+  expect(screen.getByRole('button', { name: 'Carga Masiva' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Invitaciones', exact: true })).toBeTruthy();
+});
 
 it('conserva el listado del periodo activo cuando una consulta inicial termina tarde', async () => {
   const anteriores: Array<(result: any) => void> = [];
