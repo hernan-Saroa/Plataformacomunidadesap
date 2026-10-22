@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { ModalCompartirExpediente } from './ModalCompartirExpediente';
+import { ModalCompartirFuid } from './ModalCompartirFuid';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { apiClient } from '../../../services/api/apiClient';
@@ -468,6 +469,7 @@ export function ExpedientesElectronicosWorldClass({
   // ✅ NUEVO: Estado para modal de compartir expediente
   const [showModalCompartir, setShowModalCompartir] = useState(false);
   const [expedienteParaCompartir, setExpedienteParaCompartir] = useState<ExpedienteElectronico | null>(null);
+  const [fuidParaCompartir, setFuidParaCompartir] = useState<{ items: any[]; header: any; filename: string } | null>(null);
 
   // ✅ NUEVO: Expediente destino al subir un documento adicional desde la vista cronológica
   const [expedienteParaSubir, setExpedienteParaSubir] = useState<ExpedienteElectronico | null>(null);
@@ -1031,14 +1033,18 @@ export function ExpedientesElectronicosWorldClass({
     }
 
     const estadoLabel = getEstadoConfig(exp.estado).label;
+    // Solo los procesos cerrados (finalizados/archivados) tienen fecha final y descriptor;
+    // si el proceso sigue activo, esas casillas del FUID deben ir vacías.
+    const cerrado = exp.estado === 'finalizado';
 
     return {
       radicado: exp.radicado,
       nombreDisciplinado: exp.nombreDisciplinado,
       asunto: exp.tipoProceso,
-      descriptorIdentificacion: `NED: ${exp.nombreDisciplinado}`,
+      descriptorIdentificacion: cerrado ? `NED: ${exp.nombreDisciplinado}` : '',
       fechaExtremaInicial: fechaInicial,
-      fechaExtremaFinal: fechaFinal,
+      fechaExtremaFinal: cerrado ? fechaFinal : '',
+      cerrado,
       codigoCCDU: '780',
       codigoSerieTVD: '780',
       serie: 'PROCESOS JURÍDICOS',
@@ -1111,45 +1117,40 @@ export function ExpedientesElectronicosWorldClass({
     }
   };
 
-  // ✅ Compartir FUID individual
-  const handleCompartirFuidIndividual = (exp: ExpedienteElectronico) => {
-    setExpedienteParaCompartir(exp);
-    setShowModalCompartir(true);
+  const construirFuidHeader = () => {
+    const currentUser = authService.getCurrentUser();
+    return {
+      elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
+      cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
+    };
   };
 
-  // ✅ Compartir seleccionados
-  const handleCompartirSeleccionados = async () => {
+  const fechaPrefijoFuid = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`;
+  };
+
+  // ✅ Compartir FUID individual (envía el archivo FUID, no el Índice Electrónico)
+  const handleCompartirFuidIndividual = (exp: ExpedienteElectronico) => {
+    setFuidParaCompartir({
+      items: [construirFuidItem(exp)],
+      header: construirFuidHeader(),
+      filename: `${fechaPrefijoFuid()}_FUID_${exp.radicado}.xlsx`,
+    });
+  };
+
+  // ✅ Compartir FUID de los expedientes seleccionados
+  const handleCompartirSeleccionados = () => {
     const seleccionados = documentosPorExpediente.filter(g => expedientesSeleccionados.has(g.expedienteId));
     if (seleccionados.length === 0) {
       toast.warning('Seleccione al menos un expediente');
       return;
     }
-    try {
-      toast.info(`Generando archivo FUID de ${seleccionados.length} expediente(s)...`, { id: 'fuid-share' });
-      const items = seleccionados.map(g => construirFuidItem(g.expediente));
-      const currentUser = authService.getCurrentUser();
-      const hoy = new Date();
-      const yyyy = hoy.getFullYear();
-      const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-      const dd = String(hoy.getDate()).padStart(2, '0');
-      const filename = `${yyyy}${mm}${dd}_FUID.xlsx`;
-
-      await disciplinaryService.descargarFuidLote(
-        items,
-        {
-          elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
-          cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
-        },
-        filename,
-      );
-      toast.success(`FUID generado para compartir (${seleccionados.length} expedientes)`, {
-        id: 'fuid-share',
-        description: `El archivo ${filename} está listo para ser remitido a Gestión Documental.`,
-      });
-    } catch (error: any) {
-      console.error('Error al compartir seleccionados:', error);
-      toast.error('Error al compartir FUID seleccionados', { id: 'fuid-share', description: error.message });
-    }
+    setFuidParaCompartir({
+      items: seleccionados.map(g => construirFuidItem(g.expediente)),
+      header: construirFuidHeader(),
+      filename: `${fechaPrefijoFuid()}_FUID.xlsx`,
+    });
   };
 
   const handleSubirDocumento = (tipoId: string) => {
@@ -2739,6 +2740,16 @@ export function ExpedientesElectronicosWorldClass({
             setShowModalCompartir(false);
             setExpedienteParaCompartir(null);
           }}
+        />
+      )}
+
+      {/* ✅ MODAL: COMPARTIR FUID (EI-FO-003) */}
+      {fuidParaCompartir && (
+        <ModalCompartirFuid
+          items={fuidParaCompartir.items}
+          header={fuidParaCompartir.header}
+          filename={fuidParaCompartir.filename}
+          onClose={() => setFuidParaCompartir(null)}
         />
       )}
     </div>

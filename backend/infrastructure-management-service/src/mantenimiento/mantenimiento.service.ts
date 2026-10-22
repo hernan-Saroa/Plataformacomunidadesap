@@ -4051,13 +4051,13 @@ export class MantenimientoService implements OnModuleInit {
   }): Promise<SolicitudEvidencia> {
     if (params.idSolicitud) {
       const solicitud = await this.findById(params.idSolicitud);
-      if (!params.user || !Array.isArray(params.user.roles) || params.user.roles.length === 0) {
+      const userIdActual = String(params.user?.userId || '').trim().toLowerCase();
+      const emailActual = String(params.user?.email || params.user?.username || '').trim().toLowerCase();
+      if (!params.user || (!userIdActual && !emailActual)) {
         throw new ForbiddenException(
           'Usuario autenticado requerido para adjuntar evidencia a una solicitud existente.',
         );
       }
-      const userIdActual = String(params.user.userId || '').trim().toLowerCase();
-      const emailActual = String(params.user.email || '').trim().toLowerCase();
       const solicitanteUserId = String(solicitud.usuarioSolicitanteId || '').trim().toLowerCase();
       const solicitanteEmail = String(
         solicitud.usuarioSolicitanteEmail || solicitud.solicitanteEmail || '',
@@ -4067,11 +4067,15 @@ export class MantenimientoService implements OnModuleInit {
       const esSolicitanteOriginal =
         (!!userIdActual && !!solicitanteUserId && userIdActual === solicitanteUserId) ||
         (!!emailActual && !!solicitanteEmail && emailActual === solicitanteEmail);
+      const puedeOperarComoTecnicoAsignado = (await this.usuarioPuedeOperarComoTecnicoAsignado(
+        solicitud,
+        params.user,
+      )).puede;
       const puedeGestionarSolicitud =
         userHasPermission(PERMISO_ASIGNAR_SOLICITUD, params.user) ||
         userHasPermission(PERMISO_VER_BANDEJA_GENERAL, params.user) ||
         userHasPermission(PERMISO_VER_INCLUIDO_TI, params.user);
-      if (!esSolicitanteOriginal && !puedeGestionarSolicitud) {
+      if (!esSolicitanteOriginal && !puedeOperarComoTecnicoAsignado && !puedeGestionarSolicitud) {
         throw new ForbiddenException(
           'No está autorizado para adjuntar evidencias adicionales a esta solicitud.',
         );
@@ -4101,7 +4105,7 @@ export class MantenimientoService implements OnModuleInit {
       mimeType: params.mimeType,
       tamanoBytes: params.tamanoBytes,
       usuarioQueSubioId: userIdUuidOrNull(params.user?.userId) ?? undefined,
-      usuarioQueSubioEmail: params.user?.email,
+      usuarioQueSubioEmail: params.user?.email ?? params.user?.username,
       orden: params.orden ?? 1,
       notas: params.notas,
     } as any);

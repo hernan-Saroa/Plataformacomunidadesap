@@ -37,6 +37,8 @@ services:
       - "9000:80"
     environment:
       - JWT_ENABLED=false
+      - ALLOW_PRIVATE_IP_ADDRESS=true
+      - ALLOW_META_IP_ADDRESS=true
     volumes:
       - onlyoffice-data:/var/www/onlyoffice/Data
       - onlyoffice-logs:/var/log/onlyoffice
