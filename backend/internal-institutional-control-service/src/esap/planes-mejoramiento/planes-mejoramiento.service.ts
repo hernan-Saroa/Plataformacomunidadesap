@@ -2268,8 +2268,16 @@ export class PlanesMejoramientoService {
     });
     if (!plan) throw new NotFoundException(`Plan con ID ${planId} no encontrado`);
 
+    // Una acción terminada al 100 % ya cumple aunque nadie haya registrado el cumplimiento
+    // EM-FO-002: ese campo queda vacío (o en 0 por el cron) cuando el área completa la acción
+    // y las tareas de seguimiento se cierran en Roles y Actividades (EFDS-2352).
     const sinCumplir = (plan.acciones ?? []).filter(
-      (a) => (a.cumplimientoEmfo ?? 0) === 0 && a.estadoAccionSeguimiento !== 'cerrada',
+      (a) =>
+        this.determinarEstadoAccionReal(a) !== AccionCorrectivaEstado.COMPLETADA &&
+        a.estado !== AccionCorrectivaEstado.COMPLETADA &&
+        a.estado !== AccionCorrectivaEstado.IMPLEMENTADA &&
+        (a.cumplimientoEmfo ?? 0) === 0 &&
+        a.estadoAccionSeguimiento !== 'cerrada',
     );
     if (sinCumplir.length > 0) {
       throw new BadRequestException(`No se puede cerrar: ${sinCumplir.length} acción(es) sin cumplimiento`);
