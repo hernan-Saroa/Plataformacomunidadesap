@@ -34,6 +34,7 @@ import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelCausal } from '../causal/PanelCausal';
 import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
+import { PanelSegundaSesion } from '../comite-contratacion/PanelSegundaSesion';
 import {
   NUMERALES_ADJUDICACION,
   NUMERALES_CDP,
@@ -67,6 +68,7 @@ import {
   NUMERAL_RIESGOS,
   NUMERAL_RP,
   NUMERAL_SEGUIMIENTO,
+  NUMERAL_SEGUNDA_SESION,
 } from './actividadesConPanel';
 
 interface Props {
@@ -116,6 +118,10 @@ export function PanelDeLaActividad({
         // La 3.7 deja de ser constancia: lo que el comité decidió son
         // tres desenlaces, y observar devuelve los documentos.
         <PanelComiteContratacion procesoId={procesoId} onCambio={onCambio} />
+      ) : numeral === NUMERAL_SEGUNDA_SESION ? (
+        // La segunda sesión del comité con el pliego definitivo (113): sube
+        // versiones a la 5.1, va por la cadena y registra lo que decidió.
+        <PanelSegundaSesion procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_RADICACION ? (
         // La 3.3 deja de ser el panel genérico de constancia: radicar es
         // recibir el proceso y ponerle responsable, no anotar una fecha.

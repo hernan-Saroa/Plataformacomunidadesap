@@ -19,7 +19,7 @@ import type {
 import type { EstadoActividad } from '../../entities/proceso-actividad.entity';
 
 export const ACCIONES: AccionEscalon[] = ['APROBAR', 'DEVOLVER', 'NEGAR'];
-export const PAPELES_ESCALON: PapelEscalon[] = ['ABOGADO', 'CONTRATACION', 'SUPERVISOR'];
+export const PAPELES_ESCALON: PapelEscalon[] = ['CONTRATACION', 'SUPERVISOR'];
 const REGLAS: ReglaDecision[] = ['UNO', 'TODOS'];
 
 /** Lo que un escalón puede hacer si nadie dice otra cosa: lo que hacía el aprobador único. */
@@ -46,9 +46,9 @@ const lista = (valor: unknown): string[] =>
  * La cadena que declara el `config` de una regla `EXIGE_APROBACION`.
  *
  * Dos formas: `{cadenaId}`, que apunta a una plantilla y se resuelve fuera, y
- * la de siempre `{roles, personas}`, que se lee como una cadena de un escalón
- * para no reescribir ninguna regla existente. Sin nadie que apruebe no exige
- * nada: bloquearía la actividad sin que nadie pudiera desbloquearla.
+ * `{roles, personas, puestos}`, que se lee como una cadena de un escalón. Sin
+ * nadie que apruebe no exige nada: bloquearía la actividad sin que nadie
+ * pudiera desbloquearla.
  */
 export function leerConfigDeRegla(
   config: Record<string, unknown> | null | undefined,
@@ -58,7 +58,8 @@ export function leerConfigDeRegla(
 
   const roles = lista(c.roles);
   const personas = lista(c.personas);
-  if (!roles.length && !personas.length) return null;
+  const puestos = lista(c.puestos);
+  if (!roles.length && !personas.length && !puestos.length) return null;
 
   return {
     escalon: {
@@ -66,6 +67,7 @@ export function leerConfigDeRegla(
       roles,
       personas,
       papeles: [],
+      puestos,
       reglaDecision: 'UNO',
       acciones: [...ACCIONES_POR_DEFECTO],
     },
@@ -90,13 +92,14 @@ export function validarEscalones(entrada: unknown): { escalones: EscalonConfigur
     const roles = lista(bruto?.roles);
     const personas = lista(bruto?.personas);
     const papeles = lista(bruto?.papeles) as PapelEscalon[];
+    const puestos = lista(bruto?.puestos);
     const reglaDecision: ReglaDecision = REGLAS.includes(bruto?.reglaDecision) ? bruto.reglaDecision : 'UNO';
     const acciones = (lista(bruto?.acciones).length ? lista(bruto?.acciones) : ACCIONES_POR_DEFECTO) as AccionEscalon[];
 
     if (!nombre) problemas.push(`El escalón ${n} necesita un nombre`);
     if (nombre.length > 120) problemas.push(`El nombre del escalón ${n} es demasiado largo`);
-    if (!roles.length && !personas.length && !papeles.length) {
-      problemas.push(`El escalón ${n} no tiene quién decida: elige un rol, una persona o un papel`);
+    if (!roles.length && !personas.length && !papeles.length && !puestos.length) {
+      problemas.push(`El escalón ${n} no tiene quién decida: elige un rol, una persona, un puesto o un papel`);
     }
     const papelRaro = papeles.find((p) => !PAPELES_ESCALON.includes(p));
     if (papelRaro) problemas.push(`El escalón ${n} nombra un papel que no existe: ${papelRaro}`);
@@ -105,57 +108,53 @@ export function validarEscalones(entrada: unknown): { escalones: EscalonConfigur
     if (!acciones.includes('APROBAR')) {
       problemas.push(`El escalón ${n} tiene que poder aprobar: sin eso la cadena no tiene salida`);
     }
-    if (reglaDecision === 'TODOS' && (roles.length || papeles.length || personas.length < 2)) {
+    // Con TODOS, cada miembro tiene que ser alguien concreto: una persona
+    // nombrada o quien ocupe un puesto en el proceso. Un rol o un papel no
+    // dicen cuántos son, así que «todos» no tendría fin.
+    if (reglaDecision === 'TODOS' && (roles.length || papeles.length || personas.length + puestos.length < 2)) {
       problemas.push(
-        `El escalón ${n} exige que aprueben todos: nombra al menos dos personas y ningún rol ni papel, porque los miembros de un rol cambian`,
+        `El escalón ${n} exige que aprueben todos: nombra al menos dos entre personas y puestos, y ningún rol ni papel, porque los miembros de un rol cambian`,
       );
     }
 
-    return { nombre, roles, personas, papeles, reglaDecision, acciones: ACCIONES.filter((a) => acciones.includes(a)) };
+    return {
+      nombre,
+      roles,
+      personas,
+      papeles,
+      puestos,
+      reglaDecision,
+      acciones: ACCIONES.filter((a) => acciones.includes(a)),
+    };
   });
 
   return { escalones, problemas };
 }
 
-/** Quién está mirando, en los términos en que se designan los responsables. */
+/** Quién está mirando, en los términos en que se nombran los responsables. */
 export interface Quien {
   roles: string[];
   /** `id_person` de su cuenta, si la tiene enlazada. */
   personaId: string | null;
-  /** Los papeles que cumple en este proceso: abogado, supervisor… */
+  /** Los papeles que cumple en este proceso: quien lo lleva, el supervisor. */
   papeles: PapelEscalon[];
-  /** Su cuenta: es como se guarda la designación de la 3.3 (102). */
+  /**
+   * Los puestos que ocupa en este proceso (109), solo los que le valen: si
+   * perdió el permiso de aprobar en la actividad, el puesto no le da nada.
+   */
+  puestos?: string[];
   usuarioId?: string | null;
 }
 
-/** Los responsables de un escalón, con las cuentas designadas para el proceso (102). */
-export type Responsables = Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles'> & {
-  cuentas?: string[];
-};
-
-/**
- * Quién decide de verdad un escalón en un proceso.
- *
- * En la cadena de la 3.1 un escalón por rol no lo decide cualquiera con el
- * rol: lo decide la persona que la 3.3 designó para ese proceso, y sin
- * designación nadie (decisión de Juan, 2026-10-14). Los escalones que nombran
- * personas o un papel no cambian: ya dicen quién.
- */
-export function responsablesEfectivos<T extends Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles'>>(
-  escalon: T,
-  exigeDesignacion: boolean,
-  designado: string | null,
-): T & { cuentas: string[] } {
-  if (!exigeDesignacion || !escalon.roles.length) return { ...escalon, cuentas: [] };
-  return { ...escalon, roles: [], cuentas: designado ? [designado] : [] };
-}
+/** Los responsables de un escalón. */
+export type Responsables = Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles' | 'puestos'>;
 
 /** Si quien mira es responsable del escalón. SUPER_ADMIN lo es de todos. */
 export function esResponsable(escalon: Responsables, quien: Quien): boolean {
   if (quien.roles.includes('SUPER_ADMIN')) return true;
-  if (quien.usuarioId && escalon.cuentas?.includes(quien.usuarioId)) return true;
   if (quien.personaId && escalon.personas.includes(quien.personaId)) return true;
   if (escalon.papeles.some((p) => quien.papeles.includes(p))) return true;
+  if ((escalon.puestos ?? []).some((p) => quien.puestos?.includes(p))) return true;
   return escalon.roles.some((r) => quien.roles.includes(r));
 }
 
@@ -225,22 +224,26 @@ export function motivoParaNoDecidir(args: {
 /**
  * Si con esta aprobación el escalón queda resuelto.
  *
- * Con `UNO`, siempre. Con `TODOS`, cuando cada persona nombrada aprobó: las
- * aprobaciones anteriores del escalón más la que se está registrando.
+ * Con `UNO`, siempre. Con `TODOS`, cuando aprobaron cada persona nombrada y
+ * cada cuenta que ocupa uno de los puestos del escalón en el proceso
+ * (`ocupantes`): las aprobaciones anteriores del escalón más la que se está
+ * registrando. Las personas se cuentan por su id del directorio y los
+ * ocupantes por su cuenta, que es como los guarda cada configuración.
  */
 export function escalonCompleto(
   escalon: { orden: number; reglaDecision: ReglaDecision; personas: string[] },
   previas: DecisionPrevia[],
   personaQueAprueba: string | null,
+  ocupantes: string[] = [],
+  cuentaQueAprueba: string | null = null,
 ): boolean {
   if (escalon.reglaDecision === 'UNO') return true;
-  const aprobaron = new Set(
-    previas
-      .filter((d) => d.escalon === escalon.orden && d.decision === 'APROBADO' && d.personaId)
-      .map((d) => d.personaId as string),
-  );
-  if (personaQueAprueba) aprobaron.add(personaQueAprueba);
-  return escalon.personas.every((p) => aprobaron.has(p));
+  const delEscalon = previas.filter((d) => d.escalon === escalon.orden && d.decision === 'APROBADO');
+  const personas = new Set(delEscalon.filter((d) => d.personaId).map((d) => d.personaId as string));
+  const cuentas = new Set(delEscalon.filter((d) => d.usuarioId).map((d) => d.usuarioId as string));
+  if (personaQueAprueba) personas.add(personaQueAprueba);
+  if (cuentaQueAprueba) cuentas.add(cuentaQueAprueba);
+  return escalon.personas.every((p) => personas.has(p)) && ocupantes.every((c) => cuentas.has(c));
 }
 
 /** Cómo quedan la ronda, sus escalones y la actividad tras una decisión. */
@@ -332,41 +335,24 @@ export const DECISION_DE: Record<AccionEscalon, 'APROBADO' | 'DEVUELTO' | 'NEGAD
 };
 
 /**
- * Por qué un escalón por rol de la 3.1 no tiene quién lo decida (102).
+ * Por qué un escalón que nombra puestos no tiene quién lo decida (109).
  *
- * - `ROL_INEXISTENTE`: ninguno de sus roles existe o está activo: el rol se
- *   borró, se desactivó o se le cambió el código. Hay que corregir la cadena.
- * - `SIN_DESIGNAR`: nadie fue designado en la 3.3.
- * - `SIN_ROL`: el designado ya no tiene ninguno de los roles del escalón. Hay
- *   que reasignarlo: decidir con un rol que ya no tiene sería decidir por un
- *   cargo que ya no ocupa.
+ * - `SIN_ASIGNAR`: nadie ocupa el puesto en el proceso: se asigna en la 3.3.
+ * - `SIN_PERMISO`: quien lo ocupa ya no tiene el permiso de aprobar la
+ *   actividad. Mandan los permisos: el puesto no se lo devuelve.
+ *
+ * Solo hay problema si ninguno de los puestos del escalón tiene a alguien que
+ * pueda decidir y el escalón no nombra a nadie más.
  */
-export type ProblemaDeDesignacion = 'ROL_INEXISTENTE' | 'SIN_DESIGNAR' | 'SIN_ROL';
+export type ProblemaDePuesto = 'SIN_ASIGNAR' | 'SIN_PERMISO';
 
-export function problemaDeDesignacion(
-  rolesDelEscalon: string[],
-  rolesVigentes: Set<string>,
-  designado: { roles: Set<string> } | null,
-): ProblemaDeDesignacion | null {
-  const vivos = rolesDelEscalon.filter((r) => rolesVigentes.has(r));
-  if (!vivos.length) return 'ROL_INEXISTENTE';
-  if (!designado) return 'SIN_DESIGNAR';
-  if (!vivos.some((r) => designado.roles.has(r))) return 'SIN_ROL';
-  return null;
-}
-
-/** El problema dicho para quien mira, con lo que hay que hacer. */
-export function mensajeDeDesignacion(
-  problema: ProblemaDeDesignacion,
-  escalon: { orden: number; nombre: string },
-  designado?: string | null,
+export function mensajeDePuesto(
+  problema: ProblemaDePuesto,
+  puesto: string,
+  quien?: string | null,
 ): string {
-  const cual = `escalón ${escalon.orden} (${escalon.nombre})`;
-  if (problema === 'ROL_INEXISTENTE') {
-    return `El rol del ${cual} ya no existe o está inactivo: hay que corregir la cadena en Configuración`;
+  if (problema === 'SIN_PERMISO') {
+    return `${quien ?? 'Quien ocupa el puesto'} (${puesto}) ya no tiene permiso para aprobar aquí: reasígnalo en la 3.3 o devuélvele el permiso`;
   }
-  if (problema === 'SIN_ROL') {
-    return `${designado ?? 'Quien estaba designado'} ya no tiene el rol del ${cual}: hay que reasignarlo en la 3.3`;
-  }
-  return `Falta designar en la 3.3 quién revisa el ${cual}`;
+  return `Falta asignar en la 3.3 quién ocupa el puesto ${puesto}`;
 }

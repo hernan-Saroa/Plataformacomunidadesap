@@ -254,7 +254,7 @@ export class PaaController {
   @Puede('decidir', 'PAA.R')
   @ApiOperation({
     summary: 'Continuar, devolver, migrar o cancelar el proceso afectado',
-    description: 'La decide el abogado del proceso; sin abogado, quien tenga decidir en las revisiones del PAA.',
+    description: 'La decide quien tenga decidir en las revisiones del PAA.',
   })
   decidir(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecidirRevisionPaaDto, @Req() req: any) {
     return this.revisiones.decidir(id, dto, getHiringAccess(req));
@@ -270,5 +270,15 @@ export class PaaController {
   })
   origenDelProceso(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.origen.deProceso(id, getHiringAccess(req));
+  }
+
+  @Get('procesos/:id/estudio-previo')
+  @Puede('ver')
+  @ApiOperation({
+    summary: 'Datos del PAA que la 3.1 muestra de su línea',
+    description: 'Las columnas que la región marcó para el estudio previo, con los valores de la versión aplicada al proceso.',
+  })
+  datosDelPaaParaEstudioPrevio(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.origen.datosParaEstudioPrevio(id, getHiringAccess(req));
   }
 }

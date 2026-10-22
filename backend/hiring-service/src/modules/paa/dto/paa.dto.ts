@@ -65,6 +65,11 @@ export class CampoVisibleDto {
   @IsBoolean()
   visible: boolean;
 
+  @ApiPropertyOptional({ description: 'Si sale en el bloque «Datos del PAA» de la 3.1; si no viene, conserva lo que tenía' })
+  @IsOptional()
+  @IsBoolean()
+  enEstudioPrevio?: boolean;
+
   @ApiPropertyOptional({ description: 'Nombre que verá quien crea el proceso; vacío = el del formato' })
   @IsOptional()
   @IsString()

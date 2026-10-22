@@ -8,6 +8,7 @@ import { AperturaService } from '../src/modules/apertura/apertura.service';
 import { CdpService } from '../src/modules/cdp/cdp.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1155 · Recepción de ofertas (actividad 6.1).
@@ -71,6 +72,7 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       financiero,
     );
 
+    await aprobarSegundaSesion(dataSource, procesoId);
     return apertura.registrar(
       procesoId,
       { resolucionNumero: 'RES-2026-155', resolucionFecha: hoy() },
@@ -295,6 +297,21 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       );
 
       expect(fila.estado).toBe('APROBADO');
+    });
+
+    it('en licitación no se cierra sin la audiencia de riesgos', async () => {
+      // Desde la 112 la audiencia va después de la apertura (5.12), y lo que no
+      // puede pasar sin ella es el cierre: se discute el pliego sobre el que
+      // se oferta.
+      const proceso = await crear('LICITACION_PUBLICA');
+      await abrir(proceso.id);
+      await ofertas.fijarPlazo(proceso.id, { vencimiento: haceHoras(3) }, gestor);
+
+      const estado = await ofertas.estado(proceso.id);
+      expect(estado.audienciaRiesgos.cumplido).toBe(false);
+      expect(estado.puedeCerrar).toBe(false);
+
+      await expect(ofertas.cerrar(proceso.id, gestor)).rejects.toThrow(/audiencia/i);
     });
 
     it('rechaza el cierre mientras el plazo siga vigente', async () => {

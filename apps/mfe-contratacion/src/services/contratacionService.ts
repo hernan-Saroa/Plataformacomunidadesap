@@ -45,6 +45,7 @@ import {
   DecisionComite,
   EstadoCausalProceso,
   EstadoComiteContratacion,
+  EstadoSegundaSesion,
   EstadoActaInicio,
   EstadoSuscripcionActa,
   DatosActaInicio,
@@ -124,7 +125,6 @@ import {
   GuardarRegla,
   ReglaActividad,
   Persona,
-  Cargo,
   PlantillaFormato,
   PlazosPublicacion,
   ProcesoResumen,
@@ -139,6 +139,7 @@ import {
   BusquedaLineasPaa,
   CamposDelFormularioPaa,
   ComparacionPaa,
+  DatosDelPaaEnEstudioPrevio,
   DecisionRevisionPaa,
   DetalleLineaPaa,
   DetalleRevisionPaa,
@@ -152,7 +153,17 @@ import {
   DocumentoPaa,
   AccionEscalon,
   CadenaDeAprobacion,
-  EscalonesPorDesignar,
+  CandidatoAPuesto,
+  DiagramaFlujo,
+  AsignacionFlujo,
+  SecuenciaDelPaso,
+  FlujoDelProceso,
+  ProblemaFlujo,
+  VersionFlujo,
+  LaHaceConfig,
+  ProblemaDePuestos,
+  Puesto,
+  PuestosDelProceso,
   EscalonConfigurado,
   PapelEscalon,
   RondaDeAprobacion,
@@ -226,9 +237,10 @@ function archivo(descargaUrl: string): string {
  * texto, y un campo opcional enviado en blanco llega al servidor como `''` y
  * no como ausente, que es lo que la validación espera.
  */
-function conArchivo<T extends object>(datos: T, archivo: File): FormData {
+function conArchivo<T extends object>(datos: T, archivo: File | null): FormData {
   const cuerpo = new FormData();
-  cuerpo.append('file', archivo);
+  // Sin archivo cuando es opcional, como el acta del comité (113).
+  if (archivo) cuerpo.append('file', archivo);
 
   for (const [clave, valor] of Object.entries(datos as Record<string, unknown>)) {
     if (valor !== undefined && valor !== null && valor !== '') {
@@ -257,6 +269,16 @@ function consultaEstadisticas(filtros: Partial<FiltrosEstadisticas>): string {
   return consulta ? `?${consulta}` : '';
 }
 
+/** Los archivos del informe preliminar con su dimensión, en el mismo orden (EFDS-1157). */
+function cuerpoDelInforme(datos: RegistrarResultado, informe: File[]) {
+  const cuerpo = new FormData();
+  informe.forEach((archivo) => cuerpo.append('files', archivo));
+  if (datos.dimensiones?.length) cuerpo.append('dimensiones', JSON.stringify(datos.dimensiones));
+  if (datos.observacion?.trim()) cuerpo.append('observacion', datos.observacion.trim());
+  if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+  return cuerpo;
+}
+
 export const contratacionService = {
   listarProcesos: () => pedir<ProcesoResumen[]>('/procesos'),
 
@@ -269,12 +291,6 @@ export const contratacionService = {
       `/personas?q=${encodeURIComponent(q)}` +
         (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : '') +
         (cargo ? `&cargo=${encodeURIComponent(cargo)}` : ''),
-    ),
-
-  /** Cargos de una dependencia (todos los activos si no llega), para acotar un selector de persona. */
-  cargos: (dependencia = '') =>
-    pedir<Cargo[]>(
-      '/personas/cargos' + (dependencia ? `?dependencia=${encodeURIComponent(dependencia)}` : ''),
     ),
 
   /**
@@ -369,7 +385,7 @@ export const contratacionService = {
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 
-  // -------------------------------- etapa 5 · adendas del proceso (5.6) -----
+  // -------------------------------- etapa 5 · adendas del proceso (5.13) -----
 
   /** Adendas del proceso, con su estado y si se pueden emitir nuevas. */
   adendas: (procesoId: string) => pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`),
@@ -488,12 +504,15 @@ export const contratacionService = {
    */
   designarComite: (
     procesoId: string,
-    datos: { fechaDesignacion: string; miembros: MiembroPropuesto[]; firma?: EvidenciaFirmaOtp },
-    memorando: File,
+    datos: { fechaDesignacion?: string; miembros: MiembroPropuesto[]; firma?: EvidenciaFirmaOtp },
+    memorando: File | null,
   ) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', memorando);
-    cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
+    // El memorando puede llegar después (EFDS-1156): sin él tampoco va su fecha.
+    if (memorando) {
+      cuerpo.append('file', memorando);
+      if (datos.fechaDesignacion) cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
+    }
     cuerpo.append('miembros', JSON.stringify(datos.miembros));
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
@@ -504,6 +523,18 @@ export const contratacionService = {
   },
 
   /** Revoca la designación vigente; la anterior se conserva en el expediente. */
+  /** Carga el memorando del comité que se designó sin él. */
+  cargarMemorandoComite: (procesoId: string, fechaDesignacion: string, memorando: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', memorando);
+    cuerpo.append('fechaDesignacion', fechaDesignacion);
+
+    return pedir<EstadoComite>(`/procesos/${procesoId}/comite/memorando`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
   revocarComite: (procesoId: string, motivo: string) =>
     pedir<EstadoComite>(`/procesos/${procesoId}/comite/revocar`, {
       method: 'POST',
@@ -556,7 +587,12 @@ export const contratacionService = {
    * Con la segunda firma el contrato queda perfeccionado; eso lo decide el
    * servidor al comprobar que ya están las dos, no la pantalla.
    */
-  firmarContrato: (procesoId: string, datos: DatosFirma, evidencia: File) => {
+  firmarContrato: (
+    procesoId: string,
+    datos: DatosFirma,
+    evidencia: File,
+    firma?: EvidenciaFirmaOtp,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
 
@@ -565,6 +601,8 @@ export const contratacionService = {
         cuerpo.append(clave, String(valor));
       }
     }
+    // La segunda firma cierra la 8.1: es la que lleva el OTP si se exige.
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/firmar`, {
       method: 'POST',
@@ -753,7 +791,7 @@ export const contratacionService = {
   comiteContratacion: (procesoId: string) =>
     pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion`),
 
-  /** Transcribe una sesión, con su acta: sin ella no se registra. */
+  /** Transcribe una sesión; el acta puede llegar después (113). */
   registrarSesionComite: (
     procesoId: string,
     datos: {
@@ -768,7 +806,7 @@ export const contratacionService = {
       numeralesReabrir?: string[];
       firma?: EvidenciaFirmaOtp;
     },
-    acta: File,
+    acta: File | null,
   ) =>
     pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/sesiones`, {
       method: 'POST',
@@ -787,6 +825,57 @@ export const contratacionService = {
       ),
     }),
 
+  /**
+   * Carga el acta de una sesión ya registrada, de la 3.7 o de la 5.6.1 (113):
+   * el acta tarda hasta diez días y no frena el proceso.
+   */
+  cargarActaComite: (procesoId: string, sesionId: string, acta: File) =>
+    pedir<{ cargada: boolean; numeral: string }>(
+      `/procesos/${procesoId}/comite-contratacion/sesiones/${sesionId}/acta`,
+      { method: 'POST', body: conArchivo({}, acta) },
+    ),
+
+  // ------------- pliego definitivo y segunda sesión del comité · 5.6.1 (113) --
+
+  segundaSesionComite: (procesoId: string) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite`),
+
+  /** Sube la versión definitiva de un documento de la 5.1; la anterior queda en el historial. */
+  versionDefinitiva: (procesoId: string, codigo: string, archivo: File) =>
+    pedir<EstadoSegundaSesion>(
+      `/procesos/${procesoId}/segunda-sesion-comite/documentos/${encodeURIComponent(codigo)}`,
+      { method: 'POST', body: conArchivo({}, archivo) },
+    ),
+
+  /** Envía el pliego definitivo a su cadena: lo hace quien ocupa el puesto de la 5.6.1. */
+  enviarPliegoDefinitivo: (procesoId: string) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite/enviar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  retirarPliegoDefinitivo: (procesoId: string) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite/retirar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  registrarSegundaSesion: (
+    procesoId: string,
+    datos: {
+      fecha: string;
+      decision: DecisionComite;
+      condiciones?: string;
+      observaciones?: string;
+      firma?: EvidenciaFirmaOtp;
+    },
+    acta: File | null,
+  ) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite/sesiones`, {
+      method: 'POST',
+      body: conArchivo({ ...datos, firma: datos.firma ? JSON.stringify(datos.firma) : undefined }, acta),
+    }),
+
   /** Deja constancia de que el proceso no pasó por comité, por cuantía. */
   comiteNoVa: (procesoId: string) =>
     pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/no-va`, {
@@ -795,7 +884,7 @@ export const contratacionService = {
 
   // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------
 
-  /** Quién lo tomó, qué abogado lo revisa y quiénes estuvieron antes. */
+  /** Quién lo tomó y quiénes estuvieron antes. */
   participacion: (procesoId: string) =>
     pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion`),
 
@@ -811,43 +900,28 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
-  /** A quién se le puede dar el papel de abogado. */
-  abogados: (q = '') =>
-    pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
+  // -------------------------------------- puestos del proceso (109) ------
 
-  /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
-  /** Quién revisa el estudio previo en cada escalón por rol (migración 102). */
-  escalonesPorDesignar: (procesoId: string) =>
-    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones`),
+  /** Los puestos del proceso, quién ocupa cada uno y qué le impide actuar. */
+  puestosDelProceso: (procesoId: string) =>
+    pedir<PuestosDelProceso>(`/procesos/${procesoId}/participacion/puestos`),
 
-  candidatosDeEscalon: (procesoId: string, orden: number, q = '') =>
-    pedir<CuentaCandidata[]>(
-      `/procesos/${procesoId}/participacion/escalones/${orden}/candidatos?q=${encodeURIComponent(q)}`,
+  /** Quiénes pueden ocupar el puesto: tienen todos los permisos de lo que hace. */
+  candidatosAPuesto: (procesoId: string, puestoId: string, q = '') =>
+    pedir<CandidatoAPuesto[]>(
+      `/procesos/${procesoId}/participacion/puestos/${puestoId}/candidatos?q=${encodeURIComponent(q)}`,
     ),
 
-  /** Designa quién decide el escalón; cambiar a quien estaba exige motivo. */
-  designarEscalon: (procesoId: string, orden: number, usuarioId: string, motivo?: string) =>
-    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones/${orden}`, {
+  /** Pone a alguien en el puesto; cambiar a quien estaba exige motivo. */
+  asignarPuesto: (procesoId: string, puestoId: string, usuarioId: string, motivo?: string) =>
+    pedir<PuestosDelProceso>(`/procesos/${procesoId}/participacion/puestos/${puestoId}`, {
       method: 'POST',
       body: JSON.stringify({ usuarioId, motivo }),
     }),
 
-  asignarAbogado: (procesoId: string, usuarioId: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
-      method: 'POST',
-      body: JSON.stringify({ usuarioId }),
-    }),
-
-  /** Releva al vigente y asigna al nuevo de una vez, para no dejarlo sin revisor. */
-  reasignarAbogado: (procesoId: string, usuarioId: string, motivo: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/reasignar`, {
-      method: 'POST',
-      body: JSON.stringify({ usuarioId, motivo }),
-    }),
-
-  /** Lo quita sin poner otro. El proceso queda pendiente de reasignar. */
-  quitarAbogado: (procesoId: string, motivo: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/quitar`, {
+  /** Deja el puesto vacío, con motivo. */
+  quitarPuesto: (procesoId: string, puestoId: string, motivo: string) =>
+    pedir<PuestosDelProceso>(`/procesos/${procesoId}/participacion/puestos/${puestoId}/quitar`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
@@ -858,10 +932,18 @@ export const contratacionService = {
   supervision: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`),
 
-  /** Designa al supervisor con el acto administrativo que lo nombra. */
-  designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File) => {
+  /** A quién se puede designar: los candidatos del puesto que avala la 9.4 (121). */
+  candidatosASupervisor: (procesoId: string, q = '') =>
+    pedir<CandidatoAPuesto[]>(`/procesos/${procesoId}/supervision/candidatos?q=${encodeURIComponent(q)}`),
+
+  /**
+   * Designa al supervisor con el acto administrativo que lo nombra. Le sale un
+   * correo con el acto y los `adjuntos` (124).
+   */
+  designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File, adjuntos: File[] = []) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
+    for (const adjunto of adjuntos) cuerpo.append('adjuntos', adjunto);
     // La firma se serializa aparte: `String({...})` la volvería «[object Object]».
     const { firma, ...resto } = datos;
 
@@ -890,9 +972,10 @@ export const contratacionService = {
    * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
    * (EFDS-1169). En dos pasos el contrato quedaría sin quien lo vigile.
    */
-  reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File) => {
+  reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File, adjuntos: File[] = []) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
+    for (const adjunto of adjuntos) cuerpo.append('adjuntos', adjunto);
     const { firma, ...resto } = datos;
 
     for (const [clave, valor] of Object.entries(resto)) {
@@ -907,7 +990,21 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
-  /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
+  /**
+   * Le vuelve a mandar el correo al supervisor vigente (124), con documentos
+   * nuevos si se agregan: se suman a los que ya se le habían mandado.
+   */
+  reenviarCorreoSupervisor: (procesoId: string, mensaje: string, adjuntos: File[] = []) => {
+    const cuerpo = new FormData();
+    for (const adjunto of adjuntos) cuerpo.append('adjuntos', adjunto);
+    if (mensaje.trim()) cuerpo.append('mensaje', mensaje.trim());
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/correo`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja constancia de que se le comunicó la designación por fuera (matriz 8.2). */
   avisarSupervisor: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
       method: 'POST',
@@ -1456,7 +1553,7 @@ export const contratacionService = {
     );
   },
 
-  // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
+  // -------------------------- etapa 5 · audiencia de riesgos (5.12) ----------
 
   /** Estado de la audiencia: si aplica, si es obligatoria y si ya se celebró. */
   audienciaRiesgos: (procesoId: string) =>
@@ -1506,7 +1603,7 @@ export const contratacionService = {
    * Los tres documentos viajan con los datos en la misma petición: el proceso
    * se abre con todos o no se abre, y dejarlo en dos pasos permitiría un
    * proceso abierto sin el acto que lo respalda. La evidencia prueba que el
-   * pliego definitivo se publicó, igual que en la actividad 5.2.
+   * pliego definitivo se publicó, igual que en la actividad 5.3.
    */
   registrarApertura: (
     procesoId: string,
@@ -1662,7 +1759,7 @@ export const contratacionService = {
       body: JSON.stringify({ motivo }),
     }),
 
-  // ------------------------------- etapa 5 · observaciones al pliego (5.3) ---
+  // ------------------------------- etapa 5 · observaciones al pliego (5.6) ---
 
   /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
   observaciones: (procesoId: string) =>
@@ -1722,7 +1819,7 @@ export const contratacionService = {
       body: JSON.stringify({ firma }),
     }),
 
-  // ---------------------------------- etapa 5 · limitación a MIPYME (5.4) ---
+  // ---------------------------------- etapa 5 · limitación a MIPYME (5.5) ---
 
   /** Manifestaciones, condiciones evaluadas y decisión, si ya se tomó. */
   mipyme: (procesoId: string) => pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme`),
@@ -1922,7 +2019,7 @@ export const contratacionService = {
     guardarCampos: (
       regionId: string,
       anio: number,
-      campos: { clave: string; visible: boolean; etiqueta?: string | null }[],
+      campos: { clave: string; visible: boolean; enEstudioPrevio: boolean; etiqueta?: string | null }[],
     ) =>
       pedir<CamposDelFormularioPaa>(`/paa/regiones/${regionId}/vigencias/${anio}/campos`, {
         method: 'PUT',
@@ -1941,6 +2038,9 @@ export const contratacionService = {
       }),
 
     origenDelProceso: (procesoId: string) => pedir<OrigenPaaDelProceso>(`/paa/procesos/${procesoId}`),
+
+    datosParaEstudioPrevio: (procesoId: string) =>
+      pedir<DatosDelPaaEnEstudioPrevio>(`/paa/procesos/${procesoId}/estudio-previo`),
   },
 
   obtenerEstudioPrevio: (procesoId: string) =>
@@ -1960,12 +2060,6 @@ export const contratacionService = {
     pedir<{ radicado: string; archivosBorrados: number }>(`/procesos/${procesoId}`, {
       method: 'DELETE',
       body: JSON.stringify({ radicado, motivo }),
-    }),
-
-  cambiarModalidadDelEstudioPrevio: (procesoId: string, modalidad: string) =>
-    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/modalidad`, {
-      method: 'PUT',
-      body: JSON.stringify({ modalidad }),
     }),
 
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
@@ -2238,19 +2332,21 @@ export const contratacionService = {
    * cuando vienen —`FormData` los convertiría en cadena vacía, y una escala en
    * blanco no es un cero.
    */
-  registrarResultadoEvaluacion: (procesoId: string, datos: RegistrarResultado, informe: File) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', informe);
-    cuerpo.append('oferenteId', datos.oferenteId);
-    cuerpo.append('justificacion', datos.justificacion);
-    if (datos.puntajeObtenido != null) {
-      cuerpo.append('puntajeObtenido', String(datos.puntajeObtenido));
-    }
-    if (datos.puntajeMaximo != null) cuerpo.append('puntajeMaximo', String(datos.puntajeMaximo));
-    if (datos.valorEvaluado != null) cuerpo.append('valorEvaluado', String(datos.valorEvaluado));
-    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+  registrarResultadoEvaluacion: (procesoId: string, datos: RegistrarResultado, informe: File[]) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
+      method: 'POST',
+      body: cuerpoDelInforme(datos, informe),
+    }),
 
-    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
+  /** Vuelve a cargar el informe preliminar; el anterior queda con su motivo (EFDS-1157). */
+  actualizarInformeEvaluacion: (
+    procesoId: string,
+    datos: RegistrarResultado & { motivo: string },
+    informe: File[],
+  ) => {
+    const cuerpo = cuerpoDelInforme(datos, informe);
+    cuerpo.append('motivo', datos.motivo);
+    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado/actualizar`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -2343,16 +2439,13 @@ export const contratacionService = {
     }),
 
   /** Transcribe lo que presentó un oferente, con su soporte. */
-  registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soporte: File) => {
+  registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soportes: File[]) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', soporte);
+    soportes.forEach((archivo) => cuerpo.append('files', archivo));
     cuerpo.append('oferenteId', datos.oferenteId);
     cuerpo.append('tipo', datos.tipo);
-    cuerpo.append('presentadoPor', datos.presentadoPor);
     cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
     cuerpo.append('asunto', datos.asunto);
-    cuerpo.append('contenido', datos.contenido);
-    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
 
     return pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`, {
       method: 'POST',
@@ -2387,7 +2480,7 @@ export const contratacionService = {
     }),
 
 
-  // ---------------------------------------- adjudicación, etapa 7 (7.1-7.4) ---
+  // ---------------------------------------- adjudicación, etapa 7 (7.1-7.3) ---
 
   /** La audiencia registrada, sus piezas y los sobres abiertos. */
   audienciaAdjudicacion: (procesoId: string) =>
@@ -2471,9 +2564,20 @@ export const contratacionService = {
     ),
 
   /** Congela el resultado vigente del comité. El archivo es opcional. */
-  generarInformeDefinitivo: (procesoId: string, informe: File | null) => {
+  generarInformeDefinitivo: (
+    procesoId: string,
+    informe: File | null,
+    motivo?: string,
+    /** La ganadora se decide en el definitivo (EFDS-1157). */
+    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
+  ) => {
     const cuerpo = new FormData();
     if (informe) cuerpo.append('file', informe);
+    // Actualizar un informe que ya existe pide motivo (EFDS-1159).
+    if (motivo?.trim()) cuerpo.append('motivo', motivo.trim());
+    if (decision.oferenteId) cuerpo.append('oferenteId', decision.oferenteId);
+    if (decision.valorEvaluado != null) cuerpo.append('valorEvaluado', String(decision.valorEvaluado));
+    if (decision.justificacion?.trim()) cuerpo.append('justificacion', decision.justificacion.trim());
 
     return pedir<EstadoInformeDefinitivoProceso>(
       `/procesos/${procesoId}/adjudicacion/informe-definitivo`,
@@ -2483,13 +2587,13 @@ export const contratacionService = {
 
   publicarInformeDefinitivo: (
     procesoId: string,
-    medioPublicacion: string,
+    enlace: string,
     evidencia: File,
     firma?: EvidenciaFirmaOtp,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
-    cuerpo.append('medioPublicacion', medioPublicacion);
+    cuerpo.append('enlace', enlace);
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoInformeDefinitivoProceso>(
@@ -2517,7 +2621,10 @@ export const contratacionService = {
   adjudicar: (procesoId: string, datos: Adjudicar, acto: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
-    cuerpo.append('oferenteId', datos.oferenteId);
+    if (datos.oferenteId) cuerpo.append('oferenteId', datos.oferenteId);
+    if (datos.contratistaNombre) cuerpo.append('contratistaNombre', datos.contratistaNombre);
+    if (datos.contratistaDocumento) cuerpo.append('contratistaDocumento', datos.contratistaDocumento);
+    if (datos.contratistaTipo) cuerpo.append('contratistaTipo', datos.contratistaTipo);
     cuerpo.append('numeroActo', datos.numeroActo);
     cuerpo.append('fechaActo', datos.fechaActo);
     cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));
@@ -2824,18 +2931,36 @@ export const contratacionService = {
   // actividad nueva no exige tocar el servicio.
 
   /** Cómo está configurada la aprobación de una actividad, para el panel de configuración. */
-  aprobacionDeActividad: (numeral: string) =>
+  aprobacionDeActividad: (numeral: string, modalidad?: string | null) =>
     pedir<{
       requiereAprobacion: boolean;
-      aprobadores: { clase: 'rol' | 'persona'; id: string; nombre: string }[];
+      aprobadores: { clase: 'rol' | 'persona' | 'puesto'; id: string; nombre: string }[];
       /** La cadena de escalones que la aprueba, si se eligió una (migración 101). */
       cadena: { id: string; nombre: string; escalones: number; activa: boolean } | null;
-    }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
+      /** La versión del flujo que se muestra: el borrador si lo hay (111). */
+      editando?: 'BORRADOR' | 'ACTIVA';
+      /** En una modalidad, si lo hereda de la general. */
+      heredada?: boolean;
+    }>(
+      `/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
 
-  /** Con `cadenaId`, la aprueba esa cadena; si no, los roles y personas, en un escalón. */
+  /** Con `cadenaId`, la aprueba esa cadena; si no, los roles, personas y puestos, en un escalón. */
   guardarAprobacionDeActividad: (
     numeral: string,
-    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[]; cadenaId?: string },
+    datos: {
+      requiereAprobacion: boolean;
+      roles: string[];
+      personas: string[];
+      puestos?: string[];
+      cadenaId?: string;
+      /** Para una modalidad (111); sin ella, la general. */
+      modalidad?: string | null;
+      /** En una modalidad, vuelve a heredar la general. */
+      usarGeneral?: boolean;
+    },
   ) =>
     pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
       method: 'PUT',
@@ -2853,6 +2978,102 @@ export const contratacionService = {
       method: 'PUT',
       body: JSON.stringify(datos),
     }),
+
+  /** Quién hace la actividad: un puesto, unas personas o quien tenga el permiso (109). */
+  laHaceDeActividad: (numeral: string, modalidad?: string | null) =>
+    pedir<LaHaceConfig>(
+      `/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
+
+  /** Sin puesto ni personas, la vuelve a hacer cualquiera con el permiso. */
+  guardarLaHaceDeActividad: (
+    numeral: string,
+    datos: { puestoId?: string; personas?: string[]; modalidad?: string | null; usarGeneral?: boolean },
+  ) =>
+    pedir<LaHaceConfig>(`/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  // ----------------------------------------- versiones del flujo (111) ---
+
+  /** Lo que rige en una actividad del borrador (o de la activa), para la modalidad o la general. */
+  asignacionFlujo: (numeral: string, modalidad?: string | null) =>
+    pedir<AsignacionFlujo>(
+      `/configuracion/flujo-asignaciones/${encodeURIComponent(numeral)}${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
+
+  /**
+   * Cuándo empieza la actividad (125), en el borrador. `null` en una modalidad
+   * vuelve a heredar la general; en la general, vuelve a lo predeterminado.
+   */
+  guardarAsignacionFlujo: (
+    numeral: string,
+    datos: { modalidad?: string | null; secuencia: SecuenciaDelPaso | null },
+  ) =>
+    pedir<AsignacionFlujo>(`/configuracion/flujo-asignaciones/${encodeURIComponent(numeral)}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Las versiones del flujo: la activa, el borrador y las que aún usan procesos. */
+  versionesFlujo: () => pedir<VersionFlujo[]>('/configuracion/flujo-versiones'),
+
+  /** Crea el borrador como copia de la activa (o devuelve el que hay). */
+  crearBorradorFlujo: () => pedir<VersionFlujo[]>('/configuracion/flujo-versiones/borrador', { method: 'POST' }),
+
+  descartarBorradorFlujo: () =>
+    pedir<{ descartado: boolean }>('/configuracion/flujo-versiones/borrador', { method: 'DELETE' }),
+
+  /** Lo que impide activar: del borrador si lo hay, si no de la activa. */
+  validacionFlujo: () => pedir<ProblemaFlujo[]>('/configuracion/flujo-versiones/validacion'),
+
+  /** Activa el borrador; 409 si algo queda sin quién lo haga o lo apruebe. */
+  activarFlujo: (nota?: string) =>
+    pedir<{ activada: boolean }>('/configuracion/flujo-versiones/activar', {
+      method: 'POST',
+      body: JSON.stringify({ nota }),
+    }),
+
+  /** El flujo de una modalidad (o el general), del borrador o de la activa. */
+  diagramaFlujo: (modalidad: string | null, cual?: 'BORRADOR' | 'ACTIVA') => {
+    const q = new URLSearchParams();
+    if (modalidad) q.set('modalidad', modalidad);
+    if (cual) q.set('cual', cual);
+    const texto = q.toString();
+    return pedir<DiagramaFlujo>(`/configuracion/flujo-diagrama${texto ? `?${texto}` : ''}`);
+  },
+
+  /** Con qué versión corre el proceso, y la activa. */
+  flujoDelProceso: (procesoId: string) => pedir<FlujoDelProceso>(`/procesos/${procesoId}/flujo`),
+
+  /** Pasa el proceso a la versión activa, con motivo. */
+  actualizarFlujoDelProceso: (procesoId: string, motivo: string) =>
+    pedir<FlujoDelProceso>(`/procesos/${procesoId}/flujo/actualizar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Los puestos del proceso, con lo que hace o aprueba cada uno (109). */
+  puestos: () => pedir<Puesto[]>('/configuracion/puestos'),
+
+  /** Lo que la configuración deja sin salida: puestos que nadie puede ocupar, actividades huérfanas. */
+  diagnosticoDePuestos: () => pedir<ProblemaDePuestos[]>('/configuracion/puestos/diagnostico'),
+
+  crearPuesto: (datos: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number }) =>
+    pedir<Puesto>('/configuracion/puestos', { method: 'POST', body: JSON.stringify(datos) }),
+
+  actualizarPuesto: (
+    id: string,
+    datos: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number },
+  ) => pedir<Puesto>(`/configuracion/puestos/${id}`, { method: 'PUT', body: JSON.stringify(datos) }),
+
+  /** No se deja mientras alguna actividad lo use. */
+  archivarPuesto: (id: string) => pedir<{ archivado: boolean }>(`/configuracion/puestos/${id}`, { method: 'DELETE' }),
 
   /** Las cadenas de aprobación por escalones (migración 101). */
   cadenasDeAprobacion: () => pedir<CadenaDeAprobacion[]>('/configuracion/cadenas-aprobacion'),

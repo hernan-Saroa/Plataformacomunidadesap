@@ -134,9 +134,16 @@ describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
   it('pone la actividad fija a los eventos del reparto, que no la guardan', () => {
     expect(eventosDeTraza(traza({ entidad: 'participacion_proceso', accion: 'RADICAR', detalle: {} }))[0])
       .toMatchObject({ evento: 'RECIBIDO_EN_CONTRATACION', numeral: '3.3' });
+  });
+
+  it('poner a alguien en un puesto cuyo escalón ya espera es «tienes algo por aprobar»', () => {
     expect(
-      eventosDeTraza(traza({ entidad: 'participacion_proceso', accion: 'DESIGNAR', detalle: { papel: 'ABOGADO' } }))[0],
-    ).toMatchObject({ evento: 'HABILITADA', numeral: '3.4' });
+      eventosDeTraza(traza({ entidad: 'asignacion_puesto', accion: 'DESIGNAR', detalle: { pendiente: '3.1' } }))[0],
+    ).toMatchObject({ evento: 'ENVIADA_A_APROBACION', numeral: '3.1' });
+    // Si nada de ese puesto espera todavía, no hay aviso: le llegará con la ronda.
+    expect(
+      eventosDeTraza(traza({ entidad: 'asignacion_puesto', accion: 'DESIGNAR', detalle: { pendiente: null } })),
+    ).toEqual([]);
   });
 
   it('radicar el proceso es un evento de la 3.1', () => {
@@ -224,8 +231,8 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
     expect(eventosDeActividad('5.8').map((e) => e.codigo)).toContain('HABILITADA');
   });
 
-  it('en la 3.4 viene encendido para el abogado que asignan', () => {
-    expect(avisoQueRige('HABILITADA', undefined, '3.4')).toMatchObject({ activo: true, papeles: ['ABOGADO'] });
+  it('en la 3.4 viene apagado: no tiene pantalla, se resuelve en la ronda de la 3.1', () => {
+    expect(avisoQueRige('HABILITADA', undefined, '3.4')).toMatchObject({ activo: false, papeles: ['QUIEN_APRUEBA'] });
   });
 
   it('donde no hay pantalla viene apagado: lo enciende quien sepa que sirve', () => {
@@ -233,11 +240,6 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
     expect(avisoQueRige('HABILITADA', undefined, '1.1')).toMatchObject({ activo: false });
   });
 
-  it('en la 3.4 dice que sale al asignar el abogado', () => {
-    expect(
-      mensajeDeAviso({ evento: 'HABILITADA', numeral: '3.4', actorNombre: 'Patricia', observaciones: null }, null, 'CTO-1'),
-    ).toMatchObject({ titulo: 'Te toca revisar un proceso' });
-  });
 
   it('viene encendido y dirigido a quien hace cada actividad, sin configurar nada', () => {
     expect(avisoQueRige('HABILITADA', undefined, '4.1')).toMatchObject({

@@ -17,6 +17,7 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
@@ -49,6 +50,7 @@ const ETIQUETA_ESTADO: Record<string, string> = {
  */
 export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
   const firma = useFirma(NUMERAL, 'Expedir el registro presupuestal');
+  const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoRegistroPresupuestal | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,9 +141,15 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
   };
 
   const rechazar = async () => {
-    const motivo = window
-      .prompt('¿Por qué no hay disponibilidad para comprometer?')
-      ?.trim();
+    // Antes era un `window.prompt`: el cuadro del navegador en vez del diálogo
+    // del módulo.
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Rechazar la solicitud del RP',
+      descripcion: 'La solicitud queda rechazada y puede volver a radicarse corregida.',
+      etiqueta: 'Por qué no hay disponibilidad para comprometer',
+      confirmar: 'Rechazar la solicitud',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -404,6 +412,7 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
         </div>
       ) : null}
       {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

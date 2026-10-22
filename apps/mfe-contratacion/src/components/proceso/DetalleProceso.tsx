@@ -12,14 +12,17 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadProceso, EstadoParticipacion, EstudioPrevio } from '../../types';
+import { ActividadProceso, EstadoParticipacion,
+  PuestosDelProceso, EstudioPrevio } from '../../types';
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
+import { cuentaEnElAvance, formaDe } from './formaDeLaActividad';
 import {
   actividadesDisponibles,
+  estaTerminada,
   motivoDelBloqueo,
-  NUNCA_BLOQUEA,
+  noDetiene,
   PasoDelFlujo,
 } from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
@@ -144,6 +147,7 @@ export const actividadEnCurso = (
     estado: act.numeral === '3.1' ? estadoDelEstudio : act.estado,
     aplica: act.aplica !== false,
     construida: TIENEN_PANEL(act.numeral),
+    secuencia: act.secuencia ?? null,
   }));
   const disponibles = actividadesDisponibles(flujo);
 
@@ -161,7 +165,7 @@ export const actividadEnCurso = (
     // La 9.2 nunca llega a "aprobada" mientras el contrato se ejecuta (dura
     // toda la vigencia): tratarla como pendiente la dejaría fija como "la
     // actividad en curso" para siempre, sin dejar ver qué más falta de verdad.
-    if (NUNCA_BLOQUEA.has(act.numeral)) continue;
+    if (noDetiene(act)) continue;
 
     const aplica = act.aplica !== false;
     if (!aplica || !disponibles.has(act.numeral)) continue;
@@ -278,6 +282,8 @@ export function DetalleProceso({
    * roles, que es menos preciso pero no dice nada falso.
    */
   const [participacion, setParticipacion] = useState<EstadoParticipacion | null>(null);
+  /** Quién ocupa cada puesto del proceso (109), para el equipo de la ficha. */
+  const [puestos, setPuestos] = useState<PuestosDelProceso | null>(null);
   /**
    * Y puede pedir el proceso entero.
    *
@@ -319,7 +325,8 @@ export function DetalleProceso({
     | { tipo: 'revision' }
     | { tipo: 'fin' }
     | { tipo: 'bloqueado'; motivo: string }
-    | { tipo: 'siguiente'; numeral: string; nombre: string }
+    // `ademas`: las otras del mismo grupo en paralelo que ya se pueden trabajar.
+    | { tipo: 'siguiente'; numeral: string; nombre: string; ademas?: string[] }
     | { tipo: 'reabierta'; numeral: string; nombre: string }
     | null
   >(null);
@@ -370,6 +377,7 @@ export function DetalleProceso({
         estado: act.numeral === '3.1' ? (datos?.estado ?? null) : act.estado,
         aplica: act.aplica !== false,
         construida: TIENEN_PANEL(act.numeral),
+        secuencia: act.secuencia ?? null,
       }));
 
     const actual = flujoActual.find((p) => p.numeral === expandida) ?? null;
@@ -412,7 +420,9 @@ export function DetalleProceso({
     const indice = flujoActual.findIndex((p) => p.numeral === actual.numeral);
     const siguiente = flujoActual
       .slice(indice + 1)
-      .find((p) => p.aplica && p.construida && p.estado !== 'APROBADO');
+      // Las permanentes y las eventuales no son «lo que sigue»: están abiertas
+      // aparte, y mandar a ellas escondería el paso que de verdad falta.
+      .find((p) => p.aplica && p.construida && !estaTerminada(p) && cuentaEnElAvance(p.numeral));
 
     if (!siguiente) {
       setAvisoPaso({ tipo: 'fin' });
@@ -422,8 +432,34 @@ export function DetalleProceso({
     const nombreSiguiente =
       catalogo.find((a: any) => a.numeral === siguiente.numeral)?.nombre ?? siguiente.numeral;
 
-    if (actividadesDisponibles(flujoActual).has(siguiente.numeral)) {
-      setAvisoPaso({ tipo: 'siguiente', numeral: siguiente.numeral, nombre: nombreSiguiente });
+    const disponibles = actividadesDisponibles(flujoActual);
+    if (disponibles.has(siguiente.numeral)) {
+      // Si lo que sigue es un grupo en paralelo, se dice que hay varias: no
+      // hay una «siguiente», cualquiera de ellas lo es.
+      const forma = formaDe(siguiente.numeral);
+      const ademas =
+        forma.tipo === 'en_paralelo'
+          ? flujoActual
+              .filter((p) => {
+                const otra = formaDe(p.numeral);
+                return (
+                  p.numeral !== siguiente.numeral &&
+                  otra.tipo === 'en_paralelo' &&
+                  otra.grupo === forma.grupo &&
+                  p.aplica &&
+                  p.construida &&
+                  !estaTerminada(p) &&
+                  disponibles.has(p.numeral)
+                );
+              })
+              .map((p) => catalogo.find((a: any) => a.numeral === p.numeral)?.nombre ?? p.numeral)
+          : [];
+      setAvisoPaso({
+        tipo: 'siguiente',
+        numeral: siguiente.numeral,
+        nombre: nombreSiguiente,
+        ademas,
+      });
     } else {
       setAvisoPaso({
         tipo: 'bloqueado',
@@ -432,13 +468,17 @@ export function DetalleProceso({
     }
   }, [tokenExpediente, expandida, catalogo, datos]);
 
-  // Con el mismo token que el expediente: tomar el proceso o asignar el abogado
+  // Con el mismo token que el expediente: tomar el proceso o asignar un puesto
   // cambia a quién le toca, y la franja tiene que enterarse sin recargar.
   useEffect(() => {
     let vigente = true;
     Promise.resolve()
       .then(() => contratacionService.participacion(procesoId))
       .then((p) => vigente && setParticipacion(p))
+      .catch(() => undefined);
+    contratacionService
+      .puestosDelProceso(procesoId)
+      .then((p) => vigente && setPuestos(p))
       .catch(() => undefined);
     return () => {
       vigente = false;
@@ -556,6 +596,7 @@ export function DetalleProceso({
     estado: act.numeral === '3.1' ? datos.estado : act.estado,
     aplica: act.aplica !== false,
     construida: TIENEN_PANEL(act.numeral),
+    secuencia: act.secuencia ?? null,
   }));
 
   const disponibles = actividadesDisponibles(flujo);
@@ -575,7 +616,15 @@ export function DetalleProceso({
       responsableCargo: act.responsableCargo ?? null,
       responde: act.responde ?? null,
     })),
-    participacion: participacion ?? undefined,
+    participacion: participacion
+      ? {
+          ...participacion,
+          puestos: (puestos?.puestos ?? [])
+            .filter((x) => x.ocupante)
+            .map((x) => ({ puesto: x.nombre, nombre: x.ocupante!.nombre, esMio: x.ocupante!.esMio })),
+          puestosVacios: (puestos?.puestos ?? []).filter((x) => x.obligatorio && !x.ocupante).map((x) => x.nombre),
+        }
+      : undefined,
     radicadoPorMi: datos.proceso.radicadoPorMi,
     responsables,
     puedo: alcanceCargado ? puede : undefined,
@@ -719,7 +768,8 @@ export function DetalleProceso({
   for (const act of actividadesDelRiel) {
     const numero = act.etapa ?? 3;
     if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
-    if (act.estado === 'no_aplica') continue;
+    // Las permanentes y las eventuales no tienen un «hecho» que sumar.
+    if (act.estado === 'no_aplica' || !cuentaEnElAvance(act.numeral)) continue;
     avance[numero].aplicables += 1;
     if (act.estado === 'aprobada') avance[numero].completas += 1;
   }
@@ -981,6 +1031,7 @@ export function DetalleProceso({
             situacion={situacion}
             etapaActual={etapaActual}
             participacion={participacion}
+            puestos={puestos}
             plazos={plazos.get(procesoId) ?? []}
             onAbrir={trabajarEn}
             onCambio={() => setTokenExpediente((t) => t + 1)}
@@ -1163,6 +1214,14 @@ export function DetalleProceso({
               {avisoPaso.numeral} · {avisoPaso.nombre}
             </strong>
             .
+            {!!avisoPaso.ademas?.length && (
+              <>
+                {' '}
+                También puedes seguir con{' '}
+                <strong className="font-bold">{avisoPaso.ademas.join(', ')}</strong>: van en
+                cualquier orden.
+              </>
+            )}
           </p>
         )}
         {/* Volver atrás no es «el siguiente paso»: es una actividad que ya

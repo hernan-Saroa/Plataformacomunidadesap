@@ -21,11 +21,15 @@ const SQL = [
   .map((archivo) => readFileSync(join(__dirname, '../../db/migrations', archivo), 'utf8'))
   .join('\n');
 
+// La 114 renumeró la etapa 7 a la matriz sobre las filas ya sembradas; el SQL
+// de la 092 sigue diciendo los numerales viejos.
+const RENUMERACION_114: Record<string, string> = { '7.2': '7.1.1', '7.3': '7.2', '7.4': '7.3' };
+
 const SIEMBRA: Record<string, Alcance[]> = {};
 for (const [, rol, accion, lugar] of SQL.matchAll(
   /\('([A-Z_]+)',\s*'(ver|editar|aprobar|decidir)',\s*'([^']+)'\)/g,
 )) {
-  (SIEMBRA[rol] ??= []).push(alcanceDeLugar(accion as Accion, lugar));
+  (SIEMBRA[rol] ??= []).push(alcanceDeLugar(accion as Accion, RENUMERACION_114[lugar] ?? lugar));
 }
 
 const puedeRol = (rol: string, accion: Accion, lugar?: string) =>
@@ -120,15 +124,15 @@ describe('la siembra de la 092', () => {
     });
 
     it('el ordenador adjudica y firma, y puede leer lo que firma', () => {
-      expect(puedeRol('ORDENADOR_GASTO', 'decidir', '7.4')).toBe(true);
+      expect(puedeRol('ORDENADOR_GASTO', 'decidir', '7.3')).toBe(true);
       expect(puedeRol('ORDENADOR_GASTO', 'decidir', '8.1')).toBe(true);
-      expect(puedeRol('ORDENADOR_GASTO', 'ver', '7.3')).toBe(true);
+      expect(puedeRol('ORDENADOR_GASTO', 'ver', '7.2')).toBe(true);
       expect(puedeRol('ORDENADOR_GASTO', 'ver', '8.4')).toBe(true);
     });
 
     it('el gestor proyecta pero no adjudica ni paga', () => {
-      expect(puedeRol('GESTOR_CONTRATACION', 'editar', '7.4')).toBe(true);
-      expect(puedeRol('GESTOR_CONTRATACION', 'decidir', '7.4')).toBe(false);
+      expect(puedeRol('GESTOR_CONTRATACION', 'editar', '7.3')).toBe(true);
+      expect(puedeRol('GESTOR_CONTRATACION', 'decidir', '7.3')).toBe(false);
       expect(puedeRol('GESTOR_CONTRATACION', 'decidir', '9.4')).toBe(false);
     });
 

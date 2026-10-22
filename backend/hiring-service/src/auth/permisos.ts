@@ -40,7 +40,7 @@ export const PERMISO_REPORTE_VER = 'contratacion.reporte.view';
 /**
  * Dar por terminado un plazo que sigue corriendo, para poder probar el flujo.
  *
- * Los dos términos que bloquean —el de publicidad del pliego (5.3) y el de
+ * Los dos términos que bloquean —el de publicidad del pliego (5.6) y el de
  * subsanaciones (6.5)— duran días hábiles reales. No finge que el plazo
  * venció: mueve la fecha de vencimiento a ayer y deja traza de quién lo hizo.
  *

@@ -142,8 +142,9 @@ export class TrasladoService {
       // registrada no hay informe que trasladar.
       hayResultado: !!resultado,
       puedeGenerar: !excluida && !!resultado && (!vigente || vigente.estado === 'BORRADOR'),
-      puedeTrasladar:
-        !excluida && !!vigente && vigente.estado === 'BORRADOR' && !!vigente.informeDocumentoId,
+      // Trasladar ya no exige generar antes (EFDS-1157): el informe es el que
+      // se cargó en la 6.3, y lo que pide la 6.4 es la evidencia del traslado.
+      puedeTrasladar: !excluida && !!resultado && (!vigente || vigente.estado === 'BORRADOR'),
       informe: vigente ? this.presentar(vigente, documentos, restantes) : null,
       // Los anulados se muestran: son los que explican por qué hubo que
       // trasladar dos veces.
@@ -251,18 +252,32 @@ export class TrasladoService {
       const proceso = await this.exigirProceso(em, procesoId);
       await this.exigirQueAplique(em, proceso);
 
-      const informe = await this.informeEnJuego(procesoId, em);
-      if (!informe) {
-        throw new NotFoundException('Primero se genera el informe preliminar');
-      }
-      if (informe.estado !== 'BORRADOR') {
+      const previo = await this.informeEnJuego(procesoId, em);
+      if (previo && previo.estado !== 'BORRADOR') {
         throw new ConflictException('Este informe ya fue trasladado');
       }
-      if (!informe.informeDocumentoId) {
-        throw new BadRequestException(
-          'Adjunta el informe preliminar antes de trasladarlo: lo que se notifica es el documento',
+
+      // El informe que se traslada es el que el comité cargó en la 6.3
+      // (EFDS-1157): se congela aquí, al notificarlo, y no en un paso aparte.
+      const resultado = await this.resultadoVigente(procesoId, em);
+      if (!resultado) {
+        throw new ConflictException(
+          'Todavía no se ha cargado el informe de evaluación preliminar (6.3): no hay nada que trasladar',
         );
       }
+      const informe =
+        previo ??
+        em.create(InformeEvaluacion, {
+          procesoId,
+          numero: await this.siguienteNumero(procesoId, em),
+        });
+      const snapshot = await this.congelar(em, proceso, resultado);
+      informe.resultadoId = resultado.id;
+      informe.resultado = snapshot;
+      informe.ofertasRecibidas = snapshot.ofertas.length;
+      informe.informeDocumentoId = resultado.informeDocumentoId;
+      informe.generadoPor = previo?.generadoPor ?? acceso.userName;
+      informe.generadoAt = previo?.generadoAt ?? new Date();
 
       const plazo = proceso.modalidad
         ? await em.getRepository(PlazoTraslado).findOne({ where: { modalidad: proceso.modalidad } })

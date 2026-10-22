@@ -16,9 +16,9 @@ import { NOMBRE_ETAPA } from './simbolos';
  * el módulo. El área Legal que ve la etapa 3, la 4 y solo la 7.2 de la 7 es un
  * permiso y tres casillas, no tres permisos.
  *
- * La pantalla enseña las dos capas juntas y avisa cuando no coinciden —una
- * casilla de «Editar» en un rol al que el backoffice no le dio ese permiso no
- * tiene efecto—, pero solo escribe la suya.
+ * La pantalla enseña las dos capas juntas y solo escribe la suya. Una casilla
+ * de «Editar» en un rol al que el backoffice no le dio ese permiso no se puede
+ * marcar: no tendría efecto. Las que quedaron de antes se señalan y se quitan.
  */
 
 const ACCIONES: { accion: AccionAlcance; nombre: string; ayuda: string }[] = [
@@ -82,7 +82,7 @@ const PERFILES = [
   {
     nombre: 'Contratación',
     rol: 'GESTOR_CONTRATACION',
-    queHace: 'Recibe el proceso en la 3.3, asigna el abogado y lleva el expediente de ahí en adelante.',
+    queHace: 'Recibe el proceso en la 3.3, asigna los puestos y lleva el expediente de ahí en adelante.',
   },
   {
     nombre: 'Abogado',
@@ -177,7 +177,7 @@ export function PermisosPorEtapa() {
       return siguiente;
     });
 
-  /** Acciones marcadas que el backoffice no le dio al rol: no tienen efecto. */
+  /** Acciones marcadas de antes que el backoffice ya no le da al rol: no tienen efecto. */
   const sinPermiso = useMemo(() => {
     if (!elegido) return [];
     const usadas = new Set(aLista(borrador).map((a) => a.accion));
@@ -249,15 +249,29 @@ export function PermisosPorEtapa() {
   const celda = (accion: AccionAlcance, lugar: string, etiqueta: string) => {
     const marcada = borrador.has(clave(accion, lugar));
     const porArriba = marcada ? null : cubiertoPor(borrador, accion, lugar);
+    /*
+     * Sin el permiso general la casilla no se puede marcar: guardaría algo
+     * que no funciona. La que ya estaba marcada sí se puede quitar.
+     */
+    const sinElPermiso = !!elegido && !elegido.acciones.includes(accion);
+    const bloqueada = sinElPermiso && !marcada;
     return (
-      <td key={accion} className="border-b border-gray-100 px-2 py-1.5 text-center">
+      <td key={accion} className={`border-b border-gray-100 px-2 py-1.5 text-center ${sinElPermiso && marcada ? 'bg-amber-50' : ''}`}>
         <input
           type="checkbox"
           checked={marcada || porArriba !== null}
-          disabled={porArriba !== null || guardando}
+          disabled={porArriba !== null || bloqueada || guardando}
           onChange={() => alternar(accion, lugar)}
           aria-label={`${NOMBRE_ACCION[accion]} en ${etiqueta}`}
-          title={porArriba ? `Ya lo cubre ${porArriba}` : undefined}
+          title={
+            sinElPermiso
+              ? `Este rol no tiene el permiso «${NOMBRE_ACCION[accion]}» en la administración de roles de la plataforma${
+                  marcada ? ': esta casilla no tiene efecto' : ''
+                }`
+              : porArriba
+                ? `Ya lo cubre ${porArriba}`
+                : undefined
+          }
           className="h-4 w-4 accent-[#003DA5] disabled:opacity-40"
         />
       </td>
@@ -270,7 +284,7 @@ export function PermisosPorEtapa() {
         <p className="m-0 text-xs text-gray-600 leading-relaxed">
           Elige un rol y marca dónde puede <strong className="font-bold text-gray-700">ver, editar,
           aprobar o decidir</strong>: en todo el módulo, en una etapa completa o en actividades
-          puntuales. Para que una columna tenga efecto, el rol también necesita ese permiso en la
+          puntuales. Solo se pueden marcar las columnas cuyo permiso tiene el rol en la
           administración de roles de la plataforma.
         </p>
       </div>
@@ -349,10 +363,23 @@ export function PermisosPorEtapa() {
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" aria-hidden />
                   <p className="m-0 text-[11.5px] text-amber-800 leading-relaxed">
-                    <strong className="font-bold">Sin efecto todavía.</strong> Este rol no tiene el
+                    <strong className="font-bold">Casillas sin efecto.</strong> Este rol ya no tiene el
                     permiso {sinPermiso.map((a) => `«${NOMBRE_ACCION[a]}»`).join(' ni ')} en la
-                    administración de roles de la plataforma. Esas casillas empezarán a funcionar
-                    cuando se lo asignen allí.
+                    administración de roles de la plataforma. Las marcadas en amarillo no funcionan y no
+                    se pueden marcar nuevas; vuelven a valer si le devuelven el permiso allí.{' '}
+                    <button
+                      type="button"
+                      disabled={guardando}
+                      onClick={() =>
+                        setBorrador(
+                          (previo) =>
+                            new Set([...previo].filter((c) => elegido.acciones.includes(c.split('|')[0] as AccionAlcance))),
+                        )
+                      }
+                      className="font-semibold text-amber-900 underline hover:no-underline disabled:opacity-40"
+                    >
+                      Quitarlas
+                    </button>
                   </p>
                 </div>
               )}
@@ -389,8 +416,15 @@ export function PermisosPorEtapa() {
                         disabled={guardando}
                         onClick={() => {
                           const origen = roles.find((r) => r.codigo === p.rol)!;
-                          setBorrador(new Set(origen.alcances.map((a) => clave(a.accion, a.lugar))));
-                          setAviso(`Copiamos los permisos del perfil ${p.nombre}. Revísalos y pulsa «Guardar cambios».`);
+                          // Solo lo que este rol puede tener: el resto no se podría guardar.
+                          const copiables = origen.alcances.filter((a) => elegido.acciones.includes(a.accion));
+                          setBorrador(new Set(copiables.map((a) => clave(a.accion, a.lugar))));
+                          const fuera = origen.alcances.length - copiables.length;
+                          setAviso(
+                            `Copiamos los permisos del perfil ${p.nombre}${
+                              fuera ? ` salvo ${fuera === 1 ? '1 casilla' : `${fuera} casillas`} de acciones que este rol no tiene en la plataforma` : ''
+                            }. Revísalos y pulsa «Guardar cambios».`,
+                          );
                         }}
                         className="rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[11.5px] font-semibold text-slate-700 hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-40"
                       >

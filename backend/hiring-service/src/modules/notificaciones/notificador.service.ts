@@ -5,7 +5,9 @@ import {
   PERMISO_PROCESO_ASIGNAR,
 } from '../../auth/permisos';
 import { AlcanceService } from '../../auth/alcance.service';
+import { accionQueHace, reglaLaHace } from '../../auth/la-hace';
 import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { FilaAsignacion, asignacionQueRige, filasDeVersion, versionDelProceso } from '../../flujo/lectura';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -235,9 +237,20 @@ export class NotificadorService implements OnApplicationBootstrap {
 
   /** Anota las actividades que se pueden empezar y devuelve las que no estaban anotadas. */
   private async anotarHabilitadas(procesoId: string): Promise<string[]> {
+    // La secuencia que rige es la de la versión del flujo del proceso (125).
+    // Si no se puede leer, rige lo predeterminado: un aviso tarde es mejor que
+    // ninguno.
+    let filasDelFlujo: FilaAsignacion[] = [];
+    try {
+      const em = this.dataSource.manager;
+      filasDelFlujo = await filasDeVersion(em, await versionDelProceso(em, procesoId));
+    } catch (error: any) {
+      this.logger.warn(`No se pudo leer la secuencia del flujo: ${error.message}`);
+    }
     const pasos: PasoDelFlujo[] = (
       await this.dataSource.query(
         `SELECT a.numeral,
+                p.modalidad,
                 pa.estado,
                 NOT EXISTS (
                   SELECT 1 FROM hiring.actividades_excluidas x
@@ -256,6 +269,7 @@ export class NotificadorService implements OnApplicationBootstrap {
       estado: f.estado ?? null,
       aplica: f.aplica === true,
       construida: !SIN_PANEL.has(f.numeral),
+      secuencia: asignacionQueRige(filasDelFlujo, f.numeral, f.modalidad ?? null).secuencia,
     }));
     if (!pasos.length) return [];
 
@@ -327,8 +341,40 @@ export class NotificadorService implements OnApplicationBootstrap {
     ocurrido: EventoOcurrido,
     modalidad: string | null,
   ): Promise<string[]> {
+    // Quien ocupa el puesto en el proceso (109).
+    if (papel.startsWith('PUESTO:')) {
+      const filas = await this.dataSource.query(
+        `SELECT usuario_id::text AS id FROM hiring.asignaciones_puesto
+          WHERE proceso_id = $1 AND puesto_id::text = $2 AND estado = 'VIGENTE'`,
+        [ocurrido.procesoId, papel.slice('PUESTO:'.length)],
+      );
+      return filas.map((f: any) => f.id);
+    }
+
     switch (papel) {
-      case 'ABOGADO':
+      case 'QUIEN_LA_HACE': {
+        // Lo que dice su regla «quién la hace»; sin regla, quien puede editarla.
+        const regla = await reglaLaHace(this.dataSource.manager, ocurrido.numeral, modalidad, ocurrido.procesoId);
+        if (regla && 'puestoId' in regla) {
+          return this.quienCumple(`PUESTO:${regla.puestoId}`, ocurrido, modalidad);
+        }
+        // Ids de persona: `cuentasDe` las traduce a sus cuentas.
+        if (regla && 'personas' in regla) return regla.personas;
+        return this.alcance.cuentasQuePueden(accionQueHace(ocurrido.numeral), ocurrido.numeral);
+      }
+      case 'DECIDE_REVISION_PAA': {
+        const filas = await this.dataSource.query(
+          `SELECT DISTINCT ur.id_user::text AS id
+             FROM auth.user_roles ur
+             JOIN auth.role r ON r.id = ur.id_rol AND r.is_active
+             JOIN hiring.alcances_permiso a ON a.rol_id = r.id AND a.activo AND a.accion = 'decidir'
+             JOIN auth.permission p ON p.code = 'contratacion.decidir' AND p.is_active
+             JOIN auth.role_permissions rp ON rp.id_rol = r.id AND rp.id_permission = p.id_permission AND rp.is_active
+            WHERE ur.is_active
+              AND (a.tramite = 'PAA.R' OR (a.etapa IS NULL AND a.numeral IS NULL AND a.tramite IS NULL))`,
+        );
+        return filas.map((f: any) => f.id);
+      }
       case 'CONTRATACION': {
         const filas = await this.dataSource.query(
           `SELECT usuario_id::text AS id
@@ -377,7 +423,7 @@ export class NotificadorService implements OnApplicationBootstrap {
         // Sin ronda —la 3.1 con la regla de siempre, que decide el abogado—,
         // los que nombra la regla, como antes de la 101.
         if (!pendientes.length) {
-          const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad);
+          const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad, undefined, ocurrido.procesoId);
           pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1).map((e) => ({ ...e, cuentas: [] })) : [];
         }
         const ids: string[] = [];
@@ -444,11 +490,14 @@ export class NotificadorService implements OnApplicationBootstrap {
         return filas.map((f: any) => f.id);
       }
       case 'SUPERVISOR': {
+        // La cuenta designada (121); las designaciones de antes solo tienen la
+        // persona, y `cuentasDe` la traduce.
         const filas = await this.dataSource.query(
-          `SELECT s.persona_id::text AS id
+          `SELECT COALESCE(s.usuario_id::text, s.persona_id::text) AS id
              FROM hiring.supervisiones_contrato s
              JOIN hiring.contratos k ON k.id = s.contrato_id
-            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE' AND s.persona_id IS NOT NULL`,
+            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE'
+              AND COALESCE(s.usuario_id, s.persona_id) IS NOT NULL`,
           [ocurrido.procesoId],
         );
         return filas.map((f: any) => f.id);

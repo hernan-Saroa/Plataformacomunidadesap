@@ -1,11 +1,10 @@
 import {
   DecisionPrevia,
   escalonCompleto,
+  esResponsable,
   leerConfigDeRegla,
-  mensajeDeDesignacion,
+  mensajeDePuesto,
   motivoParaNoDecidir,
-  problemaDeDesignacion,
-  responsablesEfectivos,
   trasDecision,
   validarEscalones,
 } from './cadena';
@@ -83,14 +82,21 @@ describe('cadena de aprobación', () => {
       estado: 'PENDIENTE' as const,
       roles: ['COORDINADOR'],
       personas: ['persona-9'],
-      papeles: ['ABOGADO' as const],
+      papeles: ['CONTRATACION' as const],
+      puestos: ['puesto-abogado'],
       acciones: ['APROBAR' as const, 'DEVOLVER' as const],
       reglaDecision: 'UNO' as const,
     };
-    const quien = (roles: string[] = [], personaId: string | null = null, papeles: any[] = []) => ({
+    const quien = (
+      roles: string[] = [],
+      personaId: string | null = null,
+      papeles: any[] = [],
+      puestos: string[] = [],
+    ) => ({
       roles,
       personaId,
       papeles,
+      puestos,
     });
     const motivo = (over: Partial<Parameters<typeof motivoParaNoDecidir>[0]>) =>
       motivoParaNoDecidir({
@@ -103,10 +109,15 @@ describe('cadena de aprobación', () => {
         ...over,
       });
 
-    it('decide quien tiene el rol, la persona designada o el papel del proceso', () => {
+    it('decide quien tiene el rol, la persona nombrada, el papel o el puesto del proceso', () => {
       expect(motivo({})).toBeNull();
       expect(motivo({ quien: quien([], 'persona-9') })).toBeNull();
-      expect(motivo({ quien: quien([], 'persona-2', ['ABOGADO']) })).toBeNull();
+      expect(motivo({ quien: quien([], 'persona-2', ['CONTRATACION']) })).toBeNull();
+      expect(motivo({ quien: quien([], 'persona-2', [], ['puesto-abogado']) })).toBeNull();
+    });
+
+    it('ocupar otro puesto no basta', () => {
+      expect(motivo({ quien: quien([], 'persona-2', [], ['puesto-jefe']) })).toMatch(/No estás/);
     });
 
     it('nadie más', () => {
@@ -163,6 +174,25 @@ describe('cadena de aprobación', () => {
       expect(escalonCompleto(todos, [], 'a')).toBe(false);
       expect(escalonCompleto(todos, [aprobo('a')], 'b')).toBe(true);
     });
+
+    it('con TODOS por puestos espera a cada cuenta que los ocupa', () => {
+      const porPuestos = { orden: 1, reglaDecision: 'TODOS' as const, personas: [] };
+      const aproboCuenta = (usuarioId: string): DecisionPrevia => ({
+        escalon: 1,
+        decision: 'APROBADO',
+        personaId: null,
+        usuarioId,
+      });
+
+      // El abogado aprueba primero: falta el financiero.
+      expect(escalonCompleto(porPuestos, [], 'p-abogado', ['u-abogado', 'u-financiero'], 'u-abogado')).toBe(
+        false,
+      );
+      // Aprueba el financiero: el escalón queda resuelto.
+      expect(
+        escalonCompleto(porPuestos, [aproboCuenta('u-abogado')], 'p-fin', ['u-abogado', 'u-financiero'], 'u-financiero'),
+      ).toBe(true);
+    });
   });
 
   describe('leerConfigDeRegla', () => {
@@ -207,7 +237,7 @@ describe('cadena de aprobación', () => {
 
       expect(problemas).toEqual([
         'El escalón 1 necesita un nombre',
-        'El escalón 1 no tiene quién decida: elige un rol, una persona o un papel',
+        'El escalón 1 no tiene quién decida: elige un rol, una persona, un puesto o un papel',
         'El escalón 2 tiene que poder aprobar: sin eso la cadena no tiene salida',
       ]);
     });
@@ -219,79 +249,55 @@ describe('cadena de aprobación', () => {
       expect(problemas[0]).toMatch(/aprueben todos/);
     });
 
+    it('TODOS acepta puestos: aprueban todos los que los ocupan en el proceso', () => {
+      const { problemas } = validarEscalones([
+        { nombre: 'Estructurador y financiero', puestos: ['p-abogado', 'p-financiero'], reglaDecision: 'TODOS' },
+      ]);
+      expect(problemas).toEqual([]);
+    });
+
+    it('TODOS con un solo puesto no tiene a quién esperar', () => {
+      const { problemas } = validarEscalones([{ nombre: 'Solo', puestos: ['p-abogado'], reglaDecision: 'TODOS' }]);
+      expect(problemas[0]).toMatch(/al menos dos entre personas y puestos/);
+    });
+
     it('una cadena vacía no es una cadena', () => {
       expect(validarEscalones([]).problemas).toEqual(['La cadena necesita al menos un escalón']);
     });
   });
 
   /*
-   * La 3.1 reparte sus escalones por rol en la 3.3 (migración 102): decide la
-   * persona designada en el proceso, no cualquiera con el rol.
+   * Los puestos del proceso (109): un escalón que nombra un puesto lo decide
+   * quien lo ocupa en el proceso. La pertenencia se resuelve fuera —quién
+   * ocupa qué y si conserva el permiso—; aquí, que el puesto cuenta.
    */
-  describe('responsablesEfectivos', () => {
-    const director = { roles: ['DIRECTOR'], personas: [], papeles: [] as any[] };
-    const motivo = (escalon: any, quien: any) =>
-      motivoParaNoDecidir({
-        escalon: { ...escalon, orden: 2, estado: 'PENDIENTE', acciones: ['APROBAR'], reglaDecision: 'UNO' },
-        accion: 'APROBAR',
-        quien,
-        usuarioId: quien.usuarioId,
-        previas: [],
-        permiteMismoAprobador: false,
+  describe('puestos', () => {
+    const abogado = { roles: [], personas: [], papeles: [], puestos: ['p-abogado'] };
+
+    it('decide quien ocupa el puesto', () => {
+      expect(esResponsable(abogado, { roles: [], personaId: null, papeles: [], puestos: ['p-abogado'] })).toBe(true);
+    });
+
+    it('tener el rol de abogado no basta: el puesto es por proceso', () => {
+      expect(
+        esResponsable(abogado, { roles: ['REVISOR_CONTRATACION'], personaId: null, papeles: [], puestos: [] }),
+      ).toBe(false);
+    });
+
+    it('la regla de un escalón suelto puede nombrar puestos', () => {
+      expect(leerConfigDeRegla({ puestos: ['p-abogado'] })).toEqual({
+        escalon: expect.objectContaining({ puestos: ['p-abogado'], roles: [] }),
       });
-
-    it('fuera de la 3.1 el rol basta, como siempre', () => {
-      const e = responsablesEfectivos(director, false, null);
-      expect(motivo(e, { roles: ['DIRECTOR'], personaId: null, papeles: [], usuarioId: 'u-1' })).toBeNull();
     });
 
-    it('en la 3.1 el rol solo no basta: decide el designado', () => {
-      const e = responsablesEfectivos(director, true, 'u-designada');
-      expect(motivo(e, { roles: ['DIRECTOR'], personaId: null, papeles: [], usuarioId: 'u-otro' })).toMatch(/No estás/);
-      expect(motivo(e, { roles: [], personaId: null, papeles: [], usuarioId: 'u-designada' })).toBeNull();
-    });
-
-    it('sin designación no decide nadie', () => {
-      const e = responsablesEfectivos(director, true, null);
-      expect(motivo(e, { roles: ['DIRECTOR'], personaId: null, papeles: [], usuarioId: 'u-1' })).toMatch(/No estás/);
-    });
-
-    it('un escalón del abogado no se designa: sigue por su papel', () => {
-      const abogado = { roles: [], personas: [], papeles: ['ABOGADO' as const] };
-      expect(responsablesEfectivos(abogado, true, null)).toEqual({ ...abogado, cuentas: [] });
-    });
-  });
-
-  /*
-   * Si el rol se borra, se desactiva o cambia de código, o el designado lo
-   * pierde, el escalón se queda sin quién lo decida en vez de seguir valiendo.
-   */
-  describe('problemaDeDesignacion', () => {
-    const vigentes = new Set(['DIRECTOR', 'COORDINADOR']);
-
-    it('con el rol vigente y el designado que lo tiene, no hay problema', () => {
-      expect(problemaDeDesignacion(['DIRECTOR'], vigentes, { roles: new Set(['DIRECTOR']) })).toBeNull();
-    });
-
-    it('sin designar', () => {
-      expect(problemaDeDesignacion(['DIRECTOR'], vigentes, null)).toBe('SIN_DESIGNAR');
-    });
-
-    it('el designado perdió el rol', () => {
-      expect(problemaDeDesignacion(['DIRECTOR'], vigentes, { roles: new Set(['GESTOR']) })).toBe('SIN_ROL');
-    });
-
-    it('el rol ya no existe, aunque haya designado: se corrige la cadena', () => {
-      expect(problemaDeDesignacion(['VIEJO_CODIGO'], vigentes, { roles: new Set(['VIEJO_CODIGO']) })).toBe('ROL_INEXISTENTE');
-    });
-
-    it('con dos roles, basta que uno siga y que el designado lo tenga', () => {
-      expect(problemaDeDesignacion(['VIEJO', 'COORDINADOR'], vigentes, { roles: new Set(['COORDINADOR']) })).toBeNull();
+    it('un escalón con solo un puesto tiene quién decida', () => {
+      expect(validarEscalones([{ nombre: 'Abogado', puestos: ['p-abogado'] }]).problemas).toEqual([]);
     });
 
     it('el mensaje dice qué hacer y dónde', () => {
-      expect(mensajeDeDesignacion('SIN_ROL', { orden: 2, nombre: 'Director' }, 'Diana Castro')).toBe(
-        'Diana Castro ya no tiene el rol del escalón 2 (Director): hay que reasignarlo en la 3.3',
+      expect(mensajeDePuesto('SIN_ASIGNAR', 'Abogado')).toBe('Falta asignar en la 3.3 quién ocupa el puesto Abogado');
+      expect(mensajeDePuesto('SIN_PERMISO', 'Abogado', 'Diana Castro')).toMatch(
+        /^Diana Castro \(Abogado\) ya no tiene permiso para aprobar aquí/,
       );
     });
   });

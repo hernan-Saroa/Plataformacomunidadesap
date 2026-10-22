@@ -34,15 +34,9 @@ interface Props {
 }
 
 /** Por qué quien mira no puede decidir la 3.4, dicho como lo diría una persona. */
-function porQueNoDecide(
-  motivo: string | null | undefined,
-  abogado?: string | null,
-  espera?: string | null,
-): string {
-  if (motivo === 'SIN_ABOGADO') return 'Nadie ha repartido este proceso: se asigna abogado en la 3.3.';
-  if (motivo === 'EN_CADENA') return espera ?? 'Lo decide otro escalón de la cadena de aprobación.';
-  if (motivo === 'NO_ES_TUYO') return `Lo revisa ${abogado ?? 'otro abogado'}.`;
-  return 'Tu rol no resuelve la revisión del estudio previo.';
+function porQueNoDecide(motivo: string | null | undefined, espera?: string | null): string {
+  if (motivo === 'EN_CADENA') return espera ?? 'Lo decide otro escalón de la aprobación.';
+  return 'El estudio previo no está esperando una decisión tuya.';
 }
 
 /**
@@ -216,8 +210,8 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                     <>
                       <p className="text-[12px] text-slate-500 m-0">
                         Lee el estudio y sus documentos antes de resolver. Aprobarlo ratifica la
-                        modalidad. Devolver pide observaciones y admite un archivo con las
-                        correcciones.
+                        modalidad. Al aprobar, devolver o negar puedes adjuntar los documentos que
+                        sustentan tu decisión.
                       </p>
                       {destino ? (
                         <p className="text-[12px] text-slate-600 m-0 flex items-start gap-1.5">
@@ -225,6 +219,16 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                           <span>
                             Si lo apruebas, pasa a: <strong className="text-slate-900">{destino}</strong>
                           </span>
+                        </p>
+                      ) : null}
+                      {/* Puede devolver o negar pero no aprobar —p. ej. ya aprobó
+                          otro escalón de la ronda—: sin decirlo, el botón que
+                          falta parece un error de la pantalla. */}
+                      {estudio.revision?.acciones &&
+                      !estudio.revision.acciones.includes('APROBAR') &&
+                      estudio.revision.espera ? (
+                        <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 m-0">
+                          No puedes aprobar: {estudio.revision.espera}
                         </p>
                       ) : null}
                       <DecisionEstudioPrevio
@@ -239,11 +243,7 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                     </>
                   ) : (
                     <p className="text-[12px] text-slate-600 m-0">
-                      {porQueNoDecide(
-                        estudio.revision?.motivo,
-                        estudio.revision?.abogado?.nombre,
-                        estudio.revision?.espera,
-                      )}
+                      {porQueNoDecide(estudio.revision?.motivo, estudio.revision?.espera)}
                     </p>
                   )}
                 </div>

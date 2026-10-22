@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
+  IsIn,
   IsISO8601,
   IsNotEmpty,
   IsNumber,
@@ -27,9 +28,29 @@ const aNumero = ({ value }: { value: unknown }) => {
 };
 
 export class AdjudicarDto {
-  @ApiProperty({ description: 'Oferta a la que se adjudica' })
+  /** Con convocatoria. Sin ella no hay ofertas y van los tres campos de abajo. */
+  @ApiPropertyOptional({ description: 'Oferta a la que se adjudica (con convocatoria)' })
+  @IsOptional()
   @IsUUID('4', { message: 'El adjudicatario se identifica con el id de su oferta' })
-  oferenteId: string;
+  oferenteId?: string;
+
+  /** Sin convocatoria (directa): a quién se adjudica, tal como lo dice el acto. */
+  @ApiPropertyOptional({ description: 'Nombre del contratista (sin convocatoria)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  contratistaNombre?: string;
+
+  @ApiPropertyOptional({ description: 'Documento del contratista (sin convocatoria)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  contratistaDocumento?: string;
+
+  @ApiPropertyOptional({ description: 'NATURAL o JURIDICA (sin convocatoria)' })
+  @IsOptional()
+  @IsIn(['NATURAL', 'JURIDICA'], { message: 'El contratista es persona NATURAL o JURIDICA' })
+  contratistaTipo?: 'NATURAL' | 'JURIDICA';
 
   @ApiProperty({ description: 'Número de la resolución de adjudicación' })
   @IsString()
@@ -80,7 +101,7 @@ export class AdjudicarDto {
   @MaxLength(2000)
   justificacion?: string;
 
-  /** Solo si la 7.4 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 7.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @FirmaDelMultipart()

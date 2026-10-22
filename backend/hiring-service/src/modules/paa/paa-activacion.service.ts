@@ -34,7 +34,6 @@ export interface ProcesoAfectado {
   tratamiento: Tratamiento;
   /** Si queda una revisión pendiente, y si detiene el proceso. */
   revision: { tipo: TipoRevisionPaa; bloquea: boolean } | null;
-  abogado: { id: string | null; nombre: string } | null;
   cambios: CambiosRevisionPaa;
   lineaNuevaId: string | null;
   plan: PlanDeActualizacion | null;
@@ -130,7 +129,6 @@ export class PaaActivacionService {
   async afectadosPorCambioDeVigencia(vigenciaId: string) {
     const { vigencia, activa, anterior } = await this.paraDeclarar(this.dataSource.manager, vigenciaId);
     const procesos = await this.abiertosDeOtrosAnios(this.dataSource.manager, vigencia);
-    const abogados = await this.abogados(this.dataSource.manager, procesos.map((p) => p.id));
     return {
       anio: vigencia.anio,
       version: activa ? { id: activa.id, numero: activa.numero } : null,
@@ -142,7 +140,6 @@ export class PaaActivacionService {
         etapa: p.etapa,
         codigo: p.paaCodigo,
         anio: p.paaAnio,
-        abogado: abogados.get(p.id) ?? null,
       })),
     };
   }
@@ -174,7 +171,6 @@ export class PaaActivacionService {
       );
 
       const procesos = await this.abiertosDeOtrosAnios(em, vigencia);
-      const abogados = await this.abogados(em, procesos.map((p) => p.id));
       const comparacion = await em.findOne(PaaComparacion, {
         where: { versionNuevaId: activa.id, tipo: 'CAMBIO_VIGENCIA' },
       });
@@ -182,7 +178,6 @@ export class PaaActivacionService {
       let abiertas = 0;
       for (const p of procesos) {
         const linea = await em.findOneOrFail(PaaLinea, { where: { id: p.paaLineaId! } });
-        const abogado = abogados.get(p.id) ?? null;
         const abierta = await this.abrirRevision(
           em,
           {
@@ -198,8 +193,9 @@ export class PaaActivacionService {
               `reemplaza al de ${p.paaAnio}. El proceso conserva los datos de ${p.paaCodigo} (${p.paaAnio}) ` +
               'hasta que se decida si continúa, se devuelve, se migra o se cancela.',
             bloquea: true,
-            responsableId: abogado?.id ?? null,
-            responsableNombre: abogado?.nombre ?? null,
+            // Sin responsable fijo (109): la decide quien tenga el permiso.
+            responsableId: null,
+            responsableNombre: null,
           },
           activa.numero,
           acceso,
@@ -290,13 +286,12 @@ export class PaaActivacionService {
     const conLinea = procesos.filter((p) => p.paaLineaId && p.paaCodigo);
     if (!conLinea.length) return [];
 
-    const [actuales, nuevas, estudios, abogados] = await Promise.all([
+    const [actuales, nuevas, estudios] = await Promise.all([
       em.find(PaaLinea, { where: { id: In(conLinea.map((p) => p.paaLineaId!)) } }),
       em.find(PaaLinea, { where: { versionId: version.id, codigo: In(conLinea.map((p) => p.paaCodigo!)) } }),
       em.find(ProcesoActividad, {
         where: { procesoId: In(conLinea.map((p) => p.id)), numeral: NUMERAL_ESTUDIO_PREVIO },
       }),
-      this.abogados(em, conLinea.map((p) => p.id)),
     ]);
     const lineaActual = new Map(actuales.map((l) => [l.id, l]));
     const lineaNueva = new Map(nuevas.map((l) => [`${l.regionId}|${l.codigo}`, l]));
@@ -313,7 +308,6 @@ export class PaaActivacionService {
         objeto: p.objeto,
         etapa: p.etapa,
         codigo: p.paaCodigo!,
-        abogado: abogados.get(p.id) ?? null,
         lineaNuevaId: nueva?.id ?? null,
       };
 
@@ -426,8 +420,8 @@ export class PaaActivacionService {
         cambios: p.cambios,
         motivo,
         bloquea: p.revision.bloquea,
-        responsableId: p.abogado?.id ?? null,
-        responsableNombre: p.abogado?.nombre ?? null,
+        responsableId: null,
+        responsableNombre: null,
       },
       version.numero,
       acceso,
@@ -528,19 +522,6 @@ export class PaaActivacionService {
       datos.procesoId!,
     );
     return true;
-  }
-
-  /** El abogado vigente de cada proceso: él decide la revisión. */
-  async abogados(em: EntityManager, procesoIds: string[]) {
-    if (!procesoIds.length) return new Map<string, { id: string | null; nombre: string }>();
-    const filas: { proceso_id: string; usuario_id: string | null; usuario_nombre: string; nombre: string }[] =
-      await em.query(
-        `SELECT proceso_id, usuario_id::text AS usuario_id, usuario_nombre, nombre
-           FROM hiring.participaciones_proceso
-          WHERE proceso_id = ANY($1) AND papel = 'ABOGADO' AND estado = 'VIGENTE'`,
-        [procesoIds],
-      );
-    return new Map(filas.map((f) => [f.proceso_id, { id: f.usuario_id, nombre: f.nombre || f.usuario_nombre }]));
   }
 }
 

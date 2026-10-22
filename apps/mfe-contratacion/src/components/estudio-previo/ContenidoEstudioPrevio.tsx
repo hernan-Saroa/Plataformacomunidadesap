@@ -16,7 +16,6 @@ import { contratacionService } from '../../services/contratacionService';
 import {
   CampoFormulario,
   CdpDelEstudioPrevio as EstadoCdp,
-  EstudioPrevio,
   RevisionEstudioPrevio,
 } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
@@ -26,6 +25,7 @@ import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
 import { ModalidadDelEstudioPrevio } from './ModalidadDelEstudioPrevio';
 import { CdpDelEstudioPrevio } from './CdpDelEstudioPrevio';
+import { DatosDelPaa } from './DatosDelPaa';
 import { usarAprobacion } from '../shared/usarAprobacion';
 import { useFirma } from '../shared/useFirma';
 
@@ -52,10 +52,6 @@ interface Props {
 /** La actividad que este panel resuelve. */
 const NUMERAL = '3.1';
 
-/** El área solicitante y su jefe: el segundo se elige entre la gente del primero. */
-const CAMPO_AREA = 'area_solicitante';
-const CAMPO_JEFE = 'responsable_area';
-
 export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props) {
   const {
     datos,
@@ -73,7 +69,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
     cargar,
     documentoFaltante,
     documentosDeLaLista,
-    actualizarProceso,
   } = useEstudioPrevio(procesoId);
 
   const [revisiones, setRevisiones] = useState<RevisionEstudioPrevio[]>([]);
@@ -149,22 +144,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
     return Array.from(mapa.entries());
   }, [datos?.definicionCampos]);
 
-  /**
-   * El área solicitante que acota a quién se puede nombrar jefe del área.
-   * `undefined` si la configuración no pide el área: entonces no hay con qué
-   * filtrar y el selector ofrece a todos, como antes.
-   */
-  const pideArea = datos?.definicionCampos?.some((c) => c.codigo === CAMPO_AREA) ?? false;
-  const areaElegida = pideArea ? String(valores[CAMPO_AREA] ?? '') : undefined;
-
-  /** Cambiar el área deja sin jefe: el de antes pertenece a otra dependencia. */
-  const cambiarCampo = (codigo: string, valor: any) => {
-    cambiar(codigo, valor);
-    if (codigo === CAMPO_AREA && valor !== valores[CAMPO_AREA] && valores[CAMPO_JEFE]) {
-      cambiar(CAMPO_JEFE, '');
-    }
-  };
-
   if (cargando) {
     return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
   }
@@ -197,13 +176,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
 
   /** Por qué no le toca a quien mira, dicho como lo diría una persona. */
   const porQueNoDecido =
-    quienResuelve?.motivo === 'SIN_ABOGADO'
-      ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
-      : quienResuelve?.motivo === 'NO_ES_TUYO'
-        ? `Lo revisa ${quienResuelve.abogado?.nombre ?? 'otro abogado'}.`
-        : quienResuelve?.motivo === 'EN_CADENA'
-          ? quienResuelve.espera ?? null
-          : null;
+    // La revisión es la ronda de la aprobación de la 3.1 (109): el escalón que
+    // espera dice a quién, incluso si falta asignar su puesto en la 3.3.
+    quienResuelve?.motivo === 'EN_CADENA' ? (quienResuelve.espera ?? null) : null;
 
   /**
    * Tras cargar o sustituir un documento de la lista.
@@ -214,18 +189,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
    */
   const trasCambiarDocumentos = async () => {
     await cargar();
-    onCambio?.();
-  };
-
-  /**
-   * Tras cambiar la modalidad: la lista de documentos es otra, así que se
-   * relee y se vuelve a contar lo que falta. El formulario no se recarga, para
-   * no llevarse lo que el área escribió y no ha guardado.
-   */
-  const trasCambiarModalidad = (proceso: EstudioPrevio['proceso']) => {
-    actualizarProceso(proceso);
-    setTokenLista((n) => n + 1);
-    contarLoQueFaltaDeLaLista();
     onCambio?.();
   };
 
@@ -282,18 +245,14 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
       )}
 
       {/* La modalidad va arriba y fuera de las pestañas: de ella depende la
-          lista de documentos, y el abogado la ratifica con el estudio previo. */}
-      <ModalidadDelEstudioPrevio
-        procesoId={procesoId}
-        proceso={datos.proceso}
-        puedeCambiar={datos.estado === 'BORRADOR' && datos.proceso.radicadoPorMi === true}
-        onCambiada={trasCambiarModalidad}
-      />
+          lista de documentos, y el abogado la ratifica con el estudio previo.
+          Viene del PAA y aquí solo se muestra. */}
+      <ModalidadDelEstudioPrevio proceso={datos.proceso} />
 
       {/* El CDP va aparte del formulario y de sus pestañas: es un trámite de la
           Dirección Financiera, que va por fuera, y cargarlo no es guardar ni
-          enviar el estudio previo. Se relee al cambiar la modalidad, que decide
-          si lo exige. */}
+          enviar el estudio previo. Se relee si una versión nueva del PAA cambia
+          la modalidad, que decide si lo exige. */}
       <CdpDelEstudioPrevio
         key={datos.proceso.modalidad ?? ''}
         procesoId={procesoId}
@@ -354,6 +313,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
         })}
       </div>
 
+      {/* Lo que la región decidió mostrar de la línea del PAA, antes de lo que
+          el área diligencia. */}
+      {seccion === 'campos' && <DatosDelPaa procesoId={procesoId} version={datos} />}
+
       {/* Campos por sección, dos columnas */}
       {seccion === 'campos' &&
         grupos.map(([grupo, campos]) => (
@@ -373,8 +336,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
                   valor={valores[campo.codigo]}
                   error={errores[campo.codigo]}
                   disabled={bloqueado}
-                  dependencia={areaElegida}
-                  onChange={(v) => cambiarCampo(campo.codigo, v)}
+                  onChange={(v) => cambiar(campo.codigo, v)}
                 />
               ))}
             </div>

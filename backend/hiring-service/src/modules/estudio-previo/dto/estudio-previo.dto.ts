@@ -83,15 +83,6 @@ export class GuardarBorradorDto {
   version?: number;
 }
 
-/** La modalidad que el área elige mientras arma el estudio previo. */
-export class CambiarModalidadDto {
-  @ApiProperty({ description: 'Código de la modalidad del catálogo' })
-  @IsString()
-  @IsNotEmpty({ message: 'Elige la modalidad de contratación' })
-  @MaxLength(60)
-  modalidad: string;
-}
-
 /**
  * Borrar un proceso (108): el radicado escrito a mano y el motivo.
  *

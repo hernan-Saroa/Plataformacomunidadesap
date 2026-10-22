@@ -9,7 +9,18 @@ function montar(opciones: {
   guardadas?: Partial<PaaCampoVisible>[];
   delAnioAnterior?: Partial<PaaCampoVisible>[];
   clavesEnArchivo?: string[];
+  /** Campos activos de la 3.1; por omisión, los de la siembra (sin el lugar de ejecución, que está inactivo). */
+  camposDeLa31?: string[];
 }) {
+  const camposDeLa31 = opciones.camposDeLa31 ?? ['objeto_contratar', 'linea_paa', 'responsable_area', 'valor_estimado', 'plazo_ejecucion_dias'];
+  const etiquetas: Record<string, string> = {
+    objeto_contratar: 'Objeto del contrato',
+    linea_paa: 'Línea del Plan Anual de Adquisiciones',
+    responsable_area: 'Responsable del área',
+    valor_estimado: 'Valor estimado del contrato',
+    plazo_ejecucion_dias: 'Plazo de ejecución (días)',
+    lugar_ejecucion: 'Lugar de ejecución',
+  };
   const region = { id: 'r1', nombre: 'Sede Central' } as PaaRegion;
   const vigencia = { id: 'v2027', anio: 2027 } as PaaVigencia;
   const anterior = { id: 'v2026', anio: 2026 } as PaaVigencia;
@@ -27,7 +38,10 @@ function montar(opciones: {
       if (entidad === PaaVersion) return opciones.clavesEnArchivo && where.estado === 'ACTIVA' ? { id: 'ver' } : null;
       return null;
     },
-    query: async () => (opciones.clavesEnArchivo ?? []).map((clave) => ({ clave })),
+    query: async (sql: string) =>
+      sql.includes('campos_formulario')
+        ? camposDeLa31.map((codigo) => ({ codigo, etiqueta: etiquetas[codigo] }))
+        : (opciones.clavesEnArchivo ?? []).map((clave) => ({ clave })),
     delete: async () => {
       guardadas = [];
     },
@@ -118,6 +132,80 @@ describe('PaaCamposService', () => {
     ]);
     expect(insertadas[0][0].vigenciaId).toBe('v2027');
     expect(admin.traza).toHaveBeenCalled();
+  });
+
+  it('sin configuración, la 3.1 muestra lo que no tiene campo propio', async () => {
+    const { servicio } = montar({});
+    const r = await servicio.campos('r1', 2027);
+
+    const enLa31 = Object.fromEntries(r.campos.map((c) => [c.clave, c.enEstudioPrevio]));
+    expect(enLa31).toMatchObject({ unspsc: true, fuente_recursos: true, ubicacion: true, mes_inicio: false });
+    expect(r.campos.find((c) => c.clave === 'unspsc')?.yaEnEstudioPrevio).toBeNull();
+  });
+
+  it('relaciona cada columna con el campo de la 3.1 que el PAA ya llena', async () => {
+    const { servicio } = montar({});
+    const r = await servicio.campos('r1', 2027);
+    const ya = Object.fromEntries(r.campos.map((c) => [c.clave, c.yaEnEstudioPrevio]));
+
+    expect(ya).toMatchObject({
+      objeto: 'Objeto del contrato',
+      valor_total: 'Valor estimado del contrato',
+      modalidad: 'Modalidad de contratación',
+      modalidad_codigo: 'Modalidad de contratación',
+      duracion: 'Plazo de ejecución (días)',
+      duracion_intervalo: 'Plazo de ejecución (días)',
+      responsable_nombre: 'Responsable del área',
+      // El lugar de ejecución de la 3.1 está inactivo: la ubicación no llega por ahí.
+      ubicacion: null,
+    });
+    // Llegan a la 3.1 siempre, pero no se repiten en el bloque.
+    expect(r.campos.find((c) => c.clave === 'objeto')?.enEstudioPrevio).toBe(true);
+    const bloque = (await servicio.delEstudioPrevio('r1', { id: 'v2027', anio: 2027 } as PaaVigencia)).map((c) => c.clave);
+    expect(bloque).toContain('ubicacion');
+    expect(bloque).not.toContain('objeto');
+  });
+
+  it('si se activa el lugar de ejecución, la ubicación sale del bloque', async () => {
+    const { servicio } = montar({
+      camposDeLa31: ['objeto_contratar', 'lugar_ejecucion'],
+    });
+    const r = await servicio.campos('r1', 2027);
+
+    expect(r.campos.find((c) => c.clave === 'ubicacion')?.yaEnEstudioPrevio).toBe('Lugar de ejecución');
+    const bloque = (await servicio.delEstudioPrevio('r1', { id: 'v2027', anio: 2027 } as PaaVigencia)).map((c) => c.clave);
+    expect(bloque).not.toContain('ubicacion');
+  });
+
+  it('guarda lo de la 3.1 aparte de lo visible, y conserva lo que no se mandó', async () => {
+    const { servicio, insertadas, admin } = montar({
+      guardadas: [
+        { clave: 'objeto', visible: true, enEstudioPrevio: false, orden: 0 } as PaaCampoVisible,
+        { clave: 'responsable_correo', visible: false, enEstudioPrevio: false, orden: 1 } as PaaCampoVisible,
+        { clave: 'unspsc', visible: true, enEstudioPrevio: true, orden: 2 } as PaaCampoVisible,
+      ],
+      clavesEnArchivo: ['objeto', 'responsable_correo', 'unspsc'],
+    });
+    await servicio.guardar(
+      'r1',
+      2027,
+      {
+        campos: [
+          { clave: 'responsable_correo', visible: false, enEstudioPrevio: true },
+          { clave: 'unspsc', visible: true },
+        ],
+      },
+      { userId: 'u', userName: 'dir', roles: [] },
+    );
+
+    expect(insertadas[0].map((f) => [f.clave, f.visible, f.enEstudioPrevio])).toEqual([
+      ['responsable_correo', false, true],
+      ['unspsc', true, true],
+      ['objeto', true, false],
+    ]);
+    expect(admin.traza.mock.calls[0][5].enEstudioPrevio).toEqual(['responsable_correo', 'unspsc']);
+    const delEstudio = await servicio.delEstudioPrevio('r1', { id: 'v2027', anio: 2027 } as PaaVigencia);
+    expect(delEstudio.map((c) => c.clave)).toEqual(['responsable_correo', 'unspsc']);
   });
 
   it('rechaza un campo que el PAA no tiene', async () => {

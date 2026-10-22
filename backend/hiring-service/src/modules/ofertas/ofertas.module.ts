@@ -19,9 +19,12 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { RiesgosModule } from '../riesgos/riesgos.module';
 
 @Module({
   imports: [
+    // La audiencia de riesgos obligatoria condiciona el cierre (EFDS-1153, 112).
+    RiesgosModule,
     TypeOrmModule.forFeature([
       RecepcionOfertas,
       Oferente,

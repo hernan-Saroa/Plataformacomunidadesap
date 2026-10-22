@@ -26,10 +26,9 @@ const ETAPA_DEVOLVIBLE = 3;
 /**
  * Las revisiones que abre un cambio del PAA, y lo que decide el encargado.
  *
- * El encargado es el abogado del proceso. Si el proceso no tiene abogado, la
- * revisión queda en la bandeja de quien tenga `decidir` en `PAA.R`, y la
- * decide cualquiera de ellos: «un proceso sí puede quedarse sin abogado», y
- * una revisión que bloquea no puede quedarse esperando a que lo tenga.
+ * Las decide cualquiera que tenga `decidir` en `PAA.R` (109): ya no hay un
+ * abogado del proceso que responda por ellas, y el endpoint ya exige ese
+ * permiso.
  */
 @Injectable()
 export class PaaRevisionesService {
@@ -59,7 +58,8 @@ export class PaaRevisionesService {
     return {
       ...revision,
       decisiones: await this.decisionesPosibles(revision.tipo, proceso, acceso),
-      puedeDecidir: revision.estado === 'PENDIENTE' && (await this.esQuienDecide(proceso.id, acceso)) === null,
+      // El permiso lo exige el endpoint de decidir; aquí solo si sigue abierta.
+      puedeDecidir: revision.estado === 'PENDIENTE',
     };
   }
 
@@ -111,8 +111,6 @@ export class PaaRevisionesService {
       if (revision.estado !== 'PENDIENTE') throw new ConflictException('La revisión ya se decidió');
 
       const proceso = await em.findOneOrFail(Proceso, { where: { id: revision.procesoId } });
-      const ajeno = await this.esQuienDecide(proceso.id, acceso, em);
-      if (ajeno) throw new ForbiddenException(ajeno);
 
       const posibles = await this.decisionesPosibles(revision.tipo, proceso, acceso);
       const elegida = posibles.find((d) => d.decision === dto.decision)!;
@@ -304,39 +302,19 @@ export class PaaRevisionesService {
     await this.activacion.revisarUmbral(em, proceso, plan);
     return plan;
   }
-
-  /**
-   * Null si quien pregunta puede decidir; si no, por qué. Con abogado, solo él;
-   * sin abogado, cualquiera con `decidir` en las revisiones del PAA, que es lo
-   * que ya exige el endpoint.
-   */
-  private async esQuienDecide(procesoId: string, acceso: HiringAccess, em: EntityManager = this.dataSource.manager) {
-    const abogado = (await this.activacion.abogados(em, [procesoId])).get(procesoId);
-    if (!abogado) return null;
-    const [suyo] = await em.query(
-      `SELECT 1 FROM hiring.participaciones_proceso
-        WHERE proceso_id = $1 AND papel = 'ABOGADO' AND estado = 'VIGENTE'
-          AND (($2 <> '' AND usuario_id::text = $2) OR ($3 <> '' AND LOWER(usuario_nombre) = LOWER($3)))`,
-      [procesoId, acceso.userId ?? '', acceso.userName ?? ''],
-    );
-    return suyo ? null : `Esta revisión la decide ${abogado.nombre}, el abogado del proceso.`;
-  }
 }
 
 const SELECT_REVISION = `
   SELECT r.*, p.radicado, p.objeto, p.etapa, p.estado AS estado_proceso, p.paa_anio, p.paa_region_id,
          rg.nombre AS region, va.numero AS version_anterior, vn.numero AS version_nueva,
-         ga.anio AS anio_anterior, gn.anio AS anio_nuevo,
-         ab.nombre AS abogado, ab.usuario_id::text AS abogado_id, ab.usuario_nombre AS abogado_usuario
+         ga.anio AS anio_anterior, gn.anio AS anio_nuevo
     FROM hiring.paa_revisiones r
     JOIN hiring.procesos p ON p.id = r.proceso_id
     LEFT JOIN hiring.paa_regiones rg ON rg.id = p.paa_region_id
     JOIN hiring.paa_versiones va ON va.id = r.version_anterior_id
     JOIN hiring.paa_vigencias ga ON ga.id = va.vigencia_id
     JOIN hiring.paa_versiones vn ON vn.id = r.version_nueva_id
-    JOIN hiring.paa_vigencias gn ON gn.id = vn.vigencia_id
-    LEFT JOIN hiring.participaciones_proceso ab
-           ON ab.proceso_id = p.id AND ab.papel = 'ABOGADO' AND ab.estado = 'VIGENTE'`;
+    JOIN hiring.paa_vigencias gn ON gn.id = vn.vigencia_id`;
 
 function aVista(f: any) {
   return {
@@ -356,9 +334,8 @@ function aVista(f: any) {
     cambios: f.cambios,
     motivo: f.motivo as string,
     bloquea: f.bloquea as boolean,
-    // El responsable es el abogado de hoy, no el de cuando se abrió: si lo
-    // relevaron, la revisión pasa al nuevo.
-    responsable: f.abogado ? { id: f.abogado_id, nombre: f.abogado, usuario: f.abogado_usuario } : null,
+    // Sin responsable fijo (109): la decide quien tenga el permiso.
+    responsable: null,
     estado: f.estado as PaaRevision['estado'],
     decision: f.decision as DecisionRevisionPaa | null,
     justificacion: f.justificacion as string | null,

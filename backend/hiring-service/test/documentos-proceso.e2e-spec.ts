@@ -203,12 +203,21 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
 
   // ------------------------------------------------- aplicabilidad general --
 
-  it('el régimen especial 092 no elabora los documentos ordinarios', async () => {
-    const proceso = await crear('REGIMEN_ESPECIAL_092');
+  it('la compra por Tienda Virtual no elabora los documentos del proceso', async () => {
+    // La matriz marca NO en la 5.1 para TVEC: se compra por el catálogo del
+    // acuerdo marco. El 092 sí los elabora desde la 112, como dice la matriz.
+    const proceso = await crear('ABREVIADA_TVEC');
     const estado = await documentos.estado(proceso.id);
 
     expect(estado.aplica).toBe(false);
-    expect(estado.motivoNoAplica).toMatch(/092/);
+    expect(estado.motivoNoAplica).toMatch(/matriz/i);
+  });
+
+  it('el régimen especial 092 elabora los documentos, como en la matriz', async () => {
+    const proceso = await crear('REGIMEN_ESPECIAL_092');
+    const estado = await documentos.estado(proceso.id);
+
+    expect(estado.aplica).toBe(true);
   });
 
   it('rechaza un documento que no corresponde a la modalidad', async () => {

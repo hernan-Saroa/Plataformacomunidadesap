@@ -2,10 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DataSource, EntityManager, LessThan } from 'typeorm';
 
 import { PaaCampoVisible, PaaRegion, PaaVersion, PaaVigencia } from '../../entities/paa.entity';
+import { NUMERAL_ESTUDIO_PREVIO } from '../../entities/proceso-actividad.entity';
 import type { HiringAccess } from '../../auth/hiring-access';
 import {
   CLAVES_SIEMPRE_VISIBLES,
+  EN_ESTUDIO_PREVIO_POR_DEFECTO,
   OCULTAS_POR_DEFECTO,
+  RECUADRO_MODALIDAD,
+  camposDeLa31PorColumna,
   clavesConocidas,
   etiquetaDe,
   usoDe,
@@ -26,7 +30,16 @@ export interface CampoDelFormulario {
   etiquetaFormato: string;
   /** El que verá quien crea el proceso. */
   etiqueta: string;
+  /** Si se ve al elegir la línea. */
   visible: boolean;
+  /** Si llega a la 3.1: por su campo propio o en el bloque «Datos del PAA». */
+  enEstudioPrevio: boolean;
+  /**
+   * El campo de la 3.1 que el PAA ya llena con esta columna (ver
+   * `CAMPOS_CONTROLADOS`). Si lo hay, llega a la 3.1 siempre y no se repite
+   * en el bloque.
+   */
+  yaEnEstudioPrevio: string | null;
   orden: number;
   uso: ReturnType<typeof usoDe>;
   siempreVisible: boolean;
@@ -38,10 +51,12 @@ export interface CampoDelFormulario {
 }
 
 /**
- * Qué columnas del PAA ve quien crea el proceso, por región y vigencia.
+ * Qué columnas del PAA ve quien crea el proceso y cuáles muestra la 3.1, por
+ * región y vigencia.
  *
  * La configuración es de presentación: ocultar un campo no lo borra de la
- * línea ni cambia lo que el PAA le da al proceso. Cada vigencia tiene la suya,
+ * línea ni cambia lo que el PAA le da al proceso —los campos que la 3.1 llena
+ * desde el PAA (`CAMPOS_CONTROLADOS`) se llenan igual—. Cada vigencia tiene la suya,
  * y la de un año nuevo parte de la del anterior sin tocarla: guardar crea filas
  * propias de la vigencia nueva.
  */
@@ -77,12 +92,21 @@ export class PaaCamposService {
       const enviados = new Set(dto.campos.map((c) => c.clave));
       const resto = actuales.filter((c) => !enviados.has(c.clave));
       const huerfanas = new Set(actuales.filter((c) => c.estado === 'huerfana').map((c) => c.clave));
+      const previos = new Map(actuales.map((c) => [c.clave, c.enEstudioPrevio]));
+      // Las que ya llenan un campo de la 3.1 no ocupan lugar en el bloque.
+      const conCampoPropio = new Set(actuales.filter((c) => c.yaEnEstudioPrevio).map((c) => c.clave));
 
       const filas = [
-        ...dto.campos.map((c) => ({ clave: c.clave, visible: c.visible, etiqueta: c.etiqueta?.trim() || null })),
+        ...dto.campos.map((c) => ({
+          clave: c.clave,
+          visible: c.visible,
+          enEstudioPrevio: c.enEstudioPrevio ?? previos.get(c.clave) ?? false,
+          etiqueta: c.etiqueta?.trim() || null,
+        })),
         ...resto.map((c) => ({
           clave: c.clave,
           visible: c.visible,
+          enEstudioPrevio: c.enEstudioPrevio,
           etiqueta: c.etiqueta !== c.etiquetaFormato ? c.etiqueta : null,
         })),
       ].map((c, orden) => ({
@@ -90,6 +114,7 @@ export class PaaCamposService {
         vigenciaId: vigencia.id,
         clave: c.clave,
         visible: CLAVES_SIEMPRE_VISIBLES.includes(c.clave) ? true : c.visible,
+        enEstudioPrevio: conCampoPropio.has(c.clave) ? false : c.enEstudioPrevio,
         etiqueta: c.etiqueta,
         orden,
         huerfana: huerfanas.has(c.clave),
@@ -103,6 +128,7 @@ export class PaaCamposService {
         region: region.nombre,
         anio: vigencia.anio,
         visibles: filas.filter((f) => f.visible).map((f) => f.clave),
+        enEstudioPrevio: filas.filter((f) => f.enEstudioPrevio && !f.huerfana).map((f) => f.clave),
       });
 
       const { campos, origen } = await this.armar(em, region.id, vigencia);
@@ -114,6 +140,12 @@ export class PaaCamposService {
   async visibles(regionId: string, vigencia: PaaVigencia) {
     const { campos } = await this.armar(this.dataSource.manager, regionId, vigencia);
     return campos.filter((c) => c.visible && c.estado !== 'huerfana');
+  }
+
+  /** Los campos que la 3.1 muestra en «Datos del PAA», en orden. */
+  async delEstudioPrevio(regionId: string, vigencia: PaaVigencia) {
+    const { campos } = await this.armar(this.dataSource.manager, regionId, vigencia);
+    return campos.filter((c) => c.enEstudioPrevio && !c.yaEnEstudioPrevio && c.estado !== 'huerfana');
   }
 
   // ------------------------------------------------------------------------
@@ -142,34 +174,69 @@ export class PaaCamposService {
       origen = guardadas.length ? 'vigencia_anterior' : 'formato';
     }
 
-    const campo = (clave: string, visible: boolean, etiqueta: string | null, estado: CampoDelFormulario['estado']) => ({
+    const campo = (
+      clave: string,
+      visible: boolean,
+      enEstudioPrevio: boolean,
+      etiqueta: string | null,
+      estado: CampoDelFormulario['estado'],
+    ) => ({
       clave,
       etiquetaFormato: etiquetaDe(clave),
       etiqueta: etiqueta || etiquetaDe(clave),
       visible: CLAVES_SIEMPRE_VISIBLES.includes(clave) ? true : visible,
+      enEstudioPrevio: ya.has(clave) ? true : enEstudioPrevio,
+      yaEnEstudioPrevio: ya.get(clave) ?? null,
       orden: 0,
       uso: usoDe(clave),
       siempreVisible: CLAVES_SIEMPRE_VISIBLES.includes(clave),
       estado,
     });
 
+    const ya = await this.yaEnLa31(em);
+    const porDefecto = (clave: string): [boolean, boolean] => [
+      !OCULTAS_POR_DEFECTO.includes(clave),
+      EN_ESTUDIO_PREVIO_POR_DEFECTO.includes(clave),
+    ];
+
     let campos: CampoDelFormulario[];
     if (origen === 'formato') {
-      campos = disponibles.map((clave) => campo(clave, !OCULTAS_POR_DEFECTO.includes(clave), null, 'normal'));
+      campos = disponibles.map((clave) => campo(clave, ...porDefecto(clave), null, 'normal'));
     } else {
       const configuradas = new Set(guardadas.map((g) => g.clave));
       const enArchivo = new Set(disponibles);
       // Una clave nueva solo es «nueva» frente a una configuración que ya
       // existía; si se está heredando, es nueva respecto del año anterior.
       campos = [
-        ...guardadas.map((g) => campo(g.clave, g.visible, g.etiqueta, enArchivo.has(g.clave) ? 'normal' : 'huerfana')),
-        ...disponibles
-          .filter((c) => !configuradas.has(c))
-          .map((c) => campo(c, !OCULTAS_POR_DEFECTO.includes(c), null, 'nueva')),
+        ...guardadas.map((g) =>
+          campo(g.clave, g.visible, g.enEstudioPrevio, g.etiqueta, enArchivo.has(g.clave) ? 'normal' : 'huerfana'),
+        ),
+        ...disponibles.filter((c) => !configuradas.has(c)).map((c) => campo(c, ...porDefecto(c), null, 'nueva')),
       ];
     }
 
     return { campos: campos.map((c, orden) => ({ ...c, orden })), origen };
+  }
+
+  /**
+   * Por columna del PAA, el nombre del campo de la 3.1 que ya la muestra. Se
+   * cruza con la configuración de la 3.1: si un campo se desactiva, su columna
+   * deja de contar como mostrada y puede ir al bloque.
+   */
+  private async yaEnLa31(em: EntityManager): Promise<Map<string, string>> {
+    const activos: { codigo: string; etiqueta: string }[] = await em.query(
+      `SELECT codigo, etiqueta FROM hiring.campos_formulario WHERE numeral = $1 AND activo`,
+      [NUMERAL_ESTUDIO_PREVIO],
+    );
+    const etiquetas = new Map(activos.map((c) => [c.codigo, c.etiqueta]));
+    etiquetas.set(RECUADRO_MODALIDAD, 'Modalidad de contratación');
+
+    const ya = new Map<string, string>();
+    for (const [columna, campo] of camposDeLa31PorColumna()) {
+      const etiqueta = etiquetas.get(campo);
+      if (etiqueta) ya.set(columna, etiqueta);
+    }
+    return ya;
   }
 
   /**

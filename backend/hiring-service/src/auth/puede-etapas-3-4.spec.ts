@@ -9,7 +9,6 @@ import { ComiteContratacionController } from '../modules/comite-contratacion/com
 import { DocumentosActividadController } from '../modules/documentos-actividad/documentos-actividad.controller';
 import { EstudioPrevioController } from '../modules/estudio-previo/estudio-previo.controller';
 import {
-  CandidatosController,
   ParticipacionController,
 } from '../modules/participacion/participacion.controller';
 import { RegistroActividadController } from '../modules/registro-actividad/registro-actividad.controller';
@@ -24,15 +23,16 @@ import { RegistroActividadController } from '../modules/registro-actividad/regis
  */
 const RUTA = { param: 'numeral' };
 
-const ESPERADO: [string, any, string, string, unknown][] = [
-  // Etapa 3 · estudio previo. La revisión es la 3.4: la decide el abogado,
-  // no quien diligenció la 3.1.
+const ESPERADO: [string, any, string, string | string[], unknown][] = [
+  // Etapa 3 · estudio previo. Se decide con «aprobar» en la 3.1, donde la
+  // ficha dice quién la aprueba: la ronda ya mira ese permiso, y pedir la 3.4
+  // dejaba al aprobador con el botón a la vista y la petición rechazada.
   ['estudio previo', EstudioPrevioController, 'crearProceso', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'guardar', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'enviar', 'editar', '3.1'],
-  ['estudio previo', EstudioPrevioController, 'aprobar', 'aprobar', '3.4'],
-  ['estudio previo', EstudioPrevioController, 'devolver', 'aprobar', '3.4'],
-  ['estudio previo', EstudioPrevioController, 'negar', 'aprobar', '3.4'],
+  ['estudio previo', EstudioPrevioController, 'aprobar', 'aprobar', '3.1'],
+  ['estudio previo', EstudioPrevioController, 'devolver', 'aprobar', '3.1'],
+  ['estudio previo', EstudioPrevioController, 'negar', 'aprobar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'adjuntar', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'retirarAdjunto', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'reemplazarAdjunto', 'editar', '3.1'],
@@ -41,7 +41,8 @@ const ESPERADO: [string, any, string, string, unknown][] = [
 
   ['participación', ParticipacionController, 'estado', 'ver', '3.3'],
   ['participación', ParticipacionController, 'tomar', 'editar', '3.3'],
-  ['candidatos', CandidatosController, 'abogados', 'ver', '3.4'],
+  ['puestos', ParticipacionController, 'delProceso', 'ver', '3.3'],
+  ['candidatos de un puesto', ParticipacionController, 'candidatos', 'ver', '3.3'],
 
   ['causal', CausalContratacionController, 'estado', 'ver', '3.6'],
   ['comité de contratación', ComiteContratacionController, 'estado', 'ver', '3.7'],
@@ -57,7 +58,9 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   // Los genéricos: el punto viaja en la ruta.
   ['aprobación', AprobacionController, 'aprobadores', 'ver', RUTA],
   ['aprobación', AprobacionController, 'enviar', 'editar', RUTA],
-  ['aprobación', AprobacionController, 'retirar', 'editar', RUTA],
+  // Retirar también con «aprobar»: la 5.6.1 la hace el abogado con ese permiso
+  // (113), y el servicio exige que sea quien la envió.
+  ['aprobación', AprobacionController, 'retirar', ['editar', 'aprobar'], RUTA],
   ['documentos de actividad', DocumentosActividadController, 'estado', 'ver', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'cargar', 'editar', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'anular', 'editar', RUTA],

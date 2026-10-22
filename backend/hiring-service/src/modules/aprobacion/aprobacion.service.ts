@@ -37,8 +37,31 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
  * Vive aparte y no dentro de `configuracion` porque son cosas distintas: allí
  * se declara qué exige cada actividad, aquí se ejecuta el trámite.
  */
+/**
+ * Lo que una actividad exige, además de sus documentos, para enviarse o para
+ * aprobarse. Lanza con el motivo si no se cumple.
+ */
+export type CondicionDeAprobacion = (
+  em: EntityManager,
+  procesoId: string,
+  momento: 'ENVIAR' | 'APROBAR',
+) => Promise<void>;
+
 @Injectable()
 export class AprobacionService {
+  /**
+   * Las condiciones propias de algunas actividades, por numeral.
+   *
+   * Las registra el módulo dueño de la actividad al arrancar, como las guardias
+   * del catálogo de documentos: así este servicio no importa cada módulo que
+   * quiera ponerle una condición a su trámite. La 5.6.1 exige el CDP (113).
+   */
+  private readonly condiciones = new Map<string, CondicionDeAprobacion>();
+
+  registrarCondicion(numeral: string, condicion: CondicionDeAprobacion) {
+    this.condiciones.set(numeral, condicion);
+  }
+
   constructor(
     private readonly dataSource: DataSource,
     /**
@@ -70,8 +93,10 @@ export class AprobacionService {
     numeral: string,
     modalidad: string | null,
     em?: EntityManager,
+    /** El proceso, para leer la versión del flujo con la que corre (111). */
+    procesoId?: string | null,
   ): Promise<CadenaResuelta | null> {
-    return this.cadenas.cadenaPara(numeral, modalidad, em);
+    return this.cadenas.cadenaPara(numeral, modalidad, em, procesoId);
   }
 
   /**
@@ -103,7 +128,7 @@ export class AprobacionService {
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
 
-    const cadena = await this.aprobadoresDe(numeral, proceso?.modalidad ?? null, em);
+    const cadena = await this.aprobadoresDe(numeral, proceso?.modalidad ?? null, em, procesoId);
     const ronda = actividad ? await this.cadenas.rondaParaMostrar(actividad, acceso) : null;
 
     /*
@@ -223,7 +248,7 @@ export class AprobacionService {
     personaId?: string | null,
   ): boolean {
     return esResponsable(
-      { roles: aprobadores.roles, personas: aprobadores.personas, papeles: [] },
+      { roles: aprobadores.roles, personas: aprobadores.personas, papeles: [], puestos: [] },
       { roles: acceso.roles ?? [], personaId: personaId ?? null, papeles: [] },
     );
   }
@@ -240,7 +265,7 @@ export class AprobacionService {
     return this.dataSource.transaction(async (em) => {
       const { actividad, proceso } = await this.exigirActividad(em, procesoId, numeral);
 
-      const cadena = await this.aprobadoresDe(numeral, proceso.modalidad, em);
+      const cadena = await this.aprobadoresDe(numeral, proceso.modalidad, em, procesoId);
       if (!cadena) {
         throw new BadRequestException(
           'Esta actividad no requiere aprobación: se cierra directamente',
@@ -256,6 +281,8 @@ export class AprobacionService {
       if (actividad.estado === 'NEGADO') {
         throw new ConflictException('La actividad fue negada: no se puede volver a enviar');
       }
+
+      await this.condiciones.get(numeral)?.(em, procesoId, 'ENVIAR');
 
       actividad.estado = 'EN_REVISION';
       actividad.enviadoPor = acceso.userName;
@@ -407,6 +434,8 @@ export class AprobacionService {
        * exactamente el caso para el que sirve.
        */
       if (accion === 'APROBAR') {
+        await this.condiciones.get(numeral)?.(em, procesoId, 'APROBAR');
+
         const faltan = await this.documentosPendientes(em, procesoId, numeral);
         if (faltan.length) {
           throw new ConflictException(

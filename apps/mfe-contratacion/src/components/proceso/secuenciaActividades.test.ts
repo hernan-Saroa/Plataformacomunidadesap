@@ -102,123 +102,193 @@ describe('secuencia de actividades · el flujo va en orden', () => {
 });
 
 /**
- * La 5.4 y la 5.5 no esperan a que cierre el plazo de observaciones (EFDS-2065,
- * reunión de validación del modelo del 17 sep).
+ * MiPymes (5.5) y observaciones (5.6) no esperan a lo que la matriz numera
+ * antes que ellas (EFDS-2065, reunión de validación del modelo del 17 sep).
  *
- * La 5.3 puede tardar diez días hábiles en cerrar. Ni el límite a MiPyme ni la
- * audiencia de riesgos se resuelven con lo que traigan las observaciones, así
- * que no hay motivo de proceso para tenerlas esperando: solo necesitan que el
- * proyecto de pliego (5.2) ya esté publicado.
+ * Ni el límite a MiPyme ni las observaciones se resuelven con la publicación
+ * en la web de la ESAP (5.4), ni la una con la otra: solo necesitan que el
+ * pliego ya esté publicado en SECOP II (5.3). Numerales de la 112.
  */
-describe('actividadesDisponibles · la 5.3 no detiene a la 5.4 ni a la 5.5', () => {
-  const etapa5 = (estadoDeLa53: string | null) => [
+describe('actividadesDisponibles · MiPymes y observaciones cuelgan de la publicación', () => {
+  const etapa5 = (estadoDeLa54: string | null) => [
     paso('5.1', { estado: 'APROBADO' }),
     paso('5.2', { estado: 'APROBADO' }),
-    paso('5.3', { estado: estadoDeLa53 }),
-    paso('5.4'),
+    paso('5.3', { estado: 'APROBADO' }),
+    paso('5.4', { estado: estadoDeLa54 }),
     paso('5.5'),
     paso('5.6'),
     paso('5.7'),
   ];
 
-  it('con la 5.3 todavía corriendo, la 5.4 y la 5.5 ya se pueden trabajar', () => {
+  it('con la web de la ESAP todavía a medias, MiPymes y observaciones ya se pueden trabajar', () => {
     const disponibles = actividadesDisponibles(etapa5('BORRADOR'));
 
-    expect(disponibles.has('5.4')).toBe(true);
     expect(disponibles.has('5.5')).toBe(true);
+    expect(disponibles.has('5.6')).toBe(true);
   });
 
-  it('pero la 5.6 y la 5.7 siguen esperando a que la 5.3 cierre', () => {
+  it('pero la apertura sigue esperando a que la 5.4 cierre', () => {
     const disponibles = actividadesDisponibles(etapa5('BORRADOR'));
 
-    expect(disponibles.has('5.6')).toBe(false);
     expect(disponibles.has('5.7')).toBe(false);
   });
 
-  it('sin publicación (5.2) todavía a medias, tampoco se abren la 5.4 ni la 5.5', () => {
-    const flujo = [
-      paso('5.1', { estado: 'APROBADO' }),
-      paso('5.2', { estado: 'BORRADOR' }),
-      paso('5.3'),
-      paso('5.4'),
-      paso('5.5'),
-    ];
-    const disponibles = actividadesDisponibles(flujo);
-
-    expect(disponibles.has('5.4')).toBe(false);
-    expect(disponibles.has('5.5')).toBe(false);
-  });
-
-  it('si la 5.4 no termina, sigue bloqueando lo que viene después: no es un pase libre', () => {
-    // Que se habilite antes no la exime de completarse: cerrar la 5.3 no
-    // basta si la 5.4 se quedó sin diligenciar.
-    const disponibles = actividadesDisponibles(etapa5('APROBADO'));
-
-    expect(disponibles.has('5.4')).toBe(true);
-    expect(disponibles.has('5.6')).toBe(false);
-  });
-
-  it('con todo aprobado, la cadena sigue hasta la apertura', () => {
-    const flujo = [
-      paso('5.1', { estado: 'APROBADO' }),
-      paso('5.2', { estado: 'APROBADO' }),
-      paso('5.3', { estado: 'APROBADO' }),
-      paso('5.4', { estado: 'APROBADO' }),
-      paso('5.5', { estado: 'APROBADO' }),
-      paso('5.6', { estado: 'APROBADO' }),
-      paso('5.7'),
-    ];
-
-    expect(actividadesDisponibles(flujo).has('5.7')).toBe(true);
-  });
-
-  it('en el orden de la matriz, la 5.3 no espera a la 5.4 que ahora la antecede', () => {
-    const flujo = [
-      paso('5.1', { estado: 'APROBADO' }),
-      paso('5.2', { estado: 'APROBADO' }),
-      paso('5.4', { estado: 'BORRADOR' }),
-      paso('5.3'),
-      paso('5.5'),
-      paso('5.6'),
-    ];
-    const disponibles = actividadesDisponibles(flujo);
-
-    expect(disponibles.has('5.3')).toBe(true);
-    expect(disponibles.has('5.6')).toBe(false);
-  });
-});
-
-describe('motivoDelBloqueo · con dependencia declarada', () => {
-  it('nombra la 5.2 y no la 5.3, que no le hace falta a la 5.4', () => {
-    const flujo = [
-      paso('5.1', { estado: 'APROBADO' }),
-      paso('5.2', { estado: 'BORRADOR' }),
-      paso('5.3'),
-      paso('5.4'),
-    ];
-
-    expect(motivoDelBloqueo('5.4', flujo)).toBe('Antes hay que terminar 5.2');
-  });
-
-  it('no da motivo cuando la 5.2 ya está aprobada, aunque la 5.3 siga corriendo', () => {
+  it('sin la publicación (5.3) todavía a medias, tampoco se abren la 5.5 ni la 5.6', () => {
     const flujo = [
       paso('5.1', { estado: 'APROBADO' }),
       paso('5.2', { estado: 'APROBADO' }),
       paso('5.3', { estado: 'BORRADOR' }),
       paso('5.4'),
+      paso('5.5'),
+      paso('5.6'),
+    ];
+    const disponibles = actividadesDisponibles(flujo);
+
+    expect(disponibles.has('5.5')).toBe(false);
+    expect(disponibles.has('5.6')).toBe(false);
+  });
+
+  it('si MiPymes no termina, sigue bloqueando la apertura: no es un pase libre', () => {
+    // Que se habilite antes no la exime de completarse: cerrar la 5.4 y la
+    // 5.6 no basta si la 5.5 se quedó sin diligenciar.
+    const flujo = etapa5('APROBADO').map((p) =>
+      p.numeral === '5.6' ? { ...p, estado: 'APROBADO' } : p,
+    );
+    const disponibles = actividadesDisponibles(flujo);
+
+    expect(disponibles.has('5.5')).toBe(true);
+    expect(disponibles.has('5.7')).toBe(false);
+  });
+
+  it('con todo aprobado, la cadena sigue hasta la apertura', () => {
+    const flujo = etapa5('APROBADO').map((p) =>
+      p.numeral === '5.5' || p.numeral === '5.6' ? { ...p, estado: 'APROBADO' } : p,
+    );
+
+    expect(actividadesDisponibles(flujo).has('5.7')).toBe(true);
+  });
+});
+
+/**
+ * La audiencia (5.12) y las adendas (5.13) van después de la apertura, como en
+ * la matriz (112). Las adendas son opcionales: no detienen la recepción de
+ * ofertas. La audiencia, donde aplica, sí.
+ */
+describe('actividadesDisponibles · lo que viene después de la apertura', () => {
+  const tras = (estados: Record<string, string>) =>
+    ['5.3', '5.6', '5.7', '5.12', '5.13', '6.1'].map((numeral) =>
+      paso(numeral, { estado: estados[numeral] ?? null }),
+    );
+  const abierto = { '5.3': 'APROBADO', '5.6': 'APROBADO', '5.7': 'APROBADO' };
+
+  it('antes de la apertura no se abren ni la audiencia ni las adendas', () => {
+    const disponibles = actividadesDisponibles(tras({ '5.3': 'APROBADO', '5.6': 'APROBADO' }));
+
+    expect(disponibles.has('5.12')).toBe(false);
+    expect(disponibles.has('5.13')).toBe(false);
+  });
+
+  it('abierto el proceso, se abren las dos a la vez', () => {
+    const disponibles = actividadesDisponibles(tras(abierto));
+
+    expect(disponibles.has('5.12')).toBe(true);
+    expect(disponibles.has('5.13')).toBe(true);
+  });
+
+  it('la audiencia sin celebrar detiene la recepción de ofertas', () => {
+    expect(actividadesDisponibles(tras(abierto)).has('6.1')).toBe(false);
+  });
+
+  it('las adendas sin cerrar no la detienen', () => {
+    const flujo = tras({ ...abierto, '5.12': 'APROBADO', '5.13': 'BORRADOR' });
+
+    expect(actividadesDisponibles(flujo).has('6.1')).toBe(true);
+  });
+
+  it('donde no hay apertura, las adendas se abren con la publicación', () => {
+    // Mínima cuantía y 092: la matriz no les da apertura y sí adendas.
+    const flujo = tras({ '5.3': 'APROBADO', '5.6': 'APROBADO' }).map((p) =>
+      p.numeral === '5.7' || p.numeral === '5.12' ? { ...p, aplica: false } : p,
+    );
+
+    expect(actividadesDisponibles(flujo).has('5.13')).toBe(true);
+  });
+});
+
+describe('motivoDelBloqueo · con dependencia declarada', () => {
+  it('nombra la 5.3 y no la 5.4, que no le hace falta a la 5.5', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'APROBADO' }),
+      paso('5.3', { estado: 'BORRADOR' }),
+      paso('5.4'),
+      paso('5.5'),
     ];
 
-    expect(motivoDelBloqueo('5.4', flujo)).toBeNull();
+    expect(motivoDelBloqueo('5.5', flujo)).toBe('Antes hay que terminar 5.3');
+  });
+
+  it('no da motivo cuando la 5.3 ya está aprobada, aunque la 5.4 siga corriendo', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'APROBADO' }),
+      paso('5.3', { estado: 'APROBADO' }),
+      paso('5.4', { estado: 'BORRADOR' }),
+      paso('5.5'),
+    ];
+
+    expect(motivoDelBloqueo('5.5', flujo)).toBeNull();
+  });
+
+  it('a las adendas les falta la apertura, no la audiencia', () => {
+    const flujo = [
+      paso('5.3', { estado: 'APROBADO' }),
+      paso('5.7', { estado: 'BORRADOR' }),
+      paso('5.12'),
+      paso('5.13'),
+    ];
+
+    expect(motivoDelBloqueo('5.13', flujo)).toBe('Antes hay que terminar 5.7');
   });
 });
 
 describe('estaTerminada', () => {
-  it('solo APROBADO termina una actividad', () => {
+  it('APROBADO y NO_APLICA terminan una actividad', () => {
     expect(estaTerminada(paso('3.1', { estado: 'APROBADO' }))).toBe(true);
+    expect(estaTerminada(paso('3.7', { estado: 'NO_APLICA' }))).toBe(true);
 
     for (const estado of ['BORRADOR', 'EN_REVISION', 'DEVUELTO', null, undefined]) {
       expect(estaTerminada(paso('3.1', { estado }))).toBe(false);
     }
+  });
+
+  it('con el contrato firmado se abren a la vez supervisor, RP, garantías y ARL', () => {
+    const flujo = [
+      paso('8.1', { estado: 'APROBADO' }),
+      paso('8.2'),
+      paso('8.3'),
+      paso('8.4'),
+      paso('8.5'),
+      paso('8.6'),
+    ];
+
+    const disponibles = actividadesDisponibles(flujo);
+    expect(['8.2', '8.3', '8.4', '8.5'].every((n) => disponibles.has(n))).toBe(true);
+    // La comunicación de inicio dice que están cumplidas: espera a las cuatro.
+    expect(disponibles.has('8.6')).toBe(false);
+  });
+
+  it('la constancia de que no pasó por comité no deja la 4.2 esperando', () => {
+    // La 3.7 sigue aplicando a la modalidad, pero quedó en NO_APLICA porque el
+    // valor no supera el umbral. La 4.2 tiene que abrirse.
+    const flujo = [
+      paso('3.6', { estado: 'APROBADO' }),
+      paso('3.7', { estado: 'NO_APLICA' }),
+      paso('4.2'),
+    ];
+
+    expect(actividadesDisponibles(flujo).has('4.2')).toBe(true);
+    expect(motivoDelBloqueo('4.2', flujo)).toBeNull();
   });
 });
 
@@ -408,5 +478,49 @@ describe('actividadesDisponibles · la 9.5 se abre desde que arranca la ejecuci�
 
     expect(actividadesDisponibles(flujo).has('10.1')).toBe(false);
     expect(motivoDelBloqueo('10.1', flujo)).toBe('Antes hay que terminar 9.4');
+  });
+});
+
+/**
+ * La secuencia de la versión del flujo (125): de qué depende cada actividad y
+ * si detiene a las siguientes, configurado por modalidad en Configuración.
+ */
+describe('secuencia de actividades · configurada en el flujo', () => {
+  const aprobado = { estado: 'APROBADO' } as const;
+
+  it('una que no detiene el flujo deja pasar a la siguiente aunque siga abierta', () => {
+    const flujo = [
+      paso('8.7', aprobado),
+      paso('8.8', { secuencia: { dependeDe: ['8.1'], noBloquea: true } }),
+      paso('9.1'),
+    ];
+    expect(actividadesDisponibles(flujo).has('9.1')).toBe(true);
+    expect(motivoDelBloqueo('9.1', flujo)).toBeNull();
+  });
+
+  it('sin configuración rige lo de siempre: la 8.8 detiene a la 9.1', () => {
+    const flujo = [paso('8.7', aprobado), paso('8.8'), paso('9.1')];
+    expect(actividadesDisponibles(flujo).has('9.1')).toBe(false);
+    expect(motivoDelBloqueo('9.1', flujo)).toBe('Antes hay que terminar 8.8');
+  });
+
+  it('depender de una anterior la abre aunque la de en medio siga abierta', () => {
+    const flujo = [
+      paso('10.2', aprobado),
+      paso('10.3'),
+      paso('10.4', { secuencia: { dependeDe: ['10.2'], noBloquea: false } }),
+    ];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['10.2', '10.3', '10.4']);
+  });
+
+  it('una dependencia que no aplica se cumple al llegar a ella, no desde el primer día', () => {
+    const cronograma = paso('5.2', { secuencia: { dependeDe: ['4.2'], noBloquea: false } });
+    const antes = [paso('3.7'), paso('4.2', { aplica: false }), paso('5.1'), cronograma];
+    expect(actividadesDisponibles(antes).has('5.2')).toBe(false);
+    // Lo que falta es lo que detiene la cadena antes de la 4.2.
+    expect(motivoDelBloqueo('5.2', antes)).toBe('Antes hay que terminar 3.7');
+
+    const despues = [paso('3.7', aprobado), paso('4.2', { aplica: false }), paso('5.1'), cronograma];
+    expect(actividadesDisponibles(despues).has('5.2')).toBe(true);
   });
 });

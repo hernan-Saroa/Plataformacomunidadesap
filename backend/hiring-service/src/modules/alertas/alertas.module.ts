@@ -5,6 +5,7 @@ import { AlertasCron } from './alertas.cron';
 import { AlertasService } from './alertas.service';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { CadenaAprobacionModule } from '../cadena-aprobacion/cadena-aprobacion.module';
+import { ParticipacionModule } from '../participacion/participacion.module';
 import { ParametrosAlertaService } from './parametros-alerta.service';
 
 /**
@@ -19,7 +20,7 @@ import { ParametrosAlertaService } from './parametros-alerta.service';
  * pueden contradecirse.
  */
 @Module({
-  imports: [NotificacionesModule, CadenaAprobacionModule],
+  imports: [NotificacionesModule, CadenaAprobacionModule, ParticipacionModule],
   controllers: [AlertasController],
   providers: [AlertasService, AlertasCron, ParametrosAlertaService],
   exports: [AlertasService, ParametrosAlertaService],

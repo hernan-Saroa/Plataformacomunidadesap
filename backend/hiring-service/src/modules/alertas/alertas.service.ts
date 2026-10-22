@@ -5,9 +5,11 @@ import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { PuestosService, UsoDePuesto } from '../participacion/puestos.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
 import { plazoDeActividad } from './plazos-actividad';
+import { limiteDelActa, numeralDeLaSumision } from '../comite-contratacion/segunda-sesion';
 import {
   ClaveParametroAlerta,
   PARAMETROS_POR_DEFECTO,
@@ -36,7 +38,7 @@ export const ANTICIPACION_POR_DEFECTO = 30;
  * Se dejan dos y no cero para no alarmar por el hueco normal entre recibir el
  * proceso y sentarse a repartirlo.
  */
-export const TOLERANCIA_SIN_ABOGADO = 2;
+export const TOLERANCIA_SIN_RESPONSABLE = 2;
 
 /**
  * Plazo legal para liquidar de común acuerdo: cuatro meses desde que el
@@ -76,14 +78,31 @@ export type TipoAlerta =
    * dure, la 3.4 no la puede resolver nadie: el proceso está parado y no lo
    * dice ninguna pantalla salvo la suya.
    */
-  | 'SIN_ABOGADO'
+  | 'SIN_RESPONSABLE'
   /**
    * Una actividad con plazo que está por vencer o ya se venció (EFDS-1183).
    *
    * Sus días se cuentan hábiles, no calendario como los demás: así se acordó
    * para los plazos de las actividades.
    */
-  | 'PLAZO_ACTIVIDAD';
+  | 'PLAZO_ACTIVIDAD'
+  /**
+   * Una sesión del Comité de Contratación sin acta (migración 113).
+   *
+   * El acta tarda hasta diez días y no frena el proceso, así que la sesión se
+   * registra sin ella; esto es lo que impide que se olvide. Le llega a quien
+   * hace la actividad de esa sesión —la 3.7 o la 5.6.1— hasta que la cargue:
+   * dentro del plazo como por vencer, después como vencida.
+   */
+  | 'ACTA_COMITE_PENDIENTE'
+  /**
+   * Un comité evaluador designado sin memorando (117, EFDS-1156).
+   *
+   * Mismo razonamiento que el acta: el memorando depende de firmas que tardan
+   * y no frena la evaluación, así que esto es lo que impide que se olvide. Le
+   * llega a quien hace la 6.2 en el proceso hasta que lo cargue.
+   */
+  | 'MEMORANDO_COMITE_PENDIENTE';
 
 /** Algo que espera la decisión de quien consulta (bandeja «Por revisar»). */
 export interface ElementoPorRevisar {
@@ -221,11 +240,18 @@ export class AlertasService {
      * solo la fuente de datos.
      */
     @Optional() cadenas?: CadenaAprobacionService,
+    /**
+     * Qué hace cada puesto en una modalidad y versión del flujo (109, 111):
+     * un puesto vacío solo alerta donde hace algo.
+     */
+    @Optional() puestos?: PuestosService,
   ) {
     this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+    this.puestos = puestos ?? new PuestosService(dataSource, alcance as AlcanceService);
   }
 
   private readonly cadenas: CadenaAprobacionService;
+  private readonly puestos: PuestosService;
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -262,16 +288,20 @@ export class AlertasService {
       liquidaciones,
       aprobaciones,
       devueltas,
-      sinAbogado,
+      sinResponsable,
       plazosActividad,
+      actasPendientes,
+      memorandosPendientes,
     ] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
       this.liquidacionesPendientes(),
       this.aprobacionesPendientes(acceso),
       this.devueltasParaCorregir(acceso),
-      this.procesosSinAbogado(hoy, plazos.tolerancia_sin_abogado, acceso),
+      this.procesosSinResponsable(hoy, plazos.tolerancia_sin_abogado, acceso),
       this.plazosDeActividades(acceso),
+      this.actasDelComitePendientes(hoy, plazos.plazo_acta_comite, acceso),
+      this.memorandosDelComitePendientes(hoy, plazos.plazo_memorando_comite, acceso),
     ]);
 
     const conPlazo: Alerta[] = plazosActividad.map((p) => ({
@@ -305,7 +335,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinAbogado, ...conPlazo, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinResponsable, ...actasPendientes, ...memorandosPendientes, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -446,14 +476,10 @@ export class AlertasService {
    * disciplinario: quien revisa ve de una vez todo lo que espera su decisión,
    * sin entrar proceso por proceso.
    *
-   * - Las actividades con aprobación configurada, con la misma consulta que la
-   *   alerta.
-   * - Los estudios previos enviados cuyo abogado es quien consulta. La 3.4 no
-   *   sale de una regla de aprobación sino del reparto de la 3.3, y por eso la
-   *   alerta no la veía: el abogado tenía que entrar al proceso para enterarse.
-   *
-   * La 3.1 no se toma de la primera fuente aunque tuviera regla: su decisión
-   * es la del abogado, y listarla dos veces ofrecería dos caminos para lo mismo.
+   * Las actividades con aprobación configurada, con la misma consulta que la
+   * alerta. El estudio previo (3.1) también: desde la 109 su revisión es
+   * siempre una ronda de su aprobación —quizá del puesto Abogado—, y no un
+   * camino aparte del abogado repartido.
    *
    * Desde que solo se decide en la pantalla de revisión entran también las
    * decisiones que no salen de una regla de aprobación: la modalidad (3.5), que
@@ -462,49 +488,7 @@ export class AlertasService {
    * cobro (9.4)—. Sin ellas, quien tenía que decidir no tenía cómo enterarse.
    */
   async porRevisar(acceso: HiringAccess): Promise<ElementoPorRevisar[]> {
-    const nombre = (acceso.userName ?? '').trim();
-    const id = (acceso.userId ?? '').trim();
-
-    const [aprobaciones, estudios] = await Promise.all([
-      this.filasPorAprobar(acceso),
-      nombre || id
-        ? this.dataSource.query(
-            `
-            SELECT p.id           AS proceso_id,
-                   p.radicado     AS radicado,
-                   p.objeto       AS objeto,
-                   m.nombre       AS modalidad,
-                   pa.numeral     AS numeral,
-                   a.nombre       AS actividad,
-                   a.etapa        AS etapa,
-                   pa.version     AS version,
-                   pa.enviado_por AS enviado_por,
-                   pa.updated_at  AS desde
-              FROM hiring.proceso_actividades pa
-              JOIN hiring.procesos p ON p.id = pa.proceso_id
-              JOIN hiring.actividades a ON a.numeral = pa.numeral
-              LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
-              JOIN hiring.participaciones_proceso pp
-                    ON pp.proceso_id = p.id
-                   AND pp.papel = 'ABOGADO'
-                   AND pp.estado = 'VIGENTE'
-             WHERE pa.numeral = '3.1'
-               AND pa.estado = 'EN_REVISION'
-               -- Con una cadena en curso (101) decide el escalón que espera,
-               -- y esa fila sale de las aprobaciones, no de aquí.
-               AND NOT EXISTS (
-                 SELECT 1 FROM hiring.aprobaciones r
-                  WHERE r.proceso_actividad_id = pa.id AND r.estado = 'EN_CURSO'
-               )
-               AND (
-                 ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
-                 OR ($2 <> '' AND pp.usuario_id::text = $2)
-               )
-            `,
-            [nombre, id],
-          )
-        : Promise.resolve([]),
-    ]);
+    const aprobaciones = await this.filasPorAprobar(acceso);
 
     const aElemento = (tipo: ElementoPorRevisar['tipo']) => (f: any): ElementoPorRevisar => {
       const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
@@ -538,7 +522,7 @@ export class AlertasService {
     ]);
 
     return [
-      ...estudios.map(aElemento('ESTUDIO_PREVIO')),
+
       // La 3.1 por cadena se abre en la revisión del estudio previo.
       ...aprobaciones.map((f: any) => aElemento(f.numeral === '3.1' ? 'ESTUDIO_PREVIO' : 'ACTIVIDAD')(f)),
       ...garantias.map(aElemento('GARANTIA')),
@@ -553,15 +537,12 @@ export class AlertasService {
   /**
    * Revisiones abiertas por un cambio del Plan Anual de Adquisiciones.
    *
-   * Las decide el abogado del proceso; las de un proceso sin abogado van a la
-   * bandeja de quien tenga `decidir` en `PAA.R`, para que una revisión que
-   * detiene el proceso no se quede esperando a que alguien lo asigne.
+   * Las decide quien tenga `decidir` en `PAA.R` (109): ya no hay un abogado
+   * del proceso que responda por ellas.
    */
   private async revisionesDelPaa(acceso: HiringAccess): Promise<any[]> {
-    const nombre = (acceso.userName ?? '').trim();
-    const id = (acceso.userId ?? '').trim();
     const bandeja = !!this.alcance && (await this.alcance.puedeEn(acceso, 'decidir', 'PAA.R'));
-    if (!nombre && !id && !bandeja) return [];
+    if (!bandeja) return [];
 
     return this.dataSource.query(
       `
@@ -584,16 +565,8 @@ export class AlertasService {
         FROM hiring.paa_revisiones r
         JOIN hiring.procesos p ON p.id = r.proceso_id
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
-        LEFT JOIN hiring.participaciones_proceso pp
-               ON pp.proceso_id = p.id AND pp.papel = 'ABOGADO' AND pp.estado = 'VIGENTE'
        WHERE r.estado = 'PENDIENTE'
-         AND (
-           ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
-           OR ($2 <> '' AND pp.usuario_id::text = $2)
-           OR (pp.id IS NULL AND $3)
-         )
       `,
-      [nombre, id, bandeja],
     );
   }
 
@@ -681,12 +654,13 @@ export class AlertasService {
    * Cuentas de cobro radicadas que esperan el aval (9.4).
    *
    * Las avala el supervisor vigente del contrato, no un rol: es la regla de
-   * `PagosService.exigirSupervisor`, por persona o por nombre de cuenta.
+   * `PagosService.exigirSupervisor`. Por la cuenta que ocupa el puesto que
+   * llenó la designación (121); si la 9.4 no nombra puesto, por la cuenta
+   * designada.
    */
   private pagosPorAvalar(acceso: HiringAccess): Promise<any[]> {
-    const nombre = (acceso.userName ?? '').trim();
     const id = (acceso.userId ?? '').trim();
-    if (!nombre && !id) return Promise.resolve([]);
+    if (!id) return Promise.resolve([]);
 
     return this.dataSource.query(
       `
@@ -711,11 +685,15 @@ export class AlertasService {
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
        WHERE pg.estado = 'RADICADO'
          AND (
-           ($1 <> '' AND s.nombre = $1)
-           OR ($2 <> '' AND s.persona_id::text = $2)
+           EXISTS (
+             SELECT 1 FROM hiring.asignaciones_puesto ap
+              WHERE ap.proceso_id = p.id AND ap.puesto_id = s.puesto_id
+                AND ap.estado = 'VIGENTE' AND ap.usuario_id::text = $1
+           )
+           OR (s.puesto_id IS NULL AND s.usuario_id::text = $1)
          )
       `,
-      [nombre, id],
+      [id],
     );
   }
 
@@ -798,9 +776,9 @@ export class AlertasService {
    * los días restantes y el estado se calculan como en el resto de la lista, en
    * vez de inventar una segunda forma de ordenar lo urgente.
    */
-  private async procesosSinAbogado(
+  private async procesosSinResponsable(
     hoy: string,
-    tolerancia: number = TOLERANCIA_SIN_ABOGADO,
+    tolerancia: number = TOLERANCIA_SIN_RESPONSABLE,
     acceso?: HiringAccess,
   ): Promise<Alerta[]> {
     /*
@@ -814,9 +792,16 @@ export class AlertasService {
     const todos =
       !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
 
+    // Un proceso recibido con un puesto obligatorio vacío (109): una fila por
+    // puesto, porque cada uno se resuelve por separado en la 3.3.
     const filas = await this.dataSource.query(
       `SELECT p.id       AS proceso_id,
               p.radicado AS radicado,
+              p.modalidad AS modalidad,
+              COALESCE(p.flujo_version_id, (SELECT id FROM hiring.flujo_versiones WHERE estado = 'ACTIVA'))::text
+                         AS version,
+              pu.id::text AS puesto_id,
+              pu.nombre  AS puesto,
               c.usuario_id::text AS responsable_id,
               c.nombre   AS responsable,
               c.email    AS responsable_email,
@@ -824,25 +809,33 @@ export class AlertasService {
                 c.asignado_at,
                 COALESCE(
                   (SELECT MAX(a.relevado_at)
-                     FROM hiring.participaciones_proceso a
-                    WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO'),
+                     FROM hiring.asignaciones_puesto a
+                    WHERE a.proceso_id = p.id AND a.puesto_id = pu.id),
                   c.asignado_at
                 )
               ) AS desde
          FROM hiring.procesos p
          JOIN hiring.participaciones_proceso c
            ON c.proceso_id = p.id AND c.papel = 'CONTRATACION' AND c.estado = 'VIGENTE'
+         JOIN hiring.puestos_proceso pu ON pu.activo AND pu.obligatorio
         WHERE p.estado = 'EN_CURSO'
           AND NOT EXISTS (
-            SELECT 1 FROM hiring.participaciones_proceso a
-             WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO' AND a.estado = 'VIGENTE'
+            SELECT 1 FROM hiring.asignaciones_puesto a
+             WHERE a.proceso_id = p.id AND a.puesto_id = pu.id AND a.estado = 'VIGENTE'
           )
           AND ($1 = true OR c.usuario_id::text = $2)
         ORDER BY desde ASC`,
       [todos, acceso?.userId ?? ''],
     );
 
-    return filas
+    // Obligatorio no basta: el puesto tiene que hacer o aprobar algo en la
+    // modalidad del proceso, según la versión con la que corre. Si no, nadie lo
+    // necesita ahí y la alerta reclamaría un reparto que no sirve para nada.
+    const conUso = await puestosQueHacenAlgo(filas, (modalidad, version) =>
+      this.puestos.usos(modalidad, undefined, version),
+    );
+
+    return conUso
       .map((f: any) => {
         const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
         const limite = new Date(desde);
@@ -851,11 +844,11 @@ export class AlertasService {
         const diasRestantes = diasParaVencer(vence, hoy);
 
         return {
-          tipo: 'SIN_ABOGADO' as TipoAlerta,
+          tipo: 'SIN_RESPONSABLE' as TipoAlerta,
           procesoId: f.proceso_id,
           radicado: f.radicado,
           contrato: null,
-          descripcion: '3.4 · el proceso no tiene abogado que lo revise',
+          descripcion: `3.3 · nadie ocupa el puesto ${f.puesto}`,
           vence,
           diasRestantes,
           estado: estadoAlerta(diasRestantes, tolerancia),
@@ -870,6 +863,117 @@ export class AlertasService {
       // Dentro de la tolerancia no se avisa: es el hueco normal entre recibir
       // el proceso y sentarse a repartirlo.
       .filter((a) => a.estado !== 'VIGENTE');
+  }
+
+  /**
+   * Las sesiones del Comité de Contratación que siguen sin acta (113).
+   *
+   * El destinatario es quien hace la actividad de la sesión en el proceso —el
+   * ocupante del puesto, si la regla es de puesto—, no quien la transcribió: si
+   * el caso cambió de abogado, el acta la debe el que lo tiene ahora. Sin regla
+   * de puesto, quien la transcribió, que es el único dato cierto.
+   *
+   * Solo a quien se la deben cargar y a quien ve todos los procesos; sin
+   * usuario —el aviso diario— todas, y cada una va a su destinatario.
+   */
+  private async actasDelComitePendientes(
+    hoy: string,
+    plazo: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT s.id, s.proceso_id, s.sumision, s.fecha::text AS fecha,
+              s.registrado_por, s.registrado_por_id, p.radicado
+         FROM hiring.sesiones_comite_contratacion s
+         JOIN hiring.procesos p ON p.id = s.proceso_id
+        WHERE s.acta_documento_id IS NULL
+        ORDER BY s.fecha ASC`,
+    );
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const numeral = numeralDeLaSumision(Number(f.sumision) === 2 ? 2 : 1);
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, numeral).catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.registrado_por_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const vence = limiteDelActa(f.fecha, plazo);
+      const diasRestantes = diasParaVencer(vence, hoy);
+      alertas.push({
+        tipo: 'ACTA_COMITE_PENDIENTE',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `${numeral} · acta de la ${Number(f.sumision) === 2 ? 'segunda' : 'primera'} sesión del comité (${f.fecha})`,
+        vence,
+        diasRestantes,
+        // Siempre se alerta, dentro y fuera del plazo: el acta se debe desde el
+        // día de la sesión. El plazo solo dice cuándo pasa a vencida.
+        estado: estadoAlerta(diasRestantes, plazo),
+        responsable: quien?.responsable?.nombre ?? f.registrado_por ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
+  }
+
+  /**
+   * Los comités evaluadores vigentes que siguen sin memorando (117).
+   *
+   * El plazo corre desde que se registró el comité. El destinatario es quien
+   * hace la 6.2 en el proceso, o quien registró el comité si la actividad no
+   * tiene puesto: el mismo criterio que el acta del Comité de Contratación.
+   */
+  private async memorandosDelComitePendientes(
+    hoy: string,
+    plazo: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT c.id, c.proceso_id, (c.created_at AT TIME ZONE 'America/Bogota')::date::text AS desde,
+              c.designado_por, c.designado_por_id, p.radicado
+         FROM hiring.comites_evaluadores c
+         JOIN hiring.procesos p ON p.id = c.proceso_id
+        WHERE c.estado = 'VIGENTE' AND c.memorando_documento_id IS NULL
+        ORDER BY c.created_at ASC`,
+    );
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, '6.2').catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.designado_por_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const vence = limiteDelActa(f.desde, plazo);
+      const diasRestantes = diasParaVencer(vence, hoy);
+      alertas.push({
+        tipo: 'MEMORANDO_COMITE_PENDIENTE',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `6.2 · memorando de designación del comité evaluador (desde el ${f.desde})`,
+        vence,
+        diasRestantes,
+        estado: estadoAlerta(diasRestantes, plazo),
+        responsable: quien?.responsable?.nombre ?? f.designado_por ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
   }
 
   /**
@@ -1092,14 +1196,39 @@ export class AlertasService {
               a.responsable ? ` por ${a.responsable}` : ''
             }. Corrígela y vuelve a enviarla.`,
           }
-        : a.tipo === 'SIN_ABOGADO'
+        : a.tipo === 'SIN_RESPONSABLE'
         ? {
             // Tenía que tener su propio texto: caía en el de vencimientos y
             // decía «vence en N días del contrato» sobre un proceso sin contrato.
             id_usuario_destinatario: a.responsableId as string,
-            tipo_notificacion: 'contratacion_sin_abogado',
-            titulo: 'Un proceso sigue sin abogado',
-            mensaje: `El proceso ${a.radicado} lleva ${Math.abs(a.diasRestantes)} días sin abogado asignado. Repártelo en la 3.4.`,
+            tipo_notificacion: 'contratacion_sin_responsable',
+            titulo: 'Un proceso tiene un puesto vacío',
+            mensaje: `En el proceso ${a.radicado}, ${a.descripcion.replace(/^3\.3 · /, '')} desde hace ${Math.abs(a.diasRestantes)} días. Asígnalo en la 3.3.`,
+          }
+        : a.tipo === 'ACTA_COMITE_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_acta_comite',
+            titulo: a.estado === 'VENCIDO' ? 'Acta del comité vencida' : 'Falta el acta del comité',
+            mensaje: `Proceso ${a.radicado}: ${a.descripcion.replace(/^[\d.]+ · /, '')} sigue sin cargarse${
+              a.estado === 'VENCIDO'
+                ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
+                : `; el plazo vence el ${a.vence}`
+            }.`,
+          }
+        : a.tipo === 'MEMORANDO_COMITE_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_memorando_comite',
+            titulo:
+              a.estado === 'VENCIDO'
+                ? 'Memorando del comité evaluador vencido'
+                : 'Falta el memorando del comité evaluador',
+            mensaje: `Proceso ${a.radicado}: el memorando de designación del comité evaluador sigue sin cargarse${
+              a.estado === 'VENCIDO'
+                ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
+                : `; el plazo vence el ${a.vence}`
+            }.`,
           }
         : a.tipo === 'APROBACION_PENDIENTE'
         ? {
@@ -1158,4 +1287,23 @@ export class AlertasService {
       sinDestinatario: alertas.length - conDestinatario.length,
     };
   }
+}
+
+/**
+ * De las filas de puesto vacío, las que de verdad paran el proceso: aquellas
+ * cuyo puesto hace o aprueba algo en su modalidad y versión del flujo. Se
+ * consulta una vez por cada pareja modalidad–versión, no por proceso.
+ */
+export async function puestosQueHacenAlgo<F extends { modalidad: string | null; version: string | null; puesto_id: string }>(
+  filas: F[],
+  usosDe: (modalidad: string | null, version: string | null) => Promise<UsoDePuesto[]>,
+): Promise<F[]> {
+  const conUso = new Map<string, Set<string>>();
+  const clave = (f: F) => `${f.modalidad ?? ''}|${f.version ?? ''}`;
+  for (const f of filas) {
+    if (conUso.has(clave(f))) continue;
+    const usos = await usosDe(f.modalidad ?? null, f.version ?? null);
+    conUso.set(clave(f), new Set(usos.map((u) => u.puestoId)));
+  }
+  return filas.filter((f) => conUso.get(clave(f))?.has(f.puesto_id));
 }

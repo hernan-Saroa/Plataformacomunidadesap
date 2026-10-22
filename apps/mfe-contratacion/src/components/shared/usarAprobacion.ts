@@ -11,7 +11,13 @@ import { AccionEscalon, EvidenciaFirmaOtp, RondaDeAprobacion, SoporteDeDevolucio
  * quedan en el orden en que se eligieron. La devolución ya quedó, así que los
  * que fallen se avisan juntos sin deshacer lo decidido.
  */
-export async function adjuntarSoportes(procesoId: string, numeral: string, archivos: File[]) {
+export async function adjuntarSoportes(
+  procesoId: string,
+  numeral: string,
+  archivos: File[],
+  /** Lo que se hizo, para el aviso si un archivo no sube. */
+  hecho: string = 'Se devolvió',
+) {
   const fallidos: string[] = [];
   let motivo: string | undefined;
   for (const archivo of archivos) {
@@ -25,8 +31,8 @@ export async function adjuntarSoportes(procesoId: string, numeral: string, archi
   if (fallidos.length) {
     toast.warning(
       fallidos.length === 1
-        ? `Se devolvió, pero no se pudo adjuntar ${fallidos[0]}`
-        : `Se devolvió, pero no se pudieron adjuntar ${fallidos.length} archivos: ${fallidos.join(', ')}`,
+        ? `${hecho}, pero no se pudo adjuntar ${fallidos[0]}`
+        : `${hecho}, pero no se pudieron adjuntar ${fallidos.length} archivos: ${fallidos.join(', ')}`,
       { description: motivo },
     );
   }
@@ -81,11 +87,12 @@ export interface Aprobacion {
   guardando: boolean;
   enviar: () => Promise<void>;
   retirar: () => Promise<void>;
-  aprobar: (firma?: EvidenciaFirmaOtp) => Promise<void>;
+  /** Con observaciones y archivos opcionales: la traza de por qué se aprobó. */
+  aprobar: (firma?: EvidenciaFirmaOtp, observaciones?: string, soportes?: File[]) => Promise<void>;
   /** Con archivos, los adjunta como soportes de la devolución. */
   devolver: (observaciones: string, soportes?: File[]) => Promise<void>;
   /** Solo donde el escalón puede negar: termina el proceso. */
-  negar: (observaciones: string) => Promise<void>;
+  negar: (observaciones: string, soportes?: File[]) => Promise<void>;
 }
 
 /**
@@ -213,12 +220,22 @@ export function usarAprobacion(
         () => contratacionService.retirarAprobacion(procesoId, numeral),
         'Retirada de aprobación: ya puedes corregirla',
       ),
-    aprobar: (firma?: EvidenciaFirmaOtp) => {
+    aprobar: (firma?: EvidenciaFirmaOtp, observaciones?: string, soportes: File[] = []) => {
       // Una aprobación intermedia no aprueba la actividad: la pasa al
       // siguiente escalón, y decirle «aprobada» a quien la dio confunde.
       const siguiente = ronda?.escalones.find((e) => e.orden > (ronda.escalonActual ?? 0));
       return accion(
-        () => contratacionService.aprobarActividad(procesoId, numeral, undefined, firma),
+        // Lo que dijo y adjuntó quien aprueba queda en su decisión, como en una
+        // devolución: es la traza de por qué aprobó (113).
+        async () => {
+          await contratacionService.aprobarActividad(
+            procesoId,
+            numeral,
+            observaciones?.trim() || undefined,
+            firma,
+          );
+          await adjuntarSoportes(procesoId, numeral, soportes, 'Se aprobó');
+        },
         siguiente ? `Aprobada en tu escalón: pasa a ${siguiente.nombre}` : 'Actividad aprobada',
       );
     },
@@ -227,10 +244,10 @@ export function usarAprobacion(
         await contratacionService.devolverActividad(procesoId, numeral, observaciones);
         await adjuntarSoportes(procesoId, numeral, soportes);
       }, 'Devuelta con tus observaciones'),
-    negar: (observaciones: string) =>
-      accion(
-        () => contratacionService.negarActividad(procesoId, numeral, observaciones),
-        'Actividad negada: el proceso terminó',
-      ),
+    negar: (observaciones: string, soportes: File[] = []) =>
+      accion(async () => {
+        await contratacionService.negarActividad(procesoId, numeral, observaciones);
+        await adjuntarSoportes(procesoId, numeral, soportes, 'Se negó');
+      }, 'Actividad negada: el proceso terminó'),
   };
 }

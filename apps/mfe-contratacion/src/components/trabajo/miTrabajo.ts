@@ -10,7 +10,7 @@ export interface ElementoDeTrabajo {
 export interface MiTrabajo {
   /** Me toca redactar, corregir o trabajar una actividad. */
   porHacer: ElementoDeTrabajo[];
-  /** Me toca recibir el proceso o asignarle abogado. */
+  /** Me toca recibir el proceso o asignarle los puestos. */
   porAsignar: ElementoDeTrabajo[];
   /** Estoy en el proceso, pero la siguiente acción es de otro. */
   enEspera: ElementoDeTrabajo[];
@@ -22,7 +22,7 @@ function estoyEnElProceso(p: ProcesoResumen): boolean {
   return (
     !!p.radicadoPorMi ||
     !!participacion?.contratacion?.esMio ||
-    !!participacion?.abogado?.esMio ||
+    !!participacion?.puestos?.some((x) => x.esMio) ||
     !!participacion?.financiera?.esMio
   );
 }

@@ -1,45 +1,149 @@
-import { PapelEnProceso } from '../../entities/participacion-proceso.entity';
+import { EntityManager } from 'typeorm';
+
 import { Accion } from '../../auth/alcance';
-
-/** Una actividad de la que responde la persona que ocupa un papel en el proceso. */
-export interface RespondeElAsignado {
-  papel: PapelEnProceso;
-  /** La acción que esa persona hace en el punto; sin nadie en el papel, la hacen los roles con ella. */
-  accion: Exclude<Accion, 'ver'>;
-  /** Solo mientras la actividad espera decisión: antes la diligencia quien tenga el alcance de editar. */
-  soloEnRevision: boolean;
-  /**
-   * Si el papel se toma de una bandeja. Entonces, mientras nadie lo ocupa,
-   * cualquiera con el alcance puede tomarlo; si se asigna, nadie actúa hasta
-   * que se asigne.
-   */
-  seToma: boolean;
-}
-
-const DEL_ABOGADO = { papel: 'ABOGADO', accion: 'aprobar', seToma: false } as const;
+import { HiringAccess } from '../../auth/hiring-access';
+import { accionQueHace } from '../../auth/la-hace';
+import {
+  FilaAsignacion,
+  SecuenciaGuardada,
+  aLaHace,
+  asignacionQueRige,
+  filasDeVersiones,
+  versionesDeProcesos,
+} from '../../flujo/lectura';
 
 /**
- * Las actividades de las que no responde un rol sino una persona del proceso.
+ * Una actividad de la que no responden los roles con el permiso sino quien
+ * dice la regla «quién la hace» (109) de la versión del flujo del proceso
+ * (111): el ocupante de un puesto en el proceso o unas personas nombradas.
  *
- * Los alcances dicen qué roles *pueden* actuar en cada punto, y eso es lo que
- * la pantalla nombra por defecto. Aquí va la excepción: que el Gestor tenga el
- * alcance de editar la 3.7 no lo pone a transcribir el comité, porque
- * `quienDecide` solo deja al abogado repartido. Si la pantalla no lo supiera,
- * diría «le toca al Gestor» y mandaría a esperar al abogado.
- *
- * Vive en el backend y viaja con cada actividad para que la regla esté una
- * sola vez: los servicios que llaman a `quienDecide` y la pantalla que dice a
- * quién le toca leen lo mismo.
+ * Antes era una lista escrita aquí —la 3.4, la 3.6 y la 3.7 eran del
+ * abogado—; ahora sale de Configuración, y viaja con cada actividad para que
+ * la pantalla diga a quién le toca con la misma regla que exige el servidor.
  */
-export const RESPONDE_EL_ASIGNADO: Readonly<Record<string, RespondeElAsignado>> = {
-  // La revisión del estudio previo, la causal y el comité son del abogado de
-  // principio a fin.
-  '3.4': { ...DEL_ABOGADO, soloEnRevision: false },
-  '3.6': { ...DEL_ABOGADO, soloEnRevision: false },
-  '3.7': { ...DEL_ABOGADO, soloEnRevision: false },
-};
+export interface RespondeElAsignado {
+  /** El puesto que la hace, o `null` si la hacen personas nombradas. */
+  puesto: string | null;
+  /** Quién la hace en este proceso, o `null` si el puesto está vacío. */
+  persona: { nombre: string; esMio: boolean } | null;
+  /** El permiso que tiene que tener para hacerla. */
+  accion: Exclude<Accion, 'ver'>;
+  /** Se conservan para la pantalla: un puesto se asigna, no se toma. */
+  soloEnRevision: false;
+  seToma: false;
+}
 
-/** Quién responde por la actividad, o `null` si responden los roles de su alcance. */
-export function respondeElAsignado(numeral: string): RespondeElAsignado | null {
-  return RESPONDE_EL_ASIGNADO[numeral] ?? null;
+/** Lo que hace falta para resolver `responde` en muchas actividades a la vez. */
+export interface ContextoResponde {
+  /** Por versión del flujo, sus asignaciones (111). */
+  filasPorVersion: Map<string, FilaAsignacion[]>;
+  /** La versión con la que corre cada proceso. */
+  versionDe: Map<string, string>;
+  puestos: Map<string, string>;
+  /** Por proceso, quién ocupa cada puesto. */
+  ocupantes: Map<string, Map<string, { nombre: string; usuarioId: string; usuarioNombre: string }>>;
+  personas: Map<string, string>;
+  /** El `id_person` de quien consulta, para saber si una persona nombrada es él. */
+  miPersona: string | null;
+}
+
+export async function cargarResponde(
+  em: EntityManager,
+  procesoIds: string[],
+  acceso?: Pick<HiringAccess, 'userId'>,
+): Promise<ContextoResponde> {
+  const versionDe = await versionesDeProcesos(em, procesoIds);
+  const filasPorVersion = await filasDeVersiones(em, [...versionDe.values()]);
+  const puestos = new Map<string, string>(
+    (await em.query(`SELECT id::text AS id, nombre FROM hiring.puestos_proceso`)).map((f: any) => [f.id, f.nombre]),
+  );
+  const ocupantes = new Map<string, Map<string, { nombre: string; usuarioId: string; usuarioNombre: string }>>();
+  if (procesoIds.length) {
+    const filas = await em.query(
+      `SELECT proceso_id::text AS proceso, puesto_id::text AS puesto, nombre, usuario_id::text AS "usuarioId",
+              usuario_nombre AS "usuarioNombre"
+         FROM hiring.asignaciones_puesto
+        WHERE estado = 'VIGENTE' AND proceso_id::text = ANY($1::text[])`,
+      [procesoIds],
+    );
+    for (const f of filas) {
+      const delProceso = ocupantes.get(f.proceso) ?? new Map();
+      delProceso.set(f.puesto, { nombre: f.nombre, usuarioId: f.usuarioId, usuarioNombre: f.usuarioNombre });
+      ocupantes.set(f.proceso, delProceso);
+    }
+  }
+  const ids = [
+    ...new Set(
+      [...filasPorVersion.values()].flat().flatMap((f) => (f.laHace?.tipo === 'PERSONAS' ? f.laHace.personas : [])),
+    ),
+  ];
+  const personas = new Map<string, string>(
+    ids.length
+      ? (
+          await em.query(
+            `SELECT id_person::text AS id, COALESCE(nom_largo, nom_tercero) AS nombre
+               FROM auth.personas WHERE id_person::text = ANY($1::text[])`,
+            [ids],
+          )
+        ).map((f: any) => [f.id, f.nombre])
+      : [],
+  );
+  const [cuenta] = acceso?.userId
+    ? await em.query(`SELECT id_person::text AS id FROM auth."user" WHERE id_user::text = $1`, [acceso.userId])
+    : [];
+  return { filasPorVersion, versionDe, puestos, ocupantes, personas, miPersona: cuenta?.id ?? null };
+}
+
+/**
+ * Cuándo empieza la actividad en el proceso (125): de qué depende y si detiene
+ * a las siguientes, según la versión del flujo con que corre. Viaja con cada
+ * actividad para que el riel abra y cierre con la misma regla que el «te toca».
+ */
+export function secuenciaEn(
+  ctx: Pick<ContextoResponde, 'filasPorVersion' | 'versionDe'>,
+  procesoId: string,
+  modalidad: string | null,
+  numeral: string,
+): SecuenciaGuardada {
+  const filas = ctx.filasPorVersion.get(ctx.versionDe.get(procesoId) ?? '') ?? [];
+  return asignacionQueRige(filas, numeral, modalidad).secuencia;
+}
+
+/** Quién responde por la actividad en el proceso, o `null` si los roles del alcance. */
+export function respondeEn(
+  ctx: ContextoResponde,
+  procesoId: string,
+  modalidad: string | null,
+  numeral: string,
+  acceso?: Pick<HiringAccess, 'userId' | 'userName'>,
+): RespondeElAsignado | null {
+  const filas = ctx.filasPorVersion.get(ctx.versionDe.get(procesoId) ?? '') ?? [];
+  const regla = aLaHace(asignacionQueRige(filas, numeral, modalidad).laHace);
+  if (!regla) return null;
+  const base = { accion: accionQueHace(numeral), soloEnRevision: false as const, seToma: false as const };
+
+  if ('puestoId' in regla) {
+    const ocupa = ctx.ocupantes.get(procesoId)?.get(regla.puestoId);
+    const igual = (x?: string | null, y?: string | null) =>
+      !!x && !!y && x.trim().toLowerCase() === y.trim().toLowerCase();
+    return {
+      ...base,
+      puesto: ctx.puestos.get(regla.puestoId) ?? 'Puesto que ya no existe',
+      persona: ocupa
+        ? {
+            nombre: ocupa.nombre,
+            esMio: igual(ocupa.usuarioId, acceso?.userId) || igual(ocupa.usuarioNombre, acceso?.userName),
+          }
+        : null,
+    };
+  }
+
+  return {
+    ...base,
+    puesto: null,
+    persona: {
+      nombre: regla.personas.map((p) => ctx.personas.get(p) ?? 'Persona del directorio').join(' o '),
+      esMio: !!ctx.miPersona && regla.personas.includes(ctx.miPersona),
+    },
+  };
 }

@@ -73,6 +73,15 @@ export function exigeArl(tipoPersona: TipoPersona): boolean {
  * devolvía a BORRADOR sin que hubiera nada que registrar, dejando la
  * legalización —y con ella la 8.7 y la 8.8— bloqueada para siempre.
  */
+/** Si la modalidad constituye garantías (8.4); la matriz las excluye en enajenación. */
+export async function aplicanGarantias(em: EntityManager, modalidad: string | null): Promise<boolean> {
+  if (!modalidad) return true;
+  const excluida = await em
+    .getRepository(ActividadExcluida)
+    .findOne({ where: { numeral: NUMERAL_GARANTIAS, modalidad } });
+  return !excluida;
+}
+
 export async function aplicaArl(
   em: EntityManager,
   modalidad: string | null,
@@ -108,9 +117,16 @@ export function estaLegalizado(panorama: {
   garantiasAprobadas: number;
   requiereArl: boolean;
   arlRegistrada: boolean;
+  /**
+   * Falso donde la matriz excluye las garantías (8.4): enajenación, donde la
+   * entidad vende y no hay amparos que constituir. Sin esto el contrato no
+   * llegaba nunca a legalizado y la ejecución no arrancaba.
+   */
+  requiereGarantias?: boolean;
 }): boolean {
   const garantiasListas =
-    panorama.totalGarantias > 0 && panorama.garantiasAprobadas === panorama.totalGarantias;
+    panorama.requiereGarantias === false ||
+    (panorama.totalGarantias > 0 && panorama.garantiasAprobadas === panorama.totalGarantias);
 
   return garantiasListas && (!panorama.requiereArl || panorama.arlRegistrada);
 }
@@ -536,6 +552,7 @@ export class LegalizacionService {
     const requiereArl = await aplicaArl(em, modalidad, contrato.contratistaTipo);
     const vigentes = garantiasVigentes(garantias);
     const legalizado = estaLegalizado({
+      requiereGarantias: await aplicanGarantias(em, modalidad),
       totalGarantias: vigentes.length,
       garantiasAprobadas: vigentes.filter((g) => g.estado === 'APROBADA').length,
       requiereArl,

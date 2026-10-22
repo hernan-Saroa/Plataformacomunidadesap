@@ -8,6 +8,8 @@ import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
 import { Adenda } from '../../entities/adenda.entity';
 import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
+import { AperturaProceso } from '../../entities/apertura-proceso.entity';
+import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -20,11 +22,11 @@ import { AnularAdendaDto, EmitirAdendaDto, PublicarAdendaDto } from './dto/adend
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
-/** Actividad 5.6 de la matriz: las adendas del proceso. */
-export const NUMERAL_ADENDAS = '5.6';
+/** Actividad 5.13 de la matriz: las adendas del proceso. */
+export const NUMERAL_ADENDAS = '5.13';
 
-/** Etapa en la que el proceso ya está abierto y el pliego definitivo rige. */
-const ETAPA_APERTURA = 5;
+/** La apertura del proceso: desde ella se emiten adendas (matriz, 5.13). */
+const NUMERAL_APERTURA = '5.7';
 
 interface ArchivoCargado {
   filename: string;
@@ -37,7 +39,7 @@ interface ArchivoCargado {
 export class AdendasService {
   constructor(
     private readonly dataSource: DataSource,
-    /** Si la 5.6 exige firmar con el token institucional al cerrarse (EFDS-2070). */
+    /** Si la 5.13 exige firmar con el token institucional al cerrarse (EFDS-2070). */
     private readonly cierre: CierreActividadService,
   ) {}
 
@@ -56,7 +58,7 @@ export class AdendasService {
           .findOne({ where: { codigo: proceso.modalidad } })
       : null;
 
-    const publicacion = await this.publicacionVigente(procesoId);
+    const ventana = await this.ventana(this.dataSource.manager, proceso);
 
     const adendas = await this.dataSource.getRepository(Adenda).find({
       where: { procesoId },
@@ -77,12 +79,17 @@ export class AdendasService {
       motivoNoAplica: excluida?.motivo ?? null,
       modalidad: proceso.modalidad,
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
-      // Sin pliego publicado no hay documento público que modificar, y con el
-      // proceso ya abierto rige el pliego definitivo.
-      publicado: !!publicacion,
-      abierto: proceso.etapa >= ETAPA_APERTURA,
-      puedeEmitir: !excluida && !!publicacion && proceso.etapa < ETAPA_APERTURA,
-      vencimientoVigente: publicacion?.fechaVencimiento ?? null,
+      // Desde la 112, como en la matriz: «a partir de la apertura pueden
+      // generarse en cualquier momento», hasta que se cierran las ofertas.
+      publicado: !!ventana.publicacion,
+      abierto: !!ventana.apertura,
+      puedeEmitir: !excluida && !ventana.motivo,
+      motivoNoPuedeEmitir: excluida ? null : ventana.motivo,
+      // La fecha que mueve una adenda de cronograma: el cierre de ofertas si
+      // el proceso ya se abrió, o el plazo de observaciones donde no hay
+      // apertura.
+      vencimientoVigente: ventana.vencimiento,
+      mueve: ventana.recepcion ? 'CIERRE_OFERTAS' : 'PLAZO_OBSERVACIONES',
       adendas: adendas.map((a) => ({
         id: a.id,
         numero: a.numero,
@@ -128,21 +135,19 @@ export class AdendasService {
         throw new BadRequestException(`Esta modalidad no admite adendas: ${excluida.motivo}`);
       }
 
-      const publicacion = await this.publicacionVigente(procesoId, em);
-      if (!publicacion) {
-        throw new ConflictException(
-          'No hay proyecto de pliego publicado: una adenda modifica algo que ya se hizo público',
-        );
-      }
-
-      if (proceso.etapa >= ETAPA_APERTURA) {
-        throw new ConflictException(
-          'El proceso ya fue abierto: a partir de la apertura rige el pliego definitivo',
-        );
-      }
+      const ventana = await this.ventana(em, proceso);
+      if (ventana.motivo) throw new ConflictException(ventana.motivo);
 
       if (dto.tipo === 'CRONOGRAMA') {
-        this.validarNuevoVencimiento(dto.vencimientoNuevo!, publicacion);
+        // Abierto el proceso, lo que se prorroga es el cierre de ofertas. Si la
+        // modalidad no lo tiene parametrizado y nadie lo ha fijado, no hay
+        // fecha que mover; tomar la del plazo de observaciones movería otra.
+        if (ventana.apertura && !ventana.recepcion) {
+          throw new ConflictException(
+            'Todavía no hay plazo de ofertas que prorrogar: fíjalo primero en la recepción de ofertas (6.1)',
+          );
+        }
+        this.validarNuevoVencimiento(dto.vencimientoNuevo!, ventana);
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -214,10 +219,10 @@ export class AdendasService {
         throw new ConflictException(`La adenda ${adenda.numero} fue anulada`);
       }
 
-      const publicacion = await this.publicacionVigente(procesoId, em);
-      if (!publicacion) {
-        throw new ConflictException('El proceso ya no tiene una publicación vigente');
-      }
+      const proceso = await this.exigirProceso(em, procesoId);
+      const ventana = await this.ventana(em, proceso);
+      if (ventana.motivo) throw new ConflictException(ventana.motivo);
+      const publicacion = ventana.publicacion!;
 
       this.validarFechaPublicacion(dto.fechaPublicacion, publicacion.fechaPublicacion);
 
@@ -241,11 +246,29 @@ export class AdendasService {
       if (adenda.tipo === 'CRONOGRAMA') {
         // Se revalida contra el vencimiento de hoy y no contra el de cuando se
         // emitió: entre una cosa y otra pudo publicarse otra adenda.
-        this.validarNuevoVencimiento(adenda.vencimientoNuevo!, publicacion);
+        if (ventana.apertura && !ventana.recepcion) {
+          throw new ConflictException(
+            'Todavía no hay plazo de ofertas que prorrogar: fíjalo primero en la recepción de ofertas (6.1)',
+          );
+        }
+        this.validarNuevoVencimiento(adenda.vencimientoNuevo!, ventana);
 
-        adenda.vencimientoAnterior = publicacion.fechaVencimiento;
-        publicacion.fechaVencimiento = adenda.vencimientoNuevo;
-        await em.save(publicacion);
+        adenda.vencimientoAnterior = ventana.vencimiento;
+        if (ventana.recepcion) {
+          // Con el proceso abierto, lo que la adenda prorroga es el cierre de
+          // ofertas. Se conserva la hora del cronograma: la adenda mueve el
+          // día, no la hora a la que cierra la recepción.
+          const recepcion = ventana.recepcion;
+          recepcion.vencimiento = new Date(
+            `${adenda.vencimientoNuevo}T${horaEnBogota(recepcion.vencimiento)}-05:00`,
+          );
+          // Deja de ser el plazo calculado, igual que al fijarlo a mano.
+          recepcion.plazoDiasHabiles = null;
+          await em.save(recepcion);
+        } else {
+          publicacion.fechaVencimiento = adenda.vencimientoNuevo;
+          await em.save(publicacion);
+        }
       }
 
       await em.save(adenda);
@@ -309,23 +332,72 @@ export class AdendasService {
   // ----------------------------------------------------------- auxiliares --
 
   /**
+   * Si hoy se pueden emitir y publicar adendas, y qué fecha mueve una de
+   * cronograma.
+   *
+   * La matriz (5.13): «a partir de la apertura pueden generarse en cualquier
+   * momento». Hasta la 112 era al revés —se emitían antes de abrir y la
+   * apertura las cerraba—. Ahora:
+   *
+   *   · Hace falta el pliego publicado: una adenda modifica algo público.
+   *   · Donde la modalidad tiene apertura, hace falta la apertura. Donde no la
+   *     tiene —mínima cuantía, 092— basta la publicación.
+   *   · Se acaban al cerrar la recepción de ofertas: después ya no hay pliego
+   *     sobre el que ofertar, y mover el cierre cambiaría una regla ya aplicada.
+   *
+   * Con el proceso abierto, una de cronograma prorroga el cierre de ofertas;
+   * sin apertura, el plazo de observaciones, como antes.
+   */
+  private async ventana(em: EntityManager, proceso: Proceso) {
+    const procesoId = proceso.id;
+    const [publicacion, apertura, recepcion, sinApertura] = await Promise.all([
+      this.publicacionVigente(procesoId, em),
+      em.getRepository(AperturaProceso).findOne({ where: { procesoId } }),
+      em.getRepository(RecepcionOfertas).findOne({ where: { procesoId } }),
+      em.getRepository(ActividadExcluida).findOne({
+        where: { numeral: NUMERAL_APERTURA, modalidad: proceso.modalidad ?? '' },
+      }),
+    ]);
+
+    let motivo: string | null = null;
+    if (!publicacion) {
+      motivo = 'No hay pliego publicado: una adenda modifica algo que ya se hizo público';
+    } else if (!sinApertura && !apertura) {
+      motivo = 'El proceso todavía no se ha abierto: las adendas se emiten a partir de la apertura (5.7)';
+    } else if (recepcion?.estado === 'CERRADA') {
+      motivo = 'La recepción de ofertas ya se cerró: después del cierre el pliego no admite adendas';
+    }
+
+    const vencimiento = recepcion
+      ? fechaEnBogota(recepcion.vencimiento)
+      : apertura
+        ? null
+        : (publicacion?.fechaVencimiento ?? null);
+
+    return { publicacion, apertura, recepcion, motivo, vencimiento };
+  }
+
+  /**
    * Una adenda de cronograma prorroga: no puede llevar el vencimiento al
    * pasado ni acortarlo.
    *
-   * Acortar un plazo de publicidad ya anunciado recortaría el término de quien
-   * todavía puede observar el pliego, y el módulo cuenta las observaciones
+   * Acortar un plazo ya anunciado recortaría el término de quien todavía puede
+   * observar el pliego o presentar su oferta, y el módulo cuenta lo que llega
    * fuera de término contra esa misma fecha.
    */
-  private validarNuevoVencimiento(nuevo: string, publicacion: PublicacionPliego) {
-    if (nuevo <= publicacion.fechaPublicacion) {
+  private validarNuevoVencimiento(
+    nuevo: string,
+    ventana: { publicacion: PublicacionPliego | null; vencimiento: string | null },
+  ) {
+    if (ventana.publicacion && nuevo <= ventana.publicacion.fechaPublicacion) {
       throw new BadRequestException(
         'El nuevo vencimiento debe ser posterior a la fecha de publicación del pliego',
       );
     }
 
-    if (publicacion.fechaVencimiento && nuevo <= publicacion.fechaVencimiento) {
+    if (ventana.vencimiento && nuevo <= ventana.vencimiento) {
       throw new BadRequestException(
-        `El nuevo vencimiento (${nuevo}) debe ser posterior al vigente (${publicacion.fechaVencimiento}): una adenda de cronograma prorroga el plazo`,
+        `El nuevo vencimiento (${nuevo}) debe ser posterior al vigente (${ventana.vencimiento}): una adenda de cronograma prorroga el plazo`,
       );
     }
   }
@@ -474,4 +546,14 @@ export class AdendasService {
       } as Partial<Trazabilidad>),
     );
   }
+}
+
+/** El día de un instante, en Bogotá. */
+function fechaEnBogota(instante: Date): string {
+  return instante.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+
+/** La hora de un instante en Bogotá, como HH:MM:SS. */
+function horaEnBogota(instante: Date): string {
+  return instante.toLocaleTimeString('en-GB', { timeZone: 'America/Bogota', hour12: false });
 }

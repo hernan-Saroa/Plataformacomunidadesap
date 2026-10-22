@@ -8,6 +8,13 @@
  * pantalla sigue mostrando con candado, o callaría cuando ya se abrió.
  */
 
+import {
+  DEPENDE_DE_POR_DEFECTO,
+  NO_BLOQUEAN_POR_DEFECTO,
+  SecuenciaGuardada,
+  secuenciaPorDefecto,
+} from '../../flujo/lectura';
+
 /** Lo que la secuencia necesita saber de cada actividad, en orden de flujo. */
 export interface PasoDelFlujo {
   numeral: string;
@@ -17,6 +24,11 @@ export interface PasoDelFlujo {
   aplica: boolean;
   /** Si la plataforma tiene pantalla para trabajarla. */
   construida: boolean;
+  /**
+   * De qué depende y si detiene a las siguientes, según la versión del flujo
+   * del proceso (125). Sin ella, lo predeterminado.
+   */
+  secuencia?: SecuenciaGuardada | null;
 }
 
 /**
@@ -24,14 +36,16 @@ export interface PasoDelFlujo {
  *
  * La lista inversa de `TIENEN_PANEL` en `DetalleProceso.tsx`: las etapas 1 y 2
  * ocurren antes de que exista el proceso, la 3.4 se resuelve dentro de la 3.3,
- * y la 5.8, la 5.12 y la 5.13 están por construir. Cuando alguna tenga
- * pantalla hay que sacarla de aquí, igual que se agrega allá.
+ * y la 5.8 está apagada (el CDP va en la 3.1 y la 4.2). La 5.12 y la 5.13
+ * salieron con la 112: son la audiencia y las adendas, con su pantalla.
+ * Cuando alguna tenga pantalla hay que sacarla de aquí, igual que se agrega
+ * allá.
  */
 export const SIN_PANEL = new Set([
   '1.1', '1.2', '1.3', '1.4',
   '2.1', '2.2', '2.3', '2.4',
   '3.4',
-  '5.8', '5.12', '5.13',
+  '5.8',
 ]);
 
 /** Terminada es aprobada: lo demás está empezado, esperando o devuelto. */
@@ -42,45 +56,51 @@ const ATIENDEN_LA_REVISION = new Set(['3.3', '3.4']);
 const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
 
 /**
- * Las que no esperan a la actividad que las antecede, sino a lo que de verdad
- * necesitan. Mismo mapa que `DEPENDE_DE` en el riel, donde está el porqué de
- * cada una: la 5.3, la 5.4 y la 5.5 cuelgan solo de la publicación (5.2), y
- * las modificaciones (9.5) del acta de inicio (9.1).
+ * Lo predeterminado, cuando la versión del flujo no dice nada (125). Desde la
+ * 125 se configura por versión y modalidad en Configuración → Flujo; el porqué
+ * de cada una está en el riel (`secuenciaActividades.ts`).
  */
-export const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
-  '5.3': ['5.2'],
-  '5.4': ['5.2'],
-  '5.5': ['5.2'],
-  '9.5': ['9.1'],
-};
+export const DEPENDE_DE = DEPENDE_DE_POR_DEFECTO;
+export const NUNCA_BLOQUEA = NO_BLOQUEAN_POR_DEFECTO;
 
-/**
- * Las que no cierran nunca mientras dura la ejecución, y por eso no pueden
- * detener nada: el seguimiento (9.2), la reasignación de supervisor (9.3) y
- * las modificaciones (9.5). Mismo conjunto que `NUNCA_BLOQUEA` en el riel.
- */
-export const NUNCA_BLOQUEA = new Set(['9.2', '9.3', '9.5']);
+/** Lo que rige en el paso: lo que trae de su versión, o lo predeterminado. */
+export const secuenciaDe = (paso: Pick<PasoDelFlujo, 'numeral' | 'secuencia'>): SecuenciaGuardada =>
+  paso.secuencia ?? secuenciaPorDefecto(paso.numeral);
+
+/** Si quedarse sin terminar no detiene a las siguientes. */
+export const noDetiene = (paso: Pick<PasoDelFlujo, 'numeral' | 'secuencia'>) => secuenciaDe(paso).noBloquea;
 
 /**
  * Si una dependencia declarada ya no le hace falta a quien la exige.
  *
- * La que no está, no aplica o no tiene pantalla nunca podrá terminarse:
- * exigirla trancaría para siempre a quien depende de ella.
+ * La que no aplica o no tiene pantalla nunca podrá terminarse: se da por
+ * cumplida cuando el proceso llega a su lugar, no antes. Dársela por cumplida
+ * siempre abría la que depende de ella desde el primer día (125).
  */
-function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {
+function dependenciaSatisfecha(
+  numeral: string,
+  flujo: PasoDelFlujo[],
+  alcanzadas: Set<string>,
+): boolean {
   const paso = flujo.find((p) => p.numeral === numeral);
-  if (!paso || !paso.aplica || !paso.construida) return true;
+  if (!paso) return true;
+  if (!paso.aplica || !paso.construida) return alcanzadas.has(numeral);
   return estaTerminada(paso);
 }
 
 /** Los numerales que se pueden trabajar, con la misma regla que el riel. */
 export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
   const disponibles = new Set<string>();
+  /** Las que no se trabajan aquí y a cuyo lugar ya llegó el proceso. */
+  const alcanzadas = new Set<string>();
   let alcanzado = true;
   let esperandoDecision = false;
 
   for (const paso of flujo) {
-    if (!paso.aplica || !paso.construida) continue;
+    if (!paso.aplica || !paso.construida) {
+      if (alcanzado && !esperandoDecision) alcanzadas.add(paso.numeral);
+      continue;
+    }
 
     if (esperandoDecision) {
       if (!ATIENDEN_LA_REVISION.has(paso.numeral)) continue;
@@ -89,15 +109,16 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
       continue;
     }
 
-    // Habilitarse antes no exime de bloquear: una de DEPENDE_DE sin terminar
-    // sigue cerrando el paso a lo que viene después, como cualquier otra.
-    const dependencias = DEPENDE_DE[paso.numeral];
-    const disponible = dependencias
-      ? dependencias.every((dep) => dependenciaSatisfecha(dep, flujo))
+    // Habilitarse antes no exime de bloquear: una con dependencias propias sin
+    // terminar sigue cerrando el paso a lo que viene después, como cualquier
+    // otra, salvo que su versión diga que no detiene el flujo.
+    const { dependeDe, noBloquea } = secuenciaDe(paso);
+    const disponible = dependeDe?.length
+      ? dependeDe.every((dep) => dependenciaSatisfecha(dep, flujo, alcanzadas))
       : alcanzado;
 
     if (disponible) disponibles.add(paso.numeral);
-    if (estaTerminada(paso) || NUNCA_BLOQUEA.has(paso.numeral)) continue;
+    if (estaTerminada(paso) || noBloquea) continue;
 
     if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
       esperandoDecision = true;
@@ -136,7 +157,7 @@ function sinPantallaAlcanzadas(flujo: PasoDelFlujo[]): Set<string> {
       continue;
     }
 
-    if (estaTerminada(paso) || NUNCA_BLOQUEA.has(paso.numeral)) continue;
+    if (estaTerminada(paso) || noDetiene(paso)) continue;
 
     if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
       esperandoDecision = true;
@@ -149,11 +170,10 @@ function sinPantallaAlcanzadas(flujo: PasoDelFlujo[]): Set<string> {
 }
 
 /**
- * La 3.4 no se habilita por la secuencia: le toca al abogado cuando se lo
- * asignan en la 3.3, y ese «le toca» sale de la designación. Contarla aquí
- * avisaría antes de que hubiera abogado a quien avisar.
+ * La 3.4 no se habilita por la secuencia: es la aprobación de la 3.1, y su
+ * «le toca» es el de la ronda (109). Contarla aquí avisaría dos veces.
  */
-export const SE_HABILITA_AL_ASIGNAR_ABOGADO = '3.4';
+export const SE_RESUELVE_EN_LA_RONDA = '3.4';
 
 /**
  * Las que están esperando a que alguien las empiece.
@@ -170,7 +190,7 @@ export function porEmpezar(flujo: PasoDelFlujo[]): string[] {
   const sinPantalla = sinPantallaAlcanzadas(flujo);
   return flujo
     .filter((p) => disponibles.has(p.numeral) || sinPantalla.has(p.numeral))
-    .filter((p) => p.numeral !== SE_HABILITA_AL_ASIGNAR_ABOGADO)
+    .filter((p) => p.numeral !== SE_RESUELVE_EN_LA_RONDA)
     .filter((p) => p.estado === null || p.estado === 'BORRADOR')
     .map((p) => p.numeral);
 }

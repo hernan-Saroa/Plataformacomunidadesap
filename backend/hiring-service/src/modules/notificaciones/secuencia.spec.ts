@@ -76,29 +76,57 @@ describe('secuencia · qué se puede trabajar', () => {
 });
 
 describe('secuencia · dependencias declaradas, como en el riel', () => {
-  const etapa5 = (estadoDeLa54: string | null) => [
-    paso('5.1', 'APROBADO'),
-    paso('5.2', 'APROBADO'),
-    paso('5.4', estadoDeLa54),
-    paso('5.3', null),
-    paso('5.5', null),
-    paso('5.6', null),
-  ];
+  /** La etapa 5 de la matriz (112), con la publicación en SECOP II hecha. */
+  const etapa5 = (estados: Record<string, string | null> = {}) =>
+    [
+      ['5.1', 'APROBADO'],
+      ['5.2', 'APROBADO'],
+      ['5.3', 'APROBADO'],
+      ['5.4', null],
+      ['5.5', null],
+      ['5.6', null],
+      ['5.7', null],
+      ['5.12', null],
+      ['5.13', null],
+      ['6.1', null],
+    ].map(([numeral, estado]) =>
+      paso(numeral as string, numeral! in estados ? estados[numeral!] : (estado as string | null)),
+    );
 
-  it('con la publicación hecha, la 5.4, la 5.3 y la 5.5 se abren a la vez', () => {
-    expect(porEmpezar(etapa5(null))).toEqual(['5.4', '5.3', '5.5']);
+  const todoHastaLaApertura = {
+    '5.4': 'APROBADO',
+    '5.5': 'APROBADO',
+    '5.6': 'APROBADO',
+    '5.7': 'APROBADO',
+  };
+
+  it('con la publicación hecha, la web, MiPymes y observaciones se abren a la vez', () => {
+    expect(porEmpezar(etapa5())).toEqual(['5.4', '5.5', '5.6']);
   });
 
-  it('pero la 5.6 sigue esperando a que todas terminen', () => {
-    const flujo = etapa5('APROBADO').map((p) =>
-      p.numeral === '5.3' ? { ...p, estado: 'APROBADO' } : p,
-    );
-    expect(actividadesDisponibles(flujo).has('5.6')).toBe(false);
+  it('pero la apertura sigue esperando a que todas terminen', () => {
+    const flujo = etapa5({ '5.4': 'APROBADO', '5.5': 'APROBADO' });
+    expect(actividadesDisponibles(flujo).has('5.7')).toBe(false);
   });
 
   it('sin la publicación, ninguna de las tres se abre', () => {
-    const flujo = etapa5(null).map((p) => (p.numeral === '5.2' ? { ...p, estado: 'BORRADOR' } : p));
-    expect(porEmpezar(flujo)).toEqual(['5.2']);
+    expect(porEmpezar(etapa5({ '5.3': 'BORRADOR' }))).toEqual(['5.3']);
+  });
+
+  it('las adendas no se abren antes de la apertura', () => {
+    expect(actividadesDisponibles(etapa5()).has('5.13')).toBe(false);
+  });
+
+  it('abierto el proceso, la audiencia y las adendas se abren a la vez', () => {
+    expect(porEmpezar(etapa5(todoHastaLaApertura))).toEqual(['5.12', '5.13']);
+  });
+
+  it('la audiencia detiene la recepción de ofertas; las adendas no', () => {
+    const sinAudiencia = etapa5({ ...todoHastaLaApertura, '5.13': 'BORRADOR' });
+    expect(actividadesDisponibles(sinAudiencia).has('6.1')).toBe(false);
+
+    const conAudiencia = etapa5({ ...todoHastaLaApertura, '5.12': 'APROBADO', '5.13': 'BORRADOR' });
+    expect(actividadesDisponibles(conAudiencia).has('6.1')).toBe(true);
   });
 
   it('las modificaciones (9.5) se abren con el acta de inicio, sin esperar los pagos', () => {
@@ -134,5 +162,59 @@ describe('secuencia · dependencias declaradas, como en el riel', () => {
       paso('10.1', null, { construida: false }),
     ];
     expect(porEmpezar(flujo)).toContain('10.1');
+  });
+});
+
+/**
+ * La secuencia configurable (125): cada versión del flujo dice, por actividad
+ * y modalidad, de qué depende y si detiene a las siguientes.
+ */
+describe('secuencia · configurada en la versión del flujo', () => {
+  it('sin nada en la versión rige lo predeterminado: 5.5 solo espera a la 5.3', () => {
+    const flujo = [paso('5.3', 'APROBADO'), paso('5.4', null), paso('5.5', null)];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['5.3', '5.4', '5.5']);
+  });
+
+  it('una que no detiene el flujo deja pasar a la siguiente aunque siga abierta', () => {
+    // 8.8 en paralelo: si no se publica, igual arranca la reunión de inicio.
+    const flujo = [
+      paso('8.7', 'APROBADO'),
+      paso('8.8', null, { secuencia: { dependeDe: ['8.1'], noBloquea: true } }),
+      paso('9.1', null),
+    ];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['8.7', '8.8', '9.1']);
+  });
+
+  it('la misma, sin la configuración, detiene a la 9.1 como antes', () => {
+    const flujo = [paso('8.7', 'APROBADO'), paso('8.8', null), paso('9.1', null)];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['8.7', '8.8']);
+  });
+
+  it('depender de una anterior la abre aunque la de en medio siga abierta', () => {
+    // 10.4 archiva sobre la liquidación: no espera al cierre financiero.
+    const flujo = [
+      paso('10.2', 'APROBADO'),
+      paso('10.3', null),
+      paso('10.4', null, { secuencia: { dependeDe: ['10.2'], noBloquea: false } }),
+    ];
+    expect([...actividadesDisponibles(flujo)]).toEqual(['10.2', '10.3', '10.4']);
+  });
+
+  it('una dependencia que no aplica se cumple al llegar a ella, no desde el primer día', () => {
+    const cronograma = paso('5.2', null, { secuencia: { dependeDe: ['4.2'], noBloquea: false } });
+    const antes = [paso('3.7', null), paso('4.2', null, { aplica: false }), paso('5.1', null), cronograma];
+    expect(actividadesDisponibles(antes).has('5.2')).toBe(false);
+
+    const despues = [paso('3.7', 'APROBADO'), paso('4.2', null, { aplica: false }), paso('5.1', null), cronograma];
+    expect([...actividadesDisponibles(despues)]).toEqual(['3.7', '5.1', '5.2']);
+  });
+
+  it('el «te toca» también la avisa en cuanto se abre', () => {
+    const flujo = [
+      paso('10.2', 'APROBADO'),
+      paso('10.3', null),
+      paso('10.4', null, { secuencia: { dependeDe: ['10.2'], noBloquea: false } }),
+    ];
+    expect(porEmpezar(flujo)).toEqual(['10.3', '10.4']);
   });
 });

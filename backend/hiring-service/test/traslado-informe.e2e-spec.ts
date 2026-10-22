@@ -140,17 +140,11 @@ describe('HU EFDS-1158 · traslado del informe y subsanaciones (6.4 a 6.6)', () 
       ordenador,
     );
 
-    // Gana la segunda oferta: así se distingue de la primera al rectificar.
+    // El informe preliminar del comité: sin ganadora desde la 120 (EFDS-1157).
     await evaluacion.registrar(
       proceso.id,
-      {
-        oferenteId: estado.oferentes[1].id,
-        puntajeObtenido: 92.5,
-        puntajeMaximo: 100,
-        justificacion: JUSTIFICACION,
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      { observacion: JUSTIFICACION },
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
 
@@ -187,14 +181,11 @@ describe('HU EFDS-1158 · traslado del informe y subsanaciones (6.4 a 6.6)', () 
       {
         oferenteId,
         tipo: 'SUBSANACION',
-        presentadoPor: 'Barata SAS',
         fechaPresentacion: hoy(),
         asunto: 'Aporta certificación de experiencia',
-        contenido: 'Se adjunta la certificación que no se cargó con la oferta.',
         ...datos,
       },
-      archivo('escrito.pdf'),
-      's'.repeat(64),
+      [{ archivo: archivo('escrito.pdf'), hash: 's'.repeat(64) }],
       gestor,
     );
 
@@ -286,72 +277,73 @@ describe('HU EFDS-1158 · traslado del informe y subsanaciones (6.4 a 6.6)', () 
   // ------------------------------------------------------------ criterio 1 --
 
   describe('Criterio 1 · el informe congela lo que se notifica', () => {
-    it('genera el informe con el resultado del comité congelado', async () => {
-      const { proceso, oferentes } = await conResultado();
+    it('congela el informe preliminar del comité, sin ganadora', async () => {
+      const { proceso } = await conResultado();
 
       const estado = await generar(proceso.id);
 
       expect(estado.informe).not.toBeNull();
       expect(estado.informe!.estado).toBe('BORRADOR');
-      expect(estado.informe!.resultado.ganadora.nombre).toBe('Cara SAS');
+      // La evaluación preliminar no nombra ganadora (EFDS-1157).
+      expect(estado.informe!.resultado.ganadora).toBeNull();
       // Recibidas, no habilitadas: la plataforma no calcula habilitación.
       expect(estado.informe!.ofertasRecibidas).toBe(2);
       expect(estado.informe!.resultado.ofertas).toHaveLength(2);
-      expect(estado.informe!.resultado.ofertas.find((o) => o.ganadora)!.oferenteId).toBe(
-        oferentes[1].id,
-      );
+      expect(estado.informe!.resultado.ofertas.some((o) => o.ganadora)).toBe(false);
+    });
+
+    it('traslada sin generar antes: el informe es el que se cargó en la 6.3 (QA, EFDS-1157)', async () => {
+      const { proceso } = await conResultado();
+
+      const estado = await trasladar(proceso.id);
+      const evaluado = await evaluacion.estado(proceso.id, juridica.acceso);
+
+      expect(estado.informe!.estado).toBe('TRASLADADO');
+      expect(estado.informe!.resultadoId).toBe(evaluado.resultado!.id);
+      expect(estado.informe!.informe!.id).toBe(evaluado.resultado!.informe!.id);
+      expect(estado.informe!.evidencia).not.toBeNull();
     });
 
     /**
      * La prueba que justifica todo el modelo: el oferente reclama contra lo que
      * recibió, y eso no puede cambiar por detrás.
      */
-    it('lo trasladado no cambia cuando el comité rectifica después', async () => {
-      const { proceso, oferentes } = await trasladado();
+    it('lo trasladado no cambia cuando el comité vuelve a cargar el informe', async () => {
+      const { proceso } = await trasladado();
+      const antes = await traslado.estado(proceso.id, gestor);
 
-      await evaluacion.rectificar(
+      await evaluacion.actualizar(
         proceso.id,
         { motivo: 'Se aceptó la certificación aportada por la otra oferta' },
-        juridica.acceso,
-      );
-      await evaluacion.registrar(
-        proceso.id,
-        {
-          oferenteId: oferentes[0].id,
-          puntajeObtenido: 95,
-          puntajeMaximo: 100,
-          justificacion: JUSTIFICACION,
-        },
-        archivo('informe-comite-2.pdf'),
-        'j'.repeat(64),
+        [{ archivo: archivo('informe-comite-2.pdf'), hash: 'j'.repeat(64) }],
         juridica.acceso,
       );
 
       const estado = await traslado.estado(proceso.id, gestor);
-
-      // El resultado vigente ya es otro, pero el informe notificado sigue igual.
-      expect(estado.informe!.resultado.ganadora.nombre).toBe('Cara SAS');
       const vigente = await evaluacion.estado(proceso.id, juridica.acceso);
-      expect(vigente.resultado!.ganadora!.nombre).toBe('Barata SAS');
+
+      // El informe vigente ya es otro, pero el notificado sigue igual.
+      expect(vigente.resultado!.id).not.toBe(antes.informe!.resultadoId);
+      expect(estado.informe!.resultadoId).toBe(antes.informe!.resultadoId);
+      expect(estado.informe!.informe!.id).toBe(antes.informe!.informe!.id);
     });
 
-    it('regenerar un borrador vuelve a tomar la fotografía', async () => {
-      const { proceso, oferentes } = await conResultado();
+    it('trasladar un borrador toma el informe vigente de la 6.3', async () => {
+      const { proceso } = await conResultado();
       await generar(proceso.id);
 
-      await evaluacion.rectificar(proceso.id, { motivo: 'Corrección del comité' }, juridica.acceso);
-      await evaluacion.registrar(
+      await evaluacion.actualizar(
         proceso.id,
-        { oferenteId: oferentes[0].id, justificacion: JUSTIFICACION },
-        archivo('informe-comite-2.pdf'),
-        'j'.repeat(64),
+        { motivo: 'Corrección del comité' },
+        [{ archivo: archivo('informe-comite-2.pdf'), hash: 'j'.repeat(64) }],
         juridica.acceso,
       );
+      const vigente = await evaluacion.estado(proceso.id, juridica.acceso);
 
-      const estado = await traslado.generar(proceso.id, {}, null, null, gestor);
+      const estado = await trasladar(proceso.id);
 
-      // Nadie lo ha recibido todavía, así que no hay nada que preservar.
-      expect(estado.informe!.resultado.ganadora.nombre).toBe('Barata SAS');
+      // Nadie lo había recibido todavía, así que no hay nada que preservar.
+      expect(estado.informe!.resultadoId).toBe(vigente.resultado!.id);
       expect(estado.informe!.numero).toBe(1);
     });
 

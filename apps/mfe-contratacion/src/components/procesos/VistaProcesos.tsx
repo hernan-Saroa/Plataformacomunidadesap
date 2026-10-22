@@ -454,11 +454,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                           {p.participacion.contratacion.nombre}
                           {p.participacion.contratacion.esMio ? ' (tú)' : ''}
                         </span>
-                        {p.participacion.abogado
-                          ? ` · revisa ${p.participacion.abogado.nombre}${
-                              p.participacion.abogado.esMio ? ' (tú)' : ''
-                            }`
-                          : ' · sin abogado'}
+                        {(p.participacion.puestos ?? []).map(
+                          (x) => ` · ${x.puesto}: ${x.nombre}${x.esMio ? ' (tú)' : ''}`,
+                        )}
                       </p>
                     ) : null}
                   </div>

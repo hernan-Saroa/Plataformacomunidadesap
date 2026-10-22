@@ -10,7 +10,7 @@
  * crear un rol nuevo desde la plataforma y darle la facultad de adjudicar, pero
  * el endpoint seguía preguntando por `ORDENADOR_GASTO` y le negaba el paso.
  *
- * Ahora los endpoints exigen una acción en un lugar —`@Puede('decidir', '7.4')`
+ * Ahora los endpoints exigen una acción en un lugar —`@Puede('decidir', '7.3')`
  * para adjudicar— y quién la tiene se resuelve contra `auth.role_permissions` y
  * `hiring.alcances_permiso`, que es lo que la entidad administra (migración
  * 083).

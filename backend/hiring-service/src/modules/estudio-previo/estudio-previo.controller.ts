@@ -22,7 +22,6 @@ import { createReadStream } from 'fs';
 import { EstudioPrevioService } from './estudio-previo.service';
 import {
   AnotarRadicadoDto,
-  CambiarModalidadDto,
   CrearProcesoDesdePaaDto,
   EnviarEstudioPrevioDto,
   GuardarBorradorDto,
@@ -30,7 +29,7 @@ import {
 } from './dto/estudio-previo.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
-import { NOMBRE_EN_UTF8, MIME_DOCUMENTOS, opcionesDeCarga } from '../archivos';
+import { MAX_BYTES_ADJUNTO, NOMBRE_EN_UTF8, MIME_DOCUMENTOS, opcionesDeCarga } from '../archivos';
 import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
 import { RetirarCdpDto } from './dto/estudio-previo.dto';
 
@@ -102,21 +101,6 @@ export class EstudioPrevioController {
     return this.service.guardarBorrador(id, dto, getHiringAccess(req));
   }
 
-  @Put(':id/estudio-previo/modalidad')
-  @Puede('editar', '3.1')
-  @ApiOperation({
-    summary: 'Cambiar la modalidad mientras se arma el estudio previo',
-    description:
-      'Cambia la lista de chequeo de la 3.1 y recalcula qué actividades recorre el proceso. Solo el área que radicó, con la 3.1 en borrador o devuelta.',
-  })
-  cambiarModalidad(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CambiarModalidadDto,
-    @Req() req: any,
-  ) {
-    return this.service.cambiarModalidad(id, dto, getHiringAccess(req));
-  }
-
   @Post(':id/estudio-previo/enviar')
   @Puede('editar', '3.1')
   @ApiOperation({
@@ -178,7 +162,10 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/aprobar')
-  @Puede('aprobar', '3.4')
+  // En la 3.1 y no en la 3.4: la ronda que decide quién aprueba es la de la
+  // 3.1 y mira ese permiso. Con la 3.4 aquí, quien la ronda dejaba decidir
+  // —un puesto elegido por tener «aprobar la 3.1»— recibía un rechazo.
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Aprobar el estudio previo (numeral 3.4)',
     description: 'Solo aplica si está en revisión. Tras aprobarlo no admite cambios.',
@@ -192,7 +179,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/devolver')
-  @Puede('aprobar', '3.4')
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Devolver el estudio previo con observaciones (numeral 3.4)',
     description: 'Regresa a borrador para que el gestor corrija y lo reenvíe.',
@@ -206,7 +193,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/negar')
-  @Puede('aprobar', '3.4')
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Negar el proceso (numeral 3.4)',
     description:
@@ -238,7 +225,7 @@ export class EstudioPrevioController {
         filename: (_req, file, cb) =>
           cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: MAX_BYTES_ADJUNTO },
       fileFilter: (_req, file, cb) =>
         MIME_PERMITIDOS.includes(file.mimetype)
           ? cb(null, true)
@@ -281,7 +268,7 @@ export class EstudioPrevioController {
         filename: (_req, file, cb) =>
           cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: MAX_BYTES_ADJUNTO },
       fileFilter: (_req, file, cb) =>
         MIME_PERMITIDOS.includes(file.mimetype)
           ? cb(null, true)

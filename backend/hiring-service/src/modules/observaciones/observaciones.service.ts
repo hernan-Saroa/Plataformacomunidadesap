@@ -27,15 +27,15 @@ import {
   ResponderObservacionDto,
 } from './dto/observacion.dto';
 
-/** Actividad 5.3 de la matriz: las observaciones al proyecto de pliego. */
-export const NUMERAL_OBSERVACIONES = '5.3';
+/** Actividad 5.6 de la matriz: las observaciones al proyecto de pliego. */
+export const NUMERAL_OBSERVACIONES = '5.6';
 
 @Injectable()
 export class ObservacionesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly publicacion: PublicacionService,
-    /** Si la 5.3 exige firmar con el token institucional al cerrarse (EFDS-2070). */
+    /** Si la 5.6 exige firmar con el token institucional al cerrarse (EFDS-2070). */
     private readonly cierre: CierreActividadService,
     /** Quién puede gestionar las observaciones (migración 083). */
     private readonly alcance: AlcanceService,
@@ -113,7 +113,7 @@ export class ObservacionesService {
         fueraDeTermino: observaciones.filter((o) => o.fueraDeTermino).length,
       },
       plazoVencido,
-      /** La actividad 5.3 ya está dada por cumplida. */
+      /** La actividad 5.6 ya está dada por cumplida. */
       cumplida,
       /**
        * Cerrar sin observaciones solo tiene sentido cuando ya no pueden llegar
@@ -127,7 +127,7 @@ export class ObservacionesService {
        * La llave de pruebas para no esperar los días hábiles del término.
        *
        * Vive también aquí, y no solo en el panel de la publicación, porque es
-       * en la 5.3 donde el plazo estorba: un proceso sin observaciones no se
+       * en la 5.6 donde el plazo estorba: un proceso sin observaciones no se
        * puede cerrar hasta que venza, y es justo el camino que hay que poder
        * recorrer en una sesión de QA. El botón llama al mismo endpoint.
        */
@@ -141,7 +141,7 @@ export class ObservacionesService {
   // ------------------------------------------------------------- registro --
 
   /**
-   * Actividad 5.3: se registra una observación recibida.
+   * Actividad 5.6: se registra una observación recibida.
    *
    * El soporte es opcional, a diferencia de la evidencia de la publicación: una
    * observación puede haber llegado por un canal que no deja documento, y
@@ -359,7 +359,7 @@ export class ObservacionesService {
     return proceso;
   }
 
-  /** Crea o actualiza la actividad 5.3; no se instancia en ningún paso previo. */
+  /** Crea o actualiza la actividad 5.6; no se instancia en ningún paso previo. */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,

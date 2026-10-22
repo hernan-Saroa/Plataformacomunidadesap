@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, FileSignature, FileSpreadsheet, Grid3x3, Landmark, ListOrdered, Settings, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, FileSignature, FileSpreadsheet, Grid3x3, Landmark, ListOrdered, Settings, ShieldCheck, Workflow } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -13,50 +13,29 @@ import { PermisosPorEtapa } from './PermisosPorEtapa';
 import { TipologiasContrato } from './TipologiasContrato';
 import { CdpAntesDeRadicar } from './CdpAntesDeRadicar';
 import { CadenasDeAprobacion } from './CadenasDeAprobacion';
+import { FlujoVisual } from './FlujoVisual';
 import { PlanDeAdquisiciones } from '../paa/PlanDeAdquisiciones';
 import { useAlcance } from '../../auth/alcance';
 import { PETICIONES, Peticion } from './peticiones';
 
 const PESTANAS = [
-  {
-    clave: 'matriz' as const,
-    etiqueta: 'Matriz de actividades',
-    icono: Grid3x3,
-    color: '#003DA5',
-  },
-  {
-    clave: 'tipologias' as const,
-    etiqueta: 'Tipologías de contrato',
-    icono: FileSignature,
-    color: '#7C3AED',
-  },
-  {
-    clave: 'roles' as const,
-    etiqueta: 'Permisos por etapa',
-    icono: ShieldCheck,
-    color: '#0891B2',
-  },
-  {
-    clave: 'cadenas' as const,
-    etiqueta: 'Cadenas de aprobación',
-    icono: ListOrdered,
-    color: '#4338CA',
-  },
-  {
-    clave: 'cdp' as const,
-    etiqueta: 'CDP en el estudio previo',
-    icono: Landmark,
-    color: '#B45309',
-  },
-  {
-    clave: 'paa' as const,
-    etiqueta: 'Plan de adquisiciones',
-    icono: FileSpreadsheet,
-    color: '#047857',
-  },
+  { clave: 'matriz' as const, etiqueta: 'Matriz de actividades', icono: Grid3x3 },
+  { clave: 'tipologias' as const, etiqueta: 'Tipologías', titulo: 'Tipologías de contrato', icono: FileSignature },
+  { clave: 'flujo' as const, etiqueta: 'Flujo', titulo: 'Flujo de trabajo', icono: Workflow },
+  { clave: 'cadenas' as const, etiqueta: 'Cadenas de aprobación', icono: ListOrdered },
+  { clave: 'roles' as const, etiqueta: 'Permisos por etapa', icono: ShieldCheck },
+  { clave: 'cdp' as const, etiqueta: 'CDP', titulo: 'CDP en el estudio previo', icono: Landmark },
+  { clave: 'paa' as const, etiqueta: 'Plan de adquisiciones', icono: FileSpreadsheet },
 ];
 
 type Pestana = (typeof PESTANAS)[number]['clave'];
+
+/** Las pestañas agrupadas por para qué sirven: siete sueltas no se leían. */
+const GRUPOS: { nombre: string; claves: Pestana[] }[] = [
+  { nombre: 'Actividades', claves: ['matriz', 'tipologias'] },
+  { nombre: 'Quién hace qué', claves: ['flujo', 'cadenas', 'roles'] },
+  { nombre: 'Presupuesto', claves: ['cdp', 'paa'] },
+];
 
 /** Qué se abrió: la actividad, y la columna desde la que se llegó si fue una celda. */
 interface Seleccion {
@@ -172,34 +151,51 @@ export function VistaConfiguracion() {
           aquí una pantalla que no se parecía a las otras dos. */}
       <ModuleHeader
         title="Configuraciones"
-        subtitle="Matriz de actividades, tipologías de contrato, roles y Plan Anual de Adquisiciones"
+        subtitle="Actividades, flujo de trabajo, aprobaciones, permisos y Plan Anual de Adquisiciones"
         icon={<Settings className="w-5 h-5" />}
         color="#003DA5"
       />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 inline-flex items-center gap-1 flex-wrap">
-        {/* El PAA se lo muestra solo a quien puede verlo: es de la Dirección, no
-            de todo el que configura actividades. */}
-        {PESTANAS.filter((p) => p.clave !== 'paa' || puede('ver', 'PAA')).map(({ clave, etiqueta, icono: Icono, color }) => {
-          const activa = pestana === clave;
+      <nav
+        aria-label="Secciones de configuración"
+        className="bg-white rounded-xl shadow-sm border border-gray-200 px-2 py-1.5 flex flex-wrap items-end gap-y-2"
+      >
+        {GRUPOS.map((g, i) => {
+          // El PAA se lo muestra solo a quien puede verlo: es de la Dirección,
+          // no de todo el que configura actividades.
+          const pestanas = PESTANAS.filter(
+            (p) => g.claves.includes(p.clave) && (p.clave !== 'paa' || puede('ver', 'PAA')),
+          );
+          if (!pestanas.length) return null;
           return (
-            <button
-              key={clave}
-              type="button"
-              onClick={() => setPestana(clave)}
-              aria-pressed={activa}
-              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2
-                transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
-                  activa ? 'text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-                }`}
-              style={activa ? { background: color } : undefined}
-            >
-              <Icono className="w-4 h-4" aria-hidden="true" />
-              {etiqueta}
-            </button>
+            <div key={g.nombre} className={`px-2 ${i > 0 ? 'border-l border-gray-100' : ''}`}>
+              <p className="m-0 px-2 pb-1 text-xs font-bold uppercase tracking-wide text-slate-400">{g.nombre}</p>
+              <div className="flex flex-wrap items-center gap-1">
+                {pestanas.map(({ clave, etiqueta, icono: Icono, ...p }) => {
+                  const activa = pestana === clave;
+                  const titulo = 'titulo' in p ? p.titulo : undefined;
+                  return (
+                    <button
+                      key={clave}
+                      type="button"
+                      onClick={() => setPestana(clave)}
+                      aria-pressed={activa}
+                      title={titulo}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1.5
+                        transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
+                          activa ? 'bg-[#003DA5] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                    >
+                      <Icono className="w-4 h-4" aria-hidden="true" />
+                      {etiqueta}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
-      </div>
+      </nav>
 
       {pestana === 'matriz' && (
         <MatrizGeneral
@@ -212,6 +208,7 @@ export function VistaConfiguracion() {
           segundo sitio donde tocarlos dejaría dos verdades sin nada que las
           mantuviera de acuerdo. Aquí se verifica la que rige. */}
       {pestana === 'roles' && <PermisosPorEtapa />}
+      {pestana === 'flujo' && <FlujoVisual />}
       {pestana === 'cadenas' && <CadenasDeAprobacion />}
       {pestana === 'cdp' && <CdpAntesDeRadicar />}
       {pestana === 'paa' && <PlanDeAdquisiciones />}

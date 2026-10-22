@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   BellRing,
   ClipboardCheck,
+  FileClock,
   FileCheck2,
   Landmark,
   ShieldAlert,
@@ -35,10 +36,14 @@ const RASGOS: Record<
   // está parado hasta que se resuelva.
   DEVUELTA_PARA_CORREGIR: { etiqueta: 'Corregir', icono: Undo2, color: '#D97706' },
   // Mismo ámbar y por lo mismo: nada ha vencido, pero el proceso está parado
-  // porque no hay quien resuelva su revisión.
-  SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
+  // porque un puesto obligatorio no tiene quien lo ocupe (109).
+  SIN_RESPONSABLE: { etiqueta: 'Puesto vacío', icono: UserX, color: '#D97706' },
   // Rojo como un vencimiento, porque lo es: el de una actividad del proceso.
   PLAZO_ACTIVIDAD: { etiqueta: 'Plazo', icono: Timer, color: '#DC2626' },
+  // Ámbar: el acta no frena el proceso, pero se debe desde el día de la sesión
+  // (113). Vencido el plazo, la fila se pinta como cualquier vencimiento.
+  ACTA_COMITE_PENDIENTE: { etiqueta: 'Acta del comité', icono: FileClock, color: '#D97706' },
+  MEMORANDO_COMITE_PENDIENTE: { etiqueta: 'Memorando del comité evaluador', icono: FileClock, color: '#D97706' },
 };
 
 /**
@@ -225,18 +230,20 @@ function Fila({
   const esDevolucion = a.tipo === 'DEVUELTA_PARA_CORREGIR';
   /**
    * Ninguna de las tres vence: una espera decisión, otra corrección, y la
-   * tercera avisa de un proceso que nadie ha tomado a su cargo.
+   * tercera avisa de un proceso con un puesto obligatorio vacío.
    */
-  const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_ABOGADO';
+  const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_RESPONSABLE';
   /** El plazo de una actividad: se cuenta en días hábiles y lleva a la actividad. */
   const esPlazoActividad = a.tipo === 'PLAZO_ACTIVIDAD';
+  /** El acta de una sesión del comité: lleva a la 3.7 o a la 5.6.1. */
+  const esActaComite = a.tipo === 'ACTA_COMITE_PENDIENTE' || a.tipo === 'MEMORANDO_COMITE_PENDIENTE';
 
   // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
   // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
   // La devolución la trae igual, y llevar a quien corrige hasta la actividad
   // —no hasta el proceso— es justamente lo que le ahorra buscarla. «Sin
   // abogado» abre con la 3.4, que es la actividad que está trancada.
-  const numeral = sinPlazo || esPlazoActividad ? a.descripcion.split('·')[0].trim() : undefined;
+  const numeral = sinPlazo || esPlazoActividad || esActaComite ? a.descripcion.split('·')[0].trim() : undefined;
   /** «1 día hábil», «3 días hábiles»: en el plazo se dice el número bien dicho. */
   const dias = (n: number) =>
     esPlazoActividad ? (Math.abs(n) === 1 ? 'día hábil' : 'días hábiles') : 'días';

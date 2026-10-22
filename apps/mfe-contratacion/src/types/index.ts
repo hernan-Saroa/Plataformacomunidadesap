@@ -79,12 +79,6 @@ export interface Persona {
   cargo?: string | null;
 }
 
-/** Cargo de auth.cargos, el catálogo que administra estructura organizacional. */
-export interface Cargo {
-  id: string;
-  nombre: string;
-}
-
 /** Dependencia de auth.dependencias, el catálogo transversal de la ESAP. */
 export interface Dependencia {
   id: string;
@@ -294,7 +288,7 @@ export interface EstadoObservaciones {
   observaciones: ObservacionPliego[];
   resumen: { total: number; pendientes: number; fueraDeTermino: number };
   plazoVencido: boolean;
-  /** La actividad 5.3 ya está dada por cumplida. */
+  /** La actividad 5.6 ya está dada por cumplida. */
   cumplida: boolean;
   /** Solo con el plazo vencido y sin ninguna observación recibida. */
   puedeCerrarse: boolean;
@@ -412,20 +406,36 @@ export interface ActividadProceso {
   responsableCargo?: string | null;
   /** Si de ella responde una persona del proceso y no los roles (lo dice el backend). */
   responde?: RespondeElAsignado | null;
+  /** Cuándo empieza y si detiene a las siguientes, en su versión del flujo (125). */
+  secuencia?: SecuenciaDelPaso | null;
 }
 
 /**
- * Una actividad de la que responde quien ocupa un papel en el proceso
- * (`RESPONDE_EL_ASIGNADO` en el backend): el abogado de la 3.7, por ejemplo,
- * aunque el Gestor tenga el alcance de editarla.
+ * Cuándo empieza una actividad y si detiene a las siguientes (125): lo dice la
+ * versión del flujo del proceso, por modalidad.
+ */
+export interface SecuenciaDelPaso {
+  /** Las anteriores que tienen que terminar; null es la anterior en la matriz. */
+  dependeDe: string[] | null;
+  /** Si quedarse sin terminar no detiene a las siguientes. */
+  noBloquea: boolean;
+}
+
+/**
+ * Una actividad que no hace cualquiera con el permiso sino quien dice su regla
+ * «quién la hace» (109): el ocupante de un puesto del proceso o unas personas.
+ * Sale de Configuración y la resuelve el backend para cada proceso.
  */
 export interface RespondeElAsignado {
-  papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
-  /** Lo que esa persona hace ahí; sin nadie en el papel, la hacen los roles con ella. */
+  /** El puesto que la hace, o `null` si la hacen personas nombradas. */
+  puesto: string | null;
+  /** Quién la hace en este proceso, o `null` si el puesto está vacío. */
+  persona: { nombre: string; esMio: boolean } | null;
+  /** El permiso que tiene que tener para hacerla. */
   accion: Exclude<AccionAlcance, 'ver'>;
   /** Solo mientras la actividad espera decisión. */
   soloEnRevision: boolean;
-  /** El papel se toma de una bandeja: sin nadie en él, quien tenga el alcance puede tomarlo. */
+  /** Un puesto se asigna en la 3.3: no se toma de una bandeja. */
   seToma: boolean;
 }
 
@@ -498,6 +508,8 @@ export interface ProcesoResumen {
     actualizadoEn?: string | null;
     responsableCargo?: string | null;
     responde?: RespondeElAsignado | null;
+    /** Cuándo empieza, en la versión del flujo del proceso (125). */
+    secuencia?: SecuenciaDelPaso | null;
   }[];
   /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
   participacion?: ParticipacionEnLista;
@@ -515,17 +527,18 @@ export interface ProcesoResumen {
 export type EstadoDelProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO' | 'CANCELADO';
 
 /**
- * Por qué quien mira no puede resolver la 3.4 (EFDS-1183).
+ * Por qué quien mira no hace una actividad del proceso (109).
  *
- * - `SIN_PERMISO`: su rol no aprueba actividades.
- * - `SIN_ABOGADO`: nadie ha repartido el proceso todavía; se hace en la 3.3.
- * - `NO_ES_TUYO`: lo revisa otro abogado, el que lo recibió.
+ * - `SIN_PERMISO`: su rol no tiene el permiso en ese punto.
+ * - `SIN_ASIGNAR`: la hace un puesto del proceso que nadie ocupa todavía; se
+ *   asigna en la 3.3.
+ * - `NO_ES_TUYO`: la hace otra persona, la que ocupa el puesto.
+ * - `EN_CADENA`: la decide el escalón que espera, y no es de quien mira.
  */
-export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO' | 'EN_CADENA';
+export type MotivoNoDecide = 'SIN_ASIGNAR' | 'NO_ES_TUYO' | 'SIN_PERMISO' | 'EN_CADENA';
 
 /** Quién resuelve la 3.4 de este proceso y si le toca a quien mira. */
 export interface RevisionDelProceso {
-  abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
   puedeDecidir: boolean;
   /** `EN_CADENA`: la 3.1 va por una cadena y el escalón que espera no es de quien mira. */
   motivo: MotivoNoDecide | null;
@@ -533,7 +546,7 @@ export interface RevisionDelProceso {
   espera?: string | null;
   /** La ronda de la cadena, cuando la 3.1 se aprueba por una (101). */
   ronda?: RondaDeAprobacion | null;
-  /** Lo que quien mira puede hacer ahora: sin cadena, las tres si es el abogado. */
+  /** Lo que quien mira puede hacer ahora en el escalón que espera. */
   acciones?: AccionEscalon[];
 }
 
@@ -573,7 +586,10 @@ export interface EstadoCausalProceso {
   puedeElegir: boolean;
   motivoNoElige: MotivoNoElige | null;
   motivoNoDecide: MotivoNoDecide | null;
-  abogado: { nombre: string; usuarioNombre: string } | null;
+  /** Quién la elige en este proceso, si la regla «quién la hace» lo dice (109). */
+  responsable: { nombre: string; usuarioNombre: string | null } | null;
+  /** El puesto que la hace, si es de un puesto. */
+  puesto: string | null;
 }
 
 // ----------------- comité de contratación · 3.7 (3.6 de la matriz) ---------
@@ -634,8 +650,49 @@ export interface EstadoComiteContratacion {
   reabribles: string[];
   puedeRegistrar: boolean;
   puedeDejarConstancia: boolean;
+  /** Si quien mira carga el acta que llegó después de la sesión (113). */
+  puedeCargarActa?: boolean;
   motivoNoDecide: MotivoNoDecide | null;
-  abogado: { nombre: string; usuarioNombre: string } | null;
+  /** Quién lo registra en este proceso, si la regla «quién la hace» lo dice (109). */
+  responsable: { nombre: string; usuarioNombre: string | null } | null;
+  /** El puesto que lo hace, si es de un puesto. */
+  puesto: string | null;
+}
+
+/** Un documento de la 5.1 visto desde el pliego definitivo (5.6.1, 113). */
+export interface DocumentoDelPliegoDefinitivo {
+  codigo: string;
+  nombre: string;
+  obligatorio: boolean;
+  /** La versión vigente, o null si nunca se cargó. */
+  vigente: DocumentoDeLaActividad['cargado'];
+  /** Las versiones sustituidas, de la más nueva a la más vieja. */
+  anteriores: VersionSustituida[];
+  /** Si la vigente se cargó después de publicar el proyecto de pliego. */
+  nuevaVersion: boolean;
+}
+
+/** Pliego definitivo y segunda sesión del Comité — actividad 5.6.1 (113). */
+export interface EstadoSegundaSesion {
+  aplica: boolean;
+  estado: EstadoActividad;
+  cdp: { cumplido: boolean; motivo: string | null };
+  /** Cuándo se registró la publicación del proyecto de pliego (5.3). */
+  publicadoEl: string | null;
+  documentos: DocumentoDelPliegoDefinitivo[];
+  /** Si quien mira sube versiones: le toca y el pliego no está en revisión ni aprobado. */
+  puedeAjustar: boolean;
+  /** Si quien mira puede retirarlo de revisión: le toca y está en revisión. */
+  puedeRetirar: boolean;
+  sesiones: SesionComite[];
+  puedeRegistrar: boolean;
+  motivoNoRegistra: string | null;
+  puedeCargarActa: boolean;
+  motivoNoDecide: MotivoNoDecide | null;
+  responsable: { nombre: string; usuarioNombre: string | null } | null;
+  puesto: string | null;
+  /** Lo que la apertura (5.7) le pregunta a esta actividad. */
+  apertura: { cumplido: boolean; motivo: string | null };
 }
 
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
@@ -648,10 +705,6 @@ export interface CuentaCandidata {
   nombre: string;
   cargo: string | null;
   email: string | null;
-  /** Solo en los abogados: procesos que lleva, para repartir con criterio. */
-  procesosACargo?: number;
-  /** De esos, cuántos estudios previos esperan su decisión ahora. */
-  revisionesPendientes?: number;
 }
 
 /** Quien ocupa un papel ahora mismo. */
@@ -683,26 +736,22 @@ export interface ParticipacionRelevada {
 export interface EstadoParticipacion {
   /** El proceso está en la bandeja y quien mira puede recibirlo. */
   puedeTomar: boolean;
-  /** Quien lo tomó reparte el abogado; el Director también. */
+  /** Quien lo tomó asigna los puestos; el Director también. */
   puedeRepartir: boolean;
   contratacion: Participante | null;
-  abogado: Participante | null;
   /**
    * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP se
    * tramita por fuera y nadie lo toma: queda como historia.
    */
   financiera: Participante | null;
-  /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
-  sinAbogado: boolean;
-  /** Si el abogado se elige en su escalón de la cadena de la 3.1, sin paso aparte (102). */
-  abogadoEnCadena?: boolean;
   historial: ParticipacionRelevada[];
 }
 
 /** Lo que la fila del listado dice sobre quién lleva el proceso. */
 export interface ParticipacionEnLista {
   contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
-  abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  /** Quién ocupa cada puesto del proceso (109). */
+  puestos?: { puesto: string; nombre: string; esMio: boolean }[];
   /** Quién tomó la solicitud de CDP en la Financiera antes de la 103, si alguien la tomó. */
   financiera?: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   /** Llegó a la Dirección y nadie lo ha recibido. */
@@ -787,7 +836,7 @@ export interface Expediente {
 }
 
 
-/** Una adenda del proceso (actividad 5.6, EFDS-1154). */
+/** Una adenda del proceso (actividad 5.13, EFDS-1154). */
 export interface Adenda {
   id: string;
   /** Consecutivo dentro del proceso: las adendas se citan por su número. */
@@ -816,15 +865,19 @@ export interface EstadoAdendas {
   modalidadNombre: string | null;
   /** Sin pliego publicado no hay nada que adendar. */
   publicado: boolean;
-  /** Con el proceso abierto rige el pliego definitivo. */
+  /** Desde la 112 las adendas se emiten a partir de la apertura. */
   abierto: boolean;
   puedeEmitir: boolean;
+  /** Por qué no se puede emitir: falta la apertura o ya se cerraron las ofertas. */
+  motivoNoPuedeEmitir: string | null;
   /** Vencimiento del plazo hoy; es lo que mueve una adenda de cronograma. */
   vencimientoVigente: string | null;
+  /** Qué prorroga una de cronograma: el cierre de ofertas o, sin apertura, las observaciones. */
+  mueve: 'CIERRE_OFERTAS' | 'PLAZO_OBSERVACIONES';
   adendas: Adenda[];
 }
 
-/** Audiencia de asignación de riesgos celebrada (actividad 5.5, EFDS-1153). */
+/** Audiencia de asignación de riesgos celebrada (actividad 5.12, EFDS-1153). */
 export interface AudienciaRiesgos {
   id: string;
   fechaCelebracion: string;
@@ -840,13 +893,15 @@ export interface EstadoAudienciaRiesgos {
   /** False donde la modalidad no adelanta audiencia. */
   aplica: boolean;
   motivoNoAplica: string | null;
-  /** Sin ella el proceso no puede abrirse; distinto de que simplemente aplique. */
+  /** Sin ella no se cierran las ofertas; distinto de que simplemente aplique. */
   obligatoria: boolean;
   fundamento: string | null;
   /** False mientras Contratación no ratifique la regla de obligatoriedad. */
   confirmado: boolean;
   modalidad: string | null;
   modalidadNombre: string | null;
+  /** Desde la 112 se celebra después de la apertura. */
+  abierto: boolean;
   celebrada: boolean;
   audiencia: AudienciaRiesgos | null;
 }
@@ -884,8 +939,8 @@ export interface EstadoApertura {
     cdp: { cumplido: boolean; motivo: string | null };
     /** Informativo: la elaboración de documentos no bloquea. */
     documentos: { cumplido: boolean };
-    /** Bloquea donde la audiencia es obligatoria (RF-PUB-04, EFDS-1153). */
-    audienciaRiesgos: { cumplido: boolean; motivo: string | null };
+    /** La segunda sesión del comité con el pliego definitivo (5.6.1, 113). */
+    comite?: { cumplido: boolean; motivo: string | null };
   };
   puedeAbrir: boolean;
 }
@@ -956,6 +1011,8 @@ export interface EstadoOfertas {
   recepcion: RecepcionOfertas | null;
   puedeRegistrar: boolean;
   puedeCerrar: boolean;
+  /** Donde es obligatoria, sin la audiencia de riesgos no se cierra (EFDS-1153, 112). */
+  audienciaRiesgos: { cumplido: boolean; motivo: string | null };
   /** Lo que vuelve pública la lista es el cierre. */
   listaPublicada: boolean;
   oferentes: Oferente[];
@@ -978,10 +1035,13 @@ export interface MiembroComite {
 /** La designación vigente, con el memorando que la soporta. */
 export interface ComiteDesignado {
   id: string;
-  fechaDesignacion: string;
+  /** La del memorando: nula mientras el memorando no llega (117). */
+  fechaDesignacion: string | null;
   designadoPor: string | null;
   designadoAt: string;
   memorando: ArchivoApertura | null;
+  /** Si al comité vigente le falta el memorando y se puede cargar ahora. */
+  puedeCargarMemorando?: boolean;
 }
 
 /** Estado del comité evaluador del proceso. */
@@ -1130,6 +1190,8 @@ export interface SoporteDelRevisor {
   mimeType?: string | null;
   revisadoPor: string;
   devueltaAt: string;
+  /** De qué decisión es: una devolución o, desde la 113, una aprobación. */
+  decision?: string;
 }
 
 /**
@@ -1501,19 +1563,25 @@ export interface EvidenciaEvaluacion {
   descripcion: string;
   cargadaPor: string | null;
   cargadaAt: string;
+  /** El nombre del archivo tal como se subió. */
+  nombre?: string | null;
   archivoUrl: string | null;
 }
 
 export interface ResultadoEvaluacion {
   id: string;
   estado: EstadoResultado;
+  /**
+   * Nula desde la 120: la evaluación de la 6.3 es preliminar y no nombra
+   * ganadora; se decide en el informe definitivo (7.2). Los resultados de antes
+   * la conservan, igual que los puntajes.
+   */
   ganadora: OfertaEvaluable | null;
-  /** Nulos donde la modalidad no puntúa; cuando vienen, vienen los dos. */
   puntajeObtenido: number | null;
   puntajeMaximo: number | null;
-  /** Puede no ser el valor ofertado: el comité corrige aritmética. */
   valorEvaluado: number | null;
-  justificacion: string;
+  /** Observación del informe preliminar, opcional. */
+  justificacion: string | null;
   informe: { id: string; nombre: string; archivoUrl: string } | null;
   registradoPor: string | null;
   registradoAt: string;
@@ -1534,19 +1602,25 @@ export interface EstadoEvaluacion {
   misDimensiones: RolEvaluador[];
   esMiembroDelComite: boolean;
   puedeRegistrar: boolean;
+  /** Si se puede volver a cargar el informe vigente (EFDS-1157). */
+  puedeActualizar?: boolean;
   ofertas: OfertaEvaluable[];
   resultado: ResultadoEvaluacion | null;
   /** Los rectificados se muestran: explican que haya dos informes. */
   rectificados: ResultadoEvaluacion[];
 }
 
-/** Lo que el comité reporta. Los puntajes son opcionales y van en pareja. */
+/** De qué es cada archivo del informe preliminar (EFDS-1157). */
+export type DimensionInforme = 'CONSOLIDADO' | 'JURIDICO' | 'TECNICO' | 'FINANCIERO';
+
+/**
+ * El informe de evaluación preliminar que carga el comité (EFDS-1157): uno o
+ * varios archivos, sin puntajes ni ganadora.
+ */
 export interface RegistrarResultado {
-  oferenteId: string;
-  puntajeObtenido?: number;
-  puntajeMaximo?: number;
-  valorEvaluado?: number;
-  justificacion: string;
+  observacion?: string;
+  /** Una por archivo, en el mismo orden. */
+  dimensiones?: DimensionInforme[];
   firma?: EvidenciaFirmaOtp;
 }
 
@@ -1585,11 +1659,12 @@ export interface OfertaEnInforme {
 export interface ResultadoCongelado {
   modalidad: string | null;
   resultadoId: string;
-  ganadora: { oferenteId: string; nombre: string; identificacion: string | null };
+  /** Nula en el preliminar desde la 120; el definitivo siempre la lleva (EFDS-1157). */
+  ganadora: { oferenteId: string; nombre: string; identificacion: string | null } | null;
   puntajeObtenido: number | null;
   puntajeMaximo: number | null;
   valorEvaluado: number | null;
-  justificacion: string;
+  justificacion: string | null;
   informeDocumentoId: string;
   evidencias: { documentoId: string; descripcion: string }[];
   ofertas: OfertaEnInforme[];
@@ -1647,8 +1722,10 @@ export interface Subsanacion {
   /** Extemporáneo no es rechazado: quien decide si lo acepta es la entidad. */
   extemporanea: boolean;
   asunto: string;
-  contenido: string;
-  soporte: { id: string; nombre: string; archivoUrl: string } | null;
+  /** Solo en los escritos registrados antes de que se dejara de transcribir (EFDS-1158). */
+  contenido: string | null;
+  /** El escrito del oferente, en el orden en que se adjuntaron sus archivos. */
+  soportes: { id: string; nombre: string; archivoUrl: string }[];
   respuesta: string | null;
   respuestaDocumento: { id: string; nombre: string; archivoUrl: string } | null;
   aceptada: boolean | null;
@@ -1690,15 +1767,12 @@ export interface EstadoSubsanaciones {
 export interface RegistrarSubsanacion {
   oferenteId: string;
   tipo: TipoSubsanacion;
-  presentadoPor: string;
-  identificacion?: string;
   fechaPresentacion: string;
   asunto: string;
-  contenido: string;
 }
 
 /* ---------------------------------------------------------------------------
- * Adjudicación — etapa 7, actividades 7.1 a 7.4 (EFDS-1159).
+ * Adjudicación — etapa 7, actividades 7.1 a 7.3, con la 7.1.1 (EFDS-1159).
  *
  * Cerrado el traslado, la entidad celebra la audiencia —donde en obra pública
  * se abre el sobre económico—, produce el informe definitivo y adjudica por
@@ -1784,12 +1858,29 @@ export interface InformeDefinitivo {
   ofertasRecibidas: number;
   informe: { id: string; nombre: string; archivoUrl: string } | null;
   evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  /** Enlace de la publicación en SECOP (119). */
+  enlacePublicacion?: string | null;
+  /** Cada versión generada, en orden; la última es la vigente (119). */
+  versiones?: VersionInformeDefinitivo[];
   generadoPor: string | null;
   generadoAt: string;
   publicadoPor: string | null;
   publicadoAt: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
+}
+
+/** Una versión del informe definitivo, con su motivo y su publicación (EFDS-1159). */
+export interface VersionInformeDefinitivo {
+  numero: number;
+  generadoAt: string;
+  generadoPor: string | null;
+  motivo: string | null;
+  informe: { id: string; nombre: string; archivoUrl: string } | null;
+  evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  enlacePublicacion: string | null;
+  publicadoAt: string | null;
+  publicadoPor: string | null;
 }
 
 export interface EstadoInformeDefinitivoProceso {
@@ -1799,6 +1890,8 @@ export interface EstadoInformeDefinitivoProceso {
   audienciaPendiente: boolean;
   hayResultado: boolean;
   puedeGenerar: boolean;
+  /** Si generar otra vez es actualizar: entonces pide motivo. */
+  actualizarPideMotivo?: boolean;
   puedePublicar: boolean;
   informe: InformeDefinitivo | null;
   anulados: InformeDefinitivo[];
@@ -1829,6 +1922,8 @@ export interface ActoAdjudicacion {
 export interface EstadoAdjudicacion {
   aplica: boolean;
   motivoNoAplica: string | null;
+  /** Directa: sin ofertas ni informe definitivo, el acto trae al contratista. */
+  sinConvocatoria: boolean;
   informeDefinitivoPublicado: boolean;
   /** La ganadora que propone el informe: el acto puede apartarse, con motivo. */
   ganadoraPropuesta: { oferenteId: string; nombre: string; valorEvaluado: number | null } | null;
@@ -1883,6 +1978,8 @@ export interface EstadoDeclaratoriaDesierta {
   adjudicado: boolean;
   /** Si el comité nombró una ganadora, declarar desierto se aparta de él. */
   ganadoraDelComite: { oferenteId: string; numero: number; nombre: string } | null;
+  /** Con el informe preliminar de la 6.3 cargado, ese es el del comité (EFDS-1157). */
+  informePreliminarCargado?: boolean;
   puedeDeclarar: boolean;
   declaratoria: DeclaratoriaDesierta | null;
   revocadas: DeclaratoriaDesierta[];
@@ -1900,7 +1997,11 @@ export interface DeclararDesierto {
 
 /** Lo que el Ordenador del Gasto firma. */
 export interface Adjudicar {
-  oferenteId: string;
+  /** Con convocatoria. Sin ella van los tres campos del contratista (122). */
+  oferenteId?: string;
+  contratistaNombre?: string;
+  contratistaDocumento?: string;
+  contratistaTipo?: TipoPersonaContratista;
   numeroActo: string;
   fechaActo: string;
   valorAdjudicado: number;
@@ -1985,6 +2086,17 @@ export interface EstadoContratoProceso {
   /** Las dos condiciones por separado, para poder decir cual falta. */
   adjudicado: boolean;
   motivoNoAdjudicado: string | null;
+  /** Lo que fija el acto vigente de la 7.3: el contrato no puede apartarse. */
+  adjudicacion: {
+    /** De dónde sale: «el acto RES-1» o «el informe definitivo (7.2)» donde no hay acto. */
+    fuente: string;
+    valor: number;
+    contratista: {
+      nombre: string;
+      documento: string | null;
+      tipo: TipoPersonaContratista | null;
+    };
+  } | null;
   puedeGenerar: boolean;
   tipologias: TipologiaContrato[];
   formatos: FormatoContrato[];
@@ -2103,7 +2215,9 @@ export interface GuardarTipologia {
 
 export interface SupervisorContrato {
   id: string;
-  personaId: string;
+  personaId: string | null;
+  /** La cuenta designada (121): la que ocupa el puesto e inicia sesión. */
+  usuarioId: string | null;
   nombre: string;
   cargo: string | null;
   email: string | null;
@@ -2112,6 +2226,19 @@ export interface SupervisorContrato {
   /** Nulo mientras no quede constancia de que se le aviso (matriz 8.2). */
   alertaEnviadaAt: string | null;
   acto: { nombre: string; url: string | null } | null;
+  /** Lo que se le mandó en el correo además del acto (124). */
+  anexos?: { nombre: string; url: string | null }[];
+  mensajeCorreo?: string | null;
+}
+
+/** Si salió el correo de la designación (124) y, si no, por qué. */
+export interface ResultadoCorreoSupervisor {
+  enviado: boolean;
+  para: string | null;
+  adjuntos: string[];
+  /** Los que no cupieron en el correo: quedan en el expediente. */
+  quedanFuera: string[];
+  motivo: string | null;
 }
 
 /** Quien supervisO antes; se conserva porque respondiO por ese periodo. */
@@ -2132,20 +2259,28 @@ export interface EstadoSupervision {
   admiteSupervisor: boolean;
   motivoNoAdmite: string | null;
   contrato?: { numero: string; objeto: string };
+  /**
+   * El puesto que llena la designación: el que aprueba la 9.4 en el flujo
+   * (121). Nulo si la 9.4 no nombra puesto.
+   */
+  puesto?: { id: string; nombre: string } | null;
   puedeDesignar?: boolean;
   supervisor: SupervisorContrato | null;
   /** El aviso que pide la matriz sigue pendiente. */
   avisoPendiente: boolean;
   historial: SupervisionRelevada[];
+  /** Solo en la respuesta de designar, reasignar o reenviar: cómo le fue al correo. */
+  correo?: ResultadoCorreoSupervisor;
 }
 
 /** Lo que la pantalla envia al designar. */
 export interface DatosSupervisor {
-  personaId: string;
-  nombre: string;
+  /** La cuenta, entre los candidatos del puesto; nombre y correo salen de ella. */
+  usuarioId: string;
   cargo?: string;
-  email?: string;
   fechaDesignacion: string;
+  /** Lo que se le escribe en el correo de la designación (124). */
+  mensaje?: string;
   firma?: EvidenciaFirmaOtp;
 }
 
@@ -2219,8 +2354,9 @@ export interface PublicacionDelContrato {
 }
 
 export interface EstadoPublicacionContrato {
-  legalizado: boolean;
-  motivoNoLegalizado: string | null;
+  /** Firmado por las dos partes: desde ahí corre el plazo de publicación. */
+  suscrito: boolean;
+  motivoNoSuscrito: string | null;
   contrato?: { numero: string; objeto: string };
   plazo: { diasHabiles: number; fundamento: string | null; confirmado: boolean };
   publicaciones: PublicacionDelContrato[];
@@ -2255,6 +2391,8 @@ export interface EstadoActaInicio {
   /** El contrato tiene sus coberturas en firme. */
   legalizado: boolean;
   tieneSupervisor: boolean;
+  /** El RP expedido (8.3): requisito de ejecución con la garantía aprobada. */
+  tieneRp?: boolean;
   puedeIniciar: boolean;
   /** Qué falta, dicho por el servidor y no deducido en pantalla. */
   motivoNoPuede: string | null;
@@ -3203,10 +3341,13 @@ export interface AlertaVencimiento {
     | 'LIQUIDACION'
     | 'APROBACION_PENDIENTE'
     | 'DEVUELTA_PARA_CORREGIR'
-    /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
-    | 'SIN_ABOGADO'
+    /** Recibido en la Dirección con un puesto obligatorio vacío: lo que hace, nadie lo hace. */
+    | 'SIN_RESPONSABLE'
     /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
-    | 'PLAZO_ACTIVIDAD';
+    | 'PLAZO_ACTIVIDAD'
+    /** Una sesión del comité (3.7 o 5.6.1) que sigue sin acta (113). */
+    | 'ACTA_COMITE_PENDIENTE'
+    | 'MEMORANDO_COMITE_PENDIENTE';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
@@ -3560,7 +3701,10 @@ export type EventoAviso =
 export type PapelAviso =
   | 'QUIEN_ENVIO'
   | 'QUIEN_APRUEBA'
-  | 'ABOGADO'
+  | 'QUIEN_LA_HACE'
+  /** Quien ocupa ese puesto del proceso (109). */
+  | `PUESTO:${string}`
+  | 'DECIDE_REVISION_PAA'
   | 'CONTRATACION'
   | 'RADICADOR'
   | 'BANDEJA_CONTRATACION'
@@ -3772,7 +3916,6 @@ export interface ProcesoAfectadoPaa {
   codigo: string;
   tratamiento: 'SIN_CAMBIOS' | 'ACTUALIZADO' | 'MODIFICADA_SIN_EFECTO' | 'ELIMINADA';
   revision: { tipo: TipoRevisionPaa; bloquea: boolean } | null;
-  abogado: { id: string | null; nombre: string } | null;
   cambios: { linea: CambioDeLineaPaa[]; proceso: CampoAplicadoPaa[] };
   lineaNuevaId: string | null;
 }
@@ -3806,7 +3949,6 @@ export interface AfectadosPorCambioDeVigencia {
     etapa: number;
     codigo: string | null;
     anio: number | null;
-    abogado: { id: string | null; nombre: string } | null;
   }[];
 }
 
@@ -3814,11 +3956,23 @@ export interface CampoFormularioPaa {
   clave: string;
   etiquetaFormato: string;
   etiqueta: string;
+  /** Si se ve al elegir la línea al crear el proceso. */
   visible: boolean;
+  /** Si sale en el bloque «Datos del PAA» de la 3.1. */
+  enEstudioPrevio: boolean;
+  /** El campo de la 3.1 que ya llena, si llena alguno. */
+  yaEnEstudioPrevio: string | null;
   orden: number;
   uso: 'identificador' | 'proceso' | 'informativo';
   siempreVisible: boolean;
   estado: 'normal' | 'nueva' | 'huerfana';
+}
+
+/** El bloque «Datos del PAA» de la 3.1: las columnas que la región marcó, con los valores de la versión aplicada. */
+export interface DatosDelPaaEnEstudioPrevio {
+  tieneOrigen: boolean;
+  linea: { codigo: string; region: string; anio: number; version: number } | null;
+  campos: { clave: string; etiqueta: string; valor: string | number | null }[];
 }
 
 export interface CamposDelFormularioPaa {
@@ -3940,7 +4094,8 @@ export interface OrigenPaaDelProceso {
 
 export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
 export type ReglaDecision = 'UNO' | 'TODOS';
-export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'SUPERVISOR';
+/** Papeles del proceso en un escalón. El abogado ya no es un papel: es un puesto (109). */
+export type PapelEscalon = 'CONTRATACION' | 'SUPERVISOR';
 export type EstadoEscalon = 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'NEGADO' | 'ANULADO';
 
 /** Un escalón tal como se configura en la plantilla. */
@@ -3950,6 +4105,8 @@ export interface EscalonConfigurado {
   /** Ids de persona del directorio. */
   personas: string[];
   papeles: PapelEscalon[];
+  /** Puestos del proceso (109): lo decide quien ocupe alguno. */
+  puestos?: string[];
   reglaDecision: ReglaDecision;
   acciones: AccionEscalon[];
 }
@@ -3964,6 +4121,7 @@ export interface CadenaDeAprobacion {
     nombresRoles: string[];
     nombresPersonas: string[];
     nombresPapeles: string[];
+    nombresPuestos?: string[];
   })[];
   /** Las actividades que la exigen hoy. */
   usadaEn: { numeral: string; nombre: string }[];
@@ -4004,42 +4162,172 @@ export interface RondaDeAprobacion {
   escalones: EscalonDeRonda[];
 }
 
-/** Un escalón por rol de la cadena de la 3.1, con quién lo decide en el proceso (102). */
-export interface EscalonPorDesignar {
-  orden: number;
+/**
+ * Un puesto del proceso (109): un lugar que ocupa una persona en cada proceso
+ * —Abogado, Segundo abogado, Jefe—. Lo crea la Dirección en Configuración y se
+ * ocupa en la 3.3.
+ */
+export interface Puesto {
+  id: string;
   nombre: string;
-  /** `ABOGADO`: se designa eligiendo al abogado del proceso; `ROL`: a alguien con el rol. */
-  tipo: 'ROL' | 'ABOGADO';
-  /** Nombres legibles de los roles del escalón. */
-  roles: string[];
-  designado: {
-    usuarioId: string;
-    nombre: string;
-    usuarioNombre: string;
-    asignadoAt: string;
-    asignadoPor: string | null;
-  } | null;
-  /** Lo que ya decidió en la revisión en curso no se cambia. */
-  cambiable: boolean;
-  /** Si es el escalón que está esperando decisión. */
-  leToca: boolean;
-  /** Qué impide decidirlo: el designado perdió el rol, el abogado el permiso… */
-  problema?: string | null;
-  /** El rol ya no existe: se corrige la cadena, no designando. */
-  rolInexistente?: boolean;
+  descripcion: string | null;
+  obligatorio: boolean;
+  orden: number;
+  activo: boolean;
+  /** Lo que hace o aprueba, de la configuración de cada actividad. */
+  usos: UsoDePuesto[];
 }
 
-/** Lo que la 3.3 enseña de los escalones por rol de la 3.1 (102). */
-export interface EscalonesPorDesignar {
-  puedeDesignar: boolean;
-  escalones: EscalonPorDesignar[];
+export interface UsoDePuesto {
+  numeral: string;
+  nombreActividad: string;
+  modalidad?: string | null;
+  como: 'HACE' | 'APRUEBA';
+  accion?: Exclude<AccionAlcance, 'ver'>;
+}
+
+/** Un puesto en un proceso, con quién lo ocupa. */
+export interface PuestoEnProceso {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  usos: UsoDePuesto[];
+  ocupante: {
+    usuarioId: string;
+    usuarioNombre: string;
+    nombre: string;
+    asignadoAt: string;
+    asignadoPor: string | null;
+    esMio: boolean;
+  } | null;
+  /** Lo que le impide actuar a quien lo ocupa: perdió un permiso. */
+  problema: string | null;
+  /** Dónde se ocupa si no es en la 3.3: el del supervisor, con el acto de la 8.2 (121). */
+  seOcupaEn?: string | null;
+}
+
+export interface PuestosDelProceso {
+  puedeAsignar: boolean;
+  puestos: PuestoEnProceso[];
   historial: {
-    escalon: number;
-    escalonNombre: string | null;
+    puesto: string;
     nombre: string;
     asignadoAt: string;
     relevadoAt: string | null;
     relevadoPor: string | null;
     motivoRelevo: string | null;
   }[];
+}
+
+/** Una cuenta que puede ocupar un puesto. */
+export interface CandidatoAPuesto {
+  usuarioId: string;
+  usuarioNombre: string;
+  personaId: string | null;
+  nombre: string;
+  email: string | null;
+  /** Cuántos procesos en curso lleva ya en ese puesto. */
+  procesosEnElPuesto: number;
+}
+
+/** Quién hace una actividad, en Configuración (109, 111). */
+export interface LaHaceConfig {
+  tipo: 'PERMISO' | 'PUESTO' | 'PERSONAS';
+  puesto: { id: string; nombre: string; activo: boolean } | null;
+  personas: { id: string; nombre: string }[];
+  /** Qué versión del flujo se está mostrando: el borrador si lo hay. */
+  editando?: 'BORRADOR' | 'ACTIVA';
+  /** En una modalidad, si lo hereda de la general. */
+  heredada?: boolean;
+}
+
+// ------------------------------------------ versiones del flujo (111) ------
+
+/** Una versión del flujo: quién hace y quién aprueba cada actividad. */
+export interface VersionFlujo {
+  id: string;
+  numero: number;
+  estado: 'BORRADOR' | 'ACTIVA' | 'RETIRADA';
+  nota: string | null;
+  creadaPor: string | null;
+  createdAt: string;
+  activadaPor: string | null;
+  activadaAt: string | null;
+  procesosEnCurso: number;
+}
+
+/** Algo que corregir antes de activar el flujo. */
+export interface ProblemaFlujo {
+  numeral: string;
+  nombre: string;
+  etapa: number;
+  modalidad: string | null;
+  parte: 'HACE' | 'APRUEBA' | 'SECUENCIA';
+  gravedad: 'ERROR' | 'AVISO';
+  mensaje: string;
+  /** Las modalidades donde pasa, cuando se validan todas. */
+  modalidades?: string[];
+}
+
+/** Cómo se asigna quien hace la actividad. */
+export type ModoAsignacion = 'ROL' | 'PERSONA' | 'AL_EJECUTAR';
+
+/** Una actividad en el diagrama del flujo. */
+export interface NodoFlujo {
+  numeral: string;
+  nombre: string;
+  etapa: number;
+  /** Si la modalidad la hace; si no, se la salta. */
+  aplica: boolean;
+  /** Si se hace en la plataforma; si no, pasa fuera y el flujo la salta. */
+  enLaPlataforma: boolean;
+  /** Si en ella se asigna gente al proceso, qué se asigna. */
+  asigna: string | null;
+  /** De cuáles depende (125); null es la anterior. */
+  dependeDe: string[] | null;
+  /** Si quedarse sin terminar no detiene a las siguientes (125). */
+  noBloquea?: boolean;
+  /** Si la secuencia es propia de la modalidad. */
+  secuenciaPropia?: boolean;
+  hace: { modo: ModoAsignacion; accion: string; propia: boolean; quien: string | null };
+  aprueba: {
+    tipo: 'NINGUNA' | 'CADENA' | 'ESCALON';
+    propia: boolean;
+    cadena: string | null;
+    escalones: { nombre: string; quienes: { tipo: 'PUESTO' | 'ROL' | 'PERSONA' | 'PAPEL'; nombre: string }[] }[];
+  };
+  estado: 'OK' | 'ERROR' | 'AVISO';
+  problemas: { parte: 'HACE' | 'APRUEBA' | 'SECUENCIA'; gravedad: 'ERROR' | 'AVISO'; mensaje: string }[];
+}
+
+/** Lo que rige en una actividad de la versión que se edita (111, 125). */
+export interface AsignacionFlujo {
+  secuencia: SecuenciaDelPaso;
+  propiaDeLaModalidad: { laHace: boolean; aprobacion: boolean; secuencia: boolean };
+  general: { secuencia: SecuenciaDelPaso };
+  editando: 'BORRADOR' | 'ACTIVA';
+}
+
+export interface DiagramaFlujo {
+  version: { id: string; numero: number; estado: 'BORRADOR' | 'ACTIVA' | 'RETIRADA' };
+  modalidad: string | null;
+  modalidades: { codigo: string; nombre: string }[];
+  etapas: { etapa: number; actividades: NodoFlujo[] }[];
+  problemas: ProblemaFlujo[];
+}
+
+/** Con qué versión del flujo corre un proceso. */
+export interface FlujoDelProceso {
+  version: number | null;
+  activa: number | null;
+  desactualizado: boolean;
+  puedeActualizar: boolean;
+}
+
+/** Lo que la configuración deja sin salida. */
+export interface ProblemaDePuestos {
+  puestoId: string | null;
+  numeral: string | null;
+  mensaje: string;
 }

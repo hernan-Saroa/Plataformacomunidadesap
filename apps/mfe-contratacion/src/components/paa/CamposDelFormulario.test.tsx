@@ -20,6 +20,8 @@ const campo = (clave: string, etiqueta: string, extra: object = {}) => ({
   etiquetaFormato: etiqueta,
   etiqueta,
   visible: true,
+  enEstudioPrevio: false,
+  yaEnEstudioPrevio: null,
   orden: 0,
   uso: 'informativo',
   siempreVisible: false,
@@ -45,7 +47,7 @@ describe('CamposDelFormulario', () => {
       vigencia: { id: 'v-2027', anio: 2027, vigente: true },
       origen: 'vigencia_anterior',
       campos: [
-        campo('objeto', 'Objeto', { uso: 'proceso', siempreVisible: true }),
+        campo('objeto', 'Objeto', { uso: 'proceso', siempreVisible: true, enEstudioPrevio: true, yaEnEstudioPrevio: 'Objeto del contrato' }),
         campo('responsable_correo', 'Correo del responsable', { visible: false }),
         campo('extra:Prioridad', 'Prioridad', { estado: 'nueva' }),
       ],
@@ -70,9 +72,31 @@ describe('CamposDelFormulario', () => {
 
     await waitFor(() =>
       expect(paa.guardarCampos).toHaveBeenCalledWith('r-sede', 2027, [
-        { clave: 'objeto', visible: true, etiqueta: null },
-        { clave: 'extra:Prioridad', visible: true, etiqueta: null },
-        { clave: 'responsable_correo', visible: true, etiqueta: null },
+        { clave: 'objeto', visible: true, enEstudioPrevio: true, etiqueta: null },
+        { clave: 'extra:Prioridad', visible: true, enEstudioPrevio: false, etiqueta: null },
+        { clave: 'responsable_correo', visible: true, enEstudioPrevio: false, etiqueta: null },
+      ]),
+    );
+  });
+
+  it('marca para la 3.1 aparte de lo que se ve al elegir', async () => {
+    paa.guardarCampos.mockImplementation(async () => paa.campos());
+    render(<CamposDelFormulario />);
+
+    // El objeto ya llena su campo de la 3.1: queda marcado y no se puede quitar.
+    const objeto = await screen.findByLabelText('Mostrar Objeto en la 3.1');
+    expect(objeto).toBeChecked();
+    expect(objeto).toBeDisabled();
+    expect(screen.getByText('En la 3.1 llena «Objeto del contrato»')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Mostrar Correo del responsable en la 3.1'));
+    await userEvent.click(screen.getByRole('button', { name: /Guardar formulario/ }));
+
+    await waitFor(() =>
+      expect(paa.guardarCampos).toHaveBeenCalledWith('r-sede', 2027, [
+        { clave: 'objeto', visible: true, enEstudioPrevio: true, etiqueta: null },
+        { clave: 'responsable_correo', visible: false, enEstudioPrevio: true, etiqueta: null },
+        { clave: 'extra:Prioridad', visible: true, enEstudioPrevio: false, etiqueta: null },
       ]),
     );
   });

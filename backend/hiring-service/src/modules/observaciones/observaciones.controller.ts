@@ -34,7 +34,7 @@ import {
 } from '../archivos';
 
 /**
- * Observaciones al proyecto de pliego — actividad 5.3 (EFDS-1151).
+ * Observaciones al proyecto de pliego — actividad 5.6 (EFDS-1151).
  *
  * Las observaciones llegan por SECOP II y la plataforma no habla con SECOP
  * (EFDS-1386), así que el gestor las transcribe con su soporte. Lo que la
@@ -46,7 +46,7 @@ export class ObservacionesController {
   constructor(private readonly service: ObservacionesService) {}
 
   @Get()
-  @Puede('ver', '5.3')
+  @Puede('ver', '5.6')
   @ApiOperation({
     summary: 'Observaciones del proceso con su resumen',
     description:
@@ -57,7 +57,7 @@ export class ObservacionesController {
   }
 
   @Post()
-  @Puede('editar', '5.3')
+  @Puede('editar', '5.6')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -69,7 +69,7 @@ export class ObservacionesController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 5.3 · Registrar una observación recibida',
+    summary: 'Actividad 5.6 · Registrar una observación recibida',
     description:
       'El soporte es opcional: la observación pudo llegar por un canal que no deja documento. La fecha es la de presentación, no la del registro.',
   })
@@ -97,7 +97,7 @@ export class ObservacionesController {
   }
 
   @Post(':observacionId/responder')
-  @Puede('editar', '5.3')
+  @Puede('editar', '5.6')
   @ApiOperation({
     summary: 'Responder una observación',
     description:
@@ -113,7 +113,7 @@ export class ObservacionesController {
   }
 
   @Post('cerrar')
-  @Puede('editar', '5.3')
+  @Puede('editar', '5.6')
   @ApiOperation({
     summary: 'Dar por cumplida la recepción cuando no hubo observaciones',
     description:

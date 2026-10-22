@@ -61,7 +61,7 @@ describe('PlantillasCadenaService', () => {
       servicio.crear({ nombre: '', escalones: [{ nombre: 'Uno', roles: [] }] }, acceso),
     ).rejects.toThrow(
       new BadRequestException(
-        'La cadena necesita un nombre. El escalón 1 no tiene quién decida: elige un rol, una persona o un papel',
+        'La cadena necesita un nombre. El escalón 1 no tiene quién decida: elige un rol, una persona, un puesto o un papel',
       ),
     );
   });

@@ -143,7 +143,7 @@ export function RevisionDelPaa({ revisionId, volverA, onVolver, onVerProceso }: 
             {revision.versionNueva.numero}
           </Dato>
           <Dato etiqueta="Decide">
-            {revision.responsable?.nombre ?? 'Sin abogado: cualquiera que pueda decidir revisiones del PAA'}
+            {revision.responsable?.nombre ?? 'Cualquiera que pueda decidir revisiones del PAA'}
           </Dato>
           <Dato etiqueta="Abierta">{fechaCorta(revision.createdAt)}</Dato>
           <Dato etiqueta="Etapa del proceso">Etapa {revision.etapa}</Dato>

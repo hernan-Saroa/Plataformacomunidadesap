@@ -4,9 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { Cdp } from '../../entities/cdp.entity';
 import { EstadoRp, RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -60,6 +61,33 @@ export function puedeTransicionar(desde: EstadoRp, hacia: EstadoRp): boolean {
  */
 export function cubreElContrato(valorRp: number | null, valorContrato: number): boolean {
   return valorRp !== null && valorRp >= valorContrato;
+}
+
+/** Sin espacios ni mayúsculas: «a-02-02-02-008 » y «A-02-02-02-008» son el mismo rubro. */
+const normalizarRubro = (rubro: string) => rubro.replace(/\s+/g, '').toUpperCase();
+
+/**
+ * Por qué el RP no cabe en el CDP del proceso, o nulo si cabe.
+ *
+ * El RP compromete lo que el CDP apartó: no puede ir por más ni contra otro
+ * rubro. Antes nada lo comparaba, y un RP de $50 M quedó expedido sobre un CDP
+ * de $37 M y contra un rubro que el CDP no certificaba.
+ */
+export function contradiceElCdp(
+  rp: { valor: number; rubro: string | null },
+  cdp: { numero: string | null; valor: number | null; rubro: string | null },
+): string | null {
+  const nombre = cdp.numero ? `el CDP ${cdp.numero}` : 'el CDP del proceso';
+  if (cdp.valor != null && rp.valor > cdp.valor) {
+    return (
+      `El RP ($ ${rp.valor.toLocaleString('es-CO')}) supera lo que certificó ${nombre} ` +
+      `($ ${cdp.valor.toLocaleString('es-CO')})`
+    );
+  }
+  if (rp.rubro && cdp.rubro && normalizarRubro(rp.rubro) !== normalizarRubro(cdp.rubro)) {
+    return `El RP va contra el rubro ${rp.rubro}, pero ${nombre} certificó el ${cdp.rubro}`;
+  }
+  return null;
 }
 
 interface ArchivoCargado {
@@ -146,11 +174,18 @@ export class RegistroPresupuestalService {
         );
       }
 
+      const cdp = await this.exigirCdpExpedido(em, procesoId);
+      const rubro = dto.rubro?.trim() || cdp.rubro || null;
+      const valor = dto.valor ?? contrato.valor;
+      const contradiccion = contradiceElCdp({ valor: Number(valor), rubro }, cdp);
+      if (contradiccion) throw new BadRequestException(contradiccion);
+
       const rp = await em.save(
         em.create(RegistroPresupuestal, {
           contratoId: contrato.id,
-          rubro: dto.rubro ?? null,
-          valor: dto.valor ?? contrato.valor,
+          // Sin rubro escrito se toma el del CDP: es el único que puede ser.
+          rubro,
+          valor,
           vigenciaFiscal: dto.vigenciaFiscal ?? null,
           estado: 'SOLICITADO' as const,
           solicitadoPor: acceso.userName,
@@ -209,6 +244,13 @@ export class RegistroPresupuestalService {
 
       this.exigirTransicion(rp.estado, 'EXPEDIDO');
       this.validarFecha(dto.fechaExpedicion);
+
+      const cdp = await this.exigirCdpExpedido(em, procesoId);
+      const contradiccion = contradiceElCdp(
+        { valor: Number(dto.valor), rubro: dto.rubro?.trim() || rp.rubro },
+        cdp,
+      );
+      if (contradiccion) throw new BadRequestException(contradiccion);
 
       if (soporte && hash) {
         const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -370,6 +412,24 @@ export class RegistroPresupuestalService {
       .andWhere("rp.estado NOT IN ('RECHAZADO', 'ANULADO')")
       .andWhere('rp.modificacion_id IS NULL')
       .getOne();
+  }
+
+  /**
+   * El CDP expedido del proceso, contra el que se compromete el RP.
+   *
+   * El del proceso y no el de una adición (`modificacion_id` nulo): las
+   * adiciones traen su propio CDP y su propio RP.
+   */
+  private async exigirCdpExpedido(em: EntityManager, procesoId: string) {
+    const cdp = await em.getRepository(Cdp).findOne({
+      where: { procesoId, estado: 'EXPEDIDO', modificacionId: IsNull() },
+    });
+    if (!cdp) {
+      throw new ConflictException(
+        'El proceso no tiene CDP expedido: el RP compromete lo que el CDP certificó (4.2)',
+      );
+    }
+    return { numero: cdp.numero, valor: cdp.valor != null ? Number(cdp.valor) : null, rubro: cdp.rubro };
   }
 
   private async exigirRp(contratoId: string, em?: EntityManager) {
