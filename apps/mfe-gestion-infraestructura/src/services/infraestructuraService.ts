@@ -154,6 +154,18 @@ export interface SolicitudMantenimiento {
   fechaCalificacion?: string | null;
   usuarioCalificacionId?: string | null;
   responsableCalificacionDisplay?: string | null;
+  // ----- Fase 3: Reglas de Negocio -----
+  clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+  requiereContratacion?: boolean;
+  esBienAsignadoFuncionario?: boolean;
+  nombreFuncionarioBienAsignado?: string | null;
+  placaInventarioBien?: string | null;
+  soporteBienAsignadoUrl?: string | null;
+  requiereVoBo?: boolean;
+  voboAprobado?: boolean | null;
+  voboObservaciones?: string | null;
+  voboUsuarioId?: string | null;
+  voboFecha?: string | null;
 }
 
 export interface HistoricoAsignacionEntry {
@@ -173,11 +185,15 @@ export interface HistoricoAsignacionEntry {
     | 'CIERRE_TECNICO'
     | 'CONFORMIDAD_CONFIRMADA'
     | 'CONFORMIDAD_SIN_RESPUESTA'
-    | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA';
+    | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
+    | 'VOBO_VALORACION_APROBADO'
+    | 'VOBO_VALORACION_OBSERVADO';
   tecnico_codigo: string | null;
   tecnico_nombre_display: string | null;
   motivo: string | null;
   observaciones: string | null;
+  clasificacion_mantenimiento?: 'MENOR' | 'MAYOR' | null;
+  requiere_contratacion?: boolean | null;
   usuario_id: string | null;
   usuario_email: string | null;
   usuario_roles: string | null;
@@ -255,6 +271,11 @@ export interface GuardarValoracionCompletaPayload {
 }
 
 export interface ConfirmarRecepcionInsumosPayload {
+  observaciones?: string;
+}
+
+export interface NotaRecepcionInsumosTecnicoPayload {
+  resultado: 'COMPLETA' | 'PARCIAL' | 'OBSERVADA';
   observaciones?: string;
 }
 
@@ -404,6 +425,11 @@ export interface CreateMantenimientoPayload {
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
   idCategoria?: number;
   idSubcategoria?: number;
+  // ===== Fase 3 =====
+  esBienAsignadoFuncionario?: boolean;
+  nombreFuncionarioBienAsignado?: string;
+  placaInventarioBien?: string;
+  soporteBienAsignadoUrl?: string;
 }
 
 export interface RemitirATIPayload {
@@ -444,6 +470,8 @@ export interface AprobarAsignarPayload {
   tecnicoCodigo?: string | null;
   idTecnicoAsignado?: string | null;
   observaciones?: string | null;
+  clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+  requiereContratacion?: boolean;
 }
 
 export interface RechazarPayload {
@@ -921,6 +949,17 @@ const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any)._
 
 const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
 
+function notificarEventoFrontend(accion: string, idSolicitud?: string, extra?: any) {
+  if (typeof window !== 'undefined') {
+    console.log(
+      `%c[NOTIFICACIONES_DEV][MANTENIMIENTO] 🚀 Evento "${accion}" procesado con éxito${idSolicitud ? ` (Solicitud: ${idSolicitud})` : ''}`,
+      'color: #2563eb; font-weight: bold;',
+      extra || ''
+    );
+    window.dispatchEvent(new CustomEvent('esap:refresh-notifications'));
+  }
+}
+
 export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD' | 'CATEGORIA_SERVICIO';
 
 export const infraestructuraService = {
@@ -1076,7 +1115,9 @@ export const infraestructuraService = {
       }
       throw new Error(mensaje);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('RADICACION_SOLICITUD', data.idSolicitud, data);
+    return data;
   },
 
   async uploadEvidencia(
@@ -1093,6 +1134,10 @@ export const infraestructuraService = {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_BASE_URL}/mantenimiento/evidencias/upload`, true);
       xhr.withCredentials = true;
+      const token = leerCookie('esap_access_token') || (typeof window !== 'undefined' ? ((window as any).__esap_auth_cache?.token || (window as any).__esap_auth_cache?.access_token) : null);
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       if (opts?.onProgress && xhr.upload) {
         xhr.upload.onprogress = (ev) => {
           if (ev.lengthComputable) {
@@ -1451,6 +1496,46 @@ export const infraestructuraService = {
     return await res.json();
   },
 
+  async getVoBoConfig(): Promise<{
+    requiereVoBoGlobal: boolean;
+    requiereVoBoMantenimientoMayor: boolean;
+    requiereVoBoInsumos: boolean;
+    montoMinimoInsumosVoBoCop: number;
+    categoriasVoBoObligatorio: number[];
+    requiereVoBoContratacion: boolean;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/vobo-config`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getVoBoConfig fail, fallback defaults:', err);
+      return {
+        requiereVoBoGlobal: false,
+        requiereVoBoMantenimientoMayor: true,
+        requiereVoBoInsumos: true,
+        montoMinimoInsumosVoBoCop: 500000,
+        categoriasVoBoObligatorio: [48, 54],
+        requiereVoBoContratacion: true,
+      };
+    }
+  },
+
+  async actualizarVoBoConfig(body: any): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/vobo-config`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando configuración de VoBo';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
   async getTecnicos(soloActivos: boolean = true): Promise<CatalogoItem[]> {
     try {
       const q = new URLSearchParams();
@@ -1596,7 +1681,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('APROBAR_ASIGNAR', idSolicitud, payload);
+    return data;
   },
 
   async rechazarSolicitud(
@@ -1614,7 +1701,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('RECHAZAR_SOLICITUD', idSolicitud, payload);
+    return data;
   },
 
   async redistribuirAsignacion(
@@ -1632,7 +1721,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('REDISTRIBUIR_ASIGNACION', idSolicitud, payload);
+    return data;
   },
 
   // ---------------------------------------------------------------------------
@@ -1650,7 +1741,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('INICIAR_EJECUCION_DIRECTA', idSolicitud);
+    return data;
   },
 
   async iniciarValoracion(
@@ -1668,7 +1761,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('INICIAR_VALORACION', idSolicitud, payload);
+    return data;
   },
 
   async guardarValoracionCompleta(
@@ -1686,7 +1781,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('GUARDAR_VALORACION', data?.solicitud?.idSolicitud || idValoracion, payload);
+    return data;
   },
 
   async confirmarRecepcionInsumos(
@@ -1704,7 +1801,56 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('CONFIRMAR_RECEPCION_INSUMOS', idSolicitud, payload);
+    return data;
+  },
+
+  async registrarRecepcionInsumosTecnico(
+    idSolicitud: string,
+    payload: NotaRecepcionInsumosTecnicoPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/recepcion-insumos-tecnico`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al registrar verificación de entrega de insumos';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('RECEPCION_INSUMOS_TECNICO', idSolicitud, payload);
+    return data;
+  },
+
+  async registrarVoBo(
+    idSolicitud: string,
+    payload: { aprobado?: boolean; voboAprobado?: boolean; observaciones?: string; voboObservaciones?: string },
+  ): Promise<SolicitudMantenimiento> {
+    const aprobadoValor = payload.aprobado !== undefined ? payload.aprobado : (payload.voboAprobado ?? true);
+    const obsValor = payload.observaciones ?? payload.voboObservaciones ?? undefined;
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/vobo`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        aprobado: aprobadoValor,
+        voboAprobado: aprobadoValor,
+        observaciones: obsValor,
+        voboObservaciones: obsValor,
+      }),
+    });
+    if (!res.ok) {
+      let m = 'Error al registrar visto bueno de la valoración';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('VOBO_VALORACION', idSolicitud, payload);
+    return data;
   },
 
   async listarValoracionesPorSolicitud(idSolicitud: string): Promise<SolicitudValoracion[]> {
@@ -1767,7 +1913,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('CIERRE_TECNICO', idSolicitud, payload);
+    return data;
   },
 
   // ---------------------------------------------------------------------------
@@ -1796,7 +1944,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('CONFIRMAR_CONFORMIDAD', idSolicitud, payload);
+    return data;
   },
 
   async rechazarConformidad(
@@ -1817,7 +1967,9 @@ export const infraestructuraService = {
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
-    return await res.json();
+    const data = await res.json();
+    notificarEventoFrontend('RECHAZAR_CONFORMIDAD', idSolicitud, payload);
+    return data;
   },
 
   async ejecutarCierresSinRespuesta(): Promise<{ actualizadas: number; ids: string[] }> {
@@ -1927,6 +2079,46 @@ export const infraestructuraService = {
     );
     if (!res.ok) {
       let m = 'Error descargando reporte Excel';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
+
+  async descargarExcelConsolidadoOperacional(params?: {
+    estado?: string;
+    prioridad?: string;
+    idCategoria?: number;
+    idSede?: string;
+    areaResponsable?: string;
+    codigoTecnico?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+    ids?: string[];
+  }): Promise<Blob> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('estado', params?.estado);
+    append('prioridad', params?.prioridad);
+    append('idCategoria', params?.idCategoria);
+    append('idSede', params?.idSede);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    if (Array.isArray(params?.ids) && params.ids.length > 0) {
+      append('ids', params.ids.join(','));
+    }
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/exportar-operacional/excel${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando consolidado operacional Excel';
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }

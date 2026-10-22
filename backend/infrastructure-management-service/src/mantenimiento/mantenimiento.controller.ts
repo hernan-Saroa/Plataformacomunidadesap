@@ -42,6 +42,8 @@ import {
   IniciarValoracionDto,
   GuardarValoracionCompletaDto,
   ConfirmarRecepcionInsumosDto,
+  NotaRecepcionInsumosTecnicoDto,
+  RegistrarVoBoDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
@@ -315,6 +317,26 @@ export class MantenimientoController {
     return this.mantenimientoService.actualizarReglaEscalamiento(idRegla, body);
   }
 
+  @Get('parametros/vobo-config')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 3 Req. #3: Consultar configuración parametrizable de Visto Bueno (VoBo) sobre valoración técnica.',
+  })
+  getVoBoConfig() {
+    return this.mantenimientoService.getVoBoConfig();
+  }
+
+  @Patch('parametros/vobo-config')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 3 Req. #3: Actualizar configuración parametrizable de Visto Bueno (VoBo) sobre valoración técnica.',
+  })
+  actualizarVoBoConfig(@Body() body: any) {
+    return this.mantenimientoService.updateVoBoConfig(body);
+  }
+
   // ---------------------------------------------------------------------------
   // EFDS-1733 / EFDS-174X: Técnicos mantenimiento
   // OPCIÓN A (DECISIÓN FINAL): Source of Truth = auth-service roles P3/P4.
@@ -497,10 +519,27 @@ export class MantenimientoController {
       tecnicoCodigo?: string | null;
       idTecnicoAsignado?: string | null;
       observaciones?: string | null;
+      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+      requiereContratacion?: boolean;
     },
     @Req() req: any,
   ) {
     return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/vobo')
+  @ApiOperation({
+    summary:
+      'Registrar Visto Bueno (VoBo) del Coordinador / Encargado UMI sobre la valoración técnica de una solicitud.',
+  })
+  @ApiResponse({ status: 200, description: 'VoBo registrado correctamente en la solicitud.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere Encargado UMI o Administrador).' })
+  registrarVoBo(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: RegistrarVoBoDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarVoBo(idSolicitud, body, req?.user);
   }
 
   @Post(':idSolicitud/rechazar')
@@ -623,6 +662,21 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.confirmarRecepcionInsumos(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/recepcion-insumos-tecnico')
+  @ApiOperation({
+    summary:
+      'Fase 2 / Req #4: Micro-registro del técnico sobre la entrega de insumos (COMPLETA | PARCIAL | OBSERVADA). No bloqueante.',
+  })
+  @ApiResponse({ status: 200, description: 'Nota de verificación registrada en el histórico de la solicitud.' })
+  @ApiResponse({ status: 403, description: 'Usuario no autorizado (no es técnico asignado ni gestor).' })
+  registrarRecepcionInsumosTecnico(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: NotaRecepcionInsumosTecnicoDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarRecepcionInsumosTecnico(idSolicitud, dto, req?.user);
   }
 
   @Get(':idSolicitud/valoraciones')
@@ -830,6 +884,50 @@ export class MantenimientoController {
   ) {
     const { buffer, filename } = await this.mantenimientoService.generarExcelReporteGestion(
       { fechaDesde, fechaHasta, idSede, idCategoria, areaResponsable, codigoTecnico, estado },
+      req?.user,
+    );
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res!.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res!.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    res!.setHeader('Content-Length', String(buffer.length));
+    res!.status(HttpStatus.OK).send(buffer);
+  }
+
+  @Get('exportar-operacional/excel')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #9: Exportar consolidado operacional detallado de solicitudes de mantenimiento en Excel (.xlsx) con estados, responsables, SLA y traza completa. Exclusivo para roles de reportes.',
+  })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx listo para descarga (attachment).' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente (requiere roles de reportes/auditoría).' })
+  async exportarOperacionalExcel(
+    @Query('estado') estado?: string,
+    @Query('prioridad') prioridad?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('idSede') idSede?: string,
+    @Query('areaResponsable') areaResponsable?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('ids') ids?: string,
+    @Req() req?: any,
+    @Res() res?: Response,
+  ) {
+    const idsArray = ids ? ids.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+    const catNum = idCategoria && Number.isInteger(+idCategoria) ? Number(idCategoria) : undefined;
+    const { buffer, filename } = await this.mantenimientoService.generarExcelConsolidadoOperacional(
+      {
+        estado,
+        prioridad,
+        idCategoria: catNum,
+        idSede,
+        areaResponsable,
+        codigoTecnico,
+        fechaDesde,
+        fechaHasta,
+        ids: idsArray,
+      },
       req?.user,
     );
     const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');

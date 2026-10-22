@@ -3,7 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -145,6 +145,18 @@ export interface ReporteGestionDto {
   rollupGeografico: ReporteGestionRollupGeograficoItem[];
 }
 
+export interface FiltrosExportarOperacionalDto {
+  estado?: string;
+  prioridad?: string;
+  idCategoria?: number;
+  idSede?: string;
+  areaResponsable?: string;
+  codigoTecnico?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
+  ids?: string[];
+}
+
 function usuarioEsBypassConsolidados(user?: AuthUser | null): boolean {
   if (!user || !Array.isArray(user.roles) || user.roles.length === 0) return false;
   const fallbackLegacy = (user.roles || []).map((r) => String(r).toUpperCase())
@@ -203,9 +215,28 @@ const REGLA_ESCALAMIENTO = 'REGLA_ESCALAMIENTO';
 const PARAMETRO_UMI = 'PARAMETRO_UMI';
 const COD_TIEMPO_GLOBAL = 'TIEMPO_RESPUESTA_DIAS';
 const PREFIX_TIEMPO_CAT = 'TIEMPO_RESP_DIAS_CAT_';
+const COD_PARAM_VOBO_CONFIG = 'PARAM_VOBO_VALORACION_CONFIG';
 const PERMISO_ASIGNAR_SOLICITUD = 'infraestructura.solicitud.assign';
 const PERMISO_VER_BANDEJA_GENERAL = 'infraestructura.view_all';
 const PERMISO_VER_INCLUIDO_TI = 'infraestructura.view_all_ti';
+
+export interface VoBoConfigData {
+  requiereVoBoGlobal: boolean;
+  requiereVoBoMantenimientoMayor: boolean;
+  requiereVoBoInsumos: boolean;
+  montoMinimoInsumosVoBoCop: number;
+  categoriasVoBoObligatorio: number[];
+  requiereVoBoContratacion: boolean;
+}
+
+const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
+  requiereVoBoGlobal: false,
+  requiereVoBoMantenimientoMayor: true,
+  requiereVoBoInsumos: true,
+  montoMinimoInsumosVoBoCop: 500000,
+  categoriasVoBoObligatorio: [48, 54],
+  requiereVoBoContratacion: true,
+};
 
 @Injectable()
 export class MantenimientoService implements OnModuleInit {
@@ -721,6 +752,13 @@ export class MantenimientoService implements OnModuleInit {
       solicitanteNombre: solicitanteNombreResuelto,
       solicitanteEmail: user.email || (user.username || 'solicitante') + '@esap.edu.co',
       evidenciaInicialUrl: dto.evidenciaInicialUrl,
+      clasificacionMantenimiento: 'MENOR',
+      requiereContratacion: false,
+      esBienAsignadoFuncionario: dto.esBienAsignadoFuncionario ?? false,
+      nombreFuncionarioBienAsignado: dto.nombreFuncionarioBienAsignado ?? null,
+      placaInventarioBien: dto.placaInventarioBien ?? null,
+      soporteBienAsignadoUrl: dto.soporteBienAsignadoUrl ?? null,
+      requiereVoBo: false,
     };
 
     const saved = await this.mantenimientoRepo.save(solicitudData as any);
@@ -745,6 +783,46 @@ export class MantenimientoService implements OnModuleInit {
     } else {
       saved.evidencias = [];
     }
+
+    if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
+      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA' });
+    }
+    await this.notificarAlSolicitante(saved, {
+      tipo: 'SOLICITUD_RADICADA',
+      titulo: `Solicitud #${saved.consecutivo} radicada`,
+      mensaje: `Tu solicitud de mantenimiento ha sido radicada correctamente con tipo de atención ${saved.tipoAtencion}.`,
+      icono: 'Inbox',
+      color: '#2563eb',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${saved.consecutivo} radicada exitosamente`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#1e40af">Solicitud Radicada con Éxito</h3>
+<p style="margin:0 0 8px">Tu solicitud <strong>#${saved.consecutivo}</strong> ha sido radicada en el sistema.</p>
+<p style="margin:0 0 8px"><strong>Tipo de atención:</strong> ${saved.tipoAtencion}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+    });
+
+    await this.notificarEncargadosUMI(saved, {
+      tipo: 'SOLICITUD_RADICADA_ENCARGADO',
+      titulo: `Nueva solicitud #${saved.consecutivo} pendiente por asignar`,
+      mensaje: `Se ha radicado una nueva solicitud de mantenimiento en ${saved.sede?.nombre ?? saved.idSede ?? 'la sede'}. Tipo: ${saved.tipoAtencion}.`,
+      icono: 'Inbox',
+      color: '#2563eb',
+      prioridad: 'Media',
+      textoAccion: 'Clasificar y Asignar',
+      emailSubject: `[UMI] Nueva solicitud #${saved.consecutivo} para asignar - ${saved.sede?.nombre ?? ''}`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#1e40af">Nueva Solicitud Pendiente de Asignación</h3>
+<p style="margin:0 0 8px">Se ha radicado la solicitud <strong>#${saved.consecutivo}</strong> en estado <strong>RECIBIDA</strong>.</p>
+<p style="margin:0 0 8px"><strong>Solicitante:</strong> ${saved.solicitanteNombre ?? 'N/A'}</p>
+<p style="margin:0 0 8px"><strong>Tipo de atención:</strong> ${saved.tipoAtencion}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
+</div>`,
+    });
 
     return saved;
   }
@@ -807,7 +885,26 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.areaResponsableActual = 'TI';
     solicitud.remisiones = [...(Array.isArray(solicitud.remisiones) ? solicitud.remisiones : []), item];
 
-    return this.mantenimientoRepo.save(solicitud);
+    const savedRemision = await this.mantenimientoRepo.save(solicitud);
+    await this.notificarOTIC(savedRemision, { evento: 'REMITIDA A TECNOLOGÍAS (TI)', motivo: dto.motivo });
+    await this.notificarAlSolicitante(savedRemision, {
+      tipo: 'SOLICITUD_REMITIDA_TI',
+      titulo: `Solicitud #${savedRemision.consecutivo} remitida a TI`,
+      mensaje: `Tu solicitud ha sido canalizada a la Oficina de Tecnologías (TI). Motivo: ${dto.motivo}`,
+      icono: 'Monitor',
+      color: '#0284c7',
+      prioridad: 'Media',
+      textoAccion: 'Ver seguimiento',
+      emailSubject: `[UMI] Solicitud #${savedRemision.consecutivo} canalizada a Atención Tecnológica`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#0284c7">Solicitud remitida a Soporte TI</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedRemision.consecutivo}</strong> fue canalizada a la Oficina de Tecnologías (TI).</p>
+<p style="margin:0 0 8px"><strong>Motivo:</strong> ${dto.motivo}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedRemision)}" style="display:inline-block;padding:6px 14px;background:#0284c7;color:#fff;border-radius:6px;text-decoration:none">Ver seguimiento</a></p>
+</div>`,
+    });
+
+    return savedRemision;
   }
 
   async getRemisionesById(id: string): Promise<Array<Record<string, any>>> {
@@ -1519,6 +1616,56 @@ export class MantenimientoService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------------------
+  // Fase 3 Req. #3: Parametrización Visto Bueno (VoBo)
+  // ---------------------------------------------------------------------------
+  async getVoBoConfig(): Promise<VoBoConfigData> {
+    const row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_VOBO_CONFIG },
+    });
+    if (!row || !row.metadata || typeof row.metadata !== 'object') {
+      return { ...DEFAULT_VOBO_CONFIG };
+    }
+    return { ...DEFAULT_VOBO_CONFIG, ...(row.metadata as any) };
+  }
+
+  async updateVoBoConfig(data: Partial<VoBoConfigData>): Promise<VoBoConfigData> {
+    let row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_VOBO_CONFIG },
+    });
+    const current = row?.metadata && typeof row.metadata === 'object' ? (row.metadata as any) : DEFAULT_VOBO_CONFIG;
+    const merged: VoBoConfigData = {
+      ...DEFAULT_VOBO_CONFIG,
+      ...current,
+      ...data,
+      requiereVoBoGlobal: data.requiereVoBoGlobal !== undefined ? Boolean(data.requiereVoBoGlobal) : current.requiereVoBoGlobal,
+      requiereVoBoMantenimientoMayor: data.requiereVoBoMantenimientoMayor !== undefined ? Boolean(data.requiereVoBoMantenimientoMayor) : current.requiereVoBoMantenimientoMayor,
+      requiereVoBoInsumos: data.requiereVoBoInsumos !== undefined ? Boolean(data.requiereVoBoInsumos) : current.requiereVoBoInsumos,
+      requiereVoBoContratacion: data.requiereVoBoContratacion !== undefined ? Boolean(data.requiereVoBoContratacion) : current.requiereVoBoContratacion,
+      categoriasVoBoObligatorio: Array.isArray(data.categoriasVoBoObligatorio)
+        ? data.categoriasVoBoObligatorio.map(Number).filter(Number.isInteger)
+        : (current.categoriasVoBoObligatorio || [48, 54]),
+      montoMinimoInsumosVoBoCop: Number(data.montoMinimoInsumosVoBoCop ?? current.montoMinimoInsumosVoBoCop ?? 500000),
+    };
+
+    if (!row) {
+      row = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: COD_PARAM_VOBO_CONFIG,
+        nombre: 'Configuración Parametrizable de Visto Bueno (VoBo) sobre Valoración',
+        descripcion: 'Reglas institucionales de exigencia de VoBo previo a ejecución (Fase 3 Req. #3).',
+        orden: 120,
+        isActivo: true,
+        metadata: merged,
+      });
+    } else {
+      row.metadata = merged;
+      row.isActivo = true;
+    }
+    await this.catalogoRepo.save(row);
+    return merged;
+  }
+
+  // ---------------------------------------------------------------------------
   // EFDS-1733: Motor sugerir asignación
   //   AC-01 Eléctricas (48) => regla ESPECIALIZACION obligatoria
   //   AC-02 Resto 7 categorías => EQUIDAD_DISPONIBILIDAD_CARGA_MENOR
@@ -1644,22 +1791,27 @@ export class MantenimientoService implements OnModuleInit {
         | 'FINALIZA_VALORACION_EN_ESPERA'
         | 'EXTENSION_SLA_POR_INSUMOS'
         | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
+        | 'RECEPCION_INSUMOS_TECNICO'
         | 'EDICION_VALORACION_POR_ENCARGADO'
         | 'INICIO_EJECUCION_DIRECTA'
         | 'CIERRE_TECNICO'
         | 'CONFORMIDAD_CONFIRMADA'
         | 'CONFORMIDAD_SIN_RESPUESTA'
-        | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA';
+        | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
+        | 'VOBO_VALORACION_APROBADO'
+        | 'VOBO_VALORACION_OBSERVADO';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       idTecnicoAsignado?: string | null;
       motivo?: string | null;
       observaciones?: string | null;
+      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+      requiereContratacion?: boolean;
       user: AuthUser;
     },
   ): void {
     const historial = Array.isArray(solicitud.asignaciones) ? solicitud.asignaciones : [];
-    historial.push({
+    const entry: Record<string, any> = {
       id:
         typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
           ? (crypto as any).randomUUID()
@@ -1674,7 +1826,14 @@ export class MantenimientoService implements OnModuleInit {
       usuario_id: args.user.userId ?? null,
       usuario_email: args.user.email ?? null,
       usuario_roles: Array.isArray(args.user.roles) ? args.user.roles.join(',') : null,
-    });
+    };
+    if (args.clasificacionMantenimiento !== undefined) {
+      entry.clasificacion_mantenimiento = args.clasificacionMantenimiento;
+    }
+    if (args.requiereContratacion !== undefined) {
+      entry.requiere_contratacion = args.requiereContratacion;
+    }
+    historial.push(entry);
     solicitud.asignaciones = historial;
   }
 
@@ -1832,14 +1991,20 @@ export class MantenimientoService implements OnModuleInit {
       throw new BadRequestException(`Técnico ${id} está inactivo. No se puede asignar o redistribuir a un técnico inactivo.`);
     }
     const md = (tec.metadata && typeof tec.metadata === 'object') ? (tec.metadata as any) : {};
-    (tec as any).idTecnicoAsignado = md.idUserAuth || null;
+    (tec as any).idTecnicoAsignado = md.idUserAuth || (Array.isArray(md.usuarioIdsAutorizados) ? md.usuarioIdsAutorizados[0] : null) || null;
     (tec as any).roleCod = md.roleCod || null;
     return tec as any;
   }
 
   async aprobarYAsignar(
     idSolicitud: string,
-    args: { tecnicoCodigo?: string | null; idTecnicoAsignado?: string | null; observaciones?: string | null },
+    args: {
+      tecnicoCodigo?: string | null;
+      idTecnicoAsignado?: string | null;
+      observaciones?: string | null;
+      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+      requiereContratacion?: boolean;
+    },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
     const vr = this.validarRolesAsignador(user);
@@ -1850,6 +2015,13 @@ export class MantenimientoService implements OnModuleInit {
     const idTecnicoIdent = String(
       (args.idTecnicoAsignado && String(args.idTecnicoAsignado).trim()) || (args.tecnicoCodigo || '').trim() || '',
     ).trim();
+
+    if (args.clasificacionMantenimiento) {
+      solicitud.clasificacionMantenimiento = args.clasificacionMantenimiento;
+    }
+    if (args.requiereContratacion !== undefined) {
+      solicitud.requiereContratacion = Boolean(args.requiereContratacion);
+    }
 
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
     // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
@@ -1892,6 +2064,8 @@ export class MantenimientoService implements OnModuleInit {
         idTecnicoAsignado: null,
         motivo: 'Confirmación de recepción de la remisión por la Oficina TI. Flujo interno TIC a partir de este punto.',
         observaciones: args.observaciones ?? null,
+        clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+        requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
     } else {
@@ -1925,13 +2099,98 @@ export class MantenimientoService implements OnModuleInit {
         idTecnicoAsignado: tec.idTecnicoAsignado ?? null,
         motivo: null,
         observaciones: args.observaciones ?? null,
+        clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+        requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
     }
 
     const saved = await this.mantenimientoRepo.save(solicitud);
+    await this.notificarAlSolicitante(saved, {
+      tipo: 'SOLICITUD_ASIGNADA',
+      titulo: `Solicitud #${saved.consecutivo} asignada`,
+      mensaje: `Se ha asignado el técnico ${saved.responsableAsignado ?? 'responsable'} para atender tu solicitud.`,
+      icono: 'UserCheck',
+      color: '#4338ca',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${saved.consecutivo} asignada a técnico`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#4338ca">Solicitud Asignada</h3>
+<p style="margin:0 0 8px">Tu solicitud <strong>#${saved.consecutivo}</strong> ha sido aprobada y asignada a <strong>${saved.responsableAsignado ?? 'un técnico'}</strong>.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#4338ca;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+    });
+    if (saved.areaResponsableActual !== 'TI' && saved.responsableAsignado) {
+      await this.notificarTecnicoAsignado(saved, {
+        tipo: 'SOLICITUD_ASIGNADA_TECNICO',
+        titulo: `Nueva solicitud asignada #${saved.consecutivo}`,
+        mensaje: `Se te ha asignado la solicitud de mantenimiento #${saved.consecutivo}. Descripción: ${saved.descripcion}`,
+        icono: 'Wrench',
+        color: '#4338ca',
+        prioridad: 'Media',
+        textoAccion: 'Gestionar solicitud',
+        emailSubject: `[UMI] Tarea asignada: Solicitud #${saved.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#4338ca">Nueva solicitud asignada</h3>
+<p style="margin:0 0 8px">Has sido asignado a la solicitud <strong>#${saved.consecutivo}</strong>.</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#4338ca;color:#fff;border-radius:6px;text-decoration:none">Abrir para valoración</a></p>
+</div>`,
+      });
+    }
     if (warning) (saved as any).__meta = { warning };
     return saved as any;
+  }
+
+  async registrarVoBo(
+    idSolicitud: string,
+    body: { aprobado?: boolean; voboAprobado?: boolean; observaciones?: string | null; voboObservaciones?: string | null },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const aprobadoFinal = body.aprobado !== undefined ? Boolean(body.aprobado) : (body.voboAprobado !== undefined ? Boolean(body.voboAprobado) : true);
+    const observacionesFinal = body.observaciones ?? body.voboObservaciones ?? null;
+
+    const solicitud = await this.findById(idSolicitud);
+    solicitud.requiereVoBo = true;
+    solicitud.voboAprobado = aprobadoFinal;
+    solicitud.voboObservaciones = observacionesFinal;
+    solicitud.voboUsuarioId = userIdUuidOrNull((user as any)?.userId) ?? undefined;
+    solicitud.voboFecha = new Date();
+
+    this.pushAsignacion(solicitud, {
+      accion: aprobadoFinal ? 'VOBO_VALORACION_APROBADO' : 'VOBO_VALORACION_OBSERVADO',
+      motivo: observacionesFinal ?? (aprobadoFinal ? 'Visto Bueno aprobado por coordinación / encargado UMI' : 'Valoración técnica observada'),
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: solicitud.requiereContratacion,
+      user: user as AuthUser,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    if (saved.idTecnicoAsignado) {
+      await this.notificarTecnicoAsignado(saved, {
+        tipo: aprobadoFinal ? 'VOBO_VALORACION_APROBADO' : 'VOBO_VALORACION_OBSERVADO',
+        titulo: aprobadoFinal ? `VoBo Aprobado #${saved.consecutivo}` : `VoBo Observado #${saved.consecutivo}`,
+        mensaje: aprobadoFinal
+          ? `La valoración técnica para la solicitud #${saved.consecutivo} ha recibido el visto bueno.`
+          : `La valoración para la solicitud #${saved.consecutivo} ha sido observada: ${observacionesFinal || 'Favor verificar'}.`,
+        icono: aprobadoFinal ? 'CheckCircle2' : 'AlertTriangle',
+        color: aprobadoFinal ? '#059669' : '#d97706',
+        prioridad: 'Media',
+        emailSubject: `[UMI] Visto Bueno ${aprobadoFinal ? 'Aprobado' : 'Observado'} - Solicitud #${saved.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:600px">
+<h3>Visto Bueno ${aprobadoFinal ? 'Aprobado' : 'Observado'}</h3>
+<p>La valoración técnica de la solicitud <strong>#${saved.consecutivo}</strong> ha sido ${aprobadoFinal ? 'aprobada con visto bueno' : 'observada por la coordinación'}.</p>
+${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}</p>` : ''}
+</div>`,
+      });
+    }
+
+    return saved;
   }
 
   async rechazar(
@@ -2184,7 +2443,8 @@ export class MantenimientoService implements OnModuleInit {
       } else if (
         categoriasPermitidasIds.includes(ID_CS_002) ||
         especialidadesIds.includes(ID_CS_002) ||
-        tecnico.codigo.toUpperCase().startsWith('TEC-ELEC')
+        tecnico.codigo.toUpperCase().startsWith('TEC-ELEC') ||
+        tecnico.codigo.toUpperCase().startsWith('TEC-ELC')
       ) {
         tecnicoEsElectricoValido = true;
       }
@@ -2434,6 +2694,18 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.estado = estadoFinal;
     solicitud.esperaInsumosFlag = hayNoDisponible;
 
+    // Verificar si requiere VoBo según parametrización institucional (Fase 3 Req. #3)
+    try {
+      const voboConfig = await this.getVoBoConfig();
+      const requiereMayor = voboConfig.requiereVoBoMantenimientoMayor && solicitud.clasificacionMantenimiento === 'MAYOR';
+      const requiereInsumos = voboConfig.requiereVoBoInsumos && (hayNoDisponible || totalEstimado >= voboConfig.montoMinimoInsumosVoBoCop);
+      const requiereCat = Array.isArray(voboConfig.categoriasVoBoObligatorio) && voboConfig.categoriasVoBoObligatorio.includes(Number(solicitud.idCategoria));
+      const requiereContrat = voboConfig.requiereVoBoContratacion && Boolean(solicitud.requiereContratacion);
+      if (voboConfig.requiereVoBoGlobal || requiereMayor || requiereInsumos || requiereCat || requiereContrat) {
+        solicitud.requiereVoBo = true;
+      }
+    } catch {}
+
     if (hayNoDisponible && maxDiasAdquisicion > 0) {
       if (solicitud.fechaLimiteAtencion) {
         solicitud.fechaLimiteOriginalAntesExtension =
@@ -2471,6 +2743,71 @@ export class MantenimientoService implements OnModuleInit {
     });
 
     const savedSol = await this.mantenimientoRepo.save(solicitud);
+    if (hayNoDisponible) {
+      await this.notificarAlSolicitante(savedSol, {
+        tipo: 'SOLICITUD_EN_ESPERA_INSUMOS',
+        titulo: `Solicitud #${savedSol.consecutivo} en espera de insumos`,
+        mensaje: `La valoración técnica fue completada. Se requiere abastecimiento de insumos antes de ejecutar.`,
+        icono: 'Clock',
+        color: '#d97706',
+        prioridad: 'Media',
+        textoAccion: 'Ver detalle',
+        emailSubject: `[UMI] Solicitud #${savedSol.consecutivo} en espera de insumos`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#d97706">Solicitud en Espera de Insumos</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> fue valorada por el técnico.</p>
+<p style="margin:0 0 8px">Se identificaron materiales pendientes por abastecer para iniciar la ejecución.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver detalle</a></p>
+</div>`,
+      });
+      await this.notificarEncargadosUMI(savedSol, {
+        tipo: 'UMI_VALORACION_REQUIERE_INSUMOS',
+        titulo: `Insumos requeridos para solicitud #${savedSol.consecutivo}`,
+        mensaje: `El técnico completó la valoración. Se requiere gestión de abastecimiento de insumos por valor estimado de $${Math.round(totalEstimado).toLocaleString('es-CO')} COP.`,
+        icono: 'Package',
+        color: '#d97706',
+        prioridad: 'Alta',
+        textoAccion: 'Gestionar insumos',
+        emailSubject: `[UMI] Insumos requeridos: Solicitud #${savedSol.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#d97706">Valoración en Campo: Insumos Requeridos</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> requiere adquisición de insumos para continuar.</p>
+<p style="margin:0 0 8px"><strong>Total insumos estimado:</strong> $${Math.round(totalEstimado).toLocaleString('es-CO')} COP</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver detalle y gestionar</a></p>
+</div>`,
+      });
+    } else {
+      await this.notificarAlSolicitante(savedSol, {
+        tipo: 'UMI_SOLICITUD_EN_PROGRESO',
+        titulo: `Solicitud #${savedSol.consecutivo} en ejecución`,
+        mensaje: `La valoración concluyó con insumos disponibles en bodega. El técnico inició la ejecución de los trabajos.`,
+        icono: 'Play',
+        color: '#15803d',
+        prioridad: 'Media',
+        textoAccion: 'Ver seguimiento',
+        emailSubject: `[UMI] Solicitud #${savedSol.consecutivo} en ejecución`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Trabajos en Ejecución</h3>
+<p style="margin:0 0 8px">El técnico ha completado la valoración y dispone de insumos. La solicitud <strong>#${savedSol.consecutivo}</strong> se encuentra en ejecución.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+      });
+      await this.notificarEncargadosUMI(savedSol, {
+        tipo: 'UMI_VALORACION_INICIO_EJECUCION',
+        titulo: `Solicitud #${savedSol.consecutivo} inició ejecución en campo`,
+        mensaje: `La valoración técnica concluyó favorablemente y los trabajos están en marcha (EN_PROGRESO).`,
+        icono: 'Play',
+        color: '#15803d',
+        prioridad: 'Media',
+        textoAccion: 'Ver seguimiento',
+        emailSubject: `[UMI] En ejecución: Solicitud #${savedSol.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Inicio de Ejecución en Campo</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> pasó a estado <strong>EN_PROGRESO</strong> tras la valoración técnica.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+      });
+    }
     return { solicitud: savedSol, valoracion: savedValoracion };
   }
 
@@ -2498,7 +2835,112 @@ export class MantenimientoService implements OnModuleInit {
       observaciones: null,
       user: user as AuthUser,
     });
-    return this.mantenimientoRepo.save(solicitud);
+    const savedRecepcion = await this.mantenimientoRepo.save(solicitud);
+    await this.notificarAlSolicitante(savedRecepcion, {
+      tipo: 'RECEPCION_INSUMOS_CONFIRMADA',
+      titulo: `Insumos recibidos para solicitud #${savedRecepcion.consecutivo}`,
+      mensaje: `Se ha confirmado la recepción de insumos. La solicitud avanza a ejecución.`,
+      icono: 'PackageCheck',
+      color: '#15803d',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${savedRecepcion.consecutivo}: Insumos recibidos, inicia ejecución`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Insumos Recibidos</h3>
+<p style="margin:0 0 8px">Se confirmó la recepción de materiales para la solicitud <strong>#${savedRecepcion.consecutivo}</strong>.</p>
+<p style="margin:0 0 8px">El trabajo continúa en estado <strong>EN_PROGRESO</strong>.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedRecepcion)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+    });
+    await this.notificarTecnicoAsignado(savedRecepcion, {
+      tipo: 'RECEPCION_INSUMOS_CONFIRMADA_TECNICO',
+      titulo: `Insumos disponibles para solicitud #${savedRecepcion.consecutivo}`,
+      mensaje: `Se confirmó la recepción de materiales. Puedes continuar con la ejecución del trabajo.`,
+      icono: 'Wrench',
+      color: '#15803d',
+      prioridad: 'Media',
+      textoAccion: 'Ejecutar trabajo',
+      emailSubject: `[UMI] Insumos disponibles: Solicitud #${savedRecepcion.consecutivo}`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Insumos Disponibles</h3>
+<p style="margin:0 0 8px">Los materiales para la solicitud <strong>#${savedRecepcion.consecutivo}</strong> ya están disponibles.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedRecepcion)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Proceder con la ejecución</a></p>
+</div>`,
+    });
+    return savedRecepcion;
+  }
+
+  /**
+   * Fase 2 / Req #4 / Sección 5 del Plan:
+   * Micro-registro del técnico al verificar insumos recibidos (COMPLETA | PARCIAL | OBSERVADA).
+   * No bloquea la ejecución. Registra trazabilidad inmutable en asignaciones.
+   */
+  async registrarRecepcionInsumosTecnico(
+    idSolicitud: string,
+    dto: NotaRecepcionInsumosTecnicoDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    if (!user || (!user.userId && !user.email)) {
+      throw new ForbiddenException('Usuario no autenticado.');
+    }
+    const solicitud = await this.findById(idSolicitud);
+
+    const check = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!check.puede) {
+      throw new ForbiddenException(
+        'Solo el técnico asignado a la solicitud o un gestor autorizado puede registrar la verificación de insumos.',
+      );
+    }
+
+    const asignacionesPrevias = Array.isArray(solicitud.asignaciones) ? solicitud.asignaciones : [];
+    const yaRegistrado = asignacionesPrevias.some(
+      (a: any) => String(a?.accion) === 'RECEPCION_INSUMOS_TECNICO',
+    );
+    if (yaRegistrado) {
+      throw new ConflictException(
+        'La verificación técnica de insumos ya fue registrada previamente para esta solicitud.',
+      );
+    }
+
+    const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+    const motivoTexto = `Verificación de entrega de insumos por técnico: ${dto.resultado}`;
+    const obsJson = JSON.stringify({
+      resultado: dto.resultado,
+      observaciones: (dto.observaciones || '').trim(),
+      fecha: new Date().toISOString(),
+    });
+
+    this.pushAsignacion(solicitud, {
+      accion: 'RECEPCION_INSUMOS_TECNICO',
+      tecnicoCodigo: check.tecnicoCodigo || t.codigo || null,
+      tecnicoNombreDisplay: check.tecnicoNombre || t.nombre || null,
+      motivo: motivoTexto,
+      observaciones: obsJson,
+      user: user as AuthUser,
+    });
+
+    const savedVerif = await this.mantenimientoRepo.save(solicitud);
+
+    if (dto.resultado === 'OBSERVADA' || dto.resultado === 'PARCIAL') {
+      await this.notificarEncargadosUMI(savedVerif, {
+        tipo: 'UMI_INSUMOS_VERIFICACION_NOVEDAD',
+        titulo: `Novedad en insumos: Solicitud #${savedVerif.consecutivo} (${dto.resultado})`,
+        mensaje: `El técnico registró verificación técnica de insumos con estado ${dto.resultado}. Obs: ${dto.observaciones || 'Sin detalles'}.`,
+        icono: 'AlertTriangle',
+        color: '#e11d48',
+        prioridad: 'Alta',
+        textoAccion: 'Ver solicitud',
+        emailSubject: `[UMI] Novedad insumos (${dto.resultado}): Solicitud #${savedVerif.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#e11d48">Novedad en Verificación de Insumos</h3>
+<p style="margin:0 0 8px">El técnico asignado reportó novedad con estado <strong>${dto.resultado}</strong> para la solicitud <strong>#${savedVerif.consecutivo}</strong>.</p>
+<p style="margin:0 0 8px"><strong>Observaciones:</strong> ${dto.observaciones || 'Sin observaciones registradas'}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedVerif)}" style="display:inline-block;padding:6px 14px;background:#e11d48;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+      });
+    }
+
+    return savedVerif;
   }
 
   async obtenerCierreTecnico(
@@ -2528,9 +2970,36 @@ export class MantenimientoService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   private readonly UMI_APP_FRONT_URL: string = (process.env.WEB_APP_URL ?? 'https://app.esap.edu.co').replace(/\/$/, '');
+  private readonly CORREO_OTIC_DESTINO: string = process.env.OTIC_NOTIFICATION_EMAIL ?? 'desarrollo.ccd@esap.edu.co';
 
   private solicitudAccionUrl(solicitud: SolicitudMantenimiento): string {
     return `${this.UMI_APP_FRONT_URL}/umi/solicitudes/${encodeURIComponent(solicitud.idSolicitud)}`;
+  }
+
+  private async notificarOTIC(
+    solicitud: SolicitudMantenimiento,
+    args: { evento: string; motivo?: string; observaciones?: string },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    try {
+      const url = this.solicitudAccionUrl(solicitud);
+      const subject = `[OTIC][Atención Tecnológica] Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} - ${args.evento}`;
+      const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#0369a1">Notificación de Gestión Tecnológica OTIC</h3>
+<p style="margin:0 0 8px"><strong>Solicitud:</strong> #${solicitud.consecutivo ?? solicitud.idSolicitud}</p>
+<p style="margin:0 0 8px"><strong>Evento:</strong> ${args.evento}</p>
+<p style="margin:0 0 8px"><strong>Solicitante:</strong> ${solicitud.solicitanteNombre ?? 'N/A'} (${solicitud.usuarioSolicitanteEmail ?? solicitud.solicitanteEmail ?? 'N/A'})</p>
+<p style="margin:0 0 8px"><strong>Sede:</strong> ${solicitud.sede?.nombre ?? solicitud.idSede ?? 'N/A'}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${solicitud.descripcion ?? 'N/A'}</p>
+${args.motivo ? `<p style="margin:0 0 8px"><strong>Motivo:</strong> ${args.motivo}</p>` : ''}
+${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong> ${args.observaciones}</p>` : ''}
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#0369a1;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`;
+      await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html);
+      this.notifLogger.log(`[${solicitud.idSolicitud}] Copia enviada a OTIC (${this.CORREO_OTIC_DESTINO}) para evento ${args.evento}`);
+    } catch (err: any) {
+      this.notifLogger.warn(`[${solicitud.idSolicitud}] Notificación OTIC falló: ${err?.message ?? err}`);
+    }
   }
 
   private async notificarAlSolicitante(
@@ -2601,16 +3070,74 @@ export class MantenimientoService implements OnModuleInit {
   ): Promise<void> {
     if (!this.notificaciones) return;
     try {
-      const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
-      const codigoTec = (t.codigo || '').toString();
-      if (!codigoTec) return;
-      const catalogo = await this.catalogoRepo.findOne({
-        where: { catalogo: TECNICO_MANTENIMIENTO, codigo: codigoTec, isActivo: true },
-      });
-      const tecUserId: string | undefined =
-        (catalogo?.metadata as any)?.usuarioIdsAutorizados?.[0] ?? (catalogo?.metadata as any)?.usuarioIdAutorizado;
-      const tecEmail: string | undefined = (catalogo?.metadata as any)?.correos?.[0];
-      if (!tecUserId && !tecEmail) return;
+      let tecUserId: string | undefined = solicitud.idTecnicoAsignado;
+      let tecEmail: string | undefined;
+
+      if (tecUserId) {
+        if (typeof (this.notificaciones as any)?.getUserDetailsById === 'function') {
+          try {
+            const detail = await this.notificaciones.getUserDetailsById(tecUserId);
+            if (detail?.email) tecEmail = detail.email;
+          } catch {}
+        }
+      }
+
+      if (!tecUserId) {
+        const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+        const codigoTec = (t.codigo || '').toString().trim();
+        if (codigoTec) {
+          try {
+            const tec = await this.resolverTecnicoActivo(codigoTec);
+            if (tec?.idTecnicoAsignado) {
+              tecUserId = tec.idTecnicoAsignado;
+              const md = (tec.metadata && typeof tec.metadata === 'object') ? (tec.metadata as any) : {};
+              if (!tecEmail && Array.isArray(md.correos) && md.correos[0]) {
+                tecEmail = md.correos[0];
+              }
+              if (typeof (this.notificaciones as any)?.getUserDetailsById === 'function') {
+                try {
+                  const detail = await this.notificaciones.getUserDetailsById(tecUserId);
+                  if (detail?.email) tecEmail = detail.email;
+                } catch {}
+              }
+            }
+          } catch (_e) {
+            // fallback
+          }
+        }
+      }
+
+      if (!tecUserId && solicitud.responsableAsignado) {
+        try {
+          const rows = await this.dataSource.query(
+            `SELECT u.id_user::text AS id_user, COALESCE(p.dir_email, u.username) AS email
+               FROM auth."user" u
+               JOIN auth.personas p ON p.id_person = u.id_person
+               JOIN auth.user_roles ur ON ur.id_user = u.id_user
+               JOIN auth.role r ON r.id = ur.id_rol
+              WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO')
+                AND ($1 ILIKE '%' || p.nom_largo || '%' OR $1 ILIKE '%' || u.username || '%')
+              LIMIT 1`,
+            [solicitud.responsableAsignado],
+          );
+          if (rows && rows.length > 0) {
+            tecUserId = rows[0].id_user;
+            tecEmail = rows[0].email;
+          }
+        } catch (_e) {
+          // fallback
+        }
+      }
+
+      this.notifLogger.log(
+        `[NOTIFICACION_DEBUG][TECNICO] Solicitud #${solicitud.consecutivo} | Evento: ${args.tipo} | tecUserId: ${tecUserId || 'N/A'} | Email: ${tecEmail || 'N/A'}`,
+      );
+
+      if (!tecUserId && !tecEmail) {
+        this.notifLogger.warn(`[NOTIFICACION_DEBUG] No se pudo identificar técnico para solicitud #${solicitud.consecutivo}`);
+        return;
+      }
+
       const url = this.solicitudAccionUrl(solicitud);
       const descripcion = `#${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · ${solicitud.estado ?? 'N/A'}`;
       if (tecUserId) {
@@ -2634,6 +3161,57 @@ export class MantenimientoService implements OnModuleInit {
       }
     } catch (err: any) {
       this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación técnico falló: ${err?.message ?? err}`);
+    }
+  }
+
+  private async notificarEncargadosUMI(
+    solicitud: SolicitudMantenimiento,
+    payload: {
+      tipo: string;
+      titulo: string;
+      mensaje: string;
+      icono?: string;
+      color?: string;
+      prioridad?: SendNotificationDto['prioridad'];
+      textoAccion?: string;
+      emailHtml: string;
+      emailSubject: string;
+    },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    try {
+      this.notifLogger.log(
+        `[NOTIFICACION_DEBUG][EVENTO] Notificando a Encargados UMI (P2) | Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud} | Tipo: ${payload.tipo}`,
+      );
+      const encargados = await this.notificaciones.getEncargadosUmi();
+      const url = this.solicitudAccionUrl(solicitud);
+      const descripcion = `Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · ${solicitud.estado ?? 'N/A'}`;
+
+      if (encargados.length === 0) {
+        await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, payload.emailSubject, payload.emailHtml);
+        return;
+      }
+
+      for (const enc of encargados) {
+        const dtoApp: Omit<SendNotificationDto, 'id_usuario_destinatario'> = {
+          tipo_notificacion: payload.tipo,
+          titulo: payload.titulo,
+          mensaje: payload.mensaje,
+          descripcion_corta: descripcion,
+          icono: payload.icono ?? 'Bell',
+          color: payload.color ?? '#2563eb',
+          prioridad: payload.prioridad ?? 'Media',
+          categoria: 'UMI-MANTENIMIENTO',
+          tiene_accion: true,
+          texto_boton_accion: payload.textoAccion ?? 'Ver solicitud',
+          url_accion: url,
+          datos_adicionales: { modulo: 'UMI', idSolicitud: solicitud.idSolicitud, estado: solicitud.estado, tipo: payload.tipo },
+        };
+        const emailOpts = enc.email ? { subject: payload.emailSubject, html: payload.emailHtml } : undefined;
+        await this.notificaciones.notifyUserById(enc.id_user, dtoApp, emailOpts);
+      }
+    } catch (err: any) {
+      this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación Encargados UMI falló: ${err?.message ?? err}`);
     }
   }
 
@@ -2800,6 +3378,17 @@ export class MantenimientoService implements OnModuleInit {
           emailHtml: email.html,
           emailSubject: email.subject,
         });
+        await this.notificarEncargadosUMI(recienCerrada, {
+          tipo: 'UMI_CIERRE_TECNICO_REGISTRADO_ENCARGADO',
+          titulo: `Cierre técnico registrado para solicitud #${recienCerrada.consecutivo ?? recienCerrada.idSolicitud.slice(0, 8)}`,
+          mensaje: `El técnico ${displayTecnico} completó los trabajos. Solicitud avanza a PENDIENTE_CONFORMIDAD del usuario solicitante.`,
+          icono: 'ClipboardCheck',
+          color: '#0f766e',
+          prioridad: 'Media',
+          textoAccion: 'Ver cierre técnico',
+          emailSubject: `[UMI] Cierre técnico registrado: Solicitud #${recienCerrada.consecutivo ?? recienCerrada.idSolicitud.slice(0, 8)}`,
+          emailHtml: email.html,
+        });
       } catch (err: any) {
         this.notifLogger.warn(`[${recienCerrada.idSolicitud}] notificación cierre técnico falló: ${err?.message ?? err}`);
       }
@@ -2923,6 +3512,17 @@ export class MantenimientoService implements OnModuleInit {
           emailSubject: `[UMI] Conformidad OK solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
           emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px"><h3 style="margin:0 0 8px;color:#115e59">Conformidad confirmada</h3><p style="margin:0 0 8px">El área solicitante (<strong>${user?.username ?? 'Solicitante'}</strong>) aprobó el cierre técnico.</p><p style="margin:0 0 8px">${dto.observacionesConformidad?.trim() ? `Observaciones: ${dto.observacionesConformidad.trim()}` : 'Sin observaciones adicionales.'}</p></div>`,
         });
+        await this.notificarEncargadosUMI(final, {
+          tipo: 'UMI_CONFORMIDAD_CONFIRMADA_ENCARGADO',
+          titulo: `Conformidad aprobada para solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
+          mensaje: `El solicitante dio su visto bueno de conformidad. Calificación del servicio registrada. Estado: COMPLETADA.`,
+          icono: 'CheckCircle2',
+          color: '#115e59',
+          prioridad: 'Baja',
+          textoAccion: 'Ver solicitud',
+          emailSubject: `[UMI] Solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)} finalizada satisfactoriamente`,
+          emailHtml: emailSol.html,
+        });
       } catch (err: any) {
         this.notifLogger.warn(`[${final.idSolicitud}] notificación confirmación falló: ${err?.message ?? err}`);
       }
@@ -3003,6 +3603,17 @@ export class MantenimientoService implements OnModuleInit {
           obs,
           conteo: Number(final.conteoReaperturasConformidad ?? 1),
           slaHoras: REAPERTURA_NUEVO_SLA_HORAS,
+        });
+        await this.notificarEncargadosUMI(final, {
+          tipo: 'UMI_CONFORMIDAD_RECHAZADA_ENCARGADO',
+          titulo: `Conformidad rechazada — Solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)} reabierta`,
+          mensaje: `El solicitante rechazó la conformidad (Reapertura #${final.conteoReaperturasConformidad}). Motivo: ${obs}. Vuelve a EN_PROGRESO con nuevo SLA de ${REAPERTURA_NUEVO_SLA_HORAS}h.`,
+          icono: 'AlertTriangle',
+          color: '#b45309',
+          prioridad: 'Alta',
+          textoAccion: 'Ver solicitud reabierta',
+          emailSubject: `[UMI][URGENTE] Reapertura #${final.conteoReaperturasConformidad}: Solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
+          emailHtml: emailSol.html,
         });
       } catch (err: any) {
         this.notifLogger.warn(`[${final.idSolicitud}] notificación rechazo/reapertura falló: ${err?.message ?? err}`);
@@ -3813,6 +4424,297 @@ export class MantenimientoService implements OnModuleInit {
         calif: sol.calificacionServicio ?? '',
         costo: sol.costoFinalEfectivoCop ?? 0,
       });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return { buffer: Buffer.from(buffer), filename };
+  }
+
+  // ---- Fase 4 Req. #9: Exportar Consolidado Operacional Detallado en Excel (.xlsx) ----
+  async generarExcelConsolidadoOperacional(
+    filtros: FiltrosExportarOperacionalDto,
+    user: AuthUser | null | undefined,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const esBypass = usuarioEsBypassConsolidados(user);
+    const tienePermiso =
+      esBypass ||
+      userHasPermission('infraestructura.reportes.gestion', user) ||
+      userHasPermission('infraestructura.reporting.export_excel', user) ||
+      userHasPermission('infraestructura.reportes.consolidados', user) ||
+      userHasPermission('infraestructura.audit.trazabilidad', user) ||
+      userHasPermission('infraestructura.view_all', user);
+    if (!tienePermiso) {
+      requirePermission('infraestructura.reporting.export_excel', user);
+    }
+
+    const hoy = new Date();
+    const fechaYYYYMMDD =
+      hoy.getFullYear() +
+      '-' +
+      String(hoy.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(hoy.getDate()).padStart(2, '0');
+    const filename = `Consolidado_Operacional_Mantenimiento_ESAP_${fechaYYYYMMDD}.xlsx`;
+
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook
+      ? ExcelJSMod
+      : ExcelJSMod.default?.Workbook
+        ? ExcelJSMod.default
+        : (ExcelJSMod.default ?? ExcelJSMod);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = user?.email || 'UMI-ESAP';
+    workbook.created = hoy;
+    workbook.modified = hoy;
+    workbook.calcProperties.fullCalcOnLoad = true;
+
+    // Consulta de solicitudes con joins
+    const qb = this.mantenimientoRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.sede', 'sede')
+      .leftJoinAndSelect('s.espacio', 'espacio')
+      .leftJoinAndSelect('espacio.bloque', 'bloque')
+      .leftJoinAndSelect('s.valoraciones', 'valoraciones');
+
+    if (Array.isArray(filtros.ids) && filtros.ids.length > 0) {
+      qb.andWhere('s.idSolicitud IN (:...ids)', { ids: filtros.ids });
+    } else {
+      if (filtros.estado && filtros.estado !== 'TODOS') {
+        qb.andWhere('s.estado = :estado', { estado: filtros.estado });
+      }
+      if (filtros.prioridad && filtros.prioridad !== 'TODAS') {
+        qb.andWhere('s.prioridad = :prioridad', { prioridad: filtros.prioridad });
+      }
+      if (filtros.idCategoria) {
+        qb.andWhere('s.idCategoria = :idCat', { idCat: Number(filtros.idCategoria) });
+      }
+      if (filtros.idSede) {
+        qb.andWhere('s.sedeId = :idSede', { idSede: filtros.idSede });
+      }
+      if (filtros.areaResponsable) {
+        qb.andWhere('s.areaResponsableActual = :area', { area: filtros.areaResponsable });
+      }
+      if (filtros.codigoTecnico && filtros.codigoTecnico !== 'TODOS') {
+        if (filtros.codigoTecnico === 'SIN_ASIGNAR') {
+          qb.andWhere('(s.responsableAsignado IS NULL OR s.responsableAsignado = \'\')');
+        } else {
+          qb.andWhere('s.responsableAsignado ILIKE :tec', { tec: `%${filtros.codigoTecnico}%` });
+        }
+      }
+      if (filtros.fechaDesde) {
+        qb.andWhere('s.fechaRadicacion >= :fDesde', { fDesde: new Date(filtros.fechaDesde) });
+      }
+      if (filtros.fechaHasta) {
+        qb.andWhere('s.fechaRadicacion <= :fHasta', { fHasta: new Date(filtros.fechaHasta) });
+      }
+    }
+
+    qb.orderBy('s.fechaRadicacion', 'DESC').limit(10000);
+    const solicitudes = await qb.getMany();
+
+    const catMap: Record<number, { codigo: string; nombre: string }> = {
+      47: { codigo: 'CS_001', nombre: 'Cerrajería y Carpintería' },
+      48: { codigo: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
+      49: { codigo: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos' },
+      50: { codigo: 'CS_004', nombre: 'Plomería y Fontanería' },
+      51: { codigo: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores' },
+      52: { codigo: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería' },
+      53: { codigo: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes' },
+      54: { codigo: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos' },
+    };
+
+    // =========================================================================
+    // HOJA 1: Consolidado Operacional
+    // =========================================================================
+    const ws = workbook.addWorksheet('Consolidado_Operacional', {
+      properties: { tabColor: { argb: 'FF1E40AF' } },
+      views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+    });
+
+    ws.columns = [
+      { header: 'Consecutivo', key: 'consecutivo', width: 18 },
+      { header: 'Estado', key: 'estado', width: 22 },
+      { header: 'Prioridad', key: 'prioridad', width: 14 },
+      { header: 'Tipo Atención', key: 'tipoAtencion', width: 16 },
+      { header: 'Área Responsable', key: 'area', width: 18 },
+      { header: 'Clasificación (Req. #1)', key: 'clasificacion', width: 22 },
+      { header: 'Requiere Contratación (Req. #2)', key: 'contratacion', width: 28 },
+      { header: 'Bien Funcionario (Req. #5)', key: 'esBien', width: 24 },
+      { header: 'Custodio del Bien', key: 'custodio', width: 26 },
+      { header: 'Placa Inventario / Serial', key: 'placa', width: 22 },
+      { header: 'Código CS', key: 'codigoCS', width: 12 },
+      { header: 'Categoría de Servicio', key: 'categoria', width: 44 },
+      { header: 'Sede Territorial', key: 'sede', width: 28 },
+      { header: 'Bloque / Espacio', key: 'ubicacion', width: 30 },
+      { header: 'Descripción Solicitud', key: 'descripcion', width: 50 },
+      { header: 'Solicitante Nombre', key: 'solicitanteNombre', width: 28 },
+      { header: 'Solicitante Email', key: 'solicitanteEmail', width: 30 },
+      { header: 'Fecha Radicación', key: 'fechaRad', width: 20 },
+      { header: 'Técnico Responsable', key: 'tecnico', width: 34 },
+      { header: 'Fecha Límite SLA', key: 'fechaLimite', width: 20 },
+      { header: 'Estado Cumplimiento SLA', key: 'estadoSla', width: 24 },
+      { header: 'Días Extensión Insumos', key: 'diasExt', width: 20 },
+      { header: 'Estado Valoración', key: 'estadoVal', width: 20 },
+      { header: 'Diagnóstico Técnico', key: 'diagnostico', width: 45 },
+      { header: 'Requiere VoBo (Req. #3)', key: 'requiereVoBo', width: 22 },
+      { header: 'Decisión VoBo', key: 'voboDecision', width: 18 },
+      { header: 'Observaciones VoBo', key: 'voboObs', width: 35 },
+      { header: 'Costo Insumos Estimado (COP)', key: 'costoEstimado', width: 26 },
+      { header: 'Fecha Cierre Técnico', key: 'fechaCierre', width: 20 },
+      { header: 'Costo Final Efectivo (COP)', key: 'costoFinal', width: 24 },
+      { header: 'Calificación (1-5)', key: 'calificacion', width: 16 },
+      { header: 'Observaciones Solicitante', key: 'obsConformidad', width: 40 },
+      { header: 'Resumen Traza / Acciones', key: 'trazaResumen', width: 60 },
+    ];
+
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+    ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(1).height = 28;
+
+    const ahoraMs = Date.now();
+
+    for (const sol of solicitudes) {
+      const idCat = sol.idCategoria ?? 0;
+      const catInfo = catMap[idCat] || {
+        codigo: `CS_${String(idCat).padStart(3, '0')}`,
+        nombre: `Categoría ${idCat}`,
+      };
+      const blq = (sol.espacio as any)?.bloque?.codigo || (sol.espacio as any)?.bloque?.nombre || '';
+      const esp = sol.espacio?.nombre || (sol.espacio as any)?.codigo || '';
+      const pisoSalon = [sol.piso, sol.salon].filter(Boolean).join(' - ');
+      const ubicacionTxt = [blq, esp, pisoSalon, sol.ubicacionDetalle].filter(Boolean).join(' · ');
+
+      // SLA
+      let estadoSlaTxt = 'N/A';
+      if (sol.fechaLimiteAtencion) {
+        const limMs = new Date(sol.fechaLimiteAtencion).getTime();
+        if (['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION'].includes(sol.estado)) {
+          const finMs = sol.fechaCierreTecnico ? new Date(sol.fechaCierreTecnico).getTime() : ahoraMs;
+          estadoSlaTxt = finMs <= limMs ? 'CUMPLIDO EN SLA' : 'EXCEDIDO DE SLA';
+        } else {
+          if (ahoraMs > limMs) estadoSlaTxt = 'VENCIDO';
+          else if (limMs - ahoraMs < 24 * 3600 * 1000) estadoSlaTxt = 'ALERTA (Próximo a vencer)';
+          else estadoSlaTxt = 'EN TIEMPO';
+        }
+      }
+
+      // VoBo
+      const voboDecTxt =
+        sol.voboAprobado === true
+          ? 'APROBADO'
+          : sol.voboAprobado === false
+            ? 'OBSERVADO'
+            : sol.requiereVoBo
+              ? 'PENDIENTE'
+              : 'NO APLICA';
+
+      // Traza resumen
+      const trazaStr = Array.isArray(sol.asignaciones)
+        ? sol.asignaciones
+            .map((a: any) => {
+              const f = a.fecha ? this.formatearFechaReporteLocal(a.fecha) : '';
+              return `[${f}] ${a.accion || ''}: ${a.motivo || a.observaciones || ''}`.trim();
+            })
+            .filter(Boolean)
+            .join(' | ')
+        : '';
+
+      const ultimaVal = Array.isArray(sol.valoraciones) && sol.valoraciones.length > 0
+        ? sol.valoraciones[sol.valoraciones.length - 1]
+        : null;
+      const diagnosticoTxt = (ultimaVal?.diagnostico || sol.trabajoRealizado || '—').trim();
+
+      const row = ws.addRow({
+        consecutivo: sol.consecutivo || sol.idSolicitud,
+        estado: sol.estado || 'RECIBIDA',
+        prioridad: sol.prioridad || 'MEDIA',
+        tipoAtencion: sol.tipoAtencion || 'FISICA',
+        area: sol.areaResponsableActual || 'UMI',
+        clasificacion: sol.clasificacionMantenimiento || 'MENOR',
+        contratacion: sol.requiereContratacion
+          ? 'SÍ (Requiere Contratación Externa)'
+          : 'No (Capacidad Interna)',
+        esBien: sol.esBienAsignadoFuncionario ? 'SÍ (Bien Custodio)' : 'No (Común/General)',
+        custodio: sol.nombreFuncionarioBienAsignado || '—',
+        placa: sol.placaInventarioBien || '—',
+        codigoCS: catInfo.codigo,
+        categoria: catInfo.nombre,
+        sede: (sol.sede as any)?.nombre || '—',
+        ubicacion: ubicacionTxt || '—',
+        descripcion: sol.descripcion || '',
+        solicitanteNombre: sol.solicitanteNombre || '—',
+        solicitanteEmail: sol.solicitanteEmail || sol.usuarioSolicitanteEmail || '—',
+        fechaRad: this.formatearFechaReporteLocal(sol.fechaRadicacion),
+        tecnico: sol.responsableAsignado || 'Sin asignar',
+        fechaLimite: this.formatearFechaReporteLocal(sol.fechaLimiteAtencion),
+        estadoSla: estadoSlaTxt,
+        diasExt: sol.diasExtendidosPorInsumos || 0,
+        estadoVal: sol.estadoValoracion || 'PENDIENTE',
+        diagnostico: diagnosticoTxt,
+        requiereVoBo: sol.requiereVoBo ? 'SÍ' : 'No',
+        voboDecision: voboDecTxt,
+        voboObs: sol.voboObservaciones || '',
+        costoEstimado: Number(sol.totalEstimadoInsumosCop || 0),
+        fechaCierre: this.formatearFechaReporteLocal(sol.fechaCierreTecnico),
+        costoFinal: Number(sol.costoFinalEfectivoCop || 0),
+        calificacion: sol.calificacionServicio ? `${sol.calificacionServicio} / 5` : 'Pendiente',
+        obsConformidad: sol.observacionesConformidad || '',
+        trazaResumen: trazaStr,
+      });
+
+      row.getCell('costoEstimado').numFmt = '"$"#,##0';
+      row.getCell('costoFinal').numFmt = '"$"#,##0';
+    }
+
+    // =========================================================================
+    // HOJA 2: Traza Detallada de Eventos
+    // =========================================================================
+    const wsTraza = workbook.addWorksheet('Traza_Detallada_Eventos', {
+      properties: { tabColor: { argb: 'FF059669' } },
+      views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+    });
+
+    wsTraza.columns = [
+      { header: 'Consecutivo Solicitud', key: 'consecutivo', width: 22 },
+      { header: 'Fecha y Hora Evento', key: 'fecha', width: 22 },
+      { header: 'Acción Ejecutada', key: 'accion', width: 34 },
+      { header: 'Técnico / Responsable', key: 'tecnico', width: 34 },
+      { header: 'Motivo / Detalle', key: 'motivo', width: 50 },
+      { header: 'Observaciones', key: 'observaciones', width: 45 },
+      { header: 'Registrado Por', key: 'usuario', width: 30 },
+    ];
+
+    wsTraza.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    wsTraza.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+    wsTraza.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    wsTraza.getRow(1).height = 26;
+
+    for (const sol of solicitudes) {
+      const consecutivo = sol.consecutivo || sol.idSolicitud;
+      if (Array.isArray(sol.asignaciones) && sol.asignaciones.length > 0) {
+        for (const ev of sol.asignaciones) {
+          wsTraza.addRow({
+            consecutivo,
+            fecha: ev.fecha ? this.formatearFechaReporteLocal(ev.fecha) : '',
+            accion: ev.accion || 'ACCION',
+            tecnico: ev.tecnicoNombreDisplay || ev.tecnicoCodigo || '—',
+            motivo: ev.motivo || '—',
+            observaciones: ev.observaciones || '—',
+            usuario: ev.user?.email || ev.user?.nombre || 'Sistema',
+          });
+        }
+      } else {
+        wsTraza.addRow({
+          consecutivo,
+          fecha: this.formatearFechaReporteLocal(sol.fechaRadicacion),
+          accion: 'RADICACION_INICIAL',
+          tecnico: '—',
+          motivo: 'Solicitud radicada en plataforma',
+          observaciones: 'Sin eventos adicionales registrados',
+          usuario: sol.solicitanteEmail || 'Solicitante',
+        });
+      }
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
