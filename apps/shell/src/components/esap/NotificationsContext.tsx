@@ -189,10 +189,20 @@ export function NotificationsProvider({ children, currentModule }: Notifications
       const result = await notificationsService.getUserNotifications(user.id, { limit: 50 });
       const list = Array.isArray(result) ? result : (result.data || []);
       const mapped = list.map(mapApiNotification);
+      if (typeof window !== 'undefined') {
+        console.log(`[NOTIFICACIONES_DEV] 🔔 ${mapped.length} notificaciones recibidas para usuario ${user.id} (${(user as any).email || (user as any).nombre || 'sin email'}):`, {
+          total: mapped.length,
+          noLeidas: mapped.filter(n => !n.leida).length,
+          lista: mapped.map(n => ({ id: n.id_notificacion, titulo: n.titulo, fecha: n.fecha_creacion, leida: n.leida, categoria: n.categoria }))
+        });
+      }
       setNotifications(mapped);
       consecutiveFailures.current = 0; // Reiniciar contador de fallos si tiene éxito
       nextRetryAt.current=0;
-    } catch {
+    } catch (err) {
+      if (typeof window !== 'undefined') {
+        console.warn(`[NOTIFICACIONES_DEV] ⚠️ Error al obtener notificaciones para usuario ${user?.id}:`, err);
+      }
       consecutiveFailures.current += 1;
       nextRetryAt.current=Date.now()+Math.min(300000,30000*2**Math.min(consecutiveFailures.current-1,4));
       // Silencioso cuando el servicio no está disponible
@@ -216,14 +226,21 @@ export function NotificationsProvider({ children, currentModule }: Notifications
     tryLoad();
   }, [loadNotifications]);
 
-  // Polling cada 30 segundos para actualizar el badge
+  // Polling cada 30 segundos para actualizar el badge y suscripción a eventos
   useEffect(() => {
     if (!REMOTE_NOTIFICATIONS_ENABLED) return;
 
     const interval = setInterval(() => {void loadNotifications();}, 30_000);
     const resume=()=>{if(!document.hidden){nextRetryAt.current=0;void loadNotifications();}};
-    window.addEventListener('online',resume);document.addEventListener('visibilitychange',resume);
-    return () => {clearInterval(interval);window.removeEventListener('online',resume);document.removeEventListener('visibilitychange',resume);};
+    window.addEventListener('online',resume);
+    document.addEventListener('visibilitychange',resume);
+    window.addEventListener('esap:refresh-notifications', resume);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online',resume);
+      document.removeEventListener('visibilitychange',resume);
+      window.removeEventListener('esap:refresh-notifications', resume);
+    };
   }, [loadNotifications]);
 
   // Marcar como leída

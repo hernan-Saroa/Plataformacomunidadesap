@@ -18,8 +18,12 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, resolve } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { readFile } from 'fs/promises';
+import { DocumentosService } from '../documentos/documentos.service';
+import { TipoDocumento } from '../documentos/entities/documento.entity';
+import { AdjuntoCorreo } from '../notificaciones/notificaciones.service';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { PlanesMejoramientoService } from '../planes-mejoramiento/planes-mejoramiento.service';
@@ -49,6 +53,7 @@ export class AuditoriasController {
     private readonly hallazgosService: HallazgosService,
     private readonly planesMejoramientoService: PlanesMejoramientoService,
     private readonly jwtService: JwtService,
+    private readonly documentosService: DocumentosService,
   ) {}
 
   /**
@@ -836,9 +841,17 @@ export class AuditoriasController {
   @Post(':id/informe-preliminar/generar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  async generarInformePreliminar(@Param('id') id: string, @Req() req: any) {
+  async generarInformePreliminar(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body() body?: { documentoInformeId?: string },
+  ) {
     const user = req.user || this.extractUserFromToken(req);
-    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId);
+    const adjuntos = await this.adjuntoInformePreliminar(id, body?.documentoInformeId);
+    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId, {
+      adjuntos,
+      urlPlataforma: this.origenPeticion(req),
+    });
 
     // ✅ Actualizar fecha de inicio de comunicación en la auditoría a la fecha de hoy
     try {
@@ -859,8 +872,44 @@ export class AuditoriasController {
     return {
       generado: true,
       hallazgosNotificados: count,
+      informeAdjunto: adjuntos.length > 0,
       mensaje,
     };
+  }
+
+  /**
+   * PDF del informe preliminar que el navegador subió antes de generar (EFDS-2350), listo para
+   * adjuntarlo al correo del área auditada. Si no llegó o no se puede leer, el correo sale sin adjunto.
+   */
+  private async adjuntoInformePreliminar(auditoriaId: string, documentoId?: string): Promise<AdjuntoCorreo[]> {
+    if (!documentoId) return [];
+    try {
+      const doc = await this.documentosService.findOne(documentoId);
+      if (doc.auditoriaId !== auditoriaId || doc.tipoDocumento !== TipoDocumento.INFORME_PRELIMINAR || !doc.rutaArchivo) {
+        console.warn(`[AuditoriasController] Documento ${documentoId} no es el informe preliminar de la auditoría ${auditoriaId}`);
+        return [];
+      }
+      const contenido = await readFile(resolve(doc.rutaArchivo));
+      return [{
+        filename: /\.pdf$/i.test(doc.nombre || '') ? doc.nombre : doc.nombreArchivo || `${doc.nombre}.pdf`,
+        contentBase64: contenido.toString('base64'),
+        contentType: doc.tipoMime || 'application/pdf',
+      }];
+    } catch (err: any) {
+      console.error('[AuditoriasController] No se pudo leer el informe preliminar para adjuntarlo:', err.message);
+      return [];
+    }
+  }
+
+  /** Dirección pública desde la que se usa la plataforma (para el botón del correo). */
+  private origenPeticion(req: any): string | undefined {
+    const origen = req?.headers?.origin || req?.headers?.referer;
+    if (!origen) return undefined;
+    try {
+      return new URL(String(origen)).origin;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

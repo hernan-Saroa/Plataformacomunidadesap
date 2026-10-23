@@ -637,8 +637,15 @@ export class PlanesMejoramientoController {
       cerradoPorNombre?: string;
       observacionesCierre?: string;
     },
+    @Req() req?: any,
   ) {
-    return this.planesMejoramientoService.cerrarPlan(planId, body);
+    // Quien cierra es el usuario de la sesión, no lo que mande el navegador
+    const usuario = req?.user;
+    return this.planesMejoramientoService.cerrarPlan(planId, {
+      ...body,
+      cerradoPorId: usuario?.userId ? String(usuario.userId) : body.cerradoPorId,
+      cerradoPorNombre: body.cerradoPorNombre || usuario?.username || usuario?.email,
+    });
   }
 
   /**

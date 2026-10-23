@@ -121,6 +121,45 @@ export class SolicitudMantenimiento {
   @Column({ type: 'text', nullable: true, name: 'evidencia_inicial_url' })
   evidenciaInicialUrl?: string;
 
+  // ===== EFDS-1735..1739 Fase 3: Reglas de Negocio =====
+  @Column({
+    type: 'varchar',
+    length: 20,
+    name: 'clasificacion_mantenimiento',
+    default: 'MENOR',
+  })
+  clasificacionMantenimiento: 'MENOR' | 'MAYOR';
+
+  @Column({ type: 'boolean', name: 'requiere_contratacion', default: false })
+  requiereContratacion: boolean;
+
+  @Column({ type: 'boolean', name: 'es_bien_asignado_funcionario', default: false })
+  esBienAsignadoFuncionario: boolean;
+
+  @Column({ type: 'varchar', length: 200, nullable: true, name: 'nombre_funcionario_bien_asignado' })
+  nombreFuncionarioBienAsignado?: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'placa_inventario_bien' })
+  placaInventarioBien?: string | null;
+
+  @Column({ type: 'text', nullable: true, name: 'soporte_bien_asignado_url' })
+  soporteBienAsignadoUrl?: string | null;
+
+  @Column({ type: 'boolean', name: 'requiere_vobo', default: false })
+  requiereVoBo: boolean;
+
+  @Column({ type: 'boolean', nullable: true, name: 'vobo_aprobado' })
+  voboAprobado?: boolean | null;
+
+  @Column({ type: 'text', nullable: true, name: 'vobo_observaciones' })
+  voboObservaciones?: string | null;
+
+  @Column({ type: 'uuid', nullable: true, name: 'vobo_usuario_id' })
+  voboUsuarioId?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'vobo_fecha' })
+  voboFecha?: Date | null;
+
   // ----- EFDS-1735 RF-INF-006 Valoración en Campo -----
   @Column({
     type: 'varchar',
