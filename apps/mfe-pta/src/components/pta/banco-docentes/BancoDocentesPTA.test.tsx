@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BancoDocentesPTA } from './BancoDocentesPTA';
-import { getBancoDocentes } from '../../../services/api/ptaApi';
+import { getBancoDocentes, previewRundDeletion, confirmRundDeletion } from '../../../services/api/ptaApi';
 
 vi.mock('../../../services/api/ptaApi', () => ({
   getBancoDocentes: vi.fn(),
   getBancoDocenteStats: vi.fn().mockResolvedValue({ success: true, data: { total: 1 } }),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  previewRundDeletion: vi.fn(), confirmRundDeletion: vi.fn(),
 }));
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: {
   get: vi.fn().mockResolvedValue([{ codigo: '2026-2', estado: 'en_curso' }]),
@@ -21,7 +22,7 @@ vi.mock('./BancoDocentesBulkUpload', () => ({ BancoDocentesBulkUpload: () => nul
 vi.mock('./TableroInvitacionesRUND', () => ({ TableroInvitacionesRUND: () => null }));
 vi.mock('./RundRegistrationHistory', () => ({ RundRegistrationHistory: ({ periodoCarga }: any) => <div>Historial del periodo {periodoCarga}</div> }));
 afterEach(() => { cleanup(); localStorage.removeItem('esap_user'); sessionStorage.removeItem('esap_user'); });
-beforeEach(() => { grantedPermissions = null; });
+beforeEach(() => { vi.clearAllMocks(); grantedPermissions = null; });
 
 it('abre trazabilidad con el periodo del encabezado y conserva el regreso al listado', async () => {
   grantedPermissions = ['banco-docentes.rund.carga'];
@@ -51,6 +52,33 @@ it.each([
   await screen.findByText('DOCENTE DE PRUEBA');
   expect(Boolean(screen.queryByRole('button', { name: 'Crear Docente (Canal 2)' }))).toBe(create);
   expect(Boolean(screen.queryByTitle('Editar docente'))).toBe(edit);
+  expect(Boolean(screen.queryByTitle('Eliminar de RUND'))).toBe(permissions.includes('banco-docentes.rund.carga') || permissions.includes('banco-docentes.rund.manage'));
+});
+
+it('selecciona todos los resultados del periodo, permite excluir filas y cancelar sin eliminar', async () => {
+  grantedPermissions = ['banco-docentes.rund.carga'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [
+    { id: 'docente-1', nombre_completo: 'ANA PRUEBA' }, { id: 'docente-2', nombre_completo: 'LUIS PRUEBA' },
+  ], total: 100, pages: 2 } } as any);
+  vi.mocked(previewRundDeletion).mockResolvedValue({ ids: ['docente-2'], fingerprint: 'huella', total: 1,
+    registros: [{ id: 'docente-2', nombre_completo: 'LUIS PRUEBA', documento_identidad: 'TEST-2', periodo_carga: '2026-2' }] });
+  render(<BancoDocentesPTA />);
+  await screen.findByText('ANA PRUEBA');
+  await screen.findByRole('button', { name: '2026-2', exact: true });
+  await waitFor(() => expect(getBancoDocentes).toHaveBeenCalledWith(expect.objectContaining({ periodoCarga: '2026-2' })));
+  await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Seleccionar docentes de esta página' }) as HTMLInputElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar docentes de esta página' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Seleccionar todos los resultados (100)' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar a ANA PRUEBA' }));
+  expect(screen.getByRole('button', { name: 'Eliminar seleccionados (99)' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Eliminar seleccionados (99)' }));
+  await screen.findByRole('dialog');
+  await waitFor(() => expect(previewRundDeletion).toHaveBeenCalledWith(expect.objectContaining({
+    todosFiltrados: true, excluirIds: ['docente-1'], filters: expect.objectContaining({ periodoCarga: '2026-2' }),
+  })));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(confirmRundDeletion).not.toHaveBeenCalled();
 });
 
 it.each(['localStorage', 'sessionStorage'])('ignora un Super Admin anterior guardado en %s', async storage => {

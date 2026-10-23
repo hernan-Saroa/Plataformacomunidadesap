@@ -841,6 +841,21 @@ export class BancoDocentesController {
     return { success: true, data: result };
   }
 
+  @Post('eliminacion/previsualizar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.CARGADOR, RUND_PERMISSIONS.MANAGE)
+  async previewRegistroDeletion(@Body() body: any) {
+    return { success: true, data: await this.service.previewRegistroDeletion(body) };
+  }
+
+  @Post('eliminacion/confirmar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.CARGADOR, RUND_PERMISSIONS.MANAGE)
+  async eliminarRegistros(@Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.eliminarRegistros(body, actor.actorId, actor.ip) };
+  }
+
   /** BR-044 — Obtener estados de aprobación por bloque */
   @Get(':id/bloques')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
