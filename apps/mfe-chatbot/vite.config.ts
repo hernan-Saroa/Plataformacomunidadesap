@@ -5,6 +5,12 @@ import path from 'path';
 import { cspNonceBootstrap, getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const appDir = 'mfe-chatbot';
+const gatewayProxy = {
+  target: process.env.ESAP_API_GATEWAY_URL || 'http://127.0.0.1:4000',
+  changeOrigin: true,
+  ws: false,
+  rewrite: (url: string) => url.replace(/^\/services(?=\/|$)/, ''),
+};
 
 export default defineConfig({
   base: getBuildBase(appDir),
@@ -32,7 +38,9 @@ export default defineConfig({
   },
   server: {
     port: 3118,
+    proxy: { '^/services(?:/|$)': gatewayProxy },
   },
+  preview: { proxy: { '^/services(?:/|$)': gatewayProxy } },
   build: {
     modulePreload: false,
     target: 'esnext',

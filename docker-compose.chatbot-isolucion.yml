@@ -1,0 +1,6 @@
+# Superposición opcional, solo para el chatbot. No reinicia otros servicios.
+# docker compose -f docker-compose.dev.yml -f docker-compose.chatbot-isolucion.yml up -d --build --no-deps chatbot-service
+services:
+  chatbot-service:
+    env_file:
+      - ./backend/chatbot-service/.env.local

@@ -1,0 +1,33 @@
+.esap-chatbot-module { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.esap-chatbot-module__workspace { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.esap-chatbot-module__history { width: 320px; min-width: 0; min-height: 0; }
+.esap-chatbot-module--compact .esap-chatbot-module__history { width: 100%; }
+.esap-chatbot-module__toolbar {
+  display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: space-between;
+  gap: 4px; padding: 4px 8px; background: white; border-bottom: 1px solid #e2e8f0;
+}
+.esap-chatbot-module__toolbar button {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  min-height: 44px; padding: 6px 8px; border-radius: 8px; color: #1d4ed8; font-size: 12px; cursor: pointer;
+}
+.esap-chatbot-module__toolbar button:disabled { opacity: .5; cursor: default; }
+.esap-chatbot-module__toolbar button:hover:not(:disabled) { background: #eff6ff; }
+.esap-chatbot-module__messages { min-height: 0; overscroll-behavior: contain; }
+.esap-chatbot-module__notice { flex-shrink: 0; max-height: 35%; overflow-y: auto; }
+.esap-chatbot-module__messages > div { min-width: 0; }
+.esap-chatbot-module__bubble { min-width: 0; overflow-wrap: anywhere; }
+.esap-chatbot-module__composer { flex-shrink: 0; }
+.esap-chatbot-module__composer input { min-width: 0; }
+.esap-chatbot-module button:focus-visible { outline: 3px solid #2563eb; outline-offset: -3px; }
+.esap-chatbot-module--widget .esap-chatbot-module__messages { padding: 12px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer { padding: 8px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer form { gap: 8px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer input { padding: 10px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer button { flex-shrink: 0; padding: 10px; }
+.esap-chatbot-public { min-height: 0; }
+.esap-chatbot-public__intro, .esap-chatbot-public__error { flex-shrink: 0; max-height: 30%; overflow-y: auto; }
+.esap-chatbot-public__messages { min-height: 0; overflow-wrap: anywhere; overscroll-behavior: contain; }
+.esap-chatbot-public__composer { flex-shrink: 0; }
+@media (max-width: 640px) {
+  .esap-chatbot-module--widget input, .esap-chatbot-public input { font-size: 16px; }
+}
