@@ -378,6 +378,8 @@ export interface FilaProgramaAnual {
   semanasExcluidas?: string[];
   /** Columna "Unidad Auditable" (EFDS-2316). Las versiones viejas no la traen. */
   unidadesAuditables?: string[];
+  /** Dependencias auditadas, debajo del nombre en la columna A (EFDS-2367). */
+  dependenciasAuditadas?: string[];
 }
 
 export interface CambioProgramaAnual {
