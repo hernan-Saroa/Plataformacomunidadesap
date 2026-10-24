@@ -108,10 +108,13 @@ describe('EFDS-2344 / EFDS-2343 :: árbol de programación y calendario del doce
     });
     expect(g.oferta).toMatchObject({ idOfertaCetap: ids.oferta, cetap: { codigo: 'CET-0135' } });
     expect(g.franjas.map((f: any) => [f.diaSemana, f.idDocente])).toEqual([['LUNES', ids.persona], ['MIERCOLES', null]]);
-    // Un docente en 1 de 2 días: la mitad de las 64 h (regla de reparto vigente).
+    // EFDS-2347: horas de las sesiones reales. Ciclo 2096-02-02 a 2096-05-24: 16 lunes × 2 h = 32 h,
+    // la mitad del grupo (16 miércoles más). 2096 no tiene festivos cargados: se avisa.
     expect(g.docentes).toEqual([{
       idDocente: ids.persona, documento: DOCUMENTO, nombre: expect.any(String),
-      vinculacion: { tipo: 'catedra', texto: 'Cátedra' }, fraccion: 0.5, horas: 32,
+      vinculacion: { tipo: 'catedra', texto: 'Cátedra' }, fraccion: 0.5, horas: 32, horasPlan: 64, base: 'sesiones',
+      descontadas: { festivos: 0, recesos: 0 },
+      avisos: ['No hay festivos cargados para 2096: las horas pueden estar sobreestimadas.'],
     }]);
     expect(g.horas).toMatchObject({ requeridas: 64, semanas: 16, programadas: 64, excede: false });
     expect(a.resumen).toEqual({ programas: 1, asignaturas: 1, grupos: 1, franjas: 2, franjasSinDocente: 1 });
@@ -139,8 +142,8 @@ describe('EFDS-2344 / EFDS-2343 :: árbol de programación y calendario del doce
     expect(c.franjas.map((f: any) => [f.diaSemana, f.reservada])).toEqual([['LUNES', false], ['MARTES', true]]);
     expect(c.franjas[0]).toMatchObject({ idGrupo: ids.grupoPre, codigoAsignatura: ids.codigoPre, nivel: 'pregrado', estado: 'TOMADA' });
     expect(c.franjas[1]).toMatchObject({ idGrupo: null, asignatura: null, aulaCodigo: null, horaInicio: '08:00' });
-    // 32 h (mitad del grupo de pregrado) + 64 h (todo el de posgrado); el tope de cátedra es 304.
-    expect(c.horas).toEqual({ total: 96, tope: 304 });
+    // 32 h (16 lunes de pregrado) + 32 h (16 martes de posgrado), con sesiones reales; el tope de cátedra es 304.
+    expect(c.horas).toEqual({ total: 64, tope: 304 });
     // El desglose por grupo solo trae los visibles: el grupo de posgrado no se nombra.
     expect(c.horasPorGrupo).toEqual({ [ids.grupoPre]: 32 });
   });
@@ -154,7 +157,7 @@ describe('EFDS-2344 / EFDS-2343 :: árbol de programación y calendario del doce
 
   caso('buscador: por cédula, y sin texto los que tienen franjas en el periodo, con sus horas', async () => {
     const porCedula = await vista().buscarDocentes(ids.periodo, DOCUMENTO.slice(0, 6), null);
-    expect(porCedula.find((d: any) => d.idDocente === ids.persona)).toMatchObject({ franjas: 2, horas: 96 });
+    expect(porCedula.find((d: any) => d.idDocente === ids.persona)).toMatchObject({ franjas: 2, horas: 64 });
     const conFranjas = await vista().buscarDocentes(ids.periodo, undefined, null);
     expect(conFranjas.map((d: any) => d.idDocente)).toEqual([ids.persona]);
   });

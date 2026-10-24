@@ -814,3 +814,28 @@ Reglas:
 - `POST /programacion-academica/api/v1/concertacion/enviar` `{ idPeriodo, documento }` → crea o reenvía las concertaciones del docente (una por nivel con docencia `TOMADA` en el periodo y en los niveles que el usuario asigna). Mismas validaciones de antes: corte del periodo, ciclo del grupo, territorial por la oferta CETAP.
 - `GET /programacion-academica/api/v1/concertacion/programador?periodo=<id>` → concertaciones de los niveles que el usuario asigna, con estado, comentario de devolución y novedad.
 - Revisor y aprobador, sin cambios de ruta: `GET concertacion/bandeja`, `POST concertacion/:id/revisar` `{ tipo, codigo }`, `POST concertacion/:id/aprobar` `{ codigo }` (ahora deja `POR_ACEPTAR`), `POST concertacion/:id/devolver` `{ comentario }` (ahora vuelve al programador; las franjas siguen `TOMADA` con su docente).
+
+## 24. EFDS-2347: festivos, recesos y horas de las sesiones reales (24 de octubre)
+
+Decisiones 12 y 13: las horas de un festivo **se descuentan** (no llegan al acumulado ni al PTA); los recesos son los mismos para todos, por periodo; los fines de semana cuentan.
+
+### 24.1 · El cálculo único, ahora por sesiones
+
+- Regla en SQL: `"academic-schedule".sesiones_de_franja(id_franja)` (migración 062) → `sesiones_ciclo, festivos, recesos, sesiones, horas_sesion, horas, anios_sin_festivos`. El ciclo es el del grupo o, si no tiene, el de su periodo.
+- Horas del docente en un grupo = **Σ horas reales de sus franjas × factor de vinculación** del contrato. Es lo que va al acumulado, al tope, a los candidatos, a la concertación y, al aceptar, al PTA.
+- Las horas del plan (catálogo × factor) quedan como **referencia** (`horasPlan`). Se usan en lugar de las sesiones solo si el grupo no tiene ciclo o la asignatura tiene horas fijas en el catálogo; en ese caso se reparten con la regla por días y se avisa.
+- Festivos cargados: 2026 y 2027 (18 por año). Si el ciclo cae en un año sin festivos, el cálculo lo **avisa**: «No hay festivos cargados para 2031: las horas pueden estar sobreestimadas.»
+
+### 24.2 · Lo que cambia en las respuestas (aditivo)
+
+- Árbol (`GET /programacion/arbol`), cada `grupos[].docentes[]` trae además: `horasPlan`, `base` (`'sesiones' | 'plan'`), `descontadas: { festivos, recesos }` (sesiones de ese docente que no cuentan) y `avisos: string[]`. `horas` y `fraccion` salen ahora de las sesiones.
+- Calendario y buscador: `horas` con el mismo cálculo.
+- `grupos[].horas` (programadas vs requeridas del catálogo) **no cambia**: es la validación de planeación contra el catálogo (Circular 003), no las horas del docente.
+
+### 24.3 · Festivos y recesos
+
+- `GET /programacion-academica/api/v1/periodos/festivos?anio=2026` → `{ anio, cargados, festivos: [{ fecha, nombre }] }`.
+- `GET /programacion-academica/api/v1/periodos/:idPeriodo/recesos` → `[{ idReceso, fechaInicio, fechaFin, motivo, creadoPor }]`.
+- `POST /programacion-academica/api/v1/periodos/:idPeriodo/recesos` `{ fechaInicio, fechaFin, motivo }` — solo la administración del módulo (`programacion-academica.all`); dentro de las fechas del periodo; periodo cerrado → rechazado por el guard.
+- `DELETE /programacion-academica/api/v1/periodos/:idPeriodo/recesos/:idReceso` — igual.
+- `:idPeriodo` acepta el id de plataforma o el UUID legado.

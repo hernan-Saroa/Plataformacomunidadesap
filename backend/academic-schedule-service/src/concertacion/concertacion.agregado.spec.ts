@@ -67,7 +67,9 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
     d.transaction = (cb: (m: any) => Promise<any>) => cb(d); // ya estamos dentro de BEGIN
     return d;
   };
-  const contrato: any = { calcularImpacto: async () => ({ horasImpacto: 96 }) };
+  // Plan de 96 h y factor 1: las horas son las de las sesiones reales del ciclo (EFDS-2347).
+  // Ciclo del grupo 2049-02-03 a 2049-05-30: 16 lunes + 17 jueves = 33 sesiones × 2 h = 66 h.
+  const contrato: any = { calcularImpacto: async () => ({ horasImpacto: 96, factorVinculacion: 1 }) };
   const servicio = () => new ConcertacionService(ds(), new DocenciaService(ds(), contrato), {
     registrarDecision: async (d: any) => { entregas.push(d); return { estadoAplicacion: 'aplicada' }; },
     ptaHabilitada: async () => { if (ptaEstado === 'caido') throw new Error('PTA sin respuesta'); return ptaEstado; },
@@ -161,7 +163,7 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
   caso('flujo completo: envía el programador, revisan y aprueba (firma) por dentro, acepta el docente (firma) y va al PTA', async (f) => {
     const svc = servicio();
     const [c] = await svc.enviar(f.programador, f.docente.documento, f.periodo, null);
-    expect(c).toMatchObject({ nivel: 'pregrado', estado: 'ENVIADA', horas: 96, documento: f.docente.documento });
+    expect(c).toMatchObject({ nivel: 'pregrado', estado: 'ENVIADA', horas: 66, documento: f.docente.documento });
     // Lo interno no se le muestra al docente.
     expect(await svc.delDocente(f.docente.idPerson, f.periodo)).toEqual([]);
 
@@ -187,12 +189,27 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
     expect(final.firmas[2].contexto).toBe(`prog-docencia:${c.idConcertacion}:${final.huella}:docente`);
 
     expect(entregas).toHaveLength(1);
-    expect(entregas[0]).toMatchObject({ idConcertacion: c.idConcertacion, nivel: 'pregrado', horas: 96, huella: final.huella });
+    expect(entregas[0]).toMatchObject({ idConcertacion: c.idConcertacion, nivel: 'pregrado', horas: 66, huella: final.huella });
     expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['revisor', 'aprobador', 'docente']);
-    expect(entregas[0].asignaturas[0]).toMatchObject({ fechaInicio: '2049-02-03', fechaFin: '2049-05-30', horas: 96 });
+    expect(entregas[0].asignaturas[0]).toMatchObject({ fechaInicio: '2049-02-03', fechaFin: '2049-05-30', horas: 66 });
     // La territorial sale de la oferta CETAP del grupo: Sede Central → auth.seccionales 900001 (SC).
     expect(entregas[0].asignaturas[0].territorialId).toBe('900001');
     expect(final.aplicacionPta).toBe('aplicada');
+  });
+
+  caso('EFDS-2347: dos lunes festivos bajan las horas y eso es lo que llega al PTA', async (f) => {
+    // Festivos de la prueba (en la transacción): dos lunes del ciclo del grupo.
+    await client!.query(
+      `INSERT INTO "${S}".festivo (fecha, nombre, fuente) VALUES ('2049-02-15', 'Festivo QA', 'prueba'), ('2049-03-15', 'Festivo QA', 'prueba')`);
+    const svc = servicio();
+    const [c] = await svc.enviar(f.programador, f.docente.documento, f.periodo, null);
+    // 14 lunes + 17 jueves = 31 sesiones × 2 h.
+    expect(c.horas).toBe(62);
+    await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, OTP);
+    await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, OTP);
+    await svc.aceptar(c.idConcertacion, { idPerson: f.docente.idPerson, idUser: f.docente.idUser }, OTP, null);
+    expect(entregas[0]).toMatchObject({ horas: 62 });
+    expect(entregas[0].asignaturas[0].horas).toBe(62);
   });
 
   caso('novedad: tipo y justificación obligatorios; vuelve al programador, que reenvía y la novedad queda atendida', async (f) => {
@@ -250,7 +267,7 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
 
     expect((await asignaciones().asignar({ idGrupo: f.grupo, documento: f.otroDocente.documento, franjas: [f.franjas[1]] })).asignado).toBe(true);
     const [r] = await svc.enviar(f.programador, f.docente.documento, f.periodo, null);
-    expect(r).toMatchObject({ idConcertacion: c.idConcertacion, estado: 'ENVIADA', horas: 48 });
+    expect(r).toMatchObject({ idConcertacion: c.idConcertacion, estado: 'ENVIADA', horas: 32 });
   });
 
   caso('no se aprueba ni se acepta si la docencia cambió después de enviarla', async (f) => {

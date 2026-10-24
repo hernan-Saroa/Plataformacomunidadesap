@@ -265,18 +265,20 @@ export class AsignacionesService {
   }
 
   /**
-   * Horas que le suma al docente dictar las franjas seleccionadas: las del grupo por el
-   * contrato (cálculo único) × su fracción con la regla de reparto vigente, contando
-   * las franjas seleccionadas como suyas. Con todas las franjas, la fracción es 1.
+   * Horas que le suma al docente dictar las franjas seleccionadas, con el cálculo único
+   * (EFDS-2347: sesiones reales del ciclo × factor de vinculación), contando las
+   * franjas seleccionadas como suyas y las demás con el docente que tengan.
    */
   private async horasDeLaSeleccion(
-    grupo: { codigoAsignatura: string | null; todas: FranjaDelGrupo[]; seleccionadas: string[] },
+    grupo: { idGrupo: string; codigoAsignatura: string | null; seleccionadas: string[] },
     docente: { idDocente: string; vinculacion: string | null },
     token: string | null,
   ): Promise<number> {
-    const horasGrupo = await this.impactoDelGrupo(grupo, docente, token);
-    const despues = grupo.todas.map((f) => (grupo.seleccionadas.includes(f.idFranja) ? { ...f, idDocente: docente.idDocente } : f));
-    return Math.round(horasGrupo * this.docencia.fraccion(despues, docente.idDocente) * 10) / 10;
+    if (!grupo.codigoAsignatura) return 0;
+    const calculo = await this.docencia.calculoAsignatura(grupo.codigoAsignatura, docente.vinculacion, token);
+    const despues = (await this.docencia.franjasConSesiones([grupo.idGrupo]))
+      .map((f) => (grupo.seleccionadas.includes(f.idFranja) ? { ...f, idDocente: docente.idDocente } : f));
+    return this.docencia.horasEnGrupo(despues, docente.idDocente, calculo).horas;
   }
 
   /**
@@ -368,21 +370,6 @@ export class AsignacionesService {
     const porArea = motivoDeArea(areaGrupo, nucleos);
     // El área va primero: es lo que decide si el docente siquiera es candidato.
     return { motivos: porArea ? [porArea, ...motivos] : motivos, consumidas };
-  }
-
-  /**
-   * Impacto en horas del grupo para el docente, calculado por el CONTRATO (RN-03).
-   * El cálculo es lógica del PTA y no se reimplementa: se consume por HTTP. Si el
-   * grupo no tiene código de asignatura, el impacto es 0 (no hay qué calcular).
-   */
-  private async impactoDelGrupo(
-    grupo: { codigoAsignatura: string | null },
-    docente: { vinculacion: string | null },
-    token: string | null,
-  ): Promise<number> {
-    if (!grupo.codigoAsignatura) return 0;
-    const calc = await this.contrato.calcularImpacto(grupo.codigoAsignatura, docente.vinculacion, token);
-    return Number(calc.horasImpacto ?? 0);
   }
 
   /**

@@ -60,7 +60,11 @@ describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffic
       query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     }),
   };
-  const contrato: any = { calcularImpacto: async () => ({ horasImpacto: horasPorGrupo }) };
+  // Aquí se prueba la regla del TOPE en los dos caminos, no el cálculo de horas: la
+  // asignatura se simula con horas fijas del catálogo, que usan las horas del plan
+  // (EFDS-2347), para fijar las horas de cada grupo. Las sesiones reales se prueban
+  // en docencia.agregado.spec.ts.
+  const contrato: any = { calcularImpacto: async () => ({ horasImpacto: horasPorGrupo, factorVinculacion: 1, tipoExcepcion: 'HORAS_FIJAS' }) };
   const docencia = () => new DocenciaService(dataSource, contrato);
   const portal = () => new PortalDocenteService(dataSource, new AcumuladoService(dataSource, docencia()), docencia());
   const backoffice = () => new AsignacionesService(dataSource, contrato, docencia());

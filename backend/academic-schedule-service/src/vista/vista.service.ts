@@ -3,7 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { condicionNivelSql, nivelDeProgramaTipo, type NivelAcademico } from '../catalogo/nivel-academico.js';
-import { DocenciaService } from '../docencia/docencia.service.js';
+import { DocenciaService, type FranjaConSesiones } from '../docencia/docencia.service.js';
+import type { CalculoHoras } from '../asignaciones/contrato-client.js';
 import { ofertasCetapPorId } from '../grupos/oferta-cetap.js';
 import { horasDelGrupo } from '../horarios/horas-grupo.js';
 import { SQL_CICLO_EFECTIVO } from '../horarios/choque.js';
@@ -181,6 +182,13 @@ export class VistaService {
       }
     }
 
+    // Sesiones reales de todas las franjas del árbol en una consulta (EFDS-2347).
+    const sesiones = new Map<string, FranjaConSesiones[]>();
+    const idsGrupo = [...programas.values()].flatMap((p: any) => [...p._asig.values()].flatMap((a: any) => [...a._grupos.keys()]));
+    for (const f of await this.docencia.franjasConSesiones(idsGrupo)) {
+      sesiones.set(f.idGrupo, [...(sesiones.get(f.idGrupo) ?? []), f]);
+    }
+
     const resumen = { programas: 0, asignaturas: 0, grupos: 0, franjas: 0, franjasSinDocente: 0 };
     const salida: any[] = [];
     for (const p of [...programas.values()].sort((x, y) => String(x.nombre).localeCompare(String(y.nombre), 'es'))) {
@@ -198,9 +206,11 @@ export class VistaService {
           const docentesGrupo: any[] = [];
           for (const id of ids) {
             const d = docentes.get(id) ?? { idDocente: id, documento: null, nombre: null, vinculacion: null };
-            const fraccion = this.docencia.fraccion(g.franjas, id);
-            const hg = await horas(a.codigo, d.vinculacion?.texto ?? null);
-            docentesGrupo.push({ ...d, fraccion, horas: hg == null ? null : redondear(hg * fraccion) });
+            const calculo = await horas(a.codigo, d.vinculacion?.texto ?? null);
+            // Sin contrato no hay horas: null (la vista no se cae ni inventa).
+            const h = calculo ? this.docencia.horasEnGrupo(sesiones.get(g.idGrupo) ?? [], id, calculo) : null;
+            docentesGrupo.push({ ...d, fraccion: h?.fraccion ?? this.docencia.fraccion(g.franjas, id), horas: h?.horas ?? null,
+              horasPlan: h?.horasPlan ?? null, base: h?.base ?? null, descontadas: h?.descontadas ?? null, avisos: h?.avisos ?? [] });
           }
           const { _fechas, ...resto } = g;
           grupos.push({
@@ -373,32 +383,29 @@ export class VistaService {
     const grupos = new Map<string, string>();
     for (const f of suyas) if (f.idGrupo) grupos.set(f.idGrupo, f.codigoAsignatura);
     if (!grupos.size) return { total: 0, porGrupo: {} };
-    const delGrupo: any[] = await this.dataSource.query(
-      `SELECT id_grupo::text AS "idGrupo", dia_semana AS "diaSemana", id_docente::text AS "idDocente",
-              to_char(hora_inicio,'HH24:MI') AS "horaInicio", to_char(hora_fin,'HH24:MI') AS "horaFin"
-         FROM "academic-schedule".franja_horaria WHERE id_grupo = ANY($1::uuid[])`,
-      [[...grupos.keys()]]);
+    // El cálculo único (EFDS-2347): sesiones reales del ciclo × factor de vinculación.
+    const delGrupo = await this.docencia.franjasConSesiones([...grupos.keys()]);
     const horas = this.calculadorHoras(token);
     let total: number | null = 0;
     const porGrupo: Record<string, number | null> = {};
     for (const [idGrupo, codigo] of grupos) {
-      const h = await horas(codigo, vinculacion);
+      const calculo = await horas(codigo, vinculacion);
       // Sin contrato no hay horas: el grupo queda en null y el total también (no se suma a medias).
-      if (h == null) { porGrupo[idGrupo] = null; total = null; continue; }
-      const delDocente = h * this.docencia.fraccion(delGrupo.filter((f) => f.idGrupo === idGrupo), idDocente);
+      if (calculo == null) { porGrupo[idGrupo] = null; total = null; continue; }
+      const delDocente = this.docencia.horasEnGrupo(delGrupo.filter((f) => f.idGrupo === idGrupo), idDocente, calculo).horas;
       porGrupo[idGrupo] = redondear(delDocente);
       if (total != null) total += delDocente;
     }
     return { total: total == null ? null : redondear(total), porGrupo };
   }
 
-  /** Horas por (asignatura, vinculación), con caché. Si el contrato no responde: null (la vista no se cae). */
+  /** Cálculo del contrato por (asignatura, vinculación), con caché. Si no responde: null (la vista no se cae). */
   private calculadorHoras(token: string | null) {
-    const cache = new Map<string, Promise<number | null>>();
-    return (codigo: string, vinculacion: string | null): Promise<number | null> => {
+    const cache = new Map<string, Promise<CalculoHoras | null>>();
+    return (codigo: string, vinculacion: string | null): Promise<CalculoHoras | null> => {
       const clave = `${codigo}|${vinculacion ?? ''}`;
       if (!cache.has(clave)) {
-        cache.set(clave, this.docencia.horasAsignatura(codigo, vinculacion, token).catch(() => null));
+        cache.set(clave, this.docencia.calculoAsignatura(codigo, vinculacion, token).catch(() => null));
       }
       return cache.get(clave)!;
     };
