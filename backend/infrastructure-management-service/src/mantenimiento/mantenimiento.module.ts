@@ -8,6 +8,7 @@ import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
+import { MantenimientoHistorico } from './mantenimiento-historico.entity.js';
 import { StorageService } from './storage.service.js';
 import { NotificationClientService } from '../common/notification-client.service.js';
 
@@ -20,6 +21,7 @@ import { NotificationClientService } from '../common/notification-client.service
       SolicitudEvidencia,
       SolicitudValoracion,
       SolicitudValoracionInsumo,
+      MantenimientoHistorico,
     ]),
   ],
   controllers: [MantenimientoController],
