@@ -16,6 +16,7 @@ import { DocenciaService } from '../docencia/docencia.service.js';
 import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
 import { tomaDeFranjasHabilitada } from '../portal-docente/flujo-docente.js';
 import { areaDelGrupo, docentesDelArea, motivoDeArea, nucleosDeDocentes } from './area-docente.js';
+import { ESTADOS_EN_CURSO } from '../concertacion/concertacion.service.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -453,6 +454,7 @@ export class AsignacionesService {
    */
   private async asignarFranjas(m: EntityManager, dto: AsignarDocenteDto, idDocente: string, idsFranja: string[]): Promise<ResultadoAsignacion> {
     await m.query(`SELECT 1 FROM "academic-schedule".grupo WHERE id_grupo = $1 FOR UPDATE`, [dto.idGrupo]);
+    await exigirFueraDeConcertacion(m, idsFranja);
     const aprobadas = await m.query(
       `SELECT 1 FROM "academic-schedule".franja_horaria
         WHERE id_franja = ANY($1::uuid[]) AND estado = 'APROBADA' AND id_docente IS DISTINCT FROM $2::uuid LIMIT 1`,
@@ -591,6 +593,7 @@ export class AsignacionesService {
    */
   private async prepararFranjasParaAsignar(m: EntityManager, idGrupo: string, idDocente: string): Promise<void> {
     await m.query(`SELECT 1 FROM "academic-schedule".grupo WHERE id_grupo = $1 FOR UPDATE`, [idGrupo]);
+    await exigirFueraDeConcertacion(m, await franjasDelGrupo(m, idGrupo));
     const aprobadas = await m.query(
       `SELECT 1 FROM "academic-schedule".franja_horaria
         WHERE id_grupo = $1 AND estado = 'APROBADA' AND id_docente IS DISTINCT FROM $2::uuid LIMIT 1`,
@@ -632,6 +635,7 @@ export class AsignacionesService {
   private async retirarAsignada(idGrupo: string): Promise<{ retirado: boolean }> {
     return this.dataSource.transaction(async (m) => {
       await m.query(`SELECT 1 FROM "academic-schedule".grupo WHERE id_grupo = $1 FOR UPDATE`, [idGrupo]);
+      await exigirFueraDeConcertacion(m, await franjasDelGrupo(m, idGrupo));
       const aprobadas = await m.query(
         `SELECT 1 FROM "academic-schedule".franja_horaria WHERE id_grupo = $1 AND estado = 'APROBADA' LIMIT 1`, [idGrupo]);
       if (aprobadas.length) {
@@ -646,5 +650,26 @@ export class AsignacionesService {
           WHERE id_grupo = $1 AND estado IN ('TOMADA', 'DEVUELTA')`, [idGrupo]);
       return { retirado: (r?.length ?? 0) > 0 };
     });
+  }
+}
+
+const franjasDelGrupo = async (m: Pick<EntityManager, 'query'>, idGrupo: string): Promise<string[]> =>
+  (await m.query(`SELECT id_franja::text AS id FROM "academic-schedule".franja_horaria WHERE id_grupo = $1`, [idGrupo]))
+    .map((f: any) => f.id);
+
+/**
+ * EFDS-2374: mientras la concertación está en revisión, aprobada por dentro o por
+ * aceptar, sus franjas no se reasignan ni se retiran: hay que devolverla primero.
+ * En DEVUELTA o NOVEDAD el programador las cambia como quiera.
+ */
+async function exigirFueraDeConcertacion(m: Pick<EntityManager, 'query'>, idsFranja: string[]): Promise<void> {
+  if (!idsFranja.length) return;
+  const enCurso = await m.query(
+    `SELECT c.estado FROM "academic-schedule".concertacion_docencia c, jsonb_array_elements(c.franjas) e
+      WHERE c.estado = ANY($2::text[]) AND e->>'idFranja' = ANY($1::text[]) LIMIT 1`,
+    [idsFranja, ESTADOS_EN_CURSO]);
+  if (enCurso.length) {
+    throw new ConflictException(
+      `La programación de este docente está en concertación (${enCurso[0].estado}): pida que se la devuelvan antes de cambiarla.`);
   }
 }
