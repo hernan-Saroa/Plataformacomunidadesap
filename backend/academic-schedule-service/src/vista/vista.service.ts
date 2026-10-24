@@ -76,11 +76,14 @@ export class VistaService {
     return { ref, periodo: filas[0] };
   }
 
-  /** Periodo en curso de la plataforma (portal sin `periodo`). El más reciente si hubiera varios. */
+  /**
+   * Periodo en curso de la plataforma (portal sin `periodo`): el PRINCIPAL, no el
+   * extraordinario (EFDS-2346). El más reciente si hubiera varios.
+   */
   async periodoEnCurso(): Promise<string> {
     const filas = await this.dataSource.query(
       `SELECT id::text AS id FROM academic_work_plan.periodo_academico
-        WHERE estado = 'en_curso' ORDER BY fecha_inicio DESC NULLS LAST, id DESC LIMIT 1`);
+        WHERE estado = 'en_curso' AND NOT extraordinario ORDER BY fecha_inicio DESC NULLS LAST, id DESC LIMIT 1`);
     if (!filas.length) throw new NotFoundException('No hay un periodo en curso.');
     return filas[0].id;
   }

@@ -839,3 +839,43 @@ Decisiones 12 y 13: las horas de un festivo **se descuentan** (no llegan al acum
 - `POST /programacion-academica/api/v1/periodos/:idPeriodo/recesos` `{ fechaInicio, fechaFin, motivo }` — solo la administración del módulo (`programacion-academica.all`); dentro de las fechas del periodo; periodo cerrado → rechazado por el guard.
 - `DELETE /programacion-academica/api/v1/periodos/:idPeriodo/recesos/:idReceso` — igual.
 - `:idPeriodo` acepta el id de plataforma o el UUID legado.
+
+## 25. EFDS-2346: periodo personalizado y periodo extraordinario (24 de octubre)
+
+Decisiones 8 a 11: el interperiodo tiene su propio tope y su PTA va aparte; un extraordinario a la vez; lo activa la administración del módulo con permiso propio.
+
+### 25.1 · Modelo (PTA, migración 672)
+
+- `periodo_academico.tipo`: `semestral` (código `AAAA-1` / `AAAA-2`) o `personalizado` (código propio `AAAA-XXXXX`, p. ej. `2027-INT`, con `nombre`, sin `semestre`). Un personalizado es un periodo más: mismas reglas (fechas sin cruce, estados, activación).
+- `extraordinario` + `motivo_extraordinario`, `extraordinario_por`, `extraordinario_en`.
+- **El periodo activo es el PRINCIPAL**: `estado = 'en_curso' AND NOT extraordinario`.
+- La base garantiza un solo principal en curso y un solo extraordinario en curso (índices únicos parciales). Antes solo lo cuidaba el controlador.
+- Permiso nuevo `pta.periodos.activar_extraordinario` (módulo PTA), asignado a SUPER_ADMIN; el administrador lo da a otros roles si quiere.
+
+### 25.2 · API del PTA
+
+- `POST /pta/periodos-academicos` con `{ tipo: 'personalizado', anio, codigo, nombre, fechaInicio, fechaFin }` crea un personalizado (en planeación). Sin `tipo`, igual que antes.
+- `POST /pta/periodos-academicos/:id/activar-extraordinario` `{ motivo }` (mínimo 10 caracteres) → en curso como extraordinario. 403 sin el permiso; 409 si ya hay un extraordinario en curso, si el periodo ya está en curso o si está cerrado. **No** cierra el principal, **no** mueve otros periodos y **no** termina PTA.
+- `PATCH /pta/periodos-academicos/:id` `{ estado: 'en_curso' }` activa como **principal** (como siempre): cierra los anteriores, pasa los posteriores a planeación y termina los PTA de otros periodos, **excepto** el extraordinario en curso y sus PTA. Un extraordinario en curso no se convierte en principal (409: ciérrelo primero). `{ estado: 'cerrado' }` sobre el extraordinario lo cierra sin exigir otro activo.
+- `GET /pta/periodos-academicos` trae `tipo`, `nombre`, `extraordinario`, `motivoExtraordinario`… y, si hay extraordinario en curso, devuelve el principal **antes** que él: quien busca «el activo» con el primer en curso recibe el principal.
+- Programación Académica `GET /periodos`: cada periodo trae `tipo`, `nombre`, `semestre` (null en personalizados), `esActivo` (principal), `esExtraordinario` y `motivoExtraordinario`.
+
+### 25.3 · Consumidores corregidos
+
+- PTA: activación y vista previa (`periodo-activacion.ts`: el personalizado se ordena por fecha; el extraordinario en curso no se toca), terminación de PTA (`CONDICION_PTA_A_FINALIZAR`), detalle del periodo (programas sin periodo solo en el principal), periodo de carga por defecto del RUND, importador de asignaturas (**ya no crea periodos en curso**: los crea en planeación y no modifica uno existente).
+- Programación Académica: periodo por defecto del portal y de las vistas; lista de periodos.
+- Frontend que elige «el activo» (`.find(en_curso)` → principal): `mfe-pta` (`ptaApi.getActivePeriodoAcademico`, `BancoDocentesView` ×2, `BancoDocentesPTA`, `PtaBackofficeModule` ×2, `PTAForm`), `mfe-programas-academicos` (`GestionPeriodos`, `ImportarAsignaturas`, `ProgramasAcademicosModule` ×2). Los que muestran insignias o listas de en curso siguen mostrando los dos (el docente puede tener PTA del interperiodo).
+
+### 25.4 · Sin tocar (fuera del alcance de esta tarea): para sus dueños
+
+- **auth-service** `programas.service.ts:484-494`: «periodo activo» con `ORDER BY anio DESC, semestre DESC LIMIT 1`. Con un personalizado extraordinario en curso (semestre NULL, que en DESC va primero) un programa nuevo quedaría en el extraordinario. Debe filtrar `AND NOT extraordinario`. También `:88` (`estado = 'en_curso'`), que debería ser el principal.
+- **shell** `EstructuraOrganizacionalModule.tsx:48`: compara con `'ACTIVO'`, que nunca coincide con `en_curso` (ya estaba roto); y `ConfiguracionPeriodo.tsx`.
+- **mfe-estructura-org** (`EstructuraOrganizacionalModule.tsx`, `estructuraService.ts`): consume los periodos; revisar que use el principal.
+- `mfe-reportes` `PlantaDocenteReportView.tsx:243`: solo etiqueta «(en curso)», correcto con los dos.
+
+### 25.5 · Defectos de producción del PTA (reportados aparte, no corregidos)
+
+- `pta.service.ts` `savePTA` (línea 4340): un PTA sin periodo se guarda en **`'2026-1'`** fijo, no en el periodo activo.
+- `pta.service.ts` `getDashboardKPIs` (línea 11768): sin periodo, el tablero muestra **`'2025-2'`** fijo.
+- Del mismo tipo: `seedPTAs` (`'2026-1'`, solo desarrollo), `cascada.controller.ts:44`, `asignaturas-import.controller.ts:41,57,64` y `asignaturas-import.service.ts:52,564` (`'2025-2'` por defecto), Programación Académica `validacion.controller.ts:45` (`'2026-1'`, `'2026-V1'`).
+- Corregido de paso (equivalente en todas las bases): la regla que termina los PTA al activar comparaba `SolicitudPTA."ptaId"` (uuid en esta base) con el id del PTA (texto) y **fallaba**, así que activar no terminaba ningún PTA aquí; ahora compara como texto.
