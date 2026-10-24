@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CalendarioHorario } from './CalendarioHorario';
 import { BookOpen, Check, Clock, Loader2, MapPin, Undo2 } from 'lucide-react';
 
 import { getMiCalendario, type CalendarioDocente, type FranjaCalendario } from '../services/api/vistaApi';
@@ -75,6 +76,7 @@ export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: stri
 
   return (
     <section className="space-y-2" aria-label={`Grupos asignados ${codigoPeriodo ?? ''}`}>
+      <CalendarioHorario soloLectura calendario={cal} />
       <div className="flex items-center justify-between">
         <h4 className="font-bold text-slate-800 text-sm">
           Mis grupos asignados · {codigoPeriodo ?? cal.periodo.codigo} ({grupos.length})

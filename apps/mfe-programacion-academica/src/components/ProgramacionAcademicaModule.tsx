@@ -34,7 +34,8 @@ import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { useEstadoPublicacion } from './useEstadoPublicacion';
-import { AsignacionDocente } from './AsignacionDocente';
+import { ArbolProgramacion } from './ArbolProgramacion';
+import { DisponibilidadDocente } from './DisponibilidadDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
 import { AprobacionJefatura } from './AprobacionJefatura';
@@ -124,8 +125,6 @@ export function ProgramacionAcademicaModule({
   const revisionPeriodos = useRevisionProgramacion('periodos');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -146,7 +145,6 @@ export function ProgramacionAcademicaModule({
   // programación y la asignación: el resto le respondería 403. El servidor decide; esto solo ordena el menú.
   const [misPermisos, setMisPermisos] = useState<MisPermisos | null>(null);
   useEffect(() => { getMisPermisos().then(setMisPermisos).catch(() => setMisPermisos(null)); }, []);
-  const perfilAsignador = !!misPermisos && misPermisos.programar.length === 0 && misPermisos.asignar.length > 0;
   useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
@@ -317,7 +315,7 @@ export function ProgramacionAcademicaModule({
           color: '#D97706',
           badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
-        ] as MenuGroup['items']).filter((i) => !perfilAsignador || i.id === 'horarios' || i.id === 'docentes')),
+        ] as MenuGroup['items']).filter((i) => !!misPermisos && (i.id === 'horarios' ? misPermisos.ver.length > 0 : i.id === 'docentes' ? misPermisos.disponibilidad : misPermisos.programar.length > 0))),
         // EFDS-1939 — solo para jefaturas territoriales.
         ...(esJefatura ? [{
           id: 'aprobacion',
@@ -337,16 +335,6 @@ export function ProgramacionAcademicaModule({
     },
   ];
 
-  const filteredSchedule = scheduleList.filter((item) => {
-    const matchesSearch =
-      item.programa.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.asignatura.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.docente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.aula.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesJornada = selectedJornada === 'TODAS' || item.jornada === selectedJornada;
-    return matchesSearch && matchesJornada;
-  });
 
   return (
     <ModuleLayout
@@ -458,7 +446,7 @@ export function ProgramacionAcademicaModule({
       </>)}
 
       {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
-      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && !perfilAsignador && (
+      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && !!misPermisos?.programar.length && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -491,155 +479,20 @@ export function ProgramacionAcademicaModule({
         </div>
       )}
 
-      {/* ── ACCIONES Y BÚSQUEDA ──
-          Solo en Programación General: el buscador, el filtro de jornada y el
-          botón de nueva franja no aplican al catálogo, a las aulas ni a las
-          ofertas. Antes se repetía en todas las secciones. */}
-      {seccion === 'horarios' && (
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por asignatura, docente, aula o programa..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span>Jornada:</span>
-            <select
-              value={selectedJornada}
-              onChange={(e) => setSelectedJornada(e.target.value)}
-              className="bg-transparent font-semibold text-slate-800 focus:outline-none"
-            >
-              {/* §2.1 — Los valores deben ser los del dato del backend
-                  (DIURNA/NOCTURNA/FIN_DE_SEMANA/DISTANCIA), no 'Diurna': la comparacion es
-                  exacta y con la etiqueta bonita nunca casaba. */}
-              <option value="TODAS">Todas las jornadas</option>
-              <option value="DIURNA">Diurna</option>
-              <option value="NOCTURNA">Nocturna</option>
-              <option value="FIN_DE_SEMANA">Fin de semana</option>
-              <option value="DISTANCIA">Distancia</option>
-            </select>
-          </div>
-
-          {/* §2.2 — Una franja se crea siempre desde un grupo (asignatura →
-              grupo → calendario). No hay atajo directo, así que el botón lleva al
-              inicio real de ese flujo, el catálogo, y el texto lo dice sin
-              prometer una creación que no puede cumplir aquí. */}
-          {!perfilAsignador && <button
-            onClick={() => setSeccion('catalogo')}
-            className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 font-semibold text-xs rounded-xl shadow-md transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Programar franja (elegir asignatura)</span>
-          </button>}
-
-        </div>
-      </div>
-      )}
-
-      {/* ── VISTAS POR SECCIÓN ── */}
-
-      {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
-          que el endpoint de horarios devuelva programa, asignatura y docente:
-          hoy solo trae la sesión, así que esas columnas van vacías. */}
-      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} />}
-
-      {seccion === 'horarios' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="font-bold text-slate-800 text-sm">Franjas Académicas Programadas</h3>
-            <span className="text-xs text-slate-400 font-medium">Mostrando {filteredSchedule.length} registros</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-4">Código / Programa</th>
-                  <th className="px-6 py-4">Asignatura & Grupo</th>
-                  <th className="px-6 py-4">Docente</th>
-                  <th className="px-6 py-4">Horario & Aula</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredSchedule.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                      <Calendar className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                      <p className="font-semibold text-slate-700">No se encontraron franjas académicas</p>
-                      <p className="text-xs text-slate-400">Intenta ajustando los filtros de búsqueda</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSchedule.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-800">{item.programa}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          <span>Periodo {item.periodoCodigo || '—'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-slate-700">{item.asignatura}</div>
-                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold mt-1">
-                          Grupo {item.grupo}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-slate-700 font-medium">{item.docente}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-[#003DA5] flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>{item.dia} {item.horaInicio} - {item.horaFin}</span>
-                        </div>
-                        <div className="text-xs text-slate-500 mt-0.5">{item.aula}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {(() => {
-                          const b = BADGE_ESTADO[item.estado] || BADGE_ESTADO.PROGRAMADO;
-                          return (
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${b.clase}`}>
-                              {b.etiqueta}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => item.idGrupo && setDetalle(item)}
-                          disabled={!item.idGrupo}
-                          title={item.idGrupo ? 'Ver detalle del grupo' : 'La franja no tiene grupo asociado'}
-                          aria-label="Ver detalle del grupo"
-                          className="text-slate-400 hover:text-[#003DA5] font-medium text-xs p-1.5 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {seccion === 'catalogo' && misPermisos?.programar.length ? <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} /> : null}
+      {seccion === 'horarios' && (misPermisos
+        ? <ArbolProgramacion periodo={periodoSel} permisos={misPermisos} abrirGrupo={periodoProgramable ? (g, asignatura) => setDetalle({
+            id: g.idGrupo, idGrupo: g.idGrupo, grupo: String(g.numeroGrupo), asignatura,
+            fechaInicioGrupo: g.cicloInicio, fechaFinGrupo: g.cicloFin,
+            codigo: '', programa: '', docente: '', sede: '', aula: '', dia: '', horaInicio: '', horaFin: '', jornada: '', cupos: g.cupoMaximo, estado: g.estado, periodoCodigo: periodoActual?.codigo ?? null,
+          }) : undefined} />
+        : <p role="status">No se han podido confirmar los permisos de programación.</p>)}
 
       {/* EFDS-1374: disponibilidad de aulas, sin revelar qué las ocupa (RN-07). */}
       {seccion === 'aulas' && <DisponibilidadAulas idPeriodo={periodoSel} />}
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
-      {seccion === 'docentes' && <AsignacionDocente />}
+      {seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} />}
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
       {seccion === 'ofertas' && <GestionOfertas

@@ -1,3 +1,4 @@
+import { CalendarioDelDocente } from './DisponibilidadDocente';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Loader2, Gauge, Check, Hand, RotateCcw } from 'lucide-react';
 
@@ -151,6 +152,8 @@ export default function PortalDocenteProgramacion() {
 
       {error && <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>}
       {aviso && <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">{aviso}</div>}
+
+      {tomaFranjas && <CalendarioDelDocente />}
 
       {/* Acumulado vs tope (RN-04), en vivo */}
       {acumulado && (
