@@ -83,11 +83,12 @@ export class HorariosService {
    * una tabla de N franjas dispararía N peticiones.
    *
    * ⚠️ TODOS los vínculos son POR ID —grupo.id_asignatura, asignatura.id_programa,
-   * asignacion_docente.id_docente— nunca por nombre. Emparejar por texto es donde
+   * franja_horaria.id_docente— nunca por nombre. Emparejar por texto es donde
    * se han colado los tropiezos de este módulo.
    *
-   * El docente sale de la asignación ASIGNADA del grupo; si el grupo no tiene
-   * docente asignado, viene en null y el front muestra el vacío, no un invento.
+   * El docente sale de la FRANJA (registro único): desde EFDS-2341 un grupo puede
+   * tener un docente distinto por franja. Sin docente viene en null y el front
+   * muestra el vacío, no un invento.
    */
   /**
    * @param idPeriodo si viene, acota a las franjas de ESE periodo (vía
@@ -133,9 +134,7 @@ export class HorariosService {
          LEFT JOIN academic_work_plan.periodo_academico pa      ON pa.id = g.id_periodo_academico
          LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
          LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
-         LEFT JOIN "academic-schedule".asignacion_docente ad
-                ON ad.id_grupo = g.id_grupo AND ad.estado = 'ASIGNADO'
-         LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
+         LEFT JOIN auth.personas per                    ON per.id_person = f.id_docente
         ${filtro}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
       params.length ? params : undefined,

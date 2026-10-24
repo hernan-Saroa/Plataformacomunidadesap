@@ -695,3 +695,66 @@ Codex genera **dos archivos de datos**. Claude los carga. Ninguno es código: se
 - **Puente:** `POST /pta/banco-docentes/nucleos/puente?dry_run=true|false`, multipart `file` (CSV o XLSX con esas columnas), permiso de carga del RUND. Respuesta: `{ filas, docentes, nucleosCreados, sinCambios, rechazadas: [{ fila, documento, motivo }] }`.
 - **Origen `rund`:** se calcula solo al cargar el archivo del RUND (sección 22) y se puede recalcular con `POST /pta/banco-docentes/nucleos/reinterpretar`.
 - **Interruptor del puente:** `PROG_NUCLEO_PUENTE` en Programación Académica (`false` lo apaga). Apagado, los candidatos solo usan el núcleo del RUND.
+
+### 21.4 · Cómo quedó cargado (24 de octubre)
+
+- **Equivalencias:** migración 669 (tabla de la instrucción) + 670 (archivo de Codex, commit `fbd18264d`). La 670 **suma**: no borra variantes de la 669 ni rebaja un `prefijo` a `exacta`. Diferencias con el archivo de Codex que se mantienen del lado del servidor, porque sin ellas dejan de resolverse textos reales del RUND:
+  - «Gestión del Desarrollo» y «Finanzas Públicas y Presupuesto» son `prefijo` (el RUND trae «Gestión Del Desarrollo Territorial, …» y «Finanzas Públicas Y Presupuesto Público»).
+  - «Gobierno y Política Pública» (`prefijo`, Estado, Gobierno y Sociedad) no está en el archivo y aparece en el RUND («…Gobierno Y Política Pública Y Politica Pública Territorial»).
+- **Puente:** el CSV de Codex se lee con `;` (el lector genérico de Excel tomaba la coma). 278 filas, 0 rechazadas, 123 docentes, 202 núcleos. Cada carga definitiva **reemplaza** el puente completo (`nucleosRetirados` en la respuesta).
+- **Regla del puente en Programación Académica:** cuenta solo para quien **no** tiene núcleo del RUND. No amplía el área de un docente que ya la tiene en el RUND.
+
+## 22. EFDS-2341: candidatos por área y asignación por franja (24 de octubre)
+
+Regla del negocio (decisiones 3, 6 y 7): **nadie se asigna fuera de su área**, un docente sin núcleo no se asigna, un docente por franja. No hay asignación forzada.
+
+### 22.1 · De dónde sale el área
+
+- **Asignatura:** `academic_work_plan.area_de_asignatura(id_asignatura)` (migración 671), regla única en SQL. Posgrado: el programa es el área (`area_formacion.id_programa`). Pregrado: `nucleo_tematico.nombre` normalizado contra `nucleo_equivalencia` (exacta; si no, el prefijo más largo). `NULL` = sin área.
+- **Docente:** `academic_work_plan.docente_nucleo` (migración 669), orígenes `rund` y `puente`. Con `PROG_NUCLEO_PUENTE=false` solo cuenta `rund`.
+- **Reinterpretación del RUND:** automática después de cada carga definitiva del RUND (la respuesta trae `nucleos: { docentes, conArea, genericos, sinArea, sinResolver }`); si fallara, la carga del RUND no se toca y se repite con `POST /pta/banco-docentes/nucleos/reinterpretar`.
+- **Cobertura:** `GET /pta/banco-docentes/nucleos/cobertura` → `{ docentes, con_rund, solo_puente, sin_nucleo, sin_nucleo_con_carga_rund, con_nucleo_fuera_del_banco, porArea: [{ codigo, nombre, rund, puente }] }`.
+
+### 22.2 · `GET /programacion-academica/api/v1/asignaciones/candidatos?grupo=<uuid>&franjas=<uuid>,<uuid>`
+
+Permiso: consultar la disponibilidad docente o asignar docentes (igual que el panel del docente). Sin `franjas`, todas las del grupo. Solo lectura.
+
+```jsonc
+{
+  "grupo": "uuid",
+  "franjas": [{ "idFranja": "uuid", "diaSemana": "LUNES", "horaInicio": "08:00", "horaFin": "10:00", "docenteActual": "Nombre" | null }],
+  "area": { "codigo": "AF-01", "nombre": "Estado y Poder", "nucleoAsignatura": "Problemática del Estado y del Poder" } | null,
+  "candidatos": [{
+    "documento": "…", "nombre": "…", "vinculacion": "Ocasional", "perfil": "…",
+    "titulos": { "pregrado": "…", "especializacion": null, "maestria": "…", "doctorado": null, "posdoctorado": null },
+    "nucleos": [{ "area": "Estado y Poder", "origen": "rund", "texto": "Problemática Del Estado Y Del Poder" }],
+    "origenArea": "rund" | "puente",
+    "horasProgramadas": 96,      // docencia ya programada (cálculo único), sin este grupo
+    "horasImpacto": 32,          // lo que suman las franjas pedidas (horas del grupo × fracción por días)
+    "tope": 304,
+    "cruce": false,
+    "motivos": [{ "regla": "RN-07", "mensaje": "…" }],   // bloqueos de EFDS-1372, en seco
+    "asignable": true
+  }],
+  "sugerido": { "documento": "…", "nombre": "…", "razones": ["Es del área…", "Tiene 0 h programadas, la menor…", "No tiene cruce…", "No tiene bloqueos…", "Empata…; se desempata por cédula."] } | null,
+  "mensaje": null | "La asignatura no tiene área de formación…" | "Ningún docente tiene núcleo temático en el área «…»." | "Hay N docente(s) del área «…», pero todos tienen algún bloqueo…"
+}
+```
+
+- Solo aparecen docentes del área. Orden: aptos primero, menos horas programadas, cédula.
+- El **sugerido** es el primero apto (área, sin cruce, sin bloqueos, menos horas; empate por cédula).
+- Las horas y los cruces se calculan **para las franjas pedidas**: una franja de dos días es la mitad de las horas del grupo (regla de reparto por días vigente).
+
+### 22.3 · `POST /programacion-academica/api/v1/asignaciones` con `franjas`
+
+Cuerpo: `{ "idGrupo": "uuid", "documento": "…", "franjas": ["uuid", …] }`. `franjas` es opcional:
+
+- **Sin `franjas` (o todas):** asignación del grupo completo, como antes (modal: todas las franjas por defecto).
+- **Con un subconjunto:** solo esas franjas pasan al docente (y a `TOMADA` en el flujo nuevo). El resto conserva el suyo. Si al final todas las franjas tienen el mismo docente, queda su `asignacion_docente`; si el grupo queda repartido, no hay «docente del grupo» y se retira esa fila.
+- El área es un **motivo más del bloqueo duro**, el primero: `{ "asignado": false, "motivos": [{ "regla": "AREA", "mensaje": "El docente no es del área «…» (sus áreas: …)." }] }`. Nada se guarda.
+- Una franja que no es del grupo → 400. Una franja `APROBADA` de otro docente → 409.
+- El listado de franjas (`GET /horarios`) muestra ahora el docente **de cada franja**, no el del grupo.
+
+### 22.4 · Qué hace el front (Codex)
+
+En el modal de asignar: pedir `candidatos` con las franjas marcadas (todas por defecto), mostrar el área, la lista con vinculación, perfil, títulos, núcleo y su origen (`rund` / `puente`), horas, cruce y motivos; resaltar el sugerido con sus razones; si `mensaje`, mostrarlo en lugar de la lista. Permitir desmarcar franjas para asignarlas a otro docente. **No** ofrecer asignar a alguien que no esté en la lista.

@@ -13,6 +13,7 @@ import { Public } from '../../auth/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentosService } from './rund-documentos.service';
+import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { validateEvidenceType } from './rund-evidence-workflow';
@@ -45,6 +46,7 @@ export class BancoDocentesController {
     private readonly service: BancoDocentesService,
     private readonly docTypeValidator: DocumentTypeValidatorService,
     @Optional() private readonly documentosService?: RundDocumentosService,
+    @Optional() private readonly nucleosService?: RundNucleosService,
   ) { }
 
   private get documentos(): RundDocumentosService {
@@ -440,6 +442,17 @@ export class BancoDocentesController {
         justificacion: String(body?.justificacion || 'Carga masiva de perfiles docentes RUND').trim(),
       },
     });
+    // EFDS-2375: tras la carga definitiva se reinterpreta el núcleo (origen rund). Si falla,
+    // la carga del RUND ya quedó confirmada y no se toca: se registra y se repite con
+    // POST nucleos/reinterpretar.
+    if (!dryRun && this.nucleosService) {
+      try {
+        const { docentes, conArea, genericos, sinArea, sinResolver } = await this.nucleosService.reinterpretarRund(actor.actorId);
+        (result as any).nucleos = { docentes, conArea, genericos, sinArea, sinResolver };
+      } catch (error) {
+        this.logger.error(`No se pudo reinterpretar el núcleo tras la carga del RUND: ${(error as Error).message}`);
+      }
+    }
     try {
       await this.service.logSensitiveResourceAccess({ ...actor, endpoint: dryRun ? 'PREVISUALIZAR_CARGA_RUND' : 'RESULTADO_CARGA_RUND',
         resourceId: result.soporteCargaMasivaId || undefined, fields: findRundSensitiveFields(result),

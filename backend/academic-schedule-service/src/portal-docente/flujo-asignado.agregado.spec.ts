@@ -7,7 +7,7 @@ import { PortalDocenteService } from './portal-docente.service.js';
 import { MENSAJE_TOMA_DESHABILITADA } from './flujo-docente.js';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+const { crearAsignatura, darArea } = require('../../test/catalogo-qa.cjs');
 
 /**
  * EFDS-2348 :: el docente RECIBE su programación; ya no toma franjas.
@@ -65,8 +65,11 @@ describe('EFDS-2348 :: el docente recibe su programación asignada (agregado rea
       client = new Client(conexion);
       await client.connect();
       await client.query('BEGIN');
-      const idAsig = (await crearAsignatura(client)).idAsignatura;
+      const asig = await crearAsignatura(client);
+      const idAsig = asig.idAsignatura;
       ids.persona = (await client.query(`SELECT id_person::text AS id FROM auth.personas WHERE num_identificacion = $1`, [DOCUMENTO])).rows[0].id;
+      // EFDS-2341: el docente es del área de la asignatura (nadie se asigna fuera de su área).
+      await darArea(client, { idNucleo: asig.idNucleo, idPersonas: [ids.persona] });
       ids.otraPersona = (await client.query(`SELECT id_person::text AS id FROM auth.personas WHERE id_person <> $1 LIMIT 1`, [ids.persona])).rows[0].id;
       // El docente de prueba, limpio y asignable: sin otras franjas, catedrático en servicio activo.
       await client.query(`UPDATE "${S}".franja_horaria SET id_docente = NULL, estado = 'PROGRAMADO' WHERE id_docente = $1`, [ids.persona]);

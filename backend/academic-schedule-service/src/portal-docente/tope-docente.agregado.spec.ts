@@ -6,7 +6,7 @@ import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+const { crearAsignatura, darArea } = require('../../test/catalogo-qa.cjs');
 
 /**
  * RN-04 :: NINGÚN docente queda por encima de su tope, por NINGUNO de los dos caminos.
@@ -73,8 +73,11 @@ describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffic
       client = new Client(conexion);
       await client.connect();
       await client.query('BEGIN');
-      idAsig = (await crearAsignatura(client)).idAsignatura;
+      const asig = await crearAsignatura(client);
+      idAsig = asig.idAsignatura;
       ids.persona = (await client.query(`SELECT id_person::text AS id FROM auth.personas WHERE num_identificacion = $1`, [DOCUMENTO])).rows[0].id;
+      // EFDS-2341: el docente es del área de la asignatura (nadie se asigna fuera de su área).
+      await darArea(client, { idNucleo: asig.idNucleo, idPersonas: [ids.persona] });
       // El docente de prueba, limpio y catedrático: tope = 304 h, sin otras franjas.
       await client.query(`UPDATE "${S}".franja_horaria SET id_docente = NULL WHERE id_docente = $1`, [ids.persona]);
       await client.query(
