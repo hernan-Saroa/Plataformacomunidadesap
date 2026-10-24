@@ -758,3 +758,59 @@ Cuerpo: `{ "idGrupo": "uuid", "documento": "…", "franjas": ["uuid", …] }`. `
 ### 22.4 · Qué hace el front (Codex)
 
 En el modal de asignar: pedir `candidatos` con las franjas marcadas (todas por defecto), mostrar el área, la lista con vinculación, perfil, títulos, núcleo y su origen (`rund` / `puente`), horas, cruce y motivos; resaltar el sugerido con sus razones; si `mensaje`, mostrarlo en lugar de la lista. Permitir desmarcar franjas para asignarlas a otro docente. **No** ofrecer asignar a alguien que no esté en la lista.
+
+## 23. EFDS-2374: concertación en el orden nuevo (24 de octubre)
+
+HU EFDS-2371 (Javier): el programador asigna, la programación se revisa y aprueba **por dentro** (roles del PTA, con firma del aprobador) y **después** el docente, en «Mi programación», solo **acepta** (con firma) o **reporta una novedad** justificada. Lo aceptado alimenta el PTA. El docente no modifica nada.
+
+Todo esto rige solo con `PROG_CONCERTACION_HABILITADA=true` (y su corte `PROG_CONCERTACION_DESDE_PERIODO`), igual que antes. **Apagada, nada cambia.** El orden anterior (el docente enviaba primero) deja de existir con el interruptor encendido: ya no hay `POST /concertacion/:idPeriodo/enviar` del docente.
+
+### 23.1 · Diagrama de estados (`concertacion_docencia.estado`, una por docente × periodo × nivel)
+
+```
+                    programador: enviar (foto + huella)
+   (asignada) ─────────────────────────────────────────────▶ ENVIADA
+       ▲                                                        │ revisor(es): revisar + firma
+       │                                                        ▼
+       │                                                    REVISADA
+       │                                                        │ aprobador: aprobar + FIRMA
+       │      revisor/aprobador: devolver (comentario)          ▼
+       ├──────────────◀──────────── DEVUELTA ◀───── (ENVIADA | REVISADA)
+       │                                                    POR_ACEPTAR ──── el docente la ve en «Mi programación»
+       │                                                     │        │
+       │       docente: novedad (tipo + justificación)       │        │ docente: aceptar + FIRMA
+       └──────────────◀──────────── NOVEDAD ◀────────────────┘        ▼
+                                                                   ACEPTADA ──▶ franjas APROBADA ──▶ PTA
+```
+
+| Estado | Quién la tiene | Qué puede pasar |
+|---|---|---|
+| (asignada) | Programador | Las franjas tienen docente y están `TOMADA`. El programador asigna, reasigna y retira libremente. |
+| `ENVIADA` | Revisores | El programador envió la foto (franjas y horas, con huella). Revisar (firma del revisor) o devolver. |
+| `REVISADA` | Aprobador | Revisiones completas. Aprobar (firma del aprobador) o devolver. |
+| `DEVUELTA` | Programador | Devuelta por dentro con comentario. El programador ajusta y vuelve a enviar. |
+| `POR_ACEPTAR` | Docente | Aprobada por dentro. El docente acepta (firma) o reporta novedad. |
+| `NOVEDAD` | Programador | El docente reportó una novedad: tipo `investigacion` \| `movilidad` \| `perfil` \| `otra` y justificación obligatoria. El programador reasigna o ajusta y vuelve a enviar (vuelve a pasar por revisión). |
+| `ACEPTADA` | — | Final. Las franjas pasan a `APROBADA` y la decisión va al PTA (con las firmas del aprobador y del docente). |
+| `APROBADA` | — | Solo filas del orden anterior; no se crean más. |
+
+Reglas:
+- Mientras la concertación está `ENVIADA`, `REVISADA` o `POR_ACEPTAR`, sus franjas **no se reasignan** (409): hay que devolverla primero. En `DEVUELTA` y `NOVEDAD` el programador las cambia como quiera.
+- Aprobar y aceptar verifican que la foto siga vigente (mismas franjas, mismo docente, `TOMADA`): nadie aprueba ni acepta algo distinto de lo enviado.
+- Quién revisa y aprueba: los mismos permisos y alcance territorial del PTA que ya usaba la concertación (`pta.review.academica.<nivel>`, `pta.approve.academica.<nivel>` y sus territoriales).
+- Quién envía: el programador con asignación del nivel (`programacion-academica.asignacion-docente.<nivel>`).
+- Al PTA: la decisión lleva la firma del aprobador y la del docente. El PTA la registra si quien llama puede aprobar **o** si quien llama es el propio docente y el aprobador que firmó tiene el permiso de aprobar en el PTA.
+
+### 23.2 · Contrato de «Mi programación» para Codex (portal del docente)
+
+- `GET /programacion-academica/api/v1/concertacion/mia?periodo=<id>` → `[{ idConcertacion, nivel, estado, horas, franjas: [{ idFranja, idGrupo, codigoAsignatura, asignatura, horas }], comentario, novedad: { tipo, justificacion, creadaEn } | null, firmas: [{ rol, firmadoEn, modoOtp }], actualizadaEn }]`. El docente ve sus concertaciones desde `POR_ACEPTAR` (antes son internas: no aparecen).
+- `POST /programacion-academica/api/v1/concertacion/:id/aceptar` `{ codigo }` (OTP de 6 dígitos; simulado mientras `PROG_MOCK_FIRMA_OTP` no sea `false`) → la concertación queda `ACEPTADA`.
+- `POST /programacion-academica/api/v1/concertacion/:id/novedad` `{ tipo, justificacion }` → `NOVEDAD`. `tipo` ∈ `investigacion`, `movilidad`, `perfil`, `otra`; `justificacion` obligatoria (mínimo 10 caracteres).
+- Solo el docente dueño puede aceptar o reportar, y solo en `POR_ACEPTAR`.
+- Lo que el portal ya muestra (calendario, grupos asignados) no cambia.
+
+### 23.3 · Contrato del programador y de la revisión interna
+
+- `POST /programacion-academica/api/v1/concertacion/enviar` `{ idPeriodo, documento }` → crea o reenvía las concertaciones del docente (una por nivel con docencia `TOMADA` en el periodo y en los niveles que el usuario asigna). Mismas validaciones de antes: corte del periodo, ciclo del grupo, territorial por la oferta CETAP.
+- `GET /programacion-academica/api/v1/concertacion/programador?periodo=<id>` → concertaciones de los niveles que el usuario asigna, con estado, comentario de devolución y novedad.
+- Revisor y aprobador, sin cambios de ruta: `GET concertacion/bandeja`, `POST concertacion/:id/revisar` `{ tipo, codigo }`, `POST concertacion/:id/aprobar` `{ codigo }` (ahora deja `POR_ACEPTAR`), `POST concertacion/:id/devolver` `{ comentario }` (ahora vuelve al programador; las franjas siguen `TOMADA` con su docente).
