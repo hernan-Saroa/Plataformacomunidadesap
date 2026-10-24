@@ -650,3 +650,48 @@ Agregados al contrato. Son aditivos y no cambian lo de arriba:
 - **Pruebas:** PA 247/247 sin omitidas y MFE PA 33/33. Las suites nuevas tienen mutación verificada: `asignacion-docente.agregado.spec.ts`, `flujo-asignado.agregado.spec.ts` y `vista.agregado.spec.ts`.
 - **Usuario QA local nuevo:** `qa.asignador@esap.edu.co`, con la clave de `qa.programacion` y el rol `PROGRAMADOR_DOCENTE_PREGRADO`.
 - **Propuestas sin construir** de EFDS-2345, 2341, 2346 y 2347: `PROPUESTAS-RONDA3-claude.md`.
+
+## 21. Ronda 3b: archivos que genera Codex para el núcleo (EFDS-2345 y EFDS-2375), 24 de octubre
+
+Codex genera **dos archivos de datos**. Claude los carga. Ninguno es código: se pueden regenerar y volver a cargar sin cambiar nada más.
+
+### 21.1 · Tabla de equivalencias de áreas → `nucleo_equivalencia`
+
+**Archivo:** `datos/nucleos/nucleo_equivalencia.csv`, UTF-8 con BOM, separador `;`, una fila por variante.
+
+| Columna | Obligatoria | Valores | Qué es |
+|---|---|---|---|
+| `area_canonica` | sí, salvo `tipo` `generica` o `sin_area` | texto | Nombre del área canónica, igual en todas sus filas (p. ej. `Estado y Poder`) |
+| `variante` | sí | texto | Cómo aparece el área en el plan de estudios, en la base o en el RUND, tal cual (con tildes y mayúsculas; el servidor normaliza) |
+| `coincidencia` | sí | `exacta` \| `prefijo` | `prefijo` para las variantes con «…» de la tabla: casan con todo texto que **empiece** así |
+| `tipo` | sí | `area` \| `generica` \| `sin_area` | `generica` = frase que no es un núcleo («Labores de docencia…»), se descarta. `sin_area` = núcleo real sin área asignada todavía (se reporta) |
+| `fuente` | sí | `plan` \| `rund` \| `base` | De dónde salió la variante: hoja `PLAN_ESTUDIOS`, archivo del RUND o catálogo `nucleo_tematico` |
+
+- Cada área canónica tiene **también una fila con su propio nombre como variante**.
+- Las áreas que «quedan solas» (Teoría Económica e Historia, Formación integral y de contexto, Opción de grado, Formación General) van con una fila: su nombre.
+- Las frases genéricas van con `tipo=generica`, `coincidencia=prefijo`, sin `area_canonica`. Mínimo: «Labores de docencia», «Impartir asignaturas», «Desarrollo de los diferentes programas misionales», «Programas curriculares».
+- Los errores de digitación se agregan como variantes (p. ej. «Problremática Pública»).
+- **Normalización del servidor** (la misma en SQL y en TypeScript): minúsculas, sin tildes, sin `. , ; : ( )`, espacios unificados. Dos variantes que normalizan igual en el archivo son un error y la carga lo rechaza.
+
+### 21.2 · Puente para los catedráticos → `docente_nucleo` con origen `puente`
+
+**Archivo:** `datos/nucleos/puente_docente_area.csv`, UTF-8 con BOM, separador `;`, **una fila por docente y asignatura** que dicta, sacadas de la hoja `DOCENTE_ASIGNATURA_` cruzada con `PLAN_ESTUDIOS` (por `COD_ASIGNA` = `PROG_PENSUM` y nombre de asignatura normalizado).
+
+| Columna | Obligatoria | Ejemplo | Qué es |
+|---|---|---|---|
+| `documento` | sí | `52364430` | Cédula, solo dígitos |
+| `nombre` | sí | `ÁVILA PÉREZ SANDRA ESPERANZA` | Solo para el reporte; no se usa para cruzar |
+| `plan` | sí | `APT_53` | `PROG_PENSUM` |
+| `asignatura` | sí | `Historia de la Administración Pública` | Nombre como está en el plan |
+| `area_formacion` | sí | `Estado y poder` | `ÁREA DE FORMACIÓN` del plan, **tal cual**: el servidor la lleva al área canónica con la tabla 21.1 |
+
+- No incluir filas sin cédula (la de cédula `0`) ni las que no cruzan con el plan. Reportarlas aparte en `datos/nucleos/puente_excluidas.csv` (mismas columnas + `motivo`).
+- El servidor guarda **un núcleo por docente y área** (no por asignatura), con origen `puente` y el texto de las asignaturas que lo justifican.
+- Un docente cuya cédula no esté en `auth.personas` se reporta, no se crea.
+
+### 21.3 · Cómo se cargan
+
+- **Equivalencias:** migración del PTA sembrada con este archivo (la primera versión la armó Claude con la tabla de la instrucción; el archivo de Codex la reemplaza con la misma estructura).
+- **Puente:** `POST /pta/banco-docentes/nucleos/puente?dry_run=true|false`, multipart `file` (CSV o XLSX con esas columnas), permiso de carga del RUND. Respuesta: `{ filas, docentes, nucleosCreados, sinCambios, rechazadas: [{ fila, documento, motivo }] }`.
+- **Origen `rund`:** se calcula solo al cargar el archivo del RUND (sección 22) y se puede recalcular con `POST /pta/banco-docentes/nucleos/reinterpretar`.
+- **Interruptor del puente:** `PROG_NUCLEO_PUENTE` en Programación Académica (`false` lo apaga). Apagado, los candidatos solo usan el núcleo del RUND.
