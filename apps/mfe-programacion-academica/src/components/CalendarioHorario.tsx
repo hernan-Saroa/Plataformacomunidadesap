@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Clock, Loader2, MapPin, Monitor, Trash2, X } from 'lucide-react';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
+import type { CalendarioDocente } from '../services/api/vistaApi';
 
 import {
   crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo, actualizarOfertaCetapGrupo,
@@ -59,7 +60,51 @@ interface Props {
   onOfertaActualizada?: (grupo: Grupo) => void;
 }
 
-export function CalendarioHorario({
+/** El modo de consulta no monta los efectos ni los controles de escritura del grupo. */
+export function CalendarioHorario(props: Props | { soloLectura: true; calendario: CalendarioDocente }) {
+  return 'soloLectura' in props
+    ? <CalendarioConsulta calendario={props.calendario} />
+    : <CalendarioGrupoEditable {...props} />;
+}
+
+function CalendarioConsulta({ calendario: c }: { calendario: CalendarioDocente }) {
+  // Incluye horarios fuera de la ventana habitual y conserva visibles los solapamientos.
+  const desde = Math.min(HORA_DESDE, ...c.franjas.map(f => Math.floor(aMinutos(f.horaInicio) / 60)));
+  const hasta = Math.max(HORA_HASTA, ...c.franjas.map(f => Math.ceil(aMinutos(f.horaFin) / 60)));
+  return <section aria-label="Calendario semanal docente" className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+    <h3 className="font-bold text-[#003DA5]">Calendario semanal · {c.docente.nombre ?? 'Docente'} · {c.periodo.codigo}</h3>
+    <p>{c.docente.vinculacion?.texto ?? 'Vinculación no disponible'} · Horas: {c.horas.total === null ? 'No disponibles' : c.horas.total} · Tope: {c.horas.tope ?? 'No aplica'}</p>
+    {c.horas.total !== null && c.horas.tope !== null && c.horas.total > c.horas.tope && <p className="text-red-700">Las horas superan el tope del docente.</p>}
+    {!c.franjas.length && <p>No hay franjas en este periodo.</p>}
+    <div className="overflow-x-auto"><div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, minmax(130px, 1fr))', minWidth: 966 }}>
+      <div />{DIAS.map(d => <h4 key={d.valor} className="text-center font-semibold p-2">{d.corto}</h4>)}
+      <div style={{ position: 'relative', height: (hasta - desde) * ALTO_HORA }}>{Array.from({ length: hasta - desde }, (_, i) => <span key={i} style={{ position: 'absolute', top: i * ALTO_HORA }} className="text-xs text-slate-500">{String(desde + i).padStart(2, '0')}:00</span>)}</div>
+      {DIAS.map(d => {
+        const franjas = c.franjas.filter(f => f.diaSemana === d.valor).sort((a,b) => a.horaInicio.localeCompare(b.horaInicio) || a.horaFin.localeCompare(b.horaFin));
+        const finales: number[] = [];
+        const columnas = franjas.map(f => {
+          let columna = finales.findIndex(fin => fin <= aMinutos(f.horaInicio));
+          if (columna < 0) columna = finales.length;
+          finales[columna] = aMinutos(f.horaFin);
+          return columna;
+        });
+        return <div key={d.valor} className="border-l border-slate-200" style={{ position: 'relative', height: (hasta - desde) * ALTO_HORA }}>
+          {Array.from({ length: hasta - desde }, (_, i) => <div key={i} className="border-t border-slate-100" style={{ position: 'absolute', top: i * ALTO_HORA, width: '100%' }} />)}
+          {franjas.map((f, i) => {
+            const columna = columnas[i];
+            const texto = f.reservada ? 'Ocupado' : `${f.asignatura ?? 'Asignatura'} · Grupo ${f.numeroGrupo ?? '—'} · ${f.programa ?? ''} · ${f.aulaCodigo ? `Aula ${f.aulaCodigo}` : 'Sin aula'} · ${f.estado ?? ''} · Ciclo ${f.cicloInicio ?? 'sin definir'} a ${f.cicloFin ?? 'sin definir'}`;
+            return <div key={f.idFranja} tabIndex={0} title={`${f.horaInicio}–${f.horaFin} · ${texto}`} className="rounded border border-blue-200 p-1 text-xs overflow-auto focus:ring-2 focus:ring-blue-600" style={{ position: 'absolute', top: (aMinutos(f.horaInicio) / 60 - desde) * ALTO_HORA, height: Math.max((aMinutos(f.horaFin) - aMinutos(f.horaInicio)) / 60 * ALTO_HORA, 20), left: `${columna / finales.length * 100}%`, width: `${100 / finales.length}%`, background: f.reservada ? '#e2e8f0' : '#eff6ff', color: '#1e3a8a', zIndex: i + 1 }}>
+              <strong>{f.horaInicio}–{f.horaFin}</strong><p>{texto}</p>
+            </div>;
+          })}
+        </div>;
+      })}
+    </div></div>
+    <p className="text-xs text-slate-500">Solo lectura. Las franjas reservadas se muestran como ocupadas, sin detalles.</p>
+  </section>;
+}
+
+function CalendarioGrupoEditable({
   idGrupo, numeroGrupo, nombreAsignatura, onOfertaActualizada,
 }: Props) {
   const [sesiones, setSesiones] = useState<Sesion[]>([]);

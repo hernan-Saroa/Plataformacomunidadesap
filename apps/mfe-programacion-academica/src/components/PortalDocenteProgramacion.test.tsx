@@ -37,6 +37,11 @@ const BOTON = { name: /Enviar a concertación/ };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getMiCalendario).mockResolvedValue({
+    docente: { idDocente: 'd1', documento: '1', nombre: 'Docente', vinculacion: null },
+    periodo: { id: '220', codigo: '2050-2', estado: 'planeacion', fechaInicio: null, fechaFin: null },
+    horas: { total: 0, tope: 304 }, horasPorGrupo: {}, franjas: [],
+  });
   vi.mocked(getDisponiblesPortal).mockResolvedValue([]);
   vi.mocked(getAcumuladoPortal).mockResolvedValue({
     documento: '1', nombre: 'Docente', categoriaVinculacion: 'CATEDRA', tope: 304, horasInvestigacion: 0,
