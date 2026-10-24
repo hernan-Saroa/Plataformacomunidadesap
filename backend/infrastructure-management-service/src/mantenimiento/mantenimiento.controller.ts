@@ -937,6 +937,115 @@ export class MantenimientoController {
     res!.status(HttpStatus.OK).send(buffer);
   }
 
+  // ---------------------------------------------------------------------------
+  // FASE 4 · REQ. #10: Ingesta y Consulta Histórica (Planner / GLPI)
+  // ---------------------------------------------------------------------------
+
+  @Post('historico/importar')
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Importar mantenimientos históricos desde archivo Excel (Planner/GLPI). Segregado de la tabla viva de solicitudes.',
+  })
+  @ApiResponse({ status: 200, description: 'Resumen de filas importadas, omitidas y tiempo de procesamiento.' })
+  async importarHistoricoExcel(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file || !file.buffer || file.size === 0) {
+      throw new BadRequestException('Debe adjuntar un archivo Excel válido (.xlsx o .xls).');
+    }
+    const ext = (file.originalname || '').toLowerCase();
+    if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls')) {
+      throw new BadRequestException('Formato de archivo no compatible. Solo se admiten archivos .xlsx o .xls');
+    }
+    return this.mantenimientoService.importarHistoricoExcel(file.buffer, file.originalname, req?.user);
+  }
+
+  @Post('historico/cargar-servidor')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Ingesta directa en un clic desde el archivo oficial del servidor Mantenimientos_Infraestructura_2026.xlsx.',
+  })
+  async cargarHistoricoDesdeServidor(@Req() req: any) {
+    return this.mantenimientoService.importarHistoricoDesdeServidor(req?.user);
+  }
+
+  @Get('historico')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Listar solicitudes históricas migradas de Microsoft Planner / GLPI con paginación y filtros.',
+  })
+  listarHistorico(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('semana') semana?: string,
+    @Query('estado') estado?: string,
+    @Query('tecnico') tecnico?: string,
+    @Query('solicitante') solicitante?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Req() req?: any,
+  ) {
+    return this.mantenimientoService.listarHistorico(
+      {
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        search,
+        semana,
+        estado,
+        tecnico,
+        solicitante,
+        fechaDesde,
+        fechaHasta,
+      },
+      req?.user,
+    );
+  }
+
+  @Get('historico/estadisticas')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Estadísticas y métricas generales del repositorio histórico migrado de Planner.',
+  })
+  obtenerEstadisticasHistorico(@Req() req?: any) {
+    return this.mantenimientoService.obtenerEstadisticasHistorico(req?.user);
+  }
+
+  @Get('historico/exportar-excel')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Descargar consolidado del repositorio histórico en formato Excel (.xlsx).',
+  })
+  async exportarHistoricoExcel(
+    @Query() query: any,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.mantenimientoService.exportarHistoricoExcel(query, req?.user);
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.status(HttpStatus.OK).send(buffer);
+  }
+
+  @Delete('historico')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Vaciar todos los registros del repositorio histórico de Planner/GLPI.',
+  })
+  async vaciarHistorico(@Req() req: any) {
+    return this.mantenimientoService.vaciarHistorico(req?.user);
+  }
+
   @Get('estadisticas/reporte-gestion/pdf')
   @ApiBearerAuth()
   @ApiOperation({
