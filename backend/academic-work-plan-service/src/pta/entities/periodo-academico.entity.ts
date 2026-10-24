@@ -11,8 +11,29 @@ export class PeriodoAcademicoEntity {
   @Column({ type: 'int' })
   anio: number;
 
-  @Column({ type: 'smallint' })
-  semestre: number;
+  /** 1 o 2 en los semestrales; null en los personalizados (EFDS-2346). */
+  @Column({ type: 'smallint', nullable: true })
+  semestre: number | null;
+
+  /** 'semestral' | 'personalizado' (EFDS-2346). */
+  @Column({ type: 'varchar', length: 20, default: 'semestral' })
+  tipo: string;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  nombre: string | null;
+
+  /** Segundo periodo en curso, activado como excepción (EFDS-2346). El activo es el principal. */
+  @Column({ type: 'boolean', default: false })
+  extraordinario: boolean;
+
+  @Column({ name: 'motivo_extraordinario', type: 'text', nullable: true })
+  motivoExtraordinario: string | null;
+
+  @Column({ name: 'extraordinario_por', type: 'varchar', length: 120, nullable: true })
+  extraordinarioPor: string | null;
+
+  @Column({ name: 'extraordinario_en', type: 'timestamptz', nullable: true })
+  extraordinarioEn: Date | null;
 
   @Column({ name: 'fecha_inicio', type: 'date' })
   fechaInicio: Date;

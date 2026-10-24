@@ -30,7 +30,29 @@ export class ContratoClient {
    * Impacto en horas de una asignatura para una vinculación, calculado por el
    * PTA. `token` se reenvía porque el contrato exige autenticación.
    */
+  /**
+   * Resultados recientes por asignatura y vinculación. Los candidatos (EFDS-2341)
+   * evalúan decenas de docentes con las mismas asignaturas: sin esto serían cientos
+   * de llamadas iguales. Vida corta: un cambio en el PTA se ve en segundos. Los
+   * errores no se guardan (se sigue fallando cerrado).
+   */
+  private readonly recientes = new Map<string, { valor: CalculoHoras; hasta: number }>();
+  private static readonly VIDA_MS = 30_000;
+
   async calcularImpacto(
+    codigoAsignatura: string,
+    vinculacion: string | null,
+    token: string | null,
+  ): Promise<CalculoHoras> {
+    const clave = `${codigoAsignatura}|${vinculacion ?? ''}`;
+    const guardado = this.recientes.get(clave);
+    if (guardado && guardado.hasta > Date.now()) return guardado.valor;
+    const valor = await this.pedirImpacto(codigoAsignatura, vinculacion, token);
+    this.recientes.set(clave, { valor, hasta: Date.now() + ContratoClient.VIDA_MS });
+    return valor;
+  }
+
+  private async pedirImpacto(
     codigoAsignatura: string,
     vinculacion: string | null,
     token: string | null,

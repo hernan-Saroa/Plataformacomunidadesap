@@ -67,13 +67,19 @@ const ESTADOS_PTA_TERMINALES_CIERRE = ['Terminado', 'TERMINADO', 'Finalizado', '
 const CONDICION_PTA_A_FINALIZAR = `
         p.estado <> ALL($2::text[])
         AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
+        -- EFDS-2346: los PTA del periodo EXTRAORDINARIO en curso (p. ej. el interperiodo)
+        -- no se terminan al activar el principal: van aparte y se cierran con su periodo.
+        AND NOT EXISTS (
+          SELECT 1 FROM academic_work_plan.periodo_academico pe
+           WHERE pe.estado = 'en_curso' AND pe.extraordinario AND pe.codigo = p.periodo)
         -- Un PTA terminado que fue reabierto mediante solicitud debe poder
         -- completar su edición aunque pertenezca a un periodo anterior. Al
         -- finalizar la reaprobación recuperará por sí mismo "Terminado".
         AND NOT EXISTS (
           SELECT 1
           FROM academic_work_plan."SolicitudPTA" s
-          WHERE s."ptaId" = p.id
+          -- Como texto: en algunas bases "ptaId" es uuid y el id del PTA es texto.
+          WHERE s."ptaId"::text = p.id::text
             AND s."tipoSolicitud" = 'edicion_componentes'
             AND s.estado IN ('aprobado', 'en_aprobacion')
         )`;

@@ -650,3 +650,232 @@ Agregados al contrato. Son aditivos y no cambian lo de arriba:
 - **Pruebas:** PA 247/247 sin omitidas y MFE PA 33/33. Las suites nuevas tienen mutación verificada: `asignacion-docente.agregado.spec.ts`, `flujo-asignado.agregado.spec.ts` y `vista.agregado.spec.ts`.
 - **Usuario QA local nuevo:** `qa.asignador@esap.edu.co`, con la clave de `qa.programacion` y el rol `PROGRAMADOR_DOCENTE_PREGRADO`.
 - **Propuestas sin construir** de EFDS-2345, 2341, 2346 y 2347: `PROPUESTAS-RONDA3-claude.md`.
+
+## 21. Ronda 3b: archivos que genera Codex para el núcleo (EFDS-2345 y EFDS-2375), 24 de octubre
+
+Codex genera **dos archivos de datos**. Claude los carga. Ninguno es código: se pueden regenerar y volver a cargar sin cambiar nada más.
+
+### 21.1 · Tabla de equivalencias de áreas → `nucleo_equivalencia`
+
+**Archivo:** `datos/nucleos/nucleo_equivalencia.csv`, UTF-8 con BOM, separador `;`, una fila por variante.
+
+| Columna | Obligatoria | Valores | Qué es |
+|---|---|---|---|
+| `area_canonica` | sí, salvo `tipo` `generica` o `sin_area` | texto | Nombre del área canónica, igual en todas sus filas (p. ej. `Estado y Poder`) |
+| `variante` | sí | texto | Cómo aparece el área en el plan de estudios, en la base o en el RUND, tal cual (con tildes y mayúsculas; el servidor normaliza) |
+| `coincidencia` | sí | `exacta` \| `prefijo` | `prefijo` para las variantes con «…» de la tabla: casan con todo texto que **empiece** así |
+| `tipo` | sí | `area` \| `generica` \| `sin_area` | `generica` = frase que no es un núcleo («Labores de docencia…»), se descarta. `sin_area` = núcleo real sin área asignada todavía (se reporta) |
+| `fuente` | sí | `plan` \| `rund` \| `base` | De dónde salió la variante: hoja `PLAN_ESTUDIOS`, archivo del RUND o catálogo `nucleo_tematico` |
+
+- Cada área canónica tiene **también una fila con su propio nombre como variante**.
+- Las áreas que «quedan solas» (Teoría Económica e Historia, Formación integral y de contexto, Opción de grado, Formación General) van con una fila: su nombre.
+- Las frases genéricas van con `tipo=generica`, `coincidencia=prefijo`, sin `area_canonica`. Mínimo: «Labores de docencia», «Impartir asignaturas», «Desarrollo de los diferentes programas misionales», «Programas curriculares».
+- Los errores de digitación se agregan como variantes (p. ej. «Problremática Pública»).
+- **Normalización del servidor** (la misma en SQL y en TypeScript): minúsculas, sin tildes, sin `. , ; : ( )`, espacios unificados. Dos variantes que normalizan igual en el archivo son un error y la carga lo rechaza.
+
+### 21.2 · Puente para los catedráticos → `docente_nucleo` con origen `puente`
+
+**Archivo:** `datos/nucleos/puente_docente_area.csv`, UTF-8 con BOM, separador `;`, **una fila por docente y asignatura** que dicta, sacadas de la hoja `DOCENTE_ASIGNATURA_` cruzada con `PLAN_ESTUDIOS` (por `COD_ASIGNA` = `PROG_PENSUM` y nombre de asignatura normalizado).
+
+| Columna | Obligatoria | Ejemplo | Qué es |
+|---|---|---|---|
+| `documento` | sí | `52364430` | Cédula, solo dígitos |
+| `nombre` | sí | `ÁVILA PÉREZ SANDRA ESPERANZA` | Solo para el reporte; no se usa para cruzar |
+| `plan` | sí | `APT_53` | `PROG_PENSUM` |
+| `asignatura` | sí | `Historia de la Administración Pública` | Nombre como está en el plan |
+| `area_formacion` | sí | `Estado y poder` | `ÁREA DE FORMACIÓN` del plan, **tal cual**: el servidor la lleva al área canónica con la tabla 21.1 |
+
+- No incluir filas sin cédula (la de cédula `0`) ni las que no cruzan con el plan. Reportarlas aparte en `datos/nucleos/puente_excluidas.csv` (mismas columnas + `motivo`).
+- El servidor guarda **un núcleo por docente y área** (no por asignatura), con origen `puente` y el texto de las asignaturas que lo justifican.
+- Un docente cuya cédula no esté en `auth.personas` se reporta, no se crea.
+
+### 21.3 · Cómo se cargan
+
+- **Equivalencias:** migración del PTA sembrada con este archivo (la primera versión la armó Claude con la tabla de la instrucción; el archivo de Codex la reemplaza con la misma estructura).
+- **Puente:** `POST /pta/banco-docentes/nucleos/puente?dry_run=true|false`, multipart `file` (CSV o XLSX con esas columnas), permiso de carga del RUND. Respuesta: `{ filas, docentes, nucleosCreados, sinCambios, rechazadas: [{ fila, documento, motivo }] }`.
+- **Origen `rund`:** se calcula solo al cargar el archivo del RUND (sección 22) y se puede recalcular con `POST /pta/banco-docentes/nucleos/reinterpretar`.
+- **Interruptor del puente:** `PROG_NUCLEO_PUENTE` en Programación Académica (`false` lo apaga). Apagado, los candidatos solo usan el núcleo del RUND.
+
+### 21.4 · Cómo quedó cargado (24 de octubre)
+
+- **Equivalencias:** migración 669 (tabla de la instrucción) + 670 (archivo de Codex, commit `fbd18264d`). La 670 **suma**: no borra variantes de la 669 ni rebaja un `prefijo` a `exacta`. Diferencias con el archivo de Codex que se mantienen del lado del servidor, porque sin ellas dejan de resolverse textos reales del RUND:
+  - «Gestión del Desarrollo» y «Finanzas Públicas y Presupuesto» son `prefijo` (el RUND trae «Gestión Del Desarrollo Territorial, …» y «Finanzas Públicas Y Presupuesto Público»).
+  - «Gobierno y Política Pública» (`prefijo`, Estado, Gobierno y Sociedad) no está en el archivo y aparece en el RUND («…Gobierno Y Política Pública Y Politica Pública Territorial»).
+- **Puente:** el CSV de Codex se lee con `;` (el lector genérico de Excel tomaba la coma). 278 filas, 0 rechazadas, 123 docentes, 202 núcleos. Cada carga definitiva **reemplaza** el puente completo (`nucleosRetirados` en la respuesta).
+- **Regla del puente en Programación Académica:** cuenta solo para quien **no** tiene núcleo del RUND. No amplía el área de un docente que ya la tiene en el RUND.
+
+## 22. EFDS-2341: candidatos por área y asignación por franja (24 de octubre)
+
+Regla del negocio (decisiones 3, 6 y 7): **nadie se asigna fuera de su área**, un docente sin núcleo no se asigna, un docente por franja. No hay asignación forzada.
+
+### 22.1 · De dónde sale el área
+
+- **Asignatura:** `academic_work_plan.area_de_asignatura(id_asignatura)` (migración 671), regla única en SQL. Posgrado: el programa es el área (`area_formacion.id_programa`). Pregrado: `nucleo_tematico.nombre` normalizado contra `nucleo_equivalencia` (exacta; si no, el prefijo más largo). `NULL` = sin área.
+- **Docente:** `academic_work_plan.docente_nucleo` (migración 669), orígenes `rund` y `puente`. Con `PROG_NUCLEO_PUENTE=false` solo cuenta `rund`.
+- **Reinterpretación del RUND:** automática después de cada carga definitiva del RUND (la respuesta trae `nucleos: { docentes, conArea, genericos, sinArea, sinResolver }`); si fallara, la carga del RUND no se toca y se repite con `POST /pta/banco-docentes/nucleos/reinterpretar`.
+- **Cobertura:** `GET /pta/banco-docentes/nucleos/cobertura` → `{ docentes, con_rund, solo_puente, sin_nucleo, sin_nucleo_con_carga_rund, con_nucleo_fuera_del_banco, porArea: [{ codigo, nombre, rund, puente }] }`.
+
+### 22.2 · `GET /programacion-academica/api/v1/asignaciones/candidatos?grupo=<uuid>&franjas=<uuid>,<uuid>`
+
+Permiso: consultar la disponibilidad docente o asignar docentes (igual que el panel del docente). Sin `franjas`, todas las del grupo. Solo lectura.
+
+```jsonc
+{
+  "grupo": "uuid",
+  "franjas": [{ "idFranja": "uuid", "diaSemana": "LUNES", "horaInicio": "08:00", "horaFin": "10:00", "docenteActual": "Nombre" | null }],
+  "area": { "codigo": "AF-01", "nombre": "Estado y Poder", "nucleoAsignatura": "Problemática del Estado y del Poder" } | null,
+  "candidatos": [{
+    "documento": "…", "nombre": "…", "vinculacion": "Ocasional", "perfil": "…",
+    "titulos": { "pregrado": "…", "especializacion": null, "maestria": "…", "doctorado": null, "posdoctorado": null },
+    "nucleos": [{ "area": "Estado y Poder", "origen": "rund", "texto": "Problemática Del Estado Y Del Poder" }],
+    "origenArea": "rund" | "puente",
+    "horasProgramadas": 96,      // docencia ya programada (cálculo único), sin este grupo
+    "horasImpacto": 32,          // lo que suman las franjas pedidas (horas del grupo × fracción por días)
+    "tope": 304,
+    "cruce": false,
+    "motivos": [{ "regla": "RN-07", "mensaje": "…" }],   // bloqueos de EFDS-1372, en seco
+    "asignable": true
+  }],
+  "sugerido": { "documento": "…", "nombre": "…", "razones": ["Es del área…", "Tiene 0 h programadas, la menor…", "No tiene cruce…", "No tiene bloqueos…", "Empata…; se desempata por cédula."] } | null,
+  "mensaje": null | "La asignatura no tiene área de formación…" | "Ningún docente tiene núcleo temático en el área «…»." | "Hay N docente(s) del área «…», pero todos tienen algún bloqueo…"
+}
+```
+
+- Solo aparecen docentes del área. Orden: aptos primero, menos horas programadas, cédula.
+- El **sugerido** es el primero apto (área, sin cruce, sin bloqueos, menos horas; empate por cédula).
+- Las horas y los cruces se calculan **para las franjas pedidas**: una franja de dos días es la mitad de las horas del grupo (regla de reparto por días vigente).
+
+### 22.3 · `POST /programacion-academica/api/v1/asignaciones` con `franjas`
+
+Cuerpo: `{ "idGrupo": "uuid", "documento": "…", "franjas": ["uuid", …] }`. `franjas` es opcional:
+
+- **Sin `franjas` (o todas):** asignación del grupo completo, como antes (modal: todas las franjas por defecto).
+- **Con un subconjunto:** solo esas franjas pasan al docente (y a `TOMADA` en el flujo nuevo). El resto conserva el suyo. Si al final todas las franjas tienen el mismo docente, queda su `asignacion_docente`; si el grupo queda repartido, no hay «docente del grupo» y se retira esa fila.
+- El área es un **motivo más del bloqueo duro**, el primero: `{ "asignado": false, "motivos": [{ "regla": "AREA", "mensaje": "El docente no es del área «…» (sus áreas: …)." }] }`. Nada se guarda.
+- Una franja que no es del grupo → 400. Una franja `APROBADA` de otro docente → 409.
+- El listado de franjas (`GET /horarios`) muestra ahora el docente **de cada franja**, no el del grupo.
+
+### 22.4 · Qué hace el front (Codex)
+
+En el modal de asignar: pedir `candidatos` con las franjas marcadas (todas por defecto), mostrar el área, la lista con vinculación, perfil, títulos, núcleo y su origen (`rund` / `puente`), horas, cruce y motivos; resaltar el sugerido con sus razones; si `mensaje`, mostrarlo en lugar de la lista. Permitir desmarcar franjas para asignarlas a otro docente. **No** ofrecer asignar a alguien que no esté en la lista.
+
+## 23. EFDS-2374: concertación en el orden nuevo (24 de octubre)
+
+HU EFDS-2371 (Javier): el programador asigna, la programación se revisa y aprueba **por dentro** (roles del PTA, con firma del aprobador) y **después** el docente, en «Mi programación», solo **acepta** (con firma) o **reporta una novedad** justificada. Lo aceptado alimenta el PTA. El docente no modifica nada.
+
+Todo esto rige solo con `PROG_CONCERTACION_HABILITADA=true` (y su corte `PROG_CONCERTACION_DESDE_PERIODO`), igual que antes. **Apagada, nada cambia.** El orden anterior (el docente enviaba primero) deja de existir con el interruptor encendido: ya no hay `POST /concertacion/:idPeriodo/enviar` del docente.
+
+### 23.1 · Diagrama de estados (`concertacion_docencia.estado`, una por docente × periodo × nivel)
+
+```
+                    programador: enviar (foto + huella)
+   (asignada) ─────────────────────────────────────────────▶ ENVIADA
+       ▲                                                        │ revisor(es): revisar + firma
+       │                                                        ▼
+       │                                                    REVISADA
+       │                                                        │ aprobador: aprobar + FIRMA
+       │      revisor/aprobador: devolver (comentario)          ▼
+       ├──────────────◀──────────── DEVUELTA ◀───── (ENVIADA | REVISADA)
+       │                                                    POR_ACEPTAR ──── el docente la ve en «Mi programación»
+       │                                                     │        │
+       │       docente: novedad (tipo + justificación)       │        │ docente: aceptar + FIRMA
+       └──────────────◀──────────── NOVEDAD ◀────────────────┘        ▼
+                                                                   ACEPTADA ──▶ franjas APROBADA ──▶ PTA
+```
+
+| Estado | Quién la tiene | Qué puede pasar |
+|---|---|---|
+| (asignada) | Programador | Las franjas tienen docente y están `TOMADA`. El programador asigna, reasigna y retira libremente. |
+| `ENVIADA` | Revisores | El programador envió la foto (franjas y horas, con huella). Revisar (firma del revisor) o devolver. |
+| `REVISADA` | Aprobador | Revisiones completas. Aprobar (firma del aprobador) o devolver. |
+| `DEVUELTA` | Programador | Devuelta por dentro con comentario. El programador ajusta y vuelve a enviar. |
+| `POR_ACEPTAR` | Docente | Aprobada por dentro. El docente acepta (firma) o reporta novedad. |
+| `NOVEDAD` | Programador | El docente reportó una novedad: tipo `investigacion` \| `movilidad` \| `perfil` \| `otra` y justificación obligatoria. El programador reasigna o ajusta y vuelve a enviar (vuelve a pasar por revisión). |
+| `ACEPTADA` | — | Final. Las franjas pasan a `APROBADA` y la decisión va al PTA (con las firmas del aprobador y del docente). |
+| `APROBADA` | — | Solo filas del orden anterior; no se crean más. |
+
+Reglas:
+- Mientras la concertación está `ENVIADA`, `REVISADA` o `POR_ACEPTAR`, sus franjas **no se reasignan** (409): hay que devolverla primero. En `DEVUELTA` y `NOVEDAD` el programador las cambia como quiera.
+- Aprobar y aceptar verifican que la foto siga vigente (mismas franjas, mismo docente, `TOMADA`): nadie aprueba ni acepta algo distinto de lo enviado.
+- Quién revisa y aprueba: los mismos permisos y alcance territorial del PTA que ya usaba la concertación (`pta.review.academica.<nivel>`, `pta.approve.academica.<nivel>` y sus territoriales).
+- Quién envía: el programador con asignación del nivel (`programacion-academica.asignacion-docente.<nivel>`).
+- Al PTA: la decisión lleva la firma del aprobador y la del docente. El PTA la registra si quien llama puede aprobar **o** si quien llama es el propio docente y el aprobador que firmó tiene el permiso de aprobar en el PTA.
+
+### 23.2 · Contrato de «Mi programación» para Codex (portal del docente)
+
+- `GET /programacion-academica/api/v1/concertacion/mia?periodo=<id>` → `[{ idConcertacion, nivel, estado, horas, franjas: [{ idFranja, idGrupo, codigoAsignatura, asignatura, horas }], comentario, novedad: { tipo, justificacion, creadaEn } | null, firmas: [{ rol, firmadoEn, modoOtp }], actualizadaEn }]`. El docente ve sus concertaciones desde `POR_ACEPTAR` (antes son internas: no aparecen).
+- `POST /programacion-academica/api/v1/concertacion/:id/aceptar` `{ codigo }` (OTP de 6 dígitos; simulado mientras `PROG_MOCK_FIRMA_OTP` no sea `false`) → la concertación queda `ACEPTADA`.
+- `POST /programacion-academica/api/v1/concertacion/:id/novedad` `{ tipo, justificacion }` → `NOVEDAD`. `tipo` ∈ `investigacion`, `movilidad`, `perfil`, `otra`; `justificacion` obligatoria (mínimo 10 caracteres).
+- Solo el docente dueño puede aceptar o reportar, y solo en `POR_ACEPTAR`.
+- Lo que el portal ya muestra (calendario, grupos asignados) no cambia.
+
+### 23.3 · Contrato del programador y de la revisión interna
+
+- `POST /programacion-academica/api/v1/concertacion/enviar` `{ idPeriodo, documento }` → crea o reenvía las concertaciones del docente (una por nivel con docencia `TOMADA` en el periodo y en los niveles que el usuario asigna). Mismas validaciones de antes: corte del periodo, ciclo del grupo, territorial por la oferta CETAP.
+- `GET /programacion-academica/api/v1/concertacion/programador?periodo=<id>` → concertaciones de los niveles que el usuario asigna, con estado, comentario de devolución y novedad.
+- Revisor y aprobador, sin cambios de ruta: `GET concertacion/bandeja`, `POST concertacion/:id/revisar` `{ tipo, codigo }`, `POST concertacion/:id/aprobar` `{ codigo }` (ahora deja `POR_ACEPTAR`), `POST concertacion/:id/devolver` `{ comentario }` (ahora vuelve al programador; las franjas siguen `TOMADA` con su docente).
+
+## 24. EFDS-2347: festivos, recesos y horas de las sesiones reales (24 de octubre)
+
+Decisiones 12 y 13: las horas de un festivo **se descuentan** (no llegan al acumulado ni al PTA); los recesos son los mismos para todos, por periodo; los fines de semana cuentan.
+
+### 24.1 · El cálculo único, ahora por sesiones
+
+- Regla en SQL: `"academic-schedule".sesiones_de_franja(id_franja)` (migración 062) → `sesiones_ciclo, festivos, recesos, sesiones, horas_sesion, horas, anios_sin_festivos`. El ciclo es el del grupo o, si no tiene, el de su periodo.
+- Horas del docente en un grupo = **Σ horas reales de sus franjas × factor de vinculación** del contrato. Es lo que va al acumulado, al tope, a los candidatos, a la concertación y, al aceptar, al PTA.
+- Las horas del plan (catálogo × factor) quedan como **referencia** (`horasPlan`). Se usan en lugar de las sesiones solo si el grupo no tiene ciclo o la asignatura tiene horas fijas en el catálogo; en ese caso se reparten con la regla por días y se avisa.
+- Festivos cargados: 2026 y 2027 (18 por año). Si el ciclo cae en un año sin festivos, el cálculo lo **avisa**: «No hay festivos cargados para 2031: las horas pueden estar sobreestimadas.»
+
+### 24.2 · Lo que cambia en las respuestas (aditivo)
+
+- Árbol (`GET /programacion/arbol`), cada `grupos[].docentes[]` trae además: `horasPlan`, `base` (`'sesiones' | 'plan'`), `descontadas: { festivos, recesos }` (sesiones de ese docente que no cuentan) y `avisos: string[]`. `horas` y `fraccion` salen ahora de las sesiones.
+- Calendario y buscador: `horas` con el mismo cálculo.
+- `grupos[].horas` (programadas vs requeridas del catálogo) **no cambia**: es la validación de planeación contra el catálogo (Circular 003), no las horas del docente.
+
+### 24.3 · Festivos y recesos
+
+- `GET /programacion-academica/api/v1/periodos/festivos?anio=2026` → `{ anio, cargados, festivos: [{ fecha, nombre }] }`.
+- `GET /programacion-academica/api/v1/periodos/:idPeriodo/recesos` → `[{ idReceso, fechaInicio, fechaFin, motivo, creadoPor }]`.
+- `POST /programacion-academica/api/v1/periodos/:idPeriodo/recesos` `{ fechaInicio, fechaFin, motivo }` — solo la administración del módulo (`programacion-academica.all`); dentro de las fechas del periodo; periodo cerrado → rechazado por el guard.
+- `DELETE /programacion-academica/api/v1/periodos/:idPeriodo/recesos/:idReceso` — igual.
+- `:idPeriodo` acepta el id de plataforma o el UUID legado.
+
+## 25. EFDS-2346: periodo personalizado y periodo extraordinario (24 de octubre)
+
+Decisiones 8 a 11: el interperiodo tiene su propio tope y su PTA va aparte; un extraordinario a la vez; lo activa la administración del módulo con permiso propio.
+
+### 25.1 · Modelo (PTA, migración 672)
+
+- `periodo_academico.tipo`: `semestral` (código `AAAA-1` / `AAAA-2`) o `personalizado` (código propio `AAAA-XXXXX`, p. ej. `2027-INT`, con `nombre`, sin `semestre`). Un personalizado es un periodo más: mismas reglas (fechas sin cruce, estados, activación).
+- `extraordinario` + `motivo_extraordinario`, `extraordinario_por`, `extraordinario_en`.
+- **El periodo activo es el PRINCIPAL**: `estado = 'en_curso' AND NOT extraordinario`.
+- La base garantiza un solo principal en curso y un solo extraordinario en curso (índices únicos parciales). Antes solo lo cuidaba el controlador.
+- Permiso nuevo `pta.periodos.activar_extraordinario` (módulo PTA), asignado a SUPER_ADMIN; el administrador lo da a otros roles si quiere.
+
+### 25.2 · API del PTA
+
+- `POST /pta/periodos-academicos` con `{ tipo: 'personalizado', anio, codigo, nombre, fechaInicio, fechaFin }` crea un personalizado (en planeación). Sin `tipo`, igual que antes.
+- `POST /pta/periodos-academicos/:id/activar-extraordinario` `{ motivo }` (mínimo 10 caracteres) → en curso como extraordinario. 403 sin el permiso; 409 si ya hay un extraordinario en curso, si el periodo ya está en curso o si está cerrado. **No** cierra el principal, **no** mueve otros periodos y **no** termina PTA.
+- `PATCH /pta/periodos-academicos/:id` `{ estado: 'en_curso' }` activa como **principal** (como siempre): cierra los anteriores, pasa los posteriores a planeación y termina los PTA de otros periodos, **excepto** el extraordinario en curso y sus PTA. Un extraordinario en curso no se convierte en principal (409: ciérrelo primero). `{ estado: 'cerrado' }` sobre el extraordinario lo cierra sin exigir otro activo.
+- `GET /pta/periodos-academicos` trae `tipo`, `nombre`, `extraordinario`, `motivoExtraordinario`… y, si hay extraordinario en curso, devuelve el principal **antes** que él: quien busca «el activo» con el primer en curso recibe el principal.
+- Programación Académica `GET /periodos`: cada periodo trae `tipo`, `nombre`, `semestre` (null en personalizados), `esActivo` (principal), `esExtraordinario` y `motivoExtraordinario`.
+
+### 25.3 · Consumidores corregidos
+
+- PTA: activación y vista previa (`periodo-activacion.ts`: el personalizado se ordena por fecha; el extraordinario en curso no se toca), terminación de PTA (`CONDICION_PTA_A_FINALIZAR`), detalle del periodo (programas sin periodo solo en el principal), periodo de carga por defecto del RUND, importador de asignaturas (**ya no crea periodos en curso**: los crea en planeación y no modifica uno existente).
+- Programación Académica: periodo por defecto del portal y de las vistas; lista de periodos.
+- Frontend que elige «el activo» (`.find(en_curso)` → principal): `mfe-pta` (`ptaApi.getActivePeriodoAcademico`, `BancoDocentesView` ×2, `BancoDocentesPTA`, `PtaBackofficeModule` ×2, `PTAForm`), `mfe-programas-academicos` (`GestionPeriodos`, `ImportarAsignaturas`, `ProgramasAcademicosModule` ×2). Los que muestran insignias o listas de en curso siguen mostrando los dos (el docente puede tener PTA del interperiodo).
+
+### 25.4 · Sin tocar (fuera del alcance de esta tarea): para sus dueños
+
+- **auth-service** `programas.service.ts:484-494`: «periodo activo» con `ORDER BY anio DESC, semestre DESC LIMIT 1`. Con un personalizado extraordinario en curso (semestre NULL, que en DESC va primero) un programa nuevo quedaría en el extraordinario. Debe filtrar `AND NOT extraordinario`. También `:88` (`estado = 'en_curso'`), que debería ser el principal.
+- **shell** `EstructuraOrganizacionalModule.tsx:48`: compara con `'ACTIVO'`, que nunca coincide con `en_curso` (ya estaba roto); y `ConfiguracionPeriodo.tsx`.
+- **mfe-estructura-org** (`EstructuraOrganizacionalModule.tsx`, `estructuraService.ts`): consume los periodos; revisar que use el principal.
+- `mfe-reportes` `PlantaDocenteReportView.tsx:243`: solo etiqueta «(en curso)», correcto con los dos.
+
+### 25.5 · Defectos de producción del PTA (reportados aparte, no corregidos)
+
+- `pta.service.ts` `savePTA` (línea 4340): un PTA sin periodo se guarda en **`'2026-1'`** fijo, no en el periodo activo.
+- `pta.service.ts` `getDashboardKPIs` (línea 11768): sin periodo, el tablero muestra **`'2025-2'`** fijo.
+- Del mismo tipo: `seedPTAs` (`'2026-1'`, solo desarrollo), `cascada.controller.ts:44`, `asignaturas-import.controller.ts:41,57,64` y `asignaturas-import.service.ts:52,564` (`'2025-2'` por defecto), Programación Académica `validacion.controller.ts:45` (`'2026-1'`, `'2026-V1'`).
+- Corregido de paso (equivalente en todas las bases): la regla que termina los PTA al activar comparaba `SolicitudPTA."ptaId"` (uuid en esta base) con el id del PTA (texto) y **fallaba**, así que activar no terminaba ningún PTA aquí; ahora compara como texto.

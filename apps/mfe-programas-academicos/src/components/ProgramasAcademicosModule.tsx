@@ -129,7 +129,7 @@ export function ProgramasAcademicosModule() {
         setPeriodosPA(sorted);
         // Al llegar a la página, el selector SIEMPRE inicia en el período activo
         // (en_curso), sin importar cuál se haya visualizado antes.
-        const active = sorted.find((p: any) => p.estado === 'en_curso') || sorted[0];
+        const active = sorted.find((p: any) => p.estado === 'en_curso' && !p.extraordinario) || sorted[0];
         setPeriodoSeleccionadoPA(getPeriodCode(active));
       } catch {
         setPeriodosPA([]);
@@ -141,7 +141,7 @@ export function ProgramasAcademicosModule() {
     cargarPeriodos();
   }, [periodosRefreshTrigger]);
 
-  const periodoActivoPA = periodosPA.find((p) => p.estado === 'en_curso') || periodosPA[0];
+  const periodoActivoPA = periodosPA.find((p) => p.estado === 'en_curso' && !p.extraordinario) || periodosPA[0];
   const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '';
   const esPeriodoActivoPA =
     !!periodoSeleccionadoPA && periodoSeleccionadoPA === periodoActivoCodigoPA;

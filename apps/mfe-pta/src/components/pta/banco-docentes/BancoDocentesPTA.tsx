@@ -193,7 +193,7 @@ export function BancoDocentesPTA() {
           setPeriodos(data);
           
           // Buscar el periodo activo (estado 'en_curso')
-          const activo = data.find((p: any) => p.estado === 'en_curso');
+          const activo = data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
           if (activo) {
             setFilterPeriodo(activo.codigo);
           } else if (data.length > 0) {

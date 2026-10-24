@@ -113,10 +113,7 @@ export class DocenciaDecisionesService {
 
   async registrar(userId: string, d: DecisionDocenciaDto): Promise<{ registrada: true; aplicada: boolean; estadoAplicacion: string | null }> {
     this.validar(d);
-    const ctx = await this.permisos.resolveForUser(String(userId ?? ''));
-    if (!ctx.approvesAll && !ctx.permissions.has(PERMISO_APROBAR[d.nivel])) {
-      throw new ForbiddenException(`Registrar la docencia concertada de ${d.nivel} requiere poder aprobarla en el PTA.`);
-    }
+    await this.exigirQuienRegistra(String(userId ?? ''), d);
     const guardar = (q: { query(sql: string, p?: any[]): Promise<any> }) => q.query(
       `INSERT INTO academic_work_plan.docencia_concertada
          (id_concertacion, documento_docente, periodo, nivel, horas, huella, asignaturas, firmas, registrada_por)
@@ -142,6 +139,31 @@ export class DocenciaDecisionesService {
       return aplicarDecision(m, d.idConcertacion);
     });
     return { registrada: true, aplicada: estadoAplicacion === 'aplicada', estadoAplicacion };
+  }
+
+  /**
+   * Quién puede registrar la decisión:
+   *   · quien puede aprobar la docencia del nivel en el PTA (orden anterior: la
+   *     registraba el aprobador al aprobar), o
+   *   · EFDS-2374 (orden nuevo): el PROPIO docente al aceptar, siempre que el
+   *     aprobador que firmó la decisión tenga ese permiso en el PTA. Así la
+   *     autorización sigue siendo la del aprobador, no la del docente.
+   */
+  private async exigirQuienRegistra(userId: string, d: DecisionDocenciaDto): Promise<void> {
+    const puedeAprobar = async (idUser: string) => {
+      const ctx = await this.permisos.resolveForUser(idUser);
+      return ctx.approvesAll || ctx.permissions.has(PERMISO_APROBAR[d.nivel]);
+    };
+    if (await puedeAprobar(userId)) return;
+    const [esElDocente] = await this.dataSource.query(
+      `SELECT 1 FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE u.id_user::text = $1 AND p.num_identificacion = $2`, [userId, String(d.documentoDocente ?? '').trim()]);
+    const firmaDocente = d.firmas.find((f) => f?.rol === 'docente');
+    const firmaAprobador = d.firmas.find((f) => f?.rol === 'aprobador');
+    if (esElDocente && firmaDocente?.idUser === userId && firmaAprobador?.idUser && await puedeAprobar(String(firmaAprobador.idUser))) {
+      return;
+    }
+    throw new ForbiddenException(`Registrar la docencia concertada de ${d.nivel} requiere poder aprobarla en el PTA.`);
   }
 
   /** Forma de la decisión: estructurada y completa, o 400. */

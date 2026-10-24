@@ -241,7 +241,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
   };
 
   // ─── Activar / Cerrar Periodo ───
-  const periodoActivo = periodos.find(p => p.estado === 'en_curso');
+  const periodoActivo = periodos.find(p => p.estado === 'en_curso' && !p.extraordinario);
 
   const handleActivarPeriodo = async (p: any) => {
     try {
