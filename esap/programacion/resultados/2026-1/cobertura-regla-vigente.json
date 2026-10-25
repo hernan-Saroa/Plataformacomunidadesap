@@ -1,0 +1,446 @@
+{
+  "periodo": "2026-1",
+  "generadoEn": "2026-10-25T04:20:59.518Z",
+  "fuente": "PROGRAMACIÓN del Excel; no es programación viva",
+  "regla": "Intérprete de Claude y equivalencias activas de la base. Puente solo si no hay ningún núcleo RUND reconocido.",
+  "interpreteSha256": "d3745c50b6e63763ebae24766cd0271b39b45d58878b35243f9934d848b7c5c4",
+  "franjas": 535,
+  "cubiertas": 463,
+  "porcentaje": 86.54,
+  "porRund": 32,
+  "porPuente": 431,
+  "noCubiertas": [
+    {
+      "fila": "fila-5",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-16",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-35",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-36",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-43",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-69",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-79",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-82",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-83",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-85",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-86",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-87",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-88",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-96",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-104",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-105",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-112",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-117",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-160",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-167",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-169",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-171",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-172",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-177",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-180",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-190",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-192",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-202",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-211",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-212",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-221",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-222",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-223",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-247",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-249",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-250",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-254",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-256",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-257",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-265",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-268",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-276",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-277",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-300",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-328",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-331",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-333",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-337",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-343",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-344",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-345",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-347",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-350",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-353",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-354",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-356",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-375",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-376",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-397",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-411",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-424",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-440",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-441",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-455",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-475",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-481",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-482",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-487",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-491",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-493",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-500",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    },
+    {
+      "fila": "fila-530",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Tiene núcleo RUND de otra área: el puente no lo amplía"
+    }
+  ]
+}

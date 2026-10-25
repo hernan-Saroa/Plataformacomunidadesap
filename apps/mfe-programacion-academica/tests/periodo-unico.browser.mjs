@@ -47,7 +47,12 @@ try {
     llamadas.push({ tipo, query: url.search, body: r.postData() });
     let data = [];
     let status = 200;
-    if (ruta.endsWith('/programacion-academica/api/v1/periodos')) {
+    if (ruta.endsWith('/programacion/mis-permisos')) {
+      data = { ver: ['pregrado', 'posgrado'], programar: ['pregrado', 'posgrado'], asignar: ['pregrado', 'posgrado'], disponibilidad: true };
+    } else if (ruta.endsWith('/programacion/arbol')) {
+      const p = periodos.find(p => p.idPeriodo === url.searchParams.get('periodo')) || p12;
+      data = { periodo: { id: p.idPeriodo, codigo: p.codigo, estado: p.estadoPlataforma, fechaInicio: p.fechaInicio, fechaFin: p.fechaFin }, resumen: { programas: 0, asignaturas: 0, grupos: 0, franjas: 0, franjasSinDocente: 0 }, programas: [] };
+    } else if (ruta.endsWith('/programacion-academica/api/v1/periodos')) {
       consultaPeriodos++;
       data = { periodos, legado: [legado], permisos };
     } else if (ruta.endsWith('/programacion-academica/api/v1/aulas')) {

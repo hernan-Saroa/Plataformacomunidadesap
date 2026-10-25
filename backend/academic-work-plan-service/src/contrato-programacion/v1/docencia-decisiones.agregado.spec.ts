@@ -97,6 +97,32 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
     await expect(servicio(['pta.review.academica.pregrado']).registrar('u2', decision())).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  caso('EFDS-2374: el docente registra al aceptar solo si el aprobador que firmó puede aprobar', async () => {
+    // Persona y cuenta QA propias (cédula en un rango que no usa nadie).
+    const doc = '9900000401';
+    const idPerson = (await client!.query(
+      `INSERT INTO auth.personas (id_tercero, num_identificacion, tip_identificacion, nom_largo, nom_tercero, gen_tercero)
+       VALUES ($1::bigint, $2, 'CC', 'Docente QA 2374', 'Docente QA 2374', 'N') RETURNING id_person::text AS id`, [Number(doc), doc])).rows[0].id;
+    const idUser = (await client!.query(
+      `INSERT INTO auth."user" (id_user, username, password_hash, id_person) VALUES (gen_random_uuid(), 'qa.2374.docente', 'x', $1)
+       RETURNING id_user::text AS id`, [idPerson])).rows[0].id;
+    // Solo 'apr' puede aprobar en el PTA; el docente no.
+    const svc = (aprobadorPuede: boolean) => new DocenciaDecisionesService(
+      { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) } as any,
+      { resolveForUser: async (u: string) => ({ approvesAll: false,
+        permissions: new Set(u === 'apr' && aprobadorPuede ? ['pta.approve.academica.pregrado'] : []) }) } as any,
+    );
+    const d = decision({ documentoDocente: doc, firmas: [
+      { rol: 'aprobador', idUser: 'apr', firmadoEn: '2050-02-12T10:00:00.000Z', modoOtp: 'simulado' },
+      { rol: 'docente', idUser, firmadoEn: '2050-02-13T10:00:00.000Z', modoOtp: 'simulado' },
+    ] });
+    expect(await svc(true).registrar(idUser, d)).toMatchObject({ registrada: true });
+    // Sin el permiso del aprobador que firmó, el docente no registra.
+    await expect(svc(false).registrar(idUser, d)).rejects.toBeInstanceOf(ForbiddenException);
+    // Otra cuenta que no es el docente de la decisión, tampoco.
+    await expect(svc(true).registrar('u3', d)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   caso('una decision incompleta se rechaza antes de consultar permisos', async () => {
     const svc = servicio([], true);
     await expect(svc.registrar('u2', decision({ huella: 'x' }))).rejects.toBeInstanceOf(BadRequestException);

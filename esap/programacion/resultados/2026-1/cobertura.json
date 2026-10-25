@@ -1,0 +1,140 @@
+{
+  "periodo": "2026-1",
+  "generadoEn": "2026-10-25T04:20:57.556Z",
+  "base": {
+    "host": "127.0.0.1",
+    "puerto": 55432,
+    "soloLectura": true
+  },
+  "fuentes": [
+    {
+      "archivo": "PROGRAMACIÓN ACADEMICA  2026_1.xlsx",
+      "sha256": "5b4508c162600487d1b0aaf439e82f9b533aac93e75bca7c094a2e9677bef505"
+    },
+    {
+      "archivo": "05062026 - CargaDocentes_RUND_2025-1_FINAL.xlsx",
+      "sha256": "636e324aa5404456e7e60fccbda1f06956b87d3c16334adc1fda9c70f1973303"
+    }
+  ],
+  "metodologia": "Cobertura de compatibilidad de área para el docente que figura en cada franja; no comprueba cruces, vinculación vigente ni tope. Histórico y programación viva se miden por separado. Horas no se recalculan.",
+  "historico": {
+    "franjas": 0,
+    "docentes": 0,
+    "docentesConRund": 0,
+    "docentesConPuente": 0,
+    "docentesSinNinguno": 0,
+    "franjasSoloRund": 0,
+    "porcentajeSoloRund": null,
+    "franjasRundOPuente": 0,
+    "porcentajeRundOPuente": null,
+    "noCubiertas": []
+  },
+  "programacionViva": {
+    "franjas": 0,
+    "docentes": 0,
+    "docentesConRund": 0,
+    "docentesConPuente": 0,
+    "docentesSinNinguno": 0,
+    "franjasSoloRund": 0,
+    "porcentajeSoloRund": null,
+    "franjasRundOPuente": 0,
+    "porcentajeRundOPuente": null,
+    "noCubiertas": []
+  },
+  "nucleosSinCruce": [
+    {
+      "nucleo": "Gobierno Y Política Pública Y Politica Pública Territorial",
+      "filas": 1
+    },
+    {
+      "nucleo": "Procesos Étnicos e Interculturales",
+      "filas": 10
+    },
+    {
+      "nucleo": "Gestión Del Desarrollo Territorial, Teorìas Y Enfoques Del Desarrollo, Planeación Del Desarrollo, Proyectos De Desarrollo.",
+      "filas": 1
+    },
+    {
+      "nucleo": "Gerencia Social",
+      "filas": 3
+    },
+    {
+      "nucleo": "Desarrollo Y Gestión Territorial, Y Gestión Del Desarrollo",
+      "filas": 1
+    },
+    {
+      "nucleo": "Gestion Del Desarrollo       -   Planeacion Del Desarrollo-  Proyecto Futuro",
+      "filas": 1
+    }
+  ],
+  "incidenciasPuente": [
+    {
+      "hoja": "DOCENTE_ASIGNATURA_",
+      "fila": 19,
+      "motivo": "Programa en minúsculas",
+      "valor": "ap"
+    },
+    {
+      "hoja": "DOCENTE_ASIGNATURA_",
+      "fila": 147,
+      "motivo": "Sin cruce de área",
+      "plan": "APT_52",
+      "asignatura": "Opción de grado"
+    },
+    {
+      "hoja": "DOCENTE_ASIGNATURA_",
+      "fila": 172,
+      "motivo": "Sin cruce de área",
+      "plan": "APT_52",
+      "asignatura": "Opción de grado"
+    },
+    {
+      "hoja": "DOCENTE_ASIGNATURA_",
+      "fila": 323,
+      "motivo": "Cédula inválida: 0, vacía o no numérica"
+    }
+  ],
+  "areasSinCodigo": [
+    "Opción de grado",
+    "Finanzas Públicas"
+  ],
+  "programacionExcel": {
+    "franjas": 535,
+    "docentes": 113,
+    "docentesConRund": 20,
+    "docentesConPuente": 113,
+    "docentesSinNinguno": 0,
+    "franjasSoloRund": 26,
+    "porcentajeSoloRund": 4.86,
+    "franjasRundOPuente": 531,
+    "porcentajeRundOPuente": 99.25,
+    "noCubiertas": [
+      {
+        "id": "fila-35",
+        "asignatura": "Opción de grado",
+        "plan": "APT_52",
+        "motivo": "Área no resuelta o ambigua"
+      },
+      {
+        "id": "fila-36",
+        "asignatura": "Opción de grado",
+        "plan": "APT_52",
+        "motivo": "Área no resuelta o ambigua"
+      },
+      {
+        "id": "fila-440",
+        "asignatura": "Opción de grado",
+        "plan": "APT_52",
+        "motivo": "Área no resuelta o ambigua"
+      },
+      {
+        "id": "fila-441",
+        "asignatura": "Opción de grado",
+        "plan": "APT_52",
+        "motivo": "Área no resuelta o ambigua"
+      }
+    ],
+    "filasSinDia": 40
+  },
+  "limitacion": "La base local no contiene franjas del periodo: la cobertura del Excel es una medición separada, no valida el estado integrado del sistema."
+}

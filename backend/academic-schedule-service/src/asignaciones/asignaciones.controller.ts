@@ -54,6 +54,19 @@ export class AsignacionesController {
     return { success: true, data };
   }
 
+  /**
+   * GET /asignaciones/candidatos?grupo=<id>&franjas=<id>,<id> — EFDS-2341.
+   *
+   * Docentes del área de la asignatura para las franjas pedidas (todas si no se
+   * indican), con sus bloqueos en seco y el sugerido con sus razones. Solo lectura.
+   */
+  @Get('candidatos')
+  async candidatos(@Req() req: Request, @Query('grupo', ParseUUIDPipe) idGrupo: string, @Query('franjas') franjas?: string) {
+    await this.exigirConsulta(req);
+    const ids = franjas ? franjas.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+    return { success: true, data: await this.asignaciones.candidatos(idGrupo, ids, tokenDe(req)) };
+  }
+
   /** GET /asignaciones/acumulado/:documento — consumo transversal por oferta y tope (RN-04/05/06). */
   @Get('acumulado/:documento')
   async acumuladoDocente(@Req() req: Request, @Param('documento') documento: string) {

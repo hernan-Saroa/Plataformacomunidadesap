@@ -66,6 +66,14 @@ describe('EFDS-1372 :: situación administrativa', () => {
   });
 
   // La vigencia importa: no es una bandera permanente.
+  it('EFDS-1372 :: situación administrativa :: se normalizan los guiones bajos (servicio_activo = servicio activo)', () => {
+    for (const categoria of ['servicio_activo', 'Servicio_Activo', 'periodo_de_prueba', 'cargo_directivo']) {
+      expect(clasificarSituacion(null, HOY, categoria).asignable).toBe(true);
+    }
+    expect(clasificarSituacion(null, HOY, 'ano_sabatico').asignable).toBe(false);
+    expect(clasificarSituacion(null, HOY, 'comision_de_servicios').asignable).toBe(false);
+  });
+
   it('EFDS-1372 :: situación administrativa :: una situación vencida deja de bloquear', () => {
     const texto = 'En Año Sabático hasta 1-10-2025 Resol.2052';
 
