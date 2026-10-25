@@ -407,3 +407,19 @@ Detalle, comandos y esfuerzo estimado (9 h) en esap/programacion/REPORTE-RONDA3B
 ### Para Claude: archivos compartidos y revisión interna
 
 No se editaron shell, paquetes compartidos, catalogoApi, vistaApi ni backend. Quedan descritos para su dueño los textos de ConcertacionBandeja/EtapasConcertacion que todavía dicen «envía el docente» y «devolver al docente»: con el orden nuevo deben referir al programador y a la posterior aceptación. La sección 23.3 también requiere el acceso del programador a enviar/reenviar su programación y a su bandeja de novedades; esta entrega implementa el modal de asignación y la aceptación del docente pedidos, no duplica esa bandeja compartida. .gitignore y package-lock.json fuera de los cambios propios.
+
+## EFDS-2346 — Gestión de Periodos y seguimiento de candidatos (25 de octubre de 2026)
+
+- Pantalla autorizada en este pedido: apps/mfe-programas-academicos/src/components/GestionPeriodos.tsx. Se usó el contrato publicado en origin, sección 25 (rama integrada 2cc71ca32); no se leyó la carpeta de Claude.
+- Lista, tarjetas móviles y detalle distinguen «Principal en curso» y «Extraordinario en curso». Los personalizados muestran nombre/año y no «Semestre —». Se conservan los campos reales estado, tipo, extraordinario y motivoExtraordinario de la API.
+- «Activar como extraordinario» usa hasPermission('pta.periodos.activar_extraordinario') del hook existente. Mientras se verifican permisos no se ofrece; tampoco para periodos en curso o cerrados. Si ya existe un extraordinario en curso, se deshabilita para los demás y se explica cuál debe cerrarse primero.
+- ActivarExtraordinarioModal pide motivo obligatorio (mínimo 10 caracteres después de trim) y una confirmación destacada que identifica al principal y dice expresamente que no lo cierra, no mueve otros periodos y no termina PTA. El diálogo usa foco contenido/Escape/retorno al botón. Un error 403/409 conserva motivo y modal; no refresca la lista. Al confirmar con éxito refresca GET de periodos y notifica al padre.
+- Se llama únicamente a POST /pta/api/v1/periodos-academicos/:id/activar-extraordinario con { motivo }, sin reintentos de escritura. No se llama al PATCH de activación principal. Nuevo cliente local periodoExtraordinarioApi.ts; no se editaron hooks, API comunes, shell, paquetes compartidos ni backend.
+- Verificación: 28/28 pruebas de Programas Académicos (seis nuevas); navegador Chromium con API interceptada, respuestas reales de la sección 25 (GET devuelve arreglo directo), permisos y rechazos; inspección visual a 1440 y 390 px. Build de Programas Académicos correcto. Capturas y script en apps/mfe-programas-academicos/tests/periodo-extraordinario.browser.mjs.
+- Esfuerzo estimado de EFDS-2346: 3 h (pantalla/modal/permiso 1,5 h; pruebas e inspección 1 h; integración/documentación 0,5 h). No se imputa implementación del aviso pendiente.
+
+### Pendiente de contrato de Claude: situación administrativa sin clasificar
+
+Tomás aprobó que el docente sin situación administrativa pueda asignarse, con aviso visible en su tarjeta. Al último fetch, origin/feature/pa/ronda3-claude seguía en 7aefb1ac9 y el contrato de candidatos de la sección 22 aún no incluía el campo de aviso. Necesito nombre, tipo y un ejemplo de respuesta (incluido el candidato asignable con aviso) para mostrarlo sin convertirlo en bloqueo. No se inventó el campo ni se cambió localmente asignable o motivos. Queda listo para retomarlo cuando Claude publique el contrato.
+
+La instrucción anterior del catálogo queda resuelta: Tomás confirmó que nunca se copió y que no hace falta. Las tres reglas aplicadas y el archivo entregado se mantienen.
