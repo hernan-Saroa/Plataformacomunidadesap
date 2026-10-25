@@ -879,3 +879,33 @@ Decisiones 8 a 11: el interperiodo tiene su propio tope y su PTA va aparte; un e
 - `pta.service.ts` `getDashboardKPIs` (línea 11768): sin periodo, el tablero muestra **`'2025-2'`** fijo.
 - Del mismo tipo: `seedPTAs` (`'2026-1'`, solo desarrollo), `cascada.controller.ts:44`, `asignaturas-import.controller.ts:41,57,64` y `asignaturas-import.service.ts:52,564` (`'2025-2'` por defecto), Programación Académica `validacion.controller.ts:45` (`'2026-1'`, `'2026-V1'`).
 - **No corregido (EFDS-2328, decide Nicolás):** la regla que termina los PTA al activar compara `SolicitudPTA."ptaId"` (uuid en esta base) con el id del PTA (texto) y **falla**: hoy activar no termina ningún PTA. Se corrigió y se revirtió en un commit propio para aplicarlo de una vez cuando haya decisión (`s."ptaId"::text = p.id::text`). La prueba del extraordinario no depende de eso: iguala el tipo dentro de su transacción.
+
+## 26. Verificación en navegador de la Ronda 3b, con servidores reales (24 de octubre)
+
+Stack local con la concertación encendida en PA y PTA (`PROG_CONCERTACION_HABILITADA=true`, corte `2027-2`), micro-frontends integrados (`feature/pa/ronda3`, con lo de Codex) servidos desde `superapp-frontend`. Datos propios marcados QA-R3B, deshechos al terminar.
+
+### 26.1 · Lo que se recorrió y funcionó
+
+1. **Programador** (`qa.asignador`): `GET /asignaciones/candidatos` por franja → docente del área con 18 h para el miércoles; un docente de otra área (Cuantitativa) se rechaza con `{regla:'AREA'}`; asignación por franja (lunes y miércoles al mismo docente → queda su asignación completa).
+2. **Envío** del programador: 30 h = 12 h del lunes (9 lunes, 3 festivos: 1-may, 10-may, 31-may) + 18 h del miércoles (9 sesiones).
+3. **Revisor y aprobador** (superadmin, por la pantalla «Concertación de la docencia», con el modal de firma): revisión → aprobación → `POR_ACEPTAR`; las franjas siguen `TOMADA` y nada llegó al PTA.
+4. **Docente** (`qa.docente2`) en «Mi programación»: ve 30 h de 304, las firmas del revisor y del aprobador y el calendario (franjas de las 18:00). **Novedad** (tipo `movilidad`): se rechazan la justificación corta y el tipo inválido; la válida deja `NOVEDAD`.
+5. **Vuelta al programador**: ve la novedad, reasigna el lunes a otro docente del área y reenvía → `ENVIADA`, 18 h. Revisión, aprobación y **aceptación** del docente (con código de 6 dígitos) → `ACEPTADA`.
+6. **PTA**: al crear el PTA 2027-2 del docente llega la asignatura con `origen: programacion`, `editable: false`, **18 h** (las reales, no las 64 del plan), territorial de la oferta CETAP.
+7. **Periodo extraordinario**: se creó `2027-INT` (personalizado), se rechazó activarlo con motivo corto y se activó con motivo: `2027-2` siguió en curso, el PTA del docente siguió en `Borrador`, y `GET /periodos` (PA) devuelve `esActivo` para el principal y `esExtraordinario` para el otro.
+8. **Árbol y calendario de Codex con servidor real**: el árbol muestra el grupo QA con área, ciclo, docentes con horas del servidor y estados; el calendario del portal y el del backoffice muestran las franjas con aula, ciclo y reserva.
+
+### 26.2 · Encontrado al recorrerlo (para Codex)
+
+- **La integración quitó la pantalla de asignar.** `AsignacionDocente.tsx` sigue en el repo pero ya no se monta: «Disponibilidad Docente» muestra solo la consulta. No hay modal para asignar ni para los candidatos (§22). El programador solo puede asignar por API.
+- **La prueba `rutas-cliente.spec.ts §2.1` falla en `ronda3`**: vigila el filtro de jornada de Programación General, que Codex reemplazó por el árbol. O se devuelve el filtro (el árbol no lo tiene) o se retira la prueba: decisión de Codex y de Tomás.
+- **«Mi programación» y la bandeja siguen en el orden anterior.** La etiqueta del docente dice «Enviada por el docente (pendiente)» con la concertación en `POR_ACEPTAR`; no hay botones de aceptar ni de novedad (§23.2); la bandeja del revisor dice «Devolver al docente» (ahora vuelve al programador). `ConcertacionDocente.tsx` / `enviarConcertacion()` llaman a `POST /concertacion/:idPeriodo/enviar`, que ahora responde 409 a propósito.
+- **Gestión de Periodos** (`mfe-programas-academicos`) muestra `2027-INT` como «ACTIVO», «Semestre —», sin distinguirlo del principal; su «Crear periodo» solo crea semestrales y no tiene «Activar como extraordinario» (§25.2).
+
+### 26.3 · Defecto previo, no corregido (PTA)
+
+`POST /periodos-academicos` guarda las fechas **un día antes** en un servidor con zona UTC−5 (`new Date('2027-06-21')` es medianoche UTC y TypeORM lo escribe en hora local). Pasa igual con un semestral; no lo introdujo la Ronda 3b.
+
+### 26.4 · Corregido durante la verificación
+
+La decisión que va al PTA llevaba las firmas de **todos** los ciclos (5 en vez de 3 tras una novedad), incluidas las del ciclo anterior, que firmaron una foto que ya no es la vigente. Ahora solo viajan las de la huella vigente; las anteriores siguen en el registro. Con prueba (cae si se quita el filtro).
