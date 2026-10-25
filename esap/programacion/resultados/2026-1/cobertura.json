@@ -1,6 +1,6 @@
 {
   "periodo": "2026-1",
-  "generadoEn": "2026-10-25T04:20:57.556Z",
+  "generadoEn": "2026-10-25T20:25:39.891Z",
   "base": {
     "host": "127.0.0.1",
     "puerto": 55432,
@@ -94,18 +94,15 @@
       "motivo": "Cédula inválida: 0, vacía o no numérica"
     }
   ],
-  "areasSinCodigo": [
-    "Opción de grado",
-    "Finanzas Públicas"
-  ],
+  "areasSinCodigo": [],
   "programacionExcel": {
     "franjas": 535,
     "docentes": 113,
     "docentesConRund": 20,
     "docentesConPuente": 113,
     "docentesSinNinguno": 0,
-    "franjasSoloRund": 26,
-    "porcentajeSoloRund": 4.86,
+    "franjasSoloRund": 38,
+    "porcentajeSoloRund": 7.1,
     "franjasRundOPuente": 531,
     "porcentajeRundOPuente": 99.25,
     "noCubiertas": [

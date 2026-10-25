@@ -1,7 +1,7 @@
 export const normalizar = valor => String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[.,;:()]/g, '').replace(/\s+/g, ' ').trim();
 
 export const equivalencias = {
-  'Estado y Poder': ['Estado y poder', 'Problemática del Estado y del Poder', 'Problemática del Estado y Poder', 'Regímenes y Sistemas Políticos', 'Derechos Constitucional y Organización del Estado'],
+  'Estado y Poder': ['Estado, Gobierno y Sociedad', 'Estado Gobierno y Sociedad', 'Gobierno y Políticas Públicas', 'Estado y poder', 'Problemática del Estado y del Poder', 'Problemática del Estado y Poder', 'Regímenes y Sistemas Políticos', 'Derechos Constitucional y Organización del Estado'],
   'Organizaciones Públicas': ['Organizaciones públicas', 'Organizaciones Públicas y Gestión', 'Derecho Administrativo y Contratación Estatal', 'Gerencia Pública Integral', 'Gerencia de los Recursos Físicos y Financieros'],
   'Economía Pública': ['Economía Pública', 'Economía de lo Público', 'Política Económica y Procesos Económicos Territoriales'],
   'Finanzas Públicas': ['FINANZAS PÚBLICAS', 'Finanzas Públicas', 'Finanzas Públicas y Presupuesto', 'Finanzas Públicas y Presupuesto Público'],
@@ -10,7 +10,6 @@ export const equivalencias = {
   Cuantitativa: ['Cuantitativa', 'Fundamentación cuantitativa', 'Matemáticas, Estadística', 'Ciencias de Datos'],
   'Problemática Pública': ['Problemática Pública', 'Pensamiento Administrativo y Problemática Pública'],
   'Espacio, Tiempo y Territorio': ['Espacio, tiempo y territorio'],
-  'Estado, Gobierno y Sociedad': ['Estado Gobierno y Sociedad', 'Gobierno y Políticas Públicas'],
   Idiomas: ['Idiomas', 'Idioma extranjero'], Electivas: ['Electivas', 'Electivas Generales'],
   Complementario: ['Complementario', 'Complementaria'],
   'Formación Específica': ['Materias de Formación Específica', 'Ciclo de Formación Específica'],

@@ -6,6 +6,7 @@ import XLSX from 'xlsx';
 import { areaCanonica, normalizar } from './equivalencias.mjs';
 import { validarCatalogo } from './validar-catalogo.mjs';
 import { actualizarCeldasArea, comprobarConservacion, comprobarHorasBase } from './comparar-catalogos.mjs';
+import { leerAreasPorAsignatura } from './areas-por-asignatura.mjs';
 
 // No abre conexiones ni llama al importador: prepara un archivo a partir de una exportación existente.
 const args = Object.fromEntries(process.argv.slice(2).reduce((r, v, i, a) => i % 2 ? r : [...r, [v.replace(/^--/, ''), a[i + 1]]], []));
@@ -17,6 +18,8 @@ for (const hoja of ['PROGRAMAS', 'ASIGNATURAS', 'MATRIZ_OFERTA']) if (!base.Shee
 const programas = XLSX.utils.sheet_to_json(base.Sheets.PROGRAMAS, { defval: '' });
 const originales = XLSX.utils.sheet_to_json(base.Sheets.ASIGNATURAS, { defval: '' });
 comprobarHorasBase(originales);
+const archivoDecisiones = args['areas-por-asignatura'] ?? new URL('./areas-por-asignatura.csv', import.meta.url);
+const decisiones = leerAreasPorAsignatura(archivoDecisiones, originales, programas);
 const fuente = XLSX.readFile(args.programacion);
 const planes = XLSX.utils.sheet_to_json(fuente.Sheets.PLAN_ESTUDIOS, { defval: '' });
 const areas = JSON.parse(fs.readFileSync(path.join(out, 'areas-base.json'), 'utf8'));
@@ -56,14 +59,15 @@ const asignaturas = originales.map(a => {
   if (mismoSemestre.length) candidatas = mismoSemestre;
   const mismosCreditos = candidatas.filter(f => Number(f.CREDITOS) === Number(a.creditos));
   if (mismosCreditos.length) candidatas = mismosCreditos;
-  const canonicas = [...new Set(candidatas.map(f => areaCanonica(f['ÁREA DE FORMACIÓN'])).filter(Boolean))];
-  if (canonicas.length !== 1 || candidatas.some(f => !areaCanonica(f['ÁREA DE FORMACIÓN']))) {
+  const decision = decisiones.get(a.codigo_asignatura);
+  const canonicas = decision ? [decision.area_canonica] : [...new Set(candidatas.map(f => areaCanonica(f['ÁREA DE FORMACIÓN'])).filter(Boolean))];
+  if (!decision && (canonicas.length !== 1 || candidatas.some(f => !areaCanonica(f['ÁREA DE FORMACIÓN'])))) {
     revision.push({ codigo_actual: a.codigo_asignatura, programa: a.codigo_programa, asignatura: a.nombre_base || a.nombre_asignatura, area_actual: a.nucleo_tematico, planes_candidatos: candidatas.map(f => f.PROG_PENSUM).join(' | '), areas_fuente: [...new Set(candidatas.map(f => f['ÁREA DE FORMACIÓN']))].join(' | '), decision: 'CONSERVAR Y REVISAR A MANO', motivo: !candidatas.length ? 'No hay coincidencia por nombre y programa; no se crea otra asignatura.' : 'Las áreas del plan no se resuelven a una sola área canónica aprobada.' });
     return salida;
   }
   const canonica = canonicas[0];
   const posiblesNt = areas.filter(n => areaCanonica(n.nombre) === canonica);
-  let nt = posiblesNt.find(n => n.codigo === ntActual?.codigo)
+  let nt = (decision ? posiblesNt.find(n => normalizar(n.nombre) === normalizar(canonica)) : posiblesNt.find(n => n.codigo === ntActual?.codigo))
     ?? posiblesNt.find(n => normalizar(n.nombre) === normalizar(canonica));
   if (!nt && posiblesNt.length === 1) nt = posiblesNt[0];
   if (!nt && posiblesNt.length > 1) {
@@ -95,6 +99,7 @@ XLSX.utils.book_append_sheet(libro, structuredClone(base.Sheets.MATRIZ_OFERTA), 
 XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(revision), 'REVISION_CATALOGO');
 XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(manualProgramacion), 'REVISION_OPCION_GRADO');
 XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(cambios), 'CAMBIOS_AREAS');
+XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet([...decisiones.values()]), 'DECISIONES_POR_ASIGNATURA');
 XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet([{ periodo: args.periodo, instrucciones: 'Validar y confirmar con el importador existente. Se conservan los códigos de la exportación base; revisar las hojas REVISION antes de confirmar. nucleo_tematico contiene el nombre que consume el importador; codigo_nucleo_tematico es su NT de trazabilidad. Un AF nunca sustituye a un NT.', limitacion: 'Se usan la exportación base y los snapshots de áreas suministrados. Este generador no consulta la base ni valida persistencia; ejecutar la validación del importador sobre la base actual antes de confirmar.', posgrado: 'El Excel fuente contiene planes de pregrado. Se conservan todos los campos de las asignaturas y programas de posgrado de la exportación; su área efectiva sigue siendo el programa (§22.1).' }]), 'LEEME');
 const archivo = path.join(out, `catalogo-importable-${args.periodo}.xlsx`);
 const temporal = path.join(out, `.catalogo-validando-${process.pid}.xlsx`);
@@ -111,6 +116,7 @@ const codigos = filas => filas.map(a => a.codigo_asignatura).sort();
 const datosPosgrado = filas => filas.filter(a => normalizar(porPrograma.get(a.codigo_programa).tipo_programa) !== 'pregrado').map(a => Object.fromEntries(Object.keys(originales.find(o => o.codigo_asignatura === a.codigo_asignatura)).sort().map(k => [k, a[k]])));
 const reporte = { periodo: args.periodo, generadoEn: new Date().toISOString(), fuente: [args['catalogo-base'], args.programacion].map(f => ({ archivo: path.basename(f), sha256: createHash('sha256').update(fs.readFileSync(f)).digest('hex') })), validacion, asignaturas: asignaturas.length, programas: programas.length, codigosNuevos: 0, codigosRetirados: 0, identidades: { codigosAntes: huella(codigos(originales)), codigosDespues: huella(codigos(asignaturas)), posgradoAntes: huella(datosPosgrado(originales)), posgradoDespues: huella(datosPosgrado(asignaturas)) }, areasActualizadas: cambios.length, posgradoConservadas: posgrado, revisionManual: revision.length, franjasOpcionGradoParaRevision: manualProgramacion.length, nucleosSinCodigoNtEnSnapshot: [...nuevasAreas], estadoBase: 'Este generador usa snapshots y no consulta la base. Validación de persistencia pendiente con el importador en la base actual.', cambios, revision };
 reporte.conservacion = conservacion;
+reporte.decisionesPorAsignatura = { archivo: 'areas-por-asignatura.csv', sha256: createHash('sha256').update(fs.readFileSync(archivoDecisiones)).digest('hex'), aplicadas: [...decisiones.values()] };
 if (path.resolve(args['catalogo-base']) !== path.join(out, 'catalogo-base-comparacion.xlsx')) fs.copyFileSync(args['catalogo-base'], path.join(out, 'catalogo-base-comparacion.xlsx'));
 fs.writeFileSync(path.join(out, 'catalogo-importable-reporte.json'), JSON.stringify(reporte, null, 2) + '\n');
 console.log(JSON.stringify({ archivo, ...reporte, fuente: undefined, cambios: undefined, revision: undefined }, null, 2));

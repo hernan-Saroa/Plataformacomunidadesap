@@ -7,9 +7,41 @@ import path from 'node:path';
 import XLSX from 'xlsx';
 import { validarCatalogo } from './validar-catalogo.mjs';
 import { comprobarConservacion, comprobarHorasBase } from './comparar-catalogos.mjs';
+import { leerAreasPorAsignatura } from './areas-por-asignatura.mjs';
+import { areaCanonica, normalizar } from './equivalencias.mjs';
 const archivo = new URL('./resultados/2026-1/catalogo-importable-2026-1.xlsx', import.meta.url);
 const reporte = JSON.parse(fs.readFileSync(new URL('./resultados/2026-1/catalogo-importable-reporte.json', import.meta.url)));
 const base = new URL('./resultados/2026-1/catalogo-base-comparacion.xlsx', import.meta.url);
+const decisionesCsv = new URL('./areas-por-asignatura.csv', import.meta.url);
+
+test('las decisiones editables prevalecen sobre el plan y quedan trazadas en el Excel regenerado', () => {
+  const w = XLSX.readFile(archivo), b = XLSX.readFile(base);
+  const filas = XLSX.utils.sheet_to_json(w.Sheets.ASIGNATURAS);
+  const decisiones = leerAreasPorAsignatura(decisionesCsv, XLSX.utils.sheet_to_json(b.Sheets.ASIGNATURAS), XLSX.utils.sheet_to_json(b.Sheets.PROGRAMAS));
+  for (const [codigo, d] of decisiones) assert.equal(areaCanonica(filas.find(a => a.codigo_asignatura === codigo).nucleo_tematico), d.area_canonica, codigo);
+  const matematicas = filas.filter(a => /estadistic|matematic/.test(normalizar(a.nombre_base || a.nombre_asignatura)));
+  assert.ok(matematicas.length > 20);
+  for (const a of matematicas) assert.equal(decisiones.get(a.codigo_asignatura)?.area_canonica, 'Cuantitativa', a.codigo_asignatura);
+  assert.equal(decisiones.get('ASIG-00181').area_canonica, 'Complementario');
+  for (const codigo of ['ASIG-00001', 'ASIG-00064', 'ASIG-00065']) assert.ok(decisiones.has(codigo));
+  assert.equal(XLSX.utils.sheet_to_json(w.Sheets.DECISIONES_POR_ASIGNATURA).length, decisiones.size);
+  assert.equal(reporte.decisionesPorAsignatura.sha256, createHash('sha256').update(fs.readFileSync(decisionesCsv)).digest('hex'));
+});
+
+test('rechaza decisiones duplicadas, sin motivo, no canónicas o con código desconocido', () => {
+  const b = XLSX.readFile(base), a = XLSX.utils.sheet_to_json(b.Sheets.ASIGNATURAS), p = XLSX.utils.sheet_to_json(b.Sheets.PROGRAMAS);
+  const tmp = path.join(tmpdir(), `pa-decisiones-${process.pid}.csv`);
+  try {
+    for (const filas of [
+      ['ASIG-00001;Cuantitativa;Prueba', 'ASIG-00001;Electivas;Prueba'],
+      ['ASIG-00001;Cuantitativa;'], ['NO-EXISTE;Cuantitativa;Prueba'],
+      ['ASIG-00001;Área inventada;Prueba'],
+    ]) {
+      fs.writeFileSync(tmp, '\uFEFFcodigo_asignatura;area_canonica;motivo\n' + filas.join('\n'));
+      assert.throws(() => leerAreasPorAsignatura(tmp, a, p));
+    }
+  } finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
+});
 test('compara cada fila y cada campo ajeno al área contra la base después de escribir el Excel', () => {
   const resultado = comprobarConservacion(XLSX.readFile(base), XLSX.readFile(archivo));
   assert.ok(resultado.camposComparados > 11000);
