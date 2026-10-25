@@ -78,8 +78,7 @@ const CONDICION_PTA_A_FINALIZAR = `
         AND NOT EXISTS (
           SELECT 1
           FROM academic_work_plan."SolicitudPTA" s
-          -- Como texto: en algunas bases "ptaId" es uuid y el id del PTA es texto.
-          WHERE s."ptaId"::text = p.id::text
+          WHERE s."ptaId" = p.id
             AND s."tipoSolicitud" = 'edicion_componentes'
             AND s.estado IN ('aprobado', 'en_aprobacion')
         )`;
