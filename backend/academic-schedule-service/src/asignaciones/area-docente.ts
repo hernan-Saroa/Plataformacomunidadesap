@@ -8,13 +8,12 @@ import type { DataSource, EntityManager } from 'typeorm';
  * las del docente, de `academic_work_plan.docente_nucleo` (migración 669), que el
  * PTA llena desde el RUND (origen `rund`) y desde el puente (origen `puente`).
  *
- * ⚠️ REGLA DEL PUENTE, COMO CONFIGURACIÓN: PROG_NUCLEO_PUENTE (decide Tomás).
- *   · sin definir, 'true' o 'solo_sin_rund' (POR DEFECTO) → el puente cuenta, pero SOLO
- *     para quien no tiene núcleo del RUND: cubre a los catedráticos mientras el RUND no
- *     traiga su núcleo; no amplía el área de un docente que ya la tiene en el RUND.
- *     Cobertura medida sobre 2026-1: 86,5 %.
- *   · 'suma' → el puente SUMA al núcleo del RUND: un docente puede dictar su núcleo y
- *     las áreas que dicta según el puente. Cobertura medida sobre 2026-1: 99,25 %.
+ * ⚠️ REGLA DEL PUENTE, COMO CONFIGURACIÓN: PROG_NUCLEO_PUENTE (decidió Tomás: suma).
+ *   · sin definir, 'true' o 'suma' (POR DEFECTO) → el puente SUMA al núcleo del RUND: un
+ *     docente puede dictar su núcleo y las áreas que dicta según el puente.
+ *     Cobertura medida sobre 2026-1: 99,25 %.
+ *   · 'solo_sin_rund' → el puente cuenta SOLO para quien no tiene núcleo del RUND: no
+ *     amplía el área de un docente que ya la tiene en el RUND. Cobertura: 86,5 %.
  *   · 'false' → solo cuenta el RUND.
  * Se lee en cada consulta, no al arrancar.
  */
@@ -23,8 +22,8 @@ export type ModoPuente = 'solo_sin_rund' | 'suma' | 'apagado';
 export function modoDelPuente(): ModoPuente {
   const v = String(process.env.PROG_NUCLEO_PUENTE ?? '').trim().toLowerCase();
   if (v === 'false' || v === 'apagado') return 'apagado';
-  if (v === 'suma') return 'suma';
-  return 'solo_sin_rund';
+  if (v === 'solo_sin_rund') return 'solo_sin_rund';
+  return 'suma';
 }
 
 export function puenteDeNucleoHabilitado(): boolean {

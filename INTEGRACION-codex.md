@@ -423,3 +423,43 @@ No se editaron shell, paquetes compartidos, catalogoApi, vistaApi ni backend. Qu
 Tomás aprobó que el docente sin situación administrativa pueda asignarse, con aviso visible en su tarjeta. Al último fetch, origin/feature/pa/ronda3-claude seguía en 7aefb1ac9 y el contrato de candidatos de la sección 22 aún no incluía el campo de aviso. Necesito nombre, tipo y un ejemplo de respuesta (incluido el candidato asignable con aviso) para mostrarlo sin convertirlo en bloqueo. No se inventó el campo ni se cambió localmente asignable o motivos. Queda listo para retomarlo cuando Claude publique el contrato.
 
 La instrucción anterior del catálogo queda resuelta: Tomás confirmó que nunca se copió y que no hace falta. Las tres reglas aplicadas y el archivo entregado se mantienen.
+
+## Corrección del catálogo y envío por programador — 25 de octubre de 2026
+
+Base integrada: merge `f7890b0d4` de `origin/feature/pa/ronda3`. Contratos consultados desde origin, sin leer la carpeta de Claude.
+
+### Catálogo: conservación comprobada después de escribir el Excel
+
+La plantilla anterior ya contenía los ocho nombres sin tilde y las tres celdas vacías de horas; compararla consigo misma no detectaba el problema. Se obtuvo una exportación actual con una transacción REPEATABLE READ READ ONLY (incluida comprobación de `transaction_read_only`), sin importar ni modificar datos. `exportar-catalogo-base.mjs` reproduce esa consulta y conserva su procedencia/huella en `catalogo-base-verificado.xlsx.json`.
+
+El generador clona las celdas originales y cambia únicamente el área de pregrado, con sus columnas de trazabilidad. Antes de publicar el archivo, lo vuelve a abrir y compara 11.995 campos originales, por código y con sus tipos, en PROGRAMAS, ASIGNATURAS y MATRIZ_OFERTA. Rechaza horas vacías en la base, sin convertirlas silenciosamente a cero. La prueba altera cada columna ajena al área para comprobar que se detecta, y protege expresamente Público y los ceros de ASIG-00139, ASIG-00218 y ASIG-00427.
+
+Resultado vigente: 427 asignaturas, 14 programas, 325 ofertas, cero códigos nuevos/retirados y 160 asignaturas de posgrado conservadas campo por campo. Cero cambios de área frente al snapshot actual: Claude ya aplicó los 65 de la entrega anterior. NT-034 Finanzas Públicas y NT-035 Opción de grado ya figuran en el snapshot. Siguen los 63 casos de revisión del catálogo y las cuatro franjas de Opción de grado para decisión manual. Esta sección sustituye el diagnóstico anterior de base no disponible y la comparación contra la plantilla defectuosa; no se confirmó ninguna importación.
+
+### Envío por docente y etiqueta del portal
+
+`EnvioRevisionDocente` queda junto al calendario del docente elegido en Disponibilidad Docente. Usa las asignaturas/franjas y `horasPorGrupo` del contrato §19, sin calcular horas en el cliente ni revelar reservas. Las horas de carga asignada se distinguen de las horas de la foto enviada. GET `/concertacion/programador` y POST `/concertacion/enviar` usan §23.3 y el cuerpo exacto `{idPeriodo, documento}`. El servicio decide qué TOMADA entra; no se pide OTP al programador. Muestra estado por nivel, devolución/novedad, error sin falso éxito y reintento. Solo aparece con concertación encendida, permiso de asignación y periodo programable. No necesita un endpoint nuevo: queda resuelta la consulta inicial sobre un contrato adicional.
+
+Mi programación consulta las fotos de concertación: POR_ACEPTAR dice «Por aceptar»; si afecta solo parte del grupo dice «Parte por aceptar». Error de consulta no inventa un estado. Apagado conserva el flujo y no hace esa consulta. `avisos` ya venía renderizado por Claude en la tarjeta y en la confirmación del candidato; se comprobó con simulación, sin duplicarlo ni bloquear la asignación.
+
+### Único cambio compartido para que aplique Claude (NO incluido en el commit)
+
+En `apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx`, sustituir la invocación existente:
+
+```tsx
+{seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} />}
+```
+
+por:
+
+```tsx
+{seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} nivelesAsignables={misPermisos.asignar} concertacionHabilitada={!!concertacion?.habilitada} programable={!!periodoProgramable} />}
+```
+
+Se probó este cambio localmente; se deja sin commitear por la propiedad compartida. Claude debe aplicar esa conexión al integrar para que aparezca el envío y para ejecutar el recorrido completo de `vistas-ronda3.browser.mjs`. No hay cambios propios de shell, backend, `.gitignore` ni lockfile.
+
+### Validación y esfuerzo
+
+49/49 pruebas del MFE; 11/11 de datos/catálogo; navegador con API interceptada para asignación/avisos, aceptación/etiqueta y calendario/envío (409, reintento exitoso, permisos y apagado). Build del MFE correcto. TypeScript sigue con los errores existentes TS2786 de iconos/React y `ImportMeta.env`; no aparecen diagnósticos adicionales al excluir esas familias. Las simulaciones siguen §§19 y 23.3. Captura: `apps/mfe-programacion-academica/tests/envio-revision-docente.png`. No se levantó backend ni se escribió la base; Vite se usa solo durante la prueba y se detiene al terminar.
+
+Esfuerzo estimado de esta entrega: **6 h adicionales** (catálogo y prueba de conservación 3 h; envío por docente 2 h; etiqueta, regresiones y documentación 1 h). No es tiempo de reloj ni incluye horas de rondas anteriores.

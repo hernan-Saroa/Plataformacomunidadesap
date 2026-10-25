@@ -17,6 +17,8 @@ const browser = await puppeteer.launch({ headless: true });
 const llamadas = [];
 let permisos = { ver: ['pregrado'], programar: [], asignar: ['pregrado'], disponibilidad: true };
 let errorCalendario = false;
+let concertacionEncendida = false, rechazarEnvio = true;
+let revisiones = [];
 try {
   const page = await browser.newPage();
   const errores = [];
@@ -26,7 +28,7 @@ try {
   page.on('request', r => {
     const u = new URL(r.url());
     if (!u.pathname.includes('/api/v1/')) return u.origin === origin || u.protocol === 'data:' ? r.continue() : r.abort();
-    llamadas.push({ path: u.pathname, query: u.search, method: r.method() });
+    llamadas.push({ path: u.pathname, query: u.search, method: r.method(), body: r.postData() ? JSON.parse(r.postData()) : null });
     let data; let status = 200;
     const path = u.pathname.split('/api/v1/')[1];
     if (path === 'periodos') data = { periodos: [{ idPeriodo: '12', modelo: 'plataforma', codigo: '2050-2', anio: 2050, semestre: 2, fechaInicio: periodo.fechaInicio, fechaFin: periodo.fechaFin, estadoPlataforma: 'planeacion', programacion: { estado: 'abierta', cerradaEn: null }, programable: true, esActivo: false }], legado: [], permisos: { crear: false, activar: false, cerrarProgramacion: false, importar: false } };
@@ -35,14 +37,20 @@ try {
     else if (path === 'programacion/docentes') data = [{ ...docente, horas: null, franjas: 2 }];
     else if (path === 'programacion/docentes/calendario') { data = calendario; if (errorCalendario) status = 503; }
     else if (path === 'portal-docente/mi-calendario') data = { ...calendario, franjas: [visible] };
-    else if (path === 'concertacion/configuracion') data = { habilitada: false, desdePeriodo: null, firmaSimulada: true, revisionesRequeridas: [] };
+    else if (path === 'concertacion/configuracion') data = { habilitada: concertacionEncendida, desdePeriodo: concertacionEncendida ? '2026-1' : null, firmaSimulada: true, revisionesRequeridas: [] };
+    else if (path === 'concertacion/programador') data = revisiones;
+    else if (path === 'concertacion/enviar' && r.method() === 'POST') {
+      if (rechazarEnvio) { status = 409; data = null; }
+      else { revisiones = [{ idConcertacion: 'c1', documento: '123', docente: 'Docente Simulado', nivel: 'pregrado', estado: 'ENVIADA', horas: 64, numFranjas: 1, comentario: null, novedad: null, actualizadaEn: '2050-07-01T12:00:00Z' }]; data = revisiones; }
+    }
     else if (path === 'validacion/vivos') data = { total: 0, grupo: 0, aula: 0, docente: 0, cruces: [] };
     else if (path.startsWith('validacion')) data = { resumen: { total: 0, aula: 0, docente: 0 }, cruces: [], periodos: [] };
     else if (path.startsWith('publicaciones/')) data = { idPeriodo: '12', total: 0, programado: 0, publicada: 0, tomada: 0, aprobada: 0, pendientesCierre: 0 };
     else if (path.includes('jefatura')) { status = 403; data = null; }
     else if (path === 'horarios' || path === 'aulas') data = [];
     else { status = 404; data = null; }
-    r.respond({ status, headers: { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET, OPTIONS' }, contentType: 'application/json', body: JSON.stringify(status >= 400 ? { success: false, message: 'Consulta no disponible' } : { success: true, data }) });
+    if (r.method() === 'OPTIONS') { status = 200; data = null; }
+    r.respond({ status, headers: { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' }, contentType: 'application/json', body: JSON.stringify(status >= 400 ? { success: false, message: status === 409 ? 'Defina el ciclo del grupo antes de enviar.' : 'Consulta no disponible' } : { success: true, data }) });
   });
   await page.goto(base);
   await page.waitForFunction(() => document.body.innerText.includes('Programación por programa'));
@@ -101,6 +109,39 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes('No tienes permiso para consultar'));
   texto = await page.evaluate(() => document.body.innerText);
   assert.ok(!texto.includes('Disponibilidad Docente'));
+  // §23.3: acceso del asignador desde el buscador/calendario existente, con datos §19.
+  permisos = { ver: ['pregrado'], programar: [], asignar: ['pregrado'], disponibilidad: true };
+  concertacionEncendida = true; errorCalendario = false;
+  visible.estado = 'TOMADA'; calendario.horasPorGrupo.g1 = 64;
+  const abrirDocente = async () => {
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('Disponibilidad Docente')));
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.includes('Disponibilidad Docente')).click());
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('Docente Simulado')));
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.includes('Docente Simulado')).click());
+    await page.waitForFunction(() => document.body.innerText.includes('Calendario semanal'));
+  };
+  await page.reload(); await abrirDocente();
+  await page.waitForSelector('[aria-label="Envío a revisión por docente"]');
+  assert.ok((await page.$eval('[aria-label="Envío a revisión por docente"]', e => e.textContent)).includes('Historia Política'));
+  assert.ok((await page.$eval('[aria-label="Envío a revisión por docente"]', e => e.textContent)).includes('64 h'));
+  const enviar = () => page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent === 'Enviar a revisión').click());
+  const antesRechazo = llamadas.filter(c => c.path.endsWith('/concertacion/programador')).length;
+  await enviar();
+  await page.waitForFunction(() => document.body.innerText.includes('Defina el ciclo del grupo'));
+  assert.equal(llamadas.filter(c => c.path.endsWith('/concertacion/programador')).length, antesRechazo);
+  rechazarEnvio = false; await enviar();
+  await page.waitForFunction(() => document.body.innerText.includes('Docencia de Docente Simulado enviada a revisión.'));
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent === 'Enviar a revisión' && b.disabled));
+  assert.deepEqual(llamadas.filter(c => c.path.endsWith('/concertacion/enviar')).at(-1).body, { idPeriodo: '12', documento: '123' });
+  assert.ok((await page.$eval('[aria-label="Envío a revisión por docente"]', e => e.textContent)).includes('En revisión'));
+  await page.addStyleTag({ content: await readFile(new URL('../../shell/src/index.css', import.meta.url), 'utf8') });
+  await page.screenshot({ path: new URL('./envio-revision-docente.png', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
+  concertacionEncendida = false;
+  await page.reload(); await abrirDocente();
+  assert.equal(await page.$('[aria-label="Envío a revisión por docente"]'), null);
+  concertacionEncendida = true; permisos.asignar = [];
+  await page.reload(); await abrirDocente();
+  assert.equal(await page.$('[aria-label="Envío a revisión por docente"]'), null);
   assert.deepEqual(errores, []);
   console.log('PASS: árbol, múltiples docentes, pendientes, permisos, horas null, calendario lunes-domingo, reserva privada, modo lectura, calendario propio, error 503, CETAP/territorial y vacío.');
 } finally { await browser.close(); }

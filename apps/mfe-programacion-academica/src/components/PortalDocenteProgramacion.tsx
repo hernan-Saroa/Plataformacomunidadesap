@@ -187,8 +187,8 @@ export default function PortalDocenteProgramacion() {
 
       {/* Flujo nuevo (EFDS-2348): grupos asignados, sin tomar ni soltar */}
       {!tomaFranjas && (periodosConDocencia.length
-        ? periodosConDocencia.map((p) => <GruposAsignados key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} />)
-        : <GruposAsignados />)}
+        ? periodosConDocencia.map((p) => <GruposAsignados key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} concertacionHabilitada={concertacionHabilitada} />)
+        : <GruposAsignados concertacionHabilitada={concertacionHabilitada} />)}
 
       {/* Flujo anterior (EFDS-1938): mis franjas y disponibles */}
       {tomaFranjas && (<>

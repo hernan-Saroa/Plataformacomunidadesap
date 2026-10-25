@@ -6,8 +6,36 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import XLSX from 'xlsx';
 import { validarCatalogo } from './validar-catalogo.mjs';
+import { comprobarConservacion, comprobarHorasBase } from './comparar-catalogos.mjs';
 const archivo = new URL('./resultados/2026-1/catalogo-importable-2026-1.xlsx', import.meta.url);
 const reporte = JSON.parse(fs.readFileSync(new URL('./resultados/2026-1/catalogo-importable-reporte.json', import.meta.url)));
+const base = new URL('./resultados/2026-1/catalogo-base-comparacion.xlsx', import.meta.url);
+test('compara cada fila y cada campo ajeno al área contra la base después de escribir el Excel', () => {
+  const resultado = comprobarConservacion(XLSX.readFile(base), XLSX.readFile(archivo));
+  assert.ok(resultado.camposComparados > 11000);
+});
+test('la comparación falla si se cambia cualquiera de las columnas originales ajenas al área', () => {
+  const original = XLSX.readFile(base);
+  for (const [hoja, clave] of [['PROGRAMAS','codigo_programa'], ['ASIGNATURAS','codigo_asignatura'], ['MATRIZ_OFERTA','codigo_cetap']]) {
+    const rango = XLSX.utils.decode_range(original.Sheets[hoja]['!ref']);
+    for (let c = rango.s.c; c <= rango.e.c; c++) {
+      const campo = original.Sheets[hoja][XLSX.utils.encode_cell({ r: rango.s.r, c })]?.v;
+      if (!campo || campo === 'nucleo_tematico') continue;
+      const alterado = structuredClone(original), posicion = XLSX.utils.encode_cell({ r: rango.s.r + 1, c });
+      alterado.Sheets[hoja][posicion] = { t: 's', v: 'DATO ALTERADO PARA REGRESIÓN' };
+      assert.throws(() => comprobarConservacion(original, alterado), undefined, `${hoja}.${campo} debe estar protegido (${clave})`);
+    }
+  }
+});
+test('conserva Público con tilde y las tres horas_clase iguales a cero', () => {
+  const filas = XLSX.utils.sheet_to_json(XLSX.readFile(archivo).Sheets.ASIGNATURAS, { defval: '' });
+  assert.ok(filas.find(f => f.codigo_asignatura === 'ASIG-00170').nombre_asignatura.includes('Público'));
+  for (const codigo of ['ASIG-00139', 'ASIG-00218', 'ASIG-00427']) assert.equal(filas.find(f => f.codigo_asignatura === codigo).horas_clase, 0, codigo);
+});
+test('rechaza horas vacías en una base defectuosa y admite el cero explícito', () => {
+  assert.doesNotThrow(() => comprobarHorasBase([{ codigo_asignatura: 'ASIG-00139', horas_clase: 0 }]));
+  assert.throws(() => comprobarHorasBase([{ codigo_asignatura: 'ASIG-00139', horas_clase: '' }]), /ASIG-00139.*horas_clase está vacía/);
+});
 test('el archivo pasa el parser y validador publicado del importador', async () => {
   const r = await validarCatalogo(archivo);
   assert.equal(r.isValid, true); assert.deepEqual(r.errors, []);

@@ -502,7 +502,7 @@ export function ProgramacionAcademicaModule({
       {seccion === 'aulas' && <DisponibilidadAulas idPeriodo={periodoSel} />}
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
-      {seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} />}
+      {seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} nivelesAsignables={misPermisos.asignar} concertacionHabilitada={!!concertacion?.habilitada} programable={!!periodoProgramable} />}
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
       {seccion === 'ofertas' && <GestionOfertas

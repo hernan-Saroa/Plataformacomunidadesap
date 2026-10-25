@@ -1081,3 +1081,102 @@ Lo que hay que saber antes de leerla:
 - Corte: `created_at`/`updated_at` son `timestamp` sin zona; cerca del momento del despliegue la comparación puede errar por unas horas (si hay un periodo escrito ese día, revisarlo aparte).
 
 Resultado en la base local (PTA corriendo en UTC-5, `getTimezoneOffset()` = 300): 5 periodos candidatos, todos creados o editados el 18, 19 o 20 de octubre, antes de la corrección (2026-2, 2027-2, 2025-2, 2026-1, 2027-1). Son datos de prueba; 2026-2 y 2027-2 terminan en domingo y sábado y salen marcados como sospechosos. No se corrigió ninguno.
+
+## 29. Decisiones de Tomás (25 de octubre, tercera tanda), base local en cero y pruebas sobre la rama integrada
+
+### 29.1 · Lo de Codex integrado (`8d1dc7b80`)
+
+Integrado con `--no-ff`. Se aplicó la conexión que Codex dejó en `INTEGRACION-codex.md`: `ProgramacionAcademicaModule.tsx` ahora pasa `nivelesAsignables`, `concertacionHabilitada` y `programable` a `DisponibilidadDocente`, y con eso aparece el envío a revisión junto al calendario del docente.
+
+### 29.2 · Decisiones aplicadas
+
+| Decisión | Dónde quedó |
+|---|---|
+| **Puente: suma** (núcleo del RUND más las áreas que dicta), como valor por defecto | `PROG_NUCLEO_PUENTE`: sin definir o `true` = `suma`. `solo_sin_rund` y `false` siguen existiendo como opciones. Cobertura medida sobre 2026-1: 99,25 %. Las pruebas del puente se reescribieron para el nuevo defecto. |
+| **«Estado, Gobierno y Sociedad» se une a «Estado y Poder»** | Migración `db/migrations/673_estado_gobierno_sociedad_en_estado_y_poder.sql`: las 3 equivalencias que apuntaban al área vieja (`Estado, Gobierno y Sociedad`, `Gobierno y Políticas Públicas`, `Gobierno y Política Pública`) apuntan a «Estado y Poder»; los núcleos de los docentes se recalculan (39 filas pasaron al área nueva; 3 que ya la tenían por el mismo origen se fundieron); el área vieja queda **inactiva**, no borrada. Idempotente; aplicada en la base local. |
+| **Áreas por asignatura, en el Excel y no en una migración** | Ver 29.4: Codex regenera el Excel; yo lo valido. |
+
+Recalculo de los núcleos: aplicada la 673, `POST /pta/banco-docentes/nucleos/reinterpretar` (RUND) dio **0 núcleos creados y 0 retirados** y la misma cobertura (183 docentes con RUND, 284 personas con algún núcleo). Prueba nueva en `area-docente.agregado.spec.ts`: las tres equivalencias apuntan a «Estado y Poder», el área vieja no tiene equivalencias ni docentes y está inactiva, y las asignaturas del catálogo con ese núcleo caen en «Estado y Poder».
+
+### 29.3 · Lo que Codex debe cambiar en el generador (para el Excel)
+
+En `esap/programacion/equivalencias.mjs` y en `datos/nucleos/nucleo_equivalencia.csv` (archivos de Codex; yo no los toqué): `Estado, Gobierno y Sociedad` («Estado Gobierno y Sociedad», «Gobierno y Políticas Públicas») pasa a ser variante de **Estado y Poder**.
+
+### 29.4 · Áreas decididas por Tomás para el Excel del catálogo
+
+**Las 8 asignaturas que hoy no tienen área** (código = columna `codigo_asignatura`; el nombre no se cambia):
+
+| Código | Nombre exacto | Área decidida | Núcleo (`nucleo_tematico`) que la da |
+|---|---|---|---|
+| ASIG-00151 | Matemática I (APT) | **Cuantitativa** | Cuantitativa (NT-020) |
+| ASIG-00153 | Matemáticas II (APT) | **Cuantitativa** | Cuantitativa (NT-020) |
+| ASIG-00180 | Estadística I (APT) | **Cuantitativa** | Cuantitativa (NT-020) |
+| ASIG-00067 | Matemáticas II (AP_noche) Nuevo Plan de Estudios | **Cuantitativa** | Cuantitativa (NT-020) |
+| ASIG-00181 | Metodología de investigación (APT) | **Complementario** | Complementaria (NT-015) |
+| ASIG-00064 | Historia del pensamiento político (AP_noche) Nuevo Plan de Estudios | **Estado y Poder** | Estado Y Poder (NT-002) |
+| ASIG-00065 | Electiva I (AP_noche) Nuevo Plan de Estudios | **Electivas** | Electivas Generales (NT-009) |
+| ASIG-00001 | Constitución Del Territorio (AP_día) | **Desarrollo y Gestión Territorial** | Desarrollo Y Gestión Territorial (NT-007) |
+
+El nombre de ASIG-00001 **no se cambia**: es probable que sea «Construcción» (como ASIG-00002), pero falta confirmarlo.
+
+**Regla de Tomás: «Estadística y Matemáticas: Cuantitativa en todos los planes».** Además de las cuatro anteriores, estas asignaturas de pregrado tienen hoy otra área y pasarían a Cuantitativa si la regla se aplica a todo lo que se llama Matemática(s) I/II o Estadística I/II (el núcleo que la da es Cuantitativa NT-020, o Fundamentación Cuantitativa NT-004 en los planes de AP):
+
+| Código | Nombre | Programa | Área hoy |
+|---|---|---|---|
+| ASIG-00172 | Estadistica I | APT | Formación General |
+| ASIG-00184 | Estadística II | APT | Formación General |
+| ASIG-00162 | Matemática I | APT | Formación General |
+| ASIG-00167 | Matemática II | APT | Formación General |
+| ASIG-00013 | Matemáticas I (AP_día) | AP diurno | Complementario |
+| ASIG-00038 | Matemáticas I (AP_noche) | AP nocturno | Complementario |
+| ASIG-00062 | Matemáticas II (AP_día) | AP diurno | Complementario |
+
+Ya están en Cuantitativa y no cambian: ASIG-00012, 00037, 00039, 00040, 00050, 00051, 00070, 00071 (AP) y ASIG-00235, 00237 (Economía Pública).
+
+**Quedan fuera hasta que Tomás confirme el alcance de la regla** (el nombre no es «Matemática/Estadística I o II»): ASIG-00190 *Matematica Financiera* (APT, Formación General) y ASIG-00014 y ASIG-00015 *Matemáticas Lúdicas* (AP, Complementario).
+
+Posgrado no se toca. El generador debe seguir comprobando que solo cambian las columnas del núcleo/área (la prueba de conservación de Codex), ahora con estos 15 cambios esperados, ni uno más.
+
+Excel vigente (aún sin estas decisiones; es el válido hoy): `C:\Users\Tomas\Documents\ESAP\temporal\Plataformacomunidadesap\esap\programacion\resultados\2026-1\catalogo-importable-2026-1.xlsx`. Validación previa de este archivo (`POST /pta/asignaturas-import/upload?dry_run=true&periodo_codigo=2048-1`, base sin periodos, sin escribir nada): 0 errores, 0 advertencias; programas 14 sin cambios; núcleos 35 sin cambios; **asignaturas 427, 0 creadas, 0 actualizadas, 427 sin cambios**; 290 CETAP sin cambios; 325 ofertas por crear, 0 rechazadas. Cuando Codex entregue el Excel con las áreas decididas se valida igual (sobre un periodo temporal que se borra) y se pasa la ruta final.
+
+### 29.5 · Base local en cero de periodos
+
+Respaldo previo (formato custom de `pg_dump`, base `esap_db` completa, tomado justo antes de borrar): `C:\Users\Tomas\AppData\Local\Temp\claude\c--Users-Tomas-Documents-ESAP-temporal-Plataformacomunidadesap\9a1ce787-a0ac-458e-adea-130c114e82c4\scratchpad\r3c\respaldo-antes-borrar-periodos.dump` (otro, anterior a la migración 673, en el mismo directorio: `respaldo-antes-r3c.dump`). Solo la base local: dev no se tocó.
+
+Lo que se borró (conteos exactos, con la lista previa y la posterior en `listado-previo2.txt` y `listado-posterior.txt` del mismo directorio):
+
+| Tabla | Filas |
+|---|---|
+| `periodo_academico` | 6 (2025-2, 2026-1, 2026-2, 2027-1, 2027-2 y el 2049-1 de prueba) |
+| `grupo` | 10 |
+| `franja_horaria` | 27 (en cascada con los grupos) |
+| `oferta_cetap_programa` | 1.300 |
+| `concertacion_docencia` | 3 (con 11 firmas, 13 del historial y 3 revisiones, en cascada) |
+| `docencia_concertada` (PTA) | 3 |
+| `PlanTrabajoAcademico` | 1 (con 14 aprobaciones por componente y 1 evento, en cascada) |
+| `HistorialEstadoPTA` | 3 |
+| asignaciones, recesos, `programacion_periodo`, `periodo_programacion`, equivalencias de periodo, histórico, `periodo_cetap`, detalles del PTA, aprobaciones de jefatura, concertación del PTA, solicitudes, evidencias y extensiones del PTA | 0 (vacías) |
+
+Se conservan, con los mismos conteos de antes: 427 asignaturas, 14 programas, 35 núcleos temáticos, 365 docentes del RUND, 29 aulas, 341 usuarios y 441 personas. Los núcleos de los docentes (`docente_nucleo`) pasaron de 393 a 390 filas solo por la fusión de la migración 673. Verificación posterior: todas las tablas de periodo en 0.
+
+⚠️ **Dato que Tomás debe conocer antes de probar desde cero:** `GET /pta/api/v1/periodos-academicos` (la lista de periodos) **crea por sí sola** un periodo `2025-2` «en curso» (1-ago-2025 a 15-dic-2025) si no encuentra ninguno (`periodo-academico.controller.ts`, método `list`). Es un comportamiento anterior a esta ronda. En cuanto una pantalla abra la lista, la base deja de estar en cero. Se puede quitar ese autogenerado; no lo toqué sin decisión.
+
+### 29.6 · Permiso de activación extraordinaria, probado con un usuario sin él
+
+Prueba con servidor real, con usuarios que pasan el `@Roles` del endpoint pero no tienen `pta.periodos.activar_extraordinario`:
+
+- **API:** `qa.admin` (ADMIN_PROGRAMACION) y un usuario QA con GESTION_PROFESORAL responden **403** «Activar un periodo extraordinario requiere el permiso «Periodos — Activar periodo extraordinario».»; el periodo de prueba siguió en `planeacion` y el principal sin cambios.
+- **Pantalla:** un usuario QA con un rol de los mismos permisos que el superadmin **menos** ese (511 permisos) abre Programas Académicos → Periodos y ve la lista y los botones «Activar» (5), pero **0** botones «Activar como extraordinario». Con superadmin el botón aparece (28.1). Captura: `C:\Users\Tomas\Claude\periodos-sin-permiso.png`. Fixtures QA deshechos (usuario, persona y rol).
+- Aparte: `qa.admin` no ve el módulo Programas Académicos en el menú; la pantalla de periodos no le es alcanzable.
+
+### 29.7 · Pruebas sobre la rama integrada (backend y front), con la base en cero
+
+| Suite | Resultado |
+|---|---|
+| Programación Académica (backend, jest) | **272/272** (271 + la nueva de la 673) |
+| PTA (backend, jest) | **1145 pasan, 1 omitida** (la manual de siempre) |
+| MFE de Programación Académica (vitest) | **51/51** |
+| MFE de Programas Académicos (vitest) | **28/28** |
+| Datos y catálogo de Codex (`node --test`) | **11/11** |
+
+Dos ajustes de pruebas por las decisiones y por la base en cero: la prueba «solo aparecen docentes del área» esperaba el puente en `solo_sin_rund` (ahora E, con núcleo RUND en otra área y puente en esta, también es candidata); y el canario `cruces-vivos` exigía al menos un periodo real, y con la base en cero avisa y sigue exigiendo que el total de cruces sea cero. En una primera corrida del front, con el PTA corriendo en paralelo, 3 pruebas fallaron por tiempo (`findByText` de 1 s); solas, pasan 51/51.

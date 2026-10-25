@@ -141,12 +141,14 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
   caso('solo aparecen docentes del área; el sugerido es el apto con menos horas, desempate por cédula', async () => {
     const r = await servicio().candidatos(ids.grupo, undefined, null);
     expect(r.area?.codigo).toMatch(/^QA-AF-/);
-    expect(r.candidatos.map((c) => c.documento)).toEqual([doc.A, doc.B, doc.D]);
-    const [a, b, d] = r.candidatos;
+    // Puente en modo suma (defecto): E, con núcleo RUND en otra área y puente en esta, también es del área.
+    expect(r.candidatos.map((c) => c.documento)).toEqual([doc.A, doc.B, doc.E, doc.D]);
+    const [a, b, e, d] = r.candidatos;
     expect(a.motivos).toEqual([]);
     expect(a).toMatchObject({ origenArea: 'rund', asignable: true, cruce: false, horasProgramadas: 0, horasImpacto: 64, perfil: 'Perfil QA A' });
     expect(a.titulos.maestria).toBe('Magíster QA');
     expect(b).toMatchObject({ origenArea: 'puente', asignable: true });
+    expect(e).toMatchObject({ origenArea: 'puente', asignable: true });
     expect(d).toMatchObject({ asignable: false, cruce: true });
     expect(d.motivos.map((m) => m.regla)).toEqual(['RN-07']);
     expect(r.sugerido?.documento).toBe(doc.A);
@@ -154,9 +156,9 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     expect(r.mensaje).toBeNull();
   });
 
-  caso('el puente no amplía el área de quien ya tiene núcleo del RUND, y se apaga con PROG_NUCLEO_PUENTE=false', async () => {
+  caso('por defecto el puente SUMA al núcleo del RUND (E entra), y se apaga con PROG_NUCLEO_PUENTE=false', async () => {
     const con = await servicio().candidatos(ids.grupo, undefined, null);
-    expect(con.candidatos.map((c) => c.documento)).not.toContain(doc.E);
+    expect(con.candidatos.map((c) => c.documento)).toContain(doc.E);
     const antes = process.env.PROG_NUCLEO_PUENTE;
     process.env.PROG_NUCLEO_PUENTE = 'false';
     try {
@@ -167,28 +169,29 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     }
   });
 
-  caso('la regla del puente es configuración: solo_sin_rund (defecto), suma (RUND + puente) y apagado', async () => {
+  caso('la regla del puente es configuración: suma (defecto: RUND + puente), solo_sin_rund y apagado', async () => {
     const con = (modo: string | undefined) => async () => {
       const antes = process.env.PROG_NUCLEO_PUENTE;
       if (modo === undefined) delete process.env.PROG_NUCLEO_PUENTE; else process.env.PROG_NUCLEO_PUENTE = modo;
       try { return (await servicio().candidatos(ids.grupo, undefined, null)).candidatos.map((c) => c.documento); }
       finally { if (antes === undefined) delete process.env.PROG_NUCLEO_PUENTE; else process.env.PROG_NUCLEO_PUENTE = antes; }
     };
-    // Por defecto: E (núcleo RUND en otra área + puente en esta) NO es del área.
-    expect(await con(undefined)()).toEqual([doc.A, doc.B, doc.D]);
-    expect(await con('solo_sin_rund')()).toEqual([doc.A, doc.B, doc.D]);
-    // Suma: E sí (por lo que dicta según el puente; D, con cruce, va al final).
+    // Por defecto es suma: E (núcleo RUND en otra área + puente en esta) sí es del área (D, con cruce, al final).
+    expect(await con(undefined)()).toEqual([doc.A, doc.B, doc.E, doc.D]);
+    expect(await con('true')()).toEqual([doc.A, doc.B, doc.E, doc.D]);
     expect(await con('suma')()).toEqual([doc.A, doc.B, doc.E, doc.D]);
     expect(await con('SUMA')()).toEqual([doc.A, doc.B, doc.E, doc.D]);
+    // solo_sin_rund: el puente no amplía el área de quien ya tiene núcleo del RUND.
+    expect(await con('solo_sin_rund')()).toEqual([doc.A, doc.B, doc.D]);
     expect(await con('apagado')()).toEqual([doc.A, doc.D]);
-    // Y en suma sigue valiendo el bloqueo: asignar a E solo se permite con el modo encendido.
+    // Y el bloqueo sigue valiendo: con solo_sin_rund no se puede asignar a E; con suma (defecto) sí.
     const antes = process.env.PROG_NUCLEO_PUENTE;
     try {
-      delete process.env.PROG_NUCLEO_PUENTE;
+      process.env.PROG_NUCLEO_PUENTE = 'solo_sin_rund';
       const rechazo = await servicio().asignar({ idGrupo: ids.grupo, documento: doc.E });
       expect(rechazo).toMatchObject({ asignado: false });
       expect(rechazo.motivos?.[0]).toMatchObject({ regla: 'AREA' });
-      process.env.PROG_NUCLEO_PUENTE = 'suma';
+      delete process.env.PROG_NUCLEO_PUENTE;
       expect((await servicio().asignar({ idGrupo: ids.grupo, documento: doc.E })).asignado).toBe(true);
     } finally {
       if (antes === undefined) delete process.env.PROG_NUCLEO_PUENTE; else process.env.PROG_NUCLEO_PUENTE = antes;
@@ -290,6 +293,27 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     const a = await servicio().asignar({ idGrupo: ids.grupoSinArea, documento: doc.A });
     expect(a.asignado).toBe(false);
     expect(a.motivos?.[0]).toMatchObject({ regla: 'AREA' });
+  });
+
+  // Decisión de Tomás (migración 673): «Estado, Gobierno y Sociedad» se unió a «Estado y Poder».
+  caso('Estado, Gobierno y Sociedad es la misma área que Estado y Poder: equivalencias, núcleos de docentes y asignaturas', async () => {
+    const eq = (await client!.query(
+      `SELECT af.nombre FROM ${AW}.nucleo_equivalencia e JOIN ${AW}.area_formacion af ON af.id = e.id_area
+        WHERE e.variante_normalizada IN ('estado gobierno y sociedad', 'gobierno y politicas publicas', 'gobierno y politica publica')`)).rows;
+    expect(eq.map((x: any) => x.nombre)).toEqual(expect.arrayContaining(['Estado y Poder']));
+    expect(eq.every((x: any) => x.nombre === 'Estado y Poder')).toBe(true);
+    const viejos = (await client!.query(
+      `SELECT (SELECT count(*) FROM ${AW}.nucleo_equivalencia e WHERE e.id_area = af.id)::int AS equivalencias,
+              (SELECT count(*) FROM ${AW}.docente_nucleo d WHERE d.id_area = af.id)::int AS docentes, af.activa
+         FROM ${AW}.area_formacion af WHERE af.nombre = 'Estado, Gobierno y Sociedad'`)).rows[0];
+    expect(viejos).toEqual({ equivalencias: 0, docentes: 0, activa: false });
+    // Una asignatura del catálogo real cuyo núcleo es «Estado, Gobierno y Sociedad» ya cae en Estado y Poder.
+    const asig = (await client!.query(
+      `SELECT af.nombre FROM ${AW}.asignatura a JOIN ${AW}.nucleo_tematico nt ON nt.id = a.id_nucleo_tematico
+         JOIN ${AW}.area_formacion af ON af.id = ${AW}.area_de_asignatura(a.id)
+        WHERE nt.nombre = 'Estado, Gobierno y Sociedad' AND a.codigo NOT LIKE 'QA-%'`)).rows;
+    expect(asig.length).toBeGreaterThan(0);
+    expect(asig.every((x: any) => x.nombre === 'Estado y Poder')).toBe(true);
   });
 
   /**
