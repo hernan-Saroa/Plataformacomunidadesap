@@ -4,6 +4,7 @@ import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import { BookOpen, Check, Clock, Loader2, MapPin, Undo2 } from 'lucide-react';
 
 import { getMiCalendario, type CalendarioDocente, type FranjaCalendario } from '../services/api/vistaApi';
+import { getMiConcertacion, type ConcertacionDocente } from '../services/api/concertacionApi';
 
 /**
  * EFDS-2348 — Grupos que la decanatura le asignó al docente en un periodo.
@@ -36,10 +37,12 @@ interface GrupoVista {
 }
 
 /** Sin `idPeriodo`, el periodo en curso. */
-export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: string; codigoPeriodo?: string | null }) {
+export function GruposAsignados({ idPeriodo, codigoPeriodo, concertacionHabilitada = false }: { idPeriodo?: string; codigoPeriodo?: string | null; concertacionHabilitada?: boolean }) {
   const revision = useRevisionProgramacion('programacion', 'portal-docente');
   const [cal, setCal] = useState<CalendarioDocente | null>(null);
   const [error, setError] = useState('');
+  const [concertaciones, setConcertaciones] = useState<ConcertacionDocente[] | null>(null);
+  const [errorEstado, setErrorEstado] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -48,6 +51,15 @@ export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: stri
       .catch((e) => { if (vivo) setError(e?.message || 'No se pudo cargar tu programación.'); });
     return () => { vivo = false; };
   }, [idPeriodo, revision]);
+  const periodo = idPeriodo ?? cal?.periodo.id;
+  useEffect(() => {
+    let vigente = true;
+    setConcertaciones(null); setErrorEstado(false);
+    if (concertacionHabilitada && periodo) getMiConcertacion(periodo)
+      .then(c => { if (vigente) setConcertaciones(c); })
+      .catch(() => { if (vigente) setErrorEstado(true); });
+    return () => { vigente = false; };
+  }, [periodo, concertacionHabilitada, revision]);
 
   const grupos = useMemo<GrupoVista[]>(() => {
     const porId = new Map<string, GrupoVista>();
@@ -92,6 +104,15 @@ export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: stri
       ) : grupos.map((g) => {
         const estado = g.estados.has('DEVUELTA') ? 'DEVUELTA' : g.estados.has('TOMADA') ? 'TOMADA' : g.estados.has('APROBADA') ? 'APROBADA' : '';
         const e = ESTADO[estado];
+        const pendientes = g.franjas.filter(f => f.estado === 'TOMADA');
+        const estadoPorFranja = (id: string) => concertaciones?.find(c => c.franjas?.some(f => f.idFranja === id))?.estado;
+        const todasPorAceptar = pendientes.length > 0 && pendientes.every(f => estadoPorFranja(f.idFranja) === 'POR_ACEPTAR');
+        const algunaPorAceptar = pendientes.some(f => estadoPorFranja(f.idFranja) === 'POR_ACEPTAR');
+        const etiqueta = estado === 'TOMADA' && concertacionHabilitada
+          ? errorEstado ? 'Estado de concertación no disponible'
+            : concertaciones === null ? 'Consultando estado…'
+              : todasPorAceptar ? 'Por aceptar' : algunaPorAceptar ? 'Parte por aceptar' : e?.texto
+          : e?.texto;
         const horas = cal.horasPorGrupo?.[g.idGrupo];
         return (
           <article key={g.idGrupo} className="p-3 rounded-xl border border-slate-200 bg-white space-y-2">
@@ -110,7 +131,7 @@ export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: stri
               <div className="shrink-0 text-right space-y-1">
                 {e && (
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${e.clase}`}>
-                    {e.icono}{e.texto}
+                    {e.icono}{etiqueta}
                   </span>
                 )}
                 <p className="text-xs text-slate-700">{horas != null ? <><strong>{horas} h</strong> de docencia</> : 'Horas por calcular'}</p>

@@ -130,5 +130,13 @@
   {
     "codigo": "NT-033",
     "nombre": "Proyectos de Desarrollo - ESP"
+  },
+  {
+    "codigo": "NT-034",
+    "nombre": "Finanzas Públicas"
+  },
+  {
+    "codigo": "NT-035",
+    "nombre": "Opción de grado"
   }
 ]

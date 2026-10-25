@@ -107,6 +107,27 @@ export async function aprobarConcertacion(id: string, codigo: string) {
 }
 
 export type TipoNovedad = 'investigacion' | 'movilidad' | 'perfil' | 'otra';
+/** §23.3: foto enviada por nivel, comentario de devolución y novedad del docente. */
+export interface RevisionProgramador {
+  idConcertacion: string;
+  documento: string;
+  docente: string;
+  nivel: 'pregrado' | 'posgrado';
+  estado: EstadoConcertacion;
+  horas: number;
+  numFranjas: number;
+  comentario: string | null;
+  actualizadaEn: string;
+  novedad: { tipo: TipoNovedad; justificacion: string; creadaEn: string } | null;
+}
+export function getRevisionProgramador(idPeriodo: string): Promise<RevisionProgramador[]> {
+  return pedir(`/programador?periodo=${encodeURIComponent(idPeriodo)}`);
+}
+export async function enviarDocenciaARevision(idPeriodo: string, documento: string): Promise<RevisionProgramador[]> {
+  const r = await pedir<RevisionProgramador[]>('/enviar', { method: 'POST', body: JSON.stringify({ idPeriodo, documento }) });
+  invalidarProgramacion(...RECURSOS);
+  return r;
+}
 export async function aceptarProgramacion(id: string, codigo: string) {
   const r = await pedir(`/${encodeURIComponent(id)}/aceptar`, { method: 'POST', body: JSON.stringify({ codigo }) });
   invalidarProgramacion(...RECURSOS);
