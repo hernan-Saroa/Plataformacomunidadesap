@@ -51,6 +51,11 @@ try {
   let texto = await page.evaluate(() => document.body.innerText);
   for (const label of ['Segunda Docente', 'Cátedra', 'Ocasional', 'Sin oferta CETAP', 'Sin docente', 'No disponibles', 'Excede las horas']) assert.ok(texto.includes(label), label);
   assert.ok(!texto.includes('Catálogo Académico'));
+  await page.select('[aria-label="Filtrar jornada"]', 'NOCTURNA');
+  await page.waitForFunction(() => document.body.innerText.includes('No hay grupos para los filtros'));
+  await page.select('[aria-label="Filtrar jornada"]', 'DIURNA');
+  await page.waitForSelector('details details details');
+  await page.select('[aria-label="Filtrar jornada"]', 'TODAS');
   await page.click('input[type=checkbox]');
   await page.waitForFunction(() => document.body.innerText.includes('Administración Pública'));
   assert.ok(llamadas.some(c => c.query.includes('soloSinDocente=true')));

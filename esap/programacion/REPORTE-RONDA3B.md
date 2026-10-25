@@ -1,5 +1,38 @@
 # Ronda 3b — cobertura y entrega de Codex
 
+## Cierre de la continuación — 25 de octubre de 2026
+
+**Cobertura con la regla vigente: 463/535 franjas del Excel (86,54 %)**: 32 por RUND y 431 por puente. El puente solo cuenta cuando el docente no tiene ningún núcleo RUND reconocido; no amplía áreas del RUND. Hay 68 franjas cuyo docente tiene RUND de otra área y cuatro sin cruce exacto de Opción de grado APT_52. `cobertura-regla-vigente.json` usa el intérprete puro publicado por Claude y las equivalencias activas consultadas el 24 de octubre; conserva la huella del intérprete. El 99,25 % del apartado original corresponde a la unión de fuentes anterior y no expresa la regla actual.
+
+**Excel listo para el importador:** [catalogo-importable-2026-1.xlsx](resultados/2026-1/catalogo-importable-2026-1.xlsx). Incluye las hojas PROGRAMAS, ASIGNATURAS y MATRIZ_OFERTA del formato vigente: 427 asignaturas, 14 programas y 325 ofertas. El parser y el validador reales del PTA lo aceptan con cero errores y cero advertencias de validación previa.
+
+- Conserva todos los códigos de la exportación base: cero códigos nuevos o retirados. Solo cambia el área en 65 asignaturas con cruce inequívoco por programa, nombre base y tabla de equivalencias. Semestre, créditos y plan sirven para acotar candidatos cuando existen; no se modifica ninguno de esos campos.
+- Las 160 asignaturas de posgrado y todos sus campos originales se conservan. El Excel fuente tiene planes de pregrado: no permite inferir áreas de posgrado. Su área efectiva sigue siendo el programa según §22.1. Las huellas antes/después de códigos y datos de posgrado coinciden.
+- `REVISION_CATALOGO` contiene 63 asignaturas cuyo cruce no autoriza cambiar el área: mantienen el valor anterior. `REVISION_OPCION_GRADO` contiene las cuatro franjas pedidas, con los dos nombres candidatos y decisión manual explícita. No se inventa la equivalencia entre los cursos 1 y 2.
+- `nucleo_tematico` lleva el nombre que consume el importador actual; la columna adicional `codigo_nucleo_tematico` conserva el `NT-*` conocido para trazabilidad. `codigo_area_formacion` conserva el `AF-*` cuando se resuelve. Los códigos AF no sustituyen códigos NT.
+- La consulta previa encontró Finanzas Públicas y Opción de grado en `area_formacion` (AF-04 y AF-17), pero sin NT equivalente en el snapshot de `nucleo_tematico`. Se reportan en `catalogo-importable-reporte.json`; el nombre aprobado se conserva para que el importador resuelva el núcleo al validar/confirmar.
+- Al retomar el 25 de octubre, `127.0.0.1:55432` rechazó la conexión. Se preparó el archivo con la exportación conocida `carga-valida-catalogo.xlsx` y los snapshots leídos previamente. **La comparación con la base actual y la confirmación de carga quedan para Claude cuando la base esté disponible.** No se iniciaron servicios reales ni se escribieron datos.
+- `INSTRUCCION-codex-ronda3-PA.md` no apareció en la ubicación externa indicada ni en origin. Se aplicaron las tres reglas expresas del pedido: reutilizar códigos, usar la tabla de áreas y verificar posgrado, junto con el formato real del importador publicado. La procedencia y sus huellas están en el reporte del archivo.
+
+**Pantallas terminadas:**
+
+- EFDS-2341: «Asignar docente» en cada grupo programable para el nivel que permite `getMisPermisos().asignar`. Modal de candidatos del área, todas las franjas por defecto, selección de subconjuntos, búsqueda, filtro de vinculación, sugerencia con razones, perfil, títulos, origen del núcleo, horas/tope, cruces y motivos. No hay campo de asignación libre. Un 200 con `asignado:false` conserva el modal y no invalida consultas. Título y botones permanecen visibles mientras se recorren los candidatos; foco contenido, Escape y retorno al botón.
+- EFDS-2374: únicamente `POR_ACEPTAR` ofrece «Aceptar y firmar» o «Reportar novedad». La firma usa el modal OTP existente. La novedad exige tipo válido y diez caracteres de justificación; un error conserva lo ingresado. `ACEPTADA`, `NOVEDAD` y el histórico `APROBADA` no ofrecen acciones. Aceptar/novedad refrescan concertación, calendario y grupos después de una respuesta satisfactoria. Con el interruptor apagado se mantiene el flujo anterior del portal.
+- Regresión §26.2: el filtro de jornada vuelve a Programación General, con los valores del backend. Selecciona grupos con franjas de esa jornada y muestra el grupo completo para preservar el contexto de asignación.
+
+**Verificación:** MFE 38/38 (ocho suites); datos/catálogo 7/7; canario estático de rutas del cliente 3/3 (incluida jornada); navegador con API interceptada y respuestas de §§19, 22 y 23, incluidos rechazo 200, 409/503, subconjuntos, firma, novedad, foco y apagado; regresión de nueve escenarios de periodos/carga/aulas y prueba de árbol/calendario. Build correcto. Se ejecutan el parser, la matriz y las reglas R1-R6 originales; el arnés sustituye únicamente el decorador de inyección y la clase de error de Nest para no levantar el backend. No equivale a ejecutar el importador transaccional ni su validación contra la base.
+
+Generadores: `generar-datos.mjs` para los cruces de lectura y `generar-catalogo.mjs` para el Excel. Para regenerar el catálogo:
+
+```powershell
+node esap/programacion/generar-catalogo.mjs --catalogo-base "ruta\catalogo-exportado.xlsx" --programacion "ruta\programacion.xlsx" --periodo 2026-1
+node --test esap/programacion/validar-datos.test.mjs esap/programacion/catalogo-importable.test.mjs
+```
+
+Esfuerzo adicional estimado: modal 1,5 h; aceptación/novedad y refresco 1,5 h; catálogo y conciliación 2 h; pruebas/inspección visual 1,5 h; documentación e integración 0,5 h. **7 h adicionales**, sin repetir las 9 h estimadas de la entrega anterior.
+
+## Registro de la primera entrega
+
 24 de octubre de 2026. Contratos obtenidos de `origin/feature/pa/ronda3` y de `origin/feature/pa/ronda3-claude` (`814c564d4`, sección 21). No se leyó la carpeta de Claude.
 
 ## Cobertura primero

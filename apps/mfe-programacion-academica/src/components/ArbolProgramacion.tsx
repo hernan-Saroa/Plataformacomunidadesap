@@ -1,25 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getArbolProgramacion, type ArbolProgramacion as Arbol, type MisPermisos, type GrupoArbol } from '../services/api/vistaApi';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
+import { AsignacionAreaModal } from './AsignacionAreaModal';
 
 const horas = (n: number | null) => n === null ? 'No disponibles' : `${n} h`;
 
-export function ArbolProgramacion({ periodo, permisos, abrirGrupo }: { periodo: string; permisos: MisPermisos; abrirGrupo?: (grupo: GrupoArbol, asignatura: string) => void }) {
+export function ArbolProgramacion({ periodo, permisos, abrirGrupo, programable = false, jornada = 'TODAS' }: { periodo: string; permisos: MisPermisos; abrirGrupo?: (grupo: GrupoArbol, asignatura: string) => void; programable?: boolean; jornada?: string }) {
+  const [asignacion, setAsignacion] = useState<{ grupo: GrupoArbol; asignatura: string; foco: HTMLElement } | null>(null);
+  useEffect(() => { setAsignacion(null); }, [periodo, programable]);
   const [datos, setDatos] = useState<Arbol | null>(null);
   const [error, setError] = useState('');
   const [pendientes, setPendientes] = useState(false);
   const [nivel, setNivel] = useState<'' | 'pregrado' | 'posgrado'>('');
   const revision = useRevisionProgramacion('programacion');
+  const consultaAnterior = useRef('');
   const niveles = permisos.ver.join(',');
   useEffect(() => {
     let vigente = true;
-    setDatos(null); setError('');
+    const consulta = `${periodo}|${pendientes}|${nivel}|${niveles}`;
+    if (consultaAnterior.current !== consulta) setDatos(null);
+    consultaAnterior.current = consulta;
+    setError('');
     if (!periodo || !niveles) return;
     getArbolProgramacion({ periodo, soloSinDocente: pendientes, nivel: nivel || undefined })
       .then(d => { if (vigente) setDatos(d); })
       .catch(e => { if (vigente) setError(e.message || 'No se pudo consultar la programación.'); });
     return () => { vigente = false; };
   }, [periodo, pendientes, nivel, niveles, revision]);
+  const programasVisibles = datos?.programas.filter(p => permisos.ver.includes(p.nivel)).map(p => ({ ...p, asignaturas: p.asignaturas.map(a => ({ ...a, grupos: a.grupos.filter(g => jornada === 'TODAS' || g.franjas.some(f => f.jornada === jornada)) })).filter(a => a.grupos.length) })).filter(p => p.asignaturas.length) ?? [];
   if (!permisos.ver.length) return <p>No tienes permiso para consultar la programación.</p>;
   return <section aria-label="Programación por programa" className="space-y-4">
     <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-center gap-4">
@@ -33,9 +41,9 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo }: { periodo: 
     {error && <p role="alert" className="p-4 bg-amber-50 text-amber-900">{error}</p>}
     {!datos && !error && <p role="status">{periodo ? 'Consultando programación…' : 'Selecciona un periodo.'}</p>}
     {datos && <>
-      <p role="status" className="text-sm text-slate-600">{datos.resumen.programas} programas · {datos.resumen.asignaturas} asignaturas · {datos.resumen.grupos} grupos · {datos.resumen.franjas} franjas · {datos.resumen.franjasSinDocente} sin docente</p>
-      {!datos.programas.length && <p className="p-6 bg-white rounded-xl border">No hay grupos para los filtros seleccionados en este periodo.</p>}
-      {datos.programas.filter(p => permisos.ver.includes(p.nivel)).map(p => <details key={p.idPrograma} open className="bg-white rounded-xl border border-slate-200 p-4">
+      <p role="status" className="text-sm text-slate-600">{jornada !== 'TODAS' ? 'Resumen antes del filtro de jornada: ' : ''}{datos.resumen.programas} programas · {datos.resumen.asignaturas} asignaturas · {datos.resumen.grupos} grupos · {datos.resumen.franjas} franjas · {datos.resumen.franjasSinDocente} sin docente</p>
+      {!programasVisibles.length && <p className="p-6 bg-white rounded-xl border">No hay grupos para los filtros seleccionados en este periodo.</p>}
+      {programasVisibles.map(p => <details key={p.idPrograma} open className="bg-white rounded-xl border border-slate-200 p-4">
         <summary className="cursor-pointer font-bold text-[#003DA5]">{p.nombre} · {p.nivel}</summary>
         {p.asignaturas.map(a => <details key={a.idAsignatura} className="mt-3 border rounded-lg p-3">
           <summary className="cursor-pointer font-semibold">{a.codigo} · {a.nombre} · Semestre {a.semestre ?? 'sin definir'}</summary>
@@ -51,6 +59,7 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo }: { periodo: 
               <p>Programadas: {horas(g.horas.programadas)} · Requeridas: {horas(g.horas.requeridas)}</p>
               <p>Ciclo: {g.cicloInicio ?? 'Sin definir'} — {g.cicloFin ?? 'Sin definir'}</p>
               {abrirGrupo && permisos.programar.includes(p.nivel) && <button type="button" onClick={() => abrirGrupo(g, a.nombre)} className="border rounded-lg p-2 text-[#003DA5]">Ver horario del grupo</button>}
+              {programable && permisos.asignar.includes(p.nivel) && <button type="button" className="border rounded-lg p-2 text-[#003DA5]" onClick={e => setAsignacion({ grupo: g, asignatura: a.nombre, foco: e.currentTarget })}>Asignar docente</button>}
               <p>{Object.entries(g.estadoFranjas).map(([estado, cantidad]) => `${estado}: ${cantidad}`).join(' · ')}</p>
               <h4 className="font-semibold">Docentes del grupo</h4>
               {!g.docentes.length && <p className="text-amber-800">Sin docentes asignados.</p>}
@@ -67,5 +76,6 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo }: { periodo: 
         </details>)}
       </details>)}
     </>}
+    {asignacion && <AsignacionAreaModal grupo={asignacion.grupo} asignatura={asignacion.asignatura} retornarFoco={asignacion.foco} cerrar={() => setAsignacion(null)} />}
   </section>;
 }

@@ -12,7 +12,7 @@ import { invalidarProgramacion } from '../actualizacionProgramacion';
  */
 const BASE = '/programacion-academica/api/v1/concertacion';
 
-export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA';
+export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA' | 'POR_ACEPTAR' | 'ACEPTADA' | 'NOVEDAD';
 
 export interface ConfiguracionConcertacion {
   habilitada: boolean;
@@ -35,6 +35,9 @@ export interface ConcertacionDocente {
   horas: number;
   comentario: string | null;
   firmas: FirmaConcertacion[];
+  franjas?: { idFranja: string; idGrupo: string; codigoAsignatura: string; asignatura: string; horas: number }[];
+  novedad?: { tipo: TipoNovedad; justificacion: string; creadaEn: string } | null;
+  actualizadaEn?: string;
 }
 
 export interface ConcertacionBandeja {
@@ -85,14 +88,6 @@ export function getBandejaConcertacion(idPeriodo?: string): Promise<Concertacion
   return pedir(`/bandeja${idPeriodo ? `?periodo=${encodeURIComponent(idPeriodo)}` : ''}`);
 }
 
-export async function enviarConcertacion(idPeriodo: string, codigo: string): Promise<ConcertacionDocente[]> {
-  const r = await pedir<ConcertacionDocente[]>(`/${encodeURIComponent(idPeriodo)}/enviar`, {
-    method: 'POST', body: JSON.stringify({ codigo }),
-  });
-  invalidarProgramacion(...RECURSOS);
-  return r;
-}
-
 export async function revisarConcertacion(id: string, codigo: string, tipo = 'academica') {
   const r = await pedir(`/${encodeURIComponent(id)}/revisar`, { method: 'POST', body: JSON.stringify({ tipo, codigo }) });
   invalidarProgramacion(...RECURSOS);
@@ -107,6 +102,18 @@ export async function devolverConcertacion(id: string, comentario: string) {
 
 export async function aprobarConcertacion(id: string, codigo: string) {
   const r = await pedir(`/${encodeURIComponent(id)}/aprobar`, { method: 'POST', body: JSON.stringify({ codigo }) });
+  invalidarProgramacion(...RECURSOS);
+  return r;
+}
+
+export type TipoNovedad = 'investigacion' | 'movilidad' | 'perfil' | 'otra';
+export async function aceptarProgramacion(id: string, codigo: string) {
+  const r = await pedir(`/${encodeURIComponent(id)}/aceptar`, { method: 'POST', body: JSON.stringify({ codigo }) });
+  invalidarProgramacion(...RECURSOS);
+  return r;
+}
+export async function reportarNovedad(id: string, tipo: TipoNovedad, justificacion: string) {
+  const r = await pedir(`/${encodeURIComponent(id)}/novedad`, { method: 'POST', body: JSON.stringify({ tipo, justificacion }) });
   invalidarProgramacion(...RECURSOS);
   return r;
 }
