@@ -36,10 +36,10 @@ export class PeriodoAcademicoEntity {
   extraordinarioEn: Date | null;
 
   @Column({ name: 'fecha_inicio', type: 'date' })
-  fechaInicio: Date;
+  fechaInicio: string;
 
   @Column({ name: 'fecha_fin', type: 'date' })
-  fechaFin: Date;
+  fechaFin: string;
 
   @Column({ type: 'varchar', length: 20, default: 'planeacion' })
   estado: string; // 'planeacion' | 'concertacion' | 'en_curso' | 'cerrado'

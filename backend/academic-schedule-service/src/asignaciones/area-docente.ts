@@ -8,14 +8,27 @@ import type { DataSource, EntityManager } from 'typeorm';
  * las del docente, de `academic_work_plan.docente_nucleo` (migración 669), que el
  * PTA llena desde el RUND (origen `rund`) y desde el puente (origen `puente`).
  *
- * ⚠️ INTERRUPTOR DEL PUENTE: PROG_NUCLEO_PUENTE.
- *   · sin definir o distinto de 'false' → el puente cuenta, pero SOLO para quien no
- *     tiene núcleo del RUND: el puente cubre a los catedráticos mientras el RUND no
+ * ⚠️ REGLA DEL PUENTE, COMO CONFIGURACIÓN: PROG_NUCLEO_PUENTE (decide Tomás).
+ *   · sin definir, 'true' o 'solo_sin_rund' (POR DEFECTO) → el puente cuenta, pero SOLO
+ *     para quien no tiene núcleo del RUND: cubre a los catedráticos mientras el RUND no
  *     traiga su núcleo; no amplía el área de un docente que ya la tiene en el RUND.
+ *     Cobertura medida sobre 2026-1: 86,5 %.
+ *   · 'suma' → el puente SUMA al núcleo del RUND: un docente puede dictar su núcleo y
+ *     las áreas que dicta según el puente. Cobertura medida sobre 2026-1: 99,25 %.
  *   · 'false' → solo cuenta el RUND.
+ * Se lee en cada consulta, no al arrancar.
  */
+export type ModoPuente = 'solo_sin_rund' | 'suma' | 'apagado';
+
+export function modoDelPuente(): ModoPuente {
+  const v = String(process.env.PROG_NUCLEO_PUENTE ?? '').trim().toLowerCase();
+  if (v === 'false' || v === 'apagado') return 'apagado';
+  if (v === 'suma') return 'suma';
+  return 'solo_sin_rund';
+}
+
 export function puenteDeNucleoHabilitado(): boolean {
-  return String(process.env.PROG_NUCLEO_PUENTE ?? '').trim().toLowerCase() !== 'false';
+  return modoDelPuente() !== 'apagado';
 }
 
 type Consultor = Pick<DataSource | EntityManager, 'query'>;
@@ -49,7 +62,9 @@ export async function areaDelGrupo(q: Consultor, idGrupo: string): Promise<(Area
 
 /** Condición SQL de los núcleos que cuentan, sobre `dn` (docente_nucleo), según el interruptor. */
 function sqlNucleoVigente(): string {
-  return puenteDeNucleoHabilitado()
+  const modo = modoDelPuente();
+  if (modo === 'suma') return `dn.origen IN ('rund', 'puente')`;
+  return modo === 'solo_sin_rund'
     ? `(dn.origen = 'rund' OR (dn.origen = 'puente' AND NOT EXISTS (
           SELECT 1 FROM academic_work_plan.docente_nucleo r WHERE r.id_persona = dn.id_persona AND r.origen = 'rund')))`
     : `dn.origen = 'rund'`;

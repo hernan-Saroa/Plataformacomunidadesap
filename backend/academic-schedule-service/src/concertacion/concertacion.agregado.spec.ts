@@ -247,6 +247,23 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
     expect(entregas[0].horas).toBe(32); // le queda el lunes: 16 sesiones × 2 h
   });
 
+  caso('novedad y reenvío SIN cambios: al PTA viaja una sola firma por rol, la del último ciclo', async (f) => {
+    const svc = servicio();
+    const id = await hastaPorAceptar(svc, f);
+    const yo = { idPerson: f.docente.idPerson, idUser: f.docente.idUser };
+    await svc.reportarNovedad(id, yo, 'otra', 'Necesito que el programador lo revise');
+    // El programador no cambia nada y reenvía: la foto (huella) es la misma, y revisor y
+    // aprobador vuelven a firmarla — sin esto viajaban 5 firmas en vez de 3.
+    await svc.enviar(f.programador, f.docente.documento, f.periodo, null);
+    await svc.revisar(id, 'academica', f.revisor, REVISOR, OTP);
+    await svc.aprobar(id, f.aprobador, APROBADOR, OTP);
+    await svc.aceptar(id, yo, OTP, null);
+    expect(entregas).toHaveLength(1);
+    expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['revisor', 'aprobador', 'docente']);
+    const registro = await client!.query(`SELECT count(*)::int AS n FROM "${S}".concertacion_firma WHERE id_concertacion = $1`, [id]);
+    expect(registro.rows[0].n).toBe(5); // el registro conserva las dos rondas
+  });
+
   caso('solo el docente dueño decide, y solo cuando está por aceptar', async (f) => {
     const svc = servicio();
     const [c] = await svc.enviar(f.programador, f.docente.documento, f.periodo, null);

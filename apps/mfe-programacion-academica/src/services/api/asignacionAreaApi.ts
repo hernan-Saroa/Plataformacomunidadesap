@@ -8,6 +8,8 @@ export interface CandidatoArea {
   nucleos: { area: string; origen: 'rund' | 'puente'; texto: string }[];
   origenArea: 'rund' | 'puente'; horasProgramadas: number | null; horasImpacto: number | null; tope: number | null;
   cruce: boolean; motivos: { regla: string; mensaje: string }[]; asignable: boolean;
+  /** Avisos que no bloquean, p. ej. «Sin situación administrativa registrada en el RUND». */
+  avisos?: string[];
 }
 export interface CandidatosArea {
   grupo: string;
@@ -24,7 +26,7 @@ export async function asignarFranjas(idGrupo: string, documento: string, franjas
   const res = await fetch(`${getApiGatewayBaseUrl()}${BASE}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idGrupo, documento, franjas }) });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message || `No se pudo asignar (error ${res.status}).`);
-  const data = (body.data ?? body) as { asignado: boolean; motivos?: { regla: string; mensaje: string }[] };
+  const data = (body.data ?? body) as { asignado: boolean; motivos?: { regla: string; mensaje: string }[]; avisos?: string[] };
   // Un 200 con asignado:false es una escritura rechazada: no invalida nada.
   if (data.asignado) invalidarProgramacion('programacion', 'horarios', 'portal-docente', 'acumulado', `grupo:${idGrupo}`);
   return data;

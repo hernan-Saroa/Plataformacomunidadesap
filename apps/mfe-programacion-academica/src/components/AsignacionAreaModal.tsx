@@ -35,6 +35,7 @@ export function AsignacionAreaModal({ grupo, asignatura, cerrar, retornarFoco }:
     </fieldset>
     {!franjas.length && <p>Selecciona al menos una franja.</p>}
     {franjas.length > 0 && !datos && !error && <p role="status">Consultando candidatos para estas franjas…</p>}
+    {apto?.avisos?.length ? <p role="status" className="bg-amber-50 text-amber-900 p-3 rounded-lg">Al confirmar con {apto.nombre}: {apto.avisos.join('. ')}.</p> : null}
     {error && <p role="alert" className="whitespace-pre-wrap text-red-700">{error}</p>}
     {datos && <><p><strong>Área:</strong> {datos.area?.nombre ?? 'Sin área de formación'}</p>
       {datos.mensaje ? <p role="status" className="bg-amber-50 p-3 rounded-lg">{datos.mensaje}</p> : <>
@@ -49,6 +50,7 @@ export function AsignacionAreaModal({ grupo, asignatura, cerrar, retornarFoco }:
           <p>Perfil: {c.perfil || 'No disponible'}</p><ul>{Object.entries(c.titulos).filter(([,v]) => v).map(([k,v]) => <li key={k}>{k}: {v}</li>)}</ul>
           <ul>{c.nucleos.map((n,i) => <li key={i}>{n.area} · {n.origen.toUpperCase()} · {n.texto}</li>)}</ul>
           {c.motivos.length > 0 && <ul className="text-red-700">{c.motivos.map((m,i) => <li key={i}>{m.mensaje}</li>)}</ul>}
+          {c.avisos?.length ? <ul role="note" className="text-amber-800 bg-amber-50 rounded-lg p-2">{c.avisos.map((a,i) => <li key={i}>⚠ {a}</li>)}</ul> : null}
         </article>)}
       </>}
     </>}

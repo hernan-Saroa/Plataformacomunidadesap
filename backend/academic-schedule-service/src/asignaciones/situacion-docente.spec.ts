@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-import { resolverSituacion, extraerVigencia, sigueVigente , SIN_DATO_ASIGNABLE } from './situacion-docente.js';
+import { resolverSituacion, extraerVigencia, sigueVigente, sinDatoAsignable, AVISO_SIN_SITUACION } from './situacion-docente.js';
 
 /**
  * EFDS-1372 :: subtarea 8 :: resolución de situación administrativa.
@@ -41,9 +41,50 @@ describe('EFDS-1372 :: resolverSituacion (regla, sobre el campo estructurado)', 
     expect(resolverSituacion('En Periodo de Prueba', null, HOY).asignable).toBe(true);
   });
 
-  it('AC :: categoría vacía o desconocida ⇒ fail-closed (no asignable)', () => {
-    expect(resolverSituacion(null, null, HOY).asignable).toBe(false);
+  it('AC :: categoría desconocida ⇒ fail-closed (no asignable)', () => {
     expect(resolverSituacion('Estado Que Nadie Previó', null, HOY).asignable).toBe(false);
+  });
+
+  it('el texto se normaliza (tildes, espacios Y guiones bajos): servicio_activo es servicio activo', () => {
+    for (const t of ['servicio_activo', 'Servicio_Activo', 'servicio  activo', 'SERVICIO ACTIVO', 'periodo_de_prueba', 'cargo_directivo']) {
+      expect(resolverSituacion(t, null, HOY)).toMatchObject({ asignable: true, motivo: null });
+    }
+    // Y lo que bloquea sigue bloqueando con la misma grafía.
+    expect(resolverSituacion('ano_sabatico', 'hasta 1-10-2026', HOY).asignable).toBe(false);
+    expect(resolverSituacion('comision_de_servicios', null, HOY).asignable).toBe(false);
+  });
+
+  describe('sin situación registrada (decisión de Tomás: asignable CON AVISO)', () => {
+    const conParametro = (valor: string | undefined, fn: () => void) => {
+      const antes = process.env.PROG_SIN_DATO_ASIGNABLE;
+      if (valor === undefined) delete process.env.PROG_SIN_DATO_ASIGNABLE; else process.env.PROG_SIN_DATO_ASIGNABLE = valor;
+      try { fn(); } finally { if (antes === undefined) delete process.env.PROG_SIN_DATO_ASIGNABLE; else process.env.PROG_SIN_DATO_ASIGNABLE = antes; }
+    };
+
+    it('por defecto: asignable, sin motivo y con el aviso exacto', () => {
+      conParametro(undefined, () => {
+        expect(sinDatoAsignable()).toBe(true);
+        for (const vacio of [null, undefined, '', '   ']) {
+          expect(resolverSituacion(vacio, null, HOY)).toMatchObject({
+            categoria: 'sin_dato', asignable: true, motivo: null,
+            aviso: 'Sin situación administrativa registrada en el RUND',
+          });
+        }
+        expect(AVISO_SIN_SITUACION).toBe('Sin situación administrativa registrada en el RUND');
+      });
+    });
+
+    it('con PROG_SIN_DATO_ASIGNABLE=false vuelve a bloquear, sin aviso', () => {
+      conParametro('false', () => {
+        expect(resolverSituacion(null, null, HOY)).toMatchObject({ asignable: false, aviso: null });
+        expect(resolverSituacion(null, null, HOY).motivo).toMatch(/Falta informaci/);
+      });
+    });
+
+    it('quien SÍ tiene situación no lleva aviso', () => {
+      expect(resolverSituacion('Servicio Activo', null, HOY).aviso).toBeNull();
+      expect(resolverSituacion('Año Sabático', 'hasta 1-10-2026', HOY).aviso).toBeNull();
+    });
   });
 
   it('extraerVigencia y sigueVigente', () => {
@@ -135,7 +176,7 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
   );
 
   siHayBase(
-    'los 80 catedraticos del historico: no asignables por falta de dato, no por situacion',
+    'los 80 catedraticos del historico: asignables con aviso por falta de dato',
     async () => {
       const { rows } = await client!.query(
         `SELECT d."situacionCategoria" AS categoria, d."situacionAdministrativa" AS descripcion
@@ -148,17 +189,12 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
       );
       expect(rows).toHaveLength(80);
 
-      // Todos no asignables, y todos por la MISMA razón: sin situación en el
-      // RUND. Si alguno pasara a asignable, alguien les inventó una situación.
+      // Todos caen en «sin dato» (nadie les inventó una situación) y, con el parámetro
+      // encendido, son asignables SIEMPRE con el aviso: la decanatura sabe que el RUND
+      // no trae su situación.
       const resueltos = rows.map((r) => resolverSituacion(r.categoria, r.descripcion, HOY));
-      // Bloqueados por defecto, y todos por la MISMA razon: falta el dato.
-      expect(resueltos.every((r) => !r.asignable)).toBe(true);
       expect([...new Set(resueltos.map((r) => r.categoria))]).toEqual(['sin_dato']);
-      // El motivo distingue "falta informacion" de "su situacion lo impide":
-      // conflacionarlos hacia que la decanatura leyera un motivo enganoso.
-      expect(resueltos.every((r) => /Falta informaci/.test(String(r.motivo)))).toBe(true);
-      // Y el parametro esta apagado por defecto: nadie les invento una situacion.
-      expect(SIN_DATO_ASIGNABLE).toBe(false);
+      expect(resueltos.every((r) => r.asignable && r.motivo === null && r.aviso === AVISO_SIN_SITUACION)).toBe(true);
     },
   );
 });

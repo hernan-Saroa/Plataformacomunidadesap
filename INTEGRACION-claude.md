@@ -902,10 +902,58 @@ Stack local con la concertación encendida en PA y PTA (`PROG_CONCERTACION_HABIL
 - **«Mi programación» y la bandeja siguen en el orden anterior.** La etiqueta del docente dice «Enviada por el docente (pendiente)» con la concertación en `POR_ACEPTAR`; no hay botones de aceptar ni de novedad (§23.2); la bandeja del revisor dice «Devolver al docente» (ahora vuelve al programador). `ConcertacionDocente.tsx` / `enviarConcertacion()` llaman a `POST /concertacion/:idPeriodo/enviar`, que ahora responde 409 a propósito.
 - **Gestión de Periodos** (`mfe-programas-academicos`) muestra `2027-INT` como «ACTIVO», «Semestre —», sin distinguirlo del principal; su «Crear periodo» solo crea semestrales y no tiene «Activar como extraordinario» (§25.2).
 
-### 26.3 · Defecto previo, no corregido (PTA)
+### 26.3 · Defecto previo (PTA) — corregido en §27.6
 
 `POST /periodos-academicos` guarda las fechas **un día antes** en un servidor con zona UTC−5 (`new Date('2027-06-21')` es medianoche UTC y TypeORM lo escribe en hora local). Pasa igual con un semestral; no lo introdujo la Ronda 3b.
 
 ### 26.4 · Corregido durante la verificación
 
 La decisión que va al PTA llevaba las firmas de **todos** los ciclos (5 en vez de 3 tras una novedad), incluidas las del ciclo anterior, que firmaron una foto que ya no es la vigente. Ahora solo viajan las de la huella vigente; las anteriores siguen en el registro. Con prueba (cae si se quita el filtro).
+
+## 27. Decisiones de Tomás y verificación por pantalla (25 de octubre)
+
+### 27.1 · Decisiones recibidas
+- **Terminación de PTA al activar (EFDS-2328):** queda revertida, como en §25.5.
+- **Posgrado:** la regla estricta no cambia. Tomás consigue la programación de posgrado y se usará la opción 1: un archivo docente × programa con el formato del puente (origen `puente`).
+- **Sin situación en el RUND:** asignable **con aviso** (§27.3).
+
+### 27.2 · Lo de Codex integrado
+Merge de `feature/pa/ronda3-codex` (modal de asignación, «Mi programación» con aceptar y novedad, filtro de jornada, catálogo importable). PA 271/271 (`rutas-cliente.spec.ts` vuelve a pasar), PTA 1145 + 1 omitida (la manual de siempre), front 38/38, datos/catálogo de Codex 7/7.
+
+### 27.3 · Sin situación administrativa: asignable con aviso
+`PROG_SIN_DATO_ASIGNABLE` ahora está **encendido por defecto** (`sinDatoAsignable()` en `situacion-docente.ts`, leído en cada llamada; `=false` vuelve a bloquear). Contrato nuevo, para que Codex lo muestre:
+- `GET /asignaciones/candidatos` → cada candidato trae `avisos: string[]` (`["Sin situación administrativa registrada en el RUND"]` o `[]`).
+- `POST /asignaciones` → la respuesta trae `avisos` cuando asigna a alguien con aviso.
+- `GET /asignaciones/docente/:documento` → `situacion.aviso`.
+El modal (`AsignacionAreaModal.tsx`) muestra el aviso en la tarjeta del candidato y, al elegirlo, antes de confirmar. Las demás reglas (área, escalafón, cruces, tope) siguen aplicando. El texto vive en `AVISO_SIN_SITUACION`.
+
+### 27.4 · El clasificador normaliza guiones bajos
+`servicio_activo` es `servicio activo`: `normalizar()` ahora colapsa `_` y espacios, además de tildes y mayúsculas, en PA (`situacion-docente.ts`) y en el contrato del PTA (`situacion-administrativa.clasificador.ts`). Pruebas en ambos. `qa.docente` (`servicio_activo`) quedó asignable sin tocar el dato.
+
+### 27.5 · Catálogo importable de Codex, contra la base real
+Respaldo previo: `pg_dump -n academic_work_plan` (793 KB) y foto de las 427 asignaturas con su área calculada. Validación previa real (`upload?dry_run=true`, periodo de prueba `2048-1`): 0 errores, 0 advertencias; 0 asignaturas creadas, 65 actualizadas, 362 sin cambios; 2 núcleos nuevos (`NT-034 Finanzas Públicas`, `NT-035 Opción de grado`); 325 ofertas.
+
+**Defecto del archivo de Codex (corregido en una copia, no en el original):** el xlsx perdía la tilde en 8 nombres (`Público→Publico`, p. ej. ASIG-00170, 00183, 00196, 00203, 00269, 00281) y vaciaba `horas_clase` en 3 asignaturas (ASIG-00139, 00218, 00427; la base tiene 0). El importador hace upsert de toda fila, así que los habría sobrescrito. La carga se hizo con una copia con esas 15 celdas restauradas desde la base. **El generador (`generar-catalogo.mjs`) debe conservar `nombre` y `horas_clase` de la exportación base.**
+
+Resultado verificado fila por fila (antes/después):
+- 427 asignaturas, mismos códigos; ninguna nueva.
+- Solo cambia `id_nucleo_tematico` en **65** (0 de posgrado); ninguna otra columna cambia en ninguna fila.
+- Posgrado: 160 filas idénticas en todas las columnas.
+- Las 65 cambian de **área efectiva** (código AF distinto en las 65). De las 44 «Nuevo Plan de Estudios AP/APT» que no tenían área real, las **44** la tienen ahora. Pregrado sin área real en toda la base: 52 → **8** (las de `REVISION_CATALOGO`: Constitución del Territorio AP_día, tres de AP_noche y cuatro de APT: Matemática I/II, Estadística I, Metodología). Esas necesitan decisión del negocio.
+- Se creó el periodo de prueba `2048-1` con 325 ofertas y luego se borró; las asignaturas cargadas se conservan.
+
+### 27.6 · Las fechas del periodo ya no se corren un día
+`src/pta/fecha-periodo.ts`: las fechas del periodo son fechas civiles (`YYYY-MM-DD`); `fechaCivil()` valida el calendario real y nunca crea una `Date`. `create`, `update` y el cruce de fechas comparan cadenas; la entidad declara `fechaInicio/fechaFin: string`. `periodo-fechas.agregado.spec.ts` fija `TZ=America/Bogota` (y comprueba que sea efectiva): contra el código anterior **fallan 3** (crear, editar, cruce), con el arreglo pasan. Los periodos ya guardados con el día corrido no se tocan: hay que revisarlos.
+
+### 27.7 · La regla del puente, como configuración
+`PROG_NUCLEO_PUENTE`: `solo_sin_rund` (**por defecto**, equivale a la regla actual y al antiguo `true`; 86,5 % sobre 2026-1), `suma` (el puente suma al núcleo del RUND; 99,25 %) y `apagado`/`false`. Se lee en cada consulta (`modoDelPuente()`). Prueba real: con `suma` el docente con RUND en otra área y puente en esta pasa a candidato y asignable; con el defecto, no.
+
+### 27.8 · Recorrido por las pantallas de Codex, con servidor real y concertación encendida
+Asignación, aceptación y novedad **por pantalla** (qa.asignador, superadmin, qa.docente2): el modal lista los candidatos del área, muestra el aviso «Sin situación administrativa registrada en el RUND» y asigna por franja (30 h, estado `TOMADA`); revisión y aprobación por «Concertación de la docencia»; el docente ve las firmas, **reporta novedad** (se rechaza la justificación corta; vuelve al programador) y, tras el reenvío, **acepta y firma** → `Aceptada · docencia enviada al PTA`; al crear el PTA llega la asignatura con 30 h y `origen: programacion`.
+
+Encontrado:
+- **Falta la pantalla del programador para enviar a revisión** (`POST concertacion/enviar`): se hizo por API. Y la bandeja sigue diciendo «Orden del flujo: el docente envía → …», «Enviada por el docente» y «Devolver al docente».
+- Mi programación llama «Pendiente de concertación» a un grupo ya `POR_ACEPTAR`.
+- El modal de firma, al aprobar, vuelve a mostrar la verificación tras «Firmar y aceptar» aunque la firma ya quedó registrada (hay que cerrar con Esc).
+- **Corregido:** si el programador reenvía **sin cambiar nada** tras una novedad, la huella es la misma y al PTA viajaban 5 firmas (revisor y aprobador dos veces). Ahora viaja la última firma de cada rol (`DISTINCT ON (rol)`), el registro conserva las cinco; prueba con mutación.
+- Local: reiniciar `auth-service` limpia el límite de intentos de login (429).
