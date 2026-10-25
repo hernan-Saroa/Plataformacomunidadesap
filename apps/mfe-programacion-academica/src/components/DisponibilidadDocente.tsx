@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buscarDocentes, getCalendarioDocente, getMiCalendario, type CalendarioDocente, type DocenteBuscado } from '../services/api/vistaApi';
 import { CalendarioHorario } from './CalendarioHorario';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
+import { EnvioRevisionDocente } from './EnvioRevisionDocente';
 
-export function DisponibilidadDocente({ periodo }: { periodo: string }) {
+export function DisponibilidadDocente({ periodo, nivelesAsignables = [], concertacionHabilitada = false, programable = false }: { periodo: string; nivelesAsignables?: ('pregrado' | 'posgrado')[]; concertacionHabilitada?: boolean; programable?: boolean }) {
   const [busqueda, setBusqueda] = useState('');
   const [docentes, setDocentes] = useState<DocenteBuscado[]>([]);
   const [elegido, setElegido] = useState('');
@@ -32,22 +33,29 @@ export function DisponibilidadDocente({ periodo }: { periodo: string }) {
         <strong>{d.nombre ?? 'Sin nombre'}</strong> · {d.documento ?? 'Sin documento'} · {d.vinculacion?.texto ?? 'Vinculación no disponible'} · {d.horas === null ? 'Horas no disponibles' : `${d.horas} h`} · {d.franjas} franjas
       </button></li>)}</ul>
     </div>
-    {elegido && <CalendarioDelDocente key={`${periodo}:${elegido}`} periodo={periodo} idDocente={elegido} />}
+    {elegido && <CalendarioDelDocente key={`${periodo}:${elegido}`} periodo={periodo} idDocente={elegido} envioRevision={concertacionHabilitada && nivelesAsignables.length ? { niveles: nivelesAsignables, programable } : undefined} />}
   </section>;
 }
 
-export function CalendarioDelDocente({ periodo, idDocente }: { periodo?: string; idDocente?: string }) {
+export function CalendarioDelDocente({ periodo, idDocente, envioRevision }: { periodo?: string; idDocente?: string; envioRevision?: { niveles: ('pregrado' | 'posgrado')[]; programable: boolean } }) {
   const [datos, setDatos] = useState<CalendarioDocente | null>(null);
   const [error, setError] = useState('');
   const revision = useRevisionProgramacion('programacion');
+  const consultaAnterior = useRef('');
   useEffect(() => {
     let vigente = true;
-    setDatos(null); setError('');
+    const consulta = `${periodo ?? ''}:${idDocente ?? ''}`;
+    if (consulta !== consultaAnterior.current) setDatos(null);
+    consultaAnterior.current = consulta;
+    setError('');
     const solicitud = idDocente ? getCalendarioDocente(periodo!, { idDocente }) : getMiCalendario(periodo);
     solicitud.then(d => { if (vigente) setDatos(d); }).catch(e => { if (vigente) setError(e.message || 'No se pudo consultar el calendario.'); });
     return () => { vigente = false; };
   }, [periodo, idDocente, revision]);
   if (error) return <p role="alert" className="p-4 bg-amber-50 text-amber-900">{error}</p>;
   if (!datos) return <p role="status">Consultando calendario…</p>;
-  return <CalendarioHorario soloLectura calendario={datos} />;
+  return <>
+    {envioRevision && <EnvioRevisionDocente calendario={datos} niveles={envioRevision.niveles} programable={envioRevision.programable} />}
+    <CalendarioHorario soloLectura calendario={datos} />
+  </>;
 }
