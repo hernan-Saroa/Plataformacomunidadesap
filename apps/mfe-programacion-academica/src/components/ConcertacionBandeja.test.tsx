@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConcertacionBandeja } from './ConcertacionBandeja';
 import { aprobarConcertacion, getBandejaConcertacion, revisarConcertacion } from '../services/api/concertacionApi';
+import { invalidarProgramacion } from '../services/actualizacionProgramacion';
 
 vi.mock('../services/api/concertacionApi', () => ({
   getBandejaConcertacion: vi.fn(), revisarConcertacion: vi.fn(), aprobarConcertacion: vi.fn(), devolverConcertacion: vi.fn(),
@@ -37,14 +38,14 @@ describe('bandeja de concertación: cada perfil ve su acción según la etapa', 
     expect(boton(/Revisar y firmar/)!.disabled).toBe(false);
     expect(boton(/Aprobar y firmar/)!.disabled).toBe(true);
     expect(screen.getByText(/se habilita cuando termine la revisión académica/)).toBeTruthy();
-    expect(boton(/Devolver al docente/)).toBeTruthy();
+    expect(boton(/Devolver al programador/)).toBeTruthy();
   });
 
   it('ENVIADA, jefatura: no revisa; ve «Aprobar» (deshabilitado hasta la revisión) y «Devolver»', async () => {
     await montar([item('ENVIADA', JEFATURA)]);
     expect(boton(/Revisar y firmar/)).toBeNull();
     expect(boton(/Aprobar y firmar/)!.disabled).toBe(true);
-    expect(boton(/Devolver al docente/)).toBeTruthy();
+    expect(boton(/Devolver al programador/)).toBeTruthy();
   });
 
   it('REVISADA, jefatura: «Aprobar y firmar» abre el modal de firma y aprueba con el código', async () => {
@@ -84,4 +85,42 @@ describe('bandeja de concertación: cada perfil ve su acción según la etapa', 
     expect(screen.getByText('Registro de firmas')).toBeTruthy();
     expect(screen.getByText(/Periodo 2026-2/)).toBeTruthy();
   });
+
+  // Orden del flujo vigente: el programador envía; el docente acepta al final.
+  it('la bandeja y las etapas dicen el orden nuevo: programador envía, se revisa y aprueba, el docente acepta', async () => {
+    await montar([item('ENVIADA', SUPERADMIN)]);
+    expect(screen.getByText(/el programador envía/)).toBeTruthy();
+    expect(screen.getByText(/el docente acepta y firma/)).toBeTruthy();
+    expect(screen.queryByText(/el docente envía/)).toBeNull();
+    const etapas = screen.getByLabelText('Etapas de la concertación').textContent!;
+    expect(etapas.indexOf('Enviada por el programador')).toBeGreaterThanOrEqual(0);
+    expect(etapas.indexOf('Revisión académica')).toBeGreaterThan(etapas.indexOf('Enviada por el programador'));
+    expect(etapas.indexOf('Aprobación')).toBeGreaterThan(etapas.indexOf('Revisión académica'));
+    expect(etapas.indexOf('Aceptación del docente')).toBeGreaterThan(etapas.indexOf('Aprobación'));
+    expect(etapas).not.toMatch(/por el docente/);
+  });
+
+  // Reporte de Tomás: al firmar, la bandeja se recargaba, se desmontaba el modal y reaparecía en la
+  // verificación del código aunque la firma ya estaba registrada.
+  it('al registrarse la firma el modal no vuelve a la verificación aunque la bandeja se recargue, y se cierra solo', async () => {
+    let cargas = 0;
+    vi.mocked(getBandejaConcertacion).mockImplementation(async () => {
+      cargas++;
+      if (cargas === 1) return [item('REVISADA', JEFATURA)] as any;
+      await new Promise((r) => setTimeout(r, 300)); // recarga lenta tras la firma
+      return [] as any;
+    });
+    vi.mocked(aprobarConcertacion).mockImplementation(async () => { invalidarProgramacion('concertacion'); return {} as any; });
+    render(<ConcertacionBandeja firmaSimulada />);
+    await screen.findByText('Pedro Docente Prueba', { exact: false });
+    fireEvent.click(boton(/Aprobar y firmar/)!);
+    '654321'.split('').forEach((d, i) => fireEvent.change(screen.getByLabelText(`Dígito ${i + 1} del código`), { target: { value: d } }));
+    fireEvent.click(await screen.findByRole('button', { name: /Firmar y aprobar/ }, { timeout: 8000 }));
+    expect(await screen.findByText('Firma registrada')).toBeTruthy();
+    await waitFor(() => expect(cargas).toBeGreaterThan(1));
+    await new Promise((r) => setTimeout(r, 500)); // la recarga ya terminó
+    expect(screen.queryByLabelText('Dígito 1 del código')).toBeNull();
+    expect(screen.queryByText('Verificación de identidad')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 4000 });
+  }, 20000);
 });
