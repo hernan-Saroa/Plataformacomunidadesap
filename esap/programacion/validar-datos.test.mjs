@@ -4,6 +4,12 @@ import fs from 'node:fs';
 import XLSX from 'xlsx';
 import { normalizar, areaCanonica, esGenerico, equivalencias } from './equivalencias.mjs';
 const dir = new URL('./resultados/2026-1/datos/nucleos/', import.meta.url);
+test('las cuatro franjas de Opción de grado quedan explícitamente para revisión manual', () => {
+  const w = XLSX.readFile(new URL('./resultados/2026-1/catalogo-conciliacion.xlsx', import.meta.url));
+  const filas = XLSX.utils.sheet_to_json(w.Sheets.REVISION_MANUAL);
+  assert.deepEqual(filas.map(f => f.fila_programacion).sort(), ['fila-35', 'fila-36', 'fila-440', 'fila-441']);
+  assert.ok(filas.every(f => f.plan === 'APT_52' && f.decision.includes('REVISAR A MANO')));
+});
 const leer = nombre => {
   const buffer = fs.readFileSync(new URL(nombre, dir));
   assert.equal(buffer.subarray(0, 3).toString('hex'), 'efbbbf');

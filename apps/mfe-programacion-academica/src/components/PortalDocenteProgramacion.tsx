@@ -5,6 +5,8 @@ import { CalendarClock, Loader2, Gauge, Check, Hand, RotateCcw } from 'lucide-re
 import { ConcertacionDocente } from './ConcertacionDocente';
 import { GruposAsignados } from './GruposAsignados';
 import { getConfiguracionPortal } from '../services/api/vistaApi';
+import { getConfiguracionConcertacion } from '../services/api/concertacionApi';
+import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import {
   getDisponiblesPortal, getMisFranjasPortal, getAcumuladoPortal,
   tomarFranja, soltarFranja,
@@ -65,6 +67,7 @@ function FilaFranja({ f, accion, etiqueta, icono, ocupado }: {
 }
 
 export default function PortalDocenteProgramacion() {
+  const revision = useRevisionProgramacion('portal-docente');
   const [disponibles, setDisponibles] = useState<FranjaPortal[]>([]);
   const [mias, setMias] = useState<FranjaPortal[]>([]);
   const [acumulado, setAcumulado] = useState<AcumuladoDocente | null>(null);
@@ -74,19 +77,22 @@ export default function PortalDocenteProgramacion() {
   const [ocupado, setOcupado] = useState<string | null>(null);
   // Hasta saber qué flujo rige no se ofrece tomar; si la consulta falla, se asume el nuevo.
   const [tomaFranjas, setTomaFranjas] = useState(false);
+  const [concertacionHabilitada, setConcertacionHabilitada] = useState(false);
 
   const ordenar = (fs: FranjaPortal[]) =>
     [...fs].sort((a, b) =>
       DIA_ORDEN.indexOf(a.diaSemana) - DIA_ORDEN.indexOf(b.diaSemana) || a.horaInicio.localeCompare(b.horaInicio));
 
   const recargar = useCallback(async () => {
-    const [cfg, d, m, a] = await Promise.all([
+    const [cfg, d, m, a, concertacion] = await Promise.all([
       getConfiguracionPortal().catch(() => ({ tomaFranjas: false })),
       getDisponiblesPortal().catch(() => []),
       getMisFranjasPortal().catch(() => []),
       getAcumuladoPortal().catch(() => null),
+      getConfiguracionConcertacion().catch(() => null),
     ]);
-    setTomaFranjas(!!cfg?.tomaFranjas);
+    setTomaFranjas(!!cfg?.tomaFranjas && concertacion?.habilitada === false);
+    setConcertacionHabilitada(!!concertacion?.habilitada);
     setDisponibles(ordenar(d));
     setMias(ordenar(m));
     setAcumulado(a);
@@ -96,7 +102,7 @@ export default function PortalDocenteProgramacion() {
     recargar()
       .catch((e) => setError(e?.message || 'No se pudo cargar el portal.'))
       .finally(() => setCargando(false));
-  }, [recargar]);
+  }, [recargar, revision]);
 
   const tomar = async (f: FranjaPortal) => {
     setAviso(''); setOcupado(f.idFranja);
@@ -146,7 +152,9 @@ export default function PortalDocenteProgramacion() {
         <p className="text-xs text-slate-500">
           {tomaFranjas
             ? 'Toma las franjas publicadas que quieras dictar. Al tomar una, las que se cruzan con ella dejan de ofrecerse. Puedes soltar una franja mientras la jefatura no la haya aprobado.'
-            : 'Tu programación la asigna la decanatura. Aquí ves tus grupos asignados con su horario, aula y horas; revísalos y envíalos a concertación.'}
+            : concertacionHabilitada
+              ? 'Tu programación la asigna la decanatura. Después de la aprobación interna podrás aceptarla y firmar, o reportar una novedad justificada.'
+              : 'Tu programación la asigna la decanatura. Aquí ves tus grupos asignados con su horario, aula y horas; revísalos y envíalos a concertación.'}
         </p>
       </div>
 

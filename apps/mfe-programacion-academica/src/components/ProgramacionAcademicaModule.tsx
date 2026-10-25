@@ -125,6 +125,7 @@ export function ProgramacionAcademicaModule({
   const revisionPeriodos = useRevisionProgramacion('periodos');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
+  const [jornada, setJornada] = useState('TODAS');
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -480,8 +481,17 @@ export function ProgramacionAcademicaModule({
       )}
 
       {seccion === 'catalogo' && misPermisos?.programar.length ? <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} /> : null}
+      {seccion === 'horarios' && !!misPermisos?.ver.length && <label className="block mb-4">Jornada (se muestra el grupo completo)
+        <select aria-label="Filtrar jornada" className="border rounded-lg p-2 ml-2" value={jornada} onChange={e => setJornada(e.target.value)}>
+          <option value="TODAS">Todas las jornadas</option>
+          <option value="DIURNA">Diurna</option>
+          <option value="NOCTURNA">Nocturna</option>
+          <option value="FIN_DE_SEMANA">Fin de semana</option>
+          <option value="DISTANCIA">Distancia</option>
+        </select>
+      </label>}
       {seccion === 'horarios' && (misPermisos
-        ? <ArbolProgramacion periodo={periodoSel} permisos={misPermisos} abrirGrupo={periodoProgramable ? (g, asignatura) => setDetalle({
+        ? <ArbolProgramacion periodo={periodoSel} permisos={misPermisos} jornada={jornada} programable={!!periodoProgramable} abrirGrupo={periodoProgramable ? (g, asignatura) => setDetalle({
             id: g.idGrupo, idGrupo: g.idGrupo, grupo: String(g.numeroGrupo), asignatura,
             fechaInicioGrupo: g.cicloInicio, fechaFinGrupo: g.cicloFin,
             codigo: '', programa: '', docente: '', sede: '', aula: '', dia: '', horaInicio: '', horaFin: '', jornada: '', cupos: g.cupoMaximo, estado: g.estado, periodoCodigo: periodoActual?.codigo ?? null,

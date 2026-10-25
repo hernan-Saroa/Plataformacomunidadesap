@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarioHorario } from './CalendarioHorario';
+import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import { BookOpen, Check, Clock, Loader2, MapPin, Undo2 } from 'lucide-react';
 
 import { getMiCalendario, type CalendarioDocente, type FranjaCalendario } from '../services/api/vistaApi';
@@ -36,6 +37,7 @@ interface GrupoVista {
 
 /** Sin `idPeriodo`, el periodo en curso. */
 export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: string; codigoPeriodo?: string | null }) {
+  const revision = useRevisionProgramacion('programacion', 'portal-docente');
   const [cal, setCal] = useState<CalendarioDocente | null>(null);
   const [error, setError] = useState('');
 
@@ -45,7 +47,7 @@ export function GruposAsignados({ idPeriodo, codigoPeriodo }: { idPeriodo?: stri
       .then((c) => { if (vivo) setCal(c); })
       .catch((e) => { if (vivo) setError(e?.message || 'No se pudo cargar tu programación.'); });
     return () => { vivo = false; };
-  }, [idPeriodo]);
+  }, [idPeriodo, revision]);
 
   const grupos = useMemo<GrupoVista[]>(() => {
     const porId = new Map<string, GrupoVista>();

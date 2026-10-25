@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import XLSX from 'xlsx';
 import pg from 'pg';
+import ts from 'typescript';
 import { equivalencias, normalizar, areaCanonica, esGenerico } from './equivalencias.mjs';
 
 // node esap/programacion/generar-datos.mjs --programacion <xlsx> --rund <xlsx> --env <env> --periodo 2026-1
@@ -13,12 +14,14 @@ fs.mkdirSync(out, { recursive: true });
 const escribir = (nombre, datos) => fs.writeFileSync(path.join(out, nombre), JSON.stringify(datos, null, 2) + '\n');
 const env = Object.fromEntries(fs.readFileSync(args.env, 'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => { const i = l.indexOf('='); return [l.slice(0, i), l.slice(i + 1).replace(/^['"]|['"]$/g, '')]; }));
 const c = new pg.Client({ host: '127.0.0.1', port: 55432, database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASS || env.DB_PASSWORD, options: '-c default_transaction_read_only=on', connectionTimeoutMillis: 5000 });
-let areas, historico, vivos, personas, catalogo;
+let areas, historico, vivos, personas, catalogo, equivalenciasBase, areasFormacion;
 try {
   await c.connect();
   await c.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
   if ((await c.query('SHOW transaction_read_only')).rows[0].transaction_read_only !== 'on') throw Error('La conexión debe ser de solo lectura');
   areas = (await c.query('SELECT codigo, nombre FROM academic_work_plan.nucleo_tematico WHERE activo AND deleted_at IS NULL ORDER BY codigo')).rows;
+  areasFormacion = (await c.query('SELECT id, codigo, nombre, id_programa FROM academic_work_plan.area_formacion WHERE activa ORDER BY codigo')).rows;
+  equivalenciasBase = (await c.query('SELECT variante_normalizada AS "varianteNormalizada", coincidencia, tipo, id_area::integer AS "idArea" FROM academic_work_plan.nucleo_equivalencia WHERE activa')).rows;
   personas = new Set((await c.query('SELECT num_identificacion::text AS documento FROM auth.personas')).rows.map(r => r.documento));
   catalogo = (await c.query(`SELECT a.codigo, a.nombre, a.pensum, a.creditos, pr.codigo AS programa_codigo, nt.codigo AS area_codigo
     FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id=a.id_programa
@@ -138,6 +141,25 @@ const revisionCatalogo = planes.map(p => {
 });
 const revision = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(revision, XLSX.utils.json_to_sheet(revisionCatalogo), 'CONCILIACION_NO_IMPORTAR');
+const manual = reporte.programacionExcel.noCubiertas.filter(f => normalizar(f.plan) === 'apt_52' && normalizar(f.asignatura) === 'opcion de grado').map(f => ({ fila_programacion: f.id, plan: f.plan, asignatura_programada: f.asignatura, candidatos_plan: 'Opción de grado (Curso Profundización temática 1) | Opción de grado (Curso Profundización temática 2)', decision: 'REVISAR A MANO: no hay coincidencia exacta; no se asigna código ni se fusionan asignaturas' }));
+XLSX.utils.book_append_sheet(revision, XLSX.utils.json_to_sheet(manual), 'REVISION_MANUAL');
 XLSX.utils.book_append_sheet(revision, XLSX.utils.json_to_sheet([{ estado: 'Pendiente de la instrucción anterior y plantilla definitiva del catálogo. No importar este libro.', periodo: args.periodo }]), 'LEEME');
 XLSX.writeFile(revision, path.join(out, 'catalogo-conciliacion.xlsx'));
+// Reutiliza el intérprete puro publicado por Claude, sin iniciar el servicio ni importar su contenedor.
+const fuenteInterprete = fs.readFileSync(new URL('../../backend/academic-work-plan-service/src/pta/banco-docentes/rund-nucleos.ts', import.meta.url), 'utf8');
+const compilado = ts.transpileModule(fuenteInterprete, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
+const { interpretarNucleo, buscarEquivalencia } = await import(`data:text/javascript;base64,${Buffer.from(compilado).toString('base64')}`);
+const rundActual = new Map(rund.map(r => [String(r.DOCUMENTO_IDENTIDAD).trim(), new Set(interpretarNucleo(r.NUCLEO_TEMATICO, equivalenciasBase).areas.map(a => a.idArea))]));
+const coberturaActual = programacionExcel.map(f => {
+  const planesCoincidentes = planIndex.get(clave(f.pensum, f.asignatura)) ?? [];
+  const areas = [...new Set(planesCoincidentes.map(p => buscarEquivalencia(p['ÁREA DE FORMACIÓN'], equivalenciasBase)?.idArea).filter(a => a != null))];
+  const idArea = areas.length === 1 ? areas[0] : null;
+  const nucleosRund = rundActual.get(f.documento);
+  const tieneRund = !!nucleosRund?.size;
+  const compatibleRund = idArea != null && !!nucleosRund?.has(idArea);
+  const compatiblePuente = !tieneRund && idArea != null && [...(puente.get(f.documento) ?? [])].some(a => buscarEquivalencia(a, equivalenciasBase)?.idArea === idArea);
+  return { fila: f.id, cubierta: compatibleRund || compatiblePuente, origen: compatibleRund ? 'rund' : compatiblePuente ? 'puente' : null, motivo: compatibleRund || compatiblePuente ? null : idArea == null ? 'Área sin cruce exacto con el plan' : tieneRund ? 'Tiene núcleo RUND de otra área: el puente no lo amplía' : 'Sin núcleo compatible' };
+});
+escribir('cobertura-regla-vigente.json', { periodo: args.periodo, generadoEn: new Date().toISOString(), fuente: 'PROGRAMACIÓN del Excel; no es programación viva', regla: 'Intérprete de Claude y equivalencias activas de la base. Puente solo si no hay ningún núcleo RUND reconocido.', interpreteSha256: createHash('sha256').update(fuenteInterprete).digest('hex'), franjas: coberturaActual.length, cubiertas: coberturaActual.filter(f => f.cubierta).length, porcentaje: coberturaActual.length ? +(100*coberturaActual.filter(f => f.cubierta).length/coberturaActual.length).toFixed(2) : null, porRund: coberturaActual.filter(f => f.origen === 'rund').length, porPuente: coberturaActual.filter(f => f.origen === 'puente').length, noCubiertas: coberturaActual.filter(f => !f.cubierta) });
+escribir('areas-formacion-base.json', areasFormacion);
 console.log(JSON.stringify({ historico: { ...reporte.historico, noCubiertas: reporte.historico.noCubiertas.length }, programacionViva: { ...reporte.programacionViva, noCubiertas: reporte.programacionViva.noCubiertas.length }, incidencias: incidencias.length, salida: out }, null, 2));

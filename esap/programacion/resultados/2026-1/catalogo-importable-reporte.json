@@ -1,0 +1,1260 @@
+{
+  "periodo": "2026-1",
+  "generadoEn": "2026-10-25T15:48:42.429Z",
+  "fuente": [
+    {
+      "archivo": "carga-valida-catalogo.xlsx",
+      "sha256": "eff8a7311dec502356a63cb76fc8eeab018814939cb9cfa550261474690420d0"
+    },
+    {
+      "archivo": "PROGRAMACIÓN ACADEMICA  2026_1.xlsx",
+      "sha256": "5b4508c162600487d1b0aaf439e82f9b533aac93e75bca7c094a2e9677bef505"
+    }
+  ],
+  "validacion": {
+    "isValid": true,
+    "errors": [],
+    "warnings": [],
+    "asignaturas": 427,
+    "programas": 14,
+    "ofertas": 325
+  },
+  "asignaturas": 427,
+  "programas": 14,
+  "codigosNuevos": 0,
+  "codigosRetirados": 0,
+  "identidades": {
+    "codigosAntes": "f0d187f07fe68d7819cc840f002c83bcde8f16122529d5684a871043b3906e8e",
+    "codigosDespues": "f0d187f07fe68d7819cc840f002c83bcde8f16122529d5684a871043b3906e8e",
+    "posgradoAntes": "73d0efd9f5ecef27cf4c151eb857addaa96b8efe9c8d9b753154f9e892d5e9e9",
+    "posgradoDespues": "73d0efd9f5ecef27cf4c151eb857addaa96b8efe9c8d9b753154f9e892d5e9e9"
+  },
+  "areasActualizadas": 65,
+  "posgradoConservadas": 160,
+  "revisionManual": 63,
+  "franjasOpcionGradoParaRevision": 4,
+  "nucleosSinCodigoNtEnSnapshot": [
+    "Finanzas Públicas",
+    "Opción de grado"
+  ],
+  "estadoBase": "Este generador usa snapshots y no consulta la base. Validación de persistencia pendiente con el importador en la base actual.",
+  "cambios": [
+    {
+      "codigo_actual": "ASIG-00002",
+      "asignatura": "Construcción Del Territorio",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Desarrollo Y Gestión Territorial",
+      "codigo_nt": "NT-007",
+      "codigo_af": "AF-05",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00003",
+      "asignatura": "Fundamentos De Economía Pública",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Finanzas Públicas",
+      "codigo_nt": "",
+      "codigo_af": "AF-04",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00004",
+      "asignatura": "Fundamentos De Economía Pública",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Finanzas Públicas",
+      "codigo_nt": "",
+      "codigo_af": "AF-04",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00005",
+      "asignatura": "Fundamentos Sociológicos",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00006",
+      "asignatura": "Historia de la administración pública",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00007",
+      "asignatura": "Historia de la administración pública",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00008",
+      "asignatura": "Historia Del Pensamiento Político",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00013",
+      "asignatura": "Matemáticas I",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00014",
+      "asignatura": "Matemáticas Lúdicas",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00015",
+      "asignatura": "Matemáticas Lúdicas",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00021",
+      "asignatura": "Sistemas Informáticos",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00022",
+      "asignatura": "Sistemas Informáticos",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00023",
+      "asignatura": "Taller de Lectoescritura",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00024",
+      "asignatura": "Taller de Lectoescritura",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00026",
+      "asignatura": "Derecho Constitucional",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00027",
+      "asignatura": "Derecho Constitucional",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00030",
+      "asignatura": "Electiva I",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Electivas Generales",
+      "codigo_nt": "NT-009",
+      "codigo_af": "AF-12",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00031",
+      "asignatura": "Fundamentos Sociológicos",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00035",
+      "asignatura": "Macroeconomía y Política Económica",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Finanzas Públicas",
+      "codigo_nt": "",
+      "codigo_af": "AF-04",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00036",
+      "asignatura": "Macroeconomía y Política Económica",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Finanzas Públicas",
+      "codigo_nt": "",
+      "codigo_af": "AF-04",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00038",
+      "asignatura": "Matemáticas I",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00041",
+      "asignatura": "Organización Estatal Colombiana",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00042",
+      "asignatura": "Organización Estatal Colombiana",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00058",
+      "asignatura": "Finanzas y análisis financiero público",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Finanzas Públicas",
+      "codigo_nt": "",
+      "codigo_af": "AF-04",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00059",
+      "asignatura": "Teorías del Estado y regímenes políticos",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00060",
+      "asignatura": "Demografía",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00061",
+      "asignatura": "Pensamientos y teorías de la administración pública",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00062",
+      "asignatura": "Matemáticas II",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Complementaria",
+      "codigo_nt": "NT-015",
+      "codigo_af": "AF-13",
+      "planes_fuente": "AP_35"
+    },
+    {
+      "codigo_actual": "ASIG-00063",
+      "asignatura": "Finanzas y análisis financiero público",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Finanzas Públicas",
+      "codigo_nt": "",
+      "codigo_af": "AF-04",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00066",
+      "asignatura": "Pensamientos y teorías de la administración pública",
+      "area_anterior": "Nuevo Plan de Estudios AP",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "AP_36"
+    },
+    {
+      "codigo_actual": "ASIG-00146",
+      "asignatura": "Fundamentos de economía pública",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Economía Pública",
+      "codigo_nt": "NT-006",
+      "codigo_af": "AF-03",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00147",
+      "asignatura": "Fundamentos del Estado y el poder",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00148",
+      "asignatura": "Fundamentos sociológicos",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00149",
+      "asignatura": "Geografía física y ambiental",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Desarrollo Y Gestión Territorial",
+      "codigo_nt": "NT-007",
+      "codigo_af": "AF-05",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00150",
+      "asignatura": "Historia de la administración pública",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00152",
+      "asignatura": "Geografía económica y social",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Desarrollo Y Gestión Territorial",
+      "codigo_nt": "NT-007",
+      "codigo_af": "AF-05",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00154",
+      "asignatura": "Micro y macroeconomía",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Economía Pública",
+      "codigo_nt": "NT-006",
+      "codigo_af": "AF-03",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00155",
+      "asignatura": "Pensamientos y teorías de la administración pública",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00156",
+      "asignatura": "Regímenes y sistemas políticos",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00157",
+      "asignatura": "Socialización y cultura",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00163",
+      "asignatura": "Electiva I",
+      "area_anterior": "Complementaria",
+      "area_importar": "Formación General",
+      "codigo_nt": "NT-011",
+      "codigo_af": "AF-18",
+      "planes_fuente": "APT_52"
+    },
+    {
+      "codigo_actual": "ASIG-00176",
+      "asignatura": "Teorías de las organizaciones públicas",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Organizaciones Públicas",
+      "codigo_nt": "NT-017",
+      "codigo_af": "AF-02",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00177",
+      "asignatura": "Derecho constitucional",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00178",
+      "asignatura": "Actores sociales y diferencia identitaria",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Estado, Gobierno y Sociedad",
+      "codigo_nt": "NT-013",
+      "codigo_af": "AF-10",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00179",
+      "asignatura": "Finanzas y análisis financiero público",
+      "area_anterior": "Nuevo Plan de Estudios APT",
+      "area_importar": "Economía Pública",
+      "codigo_nt": "NT-006",
+      "codigo_af": "AF-03",
+      "planes_fuente": "APT_53"
+    },
+    {
+      "codigo_actual": "ASIG-00220",
+      "asignatura": "Seminario Electivo I",
+      "area_anterior": "Formación General",
+      "area_importar": "Opción de grado",
+      "codigo_nt": "",
+      "codigo_af": "AF-17",
+      "planes_fuente": "APT_52"
+    },
+    {
+      "codigo_actual": "ASIG-00221",
+      "asignatura": "Seminario Electivo II",
+      "area_anterior": "Formación General",
+      "area_importar": "Opción de grado",
+      "codigo_nt": "",
+      "codigo_af": "AF-17",
+      "planes_fuente": "APT_52"
+    },
+    {
+      "codigo_actual": "ASIG-00224",
+      "asignatura": "Fundamentos Administración Pública.",
+      "area_anterior": "Teoría Económica e Historia",
+      "area_importar": "Formación integral Y de contexto",
+      "codigo_nt": "NT-021",
+      "codigo_af": "AF-16",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00231",
+      "asignatura": "Fundamentos de Contabilidad",
+      "area_anterior": "Formación integral Y de contexto",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00249",
+      "asignatura": "Bienes Públicos, Servicios Públicos y Regulación",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00250",
+      "asignatura": "Contabilidad\nGubernamental",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00251",
+      "asignatura": "Curso electivo 2",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Cuantitativa",
+      "codigo_nt": "NT-020",
+      "codigo_af": "AF-07",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00252",
+      "asignatura": "Economía Política",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00253",
+      "asignatura": "Fundamentos Economía Pública",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Cuantitativa",
+      "codigo_nt": "NT-020",
+      "codigo_af": "AF-07",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00254",
+      "asignatura": "Déficit fiscal y\ndeuda pública",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00255",
+      "asignatura": "Desarrollo Económico y Regional",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Formación integral Y de contexto",
+      "codigo_nt": "NT-021",
+      "codigo_af": "AF-16",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00256",
+      "asignatura": "Economía Ambiental y Desarrollo Sostenible",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Cuantitativa",
+      "codigo_nt": "NT-020",
+      "codigo_af": "AF-07",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00258",
+      "asignatura": "Gestión y Gerencia Pública.",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Formación integral Y de contexto",
+      "codigo_nt": "NT-021",
+      "codigo_af": "AF-16",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00259",
+      "asignatura": "Ingresos Públicos (y Tributación) (Nacional, territorial",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Cuantitativa",
+      "codigo_nt": "NT-020",
+      "codigo_af": "AF-07",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00260",
+      "asignatura": "Contratación pública",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Formación integral Y de contexto",
+      "codigo_nt": "NT-021",
+      "codigo_af": "AF-16",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00261",
+      "asignatura": "Curso Electivo 3",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Formación integral Y de contexto",
+      "codigo_nt": "NT-021",
+      "codigo_af": "AF-16",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00262",
+      "asignatura": "Formulación y Evaluación Económica y Social de Proyectos",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00263",
+      "asignatura": "Gestión Financiera pública.",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Cuantitativa",
+      "codigo_nt": "NT-020",
+      "codigo_af": "AF-07",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00264",
+      "asignatura": "Política Económica y Social",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Cuantitativa",
+      "codigo_nt": "NT-020",
+      "codigo_af": "AF-07",
+      "planes_fuente": "EP_37D | EP_37N"
+    },
+    {
+      "codigo_actual": "ASIG-00265",
+      "asignatura": "Presupuesto Público (Nacional, Territorial.",
+      "area_anterior": "Economía Pública",
+      "area_importar": "Teoría Económica e Historia",
+      "codigo_nt": "NT-022",
+      "codigo_af": "AF-15",
+      "planes_fuente": "EP_37D | EP_37N"
+    }
+  ],
+  "revision": [
+    {
+      "codigo_actual": "ASIG-00001",
+      "programa": "PRO-001",
+      "asignatura": "Constitución Del Territorio",
+      "area_actual": "Nuevo Plan de Estudios AP",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00010",
+      "programa": "PRO-001",
+      "asignatura": "Idioma I",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00011",
+      "programa": "PRO-002",
+      "asignatura": "Idioma I",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00012",
+      "programa": "PRO-002",
+      "asignatura": "Matemática I",
+      "area_actual": "Fundamentación Cuantitativa",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00033",
+      "programa": "PRO-001",
+      "asignatura": "Idioma II",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00034",
+      "programa": "PRO-002",
+      "asignatura": "Idioma II",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00046",
+      "programa": "PRO-001",
+      "asignatura": "Teorías Y Problemas Contemporáneos Del Poder Estado Y El Gobierno",
+      "area_actual": "Estado Y Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00052",
+      "programa": "PRO-001",
+      "asignatura": "Formas Asociativas Contemporáneos Del Poder, El Estado Y El Gobierno",
+      "area_actual": "Estado Y Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00055",
+      "programa": "PRO-001",
+      "asignatura": "Idioma III",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00056",
+      "programa": "PRO-002",
+      "asignatura": "Idioma III",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00057",
+      "programa": "PRO-002",
+      "asignatura": "Teorías Y Problemas Contemporáneos Del Poder Estado Y El Gobierno",
+      "area_actual": "Estado Y Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00064",
+      "programa": "PRO-002",
+      "asignatura": "Historia del pensamiento político (AP_noche) Nuevo Plan de Estudios",
+      "area_actual": "Nuevo Plan de Estudios AP",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00065",
+      "programa": "PRO-002",
+      "asignatura": "Electiva I (AP_noche) Nuevo Plan de Estudios",
+      "area_actual": "Nuevo Plan de Estudios AP",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00067",
+      "programa": "PRO-002",
+      "asignatura": "Matemáticas II (AP_noche) Nuevo Plan de Estudios",
+      "area_actual": "Nuevo Plan de Estudios AP",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00072",
+      "programa": "PRO-002",
+      "asignatura": "Formas Asociativas Contemporáneos Del Poder, El Estado Y El Gobierno",
+      "area_actual": "Estado Y Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00075",
+      "programa": "PRO-001",
+      "asignatura": "Idioma IV",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00076",
+      "programa": "PRO-002",
+      "asignatura": "Idioma IV",
+      "area_actual": "Idioma Extranjero",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00078",
+      "programa": "PRO-001",
+      "asignatura": "Problemas Enfoques Del Desarrollo",
+      "area_actual": "Desarrollo Y Gestión Territorial",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00079",
+      "programa": "PRO-001",
+      "asignatura": "Teoría De Las Organizaciones",
+      "area_actual": "Organizaciones Públicas Y Gestión",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00085",
+      "programa": "PRO-002",
+      "asignatura": "Electiva General I",
+      "area_actual": "Electivas Generales",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00089",
+      "programa": "PRO-001",
+      "asignatura": "Organzaciones Públicas Y Análisis Organizacional",
+      "area_actual": "Organizaciones Públicas Y Gestión",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00093",
+      "programa": "PRO-002",
+      "asignatura": "Derecho Público III",
+      "area_actual": "Estado Y Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00103",
+      "programa": "PRO-001",
+      "asignatura": "Análisis Financiero Público",
+      "area_actual": "Economía Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00105",
+      "programa": "PRO-002",
+      "asignatura": "Electiva General II",
+      "area_actual": "Electivas Generales",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00107",
+      "programa": "PRO-001",
+      "asignatura": "Gestión Del Personal En Organizaciones Públicas",
+      "area_actual": "Organizaciones Públicas Y Gestión",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00108",
+      "programa": "PRO-001",
+      "asignatura": "Planeación I",
+      "area_actual": "Problemática Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00110",
+      "programa": "PRO-002",
+      "asignatura": "Problemas Enfoques Del Desarrollo",
+      "area_actual": "Desarrollo Y Gestión Territorial",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00113",
+      "programa": "PRO-002",
+      "asignatura": "Teoría De Las Organizaciones",
+      "area_actual": "Organizaciones Públicas Y Gestión",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00120",
+      "programa": "PRO-002",
+      "asignatura": "Organzaciones Públicas Y Análisis Organizacional",
+      "area_actual": "Organizaciones Públicas Y Gestión",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00121",
+      "programa": "PRO-001",
+      "asignatura": "Planeación II",
+      "area_actual": "Problemática Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00125",
+      "programa": "PRO-002",
+      "asignatura": "Análisis Financiero Público",
+      "area_actual": "Economía Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00137",
+      "programa": "PRO-002",
+      "asignatura": "Gestión Del Personal En Organizaciones Públicas",
+      "area_actual": "Organizaciones Públicas Y Gestión",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00139",
+      "programa": "PRO-001",
+      "asignatura": "Opciones De Grado AP",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00151",
+      "programa": "PRO-003",
+      "asignatura": "Matemática I",
+      "area_actual": "Nuevo Plan de Estudios APT",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00153",
+      "programa": "PRO-003",
+      "asignatura": "Matemáticas II",
+      "area_actual": "Nuevo Plan de Estudios APT",
+      "planes_candidatos": "APT_52 | APT_53",
+      "areas_fuente": "Formación General | Complementario",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "Las áreas del plan no se resuelven a una sola área canónica aprobada."
+    },
+    {
+      "codigo_actual": "ASIG-00158",
+      "programa": "PRO-003",
+      "asignatura": "Escuelas Filosoficas Y Cambios Paradigmaticos  I",
+      "area_actual": "Problemática Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00159",
+      "programa": "PRO-003",
+      "asignatura": "Teoría Del Estado y Del Poder",
+      "area_actual": "Estado, Gobierno y Sociedad",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00160",
+      "programa": "PRO-003",
+      "asignatura": "Regimen Y Sistema Político",
+      "area_actual": "Problemática Del  Estado Y Del Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00162",
+      "programa": "PRO-003",
+      "asignatura": "Matemática I",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00165",
+      "programa": "PRO-003",
+      "asignatura": "Escuelas Filosoficas Y Cambios Paradigmaticos  II",
+      "area_actual": "Problemática Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00166",
+      "programa": "PRO-003",
+      "asignatura": "Fundamento En Ciencias Sociales",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00167",
+      "programa": "PRO-003",
+      "asignatura": "Matemática II",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00172",
+      "programa": "PRO-003",
+      "asignatura": "Estadistica I",
+      "area_actual": "Formación General",
+      "planes_candidatos": "APT_52 | APT_53",
+      "areas_fuente": "Formación General | Complementario",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "Las áreas del plan no se resuelven a una sola área canónica aprobada."
+    },
+    {
+      "codigo_actual": "ASIG-00173",
+      "programa": "PRO-003",
+      "asignatura": "Introduccon A La Problmematica Pública",
+      "area_actual": "Problemática Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00180",
+      "programa": "PRO-003",
+      "asignatura": "Estadística I",
+      "area_actual": "Nuevo Plan de Estudios APT",
+      "planes_candidatos": "APT_52 | APT_53",
+      "areas_fuente": "Formación General | Complementario",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "Las áreas del plan no se resuelven a una sola área canónica aprobada."
+    },
+    {
+      "codigo_actual": "ASIG-00181",
+      "programa": "PRO-003",
+      "asignatura": "Metodología de investigación",
+      "area_actual": "Nuevo Plan de Estudios APT",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00184",
+      "programa": "PRO-003",
+      "asignatura": "Estadística II",
+      "area_actual": "Formación General",
+      "planes_candidatos": "APT_52 | APT_53",
+      "areas_fuente": "Formación General | Complementario",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "Las áreas del plan no se resuelven a una sola área canónica aprobada."
+    },
+    {
+      "codigo_actual": "ASIG-00190",
+      "programa": "PRO-003",
+      "asignatura": "Matematica Financiera",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00191",
+      "programa": "PRO-003",
+      "asignatura": "Organización Del Estado Colombiano Y Formas Asociativas Del Estado A Nivel Territorial",
+      "area_actual": "Problemática Del  Estado Y Del Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00193",
+      "programa": "PRO-003",
+      "asignatura": "Teorias Del Enfoque Espacio Tiempo",
+      "area_actual": "Espacio,  Tiempo Y  Territorio",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00195",
+      "programa": "PRO-003",
+      "asignatura": "Globalización, Geoestrategia Y Relaciones Internacionales",
+      "area_actual": "Espacio,  Tiempo Y  Territorio",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00196",
+      "programa": "PRO-003",
+      "asignatura": "Gobierno Y Politica Publica",
+      "area_actual": "Problemática Del  Estado Y Del Poder",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00197",
+      "programa": "PRO-003",
+      "asignatura": "Proyecto Futuro I",
+      "area_actual": "Espacio,  Tiempo Y  Territorio",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00201",
+      "programa": "PRO-003",
+      "asignatura": "Gerencias De Los Recursos Fisicos Y Financieros",
+      "area_actual": "Organizaciones Públicas",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00204",
+      "programa": "PRO-003",
+      "asignatura": "Proyecto Futuro II",
+      "area_actual": "Espacio,  Tiempo Y  Territorio",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00210",
+      "programa": "PRO-003",
+      "asignatura": "Proyecto Futuro III",
+      "area_actual": "Espacio,  Tiempo Y  Territorio",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00216",
+      "programa": "PRO-003",
+      "asignatura": "Proyecto Futuro IV",
+      "area_actual": "Espacio,  Tiempo Y  Territorio",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00218",
+      "programa": "PRO-003",
+      "asignatura": "Seminario De Opciones De Grado APT",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00219",
+      "programa": "PRO-003",
+      "asignatura": "Seminario De Profundización",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00235",
+      "programa": "PRO-004",
+      "asignatura": "Estadística",
+      "area_actual": "Cuantitativa",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00257",
+      "programa": "PRO-004",
+      "asignatura": "Gasto Público y GPS",
+      "area_actual": "Economía Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00266",
+      "programa": "PRO-004",
+      "asignatura": "Opción de Grado",
+      "area_actual": "Economía Pública",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    },
+    {
+      "codigo_actual": "ASIG-00427",
+      "programa": "PRO-002",
+      "asignatura": "Opciones De Grado AP",
+      "area_actual": "Formación General",
+      "planes_candidatos": "",
+      "areas_fuente": "",
+      "decision": "CONSERVAR Y REVISAR A MANO",
+      "motivo": "No hay coincidencia por nombre y programa; no se crea otra asignatura."
+    }
+  ]
+}
