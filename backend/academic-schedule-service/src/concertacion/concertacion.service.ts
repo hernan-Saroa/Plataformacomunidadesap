@@ -568,10 +568,14 @@ export class ConcertacionService {
         WHERE c.id_concertacion = $1 AND c.estado IN ('ACEPTADA', 'APROBADA')`, [id]))[0];
     if (!c) return;
     const firmas = await this.dataSource.query(
-      `SELECT rol, id_user::text AS "idUser", firmado_en AS "firmadoEn", modo_otp AS "modoOtp"
-         FROM "academic-schedule".concertacion_firma WHERE id_concertacion = $1 AND huella = $2 ORDER BY firmado_en`,
-      // Solo las firmas de la foto vigente: tras una novedad la foto cambia, y las firmas
-      // del ciclo anterior firmaron otra docencia (siguen en el registro, pero no viajan).
+      `SELECT rol, "idUser", "firmadoEn", "modoOtp" FROM (
+         SELECT DISTINCT ON (rol) rol, id_user::text AS "idUser", firmado_en AS "firmadoEn", modo_otp AS "modoOtp"
+           FROM "academic-schedule".concertacion_firma WHERE id_concertacion = $1 AND huella = $2
+          ORDER BY rol, firmado_en DESC) ultimas
+          ORDER BY "firmadoEn", CASE rol WHEN 'revisor' THEN 1 WHEN 'aprobador' THEN 2 ELSE 3 END`,
+      // Solo las firmas de la foto vigente, la última de cada rol: tras una novedad la foto
+      // cambia, y si se reenvía igual, revisor y aprobador firman otra vez la MISMA docencia.
+      // Las anteriores siguen en el registro, pero no viajan al PTA.
       [id, c.huella]);
     // Una asignatura por GRUPO, con lo que el PTA exige al validar el envío:
     // ids de catálogo, pensum, créditos, fechas del ciclo y horas > 0.

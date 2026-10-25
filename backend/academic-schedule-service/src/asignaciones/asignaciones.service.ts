@@ -76,6 +76,8 @@ export interface Candidato {
   cruce: boolean;
   /** Bloqueos de EFDS-1372 (situación, escalafón, vinculación, cruce, tope). */
   motivos: MotivoRechazo[];
+  /** Avisos que no bloquean (p. ej. «Sin situación administrativa registrada en el RUND»). */
+  avisos: string[];
   asignable: boolean;
 }
 
@@ -93,6 +95,8 @@ export interface ResultadoAsignacion {
   asignado: boolean;
   idAsignacion?: string;
   motivos?: MotivoRechazo[];
+  /** Avisos que no bloquean; la pantalla debe mostrarlos al confirmar. */
+  avisos?: string[];
 }
 
 /**
@@ -116,6 +120,8 @@ export interface DocenteConsulta {
     asignable: boolean;
     motivo: string | null;
     vigenteHasta: string | null;
+    /** Aviso que no bloquea (sin situación en el RUND). */
+    aviso: string | null;
   };
   /** Presente solo si se consultó con `idGrupo`. Todos los motivos, no el primero. */
   motivos?: MotivoRechazo[];
@@ -338,6 +344,7 @@ export class AsignacionesService {
         asignable: situacion.asignable,
         motivo: situacion.motivo,
         vigenteHasta: situacion.vigenteHasta,
+        aviso: situacion.aviso,
       },
     };
 
@@ -398,10 +405,12 @@ export class AsignacionesService {
       // Bloqueo duro: no se guarda nada.
       return { asignado: false, motivos };
     }
+    const avisos = situacion.aviso ? [situacion.aviso] : [];
 
     // Solo algunas franjas (EFDS-2341): se escriben en la franja, que es el registro único.
     if (!grupo.completo) {
-      return this.dataSource.transaction((m) => this.asignarFranjas(m, dto, docente.idDocente, grupo.seleccionadas));
+      const r = await this.dataSource.transaction((m) => this.asignarFranjas(m, dto, docente.idDocente, grupo.seleccionadas));
+      return avisos.length ? { ...r, avisos } : r;
     }
 
     const insertar = (q: Pick<EntityManager, 'query'>) => q.query(
@@ -429,7 +438,9 @@ export class AsignacionesService {
         return insertar(m);
       });
 
-    return { asignado: true, idAsignacion: filas[0].id_asignacion };
+    return avisos.length
+      ? { asignado: true, idAsignacion: filas[0].id_asignacion, avisos }
+      : { asignado: true, idAsignacion: filas[0].id_asignacion };
   }
 
   /**
@@ -544,6 +555,7 @@ export class AsignacionesService {
         tope: docente.tope ?? docente.horasPta,
         cruce: motivos.some((x) => x.regla === 'RN-07'),
         motivos,
+        avisos: situacion.aviso ? [situacion.aviso] : [],
         asignable: motivos.length === 0,
       });
     }

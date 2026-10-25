@@ -21,6 +21,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
 import { efectoDeActivar } from './periodo-activacion';
+import { fechaCivil, fechaCivilGuardada } from './fecha-periodo';
 import { PtaPermissionsService } from './auth/pta-permissions.service';
 
 /** Permiso propio de activar un periodo extraordinario (migración 672, EFDS-2346). */
@@ -55,8 +56,8 @@ export class PeriodoAcademicoController {
         codigo: '2025-2',
         anio: 2025,
         semestre: 2,
-        fechaInicio: new Date('2025-08-01'),
-        fechaFin: new Date('2025-12-15'),
+        fechaInicio: '2025-08-01',
+        fechaFin: '2025-12-15',
         estado: 'en_curso',
       });
       try {
@@ -155,12 +156,9 @@ export class PeriodoAcademicoController {
       throw new BadRequestException('Se requieren las fechas de inicio y fin.');
     }
 
-    const start = new Date(fechaInicio);
-    const end = new Date(fechaFin);
-
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      throw new BadRequestException('Las fechas de inicio y fin deben ser fechas válidas.');
-    }
+    // Fechas civiles (sin hora ni zona): ver fecha-periodo.ts.
+    const start = fechaCivil(fechaInicio, 'Las fechas de inicio y fin deben ser fechas válidas.');
+    const end = fechaCivil(fechaFin, 'Las fechas de inicio y fin deben ser fechas válidas.');
 
     if (end <= start) {
       throw new BadRequestException('La fecha de fin debe ser posterior a la fecha de inicio.');
@@ -269,29 +267,21 @@ export class PeriodoAcademicoController {
     }
 
     if (fechaInicio) {
-      const start = new Date(fechaInicio);
-      if (isNaN(start.getTime())) {
-        throw new BadRequestException('Fecha de inicio no válida.');
-      }
-      period.fechaInicio = start;
+      period.fechaInicio = fechaCivil(fechaInicio, 'Fecha de inicio no válida.');
     }
 
     if (fechaFin) {
-      const end = new Date(fechaFin);
-      if (isNaN(end.getTime())) {
-        throw new BadRequestException('Fecha de fin no válida.');
-      }
-      period.fechaFin = end;
+      period.fechaFin = fechaCivil(fechaFin, 'Fecha de fin no válida.');
     }
 
-    if (new Date(period.fechaFin) <= new Date(period.fechaInicio)) {
+    if (fechaCivilGuardada(period.fechaFin) <= fechaCivilGuardada(period.fechaInicio)) {
       throw new BadRequestException('La fecha de fin debe ser posterior a la fecha de inicio.');
     }
 
     if (fechaInicio || fechaFin) {
       await this.validateNoDateOverlap(
-        new Date(period.fechaInicio),
-        new Date(period.fechaFin),
+        fechaCivilGuardada(period.fechaInicio),
+        fechaCivilGuardada(period.fechaFin),
         period.id,
       );
     }
@@ -584,14 +574,11 @@ export class PeriodoAcademicoController {
   }
 
   private async validateNoDateOverlap(
-    start: Date,
-    end: Date,
+    start: string,
+    end: string,
     excludeId?: string,
   ): Promise<void> {
-    const parameters: any[] = [
-      start.toISOString().slice(0, 10),
-      end.toISOString().slice(0, 10),
-    ];
+    const parameters: any[] = [start, end];
     let exclusion = '';
     if (excludeId) {
       parameters.push(excludeId);

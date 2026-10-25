@@ -167,6 +167,59 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     }
   });
 
+  caso('la regla del puente es configuración: solo_sin_rund (defecto), suma (RUND + puente) y apagado', async () => {
+    const con = (modo: string | undefined) => async () => {
+      const antes = process.env.PROG_NUCLEO_PUENTE;
+      if (modo === undefined) delete process.env.PROG_NUCLEO_PUENTE; else process.env.PROG_NUCLEO_PUENTE = modo;
+      try { return (await servicio().candidatos(ids.grupo, undefined, null)).candidatos.map((c) => c.documento); }
+      finally { if (antes === undefined) delete process.env.PROG_NUCLEO_PUENTE; else process.env.PROG_NUCLEO_PUENTE = antes; }
+    };
+    // Por defecto: E (núcleo RUND en otra área + puente en esta) NO es del área.
+    expect(await con(undefined)()).toEqual([doc.A, doc.B, doc.D]);
+    expect(await con('solo_sin_rund')()).toEqual([doc.A, doc.B, doc.D]);
+    // Suma: E sí (por lo que dicta según el puente; D, con cruce, va al final).
+    expect(await con('suma')()).toEqual([doc.A, doc.B, doc.E, doc.D]);
+    expect(await con('SUMA')()).toEqual([doc.A, doc.B, doc.E, doc.D]);
+    expect(await con('apagado')()).toEqual([doc.A, doc.D]);
+    // Y en suma sigue valiendo el bloqueo: asignar a E solo se permite con el modo encendido.
+    const antes = process.env.PROG_NUCLEO_PUENTE;
+    try {
+      delete process.env.PROG_NUCLEO_PUENTE;
+      const rechazo = await servicio().asignar({ idGrupo: ids.grupo, documento: doc.E });
+      expect(rechazo).toMatchObject({ asignado: false });
+      expect(rechazo.motivos?.[0]).toMatchObject({ regla: 'AREA' });
+      process.env.PROG_NUCLEO_PUENTE = 'suma';
+      expect((await servicio().asignar({ idGrupo: ids.grupo, documento: doc.E })).asignado).toBe(true);
+    } finally {
+      if (antes === undefined) delete process.env.PROG_NUCLEO_PUENTE; else process.env.PROG_NUCLEO_PUENTE = antes;
+    }
+  });
+
+  caso('sin situación en el RUND: es candidato asignable CON AVISO, en la lista y al asignar; con el parámetro apagado, bloquea', async () => {
+    await client!.query(
+      `UPDATE academic_work_plan."Docente" d SET "situacionCategoria" = NULL, "situacionAdministrativa" = NULL
+         FROM auth.personas p WHERE p.id_person = d."personaId" AND p.num_identificacion = $1`, [doc.A]);
+    const AVISO = 'Sin situación administrativa registrada en el RUND';
+    const r = await servicio().candidatos(ids.grupo, undefined, null);
+    const [a, b] = r.candidatos;
+    expect(a).toMatchObject({ documento: doc.A, asignable: true, motivos: [], avisos: [AVISO] });
+    expect(b.avisos).toEqual([]);
+    const ok = await servicio().asignar({ idGrupo: ids.grupo, documento: doc.A });
+    expect(ok).toMatchObject({ asignado: true, avisos: [AVISO] });
+    // El aviso solo acompaña al que lo tiene.
+    expect((await servicio().asignar({ idGrupo: ids.grupo, documento: doc.B })).avisos).toBeUndefined();
+    const antes = process.env.PROG_SIN_DATO_ASIGNABLE;
+    process.env.PROG_SIN_DATO_ASIGNABLE = 'false';
+    try {
+      const bloq = (await servicio().candidatos(ids.grupo, undefined, null)).candidatos.find((c) => c.documento === doc.A)!;
+      expect(bloq.asignable).toBe(false);
+      expect(bloq.avisos).toEqual([]);
+      expect(bloq.motivos.map((m) => m.mensaje).join(' ')).toMatch(/Falta informaci/);
+    } finally {
+      if (antes === undefined) delete process.env.PROG_SIN_DATO_ASIGNABLE; else process.env.PROG_SIN_DATO_ASIGNABLE = antes;
+    }
+  });
+
   caso('fuera de su área no se asigna: bloqueo duro con el motivo de área primero y nada guardado', async () => {
     const r = await servicio().asignar({ idGrupo: ids.grupo, documento: doc.C });
     expect(r.asignado).toBe(false);
