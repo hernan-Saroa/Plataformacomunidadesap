@@ -1,18 +1,21 @@
 import { DataSource } from 'typeorm';
 
-import { clasificarSituacion } from './situacion-administrativa.clasificador';
+import { clasificarSituacion, sigueVigente } from './situacion-administrativa.clasificador';
 
 /**
- * EFDS-1372 — El clasificador sobre TODOS los docentes del RUND, no sobre ejemplos.
+ * EFDS-1372 — El clasificador sobre TODOS los docentes del banco, no sobre ejemplos.
  *
  * Los casos puntuales verifican que un texto conocido se clasifique bien; este
- * verifica el AGREGADO. Si el numero no cuadra, hay un caso mal
- * clasificado que ninguna prueba de ejemplo revelaría: el texto que nadie miró.
- *
- * Es el mismo modo de falla que ya apareció tres veces en este módulo —ids sin
- * normalizar en EFDS-1535, NORTE DE SANTANDER en la carga, la tilde de
- * "Sabático"—: no hay error, simplemente no coincide, y el silencio parece
- * correcto.
+ * verifica la REGLA sobre cada docente real. Antes afirmaba conteos fijos (263
+ * docentes, 9 no asignables, 32 en periodo de prueba): cambiaban con cada carga del
+ * RUND sin que ninguna regla cambiara, y entonces no probaban nada. Ahora, para cada
+ * docente, sea cual sea la carga:
+ *   · todo texto de situación se reconoce (ninguno cae en el fail-closed por un texto
+ *     no previsto, el modo de falla de la tilde de "Sabático" y de NORTE DE SANTANDER);
+ *   · año sabático y comisión bloquean mientras sigan vigentes, y solo entonces;
+ *   · periodo de prueba no bloquea;
+ *   · sin texto ni categoría no se afirma nada: no asignable (fail-closed).
+ * El mensaje de cada falla dice QUÉ docentes, no solo cuántos.
  *
  * Se omite solo si no hay base disponible.
  */
@@ -27,33 +30,21 @@ const CONFIG = {
   logging: false,
 };
 
-/**
- * Confirmado contra los datos: 1 año sabático + 5 comisión de estudios +
- * 3 comisión de servicios = 9.
- *
- * ⚠️ El primer conteo dio 8 por un descuido propio: la consulta de verificación
- * buscaba 'sabatic' y el dato real es 'Sabático', CON TILDE. El mismo modo de
- * falla de EFDS-1535 y del alias de NORTE DE SANTANDER — no hay error, no
- * coincide, y el silencio parece correcto. El agregado es lo que lo destapó.
- */
-const NO_ASIGNABLES_ESPERADOS = 9;
-const TOTAL_DOCENTES_ESPERADO = 263;
+const sinTildes = (t: string | null) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-describe('EFDS-1372 :: clasificador sobre los 263 docentes reales', () => {
+describe('EFDS-1372 :: clasificador sobre todos los docentes del banco', () => {
   let ds: DataSource | null = null;
-  let filas: Array<{ documento: string; nombre: string; situacion: string | null; categoria: string | null }> = [];
+  let filas: Array<{ documento: string; situacion: string | null; categoria: string | null }> = [];
   let hayDatos = false;
+  const hoy = new Date();
 
   beforeAll(async () => {
     try {
       ds = await new DataSource(CONFIG).initialize();
       filas = await ds.query(
         // Se excluyen los docentes sintéticos de HORA CÁTEDRA (EFDS-1374,
-        // migración 014), marcados "(DESARROLLO)": son aprovisionamiento para
-        // ejercer RN-04 por navegador, no parte del RUND. El agregado sigue
-        // afirmando los 263 del RUND, no 263+N sintéticos.
+        // migración 014), marcados "(DESARROLLO)": son aprovisionamiento, no RUND.
         `SELECT p.num_identificacion AS documento,
-                p.nom_largo          AS nombre,
                 d."situacionAdministrativa" AS situacion,
                 d."situacionCategoria"     AS categoria
            FROM academic_work_plan."Docente" d
@@ -76,52 +67,37 @@ describe('EFDS-1372 :: clasificador sobre los 263 docentes reales', () => {
       fn();
     }, 30000);
 
-  siHayDatos('EFDS-1372 :: están cargados los 263 docentes del RUND', () => {
-    expect(filas.length).toBe(TOTAL_DOCENTES_ESPERADO);
+  const clasificados = () => filas.map((f) => ({ ...f, r: clasificarSituacion(f.situacion, hoy, f.categoria) }));
+  const lista = (xs: Array<{ documento: string; situacion: string | null; r: { categoria: string | null; asignable: boolean } }>) =>
+    xs.map((f) => `${f.documento} · ${f.r.categoria ?? 'SIN CLASIFICAR'} · asignable=${f.r.asignable} · "${f.situacion ?? ''}"`).join('\n');
+
+  siHayDatos('EFDS-1372 :: ningún texto de situación cae en el fail-closed por no estar previsto', () => {
+    expect(lista(clasificados().filter((f) => f.r.categoria === null && String(f.situacion ?? '').trim()))).toBe('');
   });
 
-  siHayDatos('EFDS-1372 :: el clasificador marca exactamente 9 docentes no asignables', () => {
-    const noAsignables = filas
-      .map((f) => ({ ...f, r: clasificarSituacion(f.situacion, new Date(), (f as any).categoria) }))
-      .filter((f) => !f.r.asignable);
-
-    // Si esto falla, el mensaje dice CUÁLES quedaron mal, no solo el número.
-    const detalle = noAsignables
-      .map((f) => `${f.documento} · ${f.r.categoria ?? 'SIN CLASIFICAR'} · ${f.situacion}`)
-      .join('\n');
-
-    expect(`${noAsignables.length}\n${detalle}`).toContain(`${NO_ASIGNABLES_ESPERADOS}\n`);
-    expect(noAsignables.length).toBe(NO_ASIGNABLES_ESPERADOS);
+  siHayDatos('EFDS-1372 :: año sabático y comisión bloquean mientras estén vigentes, y solo entonces', () => {
+    const mal = clasificados().filter((f) => {
+      const t = sinTildes(`${f.categoria ?? ''} ${f.situacion ?? ''}`);
+      const esperada = /sabatic/.test(t) ? 'ano_sabatico' : /comision/.test(t) ? 'comision' : null;
+      if (!esperada) return false;
+      return f.r.categoria !== esperada || f.r.asignable === sigueVigente(f.r.vigenteHasta, hoy);
+    });
+    expect(lista(mal)).toBe('');
   });
 
-  siHayDatos('EFDS-1372 :: los 9 son 1 año sabático y 8 comisiones, ninguno sin clasificar', () => {
-    const porCategoria: Record<string, number> = {};
-    for (const f of filas) {
-      const r = clasificarSituacion(f.situacion, new Date(), (f as any).categoria);
-      if (r.asignable) continue;
-      porCategoria[r.categoria ?? 'SIN_CLASIFICAR'] = (porCategoria[r.categoria ?? 'SIN_CLASIFICAR'] ?? 0) + 1;
-    }
-
-    expect(porCategoria).toEqual({ ano_sabatico: 1, comision: 8 });
-    // Ninguno debe caer en el fail-closed: eso significaría un texto no previsto.
-    expect(porCategoria.SIN_CLASIFICAR).toBeUndefined();
+  // El periodo de prueba es una parte grande de la planta: bloquearlo por error sería el fallo más caro.
+  siHayDatos('EFDS-1372 :: periodo de prueba no bloquea', () => {
+    expect(lista(clasificados().filter((f) => /periodo de prueba/.test(sinTildes(f.situacion)) && !f.r.asignable))).toBe('');
   });
 
-  // El 11% de la planta: bloquearlos por error sería el fallo más caro.
-  siHayDatos('EFDS-1372 :: los 32 en periodo de prueba quedan asignables', () => {
-    const enPrueba = filas.filter((f) => /periodo de prueba/i.test(f.situacion || ''));
-
-    expect(enPrueba.length).toBe(32);
-    expect(enPrueba.every((f) => clasificarSituacion(f.situacion, new Date(), (f as any).categoria).asignable)).toBe(true);
+  siHayDatos('EFDS-1372 :: sin texto ni categoría no se afirma nada: no asignable', () => {
+    const sinDato = clasificados().filter((f) => !String(f.situacion ?? '').trim() && !String(f.categoria ?? '').trim());
+    expect(lista(sinDato.filter((f) => f.r.asignable))).toBe('');
   });
 
-  // Cierra el hueco que dejaría un texto nuevo: hoy TODOS deben ser reconocibles.
-  siHayDatos('EFDS-1372 :: ningún docente del RUND cae en el fail-closed por texto no previsto', () => {
-    const sinClasificar = filas
-      .map((f) => ({ ...f, r: clasificarSituacion(f.situacion, new Date(), (f as any).categoria) }))
-      .filter((f) => f.r.categoria === null && f.situacion);
-
-    const detalle = sinClasificar.map((f) => `${f.documento}: "${f.situacion}"`).join('\n');
-    expect(detalle).toBe('');
+  siHayDatos('EFDS-1372 :: un docente asignable nunca queda con categoría de sabático o comisión vigente', () => {
+    const mal = clasificados().filter((f) =>
+      f.r.asignable && ['ano_sabatico', 'comision'].includes(String(f.r.categoria)) && sigueVigente(f.r.vigenteHasta, hoy));
+    expect(lista(mal)).toBe('');
   });
 });

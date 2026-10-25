@@ -236,6 +236,15 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
     const pendientes = await client!.query(
       `SELECT count(*)::int AS n FROM "${S}".concertacion_novedad WHERE id_concertacion = $1 AND atendida_en IS NULL`, [id]);
     expect(pendientes.rows[0].n).toBe(0);
+
+    // Cierra el ciclo con la foto nueva: al PTA solo viajan las firmas de ESA foto
+    // (las del primer ciclo firmaron otra docencia), con las horas de lo que le queda.
+    await svc.revisar(id, 'academica', f.revisor, REVISOR, OTP);
+    await svc.aprobar(id, f.aprobador, APROBADOR, OTP);
+    await svc.aceptar(id, yo, OTP, null);
+    expect(entregas).toHaveLength(1);
+    expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['revisor', 'aprobador', 'docente']);
+    expect(entregas[0].horas).toBe(32); // le queda el lunes: 16 sesiones × 2 h
   });
 
   caso('solo el docente dueño decide, y solo cuando está por aceptar', async (f) => {

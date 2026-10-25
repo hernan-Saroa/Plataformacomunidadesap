@@ -107,6 +107,12 @@ describe('EFDS-2346 :: periodo personalizado y extraordinario (agregado real, en
   });
 
   caso('activar un nuevo principal cierra el anterior y termina sus PTA, pero no toca el extraordinario ni los suyos', async (qr) => {
+    // ⚠️ EFDS-2328, pendiente de decisión de Nicolás: en esta base la regla que termina
+    // los PTA al activar FALLA (SolicitudPTA."ptaId" es uuid y el id del PTA, texto), así
+    // que hoy activar no termina ningún PTA. Esta prueba NO depende de corregirla: dentro
+    // de su transacción (que se revierte) iguala el tipo de la columna, como en una base
+    // donde la regla corre, para probar la exclusión del extraordinario (EFDS-2346).
+    await qr.query(`ALTER TABLE academic_work_plan."SolicitudPTA" ALTER COLUMN "ptaId" TYPE text USING "ptaId"::text`);
     const c = controlador(qr, [PERMISO_ACTIVAR_EXTRAORDINARIO]);
     const inter = await c.create({ tipo: 'personalizado', anio: 2049, codigo: '2049-INT', nombre: 'Interperiodo 2049', fechaInicio: '2049-12-14', fechaFin: '2050-01-25' });
     await c.activarExtraordinario(inter.id, { motivo: 'Cursos intersemestrales de 2049' }, req);

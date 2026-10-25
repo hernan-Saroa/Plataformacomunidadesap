@@ -204,6 +204,32 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
       .rejects.toThrow(/no es de este grupo/);
   });
 
+  /**
+   * Posgrado: el programa es el área (decisión 4). Mientras no haya fuente del programa de
+   * cada docente, NADIE es elegible —ni siquiera quien tiene núcleo en otra área— y la
+   * regla no se relaja: la respuesta dice por qué y asignar se rechaza por área.
+   */
+  caso('posgrado: el programa es el área; sin docentes de ese programa nadie es elegible y la regla no se relaja', async () => {
+    const pos = await crearAsignatura(client!, { tipo: 'especializacion' });
+    const area = (await client!.query(
+      `INSERT INTO ${AW}.area_formacion (codigo, nombre, id_programa) VALUES ('QA-AF-POS', 'Programa QA posgrado', $1::bigint) RETURNING id::text AS id`,
+      [pos.idPrograma])).rows[0].id;
+    expect((await client!.query(`SELECT ${AW}.area_de_asignatura($1::bigint)::text AS a`, [pos.idAsignatura])).rows[0].a).toBe(area);
+    const g = (await client!.query(
+      `INSERT INTO "${S}".grupo (id_asignatura, id_periodo_academico, tipo_oferta, numero_grupo, estado, fecha_inicio, fecha_fin)
+       VALUES ($1, $2, 'periodo_regular', 1, 'PROGRAMADO', '2050-02-02', '2050-05-24') RETURNING id_grupo::text AS id`,
+      [pos.idAsignatura, ids.periodo])).rows[0].id;
+    await client!.query(
+      `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado) VALUES ($1, 'SABADO', '08:00', '12:00', 'presencial', 'PROGRAMADO')`, [g]);
+    const r = await servicio().candidatos(g, undefined, null);
+    expect(r.area?.nombre).toBe('Programa QA posgrado');
+    expect(r).toMatchObject({ candidatos: [], sugerido: null });
+    expect(r.mensaje).toMatch(/Ningún docente tiene núcleo temático en el área «Programa QA posgrado»/);
+    const a = await servicio().asignar({ idGrupo: g, documento: doc.A }); // A es del área de pregrado, no de este programa
+    expect(a.asignado).toBe(false);
+    expect(a.motivos?.[0].regla).toBe('AREA');
+  });
+
   caso('asignatura sin área: no hay candidatos y la respuesta lo dice; asignar se rechaza por área', async () => {
     const r = await servicio().candidatos(ids.grupoSinArea, undefined, null);
     expect(r).toMatchObject({ area: null, candidatos: [], sugerido: null });
