@@ -899,7 +899,7 @@ Stack local con la concertación encendida en PA y PTA (`PROG_CONCERTACION_HABIL
 
 - **La integración quitó la pantalla de asignar.** `AsignacionDocente.tsx` sigue en el repo pero ya no se monta: «Disponibilidad Docente» muestra solo la consulta. No hay modal para asignar ni para los candidatos (§22). El programador solo puede asignar por API.
 - **La prueba `rutas-cliente.spec.ts §2.1` falla en `ronda3`**: vigila el filtro de jornada de Programación General, que Codex reemplazó por el árbol. O se devuelve el filtro (el árbol no lo tiene) o se retira la prueba: decisión de Codex y de Tomás.
-- **«Mi programación» y la bandeja siguen en el orden anterior.** La etiqueta del docente dice «Enviada por el docente (pendiente)» con la concertación en `POR_ACEPTAR`; no hay botones de aceptar ni de novedad (§23.2); la bandeja del revisor dice «Devolver al docente» (ahora vuelve al programador). `ConcertacionDocente.tsx` / `enviarConcertacion()` llaman a `POST /concertacion/:idPeriodo/enviar`, que ahora responde 409 a propósito.
+- **«Mi programación» y la bandeja siguen en el orden anterior.** La etiqueta del docente dice «Enviada por el docente (pendiente)» con la concertación en `POR_ACEPTAR`; no hay botones de aceptar ni de novedad (§23.2); la bandeja del revisor dice «Devolver al docente» (ahora vuelve al programador). **Textos de la bandeja y de las etapas corregidos en §28.2.** `ConcertacionDocente.tsx` / `enviarConcertacion()` llaman a `POST /concertacion/:idPeriodo/enviar`, que ahora responde 409 a propósito.
 - **Gestión de Periodos** (`mfe-programas-academicos`) muestra `2027-INT` como «ACTIVO», «Semestre —», sin distinguirlo del principal; su «Crear periodo» solo crea semestrales y no tiene «Activar como extraordinario» (§25.2).
 
 ### 26.3 · Defecto previo (PTA) — corregido en §27.6
@@ -952,8 +952,132 @@ Resultado verificado fila por fila (antes/después):
 Asignación, aceptación y novedad **por pantalla** (qa.asignador, superadmin, qa.docente2): el modal lista los candidatos del área, muestra el aviso «Sin situación administrativa registrada en el RUND» y asigna por franja (30 h, estado `TOMADA`); revisión y aprobación por «Concertación de la docencia»; el docente ve las firmas, **reporta novedad** (se rechaza la justificación corta; vuelve al programador) y, tras el reenvío, **acepta y firma** → `Aceptada · docencia enviada al PTA`; al crear el PTA llega la asignatura con 30 h y `origen: programacion`.
 
 Encontrado:
-- **Falta la pantalla del programador para enviar a revisión** (`POST concertacion/enviar`): se hizo por API. Y la bandeja sigue diciendo «Orden del flujo: el docente envía → …», «Enviada por el docente» y «Devolver al docente».
+- **Falta la pantalla del programador para enviar a revisión** (`POST concertacion/enviar`): se hizo por API. Y la bandeja decía «Orden del flujo: el docente envía → …», «Enviada por el docente» y «Devolver al docente» (corregido en §28.2; el contrato del envío está en §28.3).
 - Mi programación llama «Pendiente de concertación» a un grupo ya `POR_ACEPTAR`.
-- El modal de firma, al aprobar, vuelve a mostrar la verificación tras «Firmar y aceptar» aunque la firma ya quedó registrada (hay que cerrar con Esc).
+- El modal de firma, al aprobar, vuelve a mostrar la verificación tras «Firmar y aceptar» aunque la firma ya quedó registrada (hay que cerrar con Esc). **Corregido en §28.2.**
 - **Corregido:** si el programador reenvía **sin cambiar nada** tras una novedad, la huella es la misma y al PTA viajaban 5 firmas (revisor y aprobador dos veces). Ahora viaja la última firma de cada rol (`DISTINCT ON (rol)`), el registro conserva las cinco; prueba con mutación.
 - Local: reiniciar `auth-service` limpia el límite de intentos de login (429).
+
+## 28. Periodo extraordinario, dos arreglos de concertación y pendientes de Tomás (25 de octubre, segunda tanda)
+
+### 28.1 · Pantalla de periodos de Codex (`a4d112737`), integrada y verificada con servidor real
+
+Integrada con `--no-ff` desde `origin/feature/pa/ronda3-codex`. Es la pantalla de **Programas Académicos → Periodos** (`mfe-programas-academicos`), no la de Programación Académica. Se reconstruyó el MFE con `VITE_API_URL=/services` y se copió al contenedor `superapp-frontend`.
+
+Con PTA real y la base `esap_db` (periodos de prueba 2049-1 y 2049-INT, ya borrados):
+
+| Por API | Resultado |
+|---|---|
+| Motivo `corto` | 400 «Explique el motivo… (mínimo 10 caracteres)» |
+| Activar 2049-INT con motivo válido | 201; queda `en_curso`, `extraordinario: true`, con motivo, usuario y fecha |
+| Activar 2049-1 con el extraordinario en curso | 409 «Ya hay un periodo extraordinario en curso (2049-INT): ciérrelo antes de activar otro.» |
+| Activar otra vez el mismo | 409 «ya está en curso como extraordinario» |
+| **El principal** | **2027-2 sigue `en_curso`, `extraordinario: false`** (se comprobó al terminar) |
+
+Por pantalla (superadmin): la lista muestra «Principal en curso» (2027-2) y, tras activar, «Extraordinario en curso»; el periodo personalizado se muestra con su nombre y año, sin «Semestre —»; el modal dice «No cierra el periodo principal 2027-2. No mueve otros periodos ni termina sus PTA.»; con motivo corto el botón de confirmar está deshabilitado; Esc cierra y devuelve el foco; con motivo de 10 o más caracteres confirma, el modal se cierra y la lista se refresca; con un extraordinario en curso el botón «Activar como extraordinario» de los demás periodos queda deshabilitado. Las fechas de los periodos nuevos se ven sin día corrido (1/2/2049). Capturas en `C:\Users\Tomas\Claude\periodos-antes.png`, `periodos-modal-real.png` y `periodos-despues.png`.
+
+No probé con servidor real a un usuario **sin** el permiso `pta.periodos.activar_extraordinario` (solo con superadmin): ese caso lo cubren la prueba de navegador de Codex y la validación del controlador (403).
+
+### 28.2 · Dos arreglos en la concertación (MFE de Programación Académica)
+
+1. **El modal de firma reaparecía en la verificación.** Causa: al registrarse la firma, la bandeja se recargaba, ponía `cargando` y mostraba «Cargando concertaciones…» en lugar de la lista; eso **desmontaba el modal**, que al volver a montarse empezaba otra vez en «Verificación». Ahora la lista solo se reemplaza por «Cargando…» cuando cambia el periodo; al refrescar tras una firma, la lista y el modal siguen montados. Además, `FirmaOtpModal` **se cierra solo 1,8 s después de «Firma registrada»** (alcanza a leerse); también cierra el docente al aceptar.
+   - Prueba nueva (`ConcertacionBandeja.test.tsx`): recarga lenta tras firmar; el modal no vuelve a mostrar los dígitos y se cierra solo. Falló con el arreglo a medias (el modal se desmontaba) y pasa con el definitivo.
+   - Servidor real: tras «Firmar revisión» se ve «Firma registrada», nunca reaparecen las casillas del código y el modal se cierra a los ~1,0 s.
+2. **Textos del orden nuevo.** La bandeja dice «Orden del flujo: el programador envía → el área académica revisa y firma → la jefatura aprueba y firma → el docente acepta y firma. Cualquiera de los dos puede devolverla al programador con un comentario.» El botón es «Devolver al programador». Las etapas son cuatro: Enviada por el programador → Revisión académica → Aprobación → Aceptación del docente (`POR_ACEPTAR` = 3 hechas, `ACEPTADA` = 4). `DEVUELTA` dice «Devuelta al programador: debe corregir y reenviar»; `NOVEDAD`, «Novedad reportada por el docente: el programador debe revisarla y reenviar». Prueba nueva con el orden de las cuatro etapas.
+
+Pruebas: MFE de Programación Académica 40/40; Programas Académicos 28/28. Verificado en pantalla con una concertación real (ENVIADA → revisión firmada).
+
+Para Codex: al abrir «Concertación de la docencia» el front llama a `GET /jefatura/pendientes`, que con la concertación encendida responde 409 «La docencia se aprueba en la concertación…» (es a propósito); aparece como error en la consola del navegador. Conviene no pedirlo cuando la concertación está encendida.
+
+### 28.3 · Contrato del envío a revisión (para la pantalla del programador, de Codex)
+
+**Quién envía:** el programador (no el docente). Exige un nivel «asignable» para el usuario (los que decide el rol: pregrado, posgrado o ambos); sin ninguno, 403 «No tiene permiso para asignar docentes en ningún nivel académico.»
+
+`POST /programacion-academica/api/v1/concertacion/enviar`
+
+```json
+{ "idPeriodo": "603", "documento": "1020304055" }
+```
+
+- `idPeriodo`: id del periodo (el mismo `idPeriodo` que ya viaja en grupos y franjas). `documento`: cédula del docente.
+- Crea una concertación por **nivel** con franjas `TOMADA` del docente en ese periodo, limitada a los niveles que el usuario asigna (RN-08: pregrado no envía posgrado). La concertación nace `ENVIADA`, **sin firma**: firman el revisor, el aprobador y, al final, el docente.
+- **Reenvío:** también sirve para volver a enviar una concertación `DEVUELTA` o `NOVEDAD` (toma una foto nueva de las franjas, borra las revisiones y marca atendida la novedad). Con cualquier otro estado responde 409 «La docencia de pregrado de este periodo ya fue enviada (estado APROBADA).»
+- **Respuesta 201:** la lista actual del programador en el periodo (la misma de `GET concertacion/programador?periodo=<id>`), así la pantalla se refresca sin otra llamada:
+
+```json
+{ "success": true, "data": [
+  { "idConcertacion": "a81d3fb8-497c-447d-b0c7-e9d2fa77567a", "nivel": "pregrado", "estado": "ENVIADA", "horas": 30,
+    "documento": "1020304055", "docente": "Lucía Docente Ronda3b QA", "numFranjas": 2,
+    "comentario": null, "novedad": null, "actualizadaEn": "2026-10-25T19:41:39.400Z" } ] }
+```
+
+  `comentario` trae el motivo de la devolución; `novedad` es `{ tipo, justificacion, creadaEn }` si el docente la reportó y no se ha atendido. La lista viene con `DEVUELTA` y `NOVEDAD` primero.
+- **Errores que la pantalla debe mostrar tal cual (traen el motivo):**
+  - 409 «La concertación de la docencia está apagada: el PTA todavía aprueba la Docencia.» (interruptor apagado en PA o en PTA).
+  - 404 «No existe un docente con documento … en el RUND.»
+  - 409 «La concertación aplica desde el periodo …» (periodo anterior al corte `PROG_CONCERTACION_DESDE_PERIODO`).
+  - 409 «Defina el ciclo (fechas) del grupo antes de enviar: …» (grupo sin fechas).
+  - 409 «No se puede concertar sin saber dónde se dicta cada grupo… (sin oferta CETAP / su CETAP no tiene territorial / aula de otro CETAP)».
+  - 409 «El docente tiene N franja(s) devuelta(s) del flujo anterior en este periodo: reasígnelas antes de enviar.»
+  - 400 «El docente no tiene docencia asignada en este periodo en los niveles que usted asigna.»
+  - 409 «La docencia de … ya fue enviada (estado …).»
+- **Qué invalidar al enviar con éxito:** `invalidarProgramacion('concertacion')` (la bandeja del revisor y «Mi programación» se recargan).
+- **Qué docentes mostrar para enviar:** no hay un endpoint de «pendientes de enviar». Se deducen de los grupos del periodo con franjas `TOMADA` (el árbol que ya consume la pantalla de asignación) y se cruzan por `documento` con `GET concertacion/programador`: sin fila = nunca enviada; `DEVUELTA`/`NOVEDAD` = reenviar; cualquier otro estado = ya en curso (deshabilitar «Enviar»). Si prefieren un endpoint que lo traiga resuelto, se puede añadir sin cambiar el contrato actual.
+- Estados y quién actúa en cada uno: §23.1. «Mi programación» y la bandeja del revisor no cambian de ruta.
+
+### 28.4 · Las 8 asignaturas de pregrado sin área (para decidir Tomás; no se aplicó nada)
+
+Siguen con el núcleo comodín «Nuevo Plan de Estudios AP/APT» y, por eso, `area_de_asignatura()` devuelve vacío: en la asignación por área nadie del área las ve. Nombres exactos tal como están en la base:
+
+| Código | Nombre exacto | Programa | Modalidad | Semestre | Cr. | Núcleo actual |
+|---|---|---|---|---|---|---|
+| ASIG-00001 | Constitución Del Territorio (AP_día) | Administración Pública - Diurno | presencial_dia | 1 | 3 | Nuevo Plan de Estudios AP |
+| ASIG-00064 | Historia del pensamiento político (AP_noche) Nuevo Plan de Estudios | Administración Pública - Nocturno | presencial_noche | 3 | 3 | Nuevo Plan de Estudios AP |
+| ASIG-00065 | Electiva I (AP_noche) Nuevo Plan de Estudios | Administración Pública - Nocturno | presencial_noche | 3 | 3 | Nuevo Plan de Estudios AP |
+| ASIG-00067 | Matemáticas II (AP_noche) Nuevo Plan de Estudios | Administración Pública - Nocturno | presencial_noche | 3 | 3 | Nuevo Plan de Estudios AP |
+| ASIG-00151 | Matemática I | Administración Pública Territorial | sin_definir | 1 | 3 | Nuevo Plan de Estudios APT |
+| ASIG-00153 | Matemáticas II | Administración Pública Territorial | sin_definir | 2 | 3 | Nuevo Plan de Estudios APT |
+| ASIG-00180 | Estadística I | Administración Pública Territorial | sin_definir | 3 | 3 | Nuevo Plan de Estudios APT |
+| ASIG-00181 | Metodología de investigación | Administración Pública Territorial | sin_definir | 3 | 2 | Nuevo Plan de Estudios APT |
+
+Las **tres de AP noche** son ASIG-00064, ASIG-00065 y ASIG-00067. Las cuatro de APT son 00151, 00153, 00180 y 00181, y la restante es la de AP día, 00001.
+
+Qué hay en el catálogo para cada una (evidencia, **no** una decisión; el área de cada «parecida» sale de `area_de_asignatura`):
+
+| Asignatura | Parecidas ya con área | Lectura |
+|---|---|---|
+| ASIG-00064 Historia del pensamiento político (noche) | ASIG-00032 y ASIG-00009 (AP día/noche, «Estado Y Poder» → **Estado y Poder**); ASIG-00008 (AP día, «Estado, Gobierno y Sociedad» → **Estado, Gobierno y Sociedad**) | Dos áreas distintas para el mismo nombre: hay que elegir |
+| ASIG-00065 Electiva I (noche) | ASIG-00030 Electiva I (AP día) → **Electivas**; ASIG-00163 Electiva I (APT) → **Formación General** | Dos áreas: AP usa Electivas, APT usa Formación General |
+| ASIG-00067 Matemáticas II (noche) | ASIG-00040 (AP noche) y ASIG-00039 (AP día) → **Cuantitativa**; ASIG-00062 (AP día) → **Complementario** | Mayoría Cuantitativa; hay una excepción |
+| ASIG-00151 Matemática I (APT) | ASIG-00162 Matemática I (APT) → **Formación General**; ASIG-00012 (AP noche) → **Cuantitativa** | Dos áreas: la hermana del mismo programa dice Formación General |
+| ASIG-00153 Matemáticas II (APT) | las mismas de Matemáticas II: **Cuantitativa** (00039, 00040) y **Complementario** (00062) | Igual que 00067 |
+| ASIG-00180 Estadística I (APT) | ASIG-00050 y ASIG-00051 (AP día/noche) → **Cuantitativa** | Una sola área |
+| ASIG-00001 Constitución Del Territorio (AP día) | ninguna con ese nombre. **Ojo:** ASIG-00002 se llama «Construcción Del Territorio (AP_noche)» (Desarrollo y Gestión Territorial) | Posible error de digitación en el nombre: «Constitución» frente a «Construcción»; confirmarlo antes de asignar área |
+| ASIG-00181 Metodología de investigación (APT) | ninguna con nombre parecido en pregrado | Sin referencia |
+
+Áreas disponibles (`area_formacion`): AF-01 Estado y Poder · AF-02 Organizaciones Públicas · AF-03 Economía Pública · AF-04 Finanzas Públicas · AF-05 Desarrollo y Gestión Territorial · AF-06 Gestión del Desarrollo · AF-07 Cuantitativa · AF-08 Problemática Pública · AF-09 Espacio, Tiempo y Territorio · AF-10 Estado, Gobierno y Sociedad · AF-11 Idiomas · AF-12 Electivas · AF-13 Complementario · AF-14 Formación Específica · AF-15 Teoría Económica e Historia · AF-16 Formación integral y de contexto · AF-17 Opción de grado · AF-18 Formación General (y las de posgrado, `AF-PRG-…`).
+
+Cuando Tomás decida: se aplica cambiando el núcleo de esas 8 filas por un núcleo real (mismo mecanismo de §27.5: respaldo previo, comparación fila a fila y carga), sin tocar nada más. Hasta entonces el canario de `area-docente.agregado.spec.ts` las acepta como excepción explícita (núcleo comodín).
+
+### 28.5 · Periodos guardados con el día corrido: consulta para identificarlos (solo lectura)
+
+Archivo: `backend/academic-work-plan-service/scripts/diagnostico-periodos-dia-corrido.sql`. Es una transacción `READ ONLY`; **no corrige nada**.
+
+Uso:
+
+```bash
+# Paso 0 — ¿el servidor del PTA corría al oeste de UTC? (en el contenedor o equipo del servicio)
+node -p "new Date().getTimezoneOffset()"      # 300 = UTC-5 (sí se corrían); 0 = UTC (no se corrían)
+
+# Paso 1 — la consulta; :corte = momento (hora de la base) en que se desplegó la corrección en ese ambiente
+psql "$DATABASE_URL" -v corte="'2026-10-25 18:00'" -f diagnostico-periodos-dia-corrido.sql
+```
+
+Lo que hay que saber antes de leerla:
+- **El desfase es siempre de 1 día hacia atrás**, y solo si el servidor corría al oeste de UTC. Si el PTA de dev corría en UTC, no hay periodos corridos y no hay nada que revisar (el paso 0 lo decide).
+- **No se puede saber desde la base qué fecha escribió la persona**: no hay bitácora de periodos (`AuditLog` no los registra) ni otra copia de las fechas. Por eso la consulta no deduce la fecha correcta: lista los periodos escritos antes de la corrección (`COALESCE(updated_at, created_at) < :corte`) y, junto a lo guardado, muestra cómo quedarían si estuvieran corridos (`inicio_si_corrido`, `fin_si_corrido`, `dias_corridos_posibles = 1`) con el día de la semana de cada una. Quien conozca el calendario oficial confirma cuáles lo están.
+- Pistas (no pruebas): `sospecha_inicio_domingo` y `sospecha_fin_fin_de_semana` marcan los periodos que arrancan en domingo o terminan en sábado/domingo; salen primero. También muestra cuántos grupos y recesos dependen de cada periodo, para priorizar.
+- Los periodos sembrados por migración (por ejemplo `2025-2`, `2025-08-01` a `2025-12-15`) entran como candidatos por su `updated_at`, pero se sembraron como texto, no como `Date`: no se corrieron.
+- Corte: `created_at`/`updated_at` son `timestamp` sin zona; cerca del momento del despliegue la comparación puede errar por unas horas (si hay un periodo escrito ese día, revisarlo aparte).
+
+Resultado en la base local (PTA corriendo en UTC-5, `getTimezoneOffset()` = 300): 5 periodos candidatos, todos creados o editados el 18, 19 o 20 de octubre, antes de la corrección (2026-2, 2027-2, 2025-2, 2026-1, 2027-1). Son datos de prueba; 2026-2 y 2027-2 terminan en domingo y sábado y salen marcados como sospechosos. No se corrigió ninguno.
