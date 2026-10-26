@@ -48,6 +48,8 @@ describe('FuidExportService', () => {
     expect(worksheet!.getCell('F13').value).toBe('NED: ana lucia');
     expect(worksheet!.getCell('G13').value).toBe('2026/08/01');
     expect(worksheet!.getCell('H13').value).toBe('2026/10/14');
+    expect(worksheet!.getCell('K13').value).toBe('780 – PROCESOS JURÍDICOS');
+    expect(worksheet!.getCell('L13').value).toBe('05 – PROCESOS DISCIPLINARIOS');
     expect(worksheet!.getCell('N13').value).toBe('X');
     expect(worksheet!.getCell('V13').value).toBe(2);
     expect(worksheet!.getCell('W13').value).toBe('1.45 MB');
