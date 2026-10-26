@@ -851,7 +851,7 @@ export class AuditoriasController {
   ) {
     const user = req.user || this.extractUserFromToken(req);
     const adjuntos = await this.guardarInformePreliminar(id, informe, user);
-    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId, {
+    const { count, total, areaNotificada, motivoNoNotificada } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId, {
       adjuntos,
       urlPlataforma: this.origenPeticion(req),
     });
@@ -865,7 +865,9 @@ export class AuditoriasController {
     }
 
     let mensaje: string;
-    if (count > 0) {
+    if (!areaNotificada) {
+      mensaje = 'Informe preliminar generado, pero el área auditada no fue notificada.';
+    } else if (count > 0) {
       mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 5 días hábiles iniciado.`;
     } else if (total > 0) {
       mensaje = `Informe preliminar generado. Los ${total} hallazgo(s) ya estaban notificados o procesados (aceptados/ratificados).`;
@@ -876,6 +878,9 @@ export class AuditoriasController {
       generado: true,
       hallazgosNotificados: count,
       informeAdjunto: adjuntos.length > 0,
+      // Si no se pudo avisar al área auditada, la pantalla lo dice con el motivo (EFDS-2350)
+      areaNotificada,
+      motivoNoNotificada,
       mensaje,
     };
   }
