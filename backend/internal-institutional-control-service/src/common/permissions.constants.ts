@@ -20,6 +20,8 @@ export const ControlInternoPermissions = {
   PLAN_ANUAL_EXPORT: 'control-interno.plan-anual.export',
   PLAN_ANUAL_ASSIGN: 'control-interno.plan-anual.assign',
   PLAN_ANUAL_FOLLOW_UP: 'control-interno.plan-anual.follow-up',
+  // Seguimiento de las tareas de cualquier responsable (Jefe OCI, EFDS-2376)
+  PLAN_ANUAL_FOLLOW_UP_ALL: 'control-interno.plan-anual.follow-up.all',
 
   // ═══════════════════════════════════════════════════════════════
   // AUDITORÍAS

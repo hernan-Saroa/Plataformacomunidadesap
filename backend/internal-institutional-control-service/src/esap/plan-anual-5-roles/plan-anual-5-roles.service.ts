@@ -18,6 +18,8 @@ import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../n
 import { ProgramaAnualRol4TareaSyncService } from './programa-anual-rol4-tarea-sync.service';
 import { ProgramaAnualVersionesService } from '../programa-anual-versiones/programa-anual-versiones.service';
 import { esSuperAdmin } from '../../auth/guards/permissions.guard';
+import { PermissionsService } from '../../auth/services/permissions.service';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import {
   ActorTarea,
   actorEsResponsable,
@@ -109,6 +111,7 @@ export class PlanAnual5RolesService {
     private readonly notificacionesService: NotificacionesService,
     private readonly rol4TareaSync: ProgramaAnualRol4TareaSyncService,
     private readonly versionesPrograma: ProgramaAnualVersionesService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -1231,6 +1234,8 @@ export class PlanAnual5RolesService {
     usuarioId?: string,
   ): Promise<void> {
     if (esSuperAdmin(actor)) return;
+    // Quien tiene el permiso de seguimiento de todas las tareas (el Jefe OCI) no necesita ser el responsable (EFDS-2376)
+    if (await this.puedeSeguirTodasLasTareas(actor)) return;
     const cambios = tareasConSeguimientoCambiado(actividad.tareas_seguimiento || [], tareasNuevas);
     if (!cambios.length) return;
 
@@ -1245,6 +1250,18 @@ export class PlanAnual5RolesService {
         `Solo el responsable puede hacer el seguimiento de la tarea "${descripcion}"${aCargo ? ` (a cargo de ${aCargo})` : ''}.`,
       );
     }
+  }
+
+  /** El rol del usuario tiene el permiso de seguimiento de todas las tareas del Plan Anual (EFDS-2376). */
+  private async puedeSeguirTodasLasTareas(actor: any): Promise<boolean> {
+    const roles = [
+      ...(Array.isArray(actor?.roles) ? actor.roles : []),
+      actor?.role,
+    ]
+      .map((r: any) => (typeof r === 'string' ? r : r?.code || r?.name))
+      .filter(Boolean);
+    if (!roles.length) return false;
+    return this.permissionsService.hasPermission(roles, CIP.PLAN_ANUAL_FOLLOW_UP_ALL);
   }
 
   /** Persona, correo y nombre del usuario del token, para compararlo con los responsables. */
