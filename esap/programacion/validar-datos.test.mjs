@@ -22,6 +22,7 @@ test('normalización y reglas aprobadas, sin ampliar áreas por semejanza', () =
   assert.equal(areaCanonica('Problremática Pública'), 'Problemática Pública');
   assert.equal(areaCanonica('Proyectos de Desarrollo territorial'), 'Gestión del Desarrollo');
   assert.equal(areaCanonica('Gerencia Social'), null);
+  assert.equal(areaCanonica('Estado, Gobierno y Sociedad'), 'Estado y Poder');
   assert.ok(esGenerico('Labores de docencia y otras actividades'));
 });
 test('equivalencias: esquema 21.1, sin variantes normalizadas duplicadas', () => {
@@ -35,6 +36,17 @@ test('equivalencias: esquema 21.1, sin variantes normalizadas duplicadas', () =>
     if (f.tipo === 'area') assert.ok(f.area_canonica);
   }
   assert.equal(filas.filter(f => f.tipo === 'generica').length, 4);
+  assert.equal(filas.find(f => normalizar(f.variante) === normalizar('Estado, Gobierno y Sociedad'))?.area_canonica, 'Estado y Poder');
+});
+
+test('cobertura suma: conserva el denominador y deja sin forzar las cuatro franjas de Opción de grado', () => {
+  const r = JSON.parse(fs.readFileSync(new URL('./resultados/2026-1/cobertura-regla-vigente.json', import.meta.url)));
+  assert.equal(r.modoPuente, 'suma');
+  assert.equal(r.equivalenciaAplicada.areaCanonica, 'Estado y Poder');
+  assert.equal(r.franjas, 535);
+  assert.equal(r.cubiertas, r.porRund + r.porPuente);
+  assert.equal(r.cubiertas + r.noCubiertas.length, r.franjas);
+  assert.deepEqual(r.noCubiertas.map(f => f.fila).sort(), ['fila-35', 'fila-36', 'fila-440', 'fila-441']);
 });
 test('puente: documento válido, una fila por docente/plan/asignatura, exclusiones explícitas', () => {
   const filas = leer('puente_docente_area.csv');

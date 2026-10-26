@@ -9,6 +9,8 @@ import { equivalencias, normalizar, areaCanonica, esGenerico } from './equivalen
 // node esap/programacion/generar-datos.mjs --programacion <xlsx> --rund <xlsx> --env <env> --periodo 2026-1
 const args = Object.fromEntries(process.argv.slice(2).reduce((pares, v, i, todos) => i % 2 ? pares : [...pares, [v.replace(/^--/, ''), todos[i + 1]]], []));
 for (const clave of ['programacion', 'rund', 'env', 'periodo']) if (!args[clave]) throw Error(`Falta --${clave}`);
+const modoPuente = args.puente ?? 'solo_sin_rund';
+if (!['suma', 'solo_sin_rund', 'apagado'].includes(modoPuente)) throw Error('Puente inválido: suma, solo_sin_rund o apagado');
 const out = path.resolve(args.salida ?? `esap/programacion/resultados/${args.periodo}`);
 fs.mkdirSync(out, { recursive: true });
 const escribir = (nombre, datos) => fs.writeFileSync(path.join(out, nombre), JSON.stringify(datos, null, 2) + '\n');
@@ -104,6 +106,7 @@ for (const variante of ['Teorías y Enfoques del Desarrollo', 'Proyectos de Desa
 }
 for (const variante of ['Labores de docencia', 'Impartir asignaturas', 'Desarrollo de los diferentes programas misionales', 'Programas curriculares']) agregar({ area_canonica: '', variante, coincidencia: 'prefijo', tipo: 'generica', fuente: 'rund' });
 for (const variante of ['Procesos Étnicos e Interculturales', 'Gerencia Social']) agregar({ area_canonica: '', variante, coincidencia: 'exacta', tipo: 'sin_area', fuente: 'rund' });
+tabla.set(normalizar('Estado, Gobierno y Sociedad'), { area_canonica: 'Estado y Poder', variante: 'Estado, Gobierno y Sociedad', coincidencia: 'exacta', tipo: 'area', fuente: 'base' });
 csv('nucleo_equivalencia.csv', ['area_canonica','variante','coincidencia','tipo','fuente'], [...tabla.values()]);
 csv('puente_docente_area.csv', ['documento','nombre','plan','asignatura','area_formacion'], [...new Map(filasPuente.map(f => [`${f.documento}|${clave(f.plan,f.asignatura)}`, f])).values()]);
 csv('puente_excluidas.csv', ['documento','nombre','plan','asignatura','area_formacion','motivo'], excluidas);
@@ -148,7 +151,12 @@ XLSX.writeFile(revision, path.join(out, 'catalogo-conciliacion.xlsx'));
 // Reutiliza el intérprete puro publicado por Claude, sin iniciar el servicio ni importar su contenedor.
 const fuenteInterprete = fs.readFileSync(new URL('../../backend/academic-work-plan-service/src/pta/banco-docentes/rund-nucleos.ts', import.meta.url), 'utf8');
 const compilado = ts.transpileModule(fuenteInterprete, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { interpretarNucleo, buscarEquivalencia } = await import(`data:text/javascript;base64,${Buffer.from(compilado).toString('base64')}`);
+const { interpretarNucleo, buscarEquivalencia, normalizarNucleo } = await import(`data:text/javascript;base64,${Buffer.from(compilado).toString('base64')}`);
+// Proyección de la decisión editable sobre el snapshot, sin escribir equivalencias en la base.
+const estadoYPoder = areasFormacion.find(a => normalizar(a.nombre) === normalizar('Estado y Poder'));
+if (!estadoYPoder) throw Error('Falta el área canónica Estado y Poder');
+const variantesEstado = ['Estado, Gobierno y Sociedad', 'Estado Gobierno y Sociedad', 'Gobierno y Políticas Públicas'].map(normalizarNucleo);
+equivalenciasBase = [...equivalenciasBase.filter(e => !variantesEstado.includes(e.varianteNormalizada)), ...variantesEstado.map(varianteNormalizada => ({ varianteNormalizada, coincidencia: 'exacta', tipo: 'area', idArea: Number(estadoYPoder.id) }))];
 const rundActual = new Map(rund.map(r => [String(r.DOCUMENTO_IDENTIDAD).trim(), new Set(interpretarNucleo(r.NUCLEO_TEMATICO, equivalenciasBase).areas.map(a => a.idArea))]));
 const coberturaActual = programacionExcel.map(f => {
   const planesCoincidentes = planIndex.get(clave(f.pensum, f.asignatura)) ?? [];
@@ -157,9 +165,9 @@ const coberturaActual = programacionExcel.map(f => {
   const nucleosRund = rundActual.get(f.documento);
   const tieneRund = !!nucleosRund?.size;
   const compatibleRund = idArea != null && !!nucleosRund?.has(idArea);
-  const compatiblePuente = !tieneRund && idArea != null && [...(puente.get(f.documento) ?? [])].some(a => buscarEquivalencia(a, equivalenciasBase)?.idArea === idArea);
-  return { fila: f.id, cubierta: compatibleRund || compatiblePuente, origen: compatibleRund ? 'rund' : compatiblePuente ? 'puente' : null, motivo: compatibleRund || compatiblePuente ? null : idArea == null ? 'Área sin cruce exacto con el plan' : tieneRund ? 'Tiene núcleo RUND de otra área: el puente no lo amplía' : 'Sin núcleo compatible' };
+  const compatiblePuente = modoPuente !== 'apagado' && (modoPuente === 'suma' || !tieneRund) && idArea != null && [...(puente.get(f.documento) ?? [])].some(a => buscarEquivalencia(a, equivalenciasBase)?.idArea === idArea);
+  return { fila: f.id, cubierta: compatibleRund || compatiblePuente, origen: compatibleRund ? 'rund' : compatiblePuente ? 'puente' : null, motivo: compatibleRund || compatiblePuente ? null : idArea == null ? 'Área sin cruce exacto con el plan' : tieneRund && modoPuente === 'solo_sin_rund' ? 'Tiene núcleo RUND de otra área: el puente no lo amplía' : 'Sin núcleo compatible' };
 });
-escribir('cobertura-regla-vigente.json', { periodo: args.periodo, generadoEn: new Date().toISOString(), fuente: 'PROGRAMACIÓN del Excel; no es programación viva', regla: 'Intérprete de Claude y equivalencias activas de la base. Puente solo si no hay ningún núcleo RUND reconocido.', interpreteSha256: createHash('sha256').update(fuenteInterprete).digest('hex'), franjas: coberturaActual.length, cubiertas: coberturaActual.filter(f => f.cubierta).length, porcentaje: coberturaActual.length ? +(100*coberturaActual.filter(f => f.cubierta).length/coberturaActual.length).toFixed(2) : null, porRund: coberturaActual.filter(f => f.origen === 'rund').length, porPuente: coberturaActual.filter(f => f.origen === 'puente').length, noCubiertas: coberturaActual.filter(f => !f.cubierta) });
+escribir('cobertura-regla-vigente.json', { periodo: args.periodo, generadoEn: new Date().toISOString(), fuente: 'PROGRAMACIÓN del Excel; no es programación viva', modoPuente, regla: 'Intérprete de Claude, snapshot de equivalencias con Estado, Gobierno y Sociedad proyectado a Estado y Poder; puente según modoPuente. No modifica el servidor.', equivalenciaAplicada: { variante: 'Estado, Gobierno y Sociedad', areaCanonica: 'Estado y Poder' }, interpreteSha256: createHash('sha256').update(fuenteInterprete).digest('hex'), franjas: coberturaActual.length, cubiertas: coberturaActual.filter(f => f.cubierta).length, porcentaje: coberturaActual.length ? +(100*coberturaActual.filter(f => f.cubierta).length/coberturaActual.length).toFixed(2) : null, porRund: coberturaActual.filter(f => f.origen === 'rund').length, porPuente: coberturaActual.filter(f => f.origen === 'puente').length, noCubiertas: coberturaActual.filter(f => !f.cubierta) });
 escribir('areas-formacion-base.json', areasFormacion);
 console.log(JSON.stringify({ historico: { ...reporte.historico, noCubiertas: reporte.historico.noCubiertas.length }, programacionViva: { ...reporte.programacionViva, noCubiertas: reporte.programacionViva.noCubiertas.length }, incidencias: incidencias.length, salida: out }, null, 2));
