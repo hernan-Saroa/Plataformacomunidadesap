@@ -515,6 +515,46 @@ export interface RegistrarReintegroDto {
   observaciones?: string;
 }
 
+export interface TrazabilidadExpediente {
+  solicitudId: string;
+  consecutivoUnico: string;
+  estadoActual: string;
+  estadoActualEtiqueta: string;
+  comisionado: { numeroDocumento: string; nombre: string } | null;
+  destinoCiudad: string | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  creadoEn: string | null;
+  fechaRadicacion: string | null;
+  historial: Array<{
+    id: string;
+    fecha: string;
+    estadoAnterior: string | null;
+    estadoAnteriorEtiqueta: string | null;
+    estadoNuevo: string;
+    estadoNuevoEtiqueta: string;
+    usuarioId: string | null;
+    usuarioNombre: string;
+    comentarios: string | null;
+  }>;
+  documentos: Array<{
+    id: string;
+    tipoDocumento: string;
+    nombreArchivo: string;
+    urlRepositorio: string;
+    fechaCarga: string;
+  }>;
+  soportesLegalizacion: Array<{
+    id: string;
+    tipoDocumento: string | null;
+    nombreArchivo: string;
+    revision: string | null;
+    observacionRevision: string | null;
+    fechaCarga: string;
+    fechaRevision: string | null;
+  }>;
+}
+
 export interface BandejaSecretarioResponse {
   data: SolicitudListaResponse[];
   total: number;

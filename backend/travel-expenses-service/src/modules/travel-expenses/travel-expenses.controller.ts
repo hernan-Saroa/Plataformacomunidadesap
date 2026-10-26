@@ -18,6 +18,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Response } from 'express';
@@ -151,6 +152,44 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
     isCoordinadorComisiones(user)
   );
 }
+
+/**
+ * RF-SIS-001 — Quienes pueden consultar el detalle de una comisión pueden ver su
+ * trazabilidad y descargar el expediente (incluye coordinación de comisiones y
+ * gerentes, que cuentan con travel_expenses:read_requests).
+ */
+const PERMISOS_CONSULTA_EXPEDIENTE = [
+  'travel_expenses:sign_approval',
+  'travel_expenses:read_approvals',
+  'travel_expenses:create_request',
+  'travel_expenses:read_inbox',
+  'travel_expenses:set_priority',
+  'travel_expenses:return_request',
+  'travel_expenses:assign_analyst',
+  'travel_expenses:read_assigned',
+  'travel_expenses:view_assigned_requests',
+  'travel_expenses:verify_request',
+  'travel_expenses:export_siif',
+  'travel_expenses:return_assigned',
+  'travel_expenses:read_siif_requested',
+  'travel_expenses:double_check_request',
+  'travel_expenses:return_to_analyst',
+  'travel_expenses:read_payments',
+  'travel_expenses:process_payment',
+  'travel_expenses:register_payment',
+  'travel_expenses:read_sst_requests',
+  'travel_expenses:read_sst_logs',
+  'travel_expenses:read_authorized',
+  'travel_expenses:issue_rp',
+  'travel_expenses:read_authorizations',
+  'travel_expenses:authorize_expense',
+  'travel_expenses:read_obligations',
+  'travel_expenses:read_requests',
+  'travel_expenses:read_own_requests',
+  'travel_expenses:read_extemporaneous_authorizations',
+  'travel_expenses:authorize_extemporaneous',
+  'travel_expenses:reject_extemporaneous',
+];
 
 @Controller()
 @ApiTags('control-viaticos')
@@ -1022,6 +1061,43 @@ export class TravelExpensesController {
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
+  }
+
+  @Get('requests/:id/trazabilidad')
+  @Permissions(...PERMISOS_CONSULTA_EXPEDIENTE)
+  @ApiOperation({
+    summary: 'Consultar la trazabilidad completa del expediente (RF-SIS-001)',
+    description:
+      'Devuelve el historial de estados con responsable, fecha y decisión, y los documentos soporte de la comisión.',
+  })
+  @ApiResponse({ status: 200, description: 'Trazabilidad del expediente.' })
+  @ApiResponse({ status: 404, description: 'Solicitud no encontrada.' })
+  @ApiBearerAuth()
+  obtenerTrazabilidad(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.obtenerTrazabilidadSolicitud(id);
+  }
+
+  @Get('requests/:id/expediente/pdf')
+  @Permissions(...PERMISOS_CONSULTA_EXPEDIENTE)
+  @ApiOperation({
+    summary: 'Descargar el expediente de la comisión en PDF (RF-SIS-001)',
+    description:
+      'Genera el expediente con los datos de la comisión, el historial completo de estados y la relación de documentos soporte.',
+  })
+  @ApiResponse({ status: 200, description: 'PDF del expediente.' })
+  @ApiResponse({ status: 404, description: 'Solicitud no encontrada.' })
+  @ApiBearerAuth()
+  async descargarExpediente(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.service.exportarExpedientePdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Expediente-Comision-${id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
   }
 
   @Get('requests/inbox/secretary')
