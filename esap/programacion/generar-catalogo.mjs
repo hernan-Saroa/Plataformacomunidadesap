@@ -67,7 +67,8 @@ const asignaturas = originales.map(a => {
   }
   const canonica = canonicas[0];
   const posiblesNt = areas.filter(n => areaCanonica(n.nombre) === canonica);
-  let nt = (decision ? posiblesNt.find(n => normalizar(n.nombre) === normalizar(canonica)) : posiblesNt.find(n => n.codigo === ntActual?.codigo))
+  // Una decisión que ya se cumple (el núcleo actual ya da esa área) no cambia el núcleo: solo se mueve lo que cambia de área.
+  let nt = (decision && !posiblesNt.some(n => n.codigo === ntActual?.codigo) ? posiblesNt.find(n => normalizar(n.nombre) === normalizar(canonica)) : posiblesNt.find(n => n.codigo === ntActual?.codigo))
     ?? posiblesNt.find(n => normalizar(n.nombre) === normalizar(canonica));
   if (!nt && posiblesNt.length === 1) nt = posiblesNt[0];
   if (!nt && posiblesNt.length > 1) {

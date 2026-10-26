@@ -47,26 +47,12 @@ export class PeriodoAcademicoController {
   @Public()
   @Get()
   async list() {
-    let periods = await this.repo.find({
+    // Una consulta no escribe: sin periodos devuelve la lista vacía y la pantalla muestra su estado vacío.
+    // (Antes sembraba un «2025-2» en curso si no había ninguno.)
+    const periods = await this.repo.find({
       order: { createdAt: 'DESC', anio: 'DESC', semestre: 'DESC' },
     });
 
-    if (periods.length === 0) {
-      const defaultPeriod = this.repo.create({
-        codigo: '2025-2',
-        anio: 2025,
-        semestre: 2,
-        fechaInicio: '2025-08-01',
-        fechaFin: '2025-12-15',
-        estado: 'en_curso',
-      });
-      try {
-        await this.repo.save(defaultPeriod);
-        periods = [defaultPeriod];
-      } catch (e) {
-        console.warn('Error seeding default period:', e);
-      }
-    }
     // EFDS-2346: con un extraordinario en curso, el principal va antes que él. Así
     // quien busca «el activo» con el primer en curso de la lista recibe el principal.
     const principal = periods.findIndex(esPrincipalEnCurso);

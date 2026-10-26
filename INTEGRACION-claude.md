@@ -1180,3 +1180,40 @@ Prueba con servidor real, con usuarios que pasan el `@Roles` del endpoint pero n
 | Datos y catálogo de Codex (`node --test`) | **11/11** |
 
 Dos ajustes de pruebas por las decisiones y por la base en cero: la prueba «solo aparecen docentes del área» esperaba el puente en `solo_sin_rund` (ahora E, con núcleo RUND en otra área y puente en esta, también es candidata); y el canario `cruces-vivos` exigía al menos un periodo real, y con la base en cero avisa y sigue exigiendo que el total de cruces sea cero. En una primera corrida del front, con el PTA corriendo en paralelo, 3 pruebas fallaron por tiempo (`findByText` de 1 s); solas, pasan 51/51.
+
+## 30. Conciliación de áreas, Excel final, consulta sin escritura y envío a revisión verificado (25 de octubre, cuarta tanda)
+
+### 30.1 · Lo de Codex integrado (`979c8e2a4`) y los dos parches de consola
+Integrado con `--no-ff`. En `ProgramacionAcademicaModule.tsx` se aplicó el parche de consola de `INTEGRACION-codex.md`: la detección de jefatura (`getPendientesJefatura`) espera la configuración de concertación y solo consulta con la concertación **apagada**. Verificado en el navegador: con la concertación encendida no hay ninguna llamada a `/jefatura/pendientes` ni error 409 en consola.
+
+### 30.2 · Conciliación de las decisiones de área (mis 18 contra las 28 de Codex)
+Mis 18 (las 8 sin área, las 7 de «Estadística y Matemáticas en todos los planes» y las 3 que Tomás sumó: ASIG-00190, 00014 y 00015) **están todas** en el CSV de Codex con la misma área. Las otras 10 del CSV son decisiones que ya se cumplían (ya estaban en Cuantitativa): ASIG-00012, 00037, 00039, 00040, 00050, 00051, 00070, 00071 (AP) y ASIG-00235, 00237 (Economía Pública). Ninguna decisión del CSV falta en mi lista ni la contradice.
+
+Hallazgo: con el CSV tal cual, el generador movía además las 8 de AP (00012, 00037, 00039, 00040, 00050, 00051, 00070, 00071) del núcleo «Fundamentación Cuantitativa» (NT-004) al de nombre «Cuantitativa» (NT-020) aunque ya estaban en el área correcta: 26 cambios en vez de 18. Ajuste mío en `esap/programacion/generar-catalogo.mjs` (archivo de Codex): una decisión que ya se cumple conserva el núcleo actual; solo cambia el núcleo de lo que cambia de área. Se regeneró el Excel con el mismo `--catalogo-base` y la misma fuente (`PROGRAMACIÓN ACADEMICA  2026_1.xlsx`, huella `5b4508c1…`).
+
+### 30.3 · Excel final y validación
+Ruta: `C:\Users\Tomas\Documents\ESAP\temporal\Plataformacomunidadesap\esap\programacion\resultados\2026-1\catalogo-importable-2026-1.xlsx`
+
+- Contra la base real (comparación fila a fila, 11.995 campos ajenos al área incluidos): **427 asignaturas, mismos códigos, 0 nuevas**; **18 cambian de área, exactamente las esperadas, y las 18 cambian de área real** (ninguna solo de nombre); posgrado: 160 sin cambios; ninguna otra columna difiere.
+- Validación previa del importador (`dry_run=true`, periodo temporal 2048-1, que no escribe ni crea el periodo): 0 errores, 0 advertencias; programas 14 sin cambios; **asignaturas 0 creadas, 18 actualizadas, 409 sin cambios**; 325 ofertas por crear, 0 rechazadas.
+- Pruebas de datos y catálogo de Codex: 14/14.
+- ASIG-00001 conserva el nombre «Constitución Del Territorio» (por confirmar si es «Construcción»).
+
+### 30.4 · La consulta de periodos ya no escribe
+`GET /pta/api/v1/periodos-academicos` ya no siembra un «2025-2» en curso cuando no hay periodos: devuelve `[]`. Prueba nueva `periodo-lista-vacia.spec.ts` (lista vacía y `save`/`create` sin llamar; con periodos tampoco escribe).
+
+Consumidores revisados (ninguno depende de que exista uno): todos leen la respuesta como arreglo con valor por defecto y tratan la ausencia de periodo activo: PA (`ProgramacionAcademicaModule`, `periodosApi`: estado «Sin periodos»), Programas Académicos (`ProgramasAcademicosModule`, `useImportAsignaturas`), PTA (`ptaApi.getActivePeriodoAcademico` cae al año/semestre calendario; `PtaBackofficeModule` y `BancoDocentesPTA` limpian la lista), shell y Estructura Organizacional (devuelven `[]` si falla), reportes y registro académico. `BancoDocentesView` conserva el código fijo «2025-2» como valor por defecto de su selector; no rompe, pero queda como deuda de esa pantalla. Ningún servicio de backend consulta este endpoint. Con la base en cero, la lista responde `[]` (200).
+
+### 30.5 · Envío a revisión, verificado en el navegador con servidor real (cierra EFDS-2374)
+Periodo 2049-1 en curso, asignatura y docente QA, concertación encendida, superadmin como programador:
+1. **Disponibilidad Docente → docente**: aparece «Docencia asignada» con la carga (88 h) y el botón «Enviar a revisión».
+2. Un clic, **una sola** llamada `POST /concertacion/enviar` (201) y la lista del programador se recarga: «Pregrado · En revisión · 88 h en la foto de revisión», «Docencia … enviada a revisión».
+3. **Concertación de la docencia (bandeja)**: aparece la docencia, con «Enviada por el programador ✓ → 2 Revisión académica (pendiente) → 3 Aprobación → 4 Aceptación del docente» y los botones «Revisar y firmar (académica)», «Aprobar y firmar» y «Devolver al programador».
+4. Firma de la revisión: el modal muestra «Firma registrada», se cierra solo y no reaparece la verificación.
+Capturas: `C:\Users\Tomas\Claude\envio-1-disponibilidad.png`, `envio-2-docente.png`, `envio-3-click.png`, `envio-4-bandeja.png`.
+
+### 30.6 · Video del flujo con las novedades
+`C:\Users\Tomas\Claude\demo-flujo-nuevo-pa.webm` (1366×768). Rótulos explicativos solo en las partes nuevas: (1) el programador envía a revisión, (2) bandeja en el orden nuevo y firma que se cierra sola, (3) periodo extraordinario. Los pasos de enlace van sin explicación.
+
+### 30.7 · Pruebas sobre la rama integrada y estado de la base
+PA backend 272/272 · PTA backend 1147 pasan, 1 omitida (+2 de la lista vacía) · MFE PA 51/51 · MFE Programas Académicos 28/28 · datos/catálogo 14/14. La base local quedó **sin periodos**, con los mismos conteos conservados (427 asignaturas, 14 programas, 35 núcleos, 390 núcleos de docentes, 365 docentes del RUND, 29 aulas, 341 usuarios, 441 personas) y sin fixtures QA. El Excel **no** se cargó: las asignaturas de la base siguen como estaban; lo carga Tomás.

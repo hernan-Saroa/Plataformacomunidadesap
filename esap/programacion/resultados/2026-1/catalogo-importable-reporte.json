@@ -1,6 +1,6 @@
 {
   "periodo": "2026-1",
-  "generadoEn": "2026-10-25T20:23:05.804Z",
+  "generadoEn": "2026-10-26T03:44:15.502Z",
   "fuente": [
     {
       "archivo": "catalogo-base-verificado.xlsx",
@@ -29,7 +29,7 @@
     "posgradoAntes": "4a032e4b71dd1ed9647de5de8dfb534d00e74d3a1d9f0b8c641210e935c01d5d",
     "posgradoDespues": "4a032e4b71dd1ed9647de5de8dfb534d00e74d3a1d9f0b8c641210e935c01d5d"
   },
-  "areasActualizadas": 26,
+  "areasActualizadas": 18,
   "posgradoConservadas": 160,
   "revisionManual": 48,
   "franjasOpcionGradoParaRevision": 4,
@@ -43,15 +43,6 @@
       "area_importar": "Desarrollo Y Gestión Territorial",
       "codigo_nt": "NT-007",
       "codigo_af": "AF-05",
-      "planes_fuente": ""
-    },
-    {
-      "codigo_actual": "ASIG-00012",
-      "asignatura": "Matemática I",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
       "planes_fuente": ""
     },
     {
@@ -82,15 +73,6 @@
       "planes_fuente": "AP_36"
     },
     {
-      "codigo_actual": "ASIG-00037",
-      "asignatura": "Matemáticas I",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_33"
-    },
-    {
       "codigo_actual": "ASIG-00038",
       "asignatura": "Matemáticas I",
       "area_anterior": "Complementaria",
@@ -98,42 +80,6 @@
       "codigo_nt": "NT-020",
       "codigo_af": "AF-07",
       "planes_fuente": "AP_36"
-    },
-    {
-      "codigo_actual": "ASIG-00039",
-      "asignatura": "Matemáticas II",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_33"
-    },
-    {
-      "codigo_actual": "ASIG-00040",
-      "asignatura": "Matemáticas II",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_34"
-    },
-    {
-      "codigo_actual": "ASIG-00050",
-      "asignatura": "Estadística I",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_33"
-    },
-    {
-      "codigo_actual": "ASIG-00051",
-      "asignatura": "Estadística I",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_34"
     },
     {
       "codigo_actual": "ASIG-00062",
@@ -170,24 +116,6 @@
       "codigo_nt": "NT-020",
       "codigo_af": "AF-07",
       "planes_fuente": ""
-    },
-    {
-      "codigo_actual": "ASIG-00070",
-      "asignatura": "Estadística II",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_33"
-    },
-    {
-      "codigo_actual": "ASIG-00071",
-      "asignatura": "Estadística II",
-      "area_anterior": "Fundamentación Cuantitativa",
-      "area_importar": "Cuantitativa",
-      "codigo_nt": "NT-020",
-      "codigo_af": "AF-07",
-      "planes_fuente": "AP_34"
     },
     {
       "codigo_actual": "ASIG-00151",
