@@ -869,7 +869,12 @@ export const ComunicacionAuditoriaModule: React.FC<{
         const informe = await armarPDFPreliminar();
         const res = await controlInternoService.generarInformePreliminar(id, informe);
         toast.success(res?.mensaje || 'Informe preliminar generado');
-        if (!res?.informeAdjunto) toast.warning('El correo al área auditada salió sin el PDF adjunto; pueden consultarlo en la plataforma.');
+        if (res?.areaNotificada === false) {
+          // No se pudo avisar al área auditada: se dice por qué, para corregirlo y volver a notificar (EFDS-2350)
+          toast.error(`No se notificó al área auditada: ${res.motivoNoNotificada || 'motivo desconocido'}.`, { duration: 12000 });
+        } else if (!res?.informeAdjunto) {
+          toast.warning('El correo al área auditada salió sin el PDF adjunto; pueden consultarlo en la plataforma.');
+        }
         setInformePreliminar(prev => ({ ...prev, generado: true }));
         await cargarDatos();
       } catch (err: any) {

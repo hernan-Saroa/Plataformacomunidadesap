@@ -839,7 +839,7 @@ class ControlInternoService {
     auditoriaId: string,
     /** PDF del informe: el backend lo guarda en los documentos y lo adjunta al correo del área auditada (EFDS-2350) */
     informe?: File,
-  ): Promise<{ generado: boolean; hallazgosNotificados: number; informeAdjunto?: boolean; mensaje: string }> {
+  ): Promise<{ generado: boolean; hallazgosNotificados: number; informeAdjunto?: boolean; areaNotificada?: boolean; motivoNoNotificada?: string; mensaje: string }> {
     const url = `/auditorias/${auditoriaId}/informe-preliminar/generar`;
     if (!informe) return client.post<any>(url, {});
     const formData = new FormData();
