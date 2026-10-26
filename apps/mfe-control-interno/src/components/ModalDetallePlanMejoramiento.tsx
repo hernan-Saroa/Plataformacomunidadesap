@@ -2939,7 +2939,8 @@
                                                             )}
                                                           </div>
                                                           <span className="text-xs text-gray-500">
-                                                            Corte: {seg.fechaCorte ? new Date(seg.fechaCorte).toLocaleDateString('es-CO') : '—'}
+                                                            {/* La fecha de corte es un día, no un instante: se muestra tal cual para que no corra un día por la zona horaria */}
+                                                            Corte: {seg.fechaCorte ? String(seg.fechaCorte).slice(0, 10).split('-').reverse().join('/') : '—'}
                                                           </span>
                                                         </div>
                                                         <div className="grid grid-cols-4 gap-3 mb-2">
