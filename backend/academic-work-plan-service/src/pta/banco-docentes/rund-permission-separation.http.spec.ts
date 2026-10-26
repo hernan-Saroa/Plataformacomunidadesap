@@ -41,6 +41,8 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     upsertDocente: jest.fn().mockResolvedValue({ docenteId: id }),
     updateDocente: jest.fn().mockResolvedValue({ docenteId: id }),
     guardarIncorporacion: jest.fn().mockResolvedValue({ changed: true }),
+    previewRegistroDeletion: jest.fn().mockResolvedValue({ total: 1, ids: [id], fingerprint: 'a'.repeat(64), registros: [] }),
+    eliminarRegistros: jest.fn().mockResolvedValue({ eliminados: 1 }),
     bulkUpsert: jest.fn().mockResolvedValue({ total: 1, created: 1, updated: 0, unchanged: 0, errors: 0, results: [], errorDetails: [], soporteCargaMasivaId: id }),
   };
   const ocr = {
@@ -79,6 +81,19 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
   });
   afterAll(async () => app.close());
   beforeEach(() => { jest.clearAllMocks(); role = 'CARGADOR'; additionalRoles = []; subjectOnly = false; });
+
+  it.each([
+    ['RUND_CARGADOR', 201], ['RUND_APROBADOR', 403], ['RUND_INCORPORADOR', 403],
+    ['CARGADOR', 403], ['CONSULTOR', 403], ['SIN_PERMISOS', 403], ['SUPER_ADMIN', 201],
+  ])('la eliminación RUND requiere Cargador o administración: %s', async (profile, status) => {
+    role = String(profile);
+    for (const base of ['/banco-docentes', '/pta/banco-docentes']) {
+      await request(app.getHttpServer()).post(`${base}/eliminacion/previsualizar`).send({ ids: [id] }).expect(Number(status));
+      await request(app.getHttpServer()).post(`${base}/eliminacion/confirmar`).send({ ids: [id], actorId: 'IMPOSTOR' }).expect(Number(status));
+    }
+    if (status === 201) expect(service.eliminarRegistros).toHaveBeenCalledWith(expect.anything(), 'ACTOR_AUTENTICADO', expect.anything());
+    else { expect(service.previewRegistroDeletion).not.toHaveBeenCalled(); expect(service.eliminarRegistros).not.toHaveBeenCalled(); }
+  });
 
   it('registra la carga del Super Admin con su identidad autenticada y no con el actor enviado en el formulario', async () => {
     role = 'SUPER_ADMIN';

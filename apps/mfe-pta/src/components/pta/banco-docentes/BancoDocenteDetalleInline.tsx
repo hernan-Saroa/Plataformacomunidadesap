@@ -7,9 +7,10 @@ interface Props {
   docente: any;
   periodoCarga?: string;
   onUpdated?: () => void;
+  columnCount?: number;
 }
 
-export function BancoDocenteDetalleInline({ docente, periodoCarga, onUpdated }: Props) {
+export function BancoDocenteDetalleInline({ docente, periodoCarga, onUpdated, columnCount = 8 }: Props) {
   const [resultado, setResultado] = useState<{ source: any; periodo?: string; data: any; error: boolean } | null>(null);
   const periodo = periodoCarga || docente?.periodo_carga || docente?.periodoCarga || docente?.period_carga;
   const docenteId = docente?.docente_id || docente?.id;
@@ -32,7 +33,7 @@ export function BancoDocenteDetalleInline({ docente, periodoCarga, onUpdated }: 
 
   return (
     <tr>
-      <td colSpan={8} style={{ padding: 0, background: '#FAFBFC' }}>
+      <td colSpan={columnCount} style={{ padding: 0, background: '#FAFBFC' }}>
         <div style={{ borderTop: '2px solid #003DA5' }}>
           <div style={{ padding: '20px 20px 0' }}>
             {!actual ? (

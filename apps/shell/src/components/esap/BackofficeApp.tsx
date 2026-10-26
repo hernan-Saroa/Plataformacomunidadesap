@@ -13,6 +13,7 @@ import { ProfileModal } from './ProfileModal';
 import { NotificationsProvider } from './NotificationsContext';
 import { TourProvider } from './gestion-legal/design-system/TourContext';
 import { modulesService, type ActiveModuleInfo } from '../../services/api/modules.service';
+import { config } from '../../config/environment';
 
 function isReactComponentCandidate(value: unknown): boolean {
   if (typeof value === 'function') {
@@ -110,7 +111,7 @@ const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const AjustesGeneralesPage = lazy(() => import('./AjustesGeneralesPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
-import { ChatbotFloatingButton } from './ChatbotFloatingButton';
+import { ChatbotFullPageScope } from '../chatbot/GlobalChatbotProvider';
 
 // ✅ Loading Spinner Component
 function ModuleLoader() {
@@ -896,20 +897,26 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
       case 'chatbot':
         return (
+          <ChatbotFullPageScope>
           <Suspense fallback={<ModuleLoader />}>
             <ChatbotModule
+              apiBaseUrl={config.API_BASE_URL}
               userEmail={currentUser.email}
               userId={currentUser.personId}
               userName={currentUser.name}
             />
           </Suspense>
+          </ChatbotFullPageScope>
         );
 
       case 'modules':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <ModulesManagementModulePremium
-              onModuleUpdated={loadActiveModules}
+              onModuleUpdated={() => {
+                void loadActiveModules();
+                window.dispatchEvent(new Event('esap:chatbot-config-changed'));
+              }}
               userRoles={(userData?.roles || (usuario?.rol ? [usuario.rol] : [])) as string[]}
             />
           </Suspense>
@@ -1043,18 +1050,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             />
           )}
 
-          {/* Botón Flotante ChatBot Asistente Virtual */}
-          <ChatbotFloatingButton
-            isActive={activeModules.length === 0 || activeModules.some((m) => m.code === 'chatbot')}
-            userEmail={currentUser.email}
-            userId={currentUser.personId}
-            userName={currentUser.name}
-            currentModule={currentModule}
-            onOpenFullModule={() => {
-              setCurrentSidebarModule('chatbot');
-              setCurrentModule('chatbot');
-            }}
-          />
         </div>
       </TourProvider>
     </NotificationsProvider>

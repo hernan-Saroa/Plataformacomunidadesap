@@ -6,7 +6,7 @@ import { CreateHallazgoDto } from './dto/create-hallazgo.dto';
 import { UpdateHallazgoDto } from './dto/update-hallazgo.dto';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
-import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { NotificacionesService, AdjuntoCorreo } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
@@ -772,7 +772,11 @@ export class HallazgosService {
    * Notifica hallazgos (actualiza BORRADOR → NOTIFICADO) al generar informe preliminar.
    * Solo los que están en BORRADOR pasan a NOTIFICADO. Los ya en aceptado/ratificado/modificado/retirado no se tocan.
    */
-  async notificarHallazgosAuditoria(auditoriaId: string, usuarioId?: string): Promise<{ count: number; total: number }> {
+  async notificarHallazgosAuditoria(
+    auditoriaId: string,
+    usuarioId?: string,
+    opciones?: { adjuntos?: AdjuntoCorreo[]; urlPlataforma?: string },
+  ): Promise<{ count: number; total: number }> {
     const [pendientes, todos] = await Promise.all([
       this.hallazgoRepository.find({ where: { auditoriaId, estado: HallazgoEstado.BORRADOR } }),
       this.hallazgoRepository.count({ where: { auditoriaId } }),
@@ -817,7 +821,10 @@ export class HallazgosService {
             hallazgosNotificados: n,
             totalHallazgos: todos,
             plazoDiasHabiles: 5,
+            ...(opciones?.urlPlataforma ? { urlPlataforma: opciones.urlPlataforma } : {}),
           },
+          // El informe preliminar va adjunto al correo del área auditada (EFDS-2350)
+          adjuntos: opciones?.adjuntos,
         });
       }
     } catch (notifErr: any) {

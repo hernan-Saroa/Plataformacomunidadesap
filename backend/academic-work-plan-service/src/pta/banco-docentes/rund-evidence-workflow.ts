@@ -99,7 +99,7 @@ export async function invalidateEditedEvidence(manager: Pick<QueryRunner, 'query
 
 export async function lockEvidenceProfile(runner: Pick<QueryRunner, 'query'>, docenteId: string) {
   const [docente] = await runner.query('SELECT * FROM academic_work_plan."Docente" WHERE id = $1 FOR UPDATE', [docenteId]);
-  if (!docente) throw new NotFoundException('Perfil docente no encontrado.');
+  if (!docente || docente.eliminadoRund) throw new NotFoundException('Perfil docente no encontrado o eliminado de RUND.');
   return docente;
 }
 

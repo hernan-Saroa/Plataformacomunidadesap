@@ -363,6 +363,14 @@ export class CorreosJuridicosService {
      * Ver docs/CONFIGURACION_CORREOS_CENTRO_COMUNICACIONES.md
      */
     private esRemitenteExcluido(email: any, buzonAccount: string): boolean {
+        // Notificaciones de la plataforma redirigidas (EMAIL_REDIRECT_TO) a esta misma cuenta:
+        // llegan a la bandeja de entrada y, si notificaciones y buzón son la misma cuenta, el
+        // remitente coincide con el buzón y no se podría excluir por remitente. Se detectan por
+        // el marcador que agrega notifications-service. Además la cuenta del buzón es compartida
+        // entre dev/QA/pre, así que sin esto cada ambiente ingería los correos de los otros.
+        if (CorreosJuridicosService.esNotificacionRedirigida(email?.subject, email?.body?.content || email?.bodyPreview)) {
+            return true;
+        }
         const from = (email.from?.emailAddress?.address || '').toLowerCase().trim();
         if (!from || from === (buzonAccount || '').toLowerCase().trim()) return false;
         const excluidos = [
@@ -370,6 +378,15 @@ export class CorreosJuridicosService {
             ...(process.env.LEGAL_SYNC_EXCLUDED_SENDERS || '').split(','),
         ].map(e => e.toLowerCase().trim()).filter(Boolean);
         return excluidos.includes(from);
+    }
+
+    /**
+     * ¿Es una notificación automática redirigida por notifications-service?
+     * Marcadores: asunto `[Redirigido — Ambiente X de: ...]` y banner HTML `[Correo Redirigido — Ambiente X]`.
+     */
+    static esNotificacionRedirigida(asunto?: string | null, cuerpo?: string | null): boolean {
+        if (/^\s*(?:(?:re|rv|fw|fwd)\s*:\s*)*\[\s*redirigido\b/i.test(asunto || '')) return true;
+        return /\[\s*correo redirigido\s*[—–-]\s*ambiente/i.test(cuerpo || '');
     }
 
     private esDeliveryReceiptOrDSN(email: any): boolean {
@@ -706,11 +723,14 @@ export class CorreosJuridicosService {
             where.buzon = filters.buzon;
         }
 
-        const correos = await this.correoRepo.find({
+        const correosRaw = await this.correoRepo.find({
             where,
             order: { fechaRecepcion: 'DESC' },
             relations: ['adjuntos']
         });
+
+        // Oculta notificaciones redirigidas que ya se habían sincronizado antes del filtro de ingesta.
+        const correos = correosRaw.filter(c => !CorreosJuridicosService.esNotificacionRedirigida(c.asunto));
 
         // Apply search filter if present
         if (filters?.search) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
-  X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight,
+  X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight, Trash2,
   GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info, UserPlus, MailPlus,
   Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History
 } from 'lucide-react';
@@ -21,6 +21,8 @@ import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { hasRundPermission } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
 import './BancoDocentesStatistics.css';
+import { RundDeleteModal } from './RundDeleteModal';
+import type { RundDeletionSelection } from '../../../services/api/ptaApi';
 
 const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   TC:       { background: '#dbeafe', color: '#1d4ed8' },
@@ -166,6 +168,17 @@ export function BancoDocentesPTA() {
   });
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
+  const canDelete = hasPermission('banco-docentes.rund.carga') || hasPermission('banco-docentes.rund.manage');
+  const [markedIds, setMarkedIds] = useState<Set<string>>(() => new Set());
+  const [allFiltered, setAllFiltered] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RundDeletionSelection | null>(null);
+  // In all-results mode, markedIds contains the explicitly excluded rows.
+  const markedCount = allFiltered ? Math.max(0, total - markedIds.size) : markedIds.size;
+  const clearMarked = () => { setMarkedIds(new Set()); setAllFiltered(false); };
+  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
+  const markRow = (id: string) => {
+    setMarkedIds(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<any>(null);
@@ -653,11 +666,26 @@ export function BancoDocentesPTA() {
               </div>
             )}
 
+            {canDelete && <div className="rund-delete-toolbar">
+              <span aria-live="polite">{markedCount ? `${markedCount} registros seleccionados` : 'Marca los docentes que deseas eliminar.'}</span>
+              {(markedCount > 0 || allFiltered) && <>
+                {!allFiltered && total > markedIds.size && <button type="button" disabled={loading} onClick={() => { setAllFiltered(true); setMarkedIds(new Set()); }}>Seleccionar todos los resultados ({total})</button>}
+                <button type="button" onClick={clearMarked}>Limpiar selección</button>
+                <button type="button" className="rund-delete-action" disabled={loading || !markedCount} onClick={() => setDeleteTarget(allFiltered ? {
+                  todosFiltrados: true, excluirIds: [...markedIds], filters: { search, territorial: filterTerritorial, dedicacion: filterDedicacion,
+                    vinculacion: filterVinculacion, estado: filterEstado, periodoCarga: filterPeriodo },
+                } : { ids: [...markedIds] })}><Trash2 size={15} />Eliminar seleccionados ({markedCount})</button>
+              </>}
+            </div>}
             {/* Table */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                 <thead style={{ background: '#F9FAFB', borderBottom: '2px solid #E5E7EB', position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr>
+                    {canDelete && <th style={{ padding: 12, width: 38 }}><input type="checkbox" aria-label="Seleccionar docentes de esta página" disabled={loading || !docentes.length}
+                      checked={!!docentes.length && docentes.every(row => allFiltered ? !markedIds.has(row.id) : markedIds.has(row.id))}
+                      ref={node => { if (node) { const count = docentes.filter(row => allFiltered ? !markedIds.has(row.id) : markedIds.has(row.id)).length; node.indeterminate = count > 0 && count < docentes.length; } }}
+                      onChange={e => { const checked = e.target.checked; setMarkedIds(previous => { const next = new Set(previous); docentes.forEach(row => (allFiltered ? !checked : checked) ? next.add(row.id) : next.delete(row.id)); return next; }); }} /></th>}
                     {[
                       { label: 'DOCENTE', align: 'left' },
                       { label: 'DOCUMENTO', align: 'left' },
@@ -685,7 +713,7 @@ export function BancoDocentesPTA() {
                 <tbody style={{ background: '#FFFFFF' }}>
                   {!loading && docentes.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ padding: 60, textAlign: 'center', color: '#9CA3AF' }}>
+                      <td colSpan={canDelete ? 9 : 8} style={{ padding: 60, textAlign: 'center', color: '#9CA3AF' }}>
                         <Users size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
                         <div style={{ fontSize: '14px', fontWeight: 500 }}>No hay docentes registrados</div>
                         <div style={{ fontSize: '12px', marginTop: 4 }}>Intenta ajustar los filtros o agregar docentes</div>
@@ -704,6 +732,8 @@ export function BancoDocentesPTA() {
                         onMouseEnter={(e) => { if (selectedDocente !== d.id) e.currentTarget.style.background = rundReviewStatus(d.completitud).approved ? '#D1FAE5' : '#F9FAFB'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = rundReviewStatus(d.completitud).approved ? '#ECFDF5' : selectedDocente === d.id ? '#EFF6FF' : '#FFFFFF'; }}
                       >
+                        {canDelete && <td style={{ padding: 12 }} onClick={e => e.stopPropagation()}><input type="checkbox" aria-label={`Seleccionar a ${d.nombre_completo}`}
+                          checked={allFiltered ? !markedIds.has(d.id) : markedIds.has(d.id)} onChange={() => markRow(d.id)} /></td>}
                         {/* ── Celda DOCENTE — Avatar + Nombre + Email ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -862,6 +892,9 @@ export function BancoDocentesPTA() {
                                 <Edit2 size={14} color="#6B7280" />
                               </button>
                             )}
+                            {canDelete && <button type="button" title="Eliminar de RUND" aria-label={`Eliminar de RUND a ${d.nombre_completo}`}
+                              onClick={() => setDeleteTarget({ ids: [d.docente_id || d.id] })}
+                              style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={14} /></button>}
                             {/* Botón Toggle Estado */}
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
@@ -888,6 +921,7 @@ export function BancoDocentesPTA() {
                       {/* Inline expandable detail row */}
                       {selectedDocente === d.id && (
                         <BancoDocenteDetalleInline
+                          columnCount={canDelete ? 9 : 8}
                           docente={d}
                           periodoCarga={filterPeriodo || undefined}
                           onUpdated={() => { void loadData(); }}
@@ -1411,6 +1445,11 @@ export function BancoDocentesPTA() {
       )}
 
       {/* Modals */}
+      {canDelete && deleteTarget && <RundDeleteModal selection={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={count => {
+        setDeleteTarget(null); clearMarked(); setSelectedDocente(null);
+        const nextPage = Math.max(1, Math.min(page, Math.ceil(Math.max(0, total - count) / 50)));
+        setPage(nextPage); loadData(nextPage); showToast(`${count} ${count === 1 ? 'registro eliminado' : 'registros eliminados'} de RUND`);
+      }} />}
       {editDocente !== null && (
         <BancoDocenteEditModal
           docente={editDocente?.id ? editDocente : null}

@@ -303,8 +303,20 @@ export async function exportarAuditoriasTemplate(
           : String(equipoRaw || '');
 
         const cA = row.getCell(1);
-        cA.value = nameClean;
-        cA.font = { name: 'Arial', size: esInformeOOtros ? 10 : 12, bold: false };
+        const fuenteA = { name: 'Arial', size: esInformeOOtros ? 10 : 12, bold: false };
+        // Debajo del nombre, las dependencias que se auditan, una por línea (EFDS-2367)
+        const dependencias = (Array.isArray(a.dependenciasAuditadas) ? a.dependenciasAuditadas : [])
+          .map((d: unknown) => String(d ?? '').trim())
+          .filter(Boolean);
+        cA.value = dependencias.length > 0
+          ? {
+              richText: [
+                { text: nameClean, font: fuenteA },
+                { text: `\n${dependencias.join('\n')}`, font: { ...fuenteA, size: fuenteA.size - 1, italic: true } },
+              ],
+            }
+          : nameClean;
+        cA.font = fuenteA;
         cA.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
 
         // Unidades auditables que cubre la auditoría, una por línea (EFDS-2316)

@@ -23,6 +23,7 @@ import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabez
 import { capturarDatosCarga, fechaCivilPersistencia } from './rund-carga-original';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
 import { rundDocumentalEnabled } from './rund-documental-feature';
+import { confirmRundDeletion, deletionFingerprint, deletionIds } from './rund-registro-eliminacion';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -969,12 +970,14 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "dedicacionHorasSemana" INTEGER,
           ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT,
           ADD COLUMN IF NOT EXISTS "territorialReportada" TEXT,
-          ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB
+          ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB,
+          ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
       await this.dataSource.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS "Docente_personaId_periodoCarga_key"
         ON academic_work_plan."Docente" ("personaId", COALESCE("periodoCarga", ''))
+        WHERE "eliminadoRund" = false
       `);
     } catch (error: any) {
       this.logger.warn(`No se pudieron verificar columnas RUND Excel en Docente: ${error?.message || error}`);
@@ -1202,7 +1205,7 @@ export class BancoDocentesService implements OnModuleInit {
         LEFT JOIN academic_work_plan."Docente" d ON d."personaId"::text = p.id_person::text
         LEFT JOIN auth.seccionales doc_sec ON doc_sec.id_seccional::text = d."territorialId"
         LEFT JOIN auth.sedes doc_sede ON doc_sede.id_sede::text = d."sedeId"
-        WHERE EXISTS (
+        WHERE COALESCE(d."eliminadoRund", false) = false AND EXISTS (
           SELECT 1
           FROM auth.user_roles ur
           INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
@@ -1361,6 +1364,47 @@ export class BancoDocentesService implements OnModuleInit {
       throw new NotFoundException(`Docente ${id} no encontrado${periodMessage}`);
     }
     return buildAuthBancoDocenteResponse(rows[0]);
+  }
+
+  async previewRegistroDeletion(body: any) {
+    const params: any[] = [];
+    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga'];
+    const filters: any = {};
+    if (body?.ids !== undefined) {
+      params.push(deletionIds(body.ids));
+    } else {
+      if (body?.todosFiltrados !== true || !body.filters || typeof body.filters !== 'object') {
+        throw new BadRequestException('Seleccione los registros que desea eliminar.');
+      }
+      for (const key of allowed) {
+        const value = body.filters[key];
+        if (value !== undefined && value !== '') {
+          if (typeof value !== 'string' || value.length > 250) throw new BadRequestException('Los filtros de eliminación no son válidos.');
+          filters[key] = value;
+        }
+      }
+    }
+    let where = params.length ? 'WHERE docente_id::text=ANY($1::text[])' : this.buildAuthDocentesFilters(filters, params);
+    if (body?.excluirIds !== undefined) {
+      if (body?.ids !== undefined || !Array.isArray(body.excluirIds)) throw new BadRequestException('Las exclusiones de selección no son válidas.');
+      if (body.excluirIds.length) {
+        params.push(deletionIds(body.excluirIds));
+        where += `${where ? ' AND' : 'WHERE'} NOT (docente_id::text=ANY($${params.length}::text[]))`;
+      }
+    }
+    const rows = await this.dataSource.query(`${this.authDocentesBaseSql()}
+      SELECT DISTINCT docente_id AS id, nombre_completo, documento_identidad, periodo_carga,
+        docente_updated_at AS "updatedAt" FROM auth_docentes ${where}
+      ${where ? 'AND' : 'WHERE'} docente_id IS NOT NULL ORDER BY docente_id LIMIT 10001`, params);
+    if (!rows.length) throw new BadRequestException('No hay registros RUND disponibles para eliminar.');
+    if (rows.length > 10000) throw new BadRequestException('Seleccione un periodo o reduzca los filtros: el máximo por operación es 10.000 registros.');
+    if (body?.ids !== undefined && rows.length !== params[0].length) throw new BadRequestException('Algunos registros ya no están disponibles. Actualice el listado.');
+    return { ids: rows.map(row => row.id), fingerprint: deletionFingerprint(rows), total: rows.length,
+      registros: rows.map(({ updatedAt, ...row }) => row) };
+  }
+
+  async eliminarRegistros(body: any, actorId: string, ip?: string) {
+    return confirmRundDeletion(this.dataSource, body, actorId, ip);
   }
 
   /**
@@ -1717,8 +1761,8 @@ export class BancoDocentesService implements OnModuleInit {
 
       const targetPeriodoCarga = payload.periodoCarga || null;
       const existingDocente = targetPeriodoCarga
-        ? await manager.findOne(DocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga } as any })
-        : await manager.findOne(DocenteEntity, { where: { personaId: authPersonId } });
+        ? await manager.findOne(DocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga, eliminadoRund: false } as any, lock: { mode: 'pessimistic_write' } })
+        : await manager.findOne(DocenteEntity, { where: { personaId: authPersonId, eliminadoRund: false }, lock: { mode: 'pessimistic_write' } });
       if (existingDocente && options.rejectExisting) {
         throw new BadRequestException({
           message: `El documento ${payload.documentNumber} ya existe en el Banco de Docentes para el periodo ${targetPeriodoCarga || 'sin periodo'}.`,
@@ -2262,6 +2306,7 @@ export class BancoDocentesService implements OnModuleInit {
         ? await manager.findOne(DocenteEntity, { where: { id: initialDocente!.id }, lock: { mode: 'pessimistic_write' } })
         : initialDocente;
       if (!docente) throw new NotFoundException(`Docente ${id} no encontrado`);
+      if (docente.eliminadoRund) throw new NotFoundException('Este registro fue eliminado de RUND.');
 
       const requestedPeriod = body?.periodoCarga || body?.periodo_carga || null;
       if (requestedPeriod && String(requestedPeriod) !== String(docente.periodoCarga || '')) {
@@ -3117,10 +3162,11 @@ export class BancoDocentesService implements OnModuleInit {
     // 1. Verificar si ya es el docente_id directo
     if (isUuid) {
       const exists = await this.docenteRepo.findOne({ where: { id: anyId } });
+      if (exists?.eliminadoRund) throw new NotFoundException('Este registro fue eliminado de RUND.');
       if (exists) return exists.id;
 
       // 2. Buscar por personaId
-      const byPersona = await this.docenteRepo.findOne({ where: { personaId: anyId, ...(periodoCarga ? { periodoCarga } : {}) } as any });
+      const byPersona = await this.docenteRepo.findOne({ where: { personaId: anyId, eliminadoRund: false, ...(periodoCarga ? { periodoCarga } : {}) } as any });
       if (byPersona) return byPersona.id;
     }
 
@@ -3134,6 +3180,7 @@ export class BancoDocentesService implements OnModuleInit {
           OR u.id_user::text = $1
           OR UPPER(regexp_replace(BTRIM(p.num_identificacion::text), '\\.', '', 'g')) = UPPER(regexp_replace(BTRIM($1::text), '\\.', '', 'g')))
          AND ($2::text IS NULL OR d."periodoCarga" = $2::text)
+         AND COALESCE(d."eliminadoRund", false)=false
        ORDER BY
          CASE WHEN $2::text IS NOT NULL AND d."periodoCarga" = $2::text THEN 0 ELSE 1 END,
          d."updatedAt" DESC NULLS LAST
@@ -3400,7 +3447,7 @@ export class BancoDocentesService implements OnModuleInit {
              p.nom_largo AS nombre
       FROM academic_work_plan."Docente" d
       JOIN auth.personas p ON p.id_person = d."personaId"
-      WHERE d.estado = 'ACTIVO' AND (${conditions.join(' OR ')})
+      WHERE d.estado = 'ACTIVO' AND COALESCE(d."eliminadoRund", false)=false AND (${conditions.join(' OR ')})
     `;
 
     if (excludeDocenteId) {
@@ -3428,6 +3475,7 @@ export class BancoDocentesService implements OnModuleInit {
        FROM academic_work_plan."Docente" d
        JOIN auth.personas p ON p.id_person = d."personaId"
        WHERE d.estado = 'ACTIVO'
+         AND COALESCE(d."eliminadoRund", false)=false
          AND UPPER(TRIM(p.nom_largo)) = $1
          AND p.fec_nacimiento::date = $2::date`,
       [nombre, fecha.toISOString().split('T')[0]],

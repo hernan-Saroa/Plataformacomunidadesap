@@ -2037,6 +2037,24 @@ export async function syncRUNDDocuments(docenteId: string, documentos: any[]) {
 
 const BD_BASE = `${SERVICE_BASE}/pta/banco-docentes`;
 
+export type RundDeletionSelection = { ids: string[] } | { todosFiltrados: true; filters: Record<string, string>; excluirIds?: string[] };
+export type RundDeletionPreview = { ids: string[]; fingerprint: string; total: number;
+  registros: { id: string; nombre_completo: string; documento_identidad: string; periodo_carga: string | null }[] };
+export async function previewRundDeletion(selection: RundDeletionSelection): Promise<RundDeletionPreview> {
+  const raw = await apiClient.post<any>(`${BD_BASE}/eliminacion/previsualizar`, selection, { retries: 0, skipErrorToast: true });
+  const result = normalizeResult<RundDeletionPreview | null>(raw, null);
+  if (!result.success || !result.data) throw new Error('No fue posible revisar los registros seleccionados.');
+  return result.data;
+}
+export async function confirmRundDeletion(preview: RundDeletionPreview, motivo: string): Promise<{ eliminados: number }> {
+  const raw = await apiClient.post<any>(`${BD_BASE}/eliminacion/confirmar`, {
+    ids: preview.ids, fingerprint: preview.fingerprint, motivo, confirmado: true,
+  }, { retries: 0, skipErrorToast: true });
+  const result = normalizeResult<{ eliminados: number } | null>(raw, null);
+  if (!result.success || !result.data) throw new Error('No fue posible eliminar los registros.');
+  return result.data;
+}
+
 export async function getBancoDocentes(filters?: {
   territorial?: string;
   dedicacion?: string;

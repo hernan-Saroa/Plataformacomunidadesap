@@ -32,6 +32,9 @@ export class DocenteEntity {
   @Column({ type: 'text', default: 'ACTIVO' })
   estado: string;
 
+  @Column({ name: 'eliminadoRund', type: 'boolean', default: false })
+  eliminadoRund: boolean;
+
   @Column({ name: 'horasAsignables', type: 'int', default: 0 })
   horasAsignables: number;
 

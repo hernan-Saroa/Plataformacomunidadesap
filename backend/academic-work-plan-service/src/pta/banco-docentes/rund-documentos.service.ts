@@ -433,7 +433,8 @@ export class RundDocumentosService {
       `SELECT d.id, d."personaId" AS persona_id, COALESCE(p.num_identificacion, d.id::text) AS document_number
        FROM academic_work_plan."Docente" d
        LEFT JOIN auth.personas p ON p.id_person = d."personaId"
-       WHERE d.id::text = $1 OR d."personaId"::text = $1 OR p.num_identificacion = $1
+       WHERE (d.id::text = $1 OR d."personaId"::text = $1 OR p.num_identificacion = $1)
+         AND COALESCE(d."eliminadoRund", false)=false
        ORDER BY d."updatedAt" DESC NULLS LAST
        LIMIT 1`,
       [identifier],
