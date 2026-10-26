@@ -23,6 +23,7 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerDependencias: vi.fn().mockResolvedValue([]),
     obtenerSaldosTiquetes: vi.fn().mockResolvedValue([]),
     resolverNombreDependencia: vi.fn((s: any) => s?.dependencia || 'Sede Central'),
+    obtenerTrazabilidad: vi.fn().mockResolvedValue({ historial: [], documentos: [], soportesLegalizacion: [] }),
   },
 }));
 
