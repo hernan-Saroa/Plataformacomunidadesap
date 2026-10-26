@@ -1,3 +1,51 @@
+## Decisiones editables por asignatura y puente en suma — 25 de octubre de 2026
+
+Se integró `origin/feature/pa/ronda3` (incluido §28.3) antes de esta continuación. No se leyeron archivos de la carpeta de Claude ni se hicieron escrituras en la base.
+
+- Archivo editable: `esap/programacion/areas-por-asignatura.csv` (UTF-8, separador `;`; código de asignatura, área canónica y motivo). Contiene 28 decisiones: todas las Estadísticas y Matemáticas del catálogo, incluidos los distintos planes y Métodos Matemáticos para Economistas; Metodología de investigación APT; ASIG-00064; ASIG-00065 y ASIG-00001. Se lee por defecto y admite `--areas-por-asignatura <archivo>`. Prevalece sobre el área del plan, incluso si el nombre no cruza con el plan. Se rechazan códigos inexistentes/duplicados, áreas no canónicas y motivos vacíos. Se conservan todos los campos ajenos al área y los 160 registros de posgrado.
+- **ASIG-00001:** el nombre probablemente debe ser **Construcción del Territorio**. Pendiente de confirmar; el generador conserva el nombre actual, Constitución Del Territorio, y solo aplica Desarrollo y Gestión Territorial.
+- `resultados/2026-1/datos/nucleos/nucleo_equivalencia.csv`: Estado, Gobierno y Sociedad pasa a variante de Estado y Poder. Sus variantes quedan bajo la misma área canónica al regenerar. No se modificó la tabla del servidor.
+- **Catálogo para Claude:** `esap/programacion/resultados/2026-1/catalogo-importable-2026-1.xlsx`. 427 asignaturas, 14 programas, 325 ofertas; 26 valores de área cambian frente al snapshot verificado; cero códigos nuevos/retirados. El parser/validador publicado lo acepta sin errores ni advertencias. Se comparan de nuevo 11.995 campos ajenos al área. `DECISIONES_POR_ASIGNATURA` y el reporte JSON conservan las 28 decisiones y la huella del CSV. Quedan 48 casos de catálogo y las cuatro franjas de Opción de grado para revisión manual.
+- **Cobertura 2026-1: 531/535 = 99,25 %**, con `--puente suma`: 44 por RUND y 487 adicionales por puente. Son las franjas del Excel, no programación viva: la base consultada no tiene franjas de 2026-1. Las 40 filas sin día se excluyen del denominador. Las cuatro no cubiertas siguen siendo Opción de grado APT_52 (35, 36, 440, 441); no se fuerza ningún cruce.
+- `cobertura-regla-vigente.json` ejecuta el intérprete puro publicado por Claude con las equivalencias leídas de la base y la decisión nueva proyectada en memoria. La consulta es READ ONLY. `modoPuente: suma` queda explícito. El generador sigue admitiendo `solo_sin_rund` (predeterminado) y `apagado`; no cambia ningún interruptor del servidor. `cobertura.json` mantiene su medición auxiliar por unión normalizada, distinta del intérprete, y no debe usarse para atribuir la cobertura RUND del contrato.
+
+Reproducción desde la raíz (sustituir las rutas fuente por las locales):
+
+```powershell
+node esap/programacion/generar-datos.mjs --programacion "ruta\programacion.xlsx" --rund "ruta\rund.xlsx" --env "ruta\servicio.env" --periodo 2026-1 --puente suma
+node esap/programacion/generar-catalogo.mjs --catalogo-base esap/programacion/resultados/2026-1/catalogo-base-verificado.xlsx --programacion "ruta\programacion.xlsx" --periodo 2026-1
+node --test esap/programacion/validar-datos.test.mjs esap/programacion/catalogo-importable.test.mjs
+```
+
+### Corrección compartida para Claude: no consultar jefatura con concertación encendida
+
+La llamada que causaba el 409 está en `ProgramacionAcademicaModule.tsx`, no en `ConcertacionBandeja`. Se probó localmente pero **no se incluye ese archivo compartido en el commit**, según el acuerdo. Además de la conexión de envío documentada en la entrega anterior, Claude debe quitar este efecto de montaje:
+
+```tsx
+useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
+```
+
+Y colocar este efecto después de declarar el estado `concertacion`:
+
+```tsx
+useEffect(() => {
+  let vigente = true;
+  setEsJefatura(false);
+  if (concertacion && !concertacion.habilitada) {
+    getPendientesJefatura().then(() => { if (vigente) setEsJefatura(true); }).catch(() => {});
+  }
+  return () => { vigente = false; };
+}, [concertacion]);
+```
+
+Así espera la configuración antes de consultar: encendida no llama; apagada conserva la detección anterior. Si falla la configuración, no se consulta un régimen desconocido. La prueba de navegador comprueba ambas ramas con APIs interceptadas y la conexión compartida local. Sin aplicar estos dos parches compartidos, Claude no debe considerar integrado el acceso al envío ni la corrección de consola.
+
+Pruebas de datos/catálogo: 14/14. Incluyen prioridad de las 28 decisiones sobre el plan, integridad de campos, CSV inválidos, equivalencia nueva y contabilidad de la cobertura sin forzar Opción de grado. Navegador: pasa el recorrido de árbol, calendario, envío y encendido/apagado, incluida ausencia de llamadas a jefatura con concertación encendida. No se confirmó una carga ni se levantó backend.
+
+Esfuerzo estimado adicional de esta continuación: **2,5 h** (CSV/generador/pruebas 1,5 h; cobertura 0,5 h; consola, navegador y documentación 0,5 h). No incluye la entrega anterior ni es tiempo de reloj.
+
+---
+
 # Actualización vigente — conservación del catálogo y envío por docente
 
 ## Corrección del catálogo y envío por programador — 25 de octubre de 2026
@@ -142,3 +190,5 @@ node --test esap/programacion/validar-datos.test.mjs
 ```
 
 El generador solo usa `SELECT`, `SHOW`, `BEGIN READ ONLY` y `ROLLBACK`; fuerza host local y puerto 55432. Los archivos de salida quedan bajo `resultados/<periodo>`. El archivo de credenciales nunca se copia al reporte. El periodo debe corresponder al Excel suministrado; las filas sin día se reportan por separado.
+
+Verificación final de esta continuación: MFE **51/51**, datos/catálogo **14/14**, navegador con API simulada correcto y build correcto. Vite detenido al terminar.

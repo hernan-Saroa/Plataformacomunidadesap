@@ -75,6 +75,7 @@ try {
   for (const label of ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom', 'Ocupado', '05:00', 'No disponibles']) assert.ok(texto.includes(label), label);
   assert.equal(await page.$('[title="Eliminar sesión"]'), null);
   assert.ok(llamadas.every(c => ['GET', 'OPTIONS'].includes(c.method)));
+  assert.ok(llamadas.some(c => c.path.endsWith('/jefatura/pendientes')), 'apagada conserva la consulta de jefatura');
   await page.addStyleTag({ content: await readFile(new URL('../../shell/src/index.css', import.meta.url), 'utf8') });
   await page.screenshot({ path: new URL('./calendario-ronda3.png', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   // Monta el mismo componente usado por el portal para verificar la ruta de identidad propia.
@@ -120,6 +121,7 @@ try {
     await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.includes('Docente Simulado')).click());
     await page.waitForFunction(() => document.body.innerText.includes('Calendario semanal'));
   };
+  const inicioEncendido = llamadas.length;
   await page.reload(); await abrirDocente();
   await page.waitForSelector('[aria-label="Envío a revisión por docente"]');
   assert.ok((await page.$eval('[aria-label="Envío a revisión por docente"]', e => e.textContent)).includes('Historia Política'));
@@ -134,6 +136,7 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent === 'Enviar a revisión' && b.disabled));
   assert.deepEqual(llamadas.filter(c => c.path.endsWith('/concertacion/enviar')).at(-1).body, { idPeriodo: '12', documento: '123' });
   assert.ok((await page.$eval('[aria-label="Envío a revisión por docente"]', e => e.textContent)).includes('En revisión'));
+  assert.ok(!llamadas.slice(inicioEncendido).some(c => c.path.endsWith('/jefatura/pendientes')), 'encendida no consulta la aprobación heredada');
   await page.addStyleTag({ content: await readFile(new URL('../../shell/src/index.css', import.meta.url), 'utf8') });
   await page.screenshot({ path: new URL('./envio-revision-docente.png', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   concertacionEncendida = false;

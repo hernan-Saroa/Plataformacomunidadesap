@@ -138,7 +138,6 @@ export function ProgramacionAcademicaModule({
   // EFDS-1939 — el item de aprobación solo aparece si el usuario ES jefatura. Se
   // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
   const [esJefatura, setEsJefatura] = useState(false);
-  useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
   // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
   // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
   const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
@@ -147,6 +146,16 @@ export function ProgramacionAcademicaModule({
   const [misPermisos, setMisPermisos] = useState<MisPermisos | null>(null);
   useEffect(() => { getMisPermisos().then(setMisPermisos).catch(() => setMisPermisos(null)); }, []);
   useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
+  // Con la concertación encendida el endpoint de jefatura responde 409 a propósito: no se consulta. Se espera la
+  // configuración; si falla, no se consulta un régimen desconocido.
+  useEffect(() => {
+    let vigente = true;
+    setEsJefatura(false);
+    if (concertacion && !concertacion.habilitada) {
+      getPendientesJefatura().then(() => { if (vigente) setEsJefatura(true); }).catch(() => {});
+    }
+    return () => { vigente = false; };
+  }, [concertacion]);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
   // periodo seleccionado en la cabecera; se persiste entre recargas.
