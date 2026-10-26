@@ -31,7 +31,7 @@ describe('API del expediente con el guard RBAC real', () => {
         { provide: BancoDocentesService, useValue: {} },
         { provide: RundDocumentosService, useValue: documents },
         { provide: DocumentTypeValidatorService, useValue: { validate: jest.fn().mockResolvedValue({ validated: false }) } },
-        { provide: DataSource, useValue: { query: jest.fn(async (_sql, [roles]) => roles.includes('GESTOR_CUSTOM')
+        { provide: DataSource, useValue: { query: jest.fn(async (_sql, [roles]) => roles.some(role => ['GESTOR_CUSTOM', 'GESTION_PROFESORAL'].includes(role))
           ? [{ code: 'banco-docentes.rund.documents.manage' }] : []) } },
       ],
     }).compile();

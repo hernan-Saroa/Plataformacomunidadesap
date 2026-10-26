@@ -10,5 +10,6 @@ export const getTypeOrmConfig = (): TypeOrmModuleOptions => ({
   schema: 'chatbot',
   autoLoadEntities: true,
   synchronize: false,
-  logging: process.env.NODE_ENV === 'development',
+  // Las consultas contienen preguntas, identidades y extractos documentales.
+  logging: false,
 });

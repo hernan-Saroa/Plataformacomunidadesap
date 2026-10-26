@@ -465,13 +465,28 @@ function tablaGenerica(
 
 // ─── Función principal ─────────────────────────────────────────────────────────
 
+/** salida: false descarga el PDF, true devuelve una blob URL y 'blob' devuelve el archivo (para subirlo). */
+export async function exportarPDFInformeAuditoria(
+  tipo: TipoInforme,
+  auditoria: AuditoriaBasicaPDF,
+  informe: InformePreliminarPDF | InformeFinalPDF,
+  hallazgosDetalle: HallazgoPDF[] | undefined,
+  salida: 'blob'
+): Promise<Blob>;
 export async function exportarPDFInformeAuditoria(
   tipo: TipoInforme,
   auditoria: AuditoriaBasicaPDF,
   informe: InformePreliminarPDF | InformeFinalPDF,
   hallazgosDetalle?: HallazgoPDF[],
-  returnBlobUrl: boolean = false
-): Promise<void | string> {
+  returnBlobUrl?: boolean
+): Promise<void | string>;
+export async function exportarPDFInformeAuditoria(
+  tipo: TipoInforme,
+  auditoria: AuditoriaBasicaPDF,
+  informe: InformePreliminarPDF | InformeFinalPDF,
+  hallazgosDetalle?: HallazgoPDF[],
+  returnBlobUrl: boolean | 'blob' = false
+): Promise<void | string | Blob> {
   const isFinal = tipo === 'final';
   const infPrelim = tipo === 'preliminar' ? informe as InformePreliminarPDF : undefined;
   const infFinal = tipo === 'final' ? informe as InformeFinalPDF : undefined;
@@ -1186,6 +1201,7 @@ export async function exportarPDFInformeAuditoria(
     }
   }
 
+  if (returnBlobUrl === 'blob') return doc.output('blob') as Blob;
   if (returnBlobUrl) return doc.output('bloburl') as string;
   let filename = '';
   if (tipo === 'preliminar') filename = `Informe_Preliminar_${auditoria.codigo}.pdf`;

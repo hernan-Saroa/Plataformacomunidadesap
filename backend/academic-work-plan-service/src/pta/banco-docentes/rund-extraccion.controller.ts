@@ -20,6 +20,7 @@ export class RundExtraccionController {
     return actor;
   }
   @Get()
+  @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   @Header('Cache-Control', 'private, no-store')
   async list(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: any) {
     return { success:true, data:await this.service.list(id,this.actor(req)) };
@@ -34,8 +35,8 @@ export class RundExtraccionController {
     return { success:true, data:await this.service.discard(id,suggestion,body?.motivo,this.actor(req)) };
   }
   @Post('sugerencias/:suggestionId/confirmar')
-  async confirm(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Req() req: any) {
-    return { success:true, data:await this.service.confirm(id,suggestion,this.actor(req)) };
+  async confirm(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Req() req: any, @Body() body?: any) {
+    return { success:true, data:await this.service.confirm(id,suggestion,this.actor(req),body) };
   }
   @Post('trabajos/:jobId/descartar')
   async discardJob(@Param('id', new ParseUUIDPipe()) id: string, @Param('jobId', new ParseUUIDPipe()) job: string, @Body() body: any, @Req() req: any) {

@@ -7,6 +7,13 @@ import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
 import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
+/** Archivo que viaja adjunto en el correo (formato de notifications-service /api/v1/emails/send). */
+export interface AdjuntoCorreo {
+  filename: string;
+  contentBase64: string;
+  contentType?: string;
+}
+
 @Injectable()
 export class NotificacionesService implements OnModuleInit {
   constructor(
@@ -665,7 +672,7 @@ export class NotificacionesService implements OnModuleInit {
   /**
    * Crea una nueva notificación
    */
-  async create(createDto: CreateNotificacionDto): Promise<Notificacion> {
+  async create(createDto: CreateNotificacionDto, opciones?: { adjuntos?: AdjuntoCorreo[] }): Promise<Notificacion> {
     const tipoOriginal = String(createDto.tipoNotificacion || '');
     const tipoBd = this.mapTipoNotificacionParaBd(tipoOriginal, createDto.metadata);
     const metadataConEvento = {
@@ -774,7 +781,7 @@ export class NotificacionesService implements OnModuleInit {
     console.log(`[NotificacionesService.create] ✅ Notificación creada exitosamente: ID=${saved.id}, usuarioId=${usuarioIdFinal}, estado=${saved.estado}`);
 
     // Enviar notificación según preferencias del usuario
-    await this.enviarNotificacion(saved);
+    await this.enviarNotificacion(saved, opciones?.adjuntos);
 
     return saved;
   }
@@ -783,7 +790,7 @@ export class NotificacionesService implements OnModuleInit {
    * Envía la notificación según las preferencias del usuario.
    * Respeta tanto el canal global como la configuración por tipo de notificación.
    */
-  private async enviarNotificacion(notificacion: Notificacion): Promise<void> {
+  private async enviarNotificacion(notificacion: Notificacion, adjuntos?: AdjuntoCorreo[]): Promise<void> {
     const preferencias = await this.preferenciaRepository.findOne({
       where: { usuarioId: notificacion.usuarioId },
     });
@@ -814,7 +821,7 @@ export class NotificacionesService implements OnModuleInit {
         try {
           const emailDestino = await this.obtenerEmailUsuario(notificacion.usuarioId);
           if (emailDestino) {
-            await this.enviarCorreoReal(notificacion, emailDestino);
+            await this.enviarCorreoReal(notificacion, emailDestino, adjuntos);
             notificacion.enviadaEmail = true;
             notificacion.fechaEnvioEmail = new Date();
             console.log(`[Notificaciones] ✉️ Email enviado según canal para ${notificacion.usuarioId}`);
@@ -842,7 +849,7 @@ export class NotificacionesService implements OnModuleInit {
         const emailDestino = await this.obtenerEmailUsuario(notificacion.usuarioId);
         if (emailDestino) {
           try {
-            await this.enviarCorreoReal(notificacion, emailDestino);
+            await this.enviarCorreoReal(notificacion, emailDestino, adjuntos);
             notificacion.enviadaEmail = true;
             notificacion.fechaEnvioEmail = new Date();
             notificacion.estado = EstadoNotificacion.ENVIADA;
@@ -904,6 +911,29 @@ export class NotificacionesService implements OnModuleInit {
     }
   }
 
+  /**
+   * Dirección del botón "Ver en la Plataforma" (EFDS-2350).
+   * La base es la URL pública configurada o, si el ambiente no la tiene, la dirección desde
+   * la que se generó la notificación (metadata.urlPlataforma). Los accionUrl internos de la
+   * campana (p. ej. "control-interno-gestion::<id>") no son rutas web: llevan al inicio.
+   */
+  private urlBotonCorreo(notificacion: Notificacion): string | null {
+    const accion = notificacion.accionUrl;
+    if (!accion) return null;
+    if (/^https?:\/\//i.test(accion)) return accion;
+
+    const base = (
+      this.configService.get<string>('APP_URL') ||
+      this.configService.get<string>('PUBLIC_APP_URL') ||
+      this.configService.get<string>('FRONTEND_URL') ||
+      String((notificacion.metadata as any)?.urlPlataforma || '') ||
+      (this.configService.get<string>('NODE_ENV', 'development') !== 'production' ? 'http://localhost:3000' : '')
+    ).replace(/\/+$/, '');
+    if (!base) return null;
+
+    return accion.startsWith('/') ? `${base}${accion}` : `${base}/`;
+  }
+
   private resolveNotificationsBaseUrl(): string {
     const configuredUrl =
       this.configService.get<string>('NOTIFICATIONS_SERVICE_URL') ||
@@ -923,14 +953,18 @@ export class NotificacionesService implements OnModuleInit {
   /**
    * Solicita el envío de correo al microservicio central de notificaciones.
    */
-  private async enviarCorreoReal(notificacion: Notificacion, emailDestino: string): Promise<void> {
+  private async enviarCorreoReal(
+    notificacion: Notificacion,
+    emailDestino: string,
+    adjuntos?: AdjuntoCorreo[],
+  ): Promise<void> {
     const notificationsBaseUrl = this.resolveNotificationsBaseUrl();
 
     console.log(`[Notificaciones] 🚀 Solicitando envío de email a ${emailDestino} mediante ${notificationsBaseUrl}: ${notificacion.titulo}`);
-    
+
     try {
-      const appUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
-      
+      const urlBoton = this.urlBotonCorreo(notificacion);
+
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
           <div style="background-color: #003DA5; color: white; padding: 20px; text-align: center;">
@@ -939,9 +973,9 @@ export class NotificacionesService implements OnModuleInit {
           <div style="padding: 30px; color: #374151;">
             <h2 style="color: #003DA5; margin-top: 0;">${notificacion.titulo}</h2>
             <p style="font-size: 16px; line-height: 1.5;">${notificacion.mensaje}</p>
-            ${notificacion.accionUrl ? `
+            ${urlBoton ? `
               <div style="margin-top: 30px; text-align: center;">
-                <a href="${appUrl}${notificacion.accionUrl}" 
+                <a href="${urlBoton}"
                    style="background-color: #F97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
                   Ver en la Plataforma
                 </a>
@@ -963,6 +997,7 @@ export class NotificacionesService implements OnModuleInit {
           subject: notificacion.titulo,
           text: notificacion.mensaje,
           html,
+          ...(adjuntos?.length ? { attachments: adjuntos } : {}),
         }),
       });
 
@@ -971,7 +1006,10 @@ export class NotificacionesService implements OnModuleInit {
         throw new Error(`notifications-service ${response.status}: ${errorBody || 'sin detalle'}`);
       }
 
-      console.log(`[Notificaciones] ✅ Solicitud de correo aceptada para ${emailDestino}`);
+      console.log(
+        `[Notificaciones] ✅ Solicitud de correo aceptada para ${emailDestino}` +
+          (adjuntos?.length ? ` con ${adjuntos.length} adjunto(s)` : ''),
+      );
     } catch (error) {
       const errorMessage = error.cause?.message || error.message;
       console.error(`[Notificaciones] ❌ Error enviando email mediante ${notificationsBaseUrl} a ${emailDestino}:`, errorMessage);
@@ -1424,6 +1462,8 @@ export class NotificacionesService implements OnModuleInit {
     mensaje: string;
     prioridad?: PrioridadNotificacion;
     metadata?: Record<string, unknown>;
+    /** Archivos que se adjuntan al correo (p. ej. el informe preliminar, EFDS-2350) */
+    adjuntos?: AdjuntoCorreo[];
   }): Promise<boolean> {
     const userId = await this.resolverIdUserPorEmail(params.responsableAreaEmail);
     if (!userId) {
@@ -1448,7 +1488,7 @@ export class NotificacionesService implements OnModuleInit {
           esNotificacionAuditado: true,
         },
         accionUrl: this.urlPortalControlInterno(params.auditoriaId),
-      });
+      }, { adjuntos: params.adjuntos });
       return true;
     } catch (err) {
       console.error(

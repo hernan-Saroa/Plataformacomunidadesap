@@ -29,7 +29,8 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
   let failAudit: boolean;
   const query = jest.fn(async (sql: string, params?: any[]) => {
     if (sql.includes('auth.role_permissions')) {
-      return params?.[0].includes('CONSULTOR_PTA') ? [{ code: RUND_PERMISSIONS.VIEW }] : [];
+      return params?.[0].some((role: string) => ['CONSULTOR_PTA', 'GESTION_PROFESORAL', 'ADMIN'].includes(role))
+        ? [{ code: RUND_PERMISSIONS.VIEW }] : [];
     }
     if (sql.includes('INSERT INTO')) {
       if (failAudit) throw new Error('audit unavailable');

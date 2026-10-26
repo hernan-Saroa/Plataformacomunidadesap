@@ -31,7 +31,7 @@ import { AdminParametrosUMI } from './AdminParametrosUMI';
 import { ReportesGestionView } from './ReportesGestionView';
 
 type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias' | 'parametros' | 'reportes';
-type VistaMantenimiento = 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes';
+type VistaMantenimiento = 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes' | 'historicoPlanner';
 
 interface Toast {
   tipo: 'exito' | 'error';

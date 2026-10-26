@@ -1,18 +1,15 @@
-import { IsString, IsNotEmpty, IsIn, IsOptional } from 'class-validator';
+import { IsString, Matches, MaxLength, IsOptional, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateMensajeDto {
   @ApiProperty({ description: 'Contenido del mensaje', example: '¿Cuáles son los requisitos de grado?' })
   @IsString()
-  @IsNotEmpty()
+  @Matches(/\S/)
+  @MaxLength(2000)
   contenido: string;
-
-  @ApiPropertyOptional({ description: 'Rol del remitente', enum: ['user', 'assistant', 'system'], default: 'user' })
-  @IsOptional()
-  @IsIn(['user', 'assistant', 'system'])
-  rol?: 'user' | 'assistant' | 'system';
 
   @ApiPropertyOptional({ description: 'Metadatos adicionales del mensaje' })
   @IsOptional()
+  @IsObject()
   metadatos?: Record<string, any>;
 }

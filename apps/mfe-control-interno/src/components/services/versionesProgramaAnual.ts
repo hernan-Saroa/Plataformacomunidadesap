@@ -20,6 +20,8 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
     territorial: f.territorial || 'Sede Central',
     // Columna "Unidad Auditable" (EFDS-2316)
     unidadesAuditables: unidadesParaExportar(f.nombre, f.unidadesAuditables),
+    // Debajo del nombre en la columna A (EFDS-2367)
+    dependenciasAuditadas: f.dependenciasAuditadas || [],
     responsable: f.responsableArea,
     // Columnas "Responsable" (Auditor Líder) y "Equipo Auditor" (EFDS-2257)
     // undefined en versiones guardadas antes de EFDS-2257: la plantilla usa lo que traían

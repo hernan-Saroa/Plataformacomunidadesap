@@ -275,7 +275,7 @@ export function PortalUsuarioAuditado({ onVolver }: PortalUsuarioAuditadoProps) 
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">Mis Auditorías</h1>
                   <p className="text-xs text-gray-600">
-                    Portal del Usuario Auditado — Control Interno de Gestión
+                    Portal del Usuario Auditado — Control Interno
                   </p>
                 </div>
               </div>

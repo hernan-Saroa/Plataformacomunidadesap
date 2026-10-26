@@ -13,7 +13,6 @@ import { PortalTransaccional } from './PortalTransaccional';
 import { MapPin, Mail, Phone } from 'lucide-react';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import { NotificationsProvider } from '../esap/NotificationsContext';
-import { ChatbotFloatingButton } from '../esap/ChatbotFloatingButton';
 
 interface PortalDashboardProps {
   userName: string;
@@ -273,13 +272,6 @@ export function PortalDashboard({
         </div>
       </footer>
 
-      {/* Botón Flotante ChatBot Asistente Virtual */}
-      <ChatbotFloatingButton
-        isActive={true}
-        userEmail={userEmail}
-        userId={userPersonId}
-        userName={userName}
-      />
     </div>
     </NotificationsProvider>
   );

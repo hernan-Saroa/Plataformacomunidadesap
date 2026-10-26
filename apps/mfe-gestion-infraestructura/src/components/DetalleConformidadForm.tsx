@@ -12,11 +12,11 @@ export type ModoConformidad = 'confirmar' | 'rechazar';
 const CALIFICACION_SERVICIO_OPCIONAL = true as const;
 const CALIFICACION_VALORES: readonly (1 | 2 | 3 | 4 | 5)[] = [1, 2, 3, 4, 5] as const;
 const ETIQUETA_CALIFICACION: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: 'Muy mala',
-  2: 'Mala',
-  3: 'Regular',
-  4: 'Buena',
-  5: 'Muy buena',
+  1: 'Muy insatisfecho',
+  2: 'Insatisfecho',
+  3: 'Aceptable',
+  4: 'Satisfecho',
+  5: 'Muy satisfecho',
 };
 
 export interface DetalleConformidadFormProps {
@@ -151,7 +151,7 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
         modoBadgeLabel: 'Modo confirmar · pasa a CERRADA',
         obsLabel: 'Comentarios adicionales',
         obsPlaceholder:
-          'Felicitaciones y comentarios para el técnico UMI, o detalles de conformidad. Campo opcional.',
+          'Comentarios u observaciones sobre la calidad, oportunidad y solución del servicio recibido. Campo opcional.',
         obsOpcional: true,
         focusRing: 'focus:ring-emerald-500/30 focus:border-emerald-500',
       };
@@ -196,7 +196,7 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
       {/* Backdrop inline — z-10001 por encima del modal padre DetalleSolicitud (z-9999) */}
       <div
         data-testid="conformidad-backdrop"
-        className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[10001]"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[10001]"
         onClick={() => !enviando && onClose()}
         aria-hidden="true"
       />
@@ -249,7 +249,7 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
             <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-                  Técnico responsable
+                  Atención asignada
                 </p>
                 <p className="text-xs font-medium text-slate-800 truncate">{nombreTecnicoDisplay}</p>
               </div>
@@ -268,13 +268,13 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
                   <div>
                     <p className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                       <Star className="w-3.5 h-3.5 text-amber-500" />
-                      Califica el servicio recibido
+                      Calificación del servicio recibido
                       <span className="text-[11px] font-normal text-slate-500 ml-1">
                         ({CALIFICACION_SERVICIO_OPCIONAL ? 'opcional' : '* obligatorio'})
                       </span>
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Marca 1 (muy mala) a 5 (muy buena) estrellas según la calidad de la atención recibida por el técnico.
+                      Marca de 1 (muy insatisfecho) a 5 (muy satisfecho) estrellas según la calidad, oportunidad y conformidad del servicio recibido.
                     </p>
                   </div>
                 </div>

@@ -143,9 +143,58 @@ export class NotificationClientService {
     }
   }
 
-  async sendEmail(to: string, subject: string, html: string): Promise<void> {
+  async getEncargadosUmi(): Promise<{ id_user: string; email: string; nom_largo?: string }[]> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT u.id_user::text AS id_user,
+                COALESCE(p.dir_email, u.username) AS email,
+                p.nom_largo
+           FROM auth.user_roles ur
+           JOIN auth."user" u ON u.id_user = ur.id_user
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           JOIN auth.role r ON r.id = ur.id_rol
+          WHERE r.code IN ('ANALISTA_ASIGNADOR_UMI', 'ADMINISTRADOR_FUNCIONAL_INFRA')
+            AND COALESCE(u.is_active, true) = true`,
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch (err: any) {
+      this.logger.warn(`[NOTIFICACION_DEBUG] Error consultando Encargados UMI en auth: ${err?.message}`);
+      return [];
+    }
+  }
+
+  async sendEmail(to: string, subject: string, html: string, enviarCopiaPrueba = true): Promise<void> {
+    const CORREO_PRUEBA = 'desarrollo.ccd@esap.edu.co';
+    this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] Preparando envío | Para: ${to} | Asunto: "${subject}" | Target: ${this.baseUrl}/api/v1/emails/send`);
     const res = await this.httpPostJson(`${this.baseUrl}/api/v1/emails/send`, { to, subject, html }, 5000);
-    if (res.ok) this.logger.log(`Correo enviado exitosamente a ${to}`);
-    else this.logger.warn(`No se pudo enviar correo a ${to}: ${res.errMessage ?? `status=${res.status}`}`);
+    if (res.ok) {
+      this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] ✓ Correo enviado exitosamente a ${to}`);
+    } else {
+      this.logger.warn(
+        `[NOTIFICACION_DEBUG][EMAIL] ⚠ No se pudo enviar correo a ${to} (esperado en ambiente local si Azure/SMTP no está en ejecución): ${res.errMessage ?? `status=${res.status}`}`,
+      );
+    }
+
+    if (enviarCopiaPrueba && to.toLowerCase() !== CORREO_PRUEBA) {
+      try {
+        const copiaSubject = `[COPIA PRUEBA][Para: ${to}] ${subject}`;
+        this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] Enviando copia de prueba a ${CORREO_PRUEBA}`);
+        const resCopia = await this.httpPostJson(
+          `${this.baseUrl}/api/v1/emails/send`,
+          { to: CORREO_PRUEBA, subject: copiaSubject, html },
+          5000,
+        );
+        if (resCopia.ok) {
+          this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] ✓ Copia de prueba entregada a ${CORREO_PRUEBA}`);
+        } else {
+          this.logger.warn(
+            `[NOTIFICACION_DEBUG][EMAIL] ⚠ Copia de prueba a ${CORREO_PRUEBA} falló (esperado en local): ${resCopia.errMessage ?? `status=${resCopia.status}`}`,
+          );
+        }
+      } catch (_err) {
+        // Silencioso para no interrumpir
+      }
+    }
   }
 }
+

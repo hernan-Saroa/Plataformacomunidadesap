@@ -17,6 +17,8 @@ import {
   Link2,
   Monitor,
   Info,
+  UserCheck,
+  Tag,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -101,6 +103,12 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [descripcion, setDescripcion] = useState<string>('');
   const [evidenciaInicialUrl, setEvidenciaInicialUrl] = useState<string>('');
 
+  // ===== Fase 3: Bien asignado a funcionario =====
+  const [esBienAsignadoFuncionario, setEsBienAsignadoFuncionario] = useState<boolean>(false);
+  const [nombreFuncionarioBienAsignado, setNombreFuncionarioBienAsignado] = useState<string>('');
+  const [placaInventarioBien, setPlacaInventarioBien] = useState<string>('');
+  const [soporteBienAsignadoUrl, setSoporteBienAsignadoUrl] = useState<string>('');
+
   const [archivos, setArchivos] = useState<ArchivoPendiente[]>([]);
   const [arrastrando, setArrastrando] = useState<boolean>(false);
   const [subeFiles, setSubeFiles] = useState<boolean>(false);
@@ -128,6 +136,8 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const salonRef = useRef<HTMLInputElement>(null);
   const tipoMantenimientoRef = useRef<HTMLSelectElement>(null);
   const categoriaRef = useRef<HTMLSelectElement>(null);
+  const funcionarioRef = useRef<HTMLInputElement>(null);
+  const placaRef = useRef<HTMLInputElement>(null);
   const descripcionRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -306,14 +316,22 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     if (tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(idCategoria)) {
       nuevosErrores.idCategoria = 'Seleccione la categoría de servicio';
     }
+    if (esBienAsignadoFuncionario) {
+      if (!nombreFuncionarioBienAsignado.trim() || nombreFuncionarioBienAsignado.trim().length < 3) {
+        nuevosErrores.nombreFuncionarioBienAsignado = 'Ingrese el nombre del funcionario o custodio (mínimo 3 caracteres)';
+      }
+      if (!placaInventarioBien.trim() || placaInventarioBien.trim().length < 2) {
+        nuevosErrores.placaInventarioBien = 'Ingrese la placa de inventario o serial del bien (mínimo 2 caracteres)';
+      }
+    }
     if (!descripcion.trim() || descripcion.trim().length < 10) {
       nuevosErrores.descripcion = 'Describa la solicitud con al menos 10 caracteres';
     }
     setErrores(nuevosErrores);
     if (Object.keys(nuevosErrores).length > 0) {
       const ordenCampos = ubicacionManual
-        ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'idCategoria', 'descripcion']
-        : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'idCategoria', 'descripcion'];
+        ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
+        : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'];
       const primerCampoConError = ordenCampos.find((campo) => !!nuevosErrores[campo]);
       const refsPorCampo: Record<string, React.RefObject<HTMLElement | null>> = {
         tipoAtencion: tipoAtencionRef,
@@ -325,6 +343,8 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         salon: salonRef,
         tipoMantenimiento: tipoMantenimientoRef,
         idCategoria: categoriaRef,
+        nombreFuncionarioBienAsignado: funcionarioRef,
+        placaInventarioBien: placaRef,
         descripcion: descripcionRef,
       };
       const refObjetivo = primerCampoConError ? refsPorCampo[primerCampoConError] : null;
@@ -459,6 +479,10 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         evidenciaInicialUrl: evidenciaInicialUrl.trim() || undefined,
         uploadedEvidenciaIds: uploadedEvidenciaIds.length > 0 ? uploadedEvidenciaIds : undefined,
         tipoAtencion: tipoAtencion as 'FISICA' | 'TECNOLOGICA',
+        esBienAsignadoFuncionario,
+        nombreFuncionarioBienAsignado: esBienAsignadoFuncionario ? nombreFuncionarioBienAsignado.trim() : undefined,
+        placaInventarioBien: esBienAsignadoFuncionario ? placaInventarioBien.trim() : undefined,
+        soporteBienAsignadoUrl: esBienAsignadoFuncionario && soporteBienAsignadoUrl.trim() ? soporteBienAsignadoUrl.trim() : undefined,
       };
       const resultado = await infraestructuraService.createMantenimiento(payload);
       archivos.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
@@ -1041,6 +1065,96 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                   placeholder="Ej: Frente al ascensor, Edificio A, al lado de la biblioteca..."
                   className={inputClase('ubicacionDetalle')}
                 />
+              </div>
+
+              {/* ===== Fase 3: Bien asignado a funcionario ===== */}
+              <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-all hover:border-slate-300">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-xl transition-colors ${esBienAsignadoFuncionario ? 'bg-amber-100 text-amber-700' : 'bg-slate-200/70 text-slate-500'}`}>
+                      <UserCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <label htmlFor="toggle-bien-funcionario" className="text-sm font-semibold text-slate-800 cursor-pointer select-none">
+                        ¿El mantenimiento se realiza sobre un bien asignado a un funcionario?
+                      </label>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                        Active esta opción si el equipo de cómputo, mobiliario u otro activo tiene asignación individual/custodia a un funcionario o contratista.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                    <input
+                      id="toggle-bien-funcionario"
+                      type="checkbox"
+                      checked={esBienAsignadoFuncionario}
+                      onChange={(e) => setEsBienAsignadoFuncionario(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {esBienAsignadoFuncionario && (
+                  <div className="mt-4 pt-4 border-t border-slate-200/80 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={etiquetaCampoClase('nombreFuncionarioBienAsignado')}>
+                        <span className="inline-flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          Nombre del Funcionario / Custodio
+                        </span>
+                        <span className="text-rose-500 ml-1">*</span>
+                      </label>
+                      <input
+                        ref={funcionarioRef}
+                        type="text"
+                        value={nombreFuncionarioBienAsignado}
+                        onChange={(e) => setNombreFuncionarioBienAsignado(e.target.value)}
+                        placeholder="Ej: Ing. Carlos Pérez / Juan Gómez"
+                        className={inputClase('nombreFuncionarioBienAsignado')}
+                        aria-invalid={!!errores.nombreFuncionarioBienAsignado}
+                      />
+                      {errorCampo('nombreFuncionarioBienAsignado')}
+                    </div>
+
+                    <div>
+                      <label className={etiquetaCampoClase('placaInventarioBien')}>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-slate-400" />
+                          Placa de Inventario / Serial
+                        </span>
+                        <span className="text-rose-500 ml-1">*</span>
+                      </label>
+                      <input
+                        ref={placaRef}
+                        type="text"
+                        value={placaInventarioBien}
+                        onChange={(e) => setPlacaInventarioBien(e.target.value)}
+                        placeholder="Ej: ESAP-INV-2024-0084 / S/N 847291"
+                        className={inputClase('placaInventarioBien')}
+                        aria-invalid={!!errores.placaInventarioBien}
+                      />
+                      {errorCampo('placaInventarioBien')}
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className={labelClase}>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Link2 className="w-3.5 h-3.5 text-slate-400" />
+                          Enlace / Soporte de entrega o asignación
+                        </span>
+                        <span className="text-slate-400 font-normal ml-2">(opcional)</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={soporteBienAsignadoUrl}
+                        onChange={(e) => setSoporteBienAsignadoUrl(e.target.value)}
+                        placeholder="https://drive.google.com/... o enlace a acta de entrega"
+                        className={inputClase('soporteBienAsignadoUrl')}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-2">
