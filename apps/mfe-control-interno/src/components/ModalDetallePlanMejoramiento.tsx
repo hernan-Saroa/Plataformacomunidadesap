@@ -2793,13 +2793,18 @@
 
                                             const registrar = async () => {
                                               setRegistrando(true);
+                                              // Responsable: el usuario de la sesión (EFDS-2352)
+                                              const u = (window as any).__esap_auth_cache || {};
+                                              const nombreSesion =
+                                                u.nombre || u.nombre_completo || u.fullName || u.full_name || u.person?.full_name ||
+                                                `${u.person?.first_name || ''} ${u.person?.last_name || ''}`.trim() || u.email || undefined;
                                               try {
                                                 await controlInternoService.registrarSeguimientoPeriodico(planId, {
                                                   periodicidad: form.periodicidad,
                                                   tipoControl: form.tipoControl,
                                                   fechaCorte: form.fechaCorte,
-                                                  responsableId: 'auditor',
-                                                  responsableNombre: 'Equipo Auditor OCI',
+                                                  responsableId: String(u.id || u.userId || ''),
+                                                  responsableNombre: nombreSesion,
                                                   resumen: form.resumen,
                                                 });
                                                 toast.success('Seguimiento periódico registrado');
