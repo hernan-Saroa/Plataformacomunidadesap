@@ -671,6 +671,8 @@ export function CronogramaAuditoriasPremium({
         territorial: a.territorial || 'Sede Central',
         // Columna "Unidad Auditable" (EFDS-2316)
         unidadesAuditables: unidadesParaExportar(a.nombre, a.unidadesAuditables),
+        // Debajo del nombre en la columna A (EFDS-2367)
+        dependenciasAuditadas: (a as any).dependenciasAuditadas || [],
         responsable: responsableAuditado, // responsable del área
         observaciones: a.observaciones || '',
         auditorLider: { nombre: liderNombre },

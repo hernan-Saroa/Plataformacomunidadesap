@@ -473,7 +473,7 @@ export function PortalTransaccional({
       },
       {
         id: 'control-interno-gestion',
-        nombre: 'Control Interno de Gestión',
+        nombre: 'Control Interno',
         codigo: 'OCIG-001',
         descripcion: 'Responde hallazgos, sube documentos y comunícate con el equipo auditor',
         icon: <Shield style={{ width: 18, height: 18 }} />,

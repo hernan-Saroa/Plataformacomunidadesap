@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canUploadRundField, hasRundData } from './rundEvidenceData';
+import { canUploadRundField, groupRundEvidenceOptions, hasRundData } from './rundEvidenceData';
 
 describe('Datos necesarios para soportar una fila RUND', () => {
   it.each([null, undefined, '', '   ', '—', 'No aplica', ' N/A ', 'Sin información', false])('rechaza un dato ausente: %s', value => {
@@ -26,5 +26,29 @@ describe('Datos necesarios para soportar una fila RUND', () => {
   });
   it('permite la autorización que se acredita con el propio documento', () => {
     expect(canUploadRundField('TRANSVERSAL', { tipoSoporte: 'autorizacion_habeas_data' }, { docenteId: '1' })).toBe(true);
+  });
+
+  it('reúne todos los campos del soporte compartido sin duplicar archivos ni mezclar bloques', () => {
+    const options = [
+      { block: 'IDENTIDAD', type: 'documento_identidad', label: 'Número', fields: [{ label: 'Número', value: '1234' }] },
+      { block: 'IDENTIDAD', type: 'documento_identidad', label: 'Nombre', fields: [{ label: 'Nombre', value: 'Docente' }] },
+      { block: 'IDENTIDAD', type: 'documento_identidad', label: 'Nombre', fields: [{ label: 'Nombre', value: 'Docente' }] },
+      { block: 'VINCULACION', type: 'contrato', label: 'Acto', fields: [{ label: 'Acto', value: 'Resolución 123' }] },
+      { block: 'VINCULACION', type: 'contrato', label: 'Fechas', fields: [{ label: 'Fechas', value: '2026-01-01 - Indefinido' }] },
+      { block: 'FORMACION', type: 'diploma_pregrado', label: 'Pregrado', fields: [{ label: 'Pregrado', value: 'Administración' }] },
+      { block: 'FORMACION', type: 'diploma_maestria', label: 'Maestría', fields: [{ label: 'Maestría', value: 'Gestión' }] },
+      { block: 'OTRO', type: 'contrato', label: 'Contrato de otro bloque', fields: [{ label: 'Otro', value: 'Otro valor' }] },
+      { block: 'IDENTIDAD', type: '', label: 'Edad calculada' },
+    ];
+    const original = JSON.stringify(options);
+    const groups = groupRundEvidenceOptions(options);
+    expect(groups.map(group => [group.block, group.type])).toEqual([
+      ['IDENTIDAD', 'documento_identidad'], ['VINCULACION', 'contrato'],
+      ['FORMACION', 'diploma_pregrado'], ['FORMACION', 'diploma_maestria'], ['OTRO', 'contrato'],
+    ]);
+    expect(groups[0].label).toBe('Documento de identidad');
+    expect(groups[0].fields).toEqual([{ label: 'Número', value: '1234' }, { label: 'Nombre', value: 'Docente' }]);
+    expect(groups[1].fields).toHaveLength(2);
+    expect(JSON.stringify(options)).toBe(original);
   });
 });

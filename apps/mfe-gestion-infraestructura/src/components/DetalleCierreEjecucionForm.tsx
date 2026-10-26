@@ -200,7 +200,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
       {/* Backdrop inline — z-10001 por encima del modal padre DetalleSolicitud (z-9999) */}
       <div
         data-testid="cierre-backdrop"
-        className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[10001]"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[10001]"
         onClick={() => !ejecutandoCierre && !subiendoEvidencia && onClose()}
         aria-hidden="true"
       />

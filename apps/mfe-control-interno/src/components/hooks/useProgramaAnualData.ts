@@ -457,6 +457,7 @@ export interface AuditoriaCreateData {
   areaObjetivo?: string;
   procesoAuditado?: string;
   unidadesAuditables?: string[]; // Unidades auditables que cubre (EFDS-2316)
+  dependenciasAuditadas?: string[]; // Dependencias que se auditan (EFDS-2367)
   alcance?: string;
   auditorLider?: string;
   auditorAsignado?: string;
@@ -714,6 +715,7 @@ export function useProgramaAnualData(
         areaObjetivo: data.areaObjetivo,
         procesoAuditado: data.procesoAuditado,
         unidadesAuditables: data.unidadesAuditables ?? [],
+        dependenciasAuditadas: data.dependenciasAuditadas ?? [],
         alcance: data.alcance,
         auditorLider: data.auditorLider || 'Por asignar',
         auditorAsignado: data.auditorAsignado,

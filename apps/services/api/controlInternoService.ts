@@ -835,8 +835,12 @@ class ControlInternoService {
   /**
    * Genera informe preliminar y notifica al área (actualiza hallazgos a NOTIFICADO)
    */
-  async generarInformePreliminar(auditoriaId: string): Promise<{ generado: boolean; hallazgosNotificados: number; mensaje: string }> {
-    return client.post<any>(`/auditorias/${auditoriaId}/informe-preliminar/generar`, {});
+  async generarInformePreliminar(
+    auditoriaId: string,
+    /** PDF ya subido que el correo al área auditada lleva adjunto (EFDS-2350) */
+    documentoInformeId?: string,
+  ): Promise<{ generado: boolean; hallazgosNotificados: number; informeAdjunto?: boolean; mensaje: string }> {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-preliminar/generar`, documentoInformeId ? { documentoInformeId } : {});
   }
 
   /**

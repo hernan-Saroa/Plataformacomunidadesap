@@ -12,7 +12,7 @@ services:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
         VITE_API_URL: ${FRONTEND_VITE_API_URL:-https://comunidadesap.esap.edu.co/services}
-        VITE_ONLYOFFICE_URL: ${FRONTEND_VITE_ONLYOFFICE_URL:-https://comunidadesap.esap.edu.co}
+        VITE_ONLYOFFICE_URL: ${FRONTEND_VITE_ONLYOFFICE_URL:-/onlyoffice}
         VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
         VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
@@ -35,6 +35,8 @@ services:
       - "127.0.0.1:9000:80"
     environment:
       - JWT_ENABLED=false
+      - ALLOW_PRIVATE_IP_ADDRESS=true
+      - ALLOW_META_IP_ADDRESS=true
     volumes:
       - onlyoffice-data-prod:/var/www/onlyoffice/Data
       - onlyoffice-logs-prod:/var/log/onlyoffice
@@ -247,7 +249,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3004
-      CERTIFICATION_EMAIL_SAFE_MODE: 'false'
+      CERTIFICATION_EMAIL_SAFE_MODE: "false"
       NOTIFICATION_SERVICE_URL: http://notifications-service-prod:3009
 
       DB_HOST: db
@@ -310,6 +312,8 @@ services:
       AUTH_SERVICE_URL: http://auth-service-prod:3001
       NOTIFICATION_SERVICE_URL: http://notifications-service-prod:3009
       NOTIFICATIONS_SERVICE_URL: http://notifications-service-prod:3009
+      # Traslado directo (Enviar a Jurídica) al Centro de Comunicaciones; sin esto cae a localhost:3008 y falla en silencio
+      LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service-prod:3008
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-https://comunidadesap.esap.edu.co}}
       FRONTEND_URL: ${FRONTEND_URL:-https://comunidadesap.esap.edu.co}
       DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
@@ -468,7 +472,7 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
-      EMAIL_REDIRECT_TO: ''
+      EMAIL_REDIRECT_TO: ""
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
