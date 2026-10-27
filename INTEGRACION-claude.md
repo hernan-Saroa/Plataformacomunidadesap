@@ -1217,3 +1217,12 @@ Capturas: `C:\Users\Tomas\Claude\envio-1-disponibilidad.png`, `envio-2-docente.p
 
 ### 30.7 · Pruebas sobre la rama integrada y estado de la base
 PA backend 272/272 · PTA backend 1147 pasan, 1 omitida (+2 de la lista vacía) · MFE PA 51/51 · MFE Programas Académicos 28/28 · datos/catálogo 14/14. La base local quedó **sin periodos**, con los mismos conteos conservados (427 asignaturas, 14 programas, 35 núcleos, 390 núcleos de docentes, 365 docentes del RUND, 29 aulas, 341 usuarios, 441 personas) y sin fixtures QA. El Excel **no** se cargó: las asignaturas de la base siguen como estaban; lo carga Tomás.
+
+## 31. Periodo personalizado al crear (26 de octubre)
+
+Pedido de Tomás que faltaba en las pantallas: al crear un periodo no solo se elige semestre 1 o 2; hay una tercera opción, **Personalizado (lo defino yo)**, con nombre y código que define quien lo crea. El backend ya lo soportaba (§25.2); faltaban los dos formularios.
+
+- **Programas Académicos → Periodos → Crear Periodo** (`GestionPeriodos.tsx`): el selector tiene «Semestre 1», «Semestre 2» y «Personalizado». Con Personalizado aparecen **Nombre del periodo** (p. ej. «Interperiodo 2027») y **Código** (el año, un guion y de 1 a 5 letras o dígitos; no puede ser 1 ni 2, que son los semestres). Envía `{ tipo: 'personalizado', anio, codigo, nombre, fechaInicio, fechaFin }`; el semestre sigue enviando `{ anio, semestre, fechaInicio, fechaFin }` como antes.
+- **Programación Académica → Periodos** (`GestionOfertas.tsx`): el mismo selector y los mismos campos; tras crear, deja seleccionado el periodo nuevo para importar el catálogo.
+- **Editar un personalizado** (Programas Académicos): año y semestre quedan bloqueados («Personalizado») y la actualización solo envía fechas y fase, que es lo que acepta el backend; el código no se edita.
+- Pruebas nuevas (`GestionPeriodos.personalizado.test.tsx`, 4): las tres opciones; el personalizado se envía con nombre y código en mayúsculas y sin semestre; un código «1» no se envía y avisa; el semestre sigue igual. Verificado con servidor real en las dos pantallas (2049-INT y 2049-VER, ya borrados).
