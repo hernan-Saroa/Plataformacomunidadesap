@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import {
@@ -32,12 +32,15 @@ export function ConcertacionBandeja({ idPeriodo, firmaSimulada }: { idPeriodo?: 
   const [devolviendo, setDevolviendo] = useState<string | null>(null);
   const [comentario, setComentario] = useState('');
   const [accion, setAccion] = useState<Accion | null>(null);
+  // Periodo del que ya se cargó la lista: solo un periodo distinto la reemplaza por «Cargando». Si se
+  // refresca tras una firma, la lista y el modal siguen montados (si no, el modal reaparecía en la verificación).
+  const cargadoDe = useRef<string | undefined | null>(null);
 
   useEffect(() => {
     let vigente = true;
-    setCargando(true);
+    if (cargadoDe.current !== idPeriodo) setCargando(true);
     getBandejaConcertacion(idPeriodo)
-      .then((r) => { if (vigente) { setItems(r); setError(''); } })
+      .then((r) => { if (vigente) { setItems(r); setError(''); cargadoDe.current = idPeriodo; } })
       .catch((e) => { if (vigente) setError(e?.message || 'No se pudo cargar la bandeja.'); })
       .finally(() => { if (vigente) setCargando(false); });
     return () => { vigente = false; };
@@ -60,8 +63,8 @@ export function ConcertacionBandeja({ idPeriodo, firmaSimulada }: { idPeriodo?: 
         {firmaSimulada && <span className="text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">Firma simulada (pruebas)</span>}
       </div>
       <p className="text-xs text-slate-500">
-        Orden del flujo: el docente envía → el área académica revisa y firma → la jefatura aprueba y firma.
-        Cualquiera de los dos puede devolverla al docente con un comentario.
+        Orden del flujo: el programador envía → el área académica revisa y firma → la jefatura aprueba y firma →
+        el docente acepta y firma. Cualquiera de los dos puede devolverla al programador con un comentario.
       </p>
       {aviso && <p role="alert" className="text-sm text-red-700">{aviso}</p>}
       {items.length === 0 && <p className="text-sm text-slate-500">No tiene concertaciones por decidir.</p>}
@@ -104,7 +107,7 @@ export function ConcertacionBandeja({ idPeriodo, firmaSimulada }: { idPeriodo?: 
               {c.puede.devolver && devolviendo !== c.idConcertacion && (
                 <button type="button" onClick={() => { setDevolviendo(c.idConcertacion); setComentario(''); }}
                   className="px-4 py-2 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-bold">
-                  Devolver al docente
+                  Devolver al programador
                 </button>
               )}
             </div>

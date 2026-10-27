@@ -997,9 +997,14 @@ class ControlInternoService {
    */
   async generarInformePreliminar(
     auditoriaId: string,
-    documentoInformeId?: string,
-  ): Promise<{ generado: boolean; hallazgosNotificados: number; informeAdjunto?: boolean; mensaje: string }> {
-    return client.post<any>(`/auditorias/${auditoriaId}/informe-preliminar/generar`, documentoInformeId ? { documentoInformeId } : {});
+    /** PDF del informe: el backend lo guarda en los documentos y lo adjunta al correo del área auditada (EFDS-2350) */
+    informe?: File,
+  ): Promise<{ generado: boolean; hallazgosNotificados: number; informeAdjunto?: boolean; areaNotificada?: boolean; motivoNoNotificada?: string; mensaje: string }> {
+    const url = `/auditorias/${auditoriaId}/informe-preliminar/generar`;
+    if (!informe) return client.post<any>(url, {});
+    const formData = new FormData();
+    formData.append('informe', informe);
+    return client.upload<any>(url, formData);
   }
 
   /**

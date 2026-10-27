@@ -44,6 +44,7 @@ import {
   Plane,
   Bot,
   SlidersHorizontal,
+  FolderArchive,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { ESAPLogo } from '../assets/ESAPLogo';
@@ -51,7 +52,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'chatbot';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'trd' | 'chatbot';
 
 export interface ActiveModuleItem {
   code: string;
@@ -147,6 +148,7 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'gestion-infraestructura': { name: 'Gestión de Infraestructura', description: 'Sedes, espacios físicos y mantenimiento' },
   'dependencias': { name: 'Dependencias', description: 'Catálogo transversal ESAP' },
   'ajustes-generales': { name: 'Ajustes Generales', description: 'Salario mínimo y festivos nacionales' },
+  'trd': { name: 'Retención Documental (TRD)', description: 'TRD, TVD, series y subseries' },
   'chatbot': { name: 'ChatBot Institucional', description: 'Asistente virtual y consultas inteligentes' },
 };
 
@@ -201,14 +203,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       const aliases = getModuleAliases(module);
       return hasAllModules || aliases.some((alias) => assignedModules.includes(alias));
     }
-    if (userRole?.includes('SUPER_ADMIN') && (module === 'modules' || module === 'dependencias' || module === 'ajustes-generales')) return true;
+    if (userRole?.includes('SUPER_ADMIN') && (module === 'modules' || module === 'dependencias' || module === 'ajustes-generales' || module === 'trd')) return true;
 
-    // 'dependencias' y 'ajustes-generales' son transversales a la plataforma
-    // (consumidos por viáticos, estructura organizacional, control interno, etc.).
+    // 'dependencias', 'ajustes-generales' y 'trd' son transversales a la plataforma
+    // (consumidos por viáticos, estructura organizacional, control interno, disciplinario, etc.).
     // Para que estén disponibles en "Configuración General" sin requerir alta
     // explícita en auth.module ni asignación por rol, se muestran a cualquier
     // usuario con sesión activa. La autorización fina la hace el JwtAuthGuard.
-    if (module === 'dependencias' || module === 'ajustes-generales') {
+    if (module === 'dependencias' || module === 'ajustes-generales' || module === 'trd') {
       if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) {
         return true;
       }
@@ -1182,6 +1184,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               {/* Configuración General — agrupador transversal */}
               {(
                 canShowModule('ajustes-generales') ||
+                canShowModule('trd') ||
                 canShowModule('modules') ||
                 canShowModule('dependencias')
               ) && (
@@ -1200,6 +1203,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         className="overflow-hidden"
                       >
                         {renderMenuItem('ajustes-generales', <SlidersHorizontal className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                        {renderMenuItem('trd', <FolderArchive className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('dependencias', <BriefcaseBusiness className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       </motion.div>

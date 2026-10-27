@@ -83,6 +83,13 @@ export function FirmaOtpModal({
     return () => clearInterval(t);
   }, [paso]);
 
+  // Registrada la firma, el modal se cierra solo tras un instante para que se alcance a leer.
+  useEffect(() => {
+    if (paso !== 'completado') return;
+    const t = setTimeout(() => cerrarRef.current(), 1800);
+    return () => clearTimeout(t);
+  }, [paso]);
+
   // Escape cierra, salvo mientras se guarda la decisión.
   useEffect(() => {
     const alTeclear = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape' && paso !== 'guardando') cerrarRef.current(); };

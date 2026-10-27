@@ -54,7 +54,7 @@ export class PublicacionController {
   @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async publicar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirPublicar(req);
-    return { success: true, data: await this.publicacion.publicar(idPeriodo, await this.niveles.de(req)) };
+    return { success: true, data: await this.publicacion.publicar(idPeriodo, await this.niveles.programables(req)) };
   }
 
   /** POST /publicaciones/:idPeriodo/retirar — retira la de sus niveles si nadie tomó franjas. */
@@ -62,7 +62,7 @@ export class PublicacionController {
   @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async retirar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirPublicar(req);
-    return { success: true, data: await this.publicacion.retirar(idPeriodo, await this.niveles.de(req)) };
+    return { success: true, data: await this.publicacion.retirar(idPeriodo, await this.niveles.programables(req)) };
   }
 
   /** GET /publicaciones/:idPeriodo/pendientes-cierre — franjas de sus niveles que impiden cerrar. */

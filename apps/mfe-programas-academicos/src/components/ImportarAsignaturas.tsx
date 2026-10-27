@@ -96,7 +96,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
         setEstructuraStatus(statusRes);
 
         if (data && Array.isArray(data)) {
-          const activo = data.find((p: any) => p.estado === 'en_curso');
+          const activo = data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
           // Si se entró desde el botón "Importar" de un período específico, la carga
           // se hace a ESE período (cada período tiene su propio botón). Solo si no se
           // indicó ninguno se usa el período activo como predeterminado.

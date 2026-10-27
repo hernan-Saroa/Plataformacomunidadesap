@@ -1,0 +1,771 @@
+{
+  "exportadoEn": "2026-10-25T19:20:18.120Z",
+  "base": {
+    "host": "127.0.0.1",
+    "puerto": 55432,
+    "nombre": "esap_db",
+    "soloLectura": true
+  },
+  "asignaturas": 427,
+  "programas": 14,
+  "plantilla": "carga-valida-catalogo.xlsx",
+  "sha256": "08c4638cc8df85d9e470492ac5a0043defa6319672cb1872513088ec0ca8b764",
+  "diferenciasFrentePlantilla": [
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00002",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Desarrollo Y Gestión Territorial"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00003",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Finanzas Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00004",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Finanzas Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00005",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00006",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00007",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00008",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00013",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00014",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00015",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00021",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00022",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00023",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00024",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00026",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00027",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00030",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Electivas Generales"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00031",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00035",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Finanzas Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00036",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Finanzas Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00038",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00041",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00042",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00058",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Finanzas Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00059",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00060",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00061",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00062",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Complementaria"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00063",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Finanzas Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00066",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios AP",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00139",
+      "campo": "horas_clase",
+      "anterior": "",
+      "actual": 0
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00146",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Economía Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00147",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00148",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00149",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Desarrollo Y Gestión Territorial"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00150",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00152",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Desarrollo Y Gestión Territorial"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00154",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Economía Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00155",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00156",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00157",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00163",
+      "campo": "nucleo_tematico",
+      "anterior": "Complementaria",
+      "actual": "Formación General"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00170",
+      "campo": "nombre_asignatura",
+      "anterior": "Economia De Lo Publico I",
+      "actual": "Economia De Lo Público I"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00170",
+      "campo": "nombre_base",
+      "anterior": "Economia De Lo Publico I",
+      "actual": "Economia De Lo Público I"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00176",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Organizaciones Públicas"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00177",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00178",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Estado, Gobierno y Sociedad"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00179",
+      "campo": "nucleo_tematico",
+      "anterior": "Nuevo Plan de Estudios APT",
+      "actual": "Economía Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00183",
+      "campo": "nombre_asignatura",
+      "anterior": "Economia De Lo Publico II",
+      "actual": "Economia De Lo Público II"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00183",
+      "campo": "nombre_base",
+      "anterior": "Economia De Lo Publico II",
+      "actual": "Economia De Lo Público II"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00196",
+      "campo": "nombre_asignatura",
+      "anterior": "Gobierno Y Politica Publica",
+      "actual": "Gobierno Y Politica Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00196",
+      "campo": "nombre_base",
+      "anterior": "Gobierno Y Politica Publica",
+      "actual": "Gobierno Y Politica Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00203",
+      "campo": "nombre_asignatura",
+      "anterior": "Problemática Publica Colombiana",
+      "actual": "Problemática Pública Colombiana"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00203",
+      "campo": "nombre_base",
+      "anterior": "Problemática Publica Colombiana",
+      "actual": "Problemática Pública Colombiana"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00218",
+      "campo": "horas_clase",
+      "anterior": "",
+      "actual": 0
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00220",
+      "campo": "nucleo_tematico",
+      "anterior": "Formación General",
+      "actual": "Opción de grado"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00221",
+      "campo": "nucleo_tematico",
+      "anterior": "Formación General",
+      "actual": "Opción de grado"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00224",
+      "campo": "nucleo_tematico",
+      "anterior": "Teoría Económica e Historia",
+      "actual": "Formación integral Y de contexto"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00231",
+      "campo": "nucleo_tematico",
+      "anterior": "Formación integral Y de contexto",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00249",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00250",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00251",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Cuantitativa"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00252",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00253",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Cuantitativa"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00254",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00255",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Formación integral Y de contexto"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00256",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Cuantitativa"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00258",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Formación integral Y de contexto"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00259",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Cuantitativa"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00260",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Formación integral Y de contexto"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00261",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Formación integral Y de contexto"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00262",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00263",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Cuantitativa"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00264",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Cuantitativa"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00265",
+      "campo": "nucleo_tematico",
+      "anterior": "Economía Pública",
+      "actual": "Teoría Económica e Historia"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00269",
+      "campo": "nombre_asignatura",
+      "anterior": "Economía Publica y Política Fiscal",
+      "actual": "Economía Pública y Política Fiscal"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00269",
+      "campo": "nombre_base",
+      "anterior": "Economía Publica y Política Fiscal",
+      "actual": "Economía Pública y Política Fiscal"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00281",
+      "campo": "nombre_asignatura",
+      "anterior": "Teorías y Problemas de la Administración Publica",
+      "actual": "Teorías y Problemas de la Administración Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00281",
+      "campo": "nombre_base",
+      "anterior": "Teorías y Problemas de la Administración Publica",
+      "actual": "Teorías y Problemas de la Administración Pública"
+    },
+    {
+      "hoja": "ASIGNATURAS",
+      "codigo": "ASIG-00427",
+      "campo": "horas_clase",
+      "anterior": "",
+      "actual": 0
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-001",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "pregrado_sede_central"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-001",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Pregrado Sede Central (AP/EP) - Bloque Fijo"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-002",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "pregrado_sede_central"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-002",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Pregrado Sede Central (AP/EP) - Bloque Fijo"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-003",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "pregrado_territorial"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-003",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "APT / Territorial - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-004",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "pregrado_sede_central"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-004",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Pregrado Sede Central (AP/EP) - Bloque Fijo"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-005",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-005",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-006",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-006",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-007",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-007",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-008",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-008",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-009",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-009",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-010",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-010",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-011",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "especializacion"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-011",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Especializacion - 16h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-012",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "maestria"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-012",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Maestria - 12h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-013",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "maestria"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-013",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Maestria - 12h por credito"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-014",
+      "campo": "categoria_horas_circular003",
+      "anterior": "",
+      "actual": "maestria"
+    },
+    {
+      "hoja": "PROGRAMAS",
+      "codigo": "PRO-014",
+      "campo": "descripcion_categoria_circular003",
+      "anterior": "",
+      "actual": "Maestria - 12h por credito"
+    }
+  ]
+}
