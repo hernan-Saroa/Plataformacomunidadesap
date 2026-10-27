@@ -7,7 +7,7 @@ export function rundRequestActor(req: any): RundAccessActor {
   return {
     actorId: String(req?.user?.userId || req?.user?.sub || 'NO_AUTENTICADO'),
     roles: getRequestRoleCodes(req?.user),
-    fullAccess: canViewRundSensitiveData(req?.user),
+    fullAccess: canViewRundSensitiveData(req?.user, req?.rundPermissions),
     ip: req?.ip || req?.socket?.remoteAddress,
   };
 }

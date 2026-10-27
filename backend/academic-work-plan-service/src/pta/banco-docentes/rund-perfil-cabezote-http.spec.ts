@@ -29,13 +29,13 @@ function buildController(overrides: Record<string, any> = {}) {
 
 describe('GET /banco-docentes/:id/cabezote', () => {
   it.each(['ADMIN', 'ADMIN_TERRITORIAL', 'DOCENTE', 'CONSULTOR'])(
-    'oculta el puntaje salarial del cabezote para %s aunque tenga todos los permisos RUND',
+    'oculta el puntaje salarial para %s sin el permiso explícito de datos sensibles',
     async (role) => {
       const { service, controller } = buildController();
 
       const response: any = await controller.getPerfilCabezote(PERFIL.docente_id, undefined, {
         user: { userId: 'lector-1', roles: [role] },
-        rundPermissions: new Set(Object.values(RUND_PERMISSIONS)),
+        rundPermissions: new Set(Object.values(RUND_PERMISSIONS).filter(permission => permission !== RUND_PERMISSIONS.SENSITIVE_VIEW)),
       });
 
       expect(response.data.puntaje_salarial).toBeNull();
@@ -46,6 +46,19 @@ describe('GET /banco-docentes/:id/cabezote', () => {
       ]);
     },
   );
+
+  it.each(['RUND_CARGADOR', 'RUND_APROBADOR'])('permite consultar originales a %s con el permiso explícito', async role => {
+    const { controller, service } = buildController();
+    const response: any = await controller.getPerfilCabezote(PERFIL.docente_id, undefined, {
+      user: { userId: 'encargado-1', roles: [role] },
+      rundPermissions: new Set([RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.SENSITIVE_VIEW]),
+    });
+    expect(response.data.puntaje_salarial).toBe(145.5);
+    expect(response.data.proteccion_datos.acceso_completo).toBe(true);
+    expect(service.logSensitiveDataAccess).toHaveBeenCalledWith([
+      expect.objectContaining({ actorId: 'encargado-1', fullAccess: true }),
+    ]);
+  });
 
   it.each(['GESTION_PROFESORAL', 'SUPER_ADMIN'])('entrega el puntaje completo a %s', async (role) => {
     const { controller } = buildController();

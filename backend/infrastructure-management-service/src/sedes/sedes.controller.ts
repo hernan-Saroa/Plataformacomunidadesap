@@ -20,6 +20,13 @@ export class SedesController {
     return this.sedesService.findAllSedes(flag);
   }
 
+  @Get('jerarquia-completa')
+  @Public()
+  @ApiOperation({ summary: 'Obtener árbol jerárquico de sedes actuales e investigación territorial nacional' })
+  getJerarquiaCompleta() {
+    return this.sedesService.obtenerJerarquiaCompleta();
+  }
+
   @Get('bloques')
   @Public()
   @ApiOperation({ summary: 'Listar todos los bloques/edificios' })

@@ -119,7 +119,7 @@ export interface OfertaCetapGrupo {
   territorial: { codigo: string | null; nombre: string | null; idSeccional: string | null };
 }
 
-async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
+export async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

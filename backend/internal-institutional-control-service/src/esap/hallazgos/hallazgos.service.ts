@@ -6,7 +6,7 @@ import { CreateHallazgoDto } from './dto/create-hallazgo.dto';
 import { UpdateHallazgoDto } from './dto/update-hallazgo.dto';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
-import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { NotificacionesService, AdjuntoCorreo } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
@@ -772,7 +772,11 @@ export class HallazgosService {
    * Notifica hallazgos (actualiza BORRADOR → NOTIFICADO) al generar informe preliminar.
    * Solo los que están en BORRADOR pasan a NOTIFICADO. Los ya en aceptado/ratificado/modificado/retirado no se tocan.
    */
-  async notificarHallazgosAuditoria(auditoriaId: string, usuarioId?: string): Promise<{ count: number; total: number }> {
+  async notificarHallazgosAuditoria(
+    auditoriaId: string,
+    usuarioId?: string,
+    opciones?: { adjuntos?: AdjuntoCorreo[]; urlPlataforma?: string },
+  ): Promise<{ count: number; total: number; areaNotificada: boolean; motivoNoNotificada?: string }> {
     const [pendientes, todos] = await Promise.all([
       this.hallazgoRepository.find({ where: { auditoriaId, estado: HallazgoEstado.BORRADOR } }),
       this.hallazgoRepository.count({ where: { auditoriaId } }),
@@ -791,9 +795,17 @@ export class HallazgosService {
       usuarioId,
     );
 
+    // Si el área auditada no se pudo notificar, la OCI lo ve en pantalla en vez de un "notificada" falso (EFDS-2350)
+    let areaNotificada = false;
+    let motivoNoNotificada: string | undefined;
     try {
       const auditoria = await this.cargarAuditoria(auditoriaId);
-      if (auditoria?.responsableAreaEmail) {
+      const correoResponsable = String(auditoria?.responsableAreaEmail || '').trim();
+      if (!auditoria || !correoResponsable) {
+        motivoNoNotificada = 'la auditoría no tiene responsable del área auditada con correo';
+      } else if (!(await this.notificacionesService.resolverIdUserPorEmail(correoResponsable))) {
+        motivoNoNotificada = `${correoResponsable} no corresponde a ningún usuario activo de la plataforma`;
+      } else {
         const n = pendientes.length;
         const mensajeHallazgos =
           n > 0
@@ -801,8 +813,8 @@ export class HallazgosService {
             : todos > 0
               ? `Los hallazgos de esta auditoría ya estaban en trámite. Revise el estado en el portal.`
               : `No hay hallazgos registrados aún; el área será informada cuando se publiquen.`;
-        await this.notificacionesService.notificarAuditadoPortal({
-          responsableAreaEmail: auditoria.responsableAreaEmail,
+        areaNotificada = await this.notificacionesService.notificarAuditadoPortal({
+          responsableAreaEmail: correoResponsable,
           responsableAreaNombre: auditoria.responsableAreaNombre,
           auditoriaId: auditoria.id,
           auditoriaCodigo: auditoria.codigo,
@@ -817,13 +829,21 @@ export class HallazgosService {
             hallazgosNotificados: n,
             totalHallazgos: todos,
             plazoDiasHabiles: 5,
+            ...(opciones?.urlPlataforma ? { urlPlataforma: opciones.urlPlataforma } : {}),
           },
+          // El informe preliminar va adjunto al correo del área auditada (EFDS-2350)
+          adjuntos: opciones?.adjuntos,
         });
+        if (!areaNotificada) motivoNoNotificada = `no se pudo crear la notificación para ${correoResponsable}`;
       }
     } catch (notifErr: any) {
       console.error('[HallazgosService] Error notificando informe preliminar al auditado:', notifErr.message);
+      motivoNoNotificada = `error al notificar: ${notifErr.message}`;
+    }
+    if (motivoNoNotificada) {
+      console.warn(`[HallazgosService] Informe preliminar de ${auditoriaId} sin notificar al área: ${motivoNoNotificada}`);
     }
 
-    return { count: pendientes.length, total: todos };
+    return { count: pendientes.length, total: todos, areaNotificada, motivoNoNotificada };
   }
 }

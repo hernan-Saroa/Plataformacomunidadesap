@@ -1075,6 +1075,45 @@ if (fechaQuejaRaw) {
     }
 
     /**
+     * Compartir el FUID (EI-FO-003) por correo electrónico como archivo adjunto.
+     */
+    async compartirFuidPorCorreo(payload: {
+        items: any[];
+        header?: any;
+        emailDestinatario: string;
+        mensaje?: string;
+        filename?: string;
+    }): Promise<{ success: boolean; message: string; filename: string }> {
+        const restPath = `/disciplinary-processes/fuid/share`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    }
+
+    /**
      * Descargar documento del expediente
      */
     async downloadDocument(processId: string, documentId: string, filename: string): Promise<void> {

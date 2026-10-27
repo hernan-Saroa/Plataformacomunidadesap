@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { GlobalChatbotProvider } from './components/chatbot/GlobalChatbotProvider';
 import { useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './components/portal/LandingPage';
 import { LoginPage } from './components/portal/LoginPage';
@@ -1169,6 +1170,15 @@ export default function App() {
 
   return (
     <NotificacionesProvider>
+      <GlobalChatbotProvider
+        apiBaseUrl={config.API_BASE_URL}
+        user={isAuthenticated && !isRestoringSession && userData ? {
+          id: usuarioActual?.id || userData.personId || userData.email,
+          email: userData.email,
+          name: userData.name,
+        } : undefined}
+        onLogin={handleLoginClick}
+      >
       <ErrorBoundary>
         <style>{`
         [data-sonner-toaster] { 
@@ -1332,6 +1342,7 @@ export default function App() {
           </div>
         )}
       </ErrorBoundary>
+      </GlobalChatbotProvider>
     </NotificacionesProvider >
   );
 

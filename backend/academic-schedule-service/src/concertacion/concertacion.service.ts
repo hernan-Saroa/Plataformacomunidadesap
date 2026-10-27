@@ -26,7 +26,17 @@ import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma
 import { decide, normalizarSeccional, PermisosPtaService, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
 
-export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA';
+/** APROBADA: solo filas del orden anterior. Diagrama: INTEGRACION-claude.md §23.1. */
+export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'POR_ACEPTAR' | 'ACEPTADA' | 'NOVEDAD' | 'DEVUELTA' | 'APROBADA';
+
+/** Tipos de novedad que puede reportar el docente (EFDS-2374). */
+export const TIPOS_NOVEDAD = ['investigacion', 'movilidad', 'perfil', 'otra'] as const;
+
+/** Estados en los que la foto está en manos de otros: sus franjas no se reasignan. */
+export const ESTADOS_EN_CURSO: readonly EstadoConcertacion[] = ['ENVIADA', 'REVISADA', 'POR_ACEPTAR'];
+
+/** Estados que el docente ve en «Mi programación»: lo anterior es interno. */
+const ESTADOS_DEL_DOCENTE: readonly EstadoConcertacion[] = ['POR_ACEPTAR', 'ACEPTADA', 'NOVEDAD', 'APROBADA'];
 
 interface FilaConcertacion {
   id_concertacion: string;
@@ -40,20 +50,21 @@ interface FilaConcertacion {
 }
 
 /**
- * Concertación de la docencia — EFDS-2315.
+ * Concertación de la docencia — EFDS-2315, en el ORDEN NUEVO de EFDS-2374 (HU EFDS-2371).
  *
- * Igual a la concertación del PTA, con sus roles y su orden:
- *   1. el DOCENTE envía su docencia del periodo y firma  → ENVIADA
- *   2. los REVISORES requeridos revisan y firman        → REVISADA
- *   3. el APROBADOR aprueba y firma                      → APROBADA
- *   (2 o 3) cualquiera de ellos puede DEVOLVER con comentario → DEVUELTA;
- *   el docente corrige y vuelve a enviar.
+ *   1. el PROGRAMADOR envía lo asignado al docente            → ENVIADA
+ *   2. los REVISORES requeridos revisan y firman             → REVISADA
+ *   3. el APROBADOR aprueba y firma                           → POR_ACEPTAR
+ *   4. el DOCENTE acepta y firma                              → ACEPTADA → franjas APROBADA → PTA
+ *      o reporta una NOVEDAD (tipo + justificación)           → NOVEDAD (vuelve al programador)
+ *   (2 o 3) revisor o aprobador pueden DEVOLVER con comentario → DEVUELTA (vuelve al programador)
+ * El docente no modifica nada: acepta o reporta. Diagrama: INTEGRACION-claude.md §23.1.
  * Una concertación por (docente, periodo, nivel): pregrado y posgrado se
  * deciden por separado, como `academica_pregrado`/`academica_posgrado` del PTA.
  *
  * Lo firmado es la FOTO de la docencia al enviar (franjas y horas, con su
- * huella). Si las franjas cambian antes de aprobar, la aprobación se rechaza y
- * hay que volver a enviar: nadie aprueba algo distinto de lo que firmó el docente.
+ * huella). Si las franjas cambian antes de aprobar o aceptar, se rechaza y hay
+ * que volver a enviar: nadie aprueba ni acepta algo distinto de lo enviado.
  *
  * ⚠️ Apagada por defecto (configuracion.ts): toda escritura se rechaza.
  */
@@ -130,33 +141,70 @@ export class ConcertacionService {
 
   // ── Docente ────────────────────────────────────────────────────────────────
 
-  /** Concertaciones del docente en el periodo, con su estado y comentario. */
+  /**
+   * «Mi programación» (EFDS-2374): las concertaciones del docente desde que se
+   * aprobaron por dentro. ENVIADA, REVISADA y DEVUELTA son internas y no aparecen.
+   */
   async delDocente(idDocente: string, periodoRef: string) {
     return this.dataSource.query(
       `SELECT c.id_concertacion AS "idConcertacion", c.nivel, c.estado, c.horas::float AS horas,
-              c.comentario, c.updated_at AS "actualizadaEn",
+              c.franjas, c.comentario, c.updated_at AS "actualizadaEn",
+              (SELECT json_build_object('tipo', n.tipo, 'justificacion', n.justificacion, 'creadaEn', n.creada_en)
+                 FROM "academic-schedule".concertacion_novedad n
+                WHERE n.id_concertacion = c.id_concertacion AND n.huella = c.huella
+                ORDER BY n.creada_en DESC LIMIT 1) AS novedad,
               (SELECT COALESCE(json_agg(json_build_object('rol', f.rol, 'firmadoEn', f.firmado_en, 'modoOtp', f.modo_otp)
                         ORDER BY f.firmado_en), '[]'::json)
                  FROM "academic-schedule".concertacion_firma f WHERE f.id_concertacion = c.id_concertacion) AS firmas
          FROM "academic-schedule".concertacion_docencia c
-        WHERE c.id_docente = $1 AND c.periodo_ref = $2
+        WHERE c.id_docente = $1 AND c.periodo_ref = $2 AND c.estado = ANY($3::text[])
         ORDER BY c.nivel`,
-      [idDocente, periodoRef],
+      [idDocente, periodoRef, ESTADOS_DEL_DOCENTE],
     );
   }
 
   /**
-   * El docente envía su docencia del periodo y firma. Una concertación por nivel
-   * con docencia. Rechaza si tiene franjas devueltas sin resolver.
+   * Concertaciones de los niveles que el programador asigna, con lo que le
+   * devolvieron (comentario) o le reportó el docente (novedad).
+   */
+  async delProgramador(niveles: readonly NivelAcademico[], periodoRef: string) {
+    return this.dataSource.query(
+      `SELECT c.id_concertacion AS "idConcertacion", c.nivel, c.estado, c.horas::float AS horas,
+              p.num_identificacion AS documento, p.nom_largo AS docente,
+              jsonb_array_length(c.franjas) AS "numFranjas", c.comentario, c.updated_at AS "actualizadaEn",
+              (SELECT json_build_object('tipo', n.tipo, 'justificacion', n.justificacion, 'creadaEn', n.creada_en)
+                 FROM "academic-schedule".concertacion_novedad n
+                WHERE n.id_concertacion = c.id_concertacion AND n.atendida_en IS NULL
+                ORDER BY n.creada_en DESC LIMIT 1) AS novedad
+         FROM "academic-schedule".concertacion_docencia c
+         JOIN auth.personas p ON p.id_person = c.id_docente
+        WHERE c.periodo_ref = $1 AND c.nivel = ANY($2::text[])
+        ORDER BY (c.estado IN ('NOVEDAD', 'DEVUELTA')) DESC, c.updated_at DESC`,
+      [periodoRef, niveles],
+    );
+  }
+
+  /**
+   * El PROGRAMADOR envía a revisión lo asignado al docente en el periodo (EFDS-2374):
+   * una concertación por nivel con docencia, en los niveles que él asigna. Se puede
+   * reenviar desde DEVUELTA o NOVEDAD (la novedad queda atendida). Sin firma: firman
+   * el aprobador y, al final, el docente.
    */
   async enviar(
-    docente: { idPerson: string; idUser: string; vinculacion: string | null },
+    programador: { idUser: string; niveles: readonly NivelAcademico[] },
+    documento: string,
     periodoRef: string,
-    codigo: unknown,
     token: string | null,
   ) {
     await this.exigirHabilitada();
-    const modo = verificarCodigo(codigo);
+    const filasDocente = await this.dataSource.query(
+      `SELECT p.id_person::text AS "idPerson", d."tipoVinculacion" AS vinculacion
+         FROM auth.personas p
+         JOIN academic_work_plan."Docente" d ON d."personaId" = p.id_person
+        WHERE p.num_identificacion = $1
+        ORDER BY d."updatedAt" DESC NULLS LAST LIMIT 1`, [String(documento ?? '').trim()]);
+    if (!filasDocente.length) throw new NotFoundException(`No existe un docente con documento ${documento} en el RUND.`);
+    const docente = { idPerson: filasDocente[0].idPerson as string, vinculacion: (filasDocente[0].vinculacion ?? null) as string | null };
 
     // Solo en el corte: en un periodo anterior (o legado) la Docencia la sigue
     // aprobando el PTA, y concertarla aquí sería doble aprobación.
@@ -222,22 +270,23 @@ export class ConcertacionService {
       [docente.idPerson, periodoRef]);
     if (devueltas[0].n > 0) {
       throw new ConflictException(
-        `Tiene ${devueltas[0].n} franja(s) devuelta(s) en este periodo: vuelva a tomarlas o suéltelas antes de enviar.`);
+        `El docente tiene ${devueltas[0].n} franja(s) devuelta(s) del flujo anterior en este periodo: reasígnelas antes de enviar.`);
     }
 
-    const fotos = await this.fotoPorNivel(docente.idPerson, docente.vinculacion, periodoRef, token);
+    // Solo los niveles que el programador asigna (RN-08): pregrado no envía posgrado.
+    const fotos = new Map([...(await this.fotoPorNivel(docente.idPerson, docente.vinculacion, periodoRef, token))]
+      .filter(([nivel]) => programador.niveles.includes(nivel)));
     if (fotos.size === 0) {
-      throw new BadRequestException('No tiene franjas tomadas en este periodo para concertar.');
+      throw new BadRequestException('El docente no tiene docencia asignada en este periodo en los niveles que usted asigna.');
     }
 
-    const resultado: string[] = [];
     await this.dataSource.transaction(async (m) => {
       for (const [nivel, foto] of fotos) {
         const previa: FilaConcertacion[] = await m.query(
           `SELECT * FROM "academic-schedule".concertacion_docencia
             WHERE id_docente = $1 AND periodo_ref = $2 AND nivel = $3 FOR UPDATE`,
           [docente.idPerson, periodoRef, nivel]);
-        if (previa.length && previa[0].estado !== 'DEVUELTA') {
+        if (previa.length && !['DEVUELTA', 'NOVEDAD'].includes(previa[0].estado)) {
           throw new ConflictException(
             `La docencia de ${nivel} de este periodo ya fue enviada (estado ${previa[0].estado}).`);
         }
@@ -247,24 +296,26 @@ export class ConcertacionService {
           id = previa[0].id_concertacion;
           await m.query(
             `UPDATE "academic-schedule".concertacion_docencia
-                SET estado = 'ENVIADA', horas = $2, franjas = $3::jsonb, huella = $4, comentario = NULL,
+                SET estado = 'ENVIADA', horas = $2, franjas = $3::jsonb, huella = $4, comentario = NULL, enviada_por = $5,
                     notificada_pta_en = NULL, error_notificacion = NULL, updated_at = NOW()
               WHERE id_concertacion = $1`,
-            [id, foto.horas, JSON.stringify(foto.franjas), huella]);
+            [id, foto.horas, JSON.stringify(foto.franjas), huella, programador.idUser]);
           await m.query(`DELETE FROM "academic-schedule".concertacion_revision WHERE id_concertacion = $1`, [id]);
+          // Reenviar es atender la novedad: vuelve a pasar por revisión con la foto nueva.
+          await m.query(
+            `UPDATE "academic-schedule".concertacion_novedad SET atendida_en = NOW(), atendida_por = $2
+              WHERE id_concertacion = $1 AND atendida_en IS NULL`, [id, programador.idUser]);
         } else {
           const r = await m.query(
-            `INSERT INTO "academic-schedule".concertacion_docencia (id_docente, periodo_ref, nivel, estado, horas, franjas, huella)
-             VALUES ($1, $2, $3, 'ENVIADA', $4, $5::jsonb, $6) RETURNING id_concertacion`,
-            [docente.idPerson, periodoRef, nivel, foto.horas, JSON.stringify(foto.franjas), huella]);
+            `INSERT INTO "academic-schedule".concertacion_docencia (id_docente, periodo_ref, nivel, estado, horas, franjas, huella, enviada_por)
+             VALUES ($1, $2, $3, 'ENVIADA', $4, $5::jsonb, $6, $7) RETURNING id_concertacion`,
+            [docente.idPerson, periodoRef, nivel, foto.horas, JSON.stringify(foto.franjas), huella, programador.idUser]);
           id = r[0].id_concertacion;
         }
-        await this.firmar(m, id, 'docente', docente.idUser, huella, modo);
-        await this.historial(m, id, 'ENVIAR', previa[0]?.estado ?? null, 'ENVIADA', docente.idUser, null);
-        resultado.push(id);
+        await this.historial(m, id, 'ENVIAR', previa[0]?.estado ?? null, 'ENVIADA', programador.idUser, null);
       }
     });
-    return this.delDocente(docente.idPerson, periodoRef);
+    return this.delProgramador(programador.niveles, periodoRef);
   }
 
   /** Foto de la docencia TOMADA del docente en el periodo, separada por nivel. */
@@ -410,22 +461,17 @@ export class ConcertacionService {
       if (!['ENVIADA', 'REVISADA'].includes(c.estado)) throw new ConflictException(`No se puede devolver: la concertación está ${c.estado}.`);
       const ctx = await this.contexto(c.franjas, await this.permisosPta.seccionalesDeUsuario(idUser));
       if (!this.puede(permisos, c.nivel, ctx).devolver) throw new ForbiddenException(`No tiene permiso para decidir la docencia de ${c.nivel}.`);
+      // Vuelve al PROGRAMADOR (EFDS-2374), no al docente: las franjas siguen TOMADA con
+      // su docente y el programador decide qué cambia antes de reenviar.
       await m.query(
         `UPDATE "academic-schedule".concertacion_docencia SET estado = 'DEVUELTA', comentario = $2, updated_at = NOW()
           WHERE id_concertacion = $1`, [id, texto]);
-      // Las franjas de la foto vuelven al docente con el comentario, igual que la
-      // devolución de la jefatura: el portal ya sabe mostrarlas y re-tomarlas.
-      await m.query(
-        `UPDATE "academic-schedule".franja_horaria
-            SET estado = 'DEVUELTA', comentario_jefatura = $3, updated_at = NOW()
-          WHERE id_franja = ANY($1::uuid[]) AND id_docente = $2 AND estado = 'TOMADA'`,
-        [c.franjas.map((f) => f.idFranja), c.id_docente, texto]);
       await this.historial(m, id, 'DEVOLVER', c.estado, 'DEVUELTA', idUser, texto);
     });
     return this.detalle(id);
   }
 
-  async aprobar(id: string, idUser: string, permisos: readonly PermisoPta[], codigo: unknown, token: string | null) {
+  async aprobar(id: string, idUser: string, permisos: readonly PermisoPta[], codigo: unknown) {
     await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
     await this.dataSource.transaction(async (m) => {
@@ -434,22 +480,79 @@ export class ConcertacionService {
       const ctx = await this.contexto(c.franjas, await this.permisosPta.seccionalesDeUsuario(idUser));
       if (!this.puede(permisos, c.nivel, ctx).aprobar) throw new ForbiddenException(`No tiene permiso para aprobar la docencia de ${c.nivel}.`);
 
-      // Lo que se aprueba es lo que firmó el docente: si las franjas cambiaron, no.
-      const ids = c.franjas.map((f) => f.idFranja);
-      const vigentes = await m.query(
-        `SELECT COUNT(*)::int AS n FROM "academic-schedule".franja_horaria
-          WHERE id_franja = ANY($1::uuid[]) AND id_docente = $2 AND estado = 'TOMADA'`, [ids, c.id_docente]);
-      if (vigentes[0].n !== ids.length) {
-        throw new ConflictException('La docencia cambió desde que el docente la envió: debe volver a enviarla.');
-      }
+      // Lo que se aprueba es lo que envió el programador: si las franjas cambiaron, no.
+      await this.exigirFotoVigente(m, c);
+      // Aprobada por dentro: ahora la ve el docente para aceptarla (EFDS-2374). Las
+      // franjas pasan a APROBADA y la decisión va al PTA solo cuando el docente acepta.
+      await m.query(`UPDATE "academic-schedule".concertacion_docencia SET estado = 'POR_ACEPTAR', updated_at = NOW() WHERE id_concertacion = $1`, [id]);
+      await this.firmar(m, id, 'aprobador', idUser, c.huella, modo);
+      await this.historial(m, id, 'APROBAR', c.estado, 'POR_ACEPTAR', idUser, null);
+    });
+    return this.detalle(id);
+  }
+
+  /** Las franjas de la foto siguen con el mismo docente y TOMADA; si no, hay que reenviar. */
+  private async exigirFotoVigente(m: EntityManager, c: FilaConcertacion): Promise<void> {
+    const ids = c.franjas.map((f) => f.idFranja);
+    const vigentes = await m.query(
+      `SELECT COUNT(*)::int AS n FROM "academic-schedule".franja_horaria
+        WHERE id_franja = ANY($1::uuid[]) AND id_docente = $2 AND estado = 'TOMADA'`, [ids, c.id_docente]);
+    if (vigentes[0].n !== ids.length) {
+      throw new ConflictException('La docencia cambió desde que se envió: el programador debe volver a enviarla.');
+    }
+  }
+
+  // ── Docente: aceptar o reportar novedad (EFDS-2374) ────────────────────────
+
+  /** Solo el docente dueño, y solo con la concertación por aceptar. */
+  private async cargarDelDocente(m: EntityManager, id: string, idPerson: string): Promise<FilaConcertacion> {
+    const c = await this.cargar(m, id);
+    if (c.id_docente !== idPerson) throw new ForbiddenException('Esta programación no es suya.');
+    if (c.estado !== 'POR_ACEPTAR') throw new ConflictException(`No se puede decidir: la programación está ${c.estado}.`);
+    return c;
+  }
+
+  /**
+   * El docente ACEPTA su programación aprobada y firma: las franjas pasan a APROBADA
+   * y la decisión, con las firmas del aprobador y del docente, va al PTA.
+   */
+  async aceptar(id: string, docente: { idPerson: string; idUser: string }, codigo: unknown, token: string | null) {
+    await this.exigirHabilitada();
+    const modo = verificarCodigo(codigo);
+    await this.dataSource.transaction(async (m) => {
+      const c = await this.cargarDelDocente(m, id, docente.idPerson);
+      await this.exigirFotoVigente(m, c);
       await m.query(
         `UPDATE "academic-schedule".franja_horaria SET estado = 'APROBADA', comentario_jefatura = NULL, updated_at = NOW()
-          WHERE id_franja = ANY($1::uuid[])`, [ids]);
-      await m.query(`UPDATE "academic-schedule".concertacion_docencia SET estado = 'APROBADA', updated_at = NOW() WHERE id_concertacion = $1`, [id]);
-      await this.firmar(m, id, 'aprobador', idUser, c.huella, modo);
-      await this.historial(m, id, 'APROBAR', c.estado, 'APROBADA', idUser, null);
+          WHERE id_franja = ANY($1::uuid[])`, [c.franjas.map((f) => f.idFranja)]);
+      await m.query(`UPDATE "academic-schedule".concertacion_docencia SET estado = 'ACEPTADA', updated_at = NOW() WHERE id_concertacion = $1`, [id]);
+      await this.firmar(m, id, 'docente', docente.idUser, c.huella, modo);
+      await this.historial(m, id, 'ACEPTAR', c.estado, 'ACEPTADA', docente.idUser, null);
     });
     await this.notificarPta(id, token);
+    return this.detalle(id);
+  }
+
+  /**
+   * El docente reporta una NOVEDAD (tipo + justificación obligatoria). No cambia
+   * nada de la programación: vuelve al programador, que decide y reenvía.
+   */
+  async reportarNovedad(id: string, docente: { idPerson: string; idUser: string }, tipo: unknown, justificacion: unknown) {
+    await this.exigirHabilitada();
+    const t = String(tipo ?? '').trim().toLowerCase();
+    if (!(TIPOS_NOVEDAD as readonly string[]).includes(t)) {
+      throw new BadRequestException(`El tipo de novedad debe ser uno de: ${TIPOS_NOVEDAD.join(', ')}.`);
+    }
+    const texto = String(justificacion ?? '').trim();
+    if (texto.length < 10) throw new BadRequestException('Explique la novedad (mínimo 10 caracteres).');
+    await this.dataSource.transaction(async (m) => {
+      const c = await this.cargarDelDocente(m, id, docente.idPerson);
+      await m.query(
+        `INSERT INTO "academic-schedule".concertacion_novedad (id_concertacion, tipo, justificacion, huella, id_user)
+         VALUES ($1, $2, $3, $4, $5)`, [id, t, texto, c.huella, docente.idUser]);
+      await m.query(`UPDATE "academic-schedule".concertacion_docencia SET estado = 'NOVEDAD', updated_at = NOW() WHERE id_concertacion = $1`, [id]);
+      await this.historial(m, id, 'NOVEDAD', c.estado, 'NOVEDAD', docente.idUser, `${t}: ${texto}`);
+    });
     return this.detalle(id);
   }
 
@@ -462,11 +565,18 @@ export class ConcertacionService {
          JOIN auth.personas p ON p.id_person = c.id_docente
          LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id::text = c.periodo_ref
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo::text = c.periodo_ref
-        WHERE c.id_concertacion = $1 AND c.estado = 'APROBADA'`, [id]))[0];
+        WHERE c.id_concertacion = $1 AND c.estado IN ('ACEPTADA', 'APROBADA')`, [id]))[0];
     if (!c) return;
     const firmas = await this.dataSource.query(
-      `SELECT rol, id_user::text AS "idUser", firmado_en AS "firmadoEn", modo_otp AS "modoOtp"
-         FROM "academic-schedule".concertacion_firma WHERE id_concertacion = $1 ORDER BY firmado_en`, [id]);
+      `SELECT rol, "idUser", "firmadoEn", "modoOtp" FROM (
+         SELECT DISTINCT ON (rol) rol, id_user::text AS "idUser", firmado_en AS "firmadoEn", modo_otp AS "modoOtp"
+           FROM "academic-schedule".concertacion_firma WHERE id_concertacion = $1 AND huella = $2
+          ORDER BY rol, firmado_en DESC) ultimas
+          ORDER BY "firmadoEn", CASE rol WHEN 'revisor' THEN 1 WHEN 'aprobador' THEN 2 ELSE 3 END`,
+      // Solo las firmas de la foto vigente, la última de cada rol: tras una novedad la foto
+      // cambia, y si se reenvía igual, revisor y aprobador firman otra vez la MISMA docencia.
+      // Las anteriores siguen en el registro, pero no viajan al PTA.
+      [id, c.huella]);
     // Una asignatura por GRUPO, con lo que el PTA exige al validar el envío:
     // ids de catálogo, pensum, créditos, fechas del ciclo y horas > 0.
     const horasPorGrupo = new Map<string, number>();

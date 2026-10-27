@@ -2583,6 +2583,236 @@ export class TravelExpensesService implements OnModuleInit {
     };
   }
 
+  /**
+   * RF-SIS-001 — Trazabilidad completa del expediente: historial de estados con
+   * responsable, fecha y decisión, y los documentos soporte cargados.
+   */
+  async obtenerTrazabilidadSolicitud(solicitudId: string) {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const historial: any[] = await this.dataSource.query(
+      `SELECT h.id,
+              h.estado_anterior,
+              h.estado_nuevo,
+              h.comentarios,
+              h.creado_en,
+              h.usuario_id::text AS usuario_id,
+              COALESCE(NULLIF(p.nom_largo, ''), NULLIF(TRIM(CONCAT_WS(' ', p.nom_tercero, p.pri_apellido)), ''), u.username) AS usuario_nombre
+         FROM travel_expenses.solicitudes_historial_estados h
+         LEFT JOIN auth."user" u ON u.id_user = h.usuario_id
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE h.solicitud_id = $1
+        ORDER BY h.creado_en ASC`,
+      [solicitud.id],
+    );
+
+    const documentos: any[] = await this.dataSource.query(
+      `SELECT d.id, d.tipo_documento, t.nombre AS tipo_nombre, d.nombre_archivo_original,
+              d.url_repositorio, d.creado_en
+         FROM travel_expenses.documentos_soporte d
+         LEFT JOIN travel_expenses.tipos_documento_soporte t ON t.codigo = d.tipo_documento
+        WHERE d.solicitud_id = $1
+        ORDER BY d.creado_en ASC`,
+      [solicitud.id],
+    );
+
+    // Soportes de la legalización (Etapa 9) con su resultado de revisión.
+    const soportesLegalizacion: any[] = await this.dataSource.query(
+      `SELECT s.id, t.nombre AS tipo_nombre, s.nombre_archivo_original, s.revision,
+              s.observacion_revision, s.creado_en, s.revisado_en
+         FROM travel_expenses.legalizacion_soportes s
+         JOIN travel_expenses.legalizaciones_comision l ON l.id = s.legalizacion_id
+         LEFT JOIN travel_expenses.tipos_documento_soporte t ON t.id = s.tipo_documento_soporte_id
+        WHERE l.solicitud_id = $1
+        ORDER BY s.creado_en ASC`,
+      [solicitud.id],
+    );
+
+    const etiquetaEstado = (estado: string): string => {
+      const etiqueta = etiquetaEstadoHumana(estado);
+      return etiqueta === estado ? estado.toLowerCase().replace(/_/g, ' ') : etiqueta;
+    };
+
+    const comisionado = solicitud.comisionado;
+    return {
+      solicitudId: solicitud.id,
+      consecutivoUnico: solicitud.consecutivoUnico,
+      estadoActual: solicitud.estadoSolicitud,
+      estadoActualEtiqueta: etiquetaEstado(solicitud.estadoSolicitud),
+      comisionado: comisionado
+        ? {
+            numeroDocumento: comisionado.numeroDocumento,
+            nombre: [
+              comisionado.primerNombre,
+              comisionado.segundoNombre,
+              comisionado.primerApellido,
+              comisionado.segundoApellido,
+            ]
+              .filter(Boolean)
+              .join(' '),
+          }
+        : null,
+      destinoCiudad: solicitud.destinoCiudad,
+      fechaInicio: solicitud.fechaInicio,
+      fechaFin: solicitud.fechaFin,
+      creadoEn: solicitud.creadoEn,
+      fechaRadicacion: solicitud.fechaRadicacion,
+      historial: historial.map((h) => ({
+        id: h.id,
+        fecha: h.creado_en,
+        estadoAnterior: h.estado_anterior,
+        estadoAnteriorEtiqueta: h.estado_anterior ? etiquetaEstado(h.estado_anterior) : null,
+        estadoNuevo: h.estado_nuevo,
+        estadoNuevoEtiqueta: etiquetaEstado(h.estado_nuevo),
+        usuarioId: h.usuario_id,
+        usuarioNombre: h.usuario_nombre || 'Sistema',
+        comentarios: h.comentarios,
+      })),
+      documentos: documentos.map((d) => ({
+        id: d.id,
+        tipoDocumento: d.tipo_nombre || d.tipo_documento,
+        nombreArchivo: d.nombre_archivo_original,
+        urlRepositorio: d.url_repositorio,
+        fechaCarga: d.creado_en,
+      })),
+      soportesLegalizacion: soportesLegalizacion.map((s) => ({
+        id: s.id,
+        tipoDocumento: s.tipo_nombre,
+        nombreArchivo: s.nombre_archivo_original,
+        revision: s.revision,
+        observacionRevision: s.observacion_revision,
+        fechaCarga: s.creado_en,
+        fechaRevision: s.revisado_en,
+      })),
+    };
+  }
+
+  /**
+   * RF-SIS-001 — Expediente descargable en PDF: datos de la comisión, historial
+   * completo de estados y relación de documentos soporte.
+   */
+  async exportarExpedientePdf(solicitudId: string): Promise<Buffer> {
+    const expediente = await this.obtenerTrazabilidadSolicitud(solicitudId);
+    const PDFDocument = require('pdfkit');
+
+    const formatearFechaHora = (valor: Date | string | null | undefined): string => {
+      if (!valor) return 'N/D';
+      return new Date(valor).toLocaleString('es-CO', {
+        timeZone: 'America/Bogota',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    };
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'letter' });
+      const buffers: Buffer[] = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const texto = (valor: string | null | undefined): string => this.sanitizarTextoPdf(valor) || 'N/A';
+
+      const drawSectionTitle = (title: string) => {
+        doc.moveDown(0.6);
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#003DA5').text(title);
+        doc.moveDown(0.3);
+      };
+
+      const drawField = (label: string, value: string) => {
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#333333').text(`${label}: `, { continued: true });
+        doc.font('Helvetica').fillColor('#555555').text(texto(value));
+      };
+
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' });
+      doc.fontSize(9).font('Helvetica').fillColor('#333333');
+      doc.text('Subdirección de Gestión Corporativa · Módulo de Viáticos', { align: 'center' });
+      doc.moveDown(0.5);
+      doc.strokeColor('#003DA5').lineWidth(2).moveTo(50, doc.y).lineTo(562, doc.y).stroke();
+      doc.moveDown(0.8);
+
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111');
+      doc.text(`Expediente de la comisión ${expediente.consecutivoUnico}`, { align: 'center' });
+      doc.fontSize(8).font('Helvetica').fillColor('#777777');
+      doc.text(`Generado el ${formatearFechaHora(new Date())} (hora Colombia)`, { align: 'center' });
+
+      drawSectionTitle('1. Datos de la comisión');
+      drawField('Consecutivo', expediente.consecutivoUnico);
+      drawField('Estado actual', expediente.estadoActualEtiqueta);
+      drawField(
+        'Comisionado',
+        expediente.comisionado
+          ? `${expediente.comisionado.nombre} (${expediente.comisionado.numeroDocumento})`
+          : 'N/A',
+      );
+      drawField('Destino', expediente.destinoCiudad);
+      drawField(
+        'Fechas de la comisión',
+        `${this.formatearFecha(expediente.fechaInicio)} a ${this.formatearFecha(expediente.fechaFin)}`,
+      );
+      drawField('Fecha de creación', formatearFechaHora(expediente.creadoEn));
+      drawField(
+        'Fecha de radicación',
+        expediente.fechaRadicacion ? formatearFechaHora(expediente.fechaRadicacion) : 'Sin radicar',
+      );
+
+      drawSectionTitle('2. Historial de estados');
+      if (expediente.historial.length === 0) {
+        doc.fontSize(9).font('Helvetica').fillColor('#555555').text('Sin movimientos registrados.');
+      }
+      expediente.historial.forEach((h, i) => {
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#333333');
+        doc.text(
+          `${i + 1}. ${formatearFechaHora(h.fecha)} · ${h.estadoAnteriorEtiqueta ? `${h.estadoAnteriorEtiqueta} » ` : ''}${h.estadoNuevoEtiqueta}`,
+        );
+        doc.font('Helvetica').fillColor('#555555');
+        doc.text(`Responsable: ${texto(h.usuarioNombre)}`, { indent: 12 });
+        if (h.comentarios) {
+          doc.text(`Detalle: ${texto(h.comentarios)}`, { indent: 12 });
+        }
+        doc.moveDown(0.3);
+      });
+
+      drawSectionTitle('3. Documentos soporte');
+      if (expediente.documentos.length === 0) {
+        doc.fontSize(9).font('Helvetica').fillColor('#555555').text('Sin documentos cargados.');
+      }
+      expediente.documentos.forEach((d, i) => {
+        doc.fontSize(9).font('Helvetica').fillColor('#555555');
+        doc.text(`${i + 1}. ${texto(d.tipoDocumento)} · ${texto(d.nombreArchivo)} · cargado el ${formatearFechaHora(d.fechaCarga)}`);
+      });
+
+      if (expediente.soportesLegalizacion.length > 0) {
+        drawSectionTitle('4. Soportes de la legalización');
+        expediente.soportesLegalizacion.forEach((s, i) => {
+          doc.fontSize(9).font('Helvetica').fillColor('#555555');
+          doc.text(
+            `${i + 1}. ${texto(s.tipoDocumento)} · ${texto(s.nombreArchivo)} · cargado el ${formatearFechaHora(s.fechaCarga)}` +
+              (s.revision ? ` · revisión: ${texto(s.revision)}` : ''),
+          );
+          if (s.observacionRevision) {
+            doc.text(`Observación: ${texto(s.observacionRevision)}`, { indent: 12 });
+          }
+        });
+      }
+
+      doc.end();
+    });
+  }
+
   async calcularResumenPresupuestalDependencia(
     idDependencia: number | string,
   ): Promise<{
@@ -6055,6 +6285,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
       this.logger.warn(`[registrarVoBoDuracion] Error al guardar historial de estado: ${histErr?.message}`);
     }
 
+    this.notificarResultadoVoBoDuracion(saved, {
+      rechazado: dto.decision === 'RECHAZADO',
+      radicada,
+      tituloInstancia,
+      comentarios: dto.comentarios || '',
+    });
+
     return {
       success: true,
       decision: dto.decision,
@@ -6066,6 +6303,110 @@ if (dto.costoEstimadoTiquete !== undefined) {
       hashSha256: hashVoBo,
       radicada,
     };
+  }
+
+  /**
+   * RF-SIS-002 — Avisa el resultado del visto bueno de duración extendida: al
+   * Enlace si fue rechazado (devolución) y a la Secretaría de Viáticos si con él
+   * la solicitud quedó radicada.
+   */
+  private notificarResultadoVoBoDuracion(
+    solicitud: SolicitudComisionEntity,
+    resultado: { rechazado: boolean; radicada: boolean; tituloInstancia: string; comentarios: string },
+  ): void {
+    const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+    if (resultado.rechazado && solicitud.creadoPorUsuarioId) {
+      const observaciones = resultado.comentarios || 'No se avala la duración extendida solicitada';
+      this.notificationClient
+        .notifyUser(
+          solicitud.creadoPorUsuarioId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVUELTA_VOBO_DURACION',
+            titulo: `Solicitud devuelta por visto bueno de duración: ${consecutivo}`,
+            mensaje: `La solicitud ${consecutivo} fue devuelta porque ${resultado.tituloInstancia} no avaló la duración extendida. Ajuste la duración o la justificación y reenvíela.`,
+            descripcion_corta: `Devuelta por visto bueno de duración · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#D97706',
+            prioridad: 'Alta' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Subsanar solicitud',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              motivo: observaciones,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Solicitud Devuelta por Visto Bueno de Duración: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Visto Bueno de Duración Extendida',
+              subtituloHeader: `Expediente: ${consecutivo}`,
+              mensajePrincipal: `La solicitud de comisión de servicios <strong>${consecutivo}</strong> fue devuelta porque <strong>${resultado.tituloInstancia}</strong> no avaló la duración extendida. Ingrese a la plataforma para ajustar la duración o la justificación y reenviarla.`,
+              consecutivo,
+              nuevoEstado: 'DEVUELTA',
+              observaciones,
+              tipoNovedad: 'WARNING',
+              textoBoton: 'Subsanar en Plataforma',
+            }),
+            text: `La solicitud ${consecutivo} fue devuelta por ${resultado.tituloInstancia} (visto bueno de duración). Observaciones: ${observaciones}.`,
+          },
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `[registrarVoBoDuracion] No se pudo notificar al enlace creador ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
+          ),
+        );
+    }
+
+    if (resultado.radicada) {
+      const esExtemporanea = Boolean(solicitud.extemporanea);
+      this.notificationClient
+        .notifyByPermission(
+          'travel_expenses.general.es_secretario_viaticos',
+          {
+            tipo_notificacion: 'VIATICOS_RADICADA',
+            titulo: `Nueva solicitud para revisión: ${consecutivo}`,
+            mensaje: `El expediente ${consecutivo} (${esExtemporanea ? 'Extemporáneo' : 'Ordinario'}) completó el flujo de firmas y el visto bueno de duración, y requiere asignación/revisión en la bandeja de Secretaría de Viáticos.`,
+            descripcion_corta: `Solicitud ${consecutivo} · ${solicitud.comisionado?.numeroDocumento ?? ''}`,
+            icono: 'FileText',
+            color: '#003DA5',
+            prioridad: esExtemporanea ? 'Alta' : 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver en bandeja',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              esExtemporanea,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Nueva Solicitud para Revisión: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Secretaría de Viáticos',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Bandeja de Entrada — Solicitud Aprobada por Jefaturas',
+              mensajePrincipal: `La solicitud de comisión de servicios completó las firmas de aprobación y el visto bueno de duración extendida, y se encuentra en estado <strong>${solicitud.estadoSolicitud}</strong> para priorización y asignación a analista:`,
+              consecutivo,
+              nuevoEstado: solicitud.estadoSolicitud,
+              tipoNovedad: esExtemporanea ? 'WARNING' : 'INFO',
+              textoBoton: 'Ir a la Bandeja de Entrada',
+            }),
+            text: `La comisión ${consecutivo} completó firmas y visto bueno de duración. Pasa a revisión en la bandeja del Grupo de Viáticos en estado ${solicitud.estadoSolicitud}.`,
+          },
+          'SECRETARIO',
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `[registrarVoBoDuracion] No se pudo notificar a secretarios para solicitud ${solicitud.id}: ${err?.message}`,
+          ),
+        );
+    }
   }
 
   /**
@@ -13562,7 +13903,7 @@ async registrarRP(
       if (guardada.analistaAsignadoId) {
         try {
           await this.notificationClient.notifyByPermission(
-            'travel-expenses.general.es_presupuesto',
+            'travel_expenses.general.es_presupuesto',
             {
               tipo_notificacion: 'VIATICOS_COMISION_COMPROMETIDA_ANALISTA',
               titulo: `Comisión comprometida para análisis: ${consecutivo}`,
@@ -13743,6 +14084,7 @@ async registrarRP(
 
     const procesados: Array<any> = [];
     const errores: Array<any> = [];
+    const comprometidas: SolicitudComisionEntity[] = [];
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -13882,6 +14224,9 @@ async registrarRP(
           diasHabilesPrevios,
           estado: EstadoSolicitud.COMPROMETIDA,
         });
+        if (solicitud.analistaAsignadoId) {
+          comprometidas.push(solicitud);
+        }
 
         this.emitirDisbursementReady(solicitud.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
       } catch (err: any) {
@@ -13893,6 +14238,8 @@ async registrarRP(
       }
     }
 
+    this.notificarComisionesComprometidasCargaMasiva(comprometidas);
+
     return {
       total: items.length,
       exitosos: procesados.length,
@@ -13900,6 +14247,55 @@ async registrarRP(
       procesados,
       errores,
     };
+  }
+
+  /**
+   * RF-SIS-002 — Mismo aviso que el registro individual del RP para cada comisión
+   * comprometida por carga masiva: queda lista para generar la obligación en SIIF.
+   */
+  private notificarComisionesComprometidasCargaMasiva(comisiones: SolicitudComisionEntity[]): void {
+    for (const comision of comisiones) {
+      const consecutivo = comision.consecutivoUnico || comision.id;
+      this.notificationClient
+        .notifyByPermission(
+          'travel_expenses.general.es_presupuesto',
+          {
+            tipo_notificacion: 'VIATICOS_COMISION_COMPROMETIDA_ANALISTA',
+            titulo: `Comisión comprometida para análisis: ${consecutivo}`,
+            mensaje: `La comisión ${consecutivo} ha sido comprometida y requiere generación de obligación en SIIF.`,
+            descripcion_corta: `Comprometida SIIF · ${consecutivo}`,
+            icono: 'Clock',
+            color: '#F59E0B',
+            prioridad: 'Media' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Generar obligación',
+            url_accion: '/viaticos/obligar',
+            datos_adicionales: {
+              solicitudId: comision.id,
+              consecutivoUnico: consecutivo,
+              rol: 'CONTROL_VIATICOS',
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Comisión comprometida para obligación SIIF: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido comprometida y requiere generación de obligación en SIIF para pasar a estado OBLIGADO y quedar lista a Tesorería.`,
+              observaciones: `RP: ${comision.codigoRp} · Valor: $${Number(comision.valorComprometido).toLocaleString('es-CO')}`,
+              nuevoEstado: EstadoSolicitud.COMPROMETIDA,
+              tipoNovedad: 'INFO',
+              textoBoton: 'Generar Obligación',
+            }),
+            text: `La comisión ${consecutivo} ha sido comprometida (RP ${comision.codigoRp}) y requiere generación de obligación en SIIF.`,
+          },
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `[cargaMasivaRp] No se pudo notificar la comisión comprometida ${consecutivo}: ${err?.message}`,
+          ),
+        );
+    }
   }
 
   /**

@@ -2793,13 +2793,18 @@
 
                                             const registrar = async () => {
                                               setRegistrando(true);
+                                              // Responsable: el usuario de la sesión (EFDS-2352)
+                                              const u = (window as any).__esap_auth_cache || {};
+                                              const nombreSesion =
+                                                u.nombre || u.nombre_completo || u.fullName || u.full_name || u.person?.full_name ||
+                                                `${u.person?.first_name || ''} ${u.person?.last_name || ''}`.trim() || u.email || undefined;
                                               try {
                                                 await controlInternoService.registrarSeguimientoPeriodico(planId, {
                                                   periodicidad: form.periodicidad,
                                                   tipoControl: form.tipoControl,
                                                   fechaCorte: form.fechaCorte,
-                                                  responsableId: 'auditor',
-                                                  responsableNombre: 'Equipo Auditor OCI',
+                                                  responsableId: String(u.id || u.userId || ''),
+                                                  responsableNombre: nombreSesion,
                                                   resumen: form.resumen,
                                                 });
                                                 toast.success('Seguimiento periódico registrado');
@@ -2813,9 +2818,9 @@
 
                                             return (
                                               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                                <div className="px-4 py-3 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-gray-200 flex items-center justify-between">
+                                                <div className="px-4 py-3 bg-blue-50 border-b border-gray-200 flex items-center justify-between">
                                                   <h4 className="font-medium text-gray-900 flex items-center gap-2">
-                                                    <Calendar className="w-4 h-4 text-indigo-500" />
+                                                    <Calendar className="w-4 h-4 text-blue-600" />
                                                     Seguimientos Periódicos
                                                     {seguimientos.length > 0 && (
                                                       <span className="ml-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
@@ -2825,7 +2830,8 @@
                                                   </h4>
                                                   <button
                                                     onClick={() => setMostrarFormulario(!mostrarFormulario)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-opacity hover:opacity-90"
+                                                    style={{ backgroundColor: '#2962FF', color: '#fff' }}
                                                   >
                                                     <Plus className="w-3.5 h-3.5" />
                                                     Registrar seguimiento
@@ -2834,14 +2840,14 @@
 
                                                 {/* Formulario de registro */}
                                                 {mostrarFormulario && (
-                                                  <div className="p-4 bg-indigo-50 border-b border-indigo-100">
+                                                  <div className="p-4 bg-blue-50 border-b border-blue-100">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                                                       <div>
                                                         <label className="text-xs font-medium text-gray-700 mb-1 block">Periodicidad</label>
                                                         <select
                                                           value={form.periodicidad}
                                                           onChange={(e) => setForm({ ...form, periodicidad: e.target.value as any })}
-                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                         >
                                                           <option value="TRIMESTRAL">Trimestral (Interno)</option>
                                                           <option value="SEMESTRAL">Semestral (Ente externo)</option>
@@ -2852,7 +2858,7 @@
                                                         <select
                                                           value={form.tipoControl}
                                                           onChange={(e) => setForm({ ...form, tipoControl: e.target.value as any })}
-                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                         >
                                                           <option value="INTERNO">Interno</option>
                                                           <option value="ENTE_EXTERNO">Ente externo</option>
@@ -2864,7 +2870,7 @@
                                                           type="date"
                                                           value={form.fechaCorte}
                                                           onChange={(e) => setForm({ ...form, fechaCorte: e.target.value })}
-                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                         />
                                                       </div>
                                                     </div>
@@ -2875,7 +2881,7 @@
                                                         onChange={(e) => setForm({ ...form, resumen: e.target.value })}
                                                         rows={2}
                                                         placeholder="Resumen del seguimiento periódico..."
-                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                                                       />
                                                     </div>
                                                     <div className="flex justify-end gap-2">
@@ -2888,7 +2894,8 @@
                                                       <button
                                                         onClick={registrar}
                                                         disabled={registrando}
-                                                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                                                        className="px-4 py-1.5 text-sm font-medium rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50"
+                                                        style={{ backgroundColor: '#2962FF', color: '#fff' }}
                                                       >
                                                         {registrando ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
                                                       </button>
@@ -2899,7 +2906,7 @@
                                                 {/* Lista de seguimientos */}
                                                 {cargando ? (
                                                   <div className="flex justify-center py-6">
-                                                    <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                                                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
                                                   </div>
                                                 ) : seguimientos.length === 0 ? (
                                                   <div className="text-center py-8 text-gray-500">
@@ -2932,7 +2939,8 @@
                                                             )}
                                                           </div>
                                                           <span className="text-xs text-gray-500">
-                                                            Corte: {seg.fechaCorte ? new Date(seg.fechaCorte).toLocaleDateString('es-CO') : '—'}
+                                                            {/* La fecha de corte es un día, no un instante: se muestra tal cual para que no corra un día por la zona horaria */}
+                                                            Corte: {seg.fechaCorte ? String(seg.fechaCorte).slice(0, 10).split('-').reverse().join('/') : '—'}
                                                           </span>
                                                         </div>
                                                         <div className="grid grid-cols-4 gap-3 mb-2">
@@ -3423,17 +3431,17 @@
                                             const planEstaCerrado = cierre?.cerrado === true;
 
                                             // ── Cerrar plan ──
+                                            // El backend decide si las acciones permiten el cierre (EFDS-2352) y toma el usuario de la sesión
                                             const cerrarPlan = async () => {
-                                              const accionesIncompletas = plan.acciones.filter(a => a.estado !== 'COMPLETADA' && a.estado !== 'VENCIDA');
-                                              if (accionesIncompletas.length > 0) {
-                                                toast.error(`Hay ${accionesIncompletas.length} acción(es) sin completar. Revise antes de cerrar.`);
-                                                return;
-                                              }
+                                              const u = (window as any).__esap_auth_cache || {};
+                                              const nombreSesion =
+                                                u.nombre || u.nombre_completo || u.fullName || u.full_name || u.person?.full_name ||
+                                                `${u.person?.first_name || ''} ${u.person?.last_name || ''}`.trim() || u.email || undefined;
                                               setProcesando(true);
                                               try {
                                                 await controlInternoService.cerrarPlanMejoramiento(plan.id, {
-                                                  cerradoPorId: 'auditor',
-                                                  cerradoPorNombre: 'Auditor OCI',
+                                                  cerradoPorId: String(u.id || u.userId || ''),
+                                                  cerradoPorNombre: nombreSesion,
                                                   observacionesCierre: observaciones || undefined,
                                                 });
                                                 toast.success('Plan de mejoramiento cerrado exitosamente');

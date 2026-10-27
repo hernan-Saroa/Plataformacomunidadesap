@@ -1,0 +1,170 @@
+[
+  {
+    "id": "4",
+    "codigo": "AF-01",
+    "nombre": "Estado y Poder",
+    "id_programa": null
+  },
+  {
+    "id": "1",
+    "codigo": "AF-02",
+    "nombre": "Organizaciones Públicas",
+    "id_programa": null
+  },
+  {
+    "id": "11",
+    "codigo": "AF-03",
+    "nombre": "Economía Pública",
+    "id_programa": null
+  },
+  {
+    "id": "8",
+    "codigo": "AF-04",
+    "nombre": "Finanzas Públicas",
+    "id_programa": null
+  },
+  {
+    "id": "5",
+    "codigo": "AF-05",
+    "nombre": "Desarrollo y Gestión Territorial",
+    "id_programa": null
+  },
+  {
+    "id": "2",
+    "codigo": "AF-06",
+    "nombre": "Gestión del Desarrollo",
+    "id_programa": null
+  },
+  {
+    "id": "14",
+    "codigo": "AF-07",
+    "nombre": "Cuantitativa",
+    "id_programa": null
+  },
+  {
+    "id": "16",
+    "codigo": "AF-08",
+    "nombre": "Problemática Pública",
+    "id_programa": null
+  },
+  {
+    "id": "9",
+    "codigo": "AF-09",
+    "nombre": "Espacio, Tiempo y Territorio",
+    "id_programa": null
+  },
+  {
+    "id": "13",
+    "codigo": "AF-10",
+    "nombre": "Estado, Gobierno y Sociedad",
+    "id_programa": null
+  },
+  {
+    "id": "3",
+    "codigo": "AF-11",
+    "nombre": "Idiomas",
+    "id_programa": null
+  },
+  {
+    "id": "17",
+    "codigo": "AF-12",
+    "nombre": "Electivas",
+    "id_programa": null
+  },
+  {
+    "id": "15",
+    "codigo": "AF-13",
+    "nombre": "Complementario",
+    "id_programa": null
+  },
+  {
+    "id": "12",
+    "codigo": "AF-14",
+    "nombre": "Formación Específica",
+    "id_programa": null
+  },
+  {
+    "id": "7",
+    "codigo": "AF-15",
+    "nombre": "Teoría Económica e Historia",
+    "id_programa": null
+  },
+  {
+    "id": "18",
+    "codigo": "AF-16",
+    "nombre": "Formación integral y de contexto",
+    "id_programa": null
+  },
+  {
+    "id": "10",
+    "codigo": "AF-17",
+    "nombre": "Opción de grado",
+    "id_programa": null
+  },
+  {
+    "id": "6",
+    "codigo": "AF-18",
+    "nombre": "Formación General",
+    "id_programa": null
+  },
+  {
+    "id": "28",
+    "codigo": "AF-PRG-372",
+    "nombre": "Programa: Alta Dirección del Estado",
+    "id_programa": "372"
+  },
+  {
+    "id": "24",
+    "codigo": "AF-PRG-373",
+    "nombre": "Programa: Derechos Humanos",
+    "id_programa": "373"
+  },
+  {
+    "id": "19",
+    "codigo": "AF-PRG-374",
+    "nombre": "Programa: Finanzas Públicas",
+    "id_programa": "374"
+  },
+  {
+    "id": "22",
+    "codigo": "AF-PRG-375",
+    "nombre": "Programa: Gestión Pública Urbana y Regional",
+    "id_programa": "375"
+  },
+  {
+    "id": "25",
+    "codigo": "AF-PRG-376",
+    "nombre": "Programa: Gerencia Social",
+    "id_programa": "376"
+  },
+  {
+    "id": "23",
+    "codigo": "AF-PRG-377",
+    "nombre": "Programa: Gestión Pública",
+    "id_programa": "377"
+  },
+  {
+    "id": "26",
+    "codigo": "AF-PRG-378",
+    "nombre": "Programa: Proyectos de Desarrollo",
+    "id_programa": "378"
+  },
+  {
+    "id": "20",
+    "codigo": "AF-PRG-379",
+    "nombre": "Programa: Maestría DDHH y Posconflicto",
+    "id_programa": "379"
+  },
+  {
+    "id": "21",
+    "codigo": "AF-PRG-380",
+    "nombre": "Programa: Maestría Administración Pública - Distancia",
+    "id_programa": "380"
+  },
+  {
+    "id": "27",
+    "codigo": "AF-PRG-381",
+    "nombre": "Programa: Maestría Administración Pública - Presencial",
+    "id_programa": "381"
+  }
+]

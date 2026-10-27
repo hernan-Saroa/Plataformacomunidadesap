@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
-  X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight,
+  X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight, Trash2,
   GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info, UserPlus, MailPlus,
-  Filter, ExternalLink, MapPin, ArrowRight, RotateCcw, ChevronDown
+  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, bulkUploadBancoDocentes
@@ -16,6 +17,12 @@ import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
 import { RundExtractionNotificationDetail } from './RundExtractionNotificationDetail';
+import { rundReviewStatus } from '../../../utils/rundReviewStatus';
+import { hasRundPermission } from '../../../../../shared/rund-permissions';
+import { RundRegistrationHistory } from './RundRegistrationHistory';
+import './BancoDocentesStatistics.css';
+import { RundDeleteModal } from './RundDeleteModal';
+import type { RundDeletionSelection } from '../../../services/api/ptaApi';
 
 const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   TC:       { background: '#dbeafe', color: '#1d4ed8' },
@@ -61,7 +68,7 @@ function Badge({ label, code }: { label: string; code: string }) {
 // ── Donut chart SVG simple ────────────────────────────────────────────────────
 function DonutChart({ segments, size = 160 }: { segments: { value: number; color: string; label: string }[]; size?: number }) {
   const total = segments.reduce((s, seg) => s + seg.value, 0);
-  if (total === 0) return <div style={{ width: size, height: size, borderRadius: '50%', background: '#e2e8f0', margin: '0 auto' }} />;
+  if (total === 0) return <div role="img" aria-label="Sin datos" style={{ width: size, height: size, borderRadius: '50%', background: '#e2e8f0', margin: '0 auto' }} />;
 
   const r = size / 2 - 16;
   const cx = size / 2;
@@ -71,6 +78,10 @@ function DonutChart({ segments, size = 160 }: { segments: { value: number; color
 
   segments.forEach((seg, i) => {
     if (seg.value === 0) return;
+    if (seg.value === total) {
+      paths.push(<circle key={i} cx={cx} cy={cy} r={r} fill={seg.color} />);
+      return;
+    }
     const sweep = (seg.value / total) * 2 * Math.PI;
     const x1 = cx + r * Math.cos(angle);
     const y1 = cy + r * Math.sin(angle);
@@ -83,7 +94,7 @@ function DonutChart({ segments, size = 160 }: { segments: { value: number; color
   });
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg role="img" aria-label={segments.map(s => `${s.label}: ${s.value}`).join(', ')} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {paths}
       <circle cx={cx} cy={cy} r={r * 0.55} fill="#fff" />
     </svg>
@@ -117,35 +128,21 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones';
+type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones' | 'trazabilidad';
 
 export function BancoDocentesPTA() {
   const auth = useAuth();
   
-  // Robust super user detection: check both MFE AuthContext AND shell's stored user
-  const isSuperUserFallback = (() => {
-    if (auth.isSuperUser) return true;
-    // Fallback: check shell's stored user from localStorage/sessionStorage
-    try {
-      const raw = localStorage.getItem('esap_user') || sessionStorage.getItem('esap_user');
-      if (raw) {
-        const shellUser = JSON.parse(raw);
-        const email = String(shellUser?.email || '').toLowerCase();
-        if (email === 'desarrollo.ccd@esap.edu.co') return true;
-        const roles = shellUser?.roles || [];
-        if (roles.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'SUPER_ADMIN')) return true;
-      }
-    } catch { /* ignore */ }
-    return false;
-  })();
-
-  const hasPermission = (perm: string) => isSuperUserFallback || auth.hasPermission(perm);
+  const hasPermission = (perm: string) => hasRundPermission({ isSuperUser: auth.isSuperUser,
+    hasAnyPermission: codes => codes.some(code => auth.hasPermission(code)),
+  }, perm);
   
   const [tab, setTab] = useState<Tab>('listado');
   const [docentes, setDocentes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [listStats, setListStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(false);
   const [statsFilterTerritorial, setStatsFilterTerritorial] = useState('');
   const [statsFilterDedicacion, setStatsFilterDedicacion] = useState('');
   const [statsFilterEstado, setStatsFilterEstado] = useState('');
@@ -171,12 +168,24 @@ export function BancoDocentesPTA() {
   });
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
+  const canDelete = hasPermission('banco-docentes.rund.carga') || hasPermission('banco-docentes.rund.manage');
+  const [markedIds, setMarkedIds] = useState<Set<string>>(() => new Set());
+  const [allFiltered, setAllFiltered] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RundDeletionSelection | null>(null);
+  // In all-results mode, markedIds contains the explicitly excluded rows.
+  const markedCount = allFiltered ? Math.max(0, total - markedIds.size) : markedIds.size;
+  const clearMarked = () => { setMarkedIds(new Set()); setAllFiltered(false); };
+  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
+  const markRow = (id: string) => {
+    setMarkedIds(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<any>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const searchTimeout = useRef<any>(null);
   const listadoRequest = useRef(0);
+  const statsRequest = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);  const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -193,7 +202,7 @@ export function BancoDocentesPTA() {
           setPeriodos(data);
           
           // Buscar el periodo activo (estado 'en_curso')
-          const activo = data.find((p: any) => p.estado === 'en_curso');
+          const activo = data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
           if (activo) {
             setFilterPeriodo(activo.codigo);
           } else if (data.length > 0) {
@@ -204,7 +213,7 @@ export function BancoDocentesPTA() {
         })
         .catch((err) => {
           console.error('Error cargando periodos:', err);
-          alert('Error cargando periodos: ' + err.message);
+          toast.error('No fue posible cargar los periodos. Actualiza la página para reintentar.');
           setFilterPeriodo('');
         });
     });
@@ -212,7 +221,10 @@ export function BancoDocentesPTA() {
 
   // ── Carga de stats separada (con filtros propios) ─────────────────────────
   const loadStats = useCallback(async () => {
+    const requestId = ++statsRequest.current;
     setStatsLoading(true);
+    setStatsError(false);
+    setStats(null);
     try {
       const statsRes = await getBancoDocenteStats({
         territorial: statsFilterTerritorial || undefined,
@@ -221,12 +233,20 @@ export function BancoDocentesPTA() {
         // Las estadísticas usan el mismo periodo del encabezado/listado.
         periodoCarga: filterPeriodo || undefined,
       });
-      if (statsRes.success && statsRes.data) setStats(statsRes.data);
-    } catch { /* silencioso */ }
-    finally { setStatsLoading(false); }
+      if (requestId !== statsRequest.current) return;
+      if (!statsRes.success || !statsRes.data) throw new Error('STATS_UNAVAILABLE');
+      setStats(statsRes.data);
+    } catch {
+      if (requestId === statsRequest.current) setStatsError(true);
+    } finally {
+      if (requestId === statsRequest.current) setStatsLoading(false);
+    }
   }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
 
-  useEffect(() => { loadStats(); }, [loadStats]);
+  useEffect(() => {
+    if (tab === 'estadisticas') loadStats();
+    return () => { statsRequest.current++; };
+  }, [loadStats, tab]);
 
   // Las territoriales provienen del catálogo organizacional porque sus IDs y
   // nombres son dinámicos. Los demás filtros usan catálogos válidos del negocio.
@@ -259,11 +279,11 @@ export function BancoDocentesPTA() {
 
   // ── Navegar al listado con filtro preseleccionado ─────────────────────────
   const navigateToListado = (filters: { territorial?: string; dedicacion?: string; estado?: string }) => {
-    // Limpiar todos los filtros del listado primero
-    setFilterTerritorial(filters.territorial || '');
-    setFilterDedicacion(filters.dedicacion || '');
+    // El detalle conserva el universo filtrado que produjo la cifra seleccionada.
+    setFilterTerritorial(filters.territorial ?? statsFilterTerritorial);
+    setFilterDedicacion(filters.dedicacion ?? statsFilterDedicacion);
     setFilterVinculacion('');
-    setFilterEstado(filters.estado || '');
+    setFilterEstado(filters.estado ?? statsFilterEstado);
     setSearch('');
     setPage(1);
     setTab('listado');
@@ -328,7 +348,7 @@ export function BancoDocentesPTA() {
 
   const handleDownloadTemplate = async () => {
     try {
-      downloadBancoDocentesTemplate();
+      await downloadBancoDocentesTemplate();
     } catch {
       showToast('Plantilla no disponible — descargando ejemplo');
     }
@@ -369,7 +389,7 @@ export function BancoDocentesPTA() {
     ? Array.from(
         stats.por_territorial.reduce((acc: Map<string, any>, item: any) => {
           const label = String(item.territorial || 'Sin territorial');
-          const key = statKey('territorial', label);
+          const key = statKey('territorial', label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().replace('nortedesantander', 'nortesantander'));
           const current = acc.get(key) || { key, label, value: 0, id: item.territorial_id || undefined };
           current.value += Number(item.total || 0);
           if (!current.id && item.territorial_id) current.id = item.territorial_id;
@@ -379,9 +399,32 @@ export function BancoDocentesPTA() {
       ).sort((a: any, b: any) => b.value - a.value)
     : [];
 
-  const territorialData = allTerritorialData.slice(0, 20);
+  const territorialData = allTerritorialData;
+  const registeredTerritoriales = allTerritorialData.filter(t => t.label !== 'Sin territorial').length;
+  const hasRecordedGroup = (rows: any[], field: string, missing: string) => (rows || []).some(row =>
+    Number(row.total) > 0 && String(row[field] || '').trim() && String(row[field]).trim().toLocaleLowerCase() !== missing.toLocaleLowerCase());
+  const chartVisibility = {
+    dedicacion: hasRecordedGroup(stats?.por_dedicacion, 'dedicacion', 'SIN_DEDICACION'),
+    categoria: hasRecordedGroup(stats?.por_categoria, 'categoria', 'Sin categoría'),
+    vinculacion: hasRecordedGroup(stats?.por_vinculacion, 'vinculacion', 'Sin vinculación'),
+    formacion: hasRecordedGroup(stats?.por_nivel_formacion, 'nivel_formacion', 'Sin información'),
+    genero: hasRecordedGroup(stats?.por_genero, 'genero', 'No especificado'),
+    edad: hasRecordedGroup(stats?.por_rango_edad, 'rango_edad', 'Sin dato'),
+  };
+  const nucleoData = Array.from<{ label: string; total: number }>((stats?.por_nucleo_tematico || []).reduce((groups: Map<string, { label: string; total: number }>, row: any) => {
+    const label = String(row.nucleo_tematico || '').trim();
+    if (!label || label.toLocaleLowerCase() === 'sin núcleo temático' || Number(row.total) <= 0) return groups;
+    const key = label.toLocaleLowerCase();
+    const group = groups.get(key) || { label, total: 0 };
+    group.total += Number(row.total);
+    groups.set(key, group);
+    return groups;
+  }, new Map<string, { label: string; total: number }>()).values()).sort((a: any, b: any) => b.total - a.total || a.label.localeCompare(b.label, 'es'));
+  const sinNucleo = Math.max(0, Number(stats?.total || 0) - nucleoData.reduce((sum, row) => sum + row.total, 0));
+  const maxNucleo = Math.max(1, ...nucleoData.map(row => row.total));
+  const registeredCategorias = new Set((stats?.por_categoria || []).filter((c: any) => c.categoria && c.categoria !== 'Sin categoría').map((c: any) => c.categoria.trim().toLocaleLowerCase())).size;
   const listTerritorialesCount = Array.from(
-    new Set((listStats?.por_territorial || []).map((t: any) => String(t.territorial || 'Sin territorial')))
+    new Set((listStats?.por_territorial || []).filter((t: any) => t.territorial && t.territorial !== 'Sin territorial').map((t: any) => String(t.territorial).trim().toLocaleLowerCase()))
   ).length;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -394,6 +437,7 @@ export function BancoDocentesPTA() {
     borderBottom: active ? '2px solid #1d4ed8' : '2px solid transparent',
     marginBottom: '-1px',
     transition: 'all 0.15s',
+    flexShrink: 0,
   });
 
   if(notificationDocente)return <RundExtractionNotificationDetail docenteId={notificationDocente} onClose={()=>{
@@ -426,8 +470,8 @@ export function BancoDocentesPTA() {
           flexWrap: 'wrap', 
           gap: '12px' 
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: 48, height: 48, borderRadius: '12px', background: '#EBF0FA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
+            <div style={{ width: 48, height: 48, flexShrink: 0, borderRadius: '12px', background: '#EBF0FA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Users size={24} color="#003DA5" />
             </div>
             <div>
@@ -437,7 +481,7 @@ export function BancoDocentesPTA() {
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>PERIODO:</span>
               <div style={{ position: 'relative' }}>
@@ -490,15 +534,15 @@ export function BancoDocentesPTA() {
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {hasPermission('banco-docentes.rund.manage') && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(hasPermission('banco-docentes.rund.create') || hasPermission('banco-docentes.rund.manage')) && (
                 <button 
                   onClick={() => setEditDocente({})}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: '8px', border: '1px solid #10b981', background: '#ecfdf5', color: '#047857', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.15s' }}>
                   <UserPlus size={16} /> Crear Docente (Canal 2)
                 </button>
               )}
-              {hasPermission('banco-docentes.rund.invite') && (
+              {(hasPermission('banco-docentes.rund.invite') || hasPermission('banco-docentes.rund.manage')) && (
                 <button 
                   onClick={() => setTab('invitaciones')}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: '8px', border: '1px solid #6366f1', background: tab === 'invitaciones' ? '#4338ca' : '#eef2ff', color: tab === 'invitaciones' ? '#fff' : '#4338ca', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.15s' }}>
@@ -510,21 +554,26 @@ export function BancoDocentesPTA() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', overflowY: 'hidden' }}>
           <button style={TAB_STYLES(tab === 'listado')} onClick={() => setTab('listado')}>
             <Users size={14} /> Listado de Docentes
           </button>
           <button style={TAB_STYLES(tab === 'estadisticas')} onClick={() => setTab('estadisticas')}>
             <BarChart2 size={14} /> Estadísticas
           </button>
-          {hasPermission('banco-docentes.rund.import') && (
+          {(hasPermission('banco-docentes.rund.import') || hasPermission('banco-docentes.rund.manage')) && (
             <button style={TAB_STYLES(tab === 'carga-masiva')} onClick={() => setTab('carga-masiva')}>
               <Upload size={14} /> Carga Masiva
             </button>
           )}
-          {hasPermission('banco-docentes.rund.invite') && (
+          {(hasPermission('banco-docentes.rund.invite') || hasPermission('banco-docentes.rund.manage')) && (
             <button style={TAB_STYLES(tab === 'invitaciones')} onClick={() => setTab('invitaciones')}>
               <MailPlus size={14} /> Invitaciones
+            </button>
+          )}
+          {(hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
+            <button style={TAB_STYLES(tab === 'trazabilidad')} onClick={() => setTab('trazabilidad')}>
+              <History size={14} /> Trazabilidad
             </button>
           )}
         </div>
@@ -567,10 +616,12 @@ export function BancoDocentesPTA() {
             </div>
             <select className="w-full lg:w-[165px]" value={filterTerritorial} onChange={(e) => setFilterTerritorial(e.target.value)} aria-label="Filtrar docentes por territorial" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
               <option value="">Todas las territoriales</option>
+              {filterTerritorial && !territorialFilterOptions.some(t => t.value === filterTerritorial) && <option value={filterTerritorial}>{filterTerritorial === 'SIN_TERRITORIAL' ? 'Sin territorial' : filterTerritorial}</option>}
               {territorialFilterOptions.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <select className="w-full lg:w-[165px]" value={filterDedicacion} onChange={(e) => setFilterDedicacion(e.target.value)} aria-label="Filtrar docentes por dedicación" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
               <option value="">Todas las dedicaciones</option>
+              {filterDedicacion === 'SIN_DEDICACION' && <option value="SIN_DEDICACION">Sin Dedicación</option>}
               {DEDICACION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <select className="w-full lg:w-[165px]" value={filterVinculacion} onChange={(e) => setFilterVinculacion(e.target.value)} aria-label="Filtrar docentes por vinculación" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
@@ -615,11 +666,26 @@ export function BancoDocentesPTA() {
               </div>
             )}
 
+            {canDelete && <div className="rund-delete-toolbar">
+              <span aria-live="polite">{markedCount ? `${markedCount} registros seleccionados` : 'Marca los docentes que deseas eliminar.'}</span>
+              {(markedCount > 0 || allFiltered) && <>
+                {!allFiltered && total > markedIds.size && <button type="button" disabled={loading} onClick={() => { setAllFiltered(true); setMarkedIds(new Set()); }}>Seleccionar todos los resultados ({total})</button>}
+                <button type="button" onClick={clearMarked}>Limpiar selección</button>
+                <button type="button" className="rund-delete-action" disabled={loading || !markedCount} onClick={() => setDeleteTarget(allFiltered ? {
+                  todosFiltrados: true, excluirIds: [...markedIds], filters: { search, territorial: filterTerritorial, dedicacion: filterDedicacion,
+                    vinculacion: filterVinculacion, estado: filterEstado, periodoCarga: filterPeriodo },
+                } : { ids: [...markedIds] })}><Trash2 size={15} />Eliminar seleccionados ({markedCount})</button>
+              </>}
+            </div>}
             {/* Table */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                 <thead style={{ background: '#F9FAFB', borderBottom: '2px solid #E5E7EB', position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr>
+                    {canDelete && <th style={{ padding: 12, width: 38 }}><input type="checkbox" aria-label="Seleccionar docentes de esta página" disabled={loading || !docentes.length}
+                      checked={!!docentes.length && docentes.every(row => allFiltered ? !markedIds.has(row.id) : markedIds.has(row.id))}
+                      ref={node => { if (node) { const count = docentes.filter(row => allFiltered ? !markedIds.has(row.id) : markedIds.has(row.id)).length; node.indeterminate = count > 0 && count < docentes.length; } }}
+                      onChange={e => { const checked = e.target.checked; setMarkedIds(previous => { const next = new Set(previous); docentes.forEach(row => (allFiltered ? !checked : checked) ? next.add(row.id) : next.delete(row.id)); return next; }); }} /></th>}
                     {[
                       { label: 'DOCENTE', align: 'left' },
                       { label: 'DOCUMENTO', align: 'left' },
@@ -647,7 +713,7 @@ export function BancoDocentesPTA() {
                 <tbody style={{ background: '#FFFFFF' }}>
                   {!loading && docentes.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ padding: 60, textAlign: 'center', color: '#9CA3AF' }}>
+                      <td colSpan={canDelete ? 9 : 8} style={{ padding: 60, textAlign: 'center', color: '#9CA3AF' }}>
                         <Users size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
                         <div style={{ fontSize: '14px', fontWeight: 500 }}>No hay docentes registrados</div>
                         <div style={{ fontSize: '12px', marginTop: 4 }}>Intenta ajustar los filtros o agregar docentes</div>
@@ -658,21 +724,23 @@ export function BancoDocentesPTA() {
                       <tr
                         style={{
                           borderBottom: selectedDocente === d.id ? 'none' : '1px solid #E5E7EB',
-                          background: selectedDocente === d.id ? '#EFF6FF' : '#FFFFFF',
+                          background: rundReviewStatus(d.completitud).approved ? '#ECFDF5' : selectedDocente === d.id ? '#EFF6FF' : '#FFFFFF',
                           transition: 'background 150ms ease',
                           cursor: 'pointer',
                         }}
                         onClick={() => setSelectedDocente(selectedDocente === d.id ? null : d.id)}
-                        onMouseEnter={(e) => { if (selectedDocente !== d.id) e.currentTarget.style.background = '#F9FAFB'; }}
-                        onMouseLeave={(e) => { if (selectedDocente !== d.id) e.currentTarget.style.background = '#FFFFFF'; }}
+                        onMouseEnter={(e) => { if (selectedDocente !== d.id) e.currentTarget.style.background = rundReviewStatus(d.completitud).approved ? '#D1FAE5' : '#F9FAFB'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = rundReviewStatus(d.completitud).approved ? '#ECFDF5' : selectedDocente === d.id ? '#EFF6FF' : '#FFFFFF'; }}
                       >
+                        {canDelete && <td style={{ padding: 12 }} onClick={e => e.stopPropagation()}><input type="checkbox" aria-label={`Seleccionar a ${d.nombre_completo}`}
+                          checked={allFiltered ? !markedIds.has(d.id) : markedIds.has(d.id)} onChange={() => markRow(d.id)} /></td>}
                         {/* ── Celda DOCENTE — Avatar + Nombre + Email ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <div style={{
                               width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                              background: selectedDocente === d.id ? '#003DA5' : '#E0EDFF',
-                              color: selectedDocente === d.id ? '#fff' : '#003DA5',
+                              background: rundReviewStatus(d.completitud).approved ? '#D1FAE5' : selectedDocente === d.id ? '#003DA5' : '#E0EDFF',
+                              color: rundReviewStatus(d.completitud).approved ? '#047857' : selectedDocente === d.id ? '#fff' : '#003DA5',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               fontSize: '14px', fontWeight: 600,
                               transition: 'all 0.2s',
@@ -683,6 +751,8 @@ export function BancoDocentesPTA() {
                               <p style={{ margin: 0, fontSize: '14px', lineHeight: '20px', fontWeight: 600, color: '#1F2937' }}>
                                 {d.nombre_completo}
                               </p>
+                              {rundReviewStatus(d.completitud).approved && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#047857', fontSize: 11, fontWeight: 700, marginTop: 3 }}><CheckCircle size={13} /> Perfil RUND aprobado</span>}
+                              {rundReviewStatus(d.completitud).returned && <span style={{ display: 'block', color: '#B91C1C', fontSize: 11, marginTop: 3 }}>Pendiente de corrección</span>}
                               {d.correo_institucional && (
                                 <p style={{ margin: 0, fontSize: '12px', lineHeight: '16px', color: '#6B7280' }}>
                                   {d.correo_institucional}
@@ -806,7 +876,7 @@ export function BancoDocentesPTA() {
                               {selectedDocente === d.id ? <X size={14} color="#fff" /> : <Eye size={14} color="#6B7280" />}
                             </button>
                             {/* Botón Editar */}
-                            {hasPermission('banco-docentes.rund.manage') && (
+                            {(hasPermission('banco-docentes.rund.edit') || hasPermission('banco-docentes.rund.manage')) && (
                               <button
                                 onClick={() => setEditDocente(d)}
                                 title="Editar docente"
@@ -822,6 +892,9 @@ export function BancoDocentesPTA() {
                                 <Edit2 size={14} color="#6B7280" />
                               </button>
                             )}
+                            {canDelete && <button type="button" title="Eliminar de RUND" aria-label={`Eliminar de RUND a ${d.nombre_completo}`}
+                              onClick={() => setDeleteTarget({ ids: [d.docente_id || d.id] })}
+                              style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={14} /></button>}
                             {/* Botón Toggle Estado */}
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
@@ -848,6 +921,7 @@ export function BancoDocentesPTA() {
                       {/* Inline expandable detail row */}
                       {selectedDocente === d.id && (
                         <BancoDocenteDetalleInline
+                          columnCount={canDelete ? 9 : 8}
                           docente={d}
                           periodoCarga={filterPeriodo || undefined}
                           onUpdated={() => { void loadData(); }}
@@ -921,7 +995,7 @@ export function BancoDocentesPTA() {
 
       {/* ── Tab: Estadísticas — Dashboard World-Class ──────────────────── */}
       {tab === 'estadisticas' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '20px 24px' }}>
+        <div className="rund-statistics" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
           {/* ── Filtros del Dashboard ──────────────────────────────────── */}
           <div style={{
@@ -935,6 +1009,7 @@ export function BancoDocentesPTA() {
 
               {/* Periodo */}
               <select
+                aria-label="Periodo de estadísticas"
                 value={filterPeriodo}
                 onChange={(e) => setFilterPeriodo(e.target.value)}
                 style={{
@@ -951,6 +1026,7 @@ export function BancoDocentesPTA() {
 
               {/* Territorial */}
               <select
+                aria-label="Territorial de estadísticas"
                 value={statsFilterTerritorial}
                 onChange={(e) => setStatsFilterTerritorial(e.target.value)}
                 style={{
@@ -960,13 +1036,15 @@ export function BancoDocentesPTA() {
                 }}
               >
                 <option value="">Todas las territoriales</option>
-                {allTerritorialData.map((t: any) => (
-                  <option key={t.key} value={t.label}>{t.label}</option>
+                {territorialFilterOptions.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
+                <option value="SIN_TERRITORIAL">Sin territorial</option>
               </select>
 
               {/* Dedicación */}
               <select
+                aria-label="Dedicación de estadísticas"
                 value={statsFilterDedicacion}
                 onChange={(e) => setStatsFilterDedicacion(e.target.value)}
                 style={{
@@ -983,6 +1061,7 @@ export function BancoDocentesPTA() {
 
               {/* Estado */}
               <select
+                aria-label="Estado de estadísticas"
                 value={statsFilterEstado}
                 onChange={(e) => setStatsFilterEstado(e.target.value)}
                 style={{
@@ -1016,7 +1095,7 @@ export function BancoDocentesPTA() {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {statsFilterTerritorial && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, background: '#FEF3C7', color: '#92400E', fontSize: '11px', fontWeight: 600 }}>
-                    Territorial: {statsFilterTerritorial}
+                    Territorial: {statsFilterTerritorial === 'SIN_TERRITORIAL' ? 'Sin territorial' : territorialFilterOptions.find(t => t.value === statsFilterTerritorial)?.label || 'Territorial seleccionada'}
                     <X size={12} style={{ cursor: 'pointer' }} onClick={() => setStatsFilterTerritorial('')} />
                   </span>
                 )}
@@ -1044,33 +1123,34 @@ export function BancoDocentesPTA() {
             </div>
           )}
 
-          {!stats && !statsLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
-              <div style={{ width: 48, height: 48, border: '3px solid #E5E7EB', borderTopColor: '#003DA5', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              <p style={{ marginTop: 16, fontSize: '14px', color: '#6B7280' }}>Cargando estadísticas...</p>
+          {statsError ? (
+            <div role="alert" style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
+              <p>No fue posible consultar las estadísticas de este periodo.</p>
+              <button type="button" onClick={loadStats}>Reintentar</button>
             </div>
-          ) : stats && (
+          ) : !statsLoading && stats && (
             <>
               {/* ── KPI Cards — Clickeables ────────────────────────────── */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 16 }}>
                 {[
                   { label: 'Total Docentes', value: stats.total, icon: Users, color: '#003DA5', bg: '#EBF0FA', click: () => navigateToListado({}) },
                   { label: 'Activos', value: stats.activos, icon: CheckCircle, color: '#059669', bg: '#ECFDF5', click: () => navigateToListado({ estado: 'ACTIVO' }) },
                   { label: 'Inactivos', value: stats.inactivos, icon: XCircle, color: '#DC2626', bg: '#FEF2F2', click: () => navigateToListado({ estado: 'INACTIVO' }) },
-                  { label: 'Total Horas', value: `${(stats.total_horas ?? 0).toLocaleString()}h`, icon: Clock, color: '#7C3AED', bg: '#EDE9FE' },
-                  { label: 'Promedio Horas', value: `${stats.promedio_horas ?? 0}h`, icon: BarChart2, color: '#0891B2', bg: '#ECFEFF' },
-                  { label: 'Territoriales', value: allTerritorialData.length, icon: Building2, color: '#D97706', bg: '#FEF3C7' },
-                  { label: 'CETAP/Sedes', value: stats.por_sede?.length ?? 0, icon: MapPin, color: '#EA580C', bg: '#FFF7ED' },
-                  { label: 'Categorías', value: stats.por_categoria?.length ?? 0, icon: GraduationCap, color: '#DB2777', bg: '#FDF2F8' },
+                  { label: 'Total Horas', value: `${(stats.total_horas ?? 0).toLocaleString('es-CO')}h`, icon: Clock, color: '#7C3AED', bg: '#EDE9FE' },
+                  { label: 'Promedio Horas', value: `${(stats.promedio_horas ?? 0).toLocaleString('es-CO')}h`, icon: BarChart2, color: '#0891B2', bg: '#ECFEFF' },
+                  { label: 'Territoriales', value: registeredTerritoriales, icon: Building2, color: '#D97706', bg: '#FEF3C7' },
+                  { label: 'Núcleos temáticos', value: nucleoData.length, icon: BookOpen, color: '#EA580C', bg: '#FFF7ED' },
+                  { label: 'Categorías', value: registeredCategorias, icon: GraduationCap, color: '#DB2777', bg: '#FDF2F8' },
                 ].map(({ label, value, icon: Icon, color, bg, click }) => (
                   <div
                     key={label}
-                    onClick={click}
+                    role="group" aria-label={label}
+                    onClick={Number(value) > 0 ? click : undefined}
                     style={{
                       background: '#fff', borderRadius: 12, padding: '18px 20px',
                       border: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', gap: 14,
                       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                      cursor: click ? 'pointer' : 'default',
+                      cursor: click && Number(value) > 0 ? 'pointer' : 'default',
                       transition: 'all 0.15s',
                     }}
                     onMouseEnter={(e) => { if (click) e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,61,165,0.12)'; }}
@@ -1083,19 +1163,19 @@ export function BancoDocentesPTA() {
                       <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1F2937', lineHeight: 1.1 }}>{value}</div>
                       <div style={{ fontSize: '0.72rem', color: '#6B7280', fontWeight: 500, marginTop: 2 }}>{label}</div>
                     </div>
-                    {click && <ArrowRight size={16} color="#9CA3AF" />}
+                    {click && Number(value) > 0 && <ArrowRight size={16} color="#9CA3AF" />}
                   </div>
                 ))}
               </div>
 
               {/* ── Row 1: Dedicación + Categoría — CLICKEABLES ───────── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              {Object.values(chartVisibility).some(Boolean) && <div className="rund-statistics__charts">
                 {/* Dedicación */}
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+                {chartVisibility.dedicacion && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Clock size={18} color="#7C3AED" /> Distribución por Dedicación
                   </h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+                  <div className="rund-statistics__donut" style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
                     <DonutChart segments={dedicacionSegments} size={160} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                       {dedicacionSegments.map((s: any) => (
@@ -1122,14 +1202,14 @@ export function BancoDocentesPTA() {
                       ))}
                     </div>
                   </div>
-                </div>
+                </div>}
 
                 {/* Categoría (Escalafón) */}
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+                {chartVisibility.categoria && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <GraduationCap size={18} color="#1E40AF" /> Distribución por Categoría
                   </h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+                  <div className="rund-statistics__donut" style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
                     <DonutChart segments={categoriaSegments} size={160} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, maxHeight: 240, overflowY: 'auto' }}>
                       {categoriaSegments.map((s: any) => (
@@ -1146,13 +1226,11 @@ export function BancoDocentesPTA() {
                       ))}
                     </div>
                   </div>
-                </div>
-              </div>
+                </div>}
 
               {/* ── Row 2: Vinculación + Nivel de Formación ──────────── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 {/* Tipo de Vinculación */}
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+                {chartVisibility.vinculacion && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Database size={18} color="#059669" /> Tipo de Vinculación
                   </h3>
@@ -1179,10 +1257,10 @@ export function BancoDocentesPTA() {
                       <div style={{ textAlign: 'center', padding: 30, color: '#9CA3AF', fontSize: '13px' }}>Sin datos de vinculación</div>
                     );
                   })()}
-                </div>
+                </div>}
 
                 {/* Nivel de Formación */}
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+                {chartVisibility.formacion && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <GraduationCap size={18} color="#7C3AED" /> Nivel de Formación
                   </h3>
@@ -1209,13 +1287,11 @@ export function BancoDocentesPTA() {
                       <div style={{ textAlign: 'center', padding: 30, color: '#9CA3AF', fontSize: '13px' }}>Sin datos de formación</div>
                     );
                   })()}
-                </div>
-              </div>
+                </div>}
 
               {/* ── Row 3: Género + Rango de Edad ────────────────────── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 {/* Género */}
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+                {chartVisibility.genero && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Users size={18} color="#0891B2" /> Distribución por Género
                   </h3>
@@ -1227,7 +1303,7 @@ export function BancoDocentesPTA() {
                       key: statKey('genero', g.genero, i),
                     }));
                     return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+                      <div className="rund-statistics__donut" style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
                         <DonutChart segments={generoData} size={150} />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
                           {generoData.map((g: any) => (
@@ -1243,10 +1319,10 @@ export function BancoDocentesPTA() {
                       </div>
                     );
                   })()}
-                </div>
+                </div>}
 
                 {/* Rango de Edad */}
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+                {chartVisibility.edad && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <BarChart2 size={18} color="#D97706" /> Distribución por Rango de Edad
                   </h3>
@@ -1273,15 +1349,15 @@ export function BancoDocentesPTA() {
                       <div style={{ textAlign: 'center', padding: 30, color: '#9CA3AF', fontSize: '13px' }}>Sin datos de rango de edad</div>
                     );
                   })()}
-                </div>
-              </div>
+                </div>}
+              </div>}
 
               {/* ── Row 4: Territorial — Clickeable ─────────────────── */}
-              <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
+              {registeredTerritoriales > 0 && <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
                 <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Building2 size={18} color="#0891B2" /> Docentes por Territorial
                   <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 500, color: '#6B7280' }}>
-                    {territorialData.length} territoriales — Click para filtrar
+                    {registeredTerritoriales} territoriales — Click para filtrar
                   </span>
                 </h3>
                 {territorialData.length > 0 ? (
@@ -1292,7 +1368,7 @@ export function BancoDocentesPTA() {
                       return (
                         <div
                           key={t.key}
-                          onClick={() => navigateToListado({ territorial: t.label })}
+                          onClick={() => navigateToListado({ territorial: t.label === 'Sin territorial' ? 'SIN_TERRITORIAL' : t.label })}
                           style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 8, transition: 'background 0.15s' }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#F0F4FF'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -1316,37 +1392,24 @@ export function BancoDocentesPTA() {
                 ) : (
                   <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF', fontSize: '13px' }}>Sin datos territoriales</div>
                 )}
-              </div>
+              </div>}
 
-              {/* ── Row 5: CETAP/Sedes ─────────────────────────────── */}
-              {stats.por_sede && stats.por_sede.length > 0 && (
-                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
-                  <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 700, color: '#1F2937', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <MapPin size={18} color="#059669" /> Docentes por CETAP / Sede
-                    <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 500, color: '#6B7280' }}>
-                      {stats.por_sede.length} CETAP
-                    </span>
-                  </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
-                    {stats.por_sede.slice(0, 30).map((s: any, i: number) => {
-                      const maxS = Math.max(...stats.por_sede.map((ss: any) => ss.total), 1);
-                      return (
-                        <div key={s.sede + i} style={{ padding: '6px 8px', borderRadius: 8 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: '11px' }}>
-                            <span style={{ color: '#374151', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70%' }}>
-                              <MapPin size={10} color="#059669" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{s.sede}
-                            </span>
-                            <span style={{ fontWeight: 700, color: '#1F2937' }}>{s.total}</span>
-                          </div>
-                          <div style={{ height: 6, background: '#F3F4F6', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${(s.total / maxS) * 100}%`, background: '#059669', borderRadius: 3, transition: 'width 0.6s ease' }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+              {/* Núcleos temáticos registrados */}
+              {nucleoData.length > 0 && <section className="rund-statistics__nucleos" aria-label="Docentes por núcleo temático">
+                <h3><BookOpen size={18} color="#EA580C" /> Docentes por núcleo temático
+                  <span>{nucleoData.length} {nucleoData.length === 1 ? 'núcleo registrado' : 'núcleos registrados'}</span>
+                </h3>
+                <div className="rund-statistics__nucleo-list" role="list" aria-label="Distribución por núcleo temático" tabIndex={0}>
+                  {nucleoData.map(row => <div key={row.label.toLocaleLowerCase()} role="listitem" className="rund-statistics__nucleo-row">
+                    <div><span>{row.label}</span><strong>{row.total}</strong></div>
+                    <div className="rund-statistics__nucleo-track" aria-hidden="true"><span style={{ width: `${row.total / maxNucleo * 100}%` }} /></div>
+                  </div>)}
                 </div>
-              )}
+                {sinNucleo > 0 && <p className="rund-statistics__missing">{sinNucleo} {sinNucleo === 1 ? 'docente sin núcleo temático registrado' : 'docentes sin núcleo temático registrado'}.</p>}
+              </section>}
+              {!Object.values(chartVisibility).some(Boolean) && !registeredTerritoriales && !nucleoData.length && <p className="rund-statistics__empty">
+                {stats.total ? 'Los registros de esta consulta aún no tienen información para mostrar distribuciones.' : 'No hay docentes para el periodo y los filtros seleccionados.'}
+              </p>}
             </>
           )}
         </div>
@@ -1370,6 +1433,11 @@ export function BancoDocentesPTA() {
       )}
 
       {/* ── Tab: Invitaciones ─────────────────────────────────────────────── */}
+      {tab === 'trazabilidad' && (hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
+        <RundRegistrationHistory key={filterPeriodo || 'todos'} periodoCarga={filterPeriodo || undefined}
+          canDownloadOriginal={hasPermission('banco-docentes.rund.import') || hasPermission('banco-docentes.rund.manage')} />
+      )}
+
       {tab === 'invitaciones' && (
         <div style={{ padding: '20px 24px' }}>
           <TableroInvitacionesRUND />
@@ -1377,6 +1445,11 @@ export function BancoDocentesPTA() {
       )}
 
       {/* Modals */}
+      {canDelete && deleteTarget && <RundDeleteModal selection={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={count => {
+        setDeleteTarget(null); clearMarked(); setSelectedDocente(null);
+        const nextPage = Math.max(1, Math.min(page, Math.ceil(Math.max(0, total - count) / 50)));
+        setPage(nextPage); loadData(nextPage); showToast(`${count} ${count === 1 ? 'registro eliminado' : 'registros eliminados'} de RUND`);
+      }} />}
       {editDocente !== null && (
         <BancoDocenteEditModal
           docente={editDocente?.id ? editDocente : null}

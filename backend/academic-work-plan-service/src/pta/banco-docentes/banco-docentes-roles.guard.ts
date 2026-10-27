@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { RUND_PERMISSIONS_KEY } from './rund-permissions';
+import { expandRundPermissions } from './rund-permission-policy';
 
 /**
  * Autoriza rutas RUND por rol de sistema o por permisos administrables.
@@ -52,7 +53,9 @@ export class BancoDocentesRolesGuard implements CanActivate {
 
     const permissionAllowed = isSuperAdmin || (requiredPermissions || [])
       .some((permission) => effectivePermissions.has(permission));
-    if (roleAllowed || permissionAllowed) return true;
+    // A granular permission can be withdrawn even from a functional administrator.
+    // Explicit roles are only the fallback for routes without permission metadata.
+    if (isSuperAdmin || (requiredPermissions?.length ? permissionAllowed : roleAllowed)) return true;
 
     const requirements = [
       requiredRoles?.length ? `roles: ${requiredRoles.join(', ')}` : '',
@@ -83,7 +86,7 @@ export class BancoDocentesRolesGuard implements CanActivate {
             AND p.code LIKE 'banco-docentes.rund.%'`,
         [roleCodes],
       );
-      const permissions = new Set(rows.map((row) => row.code).filter(Boolean));
+      const permissions = expandRundPermissions(rows.map((row) => row.code).filter(Boolean));
       this.cache.set(cacheKey, { at: now, permissions });
       return permissions;
     } catch {

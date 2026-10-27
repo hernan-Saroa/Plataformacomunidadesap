@@ -6,19 +6,21 @@ import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 
 // Clasificación archivística institucional (ESAP - Control Disciplinario)
 export const FUID_ENTIDAD_PRODUCTORA = 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA (ESAP)';
-export const FUID_PERIODO_INSTITUCIONAL = 'TVD PERIODO 1';
+export const FUID_PERIODO_INSTITUCIONAL = 'TRD V4';
 export const FUID_UNIDAD_ADMINISTRATIVA = 'DESPACHO DE LA DIRECCIÓN NACIONAL';
 export const FUID_OFICINA_PRODUCTORA = 'OFICINA DE CONTROL INTERNO DISCIPLINARIO';
-export const FUID_CODIGO_OFICINA = 160;
+export const FUID_CODIGO_OFICINA = 150;
 export const FUID_OBJETO = 'Inventario Archivo de Gestión';
-export const FUID_CODIGO_CCDU = '780';
-export const FUID_CODIGO_SERIE_TVD = '780';
+export const FUID_CODIGO_CCDU = '250';
+export const FUID_CODIGO_SERIE_TVD = '250';
 export const FUID_SERIE = 'PROCESOS JURÍDICOS';
 export const FUID_SUBSERIE = 'PROCESOS DISCIPLINARIOS';
 
 const FIRST_DATA_ROW = 13;
 const TEMPLATE_CAPACITY_ROWS = 99; // Filas 13 a 111 reservadas en la plantilla original
 const TEMPLATE_PIE_START_ROW = 112;
+const FUID_DATA_FONT_SIZE = 11;
+const FUID_DATA_COLUMNS = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB'];
 
 function resolveTemplateAssetPath(filename: string): string {
   const candidates = [
@@ -47,12 +49,22 @@ export interface FuidItemDto {
   fechaExtremaFinal?: string;   // Formato esperado: AAAA/MM/DD
   codigoCCDU?: string;
   codigoSerieTVD?: string;
+  codigoSerie?: string;
+  nombreSerie?: string;
   serie?: string;
+  codigoSubserie?: string;
+  nombreSubserie?: string;
   subserie?: string;
   ubicacion?: string;
   cantidadDocumentos?: number;
   tamanoDocumentos?: string;
   notas?: string; // Estado del expediente (Indagación, Valoración, Finalizado, etc.)
+  /**
+   * Indica si el proceso está cerrado (finalizado/archivado). Si es `false`, el proceso
+   * sigue activo y la Fecha Extrema Final y el Descriptor de identificación quedan vacíos.
+   * Si no se envía, se conserva el comportamiento anterior (se asume cerrado).
+   */
+  cerrado?: boolean;
 }
 
 export interface FuidHeaderDto {
@@ -140,26 +152,50 @@ export class FuidExportService {
       // Col E: Nombre de la unidad documental
       worksheet.getCell(`E${r}`).value = `Expediente ${item.radicado}`;
 
-      // Col F: Descriptor de identificación (NED / Asunto)
-      const descriptor = item.descriptorIdentificacion ||
-        (item.nombreDisciplinado ? `NED: ${item.nombreDisciplinado}` : (item.asunto || 'Expediente Disciplinario'));
+      // Un proceso activo (no cerrado) aún no tiene fecha final ni descriptor definitivo
+      const procesoCerrado = item.cerrado !== false;
+
+      // Col F: Descriptor de identificación (NED / Asunto) — vacío si el proceso sigue activo
+      const descriptor = procesoCerrado
+        ? (item.descriptorIdentificacion ||
+          (item.nombreDisciplinado ? `NED: ${item.nombreDisciplinado}` : (item.asunto || 'Expediente Disciplinario')))
+        : '';
       worksheet.getCell(`F${r}`).value = descriptor;
 
-      // Col G / H: Fechas extremas inicial / final (AAAA/MM/DD)
+      // Col G / H: Fechas extremas inicial / final (AAAA/MM/DD) — final vacía si el proceso sigue activo
       worksheet.getCell(`G${r}`).value = item.fechaExtremaInicial || '';
-      worksheet.getCell(`H${r}`).value = item.fechaExtremaFinal || item.fechaExtremaInicial || '';
+      worksheet.getCell(`H${r}`).value = procesoCerrado
+        ? (item.fechaExtremaFinal || item.fechaExtremaInicial || '')
+        : '';
 
       // Col I: Código CCDU
-      worksheet.getCell(`I${r}`).value = item.codigoCCDU || FUID_CODIGO_CCDU;
+      const codCCDU = String(item.codigoCCDU || item.codigoSerie || FUID_CODIGO_CCDU).trim();
+      worksheet.getCell(`I${r}`).value = codCCDU;
 
       // Col J: Código serie TVD
-      worksheet.getCell(`J${r}`).value = item.codigoSerieTVD || FUID_CODIGO_SERIE_TVD;
+      const codSerieTVD = String(item.codigoSerieTVD || item.codigoSerie || codCCDU || FUID_CODIGO_SERIE_TVD).trim();
+      worksheet.getCell(`J${r}`).value = codSerieTVD;
 
-      // Col K: Serie
-      worksheet.getCell(`K${r}`).value = item.serie || FUID_SERIE;
+      // Col K: Serie con número correspondiente
+      let serieTexto = (item.serie || item.nombreSerie || FUID_SERIE).trim();
+      const codParaSerie = codSerieTVD || codCCDU || FUID_CODIGO_SERIE_TVD;
+      if (codParaSerie && !new RegExp(`^${codParaSerie.replace('.', '\\.')}\\s*[-–]`, 'i').test(serieTexto)) {
+        serieTexto = `${codParaSerie} – ${serieTexto}`;
+      }
+      worksheet.getCell(`K${r}`).value = serieTexto;
 
-      // Col L: Subserie
-      worksheet.getCell(`L${r}`).value = item.subserie || FUID_SUBSERIE;
+      // Col L: Subserie con número correspondiente
+      let subserieTexto = (item.subserie || item.nombreSubserie || FUID_SUBSERIE).trim();
+      const codParaSubserie = String(
+        item.codigoSubserie ||
+        (codParaSerie === '1330' ? '60' : codParaSerie === '68' ? '22' : codParaSerie === '75' ? '01' : '05'),
+      ).trim();
+      if (subserieTexto.toUpperCase() === 'N/A' || subserieTexto.toUpperCase() === 'NO APLICA') {
+        subserieTexto = 'N/A';
+      } else if (codParaSubserie && !new RegExp(`^${codParaSubserie.replace('.', '\\.')}\\s*[-–]`, 'i').test(subserieTexto)) {
+        subserieTexto = `${codParaSubserie} – ${subserieTexto}`;
+      }
+      worksheet.getCell(`L${r}`).value = subserieTexto;
 
       // Col M / N: Soporte Físico / Electrónico (X en electrónico)
       worksheet.getCell(`M${r}`).value = null;
@@ -180,9 +216,9 @@ export class FuidExportService {
       };
       cellU.font = {
         name: 'Arial',
-        size: 9,
+        size: FUID_DATA_FONT_SIZE,
         color: { argb: 'FF0563C1' },
-        underline: true,
+        underline: false,
       };
 
       // Col V: Cantidad de documentos electrónicos
@@ -196,6 +232,17 @@ export class FuidExportService {
 
       // Col AB: Rótulo (vacío)
       worksheet.getCell(`AB${r}`).value = null;
+
+      // Fuente legible: tamaño 11 y sin subrayado en todas las celdas de detalle
+      for (const col of FUID_DATA_COLUMNS) {
+        if (col === 'U') continue; // ya configurada arriba (hipervínculo)
+        const cell = worksheet.getCell(`${col}${r}`);
+        cell.font = {
+          ...(cell.font || {}),
+          size: FUID_DATA_FONT_SIZE,
+          underline: false,
+        };
+      }
     });
 
     // 4. Limpiar filas restantes de la reserva de 100 que no tengan datos (limpiar D..AB, conservando fórmulas en B y C)

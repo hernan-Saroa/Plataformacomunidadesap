@@ -63,7 +63,7 @@ Por defecto el overlay apunta a PROD. Si quieres reutilizarlo en otro entorno, p
 export FRONTEND_NETWORK_KEY=superapp-net-prod
 export FRONTEND_CONTAINER_SUFFIX=-prod
 export FRONTEND_VITE_API_URL=https://comunidadesap.esap.edu.co/services
-export FRONTEND_VITE_ONLYOFFICE_URL=https://comunidadesap.esap.edu.co:9000
+export FRONTEND_VITE_ONLYOFFICE_URL=/onlyoffice
 ```
 
 Para PRE, QA o DEV debes cambiar esos valores para que coincidan con la red y URLs del compose base correspondiente.

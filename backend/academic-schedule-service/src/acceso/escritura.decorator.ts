@@ -20,7 +20,7 @@ export interface ReglaEscritura {
    * rutas del backoffice de programación; el portal y la jefatura tienen sus
    * propias reglas de rol.
    */
-  exigeNivel: boolean;
+  exigeNivel: boolean | 'asignacion';
   /** Por qué una ruta no cuelga de un periodo. Obligatorio en ese caso: queda escrito. */
   motivo?: string;
 }
@@ -35,7 +35,11 @@ export interface ReglaEscritura {
  *   @EscrituraEn({ grupo: { param: 'id' } }, { exigeNivel: true })
  *   @EscrituraEn({ periodo: { body: 'idPeriodo' }, asignatura: { body: 'idAsignatura' } }, ...)
  */
-export const EscrituraEn = (anclas: Anclas, opciones: { exigeNivel?: boolean } = {}) =>
+/*
+ * `exigeNivel: 'asignacion'` (EFDS-2342): exige poder ASIGNAR docentes en el nivel
+ * del recurso, no programarlo. Asignar y programar son permisos distintos.
+ */
+export const EscrituraEn = (anclas: Anclas, opciones: { exigeNivel?: boolean | 'asignacion' } = {}) =>
   SetMetadata(CLAVE_ESCRITURA, {
     anclas,
     exigeNivel: opciones.exigeNivel ?? false,

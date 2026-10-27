@@ -16,6 +16,7 @@ import { SecondLevelSodGuard } from '../../common/second-level-sod.guard';
 import { AuthorizationSodGuard } from '../../common/authorization-sod.guard';
 import { SodGuard } from '../../common/sod.guard';
 import { PendientesService } from '../legalizacion/pendientes.service';
+import { RecordatorioViajeService } from './recordatorio-viaje.service';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PendientesService } from '../legalizacion/pendientes.service';
     AuthorizationSodGuard,
     SodGuard,
     PendientesService,
+    RecordatorioViajeService,
   ],
   exports: [TravelExpensesService],
 })

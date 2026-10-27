@@ -570,7 +570,7 @@ export class AsignaturasImportService {
       // si no tiene período propio ni ofertas.
       const counts = await this.dataSource.query(`
         WITH per AS (
-          SELECT id, (estado = 'en_curso') AS activo
+          SELECT id, (estado = 'en_curso' AND NOT extraordinario) AS activo
           FROM academic_work_plan.periodo_academico
           WHERE codigo = $1
           LIMIT 1
@@ -745,12 +745,14 @@ export class AsignaturasImportService {
     const year = parseInt(periodCodigo.split('-')[0], 10) || 2025;
     const semester = parseInt(periodCodigo.split('-')[1], 10) || 2;
 
+    // EFDS-2346: un periodo que no existe se crea en PLANEACIÓN (activar es una
+    // decisión aparte, en la gestión de periodos); antes se creaba en curso y dejaba
+    // dos periodos activos. Uno que ya existe no se modifica (puede ser personalizado,
+    // sin semestre): solo se devuelve su id.
     const SQL = `
-      INSERT INTO academic_work_plan.periodo_academico (codigo, anio, semestre, fecha_inicio, fecha_fin, estado) 
-      VALUES ($1, $2, $3, $4, $5, 'en_curso')
-      ON CONFLICT (codigo) DO UPDATE SET 
-        anio = EXCLUDED.anio, 
-        semestre = EXCLUDED.semestre
+      INSERT INTO academic_work_plan.periodo_academico (codigo, anio, semestre, fecha_inicio, fecha_fin, estado)
+      VALUES ($1, $2, $3, $4, $5, 'planeacion')
+      ON CONFLICT (codigo) DO UPDATE SET codigo = EXCLUDED.codigo
       RETURNING id;
     `;
     const rows = await queryRunner.query(SQL, [periodCodigo, year, semester, `${year}-08-01`, `${year}-12-15`]);

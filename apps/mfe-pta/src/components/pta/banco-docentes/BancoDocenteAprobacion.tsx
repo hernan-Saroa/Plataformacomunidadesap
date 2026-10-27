@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { rundActorName } from '../../../utils/rundActorName';
+import { rundReviewStatus } from '../../../utils/rundReviewStatus';
+import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
 import {
   ShieldCheck, ShieldAlert, ShieldX, FileCheck, FilePlus, Clock, Eye,
   CheckCircle2, XCircle, AlertTriangle, ChevronDown, ChevronRight,
@@ -18,12 +21,17 @@ interface BloqueData {
   estado: string;
   cargadoPor: string | null;
   revisadoPor: string | null;
+  cargado_por?: string | null;
+  revisado_por?: string | null;
+  cargadoPorNombre?: string | null;
+  revisadoPorNombre?: string | null;
   observacion: string | null;
   version: number;
   canalOrigen: string | null;
   soporteIds: string[];
   fechaRevision: string | null;
   soportes: any[];
+  puedeDevolver?: boolean;
   tiposSoporteRequeridos: string[];
 }
 
@@ -203,18 +211,20 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
 
   // ─── Metrics ──────────────────────────────────────────────────
   const metrics = useMemo(() => {
-    const total = bloques.length || 6;
-    const aprobados = bloques.filter(b => b.estado === 'Aprobado').length;
+    const review = rundReviewStatus(Object.fromEntries(bloques.map(b => [b.bloque, b.estado])));
+    const total = review.total;
+    const aprobados = review.count;
     const pct = Math.round((aprobados / total) * 100);
     return { total, aprobados, pct };
   }, [bloques]);
 
   // ─── Handlers ─────────────────────────────────────────────────
   const handleAprobar = async (bloque: string) => {
+    if (actionLoading || loading || error) return;
     if (!currentUserId) { setError('No se pudo identificar al usuario validador.'); return; }
     setActionLoading(bloque);
     try {
-      const res = await aprobarRundBloque(docenteId, bloque, currentUserId);
+      const res = await aprobarRundBloque(docenteId, bloque, currentUserId, Number(bloques.find(b => b.bloque === bloque)?.version));
       if (res.success) { setSuccess(`Bloque aprobado.`); setTimeout(() => setSuccess(null), 3000); await fetchBloques(); }
       else setError(res.message || 'No se pudo aprobar.');
     } catch { setError('Error al aprobar.'); }
@@ -222,10 +232,11 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
   };
 
   const handleDevolver = async () => {
-    if (!devolverBloque || !devolverObs.trim() || !currentUserId) return;
+    if (actionLoading || loading || error || !devolverBloque || !devolverObs.trim() || !currentUserId) return;
+    if (!canReturnRundBlock(bloques.find(b => b.bloque === devolverBloque))) return;
     setActionLoading(devolverBloque);
     try {
-      const res = await devolverRundBloque(docenteId, devolverBloque, currentUserId, devolverObs);
+      const res = await devolverRundBloque(docenteId, devolverBloque, currentUserId, devolverObs, Number(bloques.find(b => b.bloque === devolverBloque)?.version));
       if (res.success) { setSuccess('Devuelto con observación.'); setTimeout(() => setSuccess(null), 3000); setDevolverBloque(null); setDevolverObs(''); await fetchBloques(); }
       else setError(res.message || 'Error.');
     } catch { setError('Error al devolver.'); }
@@ -361,6 +372,7 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
         const isLoading = actionLoading === b.bloque;
         const isDevolverOpen = devolverBloque === b.bloque;
         const canApprove = b.estado !== 'Aprobado';
+        const canReturn = canReturnRundBlock(b);
 
         return (
           <div key={b.bloque} style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${isOpen ? cfg.color + '50' : '#e2e8f0'}`, overflow: 'hidden', transition: 'border-color 0.2s' }}>
@@ -416,7 +428,7 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
                     {/* Table rows */}
                 {cfg.campos.map((c, idx) => {
                   const soporte = c.tipoSoporte ? findSoporte(b.soportes || [], c.tipoSoporte) : null;
-                  const hasDoc = !!soporte;
+                  const hasDoc = !!soporte && canReturnRundBlock({ bloque: b.bloque, soportes: [soporte] });
                   const isDerived = c.obligatorio === 'Derivado';
                   const obBadge = OBLIG_BADGE[c.obligatorio] || OBLIG_BADGE['No'];
 
@@ -550,7 +562,7 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
                     <textarea value={devolverObs} onChange={e => setDevolverObs(e.target.value)} placeholder="Motivo de la devolución..." rows={2}
                       style={{ width: '100%', padding: '8px', borderRadius: 6, border: '1.5px solid #fecaca', fontSize: '0.78rem', fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical' }} />
                     <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                      <button onClick={handleDevolver} disabled={!devolverObs.trim()} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: devolverObs.trim() ? '#dc2626' : '#e2e8f0', color: devolverObs.trim() ? '#fff' : '#94a3b8', fontSize: '0.75rem', fontWeight: 600, cursor: devolverObs.trim() ? 'pointer' : 'not-allowed' }}>
+                      <button onClick={handleDevolver} disabled={!canReturn || !!actionLoading || loading || !!error || !devolverObs.trim()} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: canReturn && devolverObs.trim() ? '#dc2626' : '#e2e8f0', color: canReturn && devolverObs.trim() ? '#fff' : '#94a3b8', fontSize: '0.75rem', fontWeight: 600, cursor: canReturn && devolverObs.trim() ? 'pointer' : 'not-allowed' }}>
                         <Send size={11} /> Confirmar
                       </button>
                       <button onClick={() => { setDevolverBloque(null); setDevolverObs(''); }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: '0.75rem', cursor: 'pointer' }}>
@@ -570,7 +582,7 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
                           {isLoading ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={12} />}
                           {b.estado === 'Soporte faltante' ? 'Cargue soportes primero' : 'Aprobar bloque'}
                         </button>
-                        <button onClick={() => setDevolverBloque(b.bloque)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 7, border: 'none', background: '#ef4444', color: '#fff', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
+                        <button disabled={!canReturn || !!actionLoading || loading || !!error} title={!canReturn ? 'Cargue un soporte de este bloque antes de devolverlo.' : undefined} onClick={() => { if (canReturn) setDevolverBloque(b.bloque); }} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 7, border: 'none', background: '#ef4444', color: '#fff', fontSize: '0.75rem', fontWeight: 600, cursor: canReturn ? 'pointer' : 'not-allowed', opacity: canReturn ? 1 : 0.55 }}>
                           <ShieldAlert size={12} /> Devolver
                         </button>
                       </>
@@ -581,8 +593,8 @@ export function BancoDocenteAprobacion({ docenteId, docenteNombre, currentUserId
                       </span>
                     )}
                     <div style={{ marginLeft: 'auto', fontSize: '0.65rem', color: '#94a3b8', display: 'flex', gap: 10 }}>
-                      {b.cargadoPor && <span>📤 {b.cargadoPor}</span>}
-                      {b.revisadoPor && <span>✅ {b.revisadoPor}</span>}
+                      {(b.cargadoPor || b.cargado_por || b.cargadoPorNombre) && <span>📤 {rundActorName(b.cargadoPorNombre, b.cargadoPor || b.cargado_por)}</span>}
+                      {(b.revisadoPor || b.revisado_por || b.revisadoPorNombre) && <span>✅ {rundActorName(b.revisadoPorNombre, b.revisadoPor || b.revisado_por)}</span>}
                       <span>v{b.version}</span>
                     </div>
                   </div>

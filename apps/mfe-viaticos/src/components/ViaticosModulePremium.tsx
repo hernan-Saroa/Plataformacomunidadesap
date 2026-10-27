@@ -52,6 +52,7 @@ import CancelarComisionModal from './CancelarComisionModal';
 import RevocatoriaModal from './RevocatoriaModal';
 import PresupuestoInbox from './PresupuestoInbox';
 import ReintegrosInbox from './ReintegrosInbox';
+import TrazabilidadExpediente from './TrazabilidadExpediente';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
 import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
@@ -2737,6 +2738,12 @@ export default function ViaticosModulePremium() {
                     )}
 
                     {/* ========================================================================= */}
+                    {/* TRAZABILIDAD DEL EXPEDIENTE Y DESCARGA (RF-SIS-001) */}
+                    <TrazabilidadExpediente
+                      solicitudId={solicitudSeleccionada.id}
+                      codigo={solicitudSeleccionada.codigo}
+                    />
+
                     {/* GESTIÓN DE FIRMAS INSTITUCIONALES — APROBACIÓN POR COMPONENTE (FORMATO 023) */}
                     {/* ========================================================================= */}
                     <div className="mt-4 pt-4 border-t border-slate-200">

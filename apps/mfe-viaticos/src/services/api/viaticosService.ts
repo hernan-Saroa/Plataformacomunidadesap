@@ -60,6 +60,7 @@ import {
   ProcesarPagoDto,
   ReintegroComision,
   RegistrarReintegroDto,
+  TrazabilidadExpediente,
   NotificacionSstLog,
   EstadoFirmasResponse,
   FirmarSolicitudPayload,
@@ -1233,6 +1234,33 @@ export class ViaticosService {
       return await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
     } catch (error) {
       console.error('Error exportando Formato 023:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-SIS-001 — Consulta la trazabilidad completa del expediente: historial de
+   * estados (responsable, fecha y decisión) y documentos soporte.
+   */
+  async obtenerTrazabilidad(solicitudId: string): Promise<TrazabilidadExpediente> {
+    try {
+      return await apiClient.get<TrazabilidadExpediente>(
+        `/viaticos/api/v1/requests/${solicitudId}/trazabilidad`,
+      );
+    } catch (error) {
+      console.error('Error consultando la trazabilidad del expediente:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-SIS-001 — Descarga el expediente de la comisión en PDF.
+   */
+  async descargarExpediente(solicitudId: string): Promise<Blob> {
+    try {
+      return await apiClient.getBlob(`/viaticos/api/v1/requests/${solicitudId}/expediente/pdf`);
+    } catch (error) {
+      console.error('Error descargando el expediente:', error);
       throw error;
     }
   }

@@ -3,7 +3,8 @@ import { createHash } from 'crypto';
 import { posix } from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { recordRundAccess, rundRequestActor } from './rund-access-audit';
-import { RUND_SENSITIVE_FIELDS } from './banco-docentes-sensitive-data';
+import { RUND_SENSITIVE_FIELDS, canViewRundSensitiveData, getRequestRoleCodes } from './banco-docentes-sensitive-data';
+import { expandRundPermissions, RUND_PROFILE_PERMISSIONS } from './rund-permission-policy';
 
 export function normalizedUploadPath(rawPath: string): string {
   return posix.normalize(decodeURIComponent(rawPath.split('?')[0]).replace(/\\/g, '/'));
@@ -33,6 +34,17 @@ export function rundStaticAccess(db: Parameters<typeof recordRundAccess>[0], jwt
       const payload = jwt.verify(bearer || cookie || '');
       if (payload.sub) { (req as any).user = { ...payload, userId: payload.sub }; authenticated = true; }
     } catch { /* La decisión denegada también queda auditada. */ }
+    if (authenticated && !canViewRundSensitiveData((req as any).user)) {
+      try {
+        const rows = await db.query(`SELECT DISTINCT p.code FROM auth.role_permissions rp
+          JOIN auth.role r ON r.id=rp.id_rol AND COALESCE(r.is_active,true)
+          JOIN auth.permission p ON p.id_permission=rp.id_permission AND COALESCE(p.is_active,true)
+          WHERE COALESCE(rp.is_active,true) AND UPPER(r.code)=ANY($1::text[])
+            AND p.code=ANY($2::text[])`, [getRequestRoleCodes((req as any).user),
+              ['banco-docentes.rund.sensitive.view', ...Object.values(RUND_PROFILE_PERMISSIONS)]]);
+        (req as any).rundPermissions = expandRundPermissions(rows.map((row: any) => row.code));
+      } catch { (req as any).rundPermissions = new Set(); }
+    }
     const actor = rundRequestActor(req);
     try {
       await recordRundAccess(db, { ...actor, fields: RUND_SENSITIVE_FIELDS,

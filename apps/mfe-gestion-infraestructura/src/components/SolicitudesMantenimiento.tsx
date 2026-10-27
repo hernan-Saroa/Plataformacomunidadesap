@@ -3,9 +3,9 @@ import {
   Wrench, Clock, AlertTriangle, Plus, ListTodo, FolderKanban,
   Inbox, Search, FileSearch, ClipboardList, Loader2, Hammer,
   Package, CheckCircle, Archive, Ban, XCircle, ChevronDown,
-  ChevronUp, Paperclip, FileText, Image, Download,
+  ChevronUp, Paperclip, FileText, Image, Download, FileSpreadsheet,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
-  User, ThumbsDown, Star,
+  User, ThumbsDown, Star, UploadCloud, Database, Info, X,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -19,12 +19,14 @@ import {
   getMisSolicitudes,
   tecnicoPerteneceASesionUMI,
 } from '../services/infraestructuraService';
+import { ModalJerarquiaTerritorialDemo } from './ModalJerarquiaTerritorialDemo';
+import { HistoricoMantenimientosExterno } from './HistoricoMantenimientosExterno';
 
 interface SolicitudesMantenimientoProps {
   mantenimientos: SolicitudMantenimiento[];
   remitidasTI: SolicitudMantenimiento[];
-  vista: 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes';
-  onChangeVista: (vista: 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes') => void;
+  vista: 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes' | 'historicoPlanner';
+  onChangeVista: (vista: 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes' | 'historicoPlanner') => void;
   onNuevaSolicitud: () => void;
   onGestionar?: (idSolicitud: string) => void;
   loading?: boolean;
@@ -117,7 +119,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     if (tieneVinculoTecnico) return false;
     if (rolesNorm.has('SUPER_ADMIN')) return false;
     if (!rolesNorm.has('SOLICITANTE_INFRA') && !rolesNorm.has('USER')) return false;
-    const otros = ['ADMIN','GESTOR_MANTENIMIENTO','ADMINISTRADOR_FUNCIONAL','ADMINISTRADOR_FUNCIONAL_INFRA','COORDINADOR_INFRAESTRUCTURA','UMI','INFRAESTRUCTURA','ANALISTA_ASIGNADOR_UMI','CONSULTA_CALIDAD_INFRA','ADMINISTRADOR_MODULO_INFRA','TECNICO_UMI','TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO'];
+    const otros = ['ADMIN', 'GESTOR_MANTENIMIENTO', 'ADMINISTRADOR_FUNCIONAL', 'ADMINISTRADOR_FUNCIONAL_INFRA', 'COORDINADOR_INFRAESTRUCTURA', 'UMI', 'INFRAESTRUCTURA', 'ANALISTA_ASIGNADOR_UMI', 'CONSULTA_CALIDAD_INFRA', 'ADMINISTRADOR_MODULO_INFRA', 'TECNICO_UMI', 'TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO'];
     for (const r of otros) if (rolesNorm.has(r)) return false;
     return true;
   }, [rolesNorm, tieneVinculoTecnico]);
@@ -144,7 +146,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
       if (esSoloSolicitante) onChangeVista('misSolicitudes');
       else if (tieneVinculoTecnico && !puedeVerBandejaGeneral) onChangeVista('asignadasMi');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [esSoloSolicitante, tieneVinculoTecnico, puedeVerBandejaGeneral]);
   const [misSolicitudes, setMisSolicitudes] = useState<SolicitudMantenimiento[]>([]);
   const [cargandoMisSolicitudes, setCargandoMisSolicitudes] = useState<boolean>(false);
@@ -161,7 +163,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   }, [sesionUmi.userId]);
   useEffect(() => {
     let cancelado = false;
-    cargarMisSolicitudes().then(() => { /* noop */ }).catch(() => {});
+    cargarMisSolicitudes().then(() => { /* noop */ }).catch(() => { });
     return () => { cancelado = true; };
   }, [cargarMisSolicitudes, onRefresh]);
   const asignadasMi = useMemo(() => {
@@ -196,8 +198,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const lista =
     vista === 'todas' ? mantenimientos
       : vista === 'asignadasMi' ? asignadasMi
-      : vista === 'misSolicitudes' ? misSolicitudes
-      : remitidasTI;
+        : vista === 'misSolicitudes' ? misSolicitudes
+          : remitidasTI;
   const vistaLoading = vista === 'misSolicitudes' ? cargandoMisSolicitudes : !!loading;
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
@@ -335,6 +337,75 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     return listaFiltrada.slice(inicio, inicio + PAGE_SIZE_SOLICITUDES);
   }, [listaFiltrada, paginaActual]);
 
+  // Permiso para exportar consolidado operacional a Excel (Fase 4 Req. #9)
+  // Exclusivo para roles de gestión, auditoría y reportes. Solicitantes (P1) y Técnicos (P3/P4) NUNCA deben ver el botón.
+  const esRolReportes = useMemo(() => {
+    if (esSoloSolicitante) return false;
+
+    const rolesAutorizados = [
+      'SUPER_ADMIN',
+      'ADMINISTRADOR_FUNCIONAL_INFRA',
+      'ADMINISTRADOR_FUNCIONAL',
+      'COORDINADOR_INFRAESTRUCTURA',
+      'ADMIN_MODULO_INFRA',
+      'CONSULTA_CALIDAD_INFRA',
+      'GESTOR_MANTENIMIENTO',
+    ];
+
+    const tieneRolDirecto = rolesAutorizados.some((r) => rolesNorm.has(r));
+    if (tieneRolDirecto) return true;
+
+    // Si tiene vínculo de técnico operativo o rol técnico sin rol directivo, no puede exportar
+    if (tieneVinculoTecnico || esRolTecnico(sesionUmi)) return false;
+
+    // Permisos específicos exactos de reportes consolidados (sin incluir trazabilidad ni view_all)
+    return hasPerm(sesionUmi, [
+      'infraestructura.reporting.export_excel',
+      'infraestructura.reportes.gestion',
+      'infraestructura.reportes.consolidados',
+    ]);
+  }, [rolesNorm, sesionUmi, esSoloSolicitante, tieneVinculoTecnico]);
+
+  const [exportandoExcel, setExportandoExcel] = useState(false);
+  const [toastExport, setToastExport] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [mostrarModalCargaMasiva, setMostrarModalCargaMasiva] = useState(false);
+  const [mostrarModalJerarquia, setMostrarModalJerarquia] = useState(false);
+
+
+  useEffect(() => {
+    if (!toastExport) return;
+    const t = setTimeout(() => setToastExport(null), 3500);
+    return () => clearTimeout(t);
+  }, [toastExport]);
+
+  const exportarExcelOperacional = async () => {
+    if (!esRolReportes || exportandoExcel) return;
+    setExportandoExcel(true);
+    try {
+      const idsActuales = listaFiltrada.map((x) => x.idSolicitud).filter(Boolean);
+      const blob = await infraestructuraService.descargarExcelConsolidadoOperacional({
+        estado: filtroEstado !== 'TODOS' ? filtroEstado : undefined,
+        prioridad: filtroPrioridad !== 'TODAS' ? filtroPrioridad : undefined,
+        codigoTecnico: filtroResponsable !== 'TODOS' ? filtroResponsable : undefined,
+        ids: idsActuales.length <= 500 && idsActuales.length > 0 ? idsActuales : undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const f = new Date().toISOString().slice(0, 10);
+      a.download = `Consolidado_Operacional_Mantenimiento_ESAP_${f}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1200);
+      setToastExport({ tipo: 'ok', texto: 'Consolidado operacional exportado a Excel exitosamente.' });
+    } catch (err: any) {
+      setToastExport({ tipo: 'err', texto: err?.message || 'Error al exportar consolidado operacional' });
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
+
   const hayFiltrosActivos =
     filtroEstado !== 'TODOS' ||
     filtroPrioridad !== 'TODAS' ||
@@ -423,6 +494,49 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                 Actualizar
               </button>
             )}
+            {esRolReportes && (
+              <>
+                <button
+                  type="button"
+                  onClick={exportarExcelOperacional}
+                  disabled={exportandoExcel || lista.length === 0}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                  title="Fase 4 Req. #9: Exportar consolidado detallado con estructura Planner + datos ESAP"
+                >
+                  {exportandoExcel ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                  ) : (
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                  )}
+                  <span>{exportandoExcel ? 'Generando…' : 'Exportar Excel'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onChangeVista('historicoPlanner')}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm active:scale-95 ${
+                    vista === 'historicoPlanner'
+                      ? 'border-sky-500 bg-sky-600 text-gray shadow-sky-600/20'
+                      : 'border-sky-300 bg-sky-100 hover:bg-sky-100 text-gray'
+                  }`}
+                  title="Fase 4 Req. #10: Repositorio e Ingesta Histórica de Microsoft Planner / GLPI"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Carga Masiva (Histórico)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMostrarModalJerarquia(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold transition-all shadow-sm active:scale-95"
+                  title="Fase 4 Req. #8: Simulador y evaluación de Jerarquía de Sedes y Territoriales para la reunión"
+                >
+                  <GitBranch className="w-3.5 h-3.5 text-indigo-700" />
+                  <span>Jerarquía Sedes (Demo)</span>
+                </button>
+              </>
+
+            )}
             {puedeRadicarLocal && (
               <button
                 type="button"
@@ -441,11 +555,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             <button
               type="button"
               onClick={() => onChangeVista('todas')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-                vista === 'todas'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${vista === 'todas'
                   ? 'border-amber-600 text-amber-700 bg-amber-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-              }`}
+                }`}
             >
               <Inbox className="w-4 h-4" />
               Bandeja UMI
@@ -458,11 +571,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             <button
               type="button"
               onClick={() => onChangeVista('misSolicitudes')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-                vista === 'misSolicitudes'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${vista === 'misSolicitudes'
                   ? 'border-rose-600 text-rose-700 bg-rose-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-              }`}
+                }`}
             >
               <FolderKanban className="w-4 h-4" />
               Mis Solicitudes
@@ -475,11 +587,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             <button
               type="button"
               onClick={() => onChangeVista('asignadasMi')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-                vista === 'asignadasMi'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${vista === 'asignadasMi'
                   ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-              }`}
+                }`}
             >
               <User className="w-4 h-4" />
               Asignadas a mí
@@ -492,11 +603,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             <button
               type="button"
               onClick={() => onChangeVista('remitidasTI')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-                vista === 'remitidasTI'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${vista === 'remitidasTI'
                   ? 'border-sky-600 text-sky-700 bg-sky-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-              }`}
+                }`}
             >
               <GitBranch className="w-4 h-4" />
               Remitidas a TI
@@ -505,10 +615,31 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               </span>
             </button>
           )}
+          {esRolReportes && (
+            <button
+              type="button"
+              onClick={() => onChangeVista('historicoPlanner')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${vista === 'historicoPlanner'
+                  ? 'border-sky-600 text-sky-800 bg-sky-50/50'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+                }`}
+            >
+              <Database className="w-4 h-4 text-sky-600" />
+              Histórico Planner / GLPI
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-800 font-bold">
+                1.107
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="p-6 space-y-4">
+      {vista === 'historicoPlanner' ? (
+        <div className="p-6">
+          <HistoricoMantenimientosExterno esRolReportes={esRolReportes} />
+        </div>
+      ) : (
+        <div className="p-6 space-y-4">
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
@@ -594,19 +725,19 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                 {vista === 'remitidasTI'
                   ? 'Aún no hay solicitudes remitidas a Tecnologías de la Información'
                   : vista === 'asignadasMi'
-                  ? 'Aún no tienes solicitudes de mantenimiento asignadas'
-                  : vista === 'misSolicitudes'
-                  ? 'No has radicado solicitudes aún'
-                  : 'No hay solicitudes de mantenimiento para la bandeja UMI'}
+                    ? 'Aún no tienes solicitudes de mantenimiento asignadas'
+                    : vista === 'misSolicitudes'
+                      ? 'No has radicado solicitudes aún'
+                      : 'No hay solicitudes de mantenimiento para la bandeja UMI'}
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {vista === 'remitidasTI'
                   ? 'Cuando radique una solicitud clasificada como TECNOLÓGICA, aparecerá aquí para seguimiento.'
                   : vista === 'asignadasMi'
-                  ? 'Las solicitudes asignadas a tus códigos de técnico vinculados aparecerán aquí automáticamente.'
-                  : vista === 'misSolicitudes'
-                  ? 'Las solicitudes que radique aparecerán aquí automáticamente. Puede dar seguimiento a su estado.'
-                  : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
+                    ? 'Las solicitudes asignadas a tus códigos de técnico vinculados aparecerán aquí automáticamente.'
+                    : vista === 'misSolicitudes'
+                      ? 'Las solicitudes que radique aparecerán aquí automáticamente. Puede dar seguimiento a su estado.'
+                      : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
               </p>
             </div>
             {(vista === 'todas' || vista === 'misSolicitudes' || !vista) && puedeRadicarLocal && (
@@ -632,14 +763,18 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           const numEvidencias = (m.evidencias && m.evidencias.length) || 0;
           const expandido = !!expandidos[m.idSolicitud];
           const estadoRechazada = String(m.estado || '').toUpperCase() === 'RECHAZADA';
+          const sla = clasificarSLA(m.fechaLimiteAtencion);
+          const estadoFinalizado = ['CERRADA', 'COMPLETADA', 'CERRADA_SIN_ATENCION'].includes(String(m.estado || '').toUpperCase());
+          const esVencida = !estadoFinalizado && !estadoRechazada && sla.clase === 'vencido';
           return (
             <div
               key={m.idSolicitud}
-              className={`p-5 rounded-xl border transition-all flex flex-col gap-4 ${
-                estadoRechazada
-                  ? 'bg-rose-50/80 border-rose-200 hover:bg-rose-50 hover:border-rose-300'
-                  : 'bg-slate-50/40 border-slate-200/80 hover:bg-white hover:border-slate-300'
-              }`}
+              className={`p-5 rounded-xl border transition-all flex flex-col gap-4 ${esVencida
+                  ? 'bg-rose-50/50 border-rose-300 border-l-4 border-l-rose-600 hover:bg-rose-50 hover:border-rose-400 shadow-sm'
+                  : estadoRechazada
+                    ? 'bg-rose-50/80 border-rose-200 hover:bg-rose-50 hover:border-rose-300'
+                    : 'bg-slate-50/40 border-slate-200/80 hover:bg-white hover:border-slate-300'
+                }`}
             >
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                 <div className="space-y-1.5 flex-1 w-full">
@@ -651,12 +786,18 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                         m.calificacionServicio &&
                         m.calificacionServicio >= 1 &&
                         m.calificacionServicio <= 5 && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-50 ring-1 ring-amber-200 text-amber-700" title={`Calificación ${m.calificacionServicio}/5`}>
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-50 ring-1 ring-amber-200 text-amber-700" title={`Calificación del servicio: ${m.calificacionServicio}/5`}>
                             <Star className="w-2.5 h-2.5 text-amber-500 fill-amber-400" strokeWidth={1.8} />
                             <span className="text-[10px] font-bold leading-none">{m.calificacionServicio}/5</span>
                           </span>
                         )}
                     </span>
+                    {esVencida && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-sm ring-2 ring-rose-200">
+                        <AlertTriangle className="w-3 h-3 text-white" />
+                        Vencida
+                      </span>
+                    )}
                     <span
                       className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${clasePrioridad(m.prioridad || 'MEDIA')}`}
                     >
@@ -667,11 +808,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       {m.tipoMantenimiento}
                     </span>
                     {m.tipoAtencion && (
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                        m.tipoAtencion === 'TECNOLOGICA'
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${m.tipoAtencion === 'TECNOLOGICA'
                           ? 'bg-sky-100 text-sky-700 border-sky-200'
                           : 'bg-amber-100 text-amber-800 border-amber-200'
-                      }`}>
+                        }`}>
                         Atención {m.tipoAtencion}
                       </span>
                     )}
@@ -697,11 +837,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       <button
                         type="button"
                         onClick={() => toggleExpandir(m.idSolicitud)}
-                        className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all ${
-                          expandido
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all ${expandido
                             ? 'bg-amber-100 text-amber-800 border-amber-300'
                             : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200'
-                        }`}
+                          }`}
                       >
                         <Paperclip className="w-3 h-3" />
                         {numEvidencias} adjunto{numEvidencias === 1 ? '' : 's'}
@@ -709,11 +848,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       </button>
                     )}
                   </div>
-                  <h4 className={`text-sm font-bold leading-snug ${
-                    estadoRechazada
+                  <h4 className={`text-sm font-bold leading-snug ${estadoRechazada
                       ? 'text-slate-500 line-through decoration-rose-400 decoration-2 decoration-slice'
                       : 'text-slate-900'
-                  }`}>
+                    }`}>
                     {m.descripcion}
                   </h4>
                   {estadoRechazada && m.motivoRechazo && (
@@ -759,20 +897,27 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
 
                 <div className="flex items-center gap-3 self-end md:self-center w-full md:w-auto justify-end flex-wrap">
                   {(() => {
-                    const sla = clasificarSLA(m.fechaLimiteAtencion);
                     const coloresSLA: Record<string, string> = {
-                      vencido: 'bg-rose-100 text-rose-800 border-rose-200',
+                      vencido: 'bg-red-600 text-white border-rose-700 font-black shadow-sm',
                       alerta: 'bg-amber-100 text-amber-800 border-amber-200',
                       ok: 'bg-emerald-100 text-emerald-800 border-emerald-200',
                       sin: 'bg-slate-100 text-slate-600 border-slate-200',
                     };
+                    const textoSLA =
+                      sla.clase === 'vencido'
+                        ? `Vencida ${sla.horasRestantes !== null ? `· ${Math.abs(Math.round(sla.horasRestantes))} h` : ''}`
+                        : sla.clase === 'alerta'
+                          ? 'Alerta'
+                          : sla.clase === 'ok'
+                            ? 'En plazo'
+                            : 'SLA s/dato';
                     return (
                       <span
                         title={`SLA: ${sla.texto}${sla.horasRestantes !== null ? ` · ${sla.horasRestantes.toFixed(1)} h restantes` : ''}`}
                         className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${coloresSLA[sla.clase] || coloresSLA.sin}`}
                       >
                         <Clock className="w-2.5 h-2.5" />
-                        {sla.clase === 'vencido' ? 'Vencido' : sla.clase === 'alerta' ? 'Alerta' : sla.clase === 'ok' ? 'En plazo' : 'SLA s/dato'}
+                        {textoSLA}
                       </span>
                     );
                   })()}
@@ -808,11 +953,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   <button
                     type="button"
                     onClick={() => onGestionar?.(m.idSolicitud)}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${
-                      onGestionar
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${onGestionar
                         ? 'border-slate-200 hover:bg-slate-100 hover:border-amber-300 hover:text-amber-800 text-slate-700'
                         : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50'
-                    }`}
+                      }`}
                     disabled={!onGestionar}
                   >
                     Gestionar
@@ -853,6 +997,100 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           </div>
         )}
       </div>
+      )}
+
+      {toastExport && (
+        <div
+          className={`fixed top-4 right-4 z-[99] max-w-sm px-4 py-3 rounded-xl text-xs font-bold border shadow-xl flex items-center gap-2 animate-in slide-in-from-top ${
+            toastExport.tipo === 'ok'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-500/10'
+              : 'bg-rose-50 border-rose-300 text-rose-900 shadow-rose-500/10'
+          }`}
+        >
+          <span>{toastExport.tipo === 'ok' ? '✅' : '❌'}</span>
+          <span>{toastExport.texto}</span>
+        </div>
+      )}
+
+      {/* Modal Informativo: Carga Masiva Histórico (Req. #10) */}
+      {mostrarModalCargaMasiva && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-sky-700 via-sky-800 to-indigo-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl backdrop-blur-md">
+                  <UploadCloud className="w-5 h-5 text-sky-200" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-base leading-tight">Carga Masiva Histórica (Planner / GLPI)</h4>
+                  <p className="text-xs text-sky-200 mt-0.5">Fase 4 · Requerimiento #10 — Unidad de Mantenimiento e Infraestructura</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarModalCargaMasiva(false)}
+                className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-100 flex items-start gap-3">
+                <Info className="w-5 h-5 text-sky-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-sky-900 leading-relaxed">
+                  <p className="font-bold mb-1">Módulo en Preparación Técnica</p>
+                  Este apartado está destinado a la ingesta y migración masiva de mantenimientos históricos ejecutados en <strong>Microsoft Planner</strong> y <strong>GLPI</strong>.
+                </div>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-600">
+                <h5 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <Database className="w-4 h-4 text-sky-600" />
+                  Estado del Esquema y Datos de Referencia:
+                </h5>
+                <ul className="list-disc pl-5 space-y-1.5">
+                  <li>Se completó el análisis de la plantilla institucional <code>Mantenimientos_Infraestructura_2026.xlsx</code> (1.107 registros del 2026).</li>
+                  <li>Las 12 columnas base (Tarea, Depósito, Estado, Asignado a, Creado por, Fechas de creación/inicio/vencimiento/finalización) ya están mapeadas con el modelo del sistema.</li>
+                  <li>
+                    <span className="font-semibold text-amber-700">Pendiente:</span> En espera de los acuerdos de la reunión de estandarización de <strong>Sedes y Territoriales (Req. #8)</strong> para definir la asignación territorial definitiva de cada registro antes de ejecutar la importación en base de datos.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Zona Mockup / Dropzone deshabilitado */}
+              <div className="p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-center">
+                <UploadCloud className="w-10 h-10 text-slate-400 mb-2" />
+                <p className="text-xs font-semibold text-slate-700">Área de Importación Masiva</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Formatos compatibles: .xlsx, .xls, .csv</p>
+                <span className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  <Clock className="w-3 h-3" /> En espera de definición de Sedes (Req. #8)
+                </span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setMostrarModalCargaMasiva(false)}
+                className="px-4 py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold transition-all"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Demostrativo: Jerarquía Territorial de Sedes (Req. #8) */}
+      <ModalJerarquiaTerritorialDemo
+        isOpen={mostrarModalJerarquia}
+        onClose={() => setMostrarModalJerarquia(false)}
+      />
     </div>
   );
 };
+
