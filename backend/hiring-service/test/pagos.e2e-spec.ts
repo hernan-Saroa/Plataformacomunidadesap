@@ -428,6 +428,27 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
   // ------------------------------------------------------------ criterio --
 
   describe('Criterio 1 · factura, informe y aval tramitan el pago', () => {
+    // Revisión de QA de EFDS-1170: quien alimenta el módulo es la supervisión,
+    // que radica y avala. No hay regla que impida avalar lo que uno radicó.
+    it('el supervisor que radica la cuenta también la avala', async () => {
+      const proceso = await contratoEnEjecucion();
+
+      const radicado = await pagos.radicar(
+        proceso.id,
+        { periodoDesde: haceDias(30), periodoHasta: haceDias(1), valor: 10_000_000 } as any,
+        archivo('factura.pdf'),
+        'x'.repeat(64),
+        archivo('informe-actividades.pdf'),
+        'y'.repeat(64),
+        supervisor,
+      );
+      expect(radicado.pagos[0].radicadoPor).toBe(supervisor.userName);
+      expect(radicado.esSupervisor).toBe(true);
+
+      const avalado = await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
+      expect(avalado.pagos[0].estado).toBe('AVALADO');
+    });
+
     it('recorre el trámite completo hasta dejar el pago tramitado', async () => {
       const proceso = await contratoEnEjecucion();
 

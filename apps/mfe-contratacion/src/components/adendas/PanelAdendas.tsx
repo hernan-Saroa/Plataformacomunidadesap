@@ -73,9 +73,15 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
     setEmitiendo(false);
   };
 
+  // Cerrada la recepción de ofertas solo caben las de cronograma, y ya no
+  // mueven una fecha que la plataforma controle (revisión de QA de EFDS-1154).
+  const soloCronograma = !!estado?.soloCronograma;
+  const tipoElegido = soloCronograma ? 'CRONOGRAMA' : tipo;
+  const pideVencimiento = tipoElegido === 'CRONOGRAMA' && !soloCronograma;
+
   const emitir = async () => {
     if (!objeto.trim() || !documento) return;
-    if (tipo === 'CRONOGRAMA' && !vencimiento) return;
+    if (pideVencimiento && !vencimiento) return;
 
     setGuardando(true);
     try {
@@ -83,9 +89,9 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
         await contratacionService.emitirAdenda(
           procesoId,
           {
-            tipo,
+            tipo: tipoElegido,
             objeto: objeto.trim(),
-            vencimientoNuevo: tipo === 'CRONOGRAMA' ? vencimiento : undefined,
+            vencimientoNuevo: pideVencimiento ? vencimiento : undefined,
           },
           documento,
         ),
@@ -193,6 +199,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
               key={adenda.id}
               adenda={adenda}
               ocupada={guardando}
+              puedeGestionar={estado.puedeGestionar}
               onPublicar={(archivo) => firma.conFirma((firmaOtp) => publicar(adenda, archivo, firmaOtp))}
               onAnular={() => firma.conFirma((firmaOtp) => anular(adenda, firmaOtp))}
             />
@@ -216,6 +223,10 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
             'Las adendas se emiten a partir de la apertura del proceso.'
           }
         />
+      ) : !estado.puedeGestionar ? (
+        <Aviso tono="aviso" titulo="Solo de consulta">
+          {estado.motivoNoPuedeEmitir ?? 'Las adendas las genera el abogado dueño del proceso.'}
+        </Aviso>
       ) : !estado.puedeEmitir ? (
         <Aviso tono="aviso" titulo="Ya no se emiten adendas">
           {estado.motivoNoPuedeEmitir ?? 'El pliego ya no admite adendas.'}
@@ -230,13 +241,19 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
             </label>
             <select
               id="adenda-tipo"
-              value={tipo}
+              value={tipoElegido}
               onChange={(e) => setTipo(e.target.value as 'FONDO' | 'CRONOGRAMA')}
               className={campo}
             >
-              <option value="FONDO">Requisitos de fondo</option>
+              {!soloCronograma && <option value="FONDO">Requisitos de fondo</option>}
               <option value="CRONOGRAMA">Cronograma</option>
             </select>
+            {soloCronograma && (
+              <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
+                {estado.motivoNoFondo} Las nuevas fechas de evaluación o adjudicación van en el
+                documento de la adenda.
+              </p>
+            )}
           </div>
 
           <div>
@@ -253,7 +270,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
             />
           </div>
 
-          {tipo === 'CRONOGRAMA' ? (
+          {pideVencimiento ? (
             <div>
               <label
                 htmlFor="adenda-vencimiento"
@@ -292,7 +309,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
                 guardando ||
                 !objeto.trim() ||
                 !documento ||
-                (tipo === 'CRONOGRAMA' && !vencimiento)
+                (pideVencimiento && !vencimiento)
               }
               onClick={emitir}
             >
@@ -324,11 +341,14 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
 function FilaAdenda({
   adenda,
   ocupada,
+  puedeGestionar,
   onPublicar,
   onAnular,
 }: {
   adenda: Adenda;
   ocupada: boolean;
+  /** Publicar y anular también son del abogado dueño (EFDS-1154). */
+  puedeGestionar: boolean;
   onPublicar: (evidencia: File) => void;
   onAnular: () => void;
 }) {
@@ -377,7 +397,7 @@ function FilaAdenda({
         </div>
       </div>
 
-      {adenda.estado === 'EMITIDA' ? (
+      {adenda.estado === 'EMITIDA' && puedeGestionar ? (
         <>
           <input
             ref={input}

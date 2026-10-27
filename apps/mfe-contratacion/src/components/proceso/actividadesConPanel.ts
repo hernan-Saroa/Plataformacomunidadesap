@@ -103,6 +103,8 @@ export const NUMERAL_DOCUMENTOS = '5.1';
  */
 /** Publicación en SECOP II (EFDS-1150): donde hay pliego, abre su plazo de observaciones. */
 export const NUMERAL_PUBLICACION = '5.3';
+/** La publicación en la página web, que se registra dentro de la 5.3 (EFDS-1150). */
+export const NUMERAL_PUBLICACION_WEB = '5.4';
 /** Limitación de la convocatoria a MIPYME (EFDS-1151). */
 export const NUMERAL_MIPYME = '5.5';
 /** Observaciones al pliego (EFDS-1151), sobre la publicación ya registrada. */

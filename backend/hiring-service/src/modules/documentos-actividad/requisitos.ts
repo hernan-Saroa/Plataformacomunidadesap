@@ -102,5 +102,5 @@ export interface GuardiaDeDocumentos {
     acceso: HiringAccess,
   ): Promise<void>;
   /** Lo que la actividad recalcula cuando cambian sus documentos. */
-  despuesDeCambiar?(em: EntityManager, procesoId: string): Promise<void>;
+  despuesDeCambiar?(em: EntityManager, procesoId: string, acceso?: HiringAccess): Promise<void>;
 }

@@ -49,8 +49,8 @@ export class AdendasController {
     description:
       'Incluye si el proceso admite emitir nuevas: sin pliego publicado no hay nada que adendar, y con el proceso abierto rige el pliego definitivo.',
   })
-  estado(@Param('id', ParseUUIDPipe) procesoId: string) {
-    return this.service.estado(procesoId);
+  estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.estado(procesoId, getHiringAccess(req));
   }
 
   @Post()

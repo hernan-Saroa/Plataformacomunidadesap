@@ -65,8 +65,23 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
     size: 1024,
   });
 
-  const crear = (modalidad = 'LICITACION_PUBLICA') =>
-    procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
+  /**
+   * Crea el proceso con el gestor como abogado dueño: desde la 129 las adendas
+   * solo las genera quien ocupa el puesto Abogado estructurador (EFDS-1154).
+   */
+  const crear = async (modalidad = 'LICITACION_PUBLICA') => {
+    const proceso = await procesos.crearProceso(
+      { objeto: OBJETO, modalidad, valorEstimado: 1_000_000 },
+      gestor,
+    );
+    await dataSource.query(
+      `INSERT INTO hiring.asignaciones_puesto (proceso_id, puesto_id, usuario_id, usuario_nombre, nombre)
+       SELECT $1, id, $2, $3, 'Gestor de prueba' FROM hiring.puestos_proceso
+        WHERE activo AND lower(nombre) = 'abogado estructurador'`,
+      [proceso.id, gestor.userId, gestor.userName],
+    );
+    return proceso;
+  };
 
   /** Publica el pliego en SECOP II, que es lo que una adenda puede modificar. */
   const publicarPliego = (procesoId: string) =>
@@ -254,7 +269,7 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
       const proceso = await crear();
       await publicarPliego(proceso.id);
 
-      const estado = await adendas.estado(proceso.id);
+      const estado = await adendas.estado(proceso.id, gestor);
       expect(estado.puedeEmitir).toBe(false);
       expect(estado.motivoNoPuedeEmitir).toMatch(/a partir de la apertura/i);
 
@@ -264,7 +279,7 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
     it('con el proceso abierto, sí', async () => {
       const proceso = await abierto();
 
-      const estado = await adendas.estado(proceso.id);
+      const estado = await adendas.estado(proceso.id, gestor);
       expect(estado.abierto).toBe(true);
       expect(estado.puedeEmitir).toBe(true);
       expect(estado.mueve).toBe('CIERRE_OFERTAS');
@@ -399,7 +414,7 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
 
   it('la contratación directa no admite adendas', async () => {
     const proceso = await crear('CONTRATACION_DIRECTA');
-    const estado = await adendas.estado(proceso.id);
+    const estado = await adendas.estado(proceso.id, gestor);
 
     expect(estado.aplica).toBe(false);
     expect(estado.puedeEmitir).toBe(false);

@@ -530,7 +530,7 @@ export class DocumentosActividadService {
         archivo: archivo.originalname,
       });
 
-      await this.guardias.get(numeral)?.despuesDeCambiar?.(m, procesoId);
+      await this.guardias.get(numeral)?.despuesDeCambiar?.(m, procesoId, acceso);
       return documento;
     };
 
@@ -576,7 +576,7 @@ export class DocumentosActividadService {
         documento: entregado.codigo,
       });
 
-      await this.guardias.get(numeral)?.despuesDeCambiar?.(em, procesoId);
+      await this.guardias.get(numeral)?.despuesDeCambiar?.(em, procesoId, acceso);
     };
 
     await (manager ? trabajo(manager) : this.dataSource.transaction(trabajo));

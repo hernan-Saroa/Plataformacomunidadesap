@@ -2,12 +2,14 @@ import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
+import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CdpService } from '../cdp/cdp.service';
+import { AprobacionService } from '../aprobacion/aprobacion.service';
 import {
   ArchivoRecibido,
   DocumentosActividadService,
@@ -32,6 +34,8 @@ export class DocumentosService implements OnModuleInit {
     private readonly dataSource: DataSource,
     private readonly cdp: CdpService,
     private readonly catalogo: DocumentosActividadService,
+    /** La cadena de revisión de los documentos, si el flujo la configura (EFDS-1150). */
+    private readonly aprobacion: AprobacionService,
   ) {}
 
   /** Las reglas de la 5.1 sobre sus documentos, para el catálogo único. */
@@ -52,7 +56,7 @@ export class DocumentosService implements OnModuleInit {
         // sustituir uno ya cargado no elabora nada nuevo.
         if (cambio === 'cargar') await this.cdp.exigirCdpParaDocumentos(procesoId, em);
       },
-      despuesDeCambiar: (em, procesoId) => this.sincronizarActividad(em, procesoId),
+      despuesDeCambiar: (em, procesoId, acceso) => this.sincronizarActividad(em, procesoId, acceso),
     });
   }
 
@@ -154,7 +158,7 @@ export class DocumentosService implements OnModuleInit {
    * sentido: sustituir un documento devuelve la actividad a borrador, que es la
    * verdad —le falta uno— y no un retroceso que haya que explicar.
    */
-  private async sincronizarActividad(em: EntityManager, procesoId: string) {
+  private async sincronizarActividad(em: EntityManager, procesoId: string, acceso?: HiringAccess) {
     const requeridos = await this.catalogo.requeridosDe(procesoId, NUMERAL_DOCUMENTOS, em);
     const cargados = await em.getRepository(DocumentoProceso).find({
       where: { procesoId, numeral: NUMERAL_DOCUMENTOS, anuladoAt: IsNull() },
@@ -170,29 +174,59 @@ export class DocumentosService implements OnModuleInit {
       obligatorios.length > 0 &&
       obligatorios.every((r) => cargados.some((c) => c.codigo === r.codigo));
 
-    const estado = completa ? 'APROBADO' : 'BORRADOR';
-
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_DOCUMENTOS },
     });
 
+    // Con cadena configurada, completa no es aprobada: los documentos pasan
+    // por la revisión del abogado revisor y la Dirección antes de publicarse
+    // (revisión de QA de EFDS-1150). La ronda se abre una vez; mientras siga
+    // en revisión o ya aprobada, cargar un anexo más no la reinicia.
+    // Publicado el proyecto, las versiones nuevas que sube la 5.6.1 pasan por
+    // la cadena del pliego definitivo (113), no otra vez por la de la 5.1.
+    const publicado =
+      completa &&
+      (await em.getRepository(PublicacionPliego).count({ where: { procesoId, anuladaAt: IsNull() } })) > 0;
+    const proceso = completa ? await this.exigirProceso(em, procesoId) : null;
+    const revisan =
+      completa && acceso && !publicado
+        ? await this.aprobacion.aprobadoresDe(NUMERAL_DOCUMENTOS, proceso!.modalidad, em, procesoId)
+        : null;
+    const yaVa = actividad?.estado === 'EN_REVISION' || actividad?.estado === 'APROBADO';
+    const estado = !completa
+      ? 'BORRADOR'
+      : !revisan
+        ? 'APROBADO'
+        : yaVa
+          ? actividad!.estado
+          : 'EN_REVISION';
+    const enviar = !!revisan && !yaVa;
+
     // No se toca revisadoPor: cargar el último documento no es revisarlo, y
     // firmar el expediente con el nombre de quien solo adjuntó atribuiría una
     // revisión que nadie hizo.
+    const datosEnvio = enviar
+      ? { enviadoPor: acceso!.userName, enviadoPorId: acceso!.userId ?? null }
+      : {};
+
     if (!actividad) {
-      await em.save(
+      const nueva = await em.save(
         em.create(ProcesoActividad, {
           procesoId,
           numeral: NUMERAL_DOCUMENTOS,
           estado: estado as any,
           datos: {},
+          ...datosEnvio,
         }),
       );
+      if (enviar) await this.aprobacion.abrirRonda(em, nueva, revisan!, acceso!);
       return;
     }
 
     actividad.estado = estado as any;
+    Object.assign(actividad, datosEnvio);
     await em.save(actividad);
+    if (enviar) await this.aprobacion.abrirRonda(em, actividad, revisan!, acceso!);
   }
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {

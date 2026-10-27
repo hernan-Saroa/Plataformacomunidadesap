@@ -573,8 +573,7 @@ export class AlertasService {
   /**
    * Pólizas cargadas que esperan aprobación (8.4).
    *
-   * Las aprueba quien tiene el permiso en el punto, menos quien las cargó: es
-   * la regla de `LegalizacionService.aprobarGarantia`, que responde 403.
+   * Las aprueba quien tiene el permiso en el punto, aunque sea quien las cargó.
    */
   private async garantiasPorAprobar(acceso: HiringAccess): Promise<any[]> {
     if (!this.alcance || !(await this.alcance.puedeEn(acceso, 'aprobar', '8.4'))) return [];
@@ -598,9 +597,7 @@ export class AlertasService {
         JOIN hiring.actividades a ON a.numeral = '8.4'
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
        WHERE g.estado = 'CARGADA'
-         AND (g.cargada_por IS NULL OR g.cargada_por <> $1)
       `,
-      [acceso.userName ?? ''],
     );
   }
 

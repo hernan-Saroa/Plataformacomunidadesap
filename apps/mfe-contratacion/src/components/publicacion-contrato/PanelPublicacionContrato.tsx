@@ -139,6 +139,15 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
         registra dónde se publicó y con qué evidencia.
       </Ayuda>
 
+      {/* Revisión de QA de EFDS-1166: la publicación en la página web se hace
+          una sola vez por proceso, en la 5.3. Esta es un recordatorio para
+          confirmar la evidencia y no detiene el proceso. */}
+      <Aviso tono="aviso" titulo="Recordatorio, no detiene el proceso">
+        La publicación del proceso en la página web de la ESAP ya se registró con la publicación del
+        proyecto de pliego (5.3). Aquí solo se confirma la evidencia de lo que corresponda publicar
+        ahora (en Tienda Virtual, la orden de compra); el proceso sigue aunque quede pendiente.
+      </Aviso>
+
       {/* El plazo corre desde el perfeccionamiento (Decreto 1082, art.
           2.2.1.1.1.7.1): no espera a las garantías ni a la ARL. */}
       {!estado.suscrito ? (

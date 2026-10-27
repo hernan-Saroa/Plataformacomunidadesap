@@ -91,6 +91,11 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
   const [amparos, setAmparos] = useState<AmparoDeGarantia[]>([]);
   const [amparo, setAmparo] = useState(AMPARO_VACIO);
   const [poliza, setPoliza] = useState<File | null>(null);
+  /** La aprobación que se dio en SECOP II, con su evidencia (EFDS-1164). */
+  const [fechaSecop, setFechaSecop] = useState('');
+  const [evidencia, setEvidencia] = useState<File | null>(null);
+  /** La póliza registrada a la que se le está agregando un amparo. */
+  const [ampliando, setAmpliando] = useState<string | null>(null);
   /** Qué campos del amparo se marcan en rojo tras una validación fallida. */
   const [erroresAmparo, setErroresAmparo] = useState<Record<string, boolean>>({});
 
@@ -140,7 +145,55 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
     setAmparo(AMPARO_VACIO);
     setErroresAmparo({});
     setPoliza(null);
+    setFechaSecop('');
+    setEvidencia(null);
     setCreando(false);
+  };
+
+  /** Las reglas del amparo, dichas antes de enviar; null si no pasa. */
+  const amparoValido = (yaIncluidos: AmparoDeGarantia[]): AmparoDeGarantia | null => {
+    if (!amparo.tipo || !amparo.vigenciaDesde || !amparo.vigenciaHasta) return null;
+    if (yaIncluidos.some((a) => a.tipo === amparo.tipo)) {
+      toast.error(`La póliza ya incluye el amparo de ${nombreAmparo(amparo.tipo).toLowerCase()}`);
+      setErroresAmparo({ tipo: true });
+      return null;
+    }
+    if (amparo.vigenciaHasta <= amparo.vigenciaDesde) {
+      toast.error('La vigencia del amparo debe terminar después de empezar');
+      setErroresAmparo({ vigenciaHasta: true });
+      return null;
+    }
+    const valor = Number(amparo.valorAsegurado);
+    if (!(valor > 0)) {
+      toast.error('El valor asegurado debe ser mayor que cero');
+      setErroresAmparo({ valorAsegurado: true });
+      return null;
+    }
+    setErroresAmparo({});
+    return {
+      tipo: amparo.tipo,
+      valorAsegurado: valor,
+      vigenciaDesde: amparo.vigenciaDesde,
+      vigenciaHasta: amparo.vigenciaHasta,
+    };
+  };
+
+  /** Agrega el amparo a una póliza ya registrada. */
+  const ampliar = async (g: GarantiaDelContrato) => {
+    const nuevo = amparoValido(g.amparos);
+    if (!nuevo) return;
+    setGuardando(true);
+    try {
+      setEstado(await contratacionService.agregarAmparo(procesoId, g.id, nuevo));
+      setAmparo(AMPARO_VACIO);
+      setAmpliando(null);
+      toast.success(`Amparo agregado a la póliza ${g.numeroPoliza}`);
+      onCambio?.();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const agregarAmparo = () => {
@@ -184,7 +237,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
     setAmparos((lista) => lista.filter((_, i) => i !== indice));
 
   const cargar = async () => {
-    if (!poliza || amparos.length === 0) return;
+    if (!poliza || !evidencia || !fechaSecop || amparos.length === 0) return;
 
     setGuardando(true);
     try {
@@ -195,12 +248,14 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
             aseguradora: garantia.aseguradora.trim(),
             numeroPoliza: garantia.numeroPoliza.trim(),
             amparos,
+            fechaAprobacionSecop: fechaSecop,
           },
           poliza,
+          evidencia,
         ),
       );
       limpiarGarantia();
-      toast.success('Póliza cargada; queda pendiente de revisión');
+      toast.success('Póliza registrada con su aprobación en SECOP II');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -327,7 +382,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
       <Ayuda>
         {esArl
           ? 'El contratista persona natural debe quedar afiliado a riesgos laborales antes de iniciar. La afiliación puede hacerla la entidad o el propio contratista.'
-          : 'El contratista constituye las garantías con sus amparos desglosados y la entidad las revisa. Con todo aprobado el contrato queda legalizado.'}
+          : 'Registra cada póliza con sus amparos y la fecha en que se aprobó en SECOP II, con la evidencia. Una póliza de cumplimiento puede traer varios amparos, y el contrato puede tener varias pólizas (por ejemplo, la de responsabilidad civil extracontractual).'}
       </Ayuda>
 
       {!estado.suscrito ? (
@@ -379,7 +434,12 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                           {g.motivoRechazo}
                         </p>
                       ) : null}
-                      {g.estado === 'APROBADA' && g.revisadaPor ? (
+                      {g.estado === 'APROBADA' && g.fechaAprobacionSecop ? (
+                        <p className="text-[11.5px] text-slate-600 m-0 mt-1 leading-relaxed">
+                          Aprobada en SECOP II el {fechaLarga(g.fechaAprobacionSecop)}
+                          {g.revisadaPor ? ` · registrada por ${g.revisadaPor}` : ''}
+                        </p>
+                      ) : g.estado === 'APROBADA' && g.revisadaPor ? (
                         <p className="text-[11.5px] text-slate-600 m-0 mt-1 leading-relaxed">
                           Aprobada por {g.revisadaPor}
                           {g.revisadaAt ? ` el ${momento(g.revisadaAt)}` : ''}
@@ -408,8 +468,8 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                     ))}
                   </div>
 
-                  {/* Aprobar es de la revisión, no de quien carga: sin el rol
-                      se dice quién puede, en vez de un botón que dará 403. */}
+                  {/* Aprobar es de quien tiene el rol, haya cargado o no la
+                      póliza: sin él se dice quién puede, en vez de un botón que dará 403. */}
                   {/* Y solo en la pantalla de revisión: aquí se lleva a ella. */}
                   {g.estado === 'CARGADA' && estado.puedeAprobar && !enLaRevision ? (
                     <IrALaRevision numeral="8.4" que="aprobarla" />
@@ -435,16 +495,56 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                   ) : g.estado === 'CARGADA' ? (
                     <SinPermiso quien="la Dirección de Contratación, que revisa las coberturas" />
                   ) : null}
+
+                  {/* «Agregar amparo» suma una cobertura a ESTA póliza; una
+                      póliza distinta va por «Agregar póliza». */}
+                  {g.estado !== 'RECHAZADA' && estado.puedeCargar && !creando ? (
+                    ampliando === g.id ? (
+                      <FormularioAmparo
+                        tipos={estado.tiposAmparo}
+                        amparo={amparo}
+                        campoAmparo={campoAmparo}
+                        onEditar={editarAmparo}
+                        boton="Agregar el amparo a esta póliza"
+                        ocupado={guardando}
+                        onAgregar={() => ampliar(g)}
+                        onCancelar={() => {
+                          setAmpliando(null);
+                          setAmparo(AMPARO_VACIO);
+                          setErroresAmparo({});
+                        }}
+                      />
+                    ) : (
+                      <BotonSecundario
+                        icono={<Plus className="w-3.5 h-3.5" />}
+                        disabled={guardando}
+                        onClick={() => {
+                          setAmpliando(g.id);
+                          setAmparo(AMPARO_VACIO);
+                          setErroresAmparo({});
+                        }}
+                      >
+                        Agregar amparo
+                      </BotonSecundario>
+                    )
+                  ) : null}
                 </div>
               ))}
 
               {!creando && estado.puedeCargar ? (
-                <Boton icono={<Plus className="w-3.5 h-3.5" />} onClick={() => setCreando(true)}>
-                  Cargar una garantía
+                <Boton
+                  icono={<Plus className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setAmpliando(null);
+                    setAmparo(AMPARO_VACIO);
+                    setCreando(true);
+                  }}
+                >
+                  Agregar póliza
                 </Boton>
               ) : !creando ? null : (
                 <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-                  <p className="text-[12.5px] font-bold text-slate-800 m-0">Nueva garantía</p>
+                  <p className="text-[12.5px] font-bold text-slate-800 m-0">Nueva póliza</p>
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
@@ -503,7 +603,9 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                   ) : null}
 
                   <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2.5 space-y-2.5">
-                    <p className="text-xs font-bold text-gray-600 m-0">Agregar amparo</p>
+                    <p className="text-xs font-bold text-gray-600 m-0">
+                      Amparos de esta póliza (puede tener varios)
+                    </p>
                     <div>
                       <label htmlFor="amp-tipo" className="block text-xs font-bold text-gray-600 mb-1.5">
                         Cobertura <span className="text-red-600">*</span>
@@ -566,7 +668,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                       disabled={!amparo.tipo || !amparo.valorAsegurado || !amparo.vigenciaDesde || !amparo.vigenciaHasta}
                       onClick={agregarAmparo}
                     >
-                      Agregar a la póliza
+                      Agregar amparo
                     </BotonSecundario>
                   </div>
 
@@ -578,6 +680,29 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                     onElegir={setPoliza}
                   />
 
+                  {/* La aprobación ya se dio en SECOP II: aquí no se aprueba otra
+                      vez, se deja la fecha y la evidencia (EFDS-1164). */}
+                  <div>
+                    <label htmlFor="gar-secop" className="block text-xs font-bold text-gray-600 mb-1.5">
+                      Fecha de aprobación en SECOP II <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      id="gar-secop"
+                      type="date"
+                      max={hoyEnBogota()}
+                      value={fechaSecop}
+                      onChange={(e) => setFechaSecop(e.target.value)}
+                      className={campo}
+                    />
+                  </div>
+                  <SelectorArchivo
+                    id="gar-evidencia"
+                    etiqueta="Evidencia de la aprobación en SECOP II"
+                    ayuda="Pantallazo o PDF de SECOP II donde consta la aprobación."
+                    archivo={evidencia}
+                    onElegir={setEvidencia}
+                  />
+
                   <div className="flex flex-wrap gap-2">
                     <Boton
                       icono={<ShieldCheck className="w-3.5 h-3.5" />}
@@ -586,11 +711,13 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                         !garantia.aseguradora.trim() ||
                         !garantia.numeroPoliza.trim() ||
                         amparos.length === 0 ||
-                        !poliza
+                        !poliza ||
+                        !fechaSecop ||
+                        !evidencia
                       }
                       onClick={cargar}
                     >
-                      Cargar la garantía
+                      Registrar la póliza
                     </Boton>
                     <BotonSecundario
                       icono={<Undo2 className="w-3.5 h-3.5" />}
@@ -724,5 +851,83 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
       {firma.modal}
       {dialogo.elemento}
     </Marco>
+  );
+}
+
+/** El formulario de un amparo suelto, para sumarlo a una póliza ya registrada. */
+function FormularioAmparo({
+  tipos,
+  amparo,
+  campoAmparo,
+  onEditar,
+  boton,
+  ocupado,
+  onAgregar,
+  onCancelar,
+}: {
+  tipos: { codigo: string; nombre: string }[];
+  amparo: { tipo: string; valorAsegurado: string; vigenciaDesde: string; vigenciaHasta: string };
+  campoAmparo: (nombre: string) => string;
+  onEditar: (cambio: Partial<{ tipo: string; valorAsegurado: string; vigenciaDesde: string; vigenciaHasta: string }>) => void;
+  boton: string;
+  ocupado: boolean;
+  onAgregar: () => void;
+  onCancelar: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2.5 space-y-2.5">
+      <select
+        aria-label="Cobertura del amparo"
+        value={amparo.tipo}
+        onChange={(e) => onEditar({ tipo: e.target.value })}
+        className={campoAmparo('tipo')}
+      >
+        <option value="">Elige la cobertura</option>
+        {tipos.map((t) => (
+          <option key={t.codigo} value={t.codigo}>
+            {t.nombre}
+          </option>
+        ))}
+      </select>
+      <div className="grid grid-cols-3 gap-2.5">
+        <input
+          type="number"
+          min={1}
+          aria-label="Valor asegurado"
+          placeholder="Valor asegurado"
+          value={amparo.valorAsegurado}
+          onChange={(e) => onEditar({ valorAsegurado: e.target.value })}
+          className={campoAmparo('valorAsegurado')}
+        />
+        <input
+          type="date"
+          aria-label="Vigente desde"
+          value={amparo.vigenciaDesde}
+          onChange={(e) => onEditar({ vigenciaDesde: e.target.value })}
+          className={campoAmparo('vigenciaHasta')}
+        />
+        <input
+          type="date"
+          aria-label="Vigente hasta"
+          value={amparo.vigenciaHasta}
+          onChange={(e) => onEditar({ vigenciaHasta: e.target.value })}
+          className={campoAmparo('vigenciaHasta')}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <BotonSecundario
+          icono={<Plus className="w-3.5 h-3.5" />}
+          disabled={
+            ocupado || !amparo.tipo || !amparo.valorAsegurado || !amparo.vigenciaDesde || !amparo.vigenciaHasta
+          }
+          onClick={onAgregar}
+        >
+          {boton}
+        </BotonSecundario>
+        <BotonSecundario icono={<Undo2 className="w-3.5 h-3.5" />} disabled={ocupado} onClick={onCancelar}>
+          Cancelar
+        </BotonSecundario>
+      </div>
+    </div>
   );
 }

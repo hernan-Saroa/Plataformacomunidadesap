@@ -838,7 +838,10 @@ export function textoDelCorreo(datos: {
   const partes = [
     `${datos.nombre}, se le designó supervisor${datos.contrato ? ` del contrato ${datos.contrato}` : ''}${
       datos.radicado ? ` (proceso ${datos.radicado})` : ''
-    } por acto administrativo del ${datos.fechaDesignacion}.`,
+    } mediante memorando de designación del ${datos.fechaDesignacion}, que va adjunto.`,
+    // Revisión de QA de EFDS-1165: el correo hace las veces de la comunicación
+    // formal de la designación (redacción por confirmar con Contratación).
+    'Este correo es la comunicación formal de su designación como supervisor.',
   ];
   if (datos.objeto) partes.push(`Objeto: ${datos.objeto}.`);
   if (datos.mensaje) partes.push(datos.mensaje);

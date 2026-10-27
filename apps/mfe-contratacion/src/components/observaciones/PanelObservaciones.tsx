@@ -8,6 +8,7 @@ import {
   MessageSquarePlus,
   Paperclip,
   Reply,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -184,10 +185,10 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
             <FormularioObservacion
               trabajando={trabajando}
               onCancelar={() => setRegistrando(false)}
-              onRegistrar={async (datos, soporte) => {
+              onRegistrar={async (datos, archivos) => {
                 const ok = await ejecutar(
-                  () => contratacionService.registrarObservacion(procesoId, datos, soporte),
-                  'Observación registrada',
+                  () => contratacionService.registrarObservacion(procesoId, datos, archivos),
+                  'Observaciones del interesado registradas',
                 );
                 if (ok) setRegistrando(false);
                 return ok;
@@ -199,8 +200,31 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
               onClick={() => setRegistrando(true)}
               icono={<MessageSquarePlus className="w-3.5 h-3.5" />}
             >
-              Registrar una observación
+              Registrar observaciones de un interesado
             </Boton>
+          )}
+
+          {/* Lo habitual: un solo documento de respuestas para la actividad,
+              sin obligar a responder interesado por interesado (127). */}
+          {resumen.pendientes > 0 && !registrando && (
+            <RespuestaGeneral
+              pendientes={resumen.pendientes}
+              trabajando={trabajando}
+              onResponder={(datos, archivos) =>
+                firma.conFirma((firmaOtp) =>
+                  ejecutar(
+                    () =>
+                      contratacionService.responderTodasLasObservaciones(
+                        procesoId,
+                        datos,
+                        archivos,
+                        firmaOtp,
+                      ),
+                    'Observaciones respondidas con el documento general',
+                  ),
+                )
+              }
+            />
           )}
 
           {estado.puedeCerrarse && !registrando && (
@@ -301,12 +325,12 @@ function Observacion({
   puedeResponder: boolean;
   trabajando: boolean;
   onResponder: (
-    datos: { respuesta: string; modificoPliego: boolean },
+    datos: { respuesta: string; modificoPliego?: boolean },
   ) => Promise<boolean> | boolean | undefined;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [respuesta, setRespuesta] = useState('');
-  /** Null hasta que se elige: se pide siempre y no se deduce del texto. */
+  /** Informativo (127): null si no se dice. */
   const [modifico, setModifico] = useState<boolean | null>(null);
 
   const respondida = observacion.respondidaAt !== null;
@@ -342,10 +366,12 @@ function Observacion({
       </div>
 
       <div>
-        <p className="text-sm font-bold text-slate-800 m-0">{observacion.asunto}</p>
+        <p className="text-sm font-bold text-slate-800 m-0">
+          {observacion.presentadoPor ?? 'Interesado sin identificar'}
+        </p>
         <p className="text-xs text-slate-500 m-0 mt-0.5">
-          {observacion.presentadoPor}
-          {observacion.identificacion ? ` · ${observacion.identificacion}` : ''} · presentada el{' '}
+          {observacion.asunto ? `${observacion.asunto} · ` : ''}
+          {observacion.identificacion ? `${observacion.identificacion} · ` : ''}presentada el{' '}
           {fechaLarga(observacion.fechaPresentacion)}
         </p>
       </div>
@@ -354,16 +380,22 @@ function Observacion({
         {observacion.contenido}
       </p>
 
-      {observacion.documentoId && (
+      {(observacion.soportesDocumentoIds?.length ?? 0) > 0 && (
         <p className="text-xs text-slate-500 m-0 flex items-center gap-1.5">
           <Paperclip className="w-3.5 h-3.5" />
-          Soporte cargado en el expediente
+          {observacion.soportesDocumentoIds.length === 1
+            ? 'Un archivo con el detalle, en el expediente'
+            : `${observacion.soportesDocumentoIds.length} archivos con el detalle, en el expediente`}
         </p>
       )}
 
       {respondida ? (
         <div className="rounded-md border border-gray-200 bg-slate-50 px-3 py-2.5 space-y-1">
-          <p className="text-xs font-bold text-slate-700 m-0">Respuesta de la entidad</p>
+          <p className="text-xs font-bold text-slate-700 m-0">
+            {observacion.respuestaGeneral
+              ? 'Respondida con el documento general de respuestas'
+              : 'Respuesta de la entidad'}
+          </p>
           <p className="text-xs text-slate-700 m-0 leading-relaxed whitespace-pre-line">
             {observacion.respuesta}
           </p>
@@ -371,9 +403,11 @@ function Observacion({
             {observacion.respondidaPor ?? 'Sin registrar'} ·{' '}
             {observacion.respondidaAt ? momento(observacion.respondidaAt) : ''} ·{' '}
             <span className="font-bold">
-              {observacion.modificoPliego
-                ? 'Llevó a modificar el pliego'
-                : 'No modificó el pliego'}
+              {observacion.modificoPliego === null
+                ? 'Sin decir si modificó el pliego'
+                : observacion.modificoPliego
+                  ? 'Llevó a modificar el pliego'
+                  : 'No modificó el pliego'}
             </span>
           </p>
         </div>
@@ -392,38 +426,20 @@ function Observacion({
 
             <fieldset className="m-0 p-0 border-0">
               <legend className="text-xs font-bold text-slate-600 mb-1 p-0">
-                ¿La observación llevó a modificar el pliego?
+                ¿Generó modificación del pliego? (opcional)
               </legend>
-              <div className="flex items-center gap-4">
-                {[
-                  { valor: true, etiqueta: 'Sí, se modificó' },
-                  { valor: false, etiqueta: 'No se modificó' },
-                ].map((opcion) => (
-                  <label
-                    key={String(opcion.valor)}
-                    className="inline-flex items-center gap-1.5 text-xs text-slate-700"
-                  >
-                    <input
-                      type="radio"
-                      name={`modifico-${observacion.id}`}
-                      checked={modifico === opcion.valor}
-                      onChange={() => setModifico(opcion.valor)}
-                    />
-                    {opcion.etiqueta}
-                  </label>
-                ))}
-              </div>
+              <SiNo nombre={`modifico-${observacion.id}`} valor={modifico} onCambio={setModifico} />
             </fieldset>
 
             <div className="flex items-center gap-2">
               <Boton
-                disabled={trabajando || !respuesta.trim() || modifico === null}
+                disabled={trabajando || !respuesta.trim()}
                 onClick={async () => {
                   // Solo se cierra si la respuesta pasó: si falló, lo escrito
                   // debe seguir ahí para reintentar.
                   const ok = await onResponder({
                     respuesta: respuesta.trim(),
-                    modificoPliego: modifico!,
+                    modificoPliego: modifico ?? undefined,
                   });
                   if (ok) {
                     setRespuesta('');
@@ -455,7 +471,7 @@ function Observacion({
             className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003DA5] hover:underline"
           >
             <Reply className="w-3.5 h-3.5" />
-            Responder esta observación
+            Responder solo a este interesado
           </button>
         ))
       )}
@@ -463,7 +479,7 @@ function Observacion({
   );
 }
 
-/** Registro de una observación recibida, con su soporte si lo hubo. */
+/** Lo que presentó un interesado: observación general y archivos con el detalle (127). */
 function FormularioObservacion({
   trabajando,
   onCancelar,
@@ -472,54 +488,36 @@ function FormularioObservacion({
   trabajando: boolean;
   onCancelar: () => void;
   onRegistrar: (
-    datos: {
-      presentadoPor: string;
-      identificacion?: string;
-      fechaPresentacion: string;
-      asunto: string;
-      contenido: string;
-    },
-    soporte: File | null,
+    datos: { presentadoPor?: string; fechaPresentacion: string; contenido: string },
+    archivos: File[],
   ) => Promise<boolean>;
 }) {
   const [presentadoPor, setPresentadoPor] = useState('');
-  const [identificacion, setIdentificacion] = useState('');
   const [fecha, setFecha] = useState(hoyEnBogota);
-  const [asunto, setAsunto] = useState('');
   const [contenido, setContenido] = useState('');
-  const [soporte, setSoporte] = useState<File | null>(null);
-  const inputArchivo = useRef<HTMLInputElement>(null);
+  const [archivos, setArchivos] = useState<File[]>([]);
 
-  const completo = presentadoPor.trim() && fecha && asunto.trim() && contenido.trim();
+  const completo = fecha && contenido.trim();
 
   return (
     <div className="space-y-2">
-      <Titulo>Registrar una observación recibida</Titulo>
+      <Titulo>Registrar las observaciones de un interesado</Titulo>
       <Ayuda>
-        La fecha es la de presentación del interesado, no la de hoy: es la que decide si llegó
-        dentro del plazo de publicidad.
+        Un registro por interesado: la observación general y los archivos con el detalle, tal como
+        llegaron por SECOP II. La fecha es la de presentación: decide si llegó dentro del plazo de
+        publicidad.
       </Ayuda>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="block text-xs font-bold text-slate-600 mb-1">Presentada por</span>
+          <span className="block text-xs font-bold text-slate-600 mb-1">
+            Interesado, como aparece en SECOP (opcional)
+          </span>
           <input
             value={presentadoPor}
             onChange={(e) => setPresentadoPor(e.target.value)}
             placeholder="Persona o empresa"
-            aria-label="Quién presentó la observación"
-            className={campo}
-          />
-        </label>
-        <label className="block">
-          <span className="block text-xs font-bold text-slate-600 mb-1">
-            NIT o cédula (opcional)
-          </span>
-          <input
-            value={identificacion}
-            onChange={(e) => setIdentificacion(e.target.value)}
-            placeholder="900123456-1"
-            aria-label="Identificación de quien la presentó"
+            aria-label="Interesado que presentó las observaciones"
             className={campo}
           />
         </label>
@@ -534,59 +532,29 @@ function FormularioObservacion({
             // ofrece, para no descubrirlo al enviar todo el formulario.
             max={hoyEnBogota()}
             onChange={(e) => setFecha(e.target.value)}
-            aria-label="Fecha en que se presentó la observación"
+            aria-label="Fecha en que se presentaron las observaciones"
             className={campo}
           />
         </label>
       </div>
 
       <label className="block">
-        <span className="block text-xs font-bold text-slate-600 mb-1">Asunto</span>
-        <input
-          value={asunto}
-          onChange={(e) => setAsunto(e.target.value)}
-          placeholder="Sobre qué versa la observación"
-          aria-label="Asunto de la observación"
-          className={campo}
-        />
-      </label>
-
-      <label className="block">
-        <span className="block text-xs font-bold text-slate-600 mb-1">
-          Observación tal como se presentó
-        </span>
+        <span className="block text-xs font-bold text-slate-600 mb-1">Observación general</span>
         <textarea
           value={contenido}
           onChange={(e) => setContenido(e.target.value)}
-          rows={4}
-          aria-label="Contenido de la observación"
+          rows={3}
+          placeholder="En qué consisten sus observaciones; el detalle va en los archivos"
+          aria-label="Observación general del interesado"
           className={campo}
         />
       </label>
 
-      {/* El soporte es opcional, a diferencia de la evidencia de la
-          publicación: la observación pudo llegar por un canal que no deja
-          documento, y exigirlo obligaría a no registrarla. */}
-      <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-2">
-        <p className="text-xs text-slate-700 m-0">
-          {soporte ? soporte.name : 'Soporte de la observación (opcional)'}
-        </p>
-        <input
-          ref={inputArchivo}
-          type="file"
-          className="hidden"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-          onChange={(e) => e.target.files?.[0] && setSoporte(e.target.files[0])}
-        />
-        <button
-          type="button"
-          onClick={() => inputArchivo.current?.click()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] transition-all"
-        >
-          <Paperclip className="w-3.5 h-3.5" />
-          {soporte ? 'Cambiar archivo' : 'Adjuntar soporte'}
-        </button>
-      </div>
+      <ArchivosVarios
+        archivos={archivos}
+        onCambio={setArchivos}
+        texto="Archivos con el detalle de sus observaciones (opcional, hasta 10)"
+      />
 
       <div className="flex items-center gap-2">
         <Boton
@@ -594,18 +562,16 @@ function FormularioObservacion({
           onClick={() =>
             onRegistrar(
               {
-                presentadoPor: presentadoPor.trim(),
-                identificacion: identificacion.trim() || undefined,
+                presentadoPor: presentadoPor.trim() || undefined,
                 fechaPresentacion: fecha,
-                asunto: asunto.trim(),
                 contenido: contenido.trim(),
               },
-              soporte,
+              archivos,
             )
           }
           icono={<MessageSquarePlus className="w-3.5 h-3.5" />}
         >
-          Registrar observación
+          Registrar
         </Boton>
         <button
           type="button"
@@ -615,6 +581,202 @@ function FormularioObservacion({
           Cancelar
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Un documento de respuestas para todos los interesados pendientes (127). */
+function RespuestaGeneral({
+  pendientes,
+  trabajando,
+  onResponder,
+}: {
+  pendientes: number;
+  trabajando: boolean;
+  onResponder: (
+    datos: { respuesta?: string; modificoPliego?: boolean },
+    archivos: File[],
+  ) => Promise<boolean> | boolean | undefined;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [nota, setNota] = useState('');
+  const [modifico, setModifico] = useState<boolean | null>(null);
+  const [archivos, setArchivos] = useState<File[]>([]);
+
+  if (!abierto) {
+    return (
+      <BotonSecundario
+        disabled={trabajando}
+        onClick={() => setAbierto(true)}
+        icono={<Reply className="w-3.5 h-3.5" />}
+      >
+        Responder todo con un documento de respuestas
+      </BotonSecundario>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-2">
+      <Titulo>Documento general de respuestas</Titulo>
+      <Ayuda>
+        Queda como respuesta de{' '}
+        {pendientes === 1 ? 'el interesado pendiente' : `los ${pendientes} interesados pendientes`}.
+        No hace falta responder uno por uno.
+      </Ayuda>
+
+      <ArchivosVarios
+        archivos={archivos}
+        onCambio={setArchivos}
+        texto="Documento de respuestas (uno o varios archivos, hasta 10)"
+      />
+
+      <textarea
+        value={nota}
+        onChange={(e) => setNota(e.target.value)}
+        rows={2}
+        placeholder="Nota sobre la respuesta (opcional)"
+        aria-label="Nota sobre la respuesta general"
+        className={campo}
+      />
+
+      <fieldset className="m-0 p-0 border-0">
+        <legend className="text-xs font-bold text-slate-600 mb-1 p-0">
+          ¿Generó modificación del pliego? (opcional)
+        </legend>
+        <SiNo nombre="modifico-general" valor={modifico} onCambio={setModifico} />
+      </fieldset>
+
+      <div className="flex items-center gap-2">
+        <Boton
+          disabled={trabajando || archivos.length === 0}
+          onClick={async () => {
+            const ok = await onResponder(
+              { respuesta: nota.trim() || undefined, modificoPliego: modifico ?? undefined },
+              archivos,
+            );
+            if (ok) {
+              setAbierto(false);
+              setNota('');
+              setModifico(null);
+              setArchivos([]);
+            }
+          }}
+          icono={<CheckCheck className="w-3.5 h-3.5" />}
+        >
+          Responder a todos
+        </Boton>
+        <button
+          type="button"
+          onClick={() => setAbierto(false)}
+          className="text-xs font-bold text-slate-500 hover:text-slate-700"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Sí / No que se puede dejar sin contestar. */
+function SiNo({
+  nombre,
+  valor,
+  onCambio,
+}: {
+  nombre: string;
+  valor: boolean | null;
+  onCambio: (v: boolean | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-4">
+      {[
+        { valor: true, etiqueta: 'Sí' },
+        { valor: false, etiqueta: 'No' },
+      ].map((opcion) => (
+        <label
+          key={String(opcion.valor)}
+          className="inline-flex items-center gap-1.5 text-xs text-slate-700"
+        >
+          <input
+            type="radio"
+            name={nombre}
+            checked={valor === opcion.valor}
+            onChange={() => onCambio(opcion.valor)}
+          />
+          {opcion.etiqueta}
+        </label>
+      ))}
+      {valor !== null && (
+        <button
+          type="button"
+          onClick={() => onCambio(null)}
+          className="text-xs font-bold text-slate-500 hover:text-slate-700"
+        >
+          Sin decir
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Varios archivos que se suman, cada uno con su botón para quitarlo. */
+function ArchivosVarios({
+  archivos,
+  onCambio,
+  texto,
+}: {
+  archivos: File[];
+  onCambio: (archivos: File[]) => void;
+  texto: string;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2">
+      <p className="text-xs text-slate-700 m-0">{texto}</p>
+      {archivos.length > 0 && (
+        <ul className="m-0 p-0 list-none space-y-1">
+          {archivos.map((archivo, i) => (
+            <li
+              key={`${archivo.name}-${i}`}
+              className="flex items-center gap-2 text-xs text-slate-700"
+            >
+              <span className="truncate">{archivo.name}</span>
+              <button
+                type="button"
+                className="text-slate-400 hover:text-red-600"
+                aria-label={`Quitar ${archivo.name}`}
+                onClick={() => onCambio(archivos.filter((_, j) => j !== i))}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input
+        ref={input}
+        type="file"
+        multiple
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+        onChange={(e) => {
+          // Se suman a los anteriores: elegir otra vez no borra lo que ya estaba.
+          const elegidos = Array.from(e.target.files ?? []);
+          onCambio([...archivos, ...elegidos].slice(0, 10));
+          e.target.value = '';
+        }}
+      />
+      {archivos.length < 10 && (
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] transition-all"
+        >
+          <Paperclip className="w-3.5 h-3.5" />
+          {archivos.length ? 'Agregar otro archivo' : 'Adjuntar archivos'}
+        </button>
+      )}
     </div>
   );
 }

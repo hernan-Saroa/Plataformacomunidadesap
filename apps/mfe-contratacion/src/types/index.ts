@@ -262,21 +262,28 @@ export interface PlazosPublicacion {
 /** Observación de un interesado al proyecto de pliego publicado (EFDS-1151). */
 export interface ObservacionPliego {
   id: string;
-  presentadoPor: string;
+  /** El interesado tal como aparece en SECOP; opcional. */
+  presentadoPor: string | null;
   /** Opcional: una observación anónima igual hay que responderla. */
   identificacion: string | null;
   /** Fecha en que se presentó, no la del registro. */
   fechaPresentacion: string;
-  asunto: string;
+  asunto: string | null;
+  /** La observación general del interesado. */
   contenido: string;
   /** Congelado al registrar: llegó después de vencido el plazo de publicidad. */
   fueraDeTermino: boolean;
   documentoId: string | null;
+  /** Archivos con el detalle de lo que observó. */
+  soportesDocumentoIds: string[];
+  /** El documento de respuestas; en una respuesta general, el mismo para todos. */
+  respuestaSoportesIds: string[];
+  respuestaGeneral: boolean;
   registradoPor: string | null;
   respuesta: string | null;
   respondidaPor: string | null;
   respondidaAt: string | null;
-  /** Si la observación llevó a modificar el pliego. Null mientras no se responda. */
+  /** Si llevó a modificar el pliego. Informativo: puede quedar sin decir. */
   modificoPliego: boolean | null;
 }
 
@@ -870,6 +877,11 @@ export interface EstadoAdendas {
   puedeEmitir: boolean;
   /** Por qué no se puede emitir: falta la apertura o ya se cerraron las ofertas. */
   motivoNoPuedeEmitir: string | null;
+  /** Cerrada la recepción de ofertas solo caben las de cronograma, sin fecha que mover. */
+  soloCronograma: boolean;
+  motivoNoFondo: string | null;
+  /** Si quien mira es el abogado dueño del proceso: los demás solo consultan. */
+  puedeGestionar: boolean;
   /** Vencimiento del plazo hoy; es lo que mueve una adenda de cronograma. */
   vencimientoVigente: string | null;
   /** Qué prorroga una de cronograma: el cierre de ofertas o, sin apertura, las observaciones. */
@@ -2133,6 +2145,8 @@ export interface GarantiaDelContrato {
   revisadaPor: string | null;
   revisadaAt: string | null;
   motivoRechazo: string | null;
+  /** La aprobación que se dio en SECOP II (revisión de QA de EFDS-1164). */
+  fechaAprobacionSecop?: string | null;
   /** Ordenados por vencimiento: el primero es el que hay que vigilar. */
   amparos: AmparoDeGarantia[];
 }
@@ -2166,6 +2180,8 @@ export interface DatosGarantia {
   aseguradora: string;
   numeroPoliza: string;
   amparos: AmparoDeGarantia[];
+  /** Cuándo se aprobó en SECOP II: con ella la póliza entra aprobada. */
+  fechaAprobacionSecop: string;
 }
 
 /** Lo que la pantalla envia al registrar la ARL. */
@@ -2312,6 +2328,8 @@ export interface EstadoRegistroPresupuestal {
   motivoNoSuscrito: string | null;
   contrato?: { numero: string; valor: number };
   puedeSolicitar?: boolean;
+  /** Si se puede cargar el RP expedido (o completar un trámite viejo). */
+  puedeCargar?: boolean;
   rp: RegistroPresupuestal | null;
   expedido: boolean;
   /** Avisa si el RP no alcanza a cubrir el valor del contrato. */
@@ -2714,12 +2732,16 @@ export interface EstadoLiquidacion {
   contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
   /** Sin informe final no hay nada que liquidar (10.1). */
   tieneInformeFinal: boolean;
+  /** Falso si el flujo dejó la 10.1 opcional: basta el acta de recibo (EFDS-1171). */
+  exigeInformeFinal?: boolean;
   ventana: VentanaLiquidacion | null;
   alerta: AlertaPlazo | null;
   puedeLiquidarBilateral: boolean;
   puedeLiquidarUnilateral: boolean;
   /** Desde cuando estara disponible la unilateral, si todavia no lo esta. */
   motivoNoUnilateral: string | null;
+  /** Dentro del plazo del acuerdo la unilateral se advierte, no se impide (EFDS-1172). */
+  advertenciaUnilateral?: string | null;
   balanceActual: BalanceLiquidacion | null;
   acta: ActaLiquidacionVigente | null;
   historial: ActaLiquidacionAnulada[];

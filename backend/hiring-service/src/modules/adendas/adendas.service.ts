@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import { Adenda } from '../../entities/adenda.entity';
 import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
 import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
+import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -21,6 +23,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { AnularAdendaDto, EmitirAdendaDto, PublicarAdendaDto } from './dto/adendas.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
+import { ParticipacionService } from '../participacion/participacion.service';
 
 /** Actividad 5.13 de la matriz: las adendas del proceso. */
 export const NUMERAL_ADENDAS = '5.13';
@@ -41,11 +44,13 @@ export class AdendasService {
     private readonly dataSource: DataSource,
     /** Si la 5.13 exige firmar con el token institucional al cerrarse (EFDS-2070). */
     private readonly cierre: CierreActividadService,
+    /** Solo el abogado dueño del proceso genera adendas (revisión de QA de EFDS-1154). */
+    private readonly participacion: ParticipacionService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string) {
+  async estado(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
 
     const excluida = await this.dataSource.getRepository(ActividadExcluida).findOne({
@@ -59,6 +64,8 @@ export class AdendasService {
       : null;
 
     const ventana = await this.ventana(this.dataSource.manager, proceso);
+    const motivoDuenio = acceso ? await this.motivoNoEsDuenio(procesoId, acceso) : null;
+    const esDuenio = !!acceso && motivoDuenio === null;
 
     const adendas = await this.dataSource.getRepository(Adenda).find({
       where: { procesoId },
@@ -83,8 +90,13 @@ export class AdendasService {
       // generarse en cualquier momento», hasta que se cierran las ofertas.
       publicado: !!ventana.publicacion,
       abierto: !!ventana.apertura,
-      puedeEmitir: !excluida && !ventana.motivo,
-      motivoNoPuedeEmitir: excluida ? null : ventana.motivo,
+      puedeEmitir: !excluida && !ventana.motivo && esDuenio,
+      motivoNoPuedeEmitir: excluida ? null : (ventana.motivo ?? motivoDuenio),
+      /** Cerrada la recepción solo quedan las de cronograma, sin fecha que mover. */
+      soloCronograma: !ventana.motivo && !!ventana.motivoFondo,
+      /** Si quien mira es el abogado dueño: los demás solo consultan. */
+      puedeGestionar: esDuenio,
+      motivoNoFondo: ventana.motivoFondo,
       // La fecha que mueve una adenda de cronograma: el cierre de ofertas si
       // el proceso ya se abrió, o el plazo de observaciones donde no hay
       // apertura.
@@ -125,6 +137,8 @@ export class AdendasService {
     hash: string,
     acceso: HiringAccess,
   ) {
+    await this.exigirDuenio(procesoId, acceso);
+
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
 
@@ -137,8 +151,21 @@ export class AdendasService {
 
       const ventana = await this.ventana(em, proceso);
       if (ventana.motivo) throw new ConflictException(ventana.motivo);
+      if (dto.tipo === 'FONDO' && ventana.motivoFondo) {
+        throw new ConflictException(ventana.motivoFondo);
+      }
 
-      if (dto.tipo === 'CRONOGRAMA') {
+      // Cerrada la recepción, la de cronograma no mueve ninguna fecha que la
+      // plataforma controle (las de evaluación y adjudicación van en el
+      // documento): se registra y se publica sin nuevo vencimiento.
+      const sinFechaQueMover = dto.tipo === 'CRONOGRAMA' && !!ventana.motivoFondo;
+      if (dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover && !dto.vencimientoNuevo) {
+        throw new BadRequestException(
+          'Una adenda de cronograma necesita la nueva fecha de vencimiento (YYYY-MM-DD)',
+        );
+      }
+
+      if (dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover) {
         // Abierto el proceso, lo que se prorroga es el cierre de ofertas. Si la
         // modalidad no lo tiene parametrizado y nadie lo ha fijado, no hay
         // fecha que mover; tomar la del plazo de observaciones movería otra.
@@ -171,7 +198,8 @@ export class AdendasService {
           documentoId: doc.id,
           estado: 'EMITIDA' as const,
           emitidaPor: acceso.userName,
-          vencimientoNuevo: dto.tipo === 'CRONOGRAMA' ? dto.vencimientoNuevo! : null,
+          vencimientoNuevo:
+            dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover ? dto.vencimientoNuevo! : null,
         }),
       );
 
@@ -186,7 +214,7 @@ export class AdendasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   // ---------------------------------------------------------- publicación --
@@ -208,6 +236,8 @@ export class AdendasService {
     hash: string,
     acceso: HiringAccess,
   ) {
+    await this.exigirDuenio(procesoId, acceso);
+
     await this.dataSource.transaction(async (em) => {
       const adenda = await em.getRepository(Adenda).findOne({ where: { id: adendaId, procesoId } });
       if (!adenda) throw new NotFoundException('La adenda no existe en este proceso');
@@ -222,6 +252,9 @@ export class AdendasService {
       const proceso = await this.exigirProceso(em, procesoId);
       const ventana = await this.ventana(em, proceso);
       if (ventana.motivo) throw new ConflictException(ventana.motivo);
+      if (adenda.tipo === 'FONDO' && ventana.motivoFondo) {
+        throw new ConflictException(ventana.motivoFondo);
+      }
       const publicacion = ventana.publicacion!;
 
       this.validarFechaPublicacion(dto.fechaPublicacion, publicacion.fechaPublicacion);
@@ -243,7 +276,7 @@ export class AdendasService {
       adenda.evidenciaDocumentoId = soporte.id;
       adenda.publicadaPor = acceso.userName;
 
-      if (adenda.tipo === 'CRONOGRAMA') {
+      if (adenda.tipo === 'CRONOGRAMA' && adenda.vencimientoNuevo) {
         // Se revalida contra el vencimiento de hoy y no contra el de cuando se
         // emitió: entre una cosa y otra pudo publicarse otra adenda.
         if (ventana.apertura && !ventana.recepcion) {
@@ -279,7 +312,7 @@ export class AdendasService {
         adenda: adenda.numero,
         tipo: adenda.tipo,
         fechaPublicacion: dto.fechaPublicacion,
-        ...(adenda.tipo === 'CRONOGRAMA'
+        ...(adenda.tipo === 'CRONOGRAMA' && adenda.vencimientoNuevo
           ? {
               vencimientoAnterior: adenda.vencimientoAnterior,
               vencimientoNuevo: adenda.vencimientoNuevo,
@@ -288,7 +321,7 @@ export class AdendasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   /**
@@ -298,6 +331,8 @@ export class AdendasService {
    * terceros, y deshacerla es otra adenda, no un borrado.
    */
   async anular(procesoId: string, adendaId: string, dto: AnularAdendaDto, acceso: HiringAccess) {
+    await this.exigirDuenio(procesoId, acceso);
+
     await this.dataSource.transaction(async (em) => {
       const adenda = await em.getRepository(Adenda).findOne({ where: { id: adendaId, procesoId } });
       if (!adenda) throw new NotFoundException('La adenda no existe en este proceso');
@@ -326,7 +361,7 @@ export class AdendasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   // ----------------------------------------------------------- auxiliares --
@@ -350,31 +385,41 @@ export class AdendasService {
    */
   private async ventana(em: EntityManager, proceso: Proceso) {
     const procesoId = proceso.id;
-    const [publicacion, apertura, recepcion, sinApertura] = await Promise.all([
+    const [publicacion, apertura, recepcion, sinApertura, acto] = await Promise.all([
       this.publicacionVigente(procesoId, em),
       em.getRepository(AperturaProceso).findOne({ where: { procesoId } }),
       em.getRepository(RecepcionOfertas).findOne({ where: { procesoId } }),
       em.getRepository(ActividadExcluida).findOne({
         where: { numeral: NUMERAL_APERTURA, modalidad: proceso.modalidad ?? '' },
       }),
+      em.getRepository(ActoAdjudicacion).findOne({ where: { procesoId, estado: 'VIGENTE' } }),
     ]);
 
+    // Revisión de QA de EFDS-1154: las adendas se generan cuando se
+    // necesiten, no en una actividad fija. Las de fondo cambian el pliego y
+    // se acaban con el cierre de ofertas; las de cronograma siguen hasta el
+    // acto de adjudicación, porque mueven fechas de la evaluación.
     let motivo: string | null = null;
+    let motivoFondo: string | null = null;
     if (!publicacion) {
       motivo = 'No hay pliego publicado: una adenda modifica algo que ya se hizo público';
     } else if (!sinApertura && !apertura) {
       motivo = 'El proceso todavía no se ha abierto: las adendas se emiten a partir de la apertura (5.7)';
+    } else if (acto) {
+      motivo = 'El proceso ya se adjudicó: después del acto de adjudicación no se emiten adendas';
     } else if (recepcion?.estado === 'CERRADA') {
-      motivo = 'La recepción de ofertas ya se cerró: después del cierre el pliego no admite adendas';
+      motivoFondo =
+        'La recepción de ofertas ya se cerró: después del cierre solo caben adendas de cronograma';
     }
 
-    const vencimiento = recepcion
-      ? fechaEnBogota(recepcion.vencimiento)
-      : apertura
-        ? null
-        : (publicacion?.fechaVencimiento ?? null);
+    const vencimiento =
+      recepcion && recepcion.estado !== 'CERRADA'
+        ? fechaEnBogota(recepcion.vencimiento)
+        : recepcion || apertura
+          ? null
+          : (publicacion?.fechaVencimiento ?? null);
 
-    return { publicacion, apertura, recepcion, motivo, vencimiento };
+    return { publicacion, apertura, recepcion, motivo, motivoFondo, vencimiento };
   }
 
   /**
@@ -518,6 +563,34 @@ export class AdendasService {
         subidoPor: acceso.userName,
       } as Partial<Documento>),
     );
+  }
+
+  /**
+   * Por qué quien mira no puede generar adendas, o null si puede.
+   *
+   * Las genera el abogado dueño del proceso: quien ocupa el puesto que la
+   * regla «quién la hace» de la 5.13 nombra (abogado estructurador, 129). Los
+   * demás solo las consultan.
+   */
+  private async motivoNoEsDuenio(procesoId: string, acceso: HiringAccess): Promise<string | null> {
+    const { responsable, puesto, motivo } = await this.participacion.quienHace(
+      procesoId,
+      acceso,
+      NUMERAL_ADENDAS,
+    );
+    if (motivo === 'SIN_ASIGNAR') {
+      return `Las adendas las genera quien ocupe el puesto ${puesto} y en este proceso todavía no hay nadie: se asigna en la 3.3`;
+    }
+    if (motivo === 'NO_ES_TUYO') {
+      return `Las adendas las genera ${responsable?.nombre ?? 'el abogado del proceso'}${puesto ? ` (${puesto})` : ''}`;
+    }
+    if (motivo === 'SIN_PERMISO') return 'No tienes permiso para generar adendas';
+    return null;
+  }
+
+  private async exigirDuenio(procesoId: string, acceso: HiringAccess) {
+    const motivo = await this.motivoNoEsDuenio(procesoId, acceso);
+    if (motivo) throw new ForbiddenException(motivo);
   }
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {

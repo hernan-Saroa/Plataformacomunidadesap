@@ -34,7 +34,7 @@ describe('SecuenciaActividad', () => {
     const anterior = await screen.findByRole('button', { name: /Cuando termina la anterior/ });
     expect(anterior).toHaveAttribute('aria-pressed', 'true');
     expect(anterior).toHaveTextContent('5.11');
-    expect(screen.getByRole('checkbox', { name: /No detiene el flujo/ })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /no detiene el flujo/i })).not.toBeChecked();
   });
 
   it('elige de cuál depende de verdad', async () => {
@@ -63,7 +63,7 @@ describe('SecuenciaActividad', () => {
       .mockResolvedValue(config(['8.1'], true));
     render(<SecuenciaActividad numeral="8.8" anteriores={[{ numeral: '8.1', nombre: 'Contrato' }]} />);
 
-    await usuario.click(await screen.findByRole('checkbox', { name: /No detiene el flujo/ }));
+    await usuario.click(await screen.findByRole('checkbox', { name: /no detiene el flujo/i }));
 
     await waitFor(() =>
       expect(guardar).toHaveBeenCalledWith('8.8', {

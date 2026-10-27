@@ -11,7 +11,8 @@ export type ClaveParametroAlerta =
   | 'tolerancia_sin_abogado'
   | 'plazo_acta_comite'
   | 'plazo_memorando_comite'
-  | 'hora_aviso';
+  | 'hora_aviso'
+  | 'cuantia_minima_comite';
 
 export interface ParametroAlerta {
   clave: ClaveParametroAlerta;
@@ -36,6 +37,7 @@ export const PARAMETROS_POR_DEFECTO: ParametroAlerta[] = [
   { clave: 'plazo_acta_comite', valor: 10, minimo: 1, maximo: 60, descripcion: 'Días calendario que puede tardar el acta de una sesión del Comité de Contratación antes de darse por vencida' },
   { clave: 'plazo_memorando_comite', valor: 10, minimo: 1, maximo: 60, descripcion: 'Días calendario que puede tardar el memorando de designación del comité evaluador antes de darse por vencido' },
   { clave: 'hora_aviso', valor: 7, minimo: 0, maximo: 23, descripcion: 'Hora de Bogotá a la que sale el aviso diario de vencimientos' },
+  { clave: 'cuantia_minima_comite', valor: 1000, minimo: 1, maximo: 100000, descripcion: 'SMMLV que debe superar el valor del proceso para pasar por el Comité de Contratación, en las modalidades sin umbral propio' },
 ];
 
 /**
