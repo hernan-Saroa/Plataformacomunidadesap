@@ -165,15 +165,19 @@ export function SecuenciaActividad({ numeral, modalidad = null, nombreModalidad,
           onChange={() =>
             guardar(
               { dependeDe, noBloquea: !noBloquea },
-              noBloquea ? 'Vuelve a detener a las siguientes' : 'Ya no detiene el flujo',
+              noBloquea ? 'Ahora es obligatoria' : 'Ahora es opcional: no detiene el flujo',
             )
           }
           className="mt-0.5"
         />
         <span className="min-w-0">
-          <span className="block text-sm font-bold text-slate-800">No detiene el flujo</span>
+          <span className="block text-sm font-bold text-slate-800">
+            Opcional: no detiene el flujo
+          </span>
           <span className="block text-[11px] text-slate-500 mt-0.5">
-            Las siguientes avanzan aunque esta siga abierta. Para las que corren en paralelo o duran toda la ejecución.
+            Sin marcar es obligatoria. Marcada, las siguientes avanzan aunque esta no se registre:
+            para las que no aplican a todos los contratos (como la reunión de inicio), las que corren
+            en paralelo o las que duran toda la ejecución.
           </span>
         </span>
       </label>

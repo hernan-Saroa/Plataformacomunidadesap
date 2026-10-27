@@ -36,6 +36,7 @@ import {
   DatosContrato,
   DatosFirma,
   DatosGarantia,
+  AmparoDeGarantia,
   DatosArl,
   EstadoLegalizacion,
   EstadoSupervision,
@@ -96,7 +97,6 @@ import {
   DatosAudienciaCelebrada,
   DatosNotificacion,
   EstadoRegistroPresupuestal,
-  DatosSolicitudRp,
   DatosExpedicionRp,
   EstadoPublicacionContrato,
   DatosPublicacionContrato,
@@ -629,12 +629,14 @@ export const contratacionService = {
    * Los amparos van como JSON dentro del multipart: la petición lleva también
    * la póliza, y `FormData` no transporta arreglos de objetos.
    */
-  cargarGarantia: (procesoId: string, datos: DatosGarantia, poliza: File) => {
+  cargarGarantia: (procesoId: string, datos: DatosGarantia, poliza: File, evidencia: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', poliza);
+    cuerpo.append('evidencia', evidencia);
     cuerpo.append('aseguradora', datos.aseguradora);
     cuerpo.append('numeroPoliza', datos.numeroPoliza);
     cuerpo.append('amparos', JSON.stringify(datos.amparos));
+    cuerpo.append('fechaAprobacionSecop', datos.fechaAprobacionSecop);
 
     return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/garantias`, {
       method: 'POST',
@@ -651,6 +653,13 @@ export const contratacionService = {
     pedir<EstadoLegalizacion>(
       `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/aprobar`,
       { method: 'POST', body: JSON.stringify({ firma }) },
+    ),
+
+  /** Un amparo más para una póliza ya registrada (revisión de QA de EFDS-1164). */
+  agregarAmparo: (procesoId: string, garantiaId: string, amparo: AmparoDeGarantia) =>
+    pedir<EstadoLegalizacion>(
+      `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/amparos`,
+      { method: 'POST', body: JSON.stringify(amparo) },
     ),
 
   /** Devuelve una póliza con el motivo; después se carga la corregida. */
@@ -714,24 +723,13 @@ export const contratacionService = {
   registroPresupuestal: (procesoId: string) =>
     pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal`),
 
-  /** Radica la solicitud ante la Dirección Financiera. */
-  solicitarRp: (procesoId: string, datos: DatosSolicitudRp) =>
-    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
-  /** La Financiera confirma que hay recursos que comprometer. */
-  verificarRp: (procesoId: string) =>
-    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/verificar`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    }),
-
-  /** Expide el RP con su número; el soporte es opcional, como en el CDP. */
-  expedirRp: (procesoId: string, datos: DatosExpedicionRp, soporte: File | null) => {
+  /**
+   * Carga el RP ya expedido por la Dirección Financiera, con su PDF (revisión
+   * de QA de EFDS-1163): ya no se solicita ni se verifica en la plataforma.
+   */
+  cargarRp: (procesoId: string, datos: DatosExpedicionRp, soporte: File) => {
     const cuerpo = new FormData();
-    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('file', soporte);
     const { firma, ...resto } = datos;
 
     for (const [clave, valor] of Object.entries(resto)) {
@@ -742,17 +740,10 @@ export const contratacionService = {
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoRegistroPresupuestal>(
-      `/procesos/${procesoId}/registro-presupuestal/expedir`,
+      `/procesos/${procesoId}/registro-presupuestal/cargue`,
       { method: 'POST', body: cuerpo },
     );
   },
-
-  /** Rechaza la solicitud con su motivo. */
-  rechazarRp: (procesoId: string, observaciones: string) =>
-    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
-      method: 'POST',
-      body: JSON.stringify({ observaciones }),
-    }),
 
   // ---------------- causal de contratación · 3.6 (3.5.1 de la matriz) -------
 
@@ -1778,20 +1769,16 @@ export const contratacionService = {
   registrarObservacion: (
     procesoId: string,
     datos: {
-      presentadoPor: string;
-      identificacion?: string;
+      presentadoPor?: string;
       fechaPresentacion: string;
-      asunto: string;
       contenido: string;
     },
-    soporte: File | null,
+    archivos: File[],
   ) => {
     const cuerpo = new FormData();
-    if (soporte) cuerpo.append('file', soporte);
-    cuerpo.append('presentadoPor', datos.presentadoPor);
-    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
+    archivos.forEach((a) => cuerpo.append('files', a));
+    if (datos.presentadoPor) cuerpo.append('presentadoPor', datos.presentadoPor);
     cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
-    cuerpo.append('asunto', datos.asunto);
     cuerpo.append('contenido', datos.contenido);
 
     return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`, {
@@ -1800,11 +1787,29 @@ export const contratacionService = {
     });
   },
 
-  /** La respuesta cierra la observación; no se reescribe después. */
+  /** Un solo documento de respuestas para todos los interesados pendientes. */
+  responderTodasLasObservaciones: (
+    procesoId: string,
+    datos: { respuesta?: string; modificoPliego?: boolean },
+    archivos: File[],
+    firma?: EvidenciaFirmaOtp,
+  ) => {
+    const cuerpo = new FormData();
+    archivos.forEach((a) => cuerpo.append('files', a));
+    if (datos.respuesta) cuerpo.append('respuesta', datos.respuesta);
+    if (datos.modificoPliego !== undefined) cuerpo.append('modificoPliego', String(datos.modificoPliego));
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
+
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/responder-todas`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
   responderObservacion: (
     procesoId: string,
     observacionId: string,
-    datos: { respuesta: string; modificoPliego: boolean },
+    datos: { respuesta: string; modificoPliego?: boolean },
     firma?: EvidenciaFirmaOtp,
   ) =>
     pedir<EstadoObservaciones>(

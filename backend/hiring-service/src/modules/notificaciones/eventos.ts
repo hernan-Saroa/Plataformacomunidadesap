@@ -499,6 +499,11 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     case 'estudio_previo:DEVOLVER':
       return ocurrido('DEVUELTA', '3.1');
 
+    // Una solicitud de modificación (9.5) espera a quien la aprueba: la
+    // registra la supervisión y le llega a Contratación (revisión de QA de
+    // EFDS-1176). Los destinatarios se configuran como cualquier aviso.
+    case 'modificacion_contrato:SOLICITAR':
+      return ocurrido('ENVIADA_A_APROBACION', '9.5');
     case 'registros_actividad:GUARDAR':
       return t.detalle?.estado === 'EN_REVISION' ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
     case 'documento_actividad:ADJUNTAR':

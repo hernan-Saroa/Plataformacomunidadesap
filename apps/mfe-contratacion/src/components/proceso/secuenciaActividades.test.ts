@@ -429,22 +429,25 @@ describe('actividadesDisponibles · la 9.2 y la 9.3 nunca bloquean lo que sigue'
     expect(motivoDelBloqueo('9.4', flujo)).toBeNull();
   });
 
-  it('la excepción es la 9.2, la 9.3 y la 9.5, no el resto de la etapa 9', () => {
+  // La reunión de inicio (9.1) es opcional desde la revisión de QA de EFDS-1167.
+  it('la excepción es la 9.1, la 9.2, la 9.3 y la 9.5, no los pagos', () => {
+    expect(NUNCA_BLOQUEA.has('9.1')).toBe(true);
     expect(NUNCA_BLOQUEA.has('9.2')).toBe(true);
     expect(NUNCA_BLOQUEA.has('9.3')).toBe(true);
     expect(NUNCA_BLOQUEA.has('9.5')).toBe(true);
-    expect(NUNCA_BLOQUEA.has('9.1')).toBe(false);
     expect(NUNCA_BLOQUEA.has('9.4')).toBe(false);
   });
 });
 
 /**
  * La 9.5 (modificaciones) no es lineal: una modificación cabe en cualquier
- * momento de la ejecución, y la ejecución empieza con el acta de inicio (9.1).
+ * momento de la ejecución, y la ejecución empieza con el acta de inicio (8.7;
+ * la 9.1 es la reunión, opcional desde la revisión de QA de EFDS-1176).
  */
 describe('actividadesDisponibles · la 9.5 se abre desde que arranca la ejecución', () => {
-  const etapa9 = (estadoDeLa91: string | null, estadoDeLa94: string | null) => [
-    paso('9.1', { estado: estadoDeLa91 }),
+  const etapa9 = (estadoDeLa87: string | null, estadoDeLa94: string | null) => [
+    paso('8.7', { estado: estadoDeLa87 }),
+    paso('9.1', { estado: 'BORRADOR' }),
     paso('9.2', { estado: 'BORRADOR' }),
     paso('9.3', { estado: 'BORRADOR' }),
     paso('9.4', { estado: estadoDeLa94 }),
@@ -463,7 +466,7 @@ describe('actividadesDisponibles · la 9.5 se abre desde que arranca la ejecuci�
     const flujo = etapa9('BORRADOR', null);
 
     expect(actividadesDisponibles(flujo).has('9.5')).toBe(false);
-    expect(motivoDelBloqueo('9.5', flujo)).toBe('Antes hay que terminar 9.1');
+    expect(motivoDelBloqueo('9.5', flujo)).toBe('Antes hay que terminar 8.7');
   });
 
   it('un contrato que nunca se modificó no queda trancado antes de la etapa 10', () => {

@@ -75,9 +75,9 @@ export const DEPENDE_DE_POR_DEFECTO: Readonly<Record<string, readonly string[]>>
   '8.4': ['8.1'],
   '8.5': ['8.1'],
   '8.8': ['8.1'],
-  '9.5': ['9.1'],
+  '9.5': ['8.7'],
 };
-export const NO_BLOQUEAN_POR_DEFECTO: ReadonlySet<string> = new Set(['5.13', '9.2', '9.3', '9.5']);
+export const NO_BLOQUEAN_POR_DEFECTO: ReadonlySet<string> = new Set(['5.13', '9.1', '9.2', '9.3', '9.5']);
 
 export function secuenciaPorDefecto(numeral: string): SecuenciaGuardada {
   const depende = DEPENDE_DE_POR_DEFECTO[numeral];

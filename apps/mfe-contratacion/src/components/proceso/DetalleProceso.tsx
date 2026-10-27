@@ -30,7 +30,10 @@ import { PanelDeLaActividad } from './PanelDeLaActividad';
 import {
   ACTIVIDADES_CON_REGISTRO,
   ETAPAS_DE_LA_FINANCIERA,
+  NUMERAL_ADENDAS,
+  NUMERAL_CIERRE_FINANCIERO,
   NUMERAL_MODIFICACIONES,
+  NUMERAL_PUBLICACION_WEB,
   NUMERAL_REVISION,
   NUMERALES_CON_APROBACION_PROPIA,
   NUMERALES_CON_LISTA_PROPIA,
@@ -700,7 +703,24 @@ export function DetalleProceso({
   const modificaciones =
     actividades.find((a) => a.numeral === NUMERAL_MODIFICACIONES && a.estado !== 'no_aplica') ??
     null;
-  const actividadesDelRiel = actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES);
+  // La publicación en la página web (5.4) se registra dentro de la 5.3: es una
+  // sola actividad de publicación con dos evidencias (revisión de QA de
+  // EFDS-1150). Sigue existiendo para guardar su constancia.
+  /**
+   * Las adendas (5.13) tampoco: se generan cuando se necesitan, desde su botón
+   * de la cabecera, sin depender de la etapa en que esté el proceso (revisión
+   * de QA de EFDS-1154).
+   */
+  const adendas =
+    actividades.find((a) => a.numeral === NUMERAL_ADENDAS && a.estado !== 'no_aplica') ?? null;
+  const actividadesDelRiel = actividades.filter(
+    (a) =>
+      a.numeral !== NUMERAL_MODIFICACIONES &&
+      a.numeral !== NUMERAL_ADENDAS &&
+      a.numeral !== NUMERAL_PUBLICACION_WEB &&
+      // El cierre financiero (10.3) se registra dentro de la liquidación (EFDS-1172).
+      a.numeral !== NUMERAL_CIERRE_FINANCIERO,
+  );
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
@@ -954,6 +974,26 @@ export function DetalleProceso({
               >
                 <ListChecks className="w-3.5 h-3.5" />
                 {verTodasLasEtapas ? 'Solo lo mío' : 'Todo el proceso'}
+              </button>
+            )}
+
+            {/* Siempre que la modalidad tenga adendas: el panel dice si todavía
+                no se puede (sin pliego publicado o sin apertura) o si ya no. */}
+            {adendas && (
+              <button
+                type="button"
+                onClick={() => trabajarEn(NUMERAL_ADENDAS)}
+                aria-pressed={expandida === NUMERAL_ADENDAS}
+                title="Generar o consultar las adendas del proceso, de fondo o de cronograma"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                  border transition-colors ${
+                    expandida === NUMERAL_ADENDAS
+                      ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                  }`}
+              >
+                <FilePen className="w-3.5 h-3.5" />
+                Adendas
               </button>
             )}
 

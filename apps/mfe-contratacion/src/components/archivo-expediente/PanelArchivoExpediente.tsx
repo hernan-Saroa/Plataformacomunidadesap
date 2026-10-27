@@ -191,7 +191,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
 
   return (
     <Marco>
-      <Titulo>Publicación del acta y archivo del expediente</Titulo>
+      <Titulo>Cierre del expediente: publicación y archivo</Titulo>
       <Ayuda>
         El Archivo de Gestión publica el acta de liquidación y archiva el expediente, que queda
         disponible para consulta y auditoría. La publicación se hace en SECOP II y el archivo
@@ -291,7 +291,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
 
       {publicando ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Publicación del acta</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Paso 1 · Publicación de la liquidación o el cierre</p>
 
           <div className="grid grid-cols-2 gap-2.5">
             <div>
@@ -396,11 +396,11 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
 
       {estado.puedeArchivar && archivando ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Archivo del expediente</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Paso 2 · Archivo del expediente</p>
 
           <div>
             <label htmlFor="ae-radicado" className="block text-xs font-bold text-gray-600 mb-1.5">
-              Radicado en Active Document
+              Número de radicado del archivo <span className="text-red-600">*</span>
             </label>
             <input
               id="ae-radicado"
@@ -441,7 +441,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
           <div className="flex flex-wrap gap-2">
             <Boton
               icono={<Archive className="w-3.5 h-3.5" />}
-              disabled={guardando}
+              disabled={guardando || !datosArchivo.radicadoActiveDocument.trim()}
               onClick={() => firma.conFirma(archivar)}
             >
               Archivar el expediente

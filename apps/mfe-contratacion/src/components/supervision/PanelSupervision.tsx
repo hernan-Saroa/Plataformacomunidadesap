@@ -234,8 +234,9 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Supervisión del contrato</Titulo>
       <Ayuda>
-        El Ordenador del Gasto designa por acto administrativo a quien vigilará la ejecución. Al
-        supervisor le llega un correo con el acto y los documentos que le agregues.
+        El Ordenador del Gasto designa por memorando a quien vigilará la ejecución, en todas las
+        modalidades. Al supervisor le llega un correo con el memorando adjunto y los documentos que
+        le agregues: ese correo es la comunicación formal de la designación.
       </Ayuda>
 
       {/* Por qué no se puede todavía, en vez de un botón apagado sin explicar. */}
@@ -369,7 +370,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
                 Correo a {estado.supervisor.email}
               </p>
               <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
-                Lleva el acto y todo lo que ya se le mandó; lo que agregues aquí se suma y queda en el
+                Lleva el memorando y todo lo que ya se le mandó; lo que agregues aquí se suma y queda en el
                 expediente.
               </p>
               <CorreoAlSupervisor
@@ -449,7 +450,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             </div>
             <div>
               <label htmlFor="rea-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Fecha del acto <span className="text-red-600">*</span>
+                Fecha del memorando <span className="text-red-600">*</span>
               </label>
               <input
                 id="rea-fecha"
@@ -478,8 +479,8 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
 
           <SelectorArchivo
             id="rea-acto"
-            etiqueta="Acto de reasignación"
-            ayuda="El acto administrativo del Ordenador del Gasto"
+            etiqueta="Memorando de reasignación"
+            ayuda="El memorando del Ordenador del Gasto; viaja adjunto en el correo al nuevo supervisor."
             archivo={acto}
             onElegir={setActo}
           />
@@ -570,7 +571,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             </div>
             <div>
               <label htmlFor="sup-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Fecha del acto <span className="text-red-600">*</span>
+                Fecha del memorando <span className="text-red-600">*</span>
               </label>
               <input
                 id="sup-fecha"
@@ -584,8 +585,8 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
 
           <SelectorArchivo
             id="sup-acto"
-            etiqueta="Acto de designación"
-            ayuda="El acto administrativo firmado por el ordenador del gasto."
+            etiqueta="Memorando de designación"
+            ayuda="Firmado por el ordenador del gasto; viaja adjunto en el correo al supervisor."
             archivo={acto}
             onElegir={setActo}
           />

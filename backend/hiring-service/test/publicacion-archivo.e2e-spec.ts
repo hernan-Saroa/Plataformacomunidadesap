@@ -741,14 +741,18 @@ describe('HU EFDS-1174 · publicación del acta y archivo del expediente (10.4)'
     it('no archiva mientras el acta no se haya publicado en SECOP II', async () => {
       const proceso = await listoParaPublicar();
 
-      await expect(archivarExpediente(proceso.id)).rejects.toThrow(/no se ha publicado en SECOP II/i);
+      await expect(archivarExpediente(proceso.id)).rejects.toThrow(/no se ha publicado/i);
     });
 
-    it('la publicación en la web de la ESAP no reemplaza a la de SECOP II', async () => {
+    // Revisión de QA de EFDS-1175: el paso 1 es publicar en SECOP II o en la
+    // página web; cualquiera de las dos deja seguir al archivo.
+    it('la publicación en la web de la ESAP basta para el paso 1', async () => {
       const proceso = await listoParaPublicar();
       await publicarActa(proceso.id, { destino: 'WEB_ESAP' });
 
-      await expect(archivarExpediente(proceso.id)).rejects.toThrow(/no se ha publicado en SECOP II/i);
+      await archivarExpediente(proceso.id).catch((error: Error) => {
+        expect(error.message).not.toMatch(/no se ha publicado/i);
+      });
     });
 
     /**

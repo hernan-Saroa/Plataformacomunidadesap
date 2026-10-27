@@ -604,9 +604,9 @@ export class ComiteContratacionService {
   private async umbralDe(em: EntityManager, modalidad: string | null) {
     if (!modalidad) return { umbral: null, enPesos: null, smmlv: null };
 
-    const umbral = await em
-      .getRepository(UmbralComiteContratacion)
-      .findOne({ where: { modalidad } });
+    const umbral =
+      (await em.getRepository(UmbralComiteContratacion).findOne({ where: { modalidad } })) ??
+      (await this.umbralGeneral(em, modalidad));
     if (!umbral) return { umbral: null, enPesos: null, smmlv: null };
 
     if (umbral.unidad === 'PESOS') {
@@ -624,6 +624,30 @@ export class ComiteContratacionService {
       enPesos: salario ? umbral.valor * salario.valor : null,
       smmlv,
     };
+  }
+
+  /**
+   * La cuantía mínima de toda modalidad sin umbral propio (EFDS-1147, 126).
+   *
+   * En la operación el comité solo conoce lo que supera 1.000 SMMLV, sea cual
+   * sea la modalidad. Vive en `parametros_alerta` para editarse desde la misma
+   * pantalla de parámetros; si la fila no está (126 sin aplicar), no hay
+   * umbral y el proceso va, como antes.
+   */
+  private async umbralGeneral(em: EntityManager, modalidad: string): Promise<UmbralComiteContratacion | null> {
+    const filas: { valor: string }[] = await em
+      .query(`SELECT valor FROM hiring.parametros_alerta WHERE clave = 'cuantia_minima_comite'`)
+      .catch(() => []);
+    if (!filas.length) return null;
+
+    return Object.assign(new UmbralComiteContratacion(), {
+      modalidad,
+      valor: Number(filas[0].valor),
+      unidad: 'SMMLV',
+      fundamento:
+        'Parámetro general: el Comité de Contratación solo conoce los procesos que superan esta cuantía, sin importar la modalidad (revisión de QA de EFDS-1147).',
+      confirmado: false,
+    });
   }
 
   /** Lo registra quien dice la regla «quién la hace» de la actividad (109). */

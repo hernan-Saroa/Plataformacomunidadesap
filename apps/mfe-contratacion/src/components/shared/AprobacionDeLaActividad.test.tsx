@@ -363,9 +363,8 @@ describe('AprobacionDeLaActividad · relee cuando el panel cambia el trámite', 
 /**
  * Aprobar lo que uno mismo trabajó (EFDS-1183).
  *
- * Estaba prohibido, copiando la regla de las garantías: allí quien carga la
- * póliza y quien la revisa son papeles distintos y nunca coinciden. En las
- * actividades sí coinciden —la 3.3 y la 3.4 las ejecuta la Dirección de
+ * Estaba prohibido, copiando la regla que entonces tenían las garantías
+ * (después también se quitó allí). En las actividades los papeles coinciden —la 3.3 y la 3.4 las ejecuta la Dirección de
  * Contratación y las aprueba su director—, y el bloqueo lo dejaba esperándose
  * a sí mismo con la actividad sin salida. El control que queda es el rol.
  */

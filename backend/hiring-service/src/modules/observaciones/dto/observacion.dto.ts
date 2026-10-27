@@ -10,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Los campos llegan por multipart junto con el soporte, así que todo entra como
@@ -19,37 +19,42 @@ import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 const aBooleano = () =>
   Transform(({ value }) => (typeof value === 'string' ? value === 'true' : value));
 
+/**
+ * Lo que presentó un interesado (127, revisión de QA de EFDS-1151).
+ *
+ * Una fila por interesado y no por observación: el detalle ya queda en los
+ * archivos, y transcribirlo punto por punto agregaba trabajo sin trazabilidad.
+ */
 export class RegistrarObservacionDto {
-  @ApiProperty({ description: 'Persona o empresa que presentó la observación' })
+  @ApiPropertyOptional({ description: 'El interesado tal como aparece en SECOP II' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Indica quién presentó la observación' })
   @MaxLength(200)
-  presentadoPor: string;
+  presentadoPor?: string;
 
-  /** Opcional: una observación anónima igual hay que responderla. */
-  @ApiPropertyOptional({ description: 'NIT o cédula de quien la presentó' })
+  @ApiPropertyOptional({ description: 'NIT o cédula del interesado' })
   @IsOptional()
   @IsString()
   @MaxLength(60)
   identificacion?: string;
 
-  /**
-   * La fecha en que el interesado la presentó, no la del registro: es la que
-   * decide si llegó dentro del plazo de publicidad.
-   */
-  @ApiProperty({ description: 'Fecha de presentación (YYYY-MM-DD)', example: '2026-08-14' })
+  @ApiPropertyOptional({
+    description: 'Fecha de presentación (YYYY-MM-DD); si no se dice, hoy',
+    example: '2026-08-14',
+  })
+  @IsOptional()
   @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
-  fechaPresentacion: string;
+  fechaPresentacion?: string;
 
-  @ApiProperty({ description: 'Asunto de la observación' })
+  @ApiPropertyOptional({ description: 'Asunto, si se quiere distinguir' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'El asunto es obligatorio' })
   @MaxLength(300)
-  asunto: string;
+  asunto?: string;
 
-  @ApiProperty({ description: 'Texto de la observación tal como se presentó' })
+  @ApiProperty({ description: 'Observación general del interesado, en texto libre' })
   @IsString()
-  @IsNotEmpty({ message: 'El contenido de la observación es obligatorio' })
+  @IsNotEmpty({ message: 'Escribe la observación general del interesado' })
   contenido: string;
 }
 
@@ -63,13 +68,14 @@ export class ResponderObservacionDto {
    * Se pide siempre y no se deduce del texto: es lo que justifica una adenda
    * posterior y lo que muestra si la observación sirvió de algo.
    */
-  @ApiProperty({
-    description: 'Si la observación llevó a modificar el pliego',
+  @ApiPropertyOptional({
+    description: 'Si llevó a modificar el pliego. Informativo: no se exige (127)',
     example: false,
   })
+  @IsOptional()
   @aBooleano()
   @IsBoolean({ message: 'Indica si la observación modificó el pliego' })
-  modificoPliego: boolean;
+  modificoPliego?: boolean;
 
   /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
@@ -80,6 +86,27 @@ export class ResponderObservacionDto {
 }
 
 /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+/** Una sola respuesta para todos los interesados pendientes (127). */
+export class ResponderTodasDto {
+  @ApiPropertyOptional({ description: 'Nota sobre el documento de respuestas' })
+  @IsOptional()
+  @IsString()
+  respuesta?: string;
+
+  @ApiPropertyOptional({ description: 'Si las observaciones llevaron a modificar el pliego. Informativo' })
+  @IsOptional()
+  @aBooleano()
+  @IsBoolean({ message: 'Indica si las observaciones modificaron el pliego' })
+  modificoPliego?: boolean;
+
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @FirmaDelMultipart()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
 export class CerrarSinObservacionesDto {
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()

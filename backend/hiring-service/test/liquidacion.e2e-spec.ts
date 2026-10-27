@@ -566,20 +566,20 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
   });
 
   describe('Criterio 2 · las dos ventanas del plazo legal', () => {
-    it('dentro de los cuatro meses solo procede la bilateral', async () => {
+    // Revisión de QA de EFDS-1172: dentro del acuerdo la unilateral se
+    // advierte, no se impide; la entidad sabe si el contratista no se presentó.
+    it('dentro de los cuatro meses la unilateral se advierte, no se impide', async () => {
       // Terminó hace veinte días: el acuerdo sigue corriendo.
       const proceso = await conInformeFinal(200);
 
       const estado = await liquidacion.estado(proceso.id, gestor);
       expect(estado.alerta!.momento).toBe('BILATERAL');
       expect(estado.puedeLiquidarBilateral).toBe(true);
-      expect(estado.puedeLiquidarUnilateral).toBe(false);
-      expect(estado.motivoNoUnilateral).toMatch(/se habilita cuando venza el plazo/i);
+      expect(estado.puedeLiquidarUnilateral).toBe(true);
+      expect(estado.advertenciaUnilateral).toMatch(/corre el plazo para liquidar de común acuerdo/i);
 
-      // Y el servicio la rechaza, no solo la pantalla: la potestad no existe.
-      await expect(liquidar(proceso.id, { tipo: 'UNILATERAL' })).rejects.toThrow(
-        /solo procede cuando ese plazo vence/i,
-      );
+      const liquidado = await liquidar(proceso.id, { tipo: 'UNILATERAL' });
+      expect(liquidado.acta).not.toBeNull();
     });
 
     it('vencidos los cuatro meses habilita la unilateral y lo dice', async () => {

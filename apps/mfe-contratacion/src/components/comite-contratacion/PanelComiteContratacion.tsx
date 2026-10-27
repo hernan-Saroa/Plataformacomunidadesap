@@ -225,7 +225,7 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
 
       {constancia && (
         <Aviso tono="ok" titulo="Consta que no pasó por comité">
-          La cuantía del proceso no alcanza el umbral de su modalidad.
+          La cuantía del proceso no supera la que lleva un proceso al Comité de Contratación.
         </Aviso>
       )}
 

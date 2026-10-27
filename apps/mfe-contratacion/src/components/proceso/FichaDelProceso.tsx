@@ -264,7 +264,8 @@ export function FichaDelProceso({
             />
             {/* Los puestos que configuró la Dirección (109): ya no hay un
                 abogado fijo, hay los lugares que el área decidió. */}
-            {(puestos?.puestos ?? []).map((p) => (
+            {/* El del supervisor va en su propia fila, con la designación. */}
+            {(puestos?.puestos ?? []).filter((p) => p.seOcupaEn !== '8.2').map((p) => (
               <Miembro
                 key={p.id}
                 Icono={Scale}
@@ -290,10 +291,13 @@ export function FichaDelProceso({
                 accion={{ texto: 'Ver el CDP', hacer: () => onAbrir('4.2') }}
               />
             ) : null}
-            {etapaActual >= 8 ? (
+            {/* Con supervisor designado se muestra siempre: la etapa guardada
+                del proceso se queda atrás y lo escondía (revisión de QA de
+                EFDS-1165). */}
+            {etapaActual >= 8 || supervision?.supervisor ? (
               <Miembro
                 Icono={ShieldCheck}
-                papel="Supervisor"
+                papel="Supervisor del contrato"
                 nombre={supervision?.supervisor?.nombre ?? null}
                 vacio={supervision?.admiteSupervisor === false ? 'Aún no hay contrato' : 'Sin designar'}
                 accion={

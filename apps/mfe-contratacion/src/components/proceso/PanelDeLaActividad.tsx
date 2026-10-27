@@ -63,6 +63,7 @@ import {
   NUMERAL_OFERTAS,
   NUMERAL_PAGOS,
   NUMERAL_PUBLICACION,
+  NUMERAL_PUBLICACION_WEB,
   NUMERAL_PUBLICACION_CONTRATO,
   NUMERAL_RADICACION,
   NUMERAL_RIESGOS,
@@ -150,7 +151,13 @@ export function PanelDeLaActividad({
       ) : numeral === NUMERAL_CIERRE_FINANCIERO ? (
         <PanelCierreFinanciero procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_LIQUIDACION ? (
-        <PanelLiquidacion procesoId={procesoId} onCambio={onCambio} />
+        /* El balance financiero y el cierre del saldo van con la liquidación,
+           no en la etapa de cierre, que queda solo para publicar y archivar
+           (revisión de QA de EFDS-1172). La 10.3 sigue guardando el cierre. */
+        <div className="space-y-3">
+          <PanelLiquidacion procesoId={procesoId} onCambio={onCambio} />
+          <PanelCierreFinanciero procesoId={procesoId} onCambio={onCambio} />
+        </div>
       ) : numeral === NUMERAL_INFORME_FINAL ? (
         <PanelInformeFinal procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_MODIFICACIONES ? (
@@ -209,7 +216,18 @@ export function PanelDeLaActividad({
       ) : numeral === NUMERAL_DOCUMENTOS ? (
         <PanelDocumentosProceso procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_PUBLICACION ? (
-        <PanelPublicacionPliego procesoId={procesoId} onCambio={onCambio} />
+        /* Una sola actividad de publicación con dos evidencias: SECOP II y
+           el soporte de que se pidió o se hizo la publicación en la página
+           web de la ESAP a la OTIC (revisión de QA de EFDS-1150). */
+        <div className="space-y-3">
+          <PanelPublicacionPliego procesoId={procesoId} onCambio={onCambio} />
+          <PanelRegistroActividad
+            procesoId={procesoId}
+            numeral={NUMERAL_PUBLICACION_WEB}
+            onCambio={onCambio}
+            recargarToken={recargarToken}
+          />
+        </div>
       ) : numeral === NUMERAL_OBSERVACIONES ? (
         <PanelObservaciones procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_MIPYME ? (

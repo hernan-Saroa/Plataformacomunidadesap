@@ -15,7 +15,12 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { ExpedirRpDto, RechazarRpDto, SolicitarRpDto } from './dto/registro-presupuestal.dto';
+import {
+  CargarRpDto,
+  ExpedirRpDto,
+  RechazarRpDto,
+  SolicitarRpDto,
+} from './dto/registro-presupuestal.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
@@ -100,8 +105,11 @@ interface ArchivoCargado {
 /**
  * Registro presupuestal del contrato — actividad 8.3 (EFDS-1163).
  *
- * Mismo ciclo que el CDP porque es el mismo trámite en otro momento: el CDP
- * aparta la partida, el RP la compromete.
+ * Desde la revisión de QA (2026-10-16) el RP se trata como el CDP desde la
+ * 103: la Dirección Financiera lo expide por fuera y el abogado carga el PDF
+ * con sus datos (`cargar`). La solicitud, la verificación y el rechazo dentro
+ * de la plataforma ya no se exponen; los métodos se quedan para completar los
+ * trámites viejos y para las pruebas.
  */
 @Injectable()
 export class RegistroPresupuestalService {
@@ -136,7 +144,9 @@ export class RegistroPresupuestalService {
           ? 'el proponente no aceptó la minuta'
           : 'el contrato todavía no lo han firmado las dos partes',
       contrato: { numero: contrato.numero, valor: contrato.valor },
-      puedeSolicitar: suscrito && !rp,
+      puedeSolicitar: false,
+      /** Lo que queda en la pantalla: cargar el RP ya expedido (o completar uno viejo). */
+      puedeCargar: suscrito && rp?.estado !== 'EXPEDIDO',
       rp: rp
         ? {
             id: rp.id,
@@ -161,7 +171,77 @@ export class RegistroPresupuestalService {
     };
   }
 
-  // ------------------------------------------------------------- el ciclo --
+  // ------------------------------------------------------------- el cargue --
+
+  /**
+   * Carga el RP ya expedido, con su PDF.
+   *
+   * Si quedó un trámite viejo en SOLICITADO o VERIFICADO, lo completa en vez
+   * de crear otro: el índice único no admite dos RP vigentes por contrato.
+   */
+  async cargar(
+    procesoId: string,
+    dto: CargarRpDto,
+    soporte: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
+      const previo = await this.rpVigente(contrato.id, em);
+      if (previo?.estado === 'EXPEDIDO') {
+        throw new ConflictException('El contrato ya tiene su registro presupuestal cargado');
+      }
+
+      this.validarFecha(dto.fechaExpedicion);
+
+      const cdp = await this.exigirCdpExpedido(em, procesoId);
+      const rubro = dto.rubro?.trim() || previo?.rubro || cdp.rubro || null;
+      const contradiccion = contradiceElCdp({ valor: Number(dto.valor), rubro }, cdp);
+      if (contradiccion) throw new BadRequestException(contradiccion);
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · registro presupuestal ${dto.numero}`,
+        soporte,
+        hash,
+        acceso,
+      );
+
+      const rp = previo ?? em.create(RegistroPresupuestal, { contratoId: contrato.id } as Partial<RegistroPresupuestal>);
+      Object.assign(rp, {
+        estado: 'EXPEDIDO' as const,
+        numero: dto.numero,
+        valor: dto.valor,
+        rubro,
+        fechaExpedicion: dto.fechaExpedicion,
+        vigenciaFiscal: dto.vigenciaFiscal ?? previo?.vigenciaFiscal ?? null,
+        documentoId: doc.id,
+        solicitadoPor: previo?.solicitadoPor ?? acceso.userName,
+        expedidoPor: acceso.userName,
+      });
+      await em.save(rp);
+
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
+
+      await this.traza(em, procesoId, rp.id, 'ADJUNTAR', acceso, {
+        actividad: NUMERAL_RP,
+        contrato: contrato.numero,
+        numero: dto.numero,
+        valor: dto.valor,
+        rubro,
+        cargadoPorFuera: true,
+        cubreElContrato: cubreElContrato(dto.valor, contrato.valor),
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  // ------------------------------------- el ciclo de antes (trámites viejos) --
 
   /** Radica la solicitud del RP ante la Dirección Financiera. */
   async solicitar(procesoId: string, dto: SolicitarRpDto, acceso: HiringAccess) {

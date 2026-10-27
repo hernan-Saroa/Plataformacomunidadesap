@@ -194,7 +194,7 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
 
   return (
     <Marco>
-      <Titulo>Informe final de ejecución</Titulo>
+      <Titulo>Informe final de supervisión</Titulo>
       <Ayuda>
         El supervisor cierra su vigilancia con el consolidado de entregables y el balance de la
         ejecución. Es lo que soporta la liquidación del contrato.

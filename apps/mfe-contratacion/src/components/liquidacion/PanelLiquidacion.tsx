@@ -186,14 +186,23 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
         />
       ) : null}
 
-      {estado.admiteLiquidacion && !estado.tieneInformeFinal ? (
+      {estado.admiteLiquidacion && !estado.tieneInformeFinal && estado.exigeInformeFinal !== false ? (
         <Pendiente
           falta="10.1"
-          texto="Falta el informe final de ejecución: la liquidación va sobre el informe que dice cómo se ejecutó."
+          texto="Falta el informe final de supervisión: la liquidación va sobre el informe que dice cómo se ejecutó."
         />
       ) : null}
 
-      {estado.admiteLiquidacion && estado.tieneInformeFinal && !estado.ventana ? (
+      {estado.admiteLiquidacion && !estado.tieneInformeFinal && estado.exigeInformeFinal === false ? (
+        <Ayuda>
+          En este proceso el informe final de supervisión es opcional: carga el acta de recibo entre
+          los soportes de la liquidación.
+        </Ayuda>
+      ) : null}
+
+      {estado.admiteLiquidacion &&
+      (estado.tieneInformeFinal || estado.exigeInformeFinal === false) &&
+      !estado.ventana ? (
         <Aviso tono="aviso" titulo="No se puede calcular el plazo de liquidación">
           Falta el acta de inicio o el plazo del contrato, y sin fecha de terminación no hay desde
           cuándo contar los cuatro meses.
@@ -367,13 +376,23 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
             />
           </div>
 
+          {tipo === 'UNILATERAL' && estado.advertenciaUnilateral ? (
+            <Aviso tono="aviso" titulo="Todavía corre el plazo del acuerdo">
+              {estado.advertenciaUnilateral}
+            </Aviso>
+          ) : null}
+
           <SelectorArchivo
             id="liq-acta"
-            etiqueta={tipo === 'BILATERAL' ? 'Acta firmada' : 'Resolución de liquidación'}
+            etiqueta={
+              tipo === 'BILATERAL'
+                ? 'Acta de liquidación'
+                : 'Resolución de liquidación o evidencia de su publicación'
+            }
             ayuda={
               tipo === 'BILATERAL'
-                ? 'Suscrita por las dos partes.'
-                : 'El acto administrativo de la entidad.'
+                ? 'Suscrita por las dos partes. Los demás soportes (memorando de radicación, verificación de antecedentes, balance final…) se cargan abajo, en los documentos de la actividad.'
+                : 'El acto administrativo de la entidad que liquida el contrato, o la evidencia de su publicación en SECOP II.'
             }
             archivo={acta}
             onElegir={setActa}
