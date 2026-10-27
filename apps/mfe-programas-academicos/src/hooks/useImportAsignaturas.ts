@@ -128,7 +128,7 @@ export function useImportAsignaturas() {
     }
   }, []);
 
-  const createPeriodo = useCallback(async (data: { anio: number; semestre: number; fechaInicio: string; fechaFin: string }) => {
+  const createPeriodo = useCallback(async (data: { anio: number; semestre?: number; tipo?: 'personalizado'; codigo?: string; nombre?: string; fechaInicio: string; fechaFin: string }) => {
     setLoading(true);
     setError(null);
     try {
