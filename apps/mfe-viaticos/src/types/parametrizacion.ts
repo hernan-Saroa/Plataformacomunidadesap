@@ -152,7 +152,8 @@ export interface TarifaTransporteTerminal {
   departamentoId?: number | null;
   ciudad?: string;
   ciudadAeropuerto: string;
-  valorMaximoTrayecto: number;
+  valorMaximo?: number;
+  valorMaximoTrayecto?: number;
   incrementoIncluido?: boolean;
   activo?: boolean;
   createdAt?: string;

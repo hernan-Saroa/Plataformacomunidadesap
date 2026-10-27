@@ -529,16 +529,31 @@ export class LiquidationConfigService {
 
   // ==================== TARIFAS TRANSPORTE TERMINALES AÉREOS ====================
 
-  async obtenerTarifasTransporteTerminal(): Promise<TarifaTransporteTerminalEntity[]> {
-    return this.terminalRepo.find({
+  async obtenerTarifasTransporteTerminal(): Promise<any[]> {
+    const list = await this.terminalRepo.find({
       order: { departamento: 'ASC', ciudad: 'ASC' },
+    });
+    return list.map((t) => {
+      const valor = Number(t.valorMaximo ?? (t as any).valorMaximoTrayecto) || 0;
+      return {
+        ...t,
+        valorMaximo: valor,
+        valorMaximoTrayecto: valor,
+      };
     });
   }
 
   async obtenerTarifaTransporteTerminalPorId(
     id: number,
-  ): Promise<TarifaTransporteTerminalEntity | null> {
-    return this.terminalRepo.findOne({ where: { id } });
+  ): Promise<any | null> {
+    const t = await this.terminalRepo.findOne({ where: { id } });
+    if (!t) return null;
+    const valor = Number(t.valorMaximo ?? (t as any).valorMaximoTrayecto) || 0;
+    return {
+      ...t,
+      valorMaximo: valor,
+      valorMaximoTrayecto: valor,
+    };
   }
 
   async crearTarifaTransporteTerminal(
@@ -558,10 +573,12 @@ export class LiquidationConfigService {
         `Ya existe una tarifa activa para ${depto || ciudadVal} y ${dto.ciudadAeropuerto}.`,
       );
     }
+    const valor = Number(dto.valorMaximo ?? dto.valorMaximoTrayecto ?? 0);
     const entity = this.terminalRepo.create({
       ...dto,
       departamento: depto,
       ciudad: ciudadVal,
+      valorMaximo: valor,
       activo: dto.activo ?? true,
     });
     const guardada = await this.terminalRepo.save(entity);
@@ -593,7 +610,14 @@ export class LiquidationConfigService {
         `Tarifa de transporte terminal con id ${id} no encontrada`,
       );
     }
-    Object.assign(entity, dto);
+    const valor = dto.valorMaximo != null || dto.valorMaximoTrayecto != null
+      ? Number(dto.valorMaximo ?? dto.valorMaximoTrayecto)
+      : entity.valorMaximo;
+
+    Object.assign(entity, {
+      ...dto,
+      valorMaximo: valor,
+    });
     const guardada = await this.terminalRepo.save(entity);
     this.liquidationService.invalidarCache();
 
