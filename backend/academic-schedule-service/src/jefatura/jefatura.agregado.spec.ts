@@ -29,8 +29,19 @@ const conexion = {
 
 const S = 'academic-schedule';
 const JEFA = '6cc8451a-6c7e-4734-b07d-9c500753479d'; // qa.jefatura -> DT-009
-const P1 = '39a6f90f-2daf-496d-9035-b057e4734873';    // docente DT-009
-const P2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';    // docente DT-010
+// Docentes QA propios, creados en la transacción del fixture (antes eran dos docentes
+// reales: la carga del RUND les cambió la territorial y la prueba dejó de probar).
+let P1 = '';    // docente DT-009
+let P2 = '';    // docente DT-010
+
+// Flujo ANTERIOR (EFDS-1938): el docente toma y suelta. Sigue en el código detrás del
+// interruptor PROG_PORTAL_TOMA_FRANJAS (EFDS-2348); esta suite lo prueba encendido.
+const tomaAntes = process.env.PROG_PORTAL_TOMA_FRANJAS;
+beforeAll(() => { process.env.PROG_PORTAL_TOMA_FRANJAS = 'true'; });
+afterAll(() => {
+  if (tomaAntes === undefined) delete process.env.PROG_PORTAL_TOMA_FRANJAS;
+  else process.env.PROG_PORTAL_TOMA_FRANJAS = tomaAntes;
+});
 
 describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
   let client: Client | null = null;
@@ -85,6 +96,19 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
         `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
          VALUES (${idAsig},$1,904,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
+      const docenteQa = async (documento: string, territorial: string) => {
+        const id = (await client!.query(
+          `INSERT INTO auth.personas (id_tercero, num_identificacion, tip_identificacion, nom_largo, nom_tercero, gen_tercero)
+           VALUES ($1::bigint, $2, 'CC', $3, $3, 'N') RETURNING id_person::text AS id`,
+          [Number(documento), documento, `Docente QA jefatura ${territorial}`])).rows[0].id;
+        await client!.query(
+          `INSERT INTO academic_work_plan."Docente" ("personaId", "territorialId", "tipoVinculacion", dedicacion, "updatedAt",
+                     "horasAsignables", "situacionCategoria")
+           VALUES ($1, $2, 'Cátedra', 'Cátedra', NOW(), 800, 'Servicio activo')`, [id, territorial]);
+        return id;
+      };
+      P1 = await docenteQa('9900000601', 'DT-009');
+      P2 = await docenteQa('9900000602', 'DT-010');
       await tomada('F1', 'SABADO', '06:00', P1);
       await tomada('F2', 'SABADO', '08:00', P1);
       await tomada('F3', 'DOMINGO', '06:00', P1);

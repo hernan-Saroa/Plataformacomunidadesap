@@ -797,26 +797,16 @@ export const ComunicacionAuditoriaModule: React.FC<{
     toast.dismiss('pdf-gen');
   }, [informePreliminar.generado, prepararPDFPreliminar]);
 
-  // Sube el PDF del informe preliminar a los documentos de la auditoría para que el correo al
-  // área auditada lo lleve adjunto (EFDS-2350). Si falla, el informe se genera igual, sin adjunto.
-  const subirPDFPreliminar = useCallback(async (): Promise<string | undefined> => {
+  // Arma el PDF del informe preliminar para enviarlo con "Generar": el backend lo guarda en los
+  // documentos de la auditoría y lo adjunta al correo del área auditada. Viaja en la misma petición
+  // para no depender del permiso de subir documentos (EFDS-2350). Si falla, se genera igual, sin adjunto.
+  const armarPDFPreliminar = useCallback(async (): Promise<File | undefined> => {
     try {
       const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
       const { auditoriaFinal, informeFinalTmp, hallazgosParaPDF } = await prepararPDFPreliminar('inf-prel');
       toast.loading('Preparando el informe para el correo del área auditada...', { id: 'inf-prel' });
       const blob = await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinalTmp, hallazgosParaPDF, 'blob');
-      const nombre = `Informe_Preliminar_${auditoria.codigo || id}.pdf`;
-      const documento = await controlInternoService.createDocumento(
-        new File([blob], nombre, { type: 'application/pdf' }),
-        {
-          nombre,
-          descripcion: 'Informe preliminar enviado al área auditada',
-          tipoDocumento: 'informe_preliminar',
-          etapa: 'comunicacion',
-          auditoriaId: id,
-        },
-      );
-      return documento?.id;
+      return new File([blob], `Informe_Preliminar_${auditoria.codigo || id}.pdf`, { type: 'application/pdf' });
     } catch (err: any) {
       console.warn('[Comunicación] No se pudo preparar el PDF del informe preliminar para el correo:', err?.message);
       return undefined;
@@ -876,10 +866,15 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const handleGenerarInformePreliminar = useCallback(async () => {
     if (useAPI) {
       try {
-        const documentoInformeId = await subirPDFPreliminar();
-        const res = await controlInternoService.generarInformePreliminar(id, documentoInformeId);
+        const informe = await armarPDFPreliminar();
+        const res = await controlInternoService.generarInformePreliminar(id, informe);
         toast.success(res?.mensaje || 'Informe preliminar generado');
-        if (!res?.informeAdjunto) toast.warning('El correo al área auditada salió sin el PDF adjunto; pueden consultarlo en la plataforma.');
+        if (res?.areaNotificada === false) {
+          // No se pudo avisar al área auditada: se dice por qué, para corregirlo y volver a notificar (EFDS-2350)
+          toast.error(`No se notificó al área auditada: ${res.motivoNoNotificada || 'motivo desconocido'}.`, { duration: 12000 });
+        } else if (!res?.informeAdjunto) {
+          toast.warning('El correo al área auditada salió sin el PDF adjunto; pueden consultarlo en la plataforma.');
+        }
         setInformePreliminar(prev => ({ ...prev, generado: true }));
         await cargarDatos();
       } catch (err: any) {
@@ -889,7 +884,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
       setInformePreliminar(prev => ({ ...prev, generado: true }));
       toast.success('Informe Preliminar generado (demo)');
     }
-  }, [useAPI, id, cargarDatos, subirPDFPreliminar]);
+  }, [useAPI, id, cargarDatos, armarPDFPreliminar]);
 
   const handleGenerarInformeFinal = useCallback(async () => {
     if (estadoComunicacion?.hayControversiasPendientes) {

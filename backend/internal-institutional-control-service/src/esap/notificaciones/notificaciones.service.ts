@@ -7,6 +7,9 @@ import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
 import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
+/** Límite de Microsoft Graph para adjuntos enviados dentro del mismo correo. */
+const MAX_ADJUNTO_CORREO_BYTES = 3 * 1024 * 1024;
+
 /** Archivo que viaja adjunto en el correo (formato de notifications-service /api/v1/emails/send). */
 export interface AdjuntoCorreo {
   filename: string;
@@ -989,26 +992,49 @@ export class NotificacionesService implements OnModuleInit {
         </div>
       `;
 
-      const response = await fetch(`${notificationsBaseUrl}/api/v1/emails/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: emailDestino,
-          subject: notificacion.titulo,
-          text: notificacion.mensaje,
-          html,
-          ...(adjuntos?.length ? { attachments: adjuntos } : {}),
-        }),
+      const enviar = async (conAdjuntos: AdjuntoCorreo[]) => {
+        const response = await fetch(`${notificationsBaseUrl}/api/v1/emails/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: emailDestino,
+            subject: notificacion.titulo,
+            text: notificacion.mensaje,
+            html,
+            ...(conAdjuntos.length ? { attachments: conAdjuntos } : {}),
+          }),
+        });
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => '');
+          throw new Error(`notifications-service ${response.status}: ${errorBody || 'sin detalle'}`);
+        }
+      };
+
+      // Microsoft no acepta adjuntos de más de 3 MB en un mismo envío: esos van sin adjunto (EFDS-2350)
+      const adjuntosEnviables = (adjuntos || []).filter((a) => {
+        const pesa = Math.floor((a.contentBase64.length * 3) / 4);
+        if (pesa <= MAX_ADJUNTO_CORREO_BYTES) return true;
+        console.warn(`[Notificaciones] ${a.filename} pesa ${pesa} bytes y supera el límite del correo: va sin adjunto`);
+        return false;
       });
 
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        throw new Error(`notifications-service ${response.status}: ${errorBody || 'sin detalle'}`);
+      try {
+        await enviar(adjuntosEnviables);
+      } catch (errorConAdjunto) {
+        // Si el correo con el informe adjunto no sale, el aviso al área sale igual sin el adjunto (EFDS-2350)
+        if (!adjuntosEnviables.length) throw errorConAdjunto;
+        console.error(
+          `[Notificaciones] El correo con adjunto a ${emailDestino} falló; se reintenta sin adjunto:`,
+          (errorConAdjunto as any)?.message,
+        );
+        await enviar([]);
+        console.log(`[Notificaciones] ✅ Solicitud de correo aceptada para ${emailDestino} (sin adjunto)`);
+        return;
       }
 
       console.log(
         `[Notificaciones] ✅ Solicitud de correo aceptada para ${emailDestino}` +
-          (adjuntos?.length ? ` con ${adjuntos.length} adjunto(s)` : ''),
+          (adjuntosEnviables.length ? ` con ${adjuntosEnviables.length} adjunto(s)` : ''),
       );
     } catch (error) {
       const errorMessage = error.cause?.message || error.message;
@@ -1431,6 +1457,11 @@ export class NotificacionesService implements OnModuleInit {
            OR LOWER(TRIM(u.username)) = LOWER(TRIM($1))
          )
          AND u.is_active = true
+         -- Si hay varias cuentas para el mismo correo, manda la de ese usuario, luego la de su
+         -- persona y entre ellas la más reciente; antes LIMIT 1 tomaba una cualquiera (EFDS-2350)
+         ORDER BY (LOWER(TRIM(u.username)) = LOWER(TRIM($1))) DESC,
+                  u.updated_at DESC NULLS LAST,
+                  u.created_at DESC NULLS LAST
          LIMIT 1`,
         [correo],
       );

@@ -17,11 +17,11 @@ import { condicionPeriodoGrupo, parsearPeriodo } from '../periodos/periodo-ref.j
 
 /**
  * Margen del tope de horas del grupo (§1.3). Se publica solo si las horas
- * programadas no superan las requeridas por el catálogo en más de un 30%. El
- * margen es amplio a propósito: el histórico real desvía (mediana 1.06×, 58%
- * dentro de ±25%), así que un tope estricto rechazaría programación legítima.
+ * programadas no superan las requeridas por el catálogo en más de un 30%. Vive en
+ * `horas-grupo.ts`, con el cálculo único de las horas del grupo.
  */
-export const FACTOR_TOPE_HORAS = 1.3;
+export { FACTOR_TOPE_HORAS } from './horas-grupo.js';
+import { horasDelGrupo } from './horas-grupo.js';
 
 export interface CrearSesionDto {
   idGrupo: string;
@@ -83,11 +83,12 @@ export class HorariosService {
    * una tabla de N franjas dispararía N peticiones.
    *
    * ⚠️ TODOS los vínculos son POR ID —grupo.id_asignatura, asignatura.id_programa,
-   * asignacion_docente.id_docente— nunca por nombre. Emparejar por texto es donde
+   * franja_horaria.id_docente— nunca por nombre. Emparejar por texto es donde
    * se han colado los tropiezos de este módulo.
    *
-   * El docente sale de la asignación ASIGNADA del grupo; si el grupo no tiene
-   * docente asignado, viene en null y el front muestra el vacío, no un invento.
+   * El docente sale de la FRANJA (registro único): desde EFDS-2341 un grupo puede
+   * tener un docente distinto por franja. Sin docente viene en null y el front
+   * muestra el vacío, no un invento.
    */
   /**
    * @param idPeriodo si viene, acota a las franjas de ESE periodo (vía
@@ -133,9 +134,7 @@ export class HorariosService {
          LEFT JOIN academic_work_plan.periodo_academico pa      ON pa.id = g.id_periodo_academico
          LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
          LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
-         LEFT JOIN "academic-schedule".asignacion_docente ad
-                ON ad.id_grupo = g.id_grupo AND ad.estado = 'ASIGNADO'
-         LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
+         LEFT JOIN auth.personas per                    ON per.id_person = f.id_docente
         ${filtro}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
       params.length ? params : undefined,
@@ -284,23 +283,9 @@ export class HorariosService {
     );
     const requeridas = req.length && req[0].horas_clase != null ? Number(req[0].horas_clase) : null;
 
-    const fi = (grupo as any).fechaInicio, ff = (grupo as any).fechaFin;
-    let semanas: number | null = null;
-    if (fi && ff) {
-      const dias = Math.round((new Date(ff).getTime() - new Date(fi).getTime()) / 86400000) + 1;
-      semanas = Math.max(1, Math.round(dias / 7));
-    }
-
     const franjas = await this.franjaRepo.find({ where: { idGrupo } });
-    const horasSemana = franjas.reduce((s, f) => {
-      const ini = aMinutos(String(f.horaInicio).slice(0, 5));
-      const fin = aMinutos(String(f.horaFin).slice(0, 5));
-      return s + Math.max(0, fin - ini) / 60;
-    }, 0);
-
-    const programadas = semanas != null ? Math.round(horasSemana * semanas * 100) / 100 : null;
-    const excede = programadas != null && requeridas != null && programadas > requeridas * FACTOR_TOPE_HORAS;
-    return { programadas, requeridas, semanas, excede };
+    return horasDelGrupo((grupo as any).fechaInicio, (grupo as any).fechaFin,
+      franjas.map((f) => ({ horaInicio: String(f.horaInicio), horaFin: String(f.horaFin) })), requeridas);
   }
 
   /** Periodo del ciclo de clases del grupo (AC-01). */

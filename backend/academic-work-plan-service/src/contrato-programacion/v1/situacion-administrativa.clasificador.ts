@@ -22,7 +22,7 @@ function normalizar(texto: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/\s+/g, ' ')
+    .replace(/[_\s]+/g, ' ')
     .trim();
 }
 

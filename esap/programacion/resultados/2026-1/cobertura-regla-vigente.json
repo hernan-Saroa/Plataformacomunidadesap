@@ -1,0 +1,43 @@
+{
+  "periodo": "2026-1",
+  "generadoEn": "2026-10-25T20:25:42.852Z",
+  "fuente": "PROGRAMACIÓN del Excel; no es programación viva",
+  "modoPuente": "suma",
+  "regla": "Intérprete de Claude, snapshot de equivalencias con Estado, Gobierno y Sociedad proyectado a Estado y Poder; puente según modoPuente. No modifica el servidor.",
+  "equivalenciaAplicada": {
+    "variante": "Estado, Gobierno y Sociedad",
+    "areaCanonica": "Estado y Poder"
+  },
+  "interpreteSha256": "d3745c50b6e63763ebae24766cd0271b39b45d58878b35243f9934d848b7c5c4",
+  "franjas": 535,
+  "cubiertas": 531,
+  "porcentaje": 99.25,
+  "porRund": 44,
+  "porPuente": 487,
+  "noCubiertas": [
+    {
+      "fila": "fila-35",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-36",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-440",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    },
+    {
+      "fila": "fila-441",
+      "cubierta": false,
+      "origen": null,
+      "motivo": "Área sin cruce exacto con el plan"
+    }
+  ]
+}

@@ -1149,6 +1149,16 @@ export class ProcessController {
             numeroExpediente: expediente?.numeroExpediente || proceso.radicadoProceso || id,
             asunto: expediente?.asunto || (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
             responsable: expediente?.responsable || (proceso.abogadoAsignado as any)?.nombre || 'Sin asignar',
+            codigoDependencia: expediente?.codigoDependencia || (proceso as any)?.codigoDependencia,
+            nombreDependencia: expediente?.nombreDependencia || (proceso as any)?.nombreDependencia,
+            codigoSerie: expediente?.codigoSerie || (proceso as any)?.codigoSerie,
+            nombreSerie: expediente?.nombreSerie || (proceso as any)?.nombreSerie,
+            codigoSubserie: expediente?.codigoSubserie || (proceso as any)?.codigoSubserie,
+            nombreSubserie: expediente?.nombreSubserie || (proceso as any)?.nombreSubserie,
+            codigoIdentificacionExpediente: expediente?.codigoIdentificacionExpediente || (proceso as any)?.codigoIdentificacionExpediente,
+            trdVersion: expediente?.trdVersion || (proceso as any)?.trdVersion,
+            fechaHechos: expediente?.fechaHechos || (proceso.news as any)?.fechaHechos || (proceso as any)?.fechaHechos,
+            fechaRadicacion: expediente?.fechaRadicacion || (proceso as any)?.createdAt,
           };
         }
       } catch (err) {
