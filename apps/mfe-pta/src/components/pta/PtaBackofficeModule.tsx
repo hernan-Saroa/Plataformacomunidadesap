@@ -80,6 +80,7 @@ import {
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import { groupPtaBulkApprovalResults } from './shared/ptaBulkApprovalResult';
 import { getPtaAssignmentTerritorialLabel } from './shared/ptaTerritorialDisplay';
+import { canAccessPTAView, canViewPTAReports, defaultPTAView, PTA_REPORT_VIEWS } from './shared/ptaNavigation';
 import '../../styles/pta-world-class.css';
 
 // ══ Lazy-loaded components (code splitting — loaded only when their tab/view is active) ══
@@ -2025,14 +2026,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [devolucionMotivo, setDevolucionMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
   const fallbackModuleView = useMemo<ModuleView>(() => {
-    if (tieneVista('gestion')) return 'gestion';
-    if (tieneVista('solicitudes_pta')) return 'solicitudes_pta';
-    if (tieneVista('seguimiento_docs')) return 'seguimiento_docs';
-    return 'gestion';
+    return defaultPTAView(tieneVista);
   }, [tieneVista]);
   const initialModuleView = useMemo<ModuleView>(() => {
     const requested = (initialView as ModuleView) || fallbackModuleView;
-    return tieneVista(requested) ? requested : fallbackModuleView;
+    return canAccessPTAView(requested, tieneVista) ? requested : fallbackModuleView;
   }, [initialView, tieneVista, fallbackModuleView]);
   const [moduleView, setModuleView] = useState<ModuleView>(initialModuleView);
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
@@ -2042,7 +2040,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // Si los permisos cambian durante la sesión, no conservar montada una bandeja
   // que el rol ya no puede abrir.
   useEffect(() => {
-    if (!tieneVista(moduleView)) setModuleView(fallbackModuleView);
+    if (!canAccessPTAView(moduleView, tieneVista)) setModuleView(fallbackModuleView);
   }, [moduleView, tieneVista, fallbackModuleView]);
 
   // ── Listener: abrir detalle de PTA desde una notificación (bandeja/correo) ──
@@ -3779,8 +3777,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
                 if (group.type === 'button') {
                   const btn = group as any;
-                  const reportViews = ['tablero_unificado', 'centro_reportes', 'tablero', 'reporte', 'comparativo', 'indicadores', 'directivo', 'territorial', 'mapa_territorial', 'workflow_visualizer', 'cronograma'];
-                  const isActive = reportViews.includes(moduleView);
+                  if (!canViewPTAReports(tieneVista)) return null;
+                  const isActive = PTA_REPORT_VIEWS.some(view => view === moduleView);
                   return (
                     <button
                       key={btn.key}
@@ -3826,7 +3824,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
 
       {/* ═══ Module Views ═══ */}
-      {moduleView === 'tablero_unificado' ? (
+      {moduleView === 'tablero_unificado' && canViewPTAReports(tieneVista) ? (
         <TableroControlUnificadoPTA />
       ) : moduleView === 'centro_reportes' ? (
         <CentroReportesPTA periodo={filtroPeriodo} />
@@ -3875,7 +3873,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         <ComparativoPeriodosPTA />
       ) : moduleView === 'validador' ? (
         <ValidadorCatalogoGTH />
-      ) : moduleView === 'configuracion' ? (
+      ) : moduleView === 'configuracion' && tieneVista('configuracion') ? (
           <ConfiguracionReglasPTA />
       ) : moduleView === 'test_e2e' ? (
         <TestE2E_FlujoPTA />
@@ -7194,6 +7192,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       {/* ═══ Mobile Bottom Navigation Bar ═══ */}
       <PTAMobileBar
         moduleView={moduleView}
+        tieneVista={tieneVista}
         onNavigate={(view) => {
           setModuleView(view as ModuleView);
           setOpenDropdown(null);

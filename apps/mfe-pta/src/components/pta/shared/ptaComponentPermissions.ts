@@ -25,6 +25,9 @@ export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
 /** Puerta de entrada a Seguimiento; pta.approve.* define los componentes gestionables. */
 export const PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION = 'pta.backoffice.seguimiento';
 
+/** Permiso único para ver y editar la pestaña Configuración. */
+export const PTA_MANAGE_CONFIGURATION_PERMISSION = 'pta.backoffice.config_reglas';
+
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',

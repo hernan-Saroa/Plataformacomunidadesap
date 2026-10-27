@@ -27,6 +27,7 @@ import * as fs from 'node:fs';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
 import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaConfigurationGuard } from './auth/pta-configuration.guard';
 import { PtaRundSensitiveInterceptor } from './banco-docentes/pta-rund-sensitive.interceptor';
 
 const ensureDir = (dir: string) => {
@@ -332,16 +333,28 @@ export class PtaController {
   }
 
   @Get('configuracion')
+  @UseGuards(PtaAuthGuard, PtaConfigurationGuard)
   async getConfiguracion() {
     const data = await this.ptaService.getConfiguracionPTAGlobal();
     return { success: true, data };
   }
 
   @Post('configuracion')
+  @UseGuards(PtaAuthGuard, PtaConfigurationGuard)
   async saveConfiguracion(@Body() body: any, @Req() req: Request) {
     const rules = body?.rules ?? body;
-    const userId = (req.headers['x-user-id'] as string) || 'admin';
+    const userId = req.ptaAuth!.userId!;
     const data = await this.ptaService.saveConfiguracionPTAGlobal(rules, userId);
+    return { success: true, data };
+  }
+
+  // Reglas operativas consumidas por formularios y cálculos. No habilitan edición
+  // ni exponen el historial administrativo; /configuracion exige permiso propio.
+  @Get('reglas')
+  async getReglas() {
+    const rules = await this.ptaService.getConfiguracionPTAGlobal();
+    if (!rules) return { success: true, data: null };
+    const { config_changelog, config_snapshots, config_bloqueada, config_bloqueada_motivo, ...data } = rules;
     return { success: true, data };
   }
 

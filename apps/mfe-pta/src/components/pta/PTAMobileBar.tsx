@@ -10,7 +10,7 @@ import {
   FileText, Users, Columns3, BarChart3, Scale,
   CheckCircle, Calendar, Bell, MoreHorizontal,
   BookOpen, AlertTriangle, GitCompare, RefreshCw,
-  Layers,
+  Layers, Settings,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -33,6 +33,7 @@ interface MoreItem {
 interface PTAMobileBarProps {
   moduleView: string;
   onNavigate: (view: string) => void;
+  tieneVista: (view: string) => boolean;
   pendingCount?: number;
   concertacionCount?: number;
 }
@@ -40,6 +41,7 @@ interface PTAMobileBarProps {
 export function PTAMobileBar({
   moduleView,
   onNavigate,
+  tieneVista,
   pendingCount = 0,
   concertacionCount = 0,
 }: PTAMobileBarProps) {
@@ -75,6 +77,13 @@ export function PTAMobileBar({
   ];
 
   const moreItems: MoreItem[] = [
+    {
+      key: 'configuracion',
+      label: 'Configuración',
+      icon: Settings,
+      color: '#003DA5',
+      description: 'Reglas y parámetros de PTA',
+    },
     {
       key: 'centro_reportes',
       label: 'Centro de Reportes',
@@ -135,15 +144,20 @@ export function PTAMobileBar({
   ];
 
   const handleNavigate = (key: string) => {
+    if (!tieneVista(key)) return;
     onNavigate(key);
     setShowMore(false);
   };
+
+  const visibleNavItems = navItems.filter(item => tieneVista(item.key));
+  const visibleMoreItems = moreItems.filter(item => tieneVista(item.key));
+  if (!visibleNavItems.length && !visibleMoreItems.length) return null;
 
   return (
     <>
       {/* ─── Main Bottom Nav Bar ─── */}
       <nav className="pta-mobile-bottom-bar" role="navigation" aria-label="Navegación principal PTA">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = moduleView === item.key;
           const Icon = item.icon;
           const color = isActive ? (item.color || '#003DA5') : '#9CA3AF';
@@ -210,7 +224,7 @@ export function PTAMobileBar({
         })}
 
         {/* ─── "Más" button ─── */}
-        <button
+        {visibleMoreItems.length > 0 && <button
           className={`pta-bottom-nav-item ${showMore ? 'active' : ''}`}
           onClick={() => setShowMore(true)}
           aria-label="Más vistas"
@@ -240,12 +254,12 @@ export function PTAMobileBar({
           >
             Más
           </span>
-        </button>
+        </button>}
       </nav>
 
       {/* ─── Bottom Sheet for secondary views ─── */}
       <AnimatePresence>
-        {showMore && (
+        {showMore && visibleMoreItems.length > 0 && (
           <>
             {/* Backdrop */}
             <motion.div
@@ -314,7 +328,7 @@ export function PTAMobileBar({
               </div>
 
               {/* Items list */}
-              {moreItems.map((item, idx) => {
+              {visibleMoreItems.map((item, idx) => {
                 const isActive = moduleView === item.key;
                 const Icon = item.icon;
                 return (

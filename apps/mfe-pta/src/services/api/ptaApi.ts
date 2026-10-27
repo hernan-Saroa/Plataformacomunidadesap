@@ -202,13 +202,20 @@ export async function savePTA(data: any) {
 
 export async function getConfiguracionPTAGlobal() {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/configuracion`);
+    // Lectura operativa para formularios/docentes; no concede administración.
+    const raw = await apiClient.get<any>(`${PTA_BASE}/reglas`);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][getConfiguracionPTAGlobal] Error:', error);
     return { success: false, data: null };
   }
+}
+
+export async function getConfiguracionPTAAdministracion() {
+  const raw = await apiClient.get<any>(`${PTA_BASE}/configuracion`);
+  const normalized = normalizeResult<any>(raw, null);
+  return { success: normalized.success, data: normalized.data };
 }
 
 export async function updateConfiguracionPTAGlobal(rules: any) {

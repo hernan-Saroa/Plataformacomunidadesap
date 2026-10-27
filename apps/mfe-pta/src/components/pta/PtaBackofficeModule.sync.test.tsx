@@ -60,6 +60,8 @@ vi.mock('./PTADetallePanelBackoffice', () => ({
 }));
 vi.mock('./ProgramacionAcademica', () => ({ ProgramacionAcademica: () => null }));
 vi.mock('./MesaConcertacion', () => ({ MesaConcertacion: () => null }));
+vi.mock('./ConfiguracionReglasPTA', () => ({ default: () => <div>Editor exclusivo de configuración</div> }));
+vi.mock('./TableroControlUnificadoPTA', () => ({ TableroControlUnificadoPTA: () => <div>Panel de reportes autorizado</div> }));
 
 const pendientes = [
   { id: 'pta-1', docente_nombre: 'Docente uno', estado: 'Pendiente Jefatura', periodo: '2026-1', dias_en_proceso: 32 },
@@ -83,6 +85,36 @@ beforeEach(() => {
   vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [] });
   vi.mocked(getSolicitudesPTA).mockResolvedValue({ success: true, data: [] });
   vi.mocked(resolverSolicitudPTA).mockResolvedValue({ success: true, data: {} });
+});
+
+describe('acceso exclusivo a Configuración desde el módulo', () => {
+  it('con solo Configuración abre el editor y oculta Gestión, Solicitudes, Seguimiento y Reportes', async () => {
+    sync.visibleViews = new Set(['configuracion']);
+    sync.permissions.puedeAprobar = false;
+    render(<PtaBackofficeModule />);
+    expect(await screen.findByText('Editor exclusivo de configuración')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Configuración' })).toBeTruthy();
+    for (const name of ['Gestión', 'Solicitudes PTA', 'Seguimiento', 'Reportes']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+  });
+
+  it('sin permiso no abre Configuración aunque se solicite como vista inicial', async () => {
+    sync.visibleViews = new Set(['gestion']);
+    render(<PtaBackofficeModule initialView="configuracion" />);
+    expect(await screen.findByText('Docente uno')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Configuración' })).toBeNull();
+    expect(screen.queryByText('Editor exclusivo de configuración')).toBeNull();
+  });
+
+  it('con Configuración y permiso de reportes permite cambiar a Reportes sin devolver al editor', async () => {
+    sync.visibleViews = new Set(['configuracion', 'centro_reportes']);
+    render(<PtaBackofficeModule />);
+    expect(await screen.findByText('Editor exclusivo de configuración')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Reportes' }));
+    expect(await screen.findByText('Panel de reportes autorizado')).toBeTruthy();
+    expect(screen.queryByText('Editor exclusivo de configuración')).toBeNull();
+  });
 });
 
 describe('eliminación administrativa en la interfaz', () => {
