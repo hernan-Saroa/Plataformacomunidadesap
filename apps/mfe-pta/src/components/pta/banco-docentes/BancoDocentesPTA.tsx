@@ -348,7 +348,7 @@ export function BancoDocentesPTA() {
 
   const handleDownloadTemplate = async () => {
     try {
-      downloadBancoDocentesTemplate();
+      await downloadBancoDocentesTemplate();
     } catch {
       showToast('Plantilla no disponible — descargando ejemplo');
     }
