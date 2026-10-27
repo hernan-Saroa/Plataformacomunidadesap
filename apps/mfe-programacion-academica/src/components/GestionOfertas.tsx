@@ -38,6 +38,10 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
   // falta, el backend responde 403 y el mensaje se muestra tal cual, sin
   // traducirlo a un genérico.
   const [nuevo, setNuevo] = useState({ anio: new Date().getFullYear(), semestre: 1 as 1 | 2, fechaInicio: '', fechaFin: '' });
+  // Periodo personalizado (p. ej. interperiodo): lo define quien lo crea, con nombre y código propios.
+  const [personalizado, setPersonalizado] = useState(false);
+  const [nombrePers, setNombrePers] = useState('');
+  const [sufijoPers, setSufijoPers] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [avisoAdmin, setAvisoAdmin] = useState('');
 
@@ -152,10 +156,14 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
     setAvisoAdmin('');
     let creado = false;
     try {
-      await crearPeriodoPlataforma(nuevo);
+      const codigoPers = `${nuevo.anio}-${sufijoPers.trim().toUpperCase()}`;
+      await crearPeriodoPlataforma(personalizado
+        ? { tipo: 'personalizado', anio: nuevo.anio, codigo: codigoPers, nombre: nombrePers.trim(), fechaInicio: nuevo.fechaInicio, fechaFin: nuevo.fechaFin }
+        : nuevo);
       creado = true;
       const actualizados = await recargar();
-      const periodoCreado = actualizados.periodos.find((p) => p.anio === nuevo.anio && p.semestre === nuevo.semestre);
+      const periodoCreado = actualizados.periodos.find((p) => personalizado ? p.codigo === codigoPers : (p.anio === nuevo.anio && p.semestre === nuevo.semestre));
+      if (personalizado) { setNombrePers(''); setSufijoPers(''); setPersonalizado(false); }
       setImportarId(periodoCreado?.idPeriodo ?? null);
       setNuevo({ ...nuevo, fechaInicio: '', fechaFin: '' });
     } catch (err: any) {
@@ -432,13 +440,33 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-slate-500 uppercase">Semestre</span>
-            <select value={nuevo.semestre}
-              onChange={(e) => setNuevo({ ...nuevo, semestre: Number(e.target.value) as 1 | 2 })}
+            <select aria-label="Tipo de periodo" value={personalizado ? 'personalizado' : String(nuevo.semestre)}
+              onChange={(e) => {
+                if (e.target.value === 'personalizado') setPersonalizado(true);
+                else { setPersonalizado(false); setNuevo({ ...nuevo, semestre: Number(e.target.value) as 1 | 2 }); }
+              }}
               className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-              <option value={1}>Primero</option>
-              <option value={2}>Segundo</option>
+              <option value="1">Primero</option>
+              <option value="2">Segundo</option>
+              <option value="personalizado">Personalizado (lo defino yo)</option>
             </select>
           </label>
+          {personalizado && (
+            <>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">Nombre del periodo</span>
+                <input required type="text" maxLength={120} value={nombrePers} placeholder="Ej.: Interperiodo 2027"
+                  onChange={(e) => setNombrePers(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">Código ({nuevo.anio}-…, 1 a 5 letras o dígitos)</span>
+                <input required type="text" maxLength={5} value={sufijoPers} placeholder="INT"
+                  onChange={(e) => setSufijoPers(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm uppercase outline-none focus:ring-2 focus:ring-blue-500/20" />
+              </label>
+            </>
+          )}
           <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-slate-500 uppercase">Inicio</span>

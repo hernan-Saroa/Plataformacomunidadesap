@@ -6,7 +6,7 @@ export interface PeriodoPlataforma {
   modelo: 'plataforma';
   codigo: string;
   anio: number;
-  semestre: 1 | 2;
+  semestre: 1 | 2 | null;
   fechaInicio: string;
   fechaFin: string;
   estadoPlataforma: 'planeacion' | 'concertacion' | 'en_curso' | 'cerrado';
@@ -94,7 +94,7 @@ const PTA = '/pta/api/v1/periodos-academicos';
 export const getPeriodos = () => peticion<RespuestaPeriodos>(BASE);
 
 export async function crearPeriodoPlataforma(datos: {
-  anio: number; semestre: 1 | 2; fechaInicio: string; fechaFin: string;
+  anio: number; semestre?: 1 | 2; tipo?: 'personalizado'; codigo?: string; nombre?: string; fechaInicio: string; fechaFin: string;
 }): Promise<unknown> {
   const creado = await peticion(PTA, { method: 'POST', body: JSON.stringify(datos) });
   invalidarProgramacion('periodos', 'programacion');
