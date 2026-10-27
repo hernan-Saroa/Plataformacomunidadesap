@@ -4,6 +4,7 @@ import { PortalDocenteController } from './portal-docente.controller.js';
 import { PortalDocenteService } from './portal-docente.service.js';
 import { AsignacionesModule } from '../asignaciones/asignaciones.module.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
+import { VistaModule } from '../vista/vista.module.js';
 
 /**
  * Portal del docente (EFDS-1938): ver, tomar y soltar franjas publicadas, con el
@@ -11,7 +12,7 @@ import { ProgramacionPermissionsService } from '../auth/programacion-permissions
  * calculador del PTA).
  */
 @Module({
-  imports: [AsignacionesModule],
+  imports: [AsignacionesModule, VistaModule],
   controllers: [PortalDocenteController],
   providers: [PortalDocenteService, ProgramacionPermissionsService],
   exports: [PortalDocenteService],

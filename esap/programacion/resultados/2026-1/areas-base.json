@@ -1,0 +1,142 @@
+[
+  {
+    "codigo": "NT-001",
+    "nombre": "Nuevo Plan de Estudios AP"
+  },
+  {
+    "codigo": "NT-002",
+    "nombre": "Estado Y Poder"
+  },
+  {
+    "codigo": "NT-003",
+    "nombre": "Idioma Extranjero"
+  },
+  {
+    "codigo": "NT-004",
+    "nombre": "Fundamentación Cuantitativa"
+  },
+  {
+    "codigo": "NT-005",
+    "nombre": "Problemática Pública"
+  },
+  {
+    "codigo": "NT-006",
+    "nombre": "Economía Pública"
+  },
+  {
+    "codigo": "NT-007",
+    "nombre": "Desarrollo Y Gestión Territorial"
+  },
+  {
+    "codigo": "NT-008",
+    "nombre": "Organizaciones Públicas Y Gestión"
+  },
+  {
+    "codigo": "NT-009",
+    "nombre": "Electivas Generales"
+  },
+  {
+    "codigo": "NT-010",
+    "nombre": "Ciclo De Formación Específica"
+  },
+  {
+    "codigo": "NT-011",
+    "nombre": "Formación General"
+  },
+  {
+    "codigo": "NT-012",
+    "nombre": "Nuevo Plan de Estudios APT"
+  },
+  {
+    "codigo": "NT-013",
+    "nombre": "Estado, Gobierno y Sociedad"
+  },
+  {
+    "codigo": "NT-014",
+    "nombre": "Problemática Del  Estado Y Del Poder"
+  },
+  {
+    "codigo": "NT-015",
+    "nombre": "Complementaria"
+  },
+  {
+    "codigo": "NT-016",
+    "nombre": "Economía De Lo Público"
+  },
+  {
+    "codigo": "NT-017",
+    "nombre": "Organizaciones Públicas"
+  },
+  {
+    "codigo": "NT-018",
+    "nombre": "Espacio,  Tiempo Y  Territorio"
+  },
+  {
+    "codigo": "NT-019",
+    "nombre": "Gestión Del Desarrollo"
+  },
+  {
+    "codigo": "NT-020",
+    "nombre": "Cuantitativa"
+  },
+  {
+    "codigo": "NT-021",
+    "nombre": "Formación integral Y de contexto"
+  },
+  {
+    "codigo": "NT-022",
+    "nombre": "Teoría Económica e Historia"
+  },
+  {
+    "codigo": "NT-023",
+    "nombre": "Maestria DDHH y Posconflicto"
+  },
+  {
+    "codigo": "NT-024",
+    "nombre": "Maestria Administración Pública - PRESENCIAL"
+  },
+  {
+    "codigo": "NT-025",
+    "nombre": "Maestria Administración Pública - DISTANCIA"
+  },
+  {
+    "codigo": "NT-026",
+    "nombre": "Alta Dirección del Estado - ESP"
+  },
+  {
+    "codigo": "NT-027",
+    "nombre": "Derechos Humanos - ESP"
+  },
+  {
+    "codigo": "NT-028",
+    "nombre": "Finanzas Públicas - ESP"
+  },
+  {
+    "codigo": "NT-029",
+    "nombre": "Gestión del Conocimiento"
+  },
+  {
+    "codigo": "NT-030",
+    "nombre": "GEPUR - ESP"
+  },
+  {
+    "codigo": "NT-031",
+    "nombre": "Gerencia Social - ESP"
+  },
+  {
+    "codigo": "NT-032",
+    "nombre": "Gestión Pública - ESP"
+  },
+  {
+    "codigo": "NT-033",
+    "nombre": "Proyectos de Desarrollo - ESP"
+  },
+  {
+    "codigo": "NT-034",
+    "nombre": "Finanzas Públicas"
+  },
+  {
+    "codigo": "NT-035",
+    "nombre": "Opción de grado"
+  }
+]

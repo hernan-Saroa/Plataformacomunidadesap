@@ -70,6 +70,9 @@ describe('EFDS-2328 :: periodo unico de plataforma (agregado real, en transaccio
   });
 
   enTransaccion('cerrar cierra solo la programacion: el periodo de plataforma sigue igual', async () => {
+    // EFDS-2346: la base admite un solo principal en curso; el de la prueba lo reemplaza
+    // dentro de la transacción.
+    await client!.query(`UPDATE academic_work_plan.periodo_academico SET estado = 'cerrado' WHERE estado = 'en_curso' AND NOT extraordinario`);
     const id = await periodoPlataforma('2099-1', 2099, 1, 'en_curso', '2099-02-01', '2099-06-15');
     const pub = new PublicacionService(ds());
     await pub.cerrar(id, null); // sin franjas: nada pendiente

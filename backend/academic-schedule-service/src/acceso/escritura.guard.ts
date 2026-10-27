@@ -8,7 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 
-import { nivelesVisibles, puedeVerNivel } from '../auth/programacion-permissions.js';
+import { nivelesAsignables, nivelesProgramables, nivelesVisibles } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { AlcanceService, type Alcance, type TipoAncla } from './alcance.service.js';
 import {
@@ -50,7 +50,7 @@ export class EscrituraGuard implements CanActivate {
 
     if (!METODOS_DE_ESCRITURA.has(String(req.method).toUpperCase())) {
       const anclas = this.reflector.get<Anclas | undefined>(CLAVE_LECTURA, context.getHandler());
-      if (anclas) await this.exigirNivel(req, await this.resolver(req, anclas));
+      if (anclas) await this.exigirNivel(req, await this.resolver(req, anclas), 'ver');
       return true;
     }
 
@@ -63,7 +63,9 @@ export class EscrituraGuard implements CanActivate {
     if (!regla.anclas) return true;
 
     const alcances = await this.resolver(req, regla.anclas);
-    if (regla.exigeNivel) await this.exigirNivel(req, alcances);
+    if (regla.exigeNivel) {
+      await this.exigirNivel(req, alcances, regla.exigeNivel === 'asignacion' ? 'asignar' : 'programar');
+    }
 
     const cerrado = alcances.find((a) => a.periodo?.cerrado)?.periodo;
     if (cerrado) {
@@ -85,15 +87,27 @@ export class EscrituraGuard implements CanActivate {
     );
   }
 
-  /** RN-08: hace falta algún nivel, y el del recurso si se conoce. */
-  private async exigirNivel(req: Request, alcances: Alcance[]): Promise<void> {
+  /**
+   * RN-08: hace falta algún nivel, y el del recurso si se conoce. Ver, programar y
+   * asignar docentes son permisos distintos (EFDS-2342): quien asigna ve la
+   * programación de su nivel pero no la cambia, y quien programa no asigna.
+   */
+  private async exigirNivel(req: Request, alcances: Alcance[], accion: 'ver' | 'programar' | 'asignar'): Promise<void> {
     const permisos = await this.permisos.resolveForRoles(rolesDe(req));
-    if (nivelesVisibles(permisos).length === 0) {
-      throw new ForbiddenException('No tiene permisos de programación sobre ningún nivel académico.');
+    const niveles = accion === 'ver' ? nivelesVisibles(permisos)
+      : accion === 'asignar' ? nivelesAsignables(permisos)
+      : nivelesProgramables(permisos);
+    const verbo = accion === 'ver' ? 'ver la programación de' : accion === 'asignar' ? 'asignar docentes en' : 'programar';
+    if (niveles.length === 0) {
+      throw new ForbiddenException(
+        accion === 'asignar'
+          ? 'No tiene permiso para asignar docentes en ningún nivel académico.'
+          : 'No tiene permisos de programación sobre ningún nivel académico.',
+      );
     }
     for (const { nivel } of alcances) {
-      if (nivel && !puedeVerNivel(permisos, nivel)) {
-        throw new ForbiddenException(`No tiene permiso para programar el nivel ${nivel}.`);
+      if (nivel && !niveles.includes(nivel)) {
+        throw new ForbiddenException(`No tiene permiso para ${verbo} el nivel ${nivel}.`);
       }
     }
   }

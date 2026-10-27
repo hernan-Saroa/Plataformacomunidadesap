@@ -99,4 +99,28 @@ async function retirarPrograma(client, { idPrograma, idNucleo }) {
   await client.query('DELETE FROM academic_work_plan.programa WHERE id = $1::bigint', [idPrograma]);
 }
 
-module.exports = { retirarPrograma, crearAsignatura, crearPeriodo, crearOferta, crearEscenarioDeOferta, unico };
+/**
+ * EFDS-2341: nadie se asigna fuera de su área. Da a la asignatura del fixture (por su núcleo)
+ * un área QA propia y a cada persona un núcleo `rund` de esa área.
+ * @returns {Promise<{ idArea: string }>}
+ */
+async function darArea(client, { idNucleo, idPersonas = [] }) {
+  const u = unico();
+  const area = await client.query(
+    `INSERT INTO academic_work_plan.area_formacion (codigo, nombre) VALUES ($1, $2) RETURNING id::text AS id`,
+    [`QA-AF-${u}`.slice(0, 20), `Área QA ${u}`]);
+  await client.query(
+    `INSERT INTO academic_work_plan.nucleo_equivalencia (variante, variante_normalizada, tipo, id_area, fuente)
+     SELECT nombre, academic_work_plan.normalizar_nucleo(nombre), 'area', $2::bigint, 'manual'
+       FROM academic_work_plan.nucleo_tematico WHERE id = $1::bigint`,
+    [idNucleo, area.rows[0].id]);
+  for (const idPersona of idPersonas) {
+    await client.query(
+      `INSERT INTO academic_work_plan.docente_nucleo (id_persona, id_area, origen, texto_origen)
+       VALUES ($1::uuid, $2::bigint, 'rund', 'QA') ON CONFLICT DO NOTHING`,
+      [idPersona, area.rows[0].id]);
+  }
+  return { idArea: area.rows[0].id };
+}
+
+module.exports = { retirarPrograma, crearAsignatura, crearPeriodo, crearOferta, crearEscenarioDeOferta, darArea, unico };

@@ -79,7 +79,7 @@ export async function getActivePeriodoAcademico() {
     const raw = await apiClient.get<any>(`${PTA_BASE}/periodos-academicos`);
     const normalized = normalizeResult<any[]>(raw, []);
     if (normalized.success && Array.isArray(normalized.data)) {
-      const active = normalized.data.find(p => p.estado === 'en_curso');
+      const active = normalized.data.find(p => p.estado === 'en_curso' && !p.extraordinario);
       if (active) return active;
       if (normalized.data.length > 0) return normalized.data[0];
     }

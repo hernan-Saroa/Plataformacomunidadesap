@@ -376,3 +376,138 @@ index b34ce6139..c317fa74b 100644
 - La respuesta exacta del importador usa `carga.asignaturas.sin_cambios` para asignaturas idénticas, `ofertas.{por_crear,ya_existentes,rechazadas,detalle}` para oferta CETAP y `resumen_periodo` solo después de confirmar. La pantalla distingue de forma prominente **vista previa, aún no guardada** de **importación terminada, datos guardados**, y coloca «Importar ahora» como botón verde de ancho completo junto al resumen, en el paso 3. Al terminar de validar, mueve el foco a ese botón y lo lleva a la vista; al importar, enfoca el resultado. Incluye tabla buscable de ofertas y estado por CETAP/programa. `ALL_IDENTICAL` no ofrece confirmar.
 - `DisponibilidadAulas` muestra territorial y CETAP en la lista y la tabla, con filtros combinables. `CalendarioHorario` pide `GET /aulas?grupo=<id>`: con oferta existente el backend limita al CETAP; sin oferta, cada aula válida trae `idOfertaCetap` y al guardar una sesión presencial se asigna esa oferta primero. `GestionGrupos` actualiza su tarjeta con la oferta que devuelve el PATCH. Un aula virtual o mediada no desencadena esta asignación.
 - Validación sin servicios reales: `periodo-unico.browser.mjs` usa red API interceptada con la forma del contrato 14 y pasó 9 escenarios, incluidos vista previa→«Importar ahora»→respuesta final y filtros de aulas. `CalendarioHorario.aulaOferta.test.tsx` prueba los dos regímenes de oferta y el orden PATCH→POST; las cinco suites del MFE pasaron (23/23). `npm run build` pasó. Vite local se detuvo tras la prueba. `tsc --noEmit` sigue con los errores transversales React/Lucide e `import.meta.env` previamente reportados.
+
+## Ronda 3b — pantallas y datos (24 de octubre de 2026)
+
+Contratos leídos de origin, secciones 19 y 21; integración de ronda3 y del documento publicado en 814c564d4. Trabajo en Plataforma-pa-codex3, rama feature/pa/ronda3-codex.
+
+**Cobertura primero:** la base local 55432 no contiene franjas de 2026-1, así que no se certifica cobertura del sistema. Sobre el Excel fuente: 535 franjas con día; 26 (4,86 %) con área compatible usando solo RUND y 531 (99,25 %) usando RUND o puente. Son 113 docentes, 20 con núcleo RUND reconocido, 113 con puente y ninguno sin ambos. Quedan cuatro franjas de Opción de grado APT_52 sin cruce exacto. Las 40 filas sin día se reportan fuera del denominador. No se asumen los porcentajes anteriores.
+
+- EFDS-2344: árbol plegable con docentes múltiples, vinculación, oferta/territorial, horas, estados y faltantes; filtro por nivel permitido y pendientes. Usa vistaApi sin modificarlo. Acciones y menú condicionados a getMisPermisos.
+- EFDS-2343: buscador y calendario semanal docente, modo de solo lectura de CalendarioHorario; reserva oculta detalles; horas null explícitas. Se reutiliza en el portal y en GruposAsignados.
+- Sección 21: generador y resultados en esap/programacion. CSV BOM/separador punto y coma: 56 equivalencias, 278 filas del puente y tres exclusiones. Área original conservada. No se escribió ni se importó nada en base; conexión READ ONLY. Todos los docentes incluidos existen en auth.personas.
+- Catálogo: libro de conciliación de 421 filas, NO importable, con NT existentes y candidatos a duplicado. Faltan reglas concretas del catálogo/posgrado de la instrucción anterior, que no está en origin ni en los adjuntos. Tomás recibió la consulta. Áreas sin código equivalente: Opción de grado y Finanzas Públicas.
+- EFDS-2341 y EFDS-2374 esperan contratos publicados: no se añadieron acciones ni estados supuestos.
+- Verificación: navegador con respuestas interceptadas de sección 19 (incluidos error, vacío, horas null, permisos y reserva); MFE 33/33; datos 3/3; build correcto. tsc conserva los problemas transversales React/Lucide y shell ya conocidos.
+- Compartidos/shell: no requieren cambios para esta entrega. npm install alteró package-lock.json; se revirtió únicamente ese cambio generado y no se incluye. .gitignore no se editó ni se commitea. Backend y API/types de Claude sin cambios propios.
+
+Detalle, comandos y esfuerzo estimado (9 h) en esap/programacion/REPORTE-RONDA3B.md. No incluye como terminados los pendientes anteriores.
+
+## Continuación Ronda 3b — cierre del 25 de octubre de 2026
+
+- Base integrada: origin/feature/pa/ronda3, 2cc71ca32. Se consumieron los contratos publicados de las secciones 21–26, sin leer la carpeta de Claude.
+- EFDS-2341 terminado: acceso «Asignar docente» desde el árbol (nivel asignable y periodo programable). AsignacionAreaModal y asignacionAreaApi usan exclusivamente candidatos del endpoint de área. Todas las franjas por defecto; subconjuntos recalculan candidatos/horas. Sugerencia con razones, vinculación, perfil/títulos, origen RUND/puente, tope, cruces y bloqueos. No hay documento libre para asignar. Un 200 con asignado:false no invalida datos. El modal mantiene visibles título/botones, foco contenido, Escape y retorno al disparador.
+- EFDS-2374 terminado: el docente acepta con firma OTP o reporta tipo y justificación mínima de 10 caracteres, solo en POR_ACEPTAR. Un error conserva lo ingresado. NOVEDAD/ACEPTADA quedan en consulta. Se retira el envío del docente y se refrescan calendario, grupos y concertación tras la decisión. Interruptor apagado: se conserva el flujo previo del portal.
+- Regresión §26.2: se restituyó el filtro de jornada en ProgramacionAcademicaModule con los valores DIURNA/NOCTURNA/FIN_DE_SEMANA/DISTANCIA. El árbol filtra por grupos y conserva el grupo completo al mostrarlo; no se modificó la prueba del backend.
+- Catálogo importable en esap/programacion/resultados/2026-1/catalogo-importable-2026-1.xlsx: 427 asignaturas, 14 programas, 325 ofertas; cero códigos nuevos/retirados, 65 áreas actualizadas, 160 asignaturas de posgrado conservadas campo por campo. Hojas REVISION_CATALOGO (63 casos conservados para revisión) y REVISION_OPCION_GRADO (las cuatro franjas APT_52). NT conocido en columna de trazabilidad; AF nunca sustituye a NT. Nombres y códigos ambiguos no se fusionan.
+- La instrucción anterior no apareció en la ubicación indicada ni en origin: se aplicaron las reglas expresas de Tomás y el formato real publicado. La conexión a 55432 rechazó al retomar: archivo generado con exportación/snapshots conocidos; validación de persistencia y carga real pendientes de Claude. AF-04/AF-17 sí estaban en la consulta previa; faltaban sus NT en ese snapshot. No se escribieron datos ni se levantaron servicios reales.
+- Cobertura vigente: 463/535 (86,54 %) con el intérprete puro de Claude y la tabla activa consultada. El puente solo se usa sin núcleo RUND; quedan 68 franjas con RUND de otra área y cuatro sin cruce exacto del plan. La unión anterior de fuentes (99,25 %) queda como comparación histórica, no como cobertura vigente.
+- Pruebas: MFE 38/38, datos/catálogo 7/7, canario de rutas del cliente 3/3 (incluida jornada), navegador simulado de asignación/aceptación y regresiones de árbol/calendario y de nueve escenarios de periodos/carga/aulas. Parser y validador R1-R6 reales sin backend; build correcto. Detalle y comandos en REPORTE-RONDA3B.md. Esfuerzo adicional estimado: 7 h.
+
+### Para Claude: archivos compartidos y revisión interna
+
+No se editaron shell, paquetes compartidos, catalogoApi, vistaApi ni backend. Quedan descritos para su dueño los textos de ConcertacionBandeja/EtapasConcertacion que todavía dicen «envía el docente» y «devolver al docente»: con el orden nuevo deben referir al programador y a la posterior aceptación. La sección 23.3 también requiere el acceso del programador a enviar/reenviar su programación y a su bandeja de novedades; esta entrega implementa el modal de asignación y la aceptación del docente pedidos, no duplica esa bandeja compartida. .gitignore y package-lock.json fuera de los cambios propios.
+
+## EFDS-2346 — Gestión de Periodos y seguimiento de candidatos (25 de octubre de 2026)
+
+- Pantalla autorizada en este pedido: apps/mfe-programas-academicos/src/components/GestionPeriodos.tsx. Se usó el contrato publicado en origin, sección 25 (rama integrada 2cc71ca32); no se leyó la carpeta de Claude.
+- Lista, tarjetas móviles y detalle distinguen «Principal en curso» y «Extraordinario en curso». Los personalizados muestran nombre/año y no «Semestre —». Se conservan los campos reales estado, tipo, extraordinario y motivoExtraordinario de la API.
+- «Activar como extraordinario» usa hasPermission('pta.periodos.activar_extraordinario') del hook existente. Mientras se verifican permisos no se ofrece; tampoco para periodos en curso o cerrados. Si ya existe un extraordinario en curso, se deshabilita para los demás y se explica cuál debe cerrarse primero.
+- ActivarExtraordinarioModal pide motivo obligatorio (mínimo 10 caracteres después de trim) y una confirmación destacada que identifica al principal y dice expresamente que no lo cierra, no mueve otros periodos y no termina PTA. El diálogo usa foco contenido/Escape/retorno al botón. Un error 403/409 conserva motivo y modal; no refresca la lista. Al confirmar con éxito refresca GET de periodos y notifica al padre.
+- Se llama únicamente a POST /pta/api/v1/periodos-academicos/:id/activar-extraordinario con { motivo }, sin reintentos de escritura. No se llama al PATCH de activación principal. Nuevo cliente local periodoExtraordinarioApi.ts; no se editaron hooks, API comunes, shell, paquetes compartidos ni backend.
+- Verificación: 28/28 pruebas de Programas Académicos (seis nuevas); navegador Chromium con API interceptada, respuestas reales de la sección 25 (GET devuelve arreglo directo), permisos y rechazos; inspección visual a 1440 y 390 px. Build de Programas Académicos correcto. Capturas y script en apps/mfe-programas-academicos/tests/periodo-extraordinario.browser.mjs.
+- Esfuerzo estimado de EFDS-2346: 3 h (pantalla/modal/permiso 1,5 h; pruebas e inspección 1 h; integración/documentación 0,5 h). No se imputa implementación del aviso pendiente.
+
+### Pendiente de contrato de Claude: situación administrativa sin clasificar
+
+Tomás aprobó que el docente sin situación administrativa pueda asignarse, con aviso visible en su tarjeta. Al último fetch, origin/feature/pa/ronda3-claude seguía en 7aefb1ac9 y el contrato de candidatos de la sección 22 aún no incluía el campo de aviso. Necesito nombre, tipo y un ejemplo de respuesta (incluido el candidato asignable con aviso) para mostrarlo sin convertirlo en bloqueo. No se inventó el campo ni se cambió localmente asignable o motivos. Queda listo para retomarlo cuando Claude publique el contrato.
+
+La instrucción anterior del catálogo queda resuelta: Tomás confirmó que nunca se copió y que no hace falta. Las tres reglas aplicadas y el archivo entregado se mantienen.
+
+## Corrección del catálogo y envío por programador — 25 de octubre de 2026
+
+Base integrada: merge `f7890b0d4` de `origin/feature/pa/ronda3`. Contratos consultados desde origin, sin leer la carpeta de Claude.
+
+### Catálogo: conservación comprobada después de escribir el Excel
+
+La plantilla anterior ya contenía los ocho nombres sin tilde y las tres celdas vacías de horas; compararla consigo misma no detectaba el problema. Se obtuvo una exportación actual con una transacción REPEATABLE READ READ ONLY (incluida comprobación de `transaction_read_only`), sin importar ni modificar datos. `exportar-catalogo-base.mjs` reproduce esa consulta y conserva su procedencia/huella en `catalogo-base-verificado.xlsx.json`.
+
+El generador clona las celdas originales y cambia únicamente el área de pregrado, con sus columnas de trazabilidad. Antes de publicar el archivo, lo vuelve a abrir y compara 11.995 campos originales, por código y con sus tipos, en PROGRAMAS, ASIGNATURAS y MATRIZ_OFERTA. Rechaza horas vacías en la base, sin convertirlas silenciosamente a cero. La prueba altera cada columna ajena al área para comprobar que se detecta, y protege expresamente Público y los ceros de ASIG-00139, ASIG-00218 y ASIG-00427.
+
+Resultado vigente: 427 asignaturas, 14 programas, 325 ofertas, cero códigos nuevos/retirados y 160 asignaturas de posgrado conservadas campo por campo. Cero cambios de área frente al snapshot actual: Claude ya aplicó los 65 de la entrega anterior. NT-034 Finanzas Públicas y NT-035 Opción de grado ya figuran en el snapshot. Siguen los 63 casos de revisión del catálogo y las cuatro franjas de Opción de grado para decisión manual. Esta sección sustituye el diagnóstico anterior de base no disponible y la comparación contra la plantilla defectuosa; no se confirmó ninguna importación.
+
+### Envío por docente y etiqueta del portal
+
+`EnvioRevisionDocente` queda junto al calendario del docente elegido en Disponibilidad Docente. Usa las asignaturas/franjas y `horasPorGrupo` del contrato §19, sin calcular horas en el cliente ni revelar reservas. Las horas de carga asignada se distinguen de las horas de la foto enviada. GET `/concertacion/programador` y POST `/concertacion/enviar` usan §23.3 y el cuerpo exacto `{idPeriodo, documento}`. El servicio decide qué TOMADA entra; no se pide OTP al programador. Muestra estado por nivel, devolución/novedad, error sin falso éxito y reintento. Solo aparece con concertación encendida, permiso de asignación y periodo programable. No necesita un endpoint nuevo: queda resuelta la consulta inicial sobre un contrato adicional.
+
+Mi programación consulta las fotos de concertación: POR_ACEPTAR dice «Por aceptar»; si afecta solo parte del grupo dice «Parte por aceptar». Error de consulta no inventa un estado. Apagado conserva el flujo y no hace esa consulta. `avisos` ya venía renderizado por Claude en la tarjeta y en la confirmación del candidato; se comprobó con simulación, sin duplicarlo ni bloquear la asignación.
+
+### Único cambio compartido para que aplique Claude (NO incluido en el commit)
+
+En `apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx`, sustituir la invocación existente:
+
+```tsx
+{seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} />}
+```
+
+por:
+
+```tsx
+{seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} nivelesAsignables={misPermisos.asignar} concertacionHabilitada={!!concertacion?.habilitada} programable={!!periodoProgramable} />}
+```
+
+Se probó este cambio localmente; se deja sin commitear por la propiedad compartida. Claude debe aplicar esa conexión al integrar para que aparezca el envío y para ejecutar el recorrido completo de `vistas-ronda3.browser.mjs`. No hay cambios propios de shell, backend, `.gitignore` ni lockfile.
+
+### Validación y esfuerzo
+
+49/49 pruebas del MFE; 11/11 de datos/catálogo; navegador con API interceptada para asignación/avisos, aceptación/etiqueta y calendario/envío (409, reintento exitoso, permisos y apagado). Build del MFE correcto. TypeScript sigue con los errores existentes TS2786 de iconos/React y `ImportMeta.env`; no aparecen diagnósticos adicionales al excluir esas familias. Las simulaciones siguen §§19 y 23.3. Captura: `apps/mfe-programacion-academica/tests/envio-revision-docente.png`. No se levantó backend ni se escribió la base; Vite se usa solo durante la prueba y se detiene al terminar.
+
+Esfuerzo estimado de esta entrega: **6 h adicionales** (catálogo y prueba de conservación 3 h; envío por docente 2 h; etiqueta, regresiones y documentación 1 h). No es tiempo de reloj ni incluye horas de rondas anteriores.
+
+## Decisiones editables por asignatura y puente en suma — 25 de octubre de 2026
+
+Se integró `origin/feature/pa/ronda3` (incluido §28.3) antes de esta continuación. No se leyeron archivos de la carpeta de Claude ni se hicieron escrituras en la base.
+
+- Archivo editable: `esap/programacion/areas-por-asignatura.csv` (UTF-8, separador `;`; código de asignatura, área canónica y motivo). Contiene 28 decisiones: todas las Estadísticas y Matemáticas del catálogo, incluidos los distintos planes y Métodos Matemáticos para Economistas; Metodología de investigación APT; ASIG-00064; ASIG-00065 y ASIG-00001. Se lee por defecto y admite `--areas-por-asignatura <archivo>`. Prevalece sobre el área del plan, incluso si el nombre no cruza con el plan. Se rechazan códigos inexistentes/duplicados, áreas no canónicas y motivos vacíos. Se conservan todos los campos ajenos al área y los 160 registros de posgrado.
+- **ASIG-00001:** el nombre probablemente debe ser **Construcción del Territorio**. Pendiente de confirmar; el generador conserva el nombre actual, Constitución Del Territorio, y solo aplica Desarrollo y Gestión Territorial.
+- `resultados/2026-1/datos/nucleos/nucleo_equivalencia.csv`: Estado, Gobierno y Sociedad pasa a variante de Estado y Poder. Sus variantes quedan bajo la misma área canónica al regenerar. No se modificó la tabla del servidor.
+- **Catálogo para Claude:** `esap/programacion/resultados/2026-1/catalogo-importable-2026-1.xlsx`. 427 asignaturas, 14 programas, 325 ofertas; 26 valores de área cambian frente al snapshot verificado; cero códigos nuevos/retirados. El parser/validador publicado lo acepta sin errores ni advertencias. Se comparan de nuevo 11.995 campos ajenos al área. `DECISIONES_POR_ASIGNATURA` y el reporte JSON conservan las 28 decisiones y la huella del CSV. Quedan 48 casos de catálogo y las cuatro franjas de Opción de grado para revisión manual.
+- **Cobertura 2026-1: 531/535 = 99,25 %**, con `--puente suma`: 44 por RUND y 487 adicionales por puente. Son las franjas del Excel, no programación viva: la base consultada no tiene franjas de 2026-1. Las 40 filas sin día se excluyen del denominador. Las cuatro no cubiertas siguen siendo Opción de grado APT_52 (35, 36, 440, 441); no se fuerza ningún cruce.
+- `cobertura-regla-vigente.json` ejecuta el intérprete puro publicado por Claude con las equivalencias leídas de la base y la decisión nueva proyectada en memoria. La consulta es READ ONLY. `modoPuente: suma` queda explícito. El generador sigue admitiendo `solo_sin_rund` (predeterminado) y `apagado`; no cambia ningún interruptor del servidor. `cobertura.json` mantiene su medición auxiliar por unión normalizada, distinta del intérprete, y no debe usarse para atribuir la cobertura RUND del contrato.
+
+Reproducción desde la raíz (sustituir las rutas fuente por las locales):
+
+```powershell
+node esap/programacion/generar-datos.mjs --programacion "ruta\programacion.xlsx" --rund "ruta\rund.xlsx" --env "ruta\servicio.env" --periodo 2026-1 --puente suma
+node esap/programacion/generar-catalogo.mjs --catalogo-base esap/programacion/resultados/2026-1/catalogo-base-verificado.xlsx --programacion "ruta\programacion.xlsx" --periodo 2026-1
+node --test esap/programacion/validar-datos.test.mjs esap/programacion/catalogo-importable.test.mjs
+```
+
+### Corrección compartida para Claude: no consultar jefatura con concertación encendida
+
+La llamada que causaba el 409 está en `ProgramacionAcademicaModule.tsx`, no en `ConcertacionBandeja`. Se probó localmente pero **no se incluye ese archivo compartido en el commit**, según el acuerdo. Además de la conexión de envío documentada en la entrega anterior, Claude debe quitar este efecto de montaje:
+
+```tsx
+useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
+```
+
+Y colocar este efecto después de declarar el estado `concertacion`:
+
+```tsx
+useEffect(() => {
+  let vigente = true;
+  setEsJefatura(false);
+  if (concertacion && !concertacion.habilitada) {
+    getPendientesJefatura().then(() => { if (vigente) setEsJefatura(true); }).catch(() => {});
+  }
+  return () => { vigente = false; };
+}, [concertacion]);
+```
+
+Así espera la configuración antes de consultar: encendida no llama; apagada conserva la detección anterior. Si falla la configuración, no se consulta un régimen desconocido. La prueba de navegador comprueba ambas ramas con APIs interceptadas y la conexión compartida local. Sin aplicar estos dos parches compartidos, Claude no debe considerar integrado el acceso al envío ni la corrección de consola.
+
+Pruebas de datos/catálogo: 14/14. Incluyen prioridad de las 28 decisiones sobre el plan, integridad de campos, CSV inválidos, equivalencia nueva y contabilidad de la cobertura sin forzar Opción de grado. Navegador: pasa el recorrido de árbol, calendario, envío y encendido/apagado, incluida ausencia de llamadas a jefatura con concertación encendida. No se confirmó una carga ni se levantó backend.
+
+Esfuerzo estimado adicional de esta continuación: **2,5 h** (CSV/generador/pruebas 1,5 h; cobertura 0,5 h; consola, navegador y documentación 0,5 h). No incluye la entrega anterior ni es tiempo de reloj.
+
+Verificación final de esta continuación: MFE **51/51**, datos/catálogo **14/14**, navegador con API simulada correcto y build correcto. Vite detenido al terminar.

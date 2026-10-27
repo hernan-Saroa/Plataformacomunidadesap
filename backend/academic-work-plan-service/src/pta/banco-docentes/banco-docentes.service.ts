@@ -2084,7 +2084,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async bulkUpsert(rows: any[], options: BulkUpsertOptions = {}) {
-    const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' LIMIT 1`);
+    const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' AND NOT extraordinario LIMIT 1`);
     const activePeriod = periodRows.length > 0 ? periodRows[0].codigo : null;
     const fallbackPeriod = options.periodoCarga || activePeriod;
     const preparedRows = rows.map((item, index) => {

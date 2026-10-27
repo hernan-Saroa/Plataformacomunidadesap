@@ -25,6 +25,9 @@ import {
 import { Card, Badge, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
 import { useImportAsignaturas } from '../hooks/useImportAsignaturas';
+import { useAuth } from '../hooks/useAuth';
+import { PERMISO_ACTIVAR_EXTRAORDINARIO } from '../services/api/periodoExtraordinarioApi';
+import { ActivarExtraordinarioModal } from './ActivarExtraordinarioModal';
 
 interface GestionPeriodosProps {
   onBack: () => void;
@@ -33,6 +36,9 @@ interface GestionPeriodosProps {
 }
 
 export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged }: GestionPeriodosProps) {
+  const { hasPermission, loading: cargandoPermisos } = useAuth();
+  const puedeActivarExtraordinario = !cargandoPermisos && hasPermission(PERMISO_ACTIVAR_EXTRAORDINARIO);
+  const [extraordinarioParaActivar, setExtraordinarioParaActivar] = useState<{ periodo: any; foco: HTMLElement } | null>(null);
   const {
     getPeriodos,
     createPeriodo,
@@ -241,7 +247,16 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
   };
 
   // ─── Activar / Cerrar Periodo ───
-  const periodoActivo = periodos.find(p => p.estado === 'en_curso');
+  const periodoActivo = periodos.find(p => p.estado === 'en_curso' && !p.extraordinario);
+  const periodoExtraordinario = periodos.find(p => p.estado === 'en_curso' && p.extraordinario);
+  const accionExtraordinaria = (p: any) => puedeActivarExtraordinario && p.estado !== 'en_curso' && p.estado !== 'cerrado' ? (
+    <button type="button" disabled={!!periodoExtraordinario}
+      onClick={e => { e.stopPropagation(); setExtraordinarioParaActivar({ periodo: p, foco: e.currentTarget }); }}
+      title={periodoExtraordinario ? `Ya está en curso el extraordinario ${periodoExtraordinario.codigo}. Debe cerrarlo primero.` : `Activar ${p.codigo} sin cerrar el periodo principal`}
+      className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-[11px] font-bold border border-purple-200 disabled:opacity-50">
+      Activar como extraordinario
+    </button>
+  ) : null;
 
   const handleActivarPeriodo = async (p: any) => {
     try {
@@ -289,7 +304,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
     }
   };
 
-  const getEstadoDetails = (estado: string) => {
+  const getEstadoDetails = (estado: string, extraordinario = false) => {
     switch (estado) {
       case 'planeacion':
         return {
@@ -309,10 +324,10 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
         };
       case 'en_curso':
         return {
-          label: 'En Curso',
+          label: extraordinario ? 'Extraordinario en curso' : 'Principal en curso',
           className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-          desc: 'Periodo académico activo. Registro de actividades en curso.',
-          tooltip: 'Periodo Activo actual: Define el contexto y datos de trabajo en todos los demás módulos del sistema.',
+          desc: extraordinario ? 'Periodo extraordinario en curso, junto al principal.' : 'Periodo principal activo. Registro de actividades en curso.',
+          tooltip: extraordinario ? 'Extraordinario en curso: coexiste con el principal y tiene su propio PTA.' : 'Principal en curso: define el contexto de trabajo predeterminado de la plataforma.',
           icon: ShieldCheck
         };
       case 'cerrado':
@@ -414,7 +429,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                 <tbody className="divide-y divide-gray-50 bg-white">
                   <AnimatePresence>
                     {periodos.map((p, index) => {
-                      const stateInfo = getEstadoDetails(p.estado);
+                      const stateInfo = getEstadoDetails(p.estado, p.extraordinario);
                       const StateIcon = stateInfo.icon;
                       const stats = periodStats[p.codigo];
                       return (
@@ -442,10 +457,10 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                 <p className="font-semibold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors flex items-center gap-1.5">
                                   Periodo {p.codigo}
                                   {p.estado === 'en_curso' && (
-                                    <span className="text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Activo</span>
+                                    <span className="text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider">{p.extraordinario ? 'Extraordinario' : 'Principal'}</span>
                                   )}
                                 </p>
-                                <p className="text-[10px] text-gray-400 mt-0.5">Semestre {p.semestre} — Año {p.anio}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">{p.tipo === 'personalizado' ? `${p.nombre || 'Periodo personalizado'} — Año ${p.anio}` : `Semestre ${p.semestre} — Año ${p.anio}`}</p>
                               </div>
                             </div>
                           </td>
@@ -505,15 +520,15 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                           </td>
 
                           <td className="px-5 py-4">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               {/* Botón Activar / Cerrar */}
                               {p.estado === 'en_curso' ? (
                                 <span
-                                  title="Para cerrar este periodo, active otro periodo. El sistema lo archivará automáticamente."
+                                  title={p.extraordinario ? 'Periodo extraordinario en curso; su cierre es independiente del principal.' : 'Periodo principal en curso.'}
                                   className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-200 flex items-center gap-1 cursor-help"
                                 >
                                   <ShieldCheck className="w-3 h-3" />
-                                  Activo
+                                  {p.extraordinario ? 'Extraordinario' : 'Principal'}
                                 </span>
                               ) : (
                                 <button
@@ -524,6 +539,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                   Activar
                                 </button>
                               )}
+                              {accionExtraordinaria(p)}
                               <button
                                 onClick={(e) => { e.stopPropagation(); onNavigateToImport(p.codigo); }}
                                 className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] rounded-lg text-[11px] font-bold border border-blue-100 transition-all flex items-center gap-1"
@@ -582,11 +598,11 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                       <div className="grid grid-cols-4 gap-4 text-xs">
                                         <div>
                                           <span className="font-semibold text-gray-400 uppercase tracking-wider block text-[9px]">Estado</span>
-                                          <span className="font-black text-gray-800 uppercase block mt-0.5">{p.estado?.replace('_', ' ')}</span>
+                                          <span className="font-black text-gray-800 uppercase block mt-0.5">{stateInfo.label}</span>
                                         </div>
                                         <div>
                                           <span className="font-semibold text-gray-400 uppercase tracking-wider block text-[9px]">Año / Semestre</span>
-                                          <span className="font-black text-gray-800 block mt-0.5">{p.anio} - Sem. {p.semestre}</span>
+                                          <span className="font-black text-gray-800 block mt-0.5">{p.tipo === 'personalizado' ? `${p.anio} · Personalizado` : `${p.anio} - Sem. ${p.semestre}`}</span>
                                         </div>
                                         <div>
                                           <span className="font-semibold text-gray-400 uppercase tracking-wider block text-[9px]">Inicio</span>
@@ -865,7 +881,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
             <div className="lg:hidden divide-y divide-gray-100">
               <AnimatePresence>
                 {periodos.map((p, index) => {
-                  const stateInfo = getEstadoDetails(p.estado);
+                  const stateInfo = getEstadoDetails(p.estado, p.extraordinario);
                   const StateIcon = stateInfo.icon;
                   const stats = periodStats[p.codigo];
                   return (
@@ -884,7 +900,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                           </div>
                           <div>
                             <h3 className="font-bold text-gray-900 text-sm">Periodo {p.codigo}</h3>
-                            <p className="text-xs text-gray-500">Semestre {p.semestre} — Año {p.anio}</p>
+                            <p className="text-xs text-gray-500">{p.tipo === 'personalizado' ? `${p.nombre || 'Periodo personalizado'} — Año ${p.anio}` : `Semestre ${p.semestre} — Año ${p.anio}`}</p>
                           </div>
                         </div>
                         <Badge className={`${stateInfo.className} font-bold px-2 py-0.5 border text-xs`}>
@@ -910,7 +926,8 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                         </div>
                       )}
 
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {accionExtraordinaria(p)}
                         <button onClick={() => onNavigateToImport(p.codigo)} className="flex-1 flex items-center justify-center gap-1 py-2 bg-blue-50 hover:bg-blue-100 text-[#003DA5] rounded-xl text-xs font-bold border border-blue-100 transition-all">
                           <Plus className="w-3 h-3" /> Importar
                         </button>
@@ -940,6 +957,16 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
       </div>
 
       {/* Modal para Crear Periodo */}
+      {extraordinarioParaActivar && puedeActivarExtraordinario && <ActivarExtraordinarioModal
+        periodo={extraordinarioParaActivar.periodo} principal={periodoActivo}
+        retornarFoco={extraordinarioParaActivar.foco} onCerrar={() => setExtraordinarioParaActivar(null)}
+        onActivado={() => {
+          toast.success(`Periodo ${extraordinarioParaActivar.periodo.codigo} activado como extraordinario.`);
+          setExtraordinarioParaActivar(null);
+          setRefreshTrigger(prev => prev + 1);
+          onPeriodosChanged?.();
+        }}
+      />}
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

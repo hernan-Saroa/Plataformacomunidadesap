@@ -11,13 +11,21 @@ export interface PeriodoPlataforma {
   modelo: 'plataforma';
   codigo: string;
   anio: number;
-  semestre: number;
+  /** null en un periodo personalizado (EFDS-2346). */
+  semestre: number | null;
+  /** semestral | personalizado (EFDS-2346). */
+  tipo: string;
+  nombre: string | null;
   fechaInicio: string;
   fechaFin: string;
   estadoPlataforma: EstadoPlataforma;
   programacion: { estado: 'abierta' | 'cerrada'; cerradaEn: string | null };
   programable: boolean;
+  /** El periodo ACTIVO: en curso y no extraordinario (EFDS-2346). */
   esActivo: boolean;
+  /** En curso como segundo periodo, por excepción (EFDS-2346). */
+  esExtraordinario: boolean;
+  motivoExtraordinario: string | null;
 }
 
 export interface PeriodoLegado {
@@ -58,6 +66,10 @@ export class PeriodosService {
               pa.codigo,
               pa.anio,
               pa.semestre,
+              pa.tipo,
+              pa.nombre,
+              pa.extraordinario,
+              pa.motivo_extraordinario AS "motivoExtraordinario",
               to_char(pa.fecha_inicio, 'YYYY-MM-DD') AS "fechaInicio",
               to_char(pa.fecha_fin, 'YYYY-MM-DD')    AS "fechaFin",
               pa.estado                              AS "estadoPlataforma",
@@ -87,7 +99,9 @@ export class PeriodosService {
           modelo: 'plataforma',
           codigo: p.codigo,
           anio: Number(p.anio),
-          semestre: Number(p.semestre),
+          semestre: p.semestre == null ? null : Number(p.semestre),
+          tipo: p.tipo,
+          nombre: p.nombre ?? null,
           fechaInicio: p.fechaInicio,
           fechaFin: p.fechaFin,
           estadoPlataforma: p.estadoPlataforma,
@@ -96,7 +110,9 @@ export class PeriodosService {
             cerradaEn: p.cerradaEn ? new Date(p.cerradaEn).toISOString() : null,
           },
           programable: p.estadoPlataforma !== 'cerrado' && estadoProgramacion === 'abierta',
-          esActivo: p.estadoPlataforma === 'en_curso',
+          esActivo: p.estadoPlataforma === 'en_curso' && !p.extraordinario,
+          esExtraordinario: p.estadoPlataforma === 'en_curso' && !!p.extraordinario,
+          motivoExtraordinario: p.motivoExtraordinario ?? null,
         };
       }),
       legado: legado.map((p: any): PeriodoLegado => ({

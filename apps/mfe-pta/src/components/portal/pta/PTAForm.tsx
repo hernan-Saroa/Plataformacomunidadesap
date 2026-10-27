@@ -2980,7 +2980,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
         const lista = Array.isArray(res?.data) ? res.data : [];
         const match = codigoPeriodo
           ? lista.find((p: any) => String(p.codigo) === codigoPeriodo)
-          : lista.find((p: any) => p.estado === 'en_curso');
+          : lista.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
         const fi = match?.fecha_inicio || match?.fechaInicio;
         const ff = match?.fecha_fin || match?.fechaFin;
         if (!cancelado && fi && ff) {
