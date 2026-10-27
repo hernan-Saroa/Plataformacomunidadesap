@@ -110,6 +110,7 @@ const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestru
 const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const AjustesGeneralesPage = lazy(() => import('./AjustesGeneralesPage'));
+const CentroAyudaAdminPage = lazy(() => import('./CentroAyudaAdminPage'));
 const TrdPage = lazy(() => import('./TrdPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 import { ChatbotFullPageScope } from '../chatbot/GlobalChatbotProvider';
@@ -172,7 +173,8 @@ type ModuleView =
   | 'modules'
   | 'dependencias'
   | 'ajustes-generales'
-  | 'trd';
+  | 'trd'
+  | 'centro-ayuda';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -260,7 +262,8 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'modules': 'modules',
   'dependencias': 'dependencias',
   'ajustes-generales': 'ajustes-generales',
-  'trd': 'trd'
+  'trd': 'trd',
+  'centro-ayuda': 'centro-ayuda'
 };
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
@@ -936,6 +939,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <AjustesGeneralesPage />
+          </Suspense>
+        );
+
+      case 'centro-ayuda':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CentroAyudaAdminPage />
           </Suspense>
         );
 

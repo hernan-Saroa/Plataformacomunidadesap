@@ -1,29 +1,37 @@
-import React, { useState } from 'react';
-import { 
-  HelpCircle, 
-  X, 
-  Book, 
-  Video, 
-  MessageCircle, 
-  FileText, 
-  Keyboard, 
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  HelpCircle,
+  X,
+  Book,
+  Video,
+  MessageCircle,
+  FileText,
+  Keyboard,
   Mail,
   Phone,
   ExternalLink,
   Search,
   Lightbulb,
   Headphones,
-  GraduationCap
+  GraduationCap,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  centroAyudaService,
+  urlArchivoRecurso,
+  type CategoriaCentroAyuda,
+  type RecursoCentroAyuda,
+} from '../../services/api/centroAyuda.service';
+import { ListaRecursos } from './centro-ayuda/ListaRecursos';
+import { VisorRecurso } from './centro-ayuda/VisorRecurso';
 
 interface HelpResource {
-  id: string;
+  id: CategoriaCentroAyuda;
   icon: JSX.Element;
   title: string;
   description: string;
-  action: () => void;
-  badge?: string;
 }
 
 interface FAQItem {
@@ -54,52 +62,90 @@ export function HelpCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'recursos' | 'faqs' | 'contacto'>('recursos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [recursos, setRecursos] = useState<RecursoCentroAyuda[] | null>(null);
+  const [errorRecursos, setErrorRecursos] = useState(false);
+  const [categoriaAbierta, setCategoriaAbierta] = useState<CategoriaCentroAyuda | null>(null);
+  const [recursoEnVisor, setRecursoEnVisor] = useState<RecursoCentroAyuda | null>(null);
+
+  const cargarRecursos = useCallback(async () => {
+    setErrorRecursos(false);
+    try {
+      setRecursos(await centroAyudaService.listar());
+    } catch {
+      setErrorRecursos(true);
+    }
+  }, []);
+
+  // Se consulta cada vez que se abre el panel para mostrar lo último que se cargó.
+  useEffect(() => {
+    if (isOpen) {
+      cargarRecursos();
+    } else {
+      setCategoriaAbierta(null);
+      setRecursoEnVisor(null);
+    }
+  }, [isOpen, cargarRecursos]);
+
+  const recursosDe = (categoria: CategoriaCentroAyuda) =>
+    (recursos || []).filter((r) => r.categoria === categoria);
+
+  const manualVigente = recursosDe('manual').find((r) => r.archivo);
+
+  const abrirCategoria = (categoria: CategoriaCentroAyuda) => {
+    if (categoria === 'manual' && manualVigente) {
+      const enlace = document.createElement('a');
+      enlace.href = urlArchivoRecurso(manualVigente.id, true);
+      enlace.download = manualVigente.archivo?.nombre || 'manual.pdf';
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      return;
+    }
+    setCategoriaAbierta(categoria);
+  };
 
   const helpResources: HelpResource[] = [
     {
-      id: '1',
+      id: 'documentacion',
       icon: <Book className="w-5 h-5" />,
       title: 'Documentación completa',
       description: 'Guías detalladas de todos los módulos del sistema',
-      action: () => console.log('Abrir documentación'),
     },
     {
-      id: '2',
+      id: 'videos',
       icon: <Video className="w-5 h-5" />,
       title: 'Video tutoriales',
       description: 'Aprende con videos paso a paso',
-      action: () => console.log('Abrir videos'),
-      badge: 'Nuevo',
     },
     {
-      id: '3',
+      id: 'atajos',
       icon: <Keyboard className="w-5 h-5" />,
       title: 'Atajos de teclado',
       description: 'Trabaja más rápido con estos atajos',
-      action: () => console.log('Abrir atajos'),
     },
     {
-      id: '4',
+      id: 'manual',
       icon: <FileText className="w-5 h-5" />,
       title: 'Manual de usuario',
-      description: 'Descarga el manual completo en PDF',
-      action: () => console.log('Descargar manual'),
+      description: manualVigente?.version
+        ? `Descarga el manual en PDF (versión ${manualVigente.version})`
+        : 'Descarga el manual completo en PDF',
     },
     {
-      id: '5',
+      id: 'cursos',
       icon: <GraduationCap className="w-5 h-5" />,
       title: 'Cursos de capacitación',
       description: 'Programas de entrenamiento para administradores',
-      action: () => console.log('Ver cursos'),
     },
     {
-      id: '6',
+      id: 'practicas',
       icon: <Lightbulb className="w-5 h-5" />,
       title: 'Mejores prácticas',
       description: 'Consejos y recomendaciones de uso',
-      action: () => console.log('Ver prácticas'),
     },
   ];
+
+  const recursoAbierto = helpResources.find((r) => r.id === categoriaAbierta);
 
   const filteredFaqs = faqs.filter(faq =>
     faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -203,21 +249,53 @@ export function HelpCenter() {
 
               {/* Content - Scroll Area */}
               <div className="flex-1 overflow-y-auto">
+                {/* Recursos Tab: contenido de una opción */}
+                {activeTab === 'recursos' && recursoAbierto && (
+                  recursos ? (
+                    <ListaRecursos
+                      titulo={recursoAbierto.title}
+                      categoria={recursoAbierto.id}
+                      recursos={recursosDe(recursoAbierto.id)}
+                      onVolver={() => setCategoriaAbierta(null)}
+                      onVer={setRecursoEnVisor}
+                    />
+                  ) : errorRecursos ? (
+                    <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                      <AlertCircle className="w-8 h-8 text-amber-500" />
+                      <p className="text-sm text-[--esap-gray-700]">No se pudieron cargar los recursos de ayuda.</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setCategoriaAbierta(null)}
+                          className="px-3 py-2 rounded-lg text-xs border border-[--esap-gray-200] hover:bg-[--esap-gray-50]"
+                        >
+                          Volver
+                        </button>
+                        <button
+                          onClick={cargarRecursos}
+                          className="px-3 py-2 rounded-lg text-xs bg-[--esap-primary] text-white hover:bg-[--esap-primary-dark]"
+                        >
+                          Reintentar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-12 text-[--esap-gray-600]">
+                      <Loader2 className="w-6 h-6 animate-spin text-[--esap-primary]" />
+                      <p className="text-xs">Cargando recursos...</p>
+                    </div>
+                  )
+                )}
+
                 {/* Recursos Tab */}
-                {activeTab === 'recursos' && (
+                {activeTab === 'recursos' && !recursoAbierto && (
                   <div className="p-4">
                     <div className="grid grid-cols-2 gap-3">
                       {helpResources.map((resource) => (
                         <button
                           key={resource.id}
-                          onClick={resource.action}
+                          onClick={() => abrirCategoria(resource.id)}
                           className="relative p-4 min-h-[110px] rounded-xl border-2 border-[--esap-gray-200] hover:border-[--esap-primary] hover:bg-blue-50/50 hover:shadow-sm transition-all duration-150 text-left group cursor-pointer"
                         >
-                          {resource.badge && (
-                            <span className="absolute top-2 right-2 text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-medium">
-                              {resource.badge}
-                            </span>
-                          )}
                           <div className="w-10 h-10 rounded-lg bg-blue-100 text-[--esap-primary] flex items-center justify-center mb-3 group-hover:bg-[--esap-primary] group-hover:text-white transition-colors">
                             {resource.icon}
                           </div>
@@ -420,6 +498,10 @@ export function HelpCenter() {
           </div>
         )}
       </AnimatePresence>
+
+      {recursoEnVisor && (
+        <VisorRecurso recurso={recursoEnVisor} onCerrar={() => setRecursoEnVisor(null)} />
+      )}
     </>
   );
 }
