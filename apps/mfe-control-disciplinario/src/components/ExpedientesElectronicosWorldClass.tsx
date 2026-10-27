@@ -543,6 +543,15 @@ export function ExpedientesElectronicosWorldClass({
            tipoProceso: proceso.news?.conductas?.[0] || proceso.news?.conducta || 'Proceso Disciplinario',
            responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
            fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+           codigoDependencia: proceso.codigoDependencia,
+           nombreDependencia: proceso.nombreDependencia,
+           codigoSerie: proceso.codigoSerie,
+           nombreSerie: proceso.nombreSerie,
+           codigoSubserie: proceso.codigoSubserie,
+           nombreSubserie: proceso.nombreSubserie,
+           trdVersion: proceso.trdVersion,
+           codigoIdentificacionExpediente: proceso.codigoIdentificacionExpediente,
+           fechaHechos: proceso.news?.fechaHechos || proceso.fechaHechos,
            totalDocumentos: 0, // Se actualizará al cargar documentos
            documentosPorTipo: {}
          };
@@ -1037,6 +1046,21 @@ export function ExpedientesElectronicosWorldClass({
     // si el proceso sigue activo, esas casillas del FUID deben ir vacías.
     const cerrado = exp.estado === 'finalizado';
 
+    const codSerie = String((exp as any).codigoSerie || (exp as any).codigoCCDU || (exp as any).codigoSerieTVD || '250').trim();
+    const nomSerie = String((exp as any).nombreSerie || (exp as any).serie || 'PROCESOS JURÍDICOS').trim();
+    const codSubserie = String((exp as any).codigoSubserie || (codSerie === '1330' ? '60' : codSerie === '68' ? '22' : codSerie === '75' ? '01' : '05')).trim();
+    const nomSubserie = String((exp as any).nombreSubserie || (exp as any).subserie || 'PROCESOS DISCIPLINARIOS').trim();
+
+    const serieConNumero = !new RegExp(`^${codSerie.replace('.', '\\.')}\\s*[-–]`, 'i').test(nomSerie)
+      ? `${codSerie} – ${nomSerie}`
+      : nomSerie;
+
+    const subserieConNumero = nomSubserie.toUpperCase() === 'N/A'
+      ? 'N/A'
+      : (!new RegExp(`^${codSubserie.replace('.', '\\.')}\\s*[-–]`, 'i').test(nomSubserie)
+          ? `${codSubserie} – ${nomSubserie}`
+          : nomSubserie);
+
     return {
       radicado: exp.radicado,
       nombreDisciplinado: exp.nombreDisciplinado,
@@ -1045,10 +1069,14 @@ export function ExpedientesElectronicosWorldClass({
       fechaExtremaInicial: fechaInicial,
       fechaExtremaFinal: cerrado ? fechaFinal : '',
       cerrado,
-      codigoCCDU: '780',
-      codigoSerieTVD: '780',
-      serie: 'PROCESOS JURÍDICOS',
-      subserie: 'PROCESOS DISCIPLINARIOS',
+      codigoCCDU: codSerie,
+      codigoSerieTVD: codSerie,
+      codigoSerie: codSerie,
+      nombreSerie: nomSerie,
+      serie: serieConNumero,
+      codigoSubserie: codSubserie,
+      nombreSubserie: nomSubserie,
+      subserie: subserieConNumero,
       cantidadDocumentos: docs.length,
       tamanoDocumentos: tamanoStr,
       notas: estadoLabel,
@@ -1574,6 +1602,8 @@ export function ExpedientesElectronicosWorldClass({
           radicado: expediente.radicado,
           numeroExpediente: expediente.radicado,
           codigoIdentificacionExpediente: (expediente as any).codigoIdentificacionExpediente,
+          codigoDependencia: (expediente as any).codigoDependencia,
+          nombreDependencia: (expediente as any).nombreDependencia,
           codigoSerie: (expediente as any).codigoSerie,
           nombreSerie: (expediente as any).nombreSerie,
           serie: (expediente as any).serie,
@@ -1581,6 +1611,9 @@ export function ExpedientesElectronicosWorldClass({
           nombreSubserie: (expediente as any).nombreSubserie,
           subserie: (expediente as any).subserie,
           tieneSubserie: (expediente as any).tieneSubserie,
+          trdVersion: (expediente as any).trdVersion,
+          fechaHechos: (expediente as any).fechaHechos,
+          fechaRadicacion: (expediente as any).fechaInicio,
           asunto: expediente.tipoProceso,
           responsable: expediente.responsable,
         },

@@ -28,3 +28,10 @@ export function capturarDatosCarga(raw: Record<string, unknown>): Record<string,
 export function fechaCivilPersistencia(value: Date | null | undefined): Date | null {
   return value ? new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()) : null;
 }
+
+/** JSON canónico: PostgreSQL reordena las claves de un jsonb, así que comparar con JSON.stringify marcaba toda reimportación como cambio. */
+export function stableJson(value: unknown): string {
+  const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map(k => [k, canonical((v as any)[k])])) : v;
+  return JSON.stringify(canonical(value));
+}

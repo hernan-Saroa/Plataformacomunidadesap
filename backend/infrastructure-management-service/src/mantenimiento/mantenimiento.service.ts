@@ -12,6 +12,7 @@ import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
+import { MantenimientoHistorico } from './mantenimiento-historico.entity.js';
 import { StorageService } from './storage.service.js';
 import { NotificationClientService, SendNotificationDto } from '../common/notification-client.service.js';
 import { AuthUser } from '../auth/types.js';
@@ -185,6 +186,65 @@ function distribucionVacia(): DistribucionCalificacion {
 }
 const SEPARADOR_TECNICO = ' · ';
 
+function calcularSemanaDeposito(fecha?: Date | string | null): string {
+  if (!fecha) return 'Sin clasificar';
+  const d = new Date(fecha);
+  if (Number.isNaN(d.getTime())) return 'Sin clasificar';
+
+  // Lunes de la semana (1 = lunes, ..., 0 = domingo)
+  const day = d.getDay();
+  const diffLunes = day === 0 ? -6 : 1 - day;
+  const lunes = new Date(d);
+  lunes.setDate(d.getDate() + diffLunes);
+
+  const viernes = new Date(lunes);
+  viernes.setDate(lunes.getDate() + 4);
+
+  const meses = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+
+  const dLunes = String(lunes.getDate()).padStart(2, '0');
+  const dViernes = String(viernes.getDate()).padStart(2, '0');
+  const mLunes = meses[lunes.getMonth()];
+  const mViernes = meses[viernes.getMonth()];
+
+  if (mLunes === mViernes) {
+    return `Semana ${dLunes} al ${dViernes} de ${mLunes}`;
+  } else {
+    return `Semana ${dLunes} de ${mLunes} al ${dViernes} de ${mViernes}`;
+  }
+}
+
+function homologarEstadoPlanner(estado?: string | null): string {
+  const e = (estado || '').toUpperCase();
+  if (['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION'].includes(e)) return 'Completado';
+  if (['EN_PROGRESO', 'EN_EJECUCION', 'EN_VALORACION', 'EN_CAMPO_VALORACION', 'EN_ANALISIS'].includes(e)) return 'En curso';
+  if (['EN_ESPERA_DE_INSUMOS', 'PENDIENTE_COTIZACION', 'PENDIENTE_APROBACION', 'PENDIENTE_RECURSO'].includes(e)) return 'En espera';
+  if (e === 'RECHAZADA') return 'Rechazado';
+  return 'No iniciado';
+}
+
+function limpiarNombrePersona(texto?: string | null): string {
+  if (!texto) return 'Sin asignar';
+  if (texto.includes('·')) {
+    const parts = texto.split('·');
+    return parts[parts.length - 1].trim();
+  }
+  return texto.trim();
+}
+
 function nuevoItemRemision(args: {
   usuarioId?: string;
   usuarioEmail?: string;
@@ -259,7 +319,13 @@ export class MantenimientoService implements OnModuleInit {
     private readonly storage: StorageService,
     @Optional() @Inject(forwardRef(() => NotificationClientService))
     private readonly notificaciones?: NotificationClientService,
+    @Optional() @InjectRepository(MantenimientoHistorico)
+    private readonly historicoRepo?: Repository<MantenimientoHistorico>,
   ) {}
+
+  private getHistoricoRepo(): Repository<MantenimientoHistorico> {
+    return this.historicoRepo || this.dataSource.getRepository(MantenimientoHistorico);
+  }
 
   async onModuleInit(): Promise<void> {
     try {
@@ -4524,16 +4590,31 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     };
 
     // =========================================================================
-    // HOJA 1: Consolidado Operacional
+    // HOJA 1: Datos consolidados (Estructura Planner + Campos Enriquecidos ESAP)
     // =========================================================================
-    const ws = workbook.addWorksheet('Consolidado_Operacional', {
-      properties: { tabColor: { argb: 'FF1E40AF' } },
+    const ws = workbook.addWorksheet('Datos consolidados', {
+      properties: { tabColor: { argb: 'FF1F3864' } },
       views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
     });
 
     ws.columns = [
-      { header: 'Consecutivo', key: 'consecutivo', width: 18 },
-      { header: 'Estado', key: 'estado', width: 22 },
+      // === COLUMNAS 1 A 12: ESTRUCTURA EXACTA MICROSOFT PLANNER UMI ===
+      { header: 'Nombre de la tarea', key: 'nombreTarea', width: 58 },
+      { header: 'Depósito', key: 'deposito', width: 34 },
+      { header: 'Estado', key: 'estadoPlanner', width: 14 },
+      { header: 'Asignado a', key: 'asignadoA', width: 48 },
+      { header: 'Creado por', key: 'creadoPor', width: 28 },
+      { header: 'Fecha de creación', key: 'fechaCreacion', width: 16 },
+      { header: 'Fecha de vencimiento', key: 'fechaVencimiento', width: 16 },
+      { header: 'Fecha de inicio', key: 'fechaInicio', width: 16 },
+      { header: 'Fecha de finalización', key: 'fechaFinalizacion', width: 16 },
+      { header: 'Completado por', key: 'completadoPor', width: 28 },
+      { header: 'Semana (normalizada)', key: 'semanaNormalizada', width: 34 },
+      { header: 'Cantidad de asignados', key: 'cantidadAsignados', width: 18 },
+
+      // === COLUMNAS 13 A 39: CAMPOS INSTITUCIONALES ENRIQUECIDOS ESAP ===
+      { header: 'Consecutivo ESAP', key: 'consecutivo', width: 18 },
+      { header: 'Estado ESAP (Detallado)', key: 'estadoDetallado', width: 22 },
       { header: 'Prioridad', key: 'prioridad', width: 14 },
       { header: 'Tipo Atención', key: 'tipoAtencion', width: 16 },
       { header: 'Área Responsable', key: 'area', width: 18 },
@@ -4545,13 +4626,8 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       { header: 'Código CS', key: 'codigoCS', width: 12 },
       { header: 'Categoría de Servicio', key: 'categoria', width: 44 },
       { header: 'Sede Territorial', key: 'sede', width: 28 },
-      { header: 'Bloque / Espacio', key: 'ubicacion', width: 30 },
-      { header: 'Descripción Solicitud', key: 'descripcion', width: 50 },
-      { header: 'Solicitante Nombre', key: 'solicitanteNombre', width: 28 },
+      { header: 'Bloque / Espacio', key: 'ubicacion', width: 32 },
       { header: 'Solicitante Email', key: 'solicitanteEmail', width: 30 },
-      { header: 'Fecha Radicación', key: 'fechaRad', width: 20 },
-      { header: 'Técnico Responsable', key: 'tecnico', width: 34 },
-      { header: 'Fecha Límite SLA', key: 'fechaLimite', width: 20 },
       { header: 'Estado Cumplimiento SLA', key: 'estadoSla', width: 24 },
       { header: 'Días Extensión Insumos', key: 'diasExt', width: 20 },
       { header: 'Estado Valoración', key: 'estadoVal', width: 20 },
@@ -4562,15 +4638,15 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       { header: 'Costo Insumos Estimado (COP)', key: 'costoEstimado', width: 26 },
       { header: 'Fecha Cierre Técnico', key: 'fechaCierre', width: 20 },
       { header: 'Costo Final Efectivo (COP)', key: 'costoFinal', width: 24 },
-      { header: 'Calificación (1-5)', key: 'calificacion', width: 16 },
+      { header: 'Calificación (1-5)', key: 'calificacion', width: 18 },
       { header: 'Observaciones Solicitante', key: 'obsConformidad', width: 40 },
-      { header: 'Resumen Traza / Acciones', key: 'trazaResumen', width: 60 },
+      { header: 'Resumen Traza Histórica', key: 'trazaResumen', width: 60 },
     ];
 
-    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
-    ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-    ws.getRow(1).height = 28;
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Arial' };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+    ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    ws.getRow(1).height = 30;
 
     const ahoraMs = Date.now();
 
@@ -4625,9 +4701,48 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         : null;
       const diagnosticoTxt = (ultimaVal?.diagnostico || sol.trabajoRealizado || '—').trim();
 
+      // Campos específicos homologados con Planner
+      const semanaStr = calcularSemanaDeposito(sol.fechaRadicacion || sol.createdAt);
+      const estPlanner = homologarEstadoPlanner(sol.estado);
+      const nombreAsignado = limpiarNombrePersona(sol.responsableAsignado);
+      const cantAsig = sol.responsableAsignado
+        ? (sol.responsableAsignado.includes(';') ? sol.responsableAsignado.split(';').length : 1)
+        : 0;
+      const completadoPor = ['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION'].includes(sol.estado)
+        ? limpiarNombrePersona(sol.responsableCierreDisplay || sol.responsableAsignado || sol.solicitanteNombre)
+        : '—';
+
+      const dCreacion = sol.fechaRadicacion
+        ? new Date(sol.fechaRadicacion)
+        : (sol.createdAt ? new Date(sol.createdAt) : null);
+      const dVencimiento = sol.fechaLimiteAtencion
+        ? new Date(sol.fechaLimiteAtencion)
+        : null;
+      const dInicio = sol.fechaInicioValoracion || sol.fechaProgramada || sol.fechaRadicacion
+        ? new Date(sol.fechaInicioValoracion || sol.fechaProgramada || sol.fechaRadicacion)
+        : null;
+      const dFin = sol.fechaCierreTecnico || sol.fechaEjecucion
+        ? new Date(sol.fechaCierreTecnico || sol.fechaEjecucion)
+        : null;
+
       const row = ws.addRow({
+        // 1..12 Planner exactos
+        nombreTarea: sol.descripcion || 'Sin descripción',
+        deposito: semanaStr,
+        estadoPlanner: estPlanner,
+        asignadoA: nombreAsignado,
+        creadoPor: sol.solicitanteNombre || sol.usuarioSolicitanteEmail || 'Sistema',
+        fechaCreacion: dCreacion,
+        fechaVencimiento: dVencimiento,
+        fechaInicio: dInicio,
+        fechaFinalizacion: dFin,
+        completadoPor,
+        semanaNormalizada: semanaStr,
+        cantidadAsignados: cantAsig,
+
+        // 13.. ESAP enriquecidos
         consecutivo: sol.consecutivo || sol.idSolicitud,
-        estado: sol.estado || 'RECIBIDA',
+        estadoDetallado: sol.estado || 'RECIBIDA',
         prioridad: sol.prioridad || 'MEDIA',
         tipoAtencion: sol.tipoAtencion || 'FISICA',
         area: sol.areaResponsableActual || 'UMI',
@@ -4642,12 +4757,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         categoria: catInfo.nombre,
         sede: (sol.sede as any)?.nombre || '—',
         ubicacion: ubicacionTxt || '—',
-        descripcion: sol.descripcion || '',
-        solicitanteNombre: sol.solicitanteNombre || '—',
         solicitanteEmail: sol.solicitanteEmail || sol.usuarioSolicitanteEmail || '—',
-        fechaRad: this.formatearFechaReporteLocal(sol.fechaRadicacion),
-        tecnico: sol.responsableAsignado || 'Sin asignar',
-        fechaLimite: this.formatearFechaReporteLocal(sol.fechaLimiteAtencion),
         estadoSla: estadoSlaTxt,
         diasExt: sol.diasExtendidosPorInsumos || 0,
         estadoVal: sol.estadoValoracion || 'PENDIENTE',
@@ -4663,6 +4773,10 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         trazaResumen: trazaStr,
       });
 
+      if (dCreacion) row.getCell('fechaCreacion').numFmt = 'dd/mm/yyyy';
+      if (dVencimiento) row.getCell('fechaVencimiento').numFmt = 'dd/mm/yyyy';
+      if (dInicio) row.getCell('fechaInicio').numFmt = 'dd/mm/yyyy';
+      if (dFin) row.getCell('fechaFinalizacion').numFmt = 'dd/mm/yyyy';
       row.getCell('costoEstimado').numFmt = '"$"#,##0';
       row.getCell('costoFinal').numFmt = '"$"#,##0';
     }
@@ -5127,4 +5241,470 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     const filename = `Evidencias_${consecutivo.replace(/[^A-Za-z0-9_-]/g, '_')}.zip`;
     return { stream: output, filename, totalBytes };
   }
+
+  // ===========================================================================
+  // FASE 4 · REQUERIMIENTO #10: Ingesta y Consulta Histórica (Planner / GLPI)
+  // Segregado completamente de la tabla viva solicitud_mantenimiento
+  // ===========================================================================
+
+  async importarHistoricoExcel(
+    buffer: Buffer,
+    originalname: string,
+    user: AuthUser | null | undefined,
+  ): Promise<{
+    totalFilas: number;
+    insertados: number;
+    actualizados: number;
+    omitidos: number;
+    tiempoMs: number;
+    archivo: string;
+  }> {
+    const inicioMs = Date.now();
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook ? ExcelJSMod : (ExcelJSMod.default?.Workbook ? ExcelJSMod.default : (ExcelJSMod.default ?? ExcelJSMod));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+
+    const sheet = workbook.getWorksheet('Datos consolidados') || workbook.worksheets[0];
+    if (!sheet || sheet.rowCount < 2) {
+      throw new BadRequestException('El archivo Excel no contiene filas de datos para importar.');
+    }
+
+    const parseExcelDate = (val: any): Date | null => {
+      if (!val) return null;
+      if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+      if (typeof val === 'number') {
+        const utcDays = Math.floor(val - 25569);
+        const utcValue = utcDays * 86400;
+        const dateInfo = new Date(utcValue * 1000);
+        const fractionalDay = val - Math.floor(val) + 0.0000001;
+        let totalSeconds = Math.floor(86400 * fractionalDay);
+        const seconds = totalSeconds % 60;
+        totalSeconds -= seconds;
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor(totalSeconds / 60) % 60;
+        return new Date(dateInfo.getFullYear(), dateInfo.getMonth(), dateInfo.getDate(), hours, minutes, seconds);
+      }
+      if (typeof val === 'string') {
+        const s = val.trim();
+        if (!s) return null;
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    };
+
+    const getCleanCell = (cell: any): string => {
+      if (!cell) return '';
+      if (cell.text !== undefined && cell.text !== null) return String(cell.text).trim();
+      if (cell.value !== undefined && cell.value !== null) {
+        if (typeof cell.value === 'object' && cell.value.result !== undefined) {
+          return String(cell.value.result).trim();
+        }
+        return String(cell.value).trim();
+      }
+      return '';
+    };
+
+    // Detectar dinámicamente columnas de encabezado
+    const colIndexes: Record<string, number> = {};
+    const headerRow = sheet.getRow(1);
+    headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const header = getCleanCell(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (header.includes('nombre de la tarea') || header.includes('tarea') || header.includes('titulo')) {
+        colIndexes['titulo'] = colNumber;
+      } else if (header.includes('semana (normalizada)')) {
+        colIndexes['semanaNormalizada'] = colNumber;
+      } else if (header.includes('deposito') || header.includes('semana')) {
+        if (!colIndexes['deposito']) colIndexes['deposito'] = colNumber;
+      } else if (header.includes('estado') || header.includes('progreso')) {
+        colIndexes['estado'] = colNumber;
+      } else if (header.includes('asignado a') || header.includes('responsable')) {
+        colIndexes['asignado'] = colNumber;
+      } else if (header.includes('creado por') || header.includes('solicitante')) {
+        colIndexes['creadoPor'] = colNumber;
+      } else if (header.includes('completado por')) {
+        colIndexes['completadoPor'] = colNumber;
+      } else if (header.includes('fecha de creacion')) {
+        colIndexes['fechaCreacion'] = colNumber;
+      } else if (header.includes('fecha de vencimiento')) {
+        colIndexes['fechaVencimiento'] = colNumber;
+      } else if (header.includes('fecha de inicio')) {
+        colIndexes['fechaInicio'] = colNumber;
+      } else if (header.includes('fecha de finalizacion') || header.includes('completada en')) {
+        colIndexes['fechaFinalizacion'] = colNumber;
+      } else if (header.includes('cantidad de asignados')) {
+        colIndexes['cantidadAsignados'] = colNumber;
+      } else if (header.includes('id. de la tarea') || header.includes('id tarea')) {
+        colIndexes['idTarea'] = colNumber;
+      }
+    });
+
+    if (!colIndexes['titulo']) colIndexes['titulo'] = 1;
+
+    const filasAIngresar: any[] = [];
+    const totalRows = sheet.rowCount;
+
+    for (let r = 2; r <= totalRows; r++) {
+      const row = sheet.getRow(r);
+      const titulo = getCleanCell(row.getCell(colIndexes['titulo'] || 1));
+      if (!titulo) continue;
+
+      const deposito = colIndexes['deposito'] ? getCleanCell(row.getCell(colIndexes['deposito'])) : '';
+      const semanaNorm = colIndexes['semanaNormalizada'] ? getCleanCell(row.getCell(colIndexes['semanaNormalizada'])) : (deposito || '');
+      const estadoOrig = colIndexes['estado'] ? getCleanCell(row.getCell(colIndexes['estado'])) : 'Completado';
+      const asignado = colIndexes['asignado'] ? getCleanCell(row.getCell(colIndexes['asignado'])) : '';
+      const creadoPor = colIndexes['creadoPor'] ? getCleanCell(row.getCell(colIndexes['creadoPor'])) : '';
+      const completadoPor = colIndexes['completadoPor'] ? getCleanCell(row.getCell(colIndexes['completadoPor'])) : '';
+
+      const fCreacion = colIndexes['fechaCreacion'] ? parseExcelDate(row.getCell(colIndexes['fechaCreacion']).value) : null;
+      const fInicio = colIndexes['fechaInicio'] ? parseExcelDate(row.getCell(colIndexes['fechaInicio']).value) : null;
+      const fVenc = colIndexes['fechaVencimiento'] ? parseExcelDate(row.getCell(colIndexes['fechaVencimiento']).value) : null;
+      const fFin = colIndexes['fechaFinalizacion'] ? parseExcelDate(row.getCell(colIndexes['fechaFinalizacion']).value) : null;
+
+      let cantAsignados = 0;
+      if (colIndexes['cantidadAsignados']) {
+        const val = row.getCell(colIndexes['cantidadAsignados']).value;
+        cantAsignados = typeof val === 'object' && (val as any)?.result ? Number((val as any).result) : Number(val || 0);
+      }
+      if (!cantAsignados && asignado) {
+        cantAsignados = asignado.split(';').filter((s) => s.trim().length > 0).length;
+      }
+
+      let idTareaExterna = colIndexes['idTarea'] ? getCleanCell(row.getCell(colIndexes['idTarea'])) : '';
+      if (!idTareaExterna) {
+        idTareaExterna = `PLANNER-2026-ROW-${String(r).padStart(5, '0')}`;
+      }
+
+      let estadoHomologado = 'COMPLETADO';
+      const estLower = estadoOrig.toLowerCase();
+      if (estLower.includes('en curso') || estLower.includes('progreso') || estLower.includes('ejecucion')) {
+        estadoHomologado = 'EN_PROCESO';
+      } else if (estLower.includes('no iniciada') || estLower.includes('pendiente')) {
+        estadoHomologado = 'PENDIENTE';
+      }
+
+      filasAIngresar.push({
+        origenSistema: 'MICROSOFT_PLANNER',
+        idTareaExterna,
+        tituloTarea: titulo,
+        depositoSemana: deposito || semanaNorm,
+        semanaNormalizada: semanaNorm || deposito,
+        estadoOriginal: estadoOrig,
+        estadoHomologado,
+        prioridadOriginal: 'Media',
+        fechaCreacion: fCreacion,
+        fechaInicio: fInicio,
+        fechaVencimiento: fVenc,
+        fechaFinalizacion: fFin,
+        creadoPorTexto: creadoPor,
+        completadoPorTexto: completadoPor,
+        asignadoATexto: asignado,
+        cantidadAsignados: cantAsignados,
+        nombreArchivoOrigen: originalname,
+        numeroFilaOrigen: r,
+        cargadoPorUsuarioId: user?.userId || null,
+        cargadoPorNombre: user?.name || user?.email || 'Administrador',
+        metadata: {
+          hoja: sheet.name,
+          importadoEn: new Date().toISOString(),
+        },
+      });
+    }
+
+    const batchSize = 200;
+    let insertados = 0;
+
+    for (let i = 0; i < filasAIngresar.length; i += batchSize) {
+      const chunk = filasAIngresar.slice(i, i + batchSize);
+      await this.dataSource
+        .createQueryBuilder()
+        .insert()
+        .into(MantenimientoHistorico)
+        .values(chunk)
+        .orUpdate(
+          [
+            'titulo_tarea',
+            'deposito_semana',
+            'semana_normalizada',
+            'estado_original',
+            'estado_homologado',
+            'fecha_creacion',
+            'fecha_inicio',
+            'fecha_vencimiento',
+            'fecha_finalizacion',
+            'creado_por_texto',
+            'completado_por_texto',
+            'asignado_a_texto',
+            'cantidad_asignados',
+            'nombre_archivo_origen',
+            'numero_fila_origen',
+            'cargado_por_usuario_id',
+            'cargado_por_nombre',
+            'metadata',
+          ],
+          ['origen_sistema', 'id_tarea_externa'],
+        )
+        .execute();
+      insertados += chunk.length;
+    }
+
+    return {
+      totalFilas: filasAIngresar.length,
+      insertados,
+      actualizados: 0,
+      omitidos: Math.max(0, totalRows - 1 - filasAIngresar.length),
+      tiempoMs: Date.now() - inicioMs,
+      archivo: originalname,
+    };
+  }
+
+  async importarHistoricoDesdeServidor(user: AuthUser | null | undefined) {
+    const fs = await import('node:fs');
+    const defaultPath = 'c:/Users/Alexander/Desktop/Dev/ESAP/Mantenimientos_Infraestructura_2026.xlsx';
+    if (!fs.existsSync(defaultPath)) {
+      throw new NotFoundException(`No se encontró el archivo de referencia en ${defaultPath}`);
+    }
+    const buffer = fs.readFileSync(defaultPath);
+    return this.importarHistoricoExcel(buffer, 'Mantenimientos_Infraestructura_2026.xlsx', user);
+  }
+
+  async listarHistorico(
+    filtros: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      semana?: string;
+      estado?: string;
+      tecnico?: string;
+      solicitante?: string;
+      fechaDesde?: string;
+      fechaHasta?: string;
+    },
+    user?: AuthUser | null,
+  ) {
+    const page = Math.max(1, Number(filtros.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(filtros.limit || 20)));
+    const skip = (page - 1) * limit;
+
+    const qb = this.getHistoricoRepo().createQueryBuilder('h');
+
+    if (filtros.search && filtros.search.trim().length > 0) {
+      const s = `%${filtros.search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        { s },
+      );
+    }
+
+    if (filtros.semana && filtros.semana !== 'TODAS') {
+      qb.andWhere('(h.semanaNormalizada = :sem OR h.depositoSemana = :sem)', { sem: filtros.semana });
+    }
+
+    if (filtros.estado && filtros.estado !== 'TODOS') {
+      qb.andWhere('(h.estadoHomologado = :est OR h.estadoOriginal = :est)', { est: filtros.estado });
+    }
+
+    if (filtros.tecnico && filtros.tecnico !== 'TODOS') {
+      const t = `%${filtros.tecnico.trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.asignadoATexto) ILIKE :t', { t });
+    }
+
+    if (filtros.solicitante && filtros.solicitante !== 'TODOS') {
+      const sol = `%${filtros.solicitante.trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.creadoPorTexto) ILIKE :sol', { sol });
+    }
+
+    if (filtros.fechaDesde) {
+      qb.andWhere('(h.fechaCreacion >= :fDesde OR h.fechaFinalizacion >= :fDesde)', {
+        fDesde: new Date(filtros.fechaDesde),
+      });
+    }
+
+    if (filtros.fechaHasta) {
+      const fH = new Date(filtros.fechaHasta);
+      fH.setHours(23, 59, 59, 999);
+      qb.andWhere('(h.fechaCreacion <= :fHasta OR h.fechaFinalizacion <= :fHasta)', {
+        fHasta: fH,
+      });
+    }
+
+    qb.orderBy('h.numeroFilaOrigen', 'ASC');
+    qb.addOrderBy('h.fechaCreacion', 'DESC', 'NULLS LAST');
+
+    const [data, total] = await qb.skip(skip).take(limit).getManyAndCount();
+
+    const semanasRaw = await this.dataSource.query(`
+      SELECT DISTINCT COALESCE(semana_normalizada, deposito_semana) as semana, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo
+      WHERE COALESCE(semana_normalizada, deposito_semana) IS NOT NULL
+      GROUP BY COALESCE(semana_normalizada, deposito_semana)
+      ORDER BY semana ASC
+    `);
+
+    const tecnicosRaw = await this.dataSource.query(`
+      SELECT DISTINCT TRIM(item) as tecnico, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo,
+      LATERAL unnest(string_to_array(asignado_a_texto, ';')) as item
+      WHERE asignado_a_texto IS NOT NULL AND TRIM(item) <> ''
+      GROUP BY TRIM(item)
+      ORDER BY cantidad DESC, tecnico ASC
+    `);
+
+    const solicitantesRaw = await this.dataSource.query(`
+      SELECT DISTINCT creado_por_texto as solicitante, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo
+      WHERE creado_por_texto IS NOT NULL AND TRIM(creado_por_texto) <> ''
+      GROUP BY creado_por_texto
+      ORDER BY cantidad DESC, solicitante ASC
+    `);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      semanasDisponibles: semanasRaw,
+      tecnicosDisponibles: tecnicosRaw,
+      solicitantesDisponibles: solicitantesRaw,
+    };
+  }
+
+  async obtenerEstadisticasHistorico(user?: AuthUser | null) {
+    const total = await this.getHistoricoRepo().count();
+    const completados = await this.getHistoricoRepo().count({ where: { estadoHomologado: 'COMPLETADO' } });
+
+    const semanasResult = await this.dataSource.query(`
+      SELECT COUNT(DISTINCT COALESCE(semana_normalizada, deposito_semana))::int as "totalSemanas"
+      FROM "infrastructure-management".mantenimiento_historico_externo
+    `);
+
+    const tecnicosResult = await this.dataSource.query(`
+      SELECT COUNT(DISTINCT TRIM(item))::int as "totalTecnicos"
+      FROM "infrastructure-management".mantenimiento_historico_externo,
+      LATERAL unnest(string_to_array(asignado_a_texto, ';')) as item
+      WHERE asignado_a_texto IS NOT NULL AND TRIM(item) <> ''
+    `);
+
+    const fechasResult = await this.dataSource.query(`
+      SELECT MIN(fecha_creacion) as "fechaMin", MAX(fecha_finalizacion) as "fechaMax"
+      FROM "infrastructure-management".mantenimiento_historico_externo
+    `);
+
+    return {
+      totalRegistros: total,
+      totalCompletados: completados,
+      totalSemanas: parseInt(semanasResult[0]?.totalSemanas || '0', 10),
+      totalTecnicos: parseInt(tecnicosResult[0]?.totalTecnicos || '0', 10),
+      rangoFechas: {
+        desde: fechasResult[0]?.fechaMin || null,
+        hasta: fechasResult[0]?.fechaMax || null,
+      },
+      tasaCumplimiento: total > 0 ? Math.round((completados / total) * 100) : 100,
+    };
+  }
+
+  async exportarHistoricoExcel(
+    filtros: any,
+    user: AuthUser | null | undefined,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook ? ExcelJSMod : (ExcelJSMod.default?.Workbook ? ExcelJSMod.default : (ExcelJSMod.default ?? ExcelJSMod));
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('Histórico Planner 2026');
+
+    ws.columns = [
+      { header: 'Fila', key: 'fila', width: 8 },
+      { header: 'Id. Tarea', key: 'idTarea', width: 25 },
+      { header: 'Nombre de la tarea', key: 'titulo', width: 45 },
+      { header: 'Depósito / Semana', key: 'deposito', width: 28 },
+      { header: 'Estado', key: 'estado', width: 15 },
+      { header: 'Asignado a', key: 'asignado', width: 38 },
+      { header: 'Cant.', key: 'cant', width: 8 },
+      { header: 'Creado por', key: 'creadoPor', width: 28 },
+      { header: 'Fecha de creación', key: 'fCreacion', width: 18 },
+      { header: 'Fecha de inicio', key: 'fInicio', width: 18 },
+      { header: 'Fecha de vencimiento', key: 'fVenc', width: 18 },
+      { header: 'Fecha de finalización', key: 'fFin', width: 18 },
+      { header: 'Completado por', key: 'completadoPor', width: 28 },
+    ];
+
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0284C7' } };
+
+    const qb = this.getHistoricoRepo().createQueryBuilder('h');
+
+    if (filtros?.search && String(filtros.search).trim().length > 0) {
+      const s = `%${String(filtros.search).trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        { s },
+      );
+    }
+    if (filtros?.semana && filtros.semana !== 'TODAS') {
+      qb.andWhere('(h.semanaNormalizada = :sem OR h.depositoSemana = :sem)', { sem: filtros.semana });
+    }
+    if (filtros?.estado && filtros.estado !== 'TODOS') {
+      qb.andWhere('(h.estadoHomologado = :est OR h.estadoOriginal = :est)', { est: filtros.estado });
+    }
+    if (filtros?.tecnico && filtros.tecnico !== 'TODOS') {
+      const t = `%${String(filtros.tecnico).trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.asignadoATexto) ILIKE :t', { t });
+    }
+    if (filtros?.solicitante && filtros.solicitante !== 'TODOS') {
+      const sol = `%${String(filtros.solicitante).trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.creadoPorTexto) ILIKE :sol', { sol });
+    }
+    if (filtros?.fechaDesde) {
+      qb.andWhere('(h.fechaCreacion >= :fDesde OR h.fechaFinalizacion >= :fDesde)', {
+        fDesde: new Date(filtros.fechaDesde),
+      });
+    }
+    if (filtros?.fechaHasta) {
+      const fH = new Date(filtros.fechaHasta);
+      fH.setHours(23, 59, 59, 999);
+      qb.andWhere('(h.fechaCreacion <= :fHasta OR h.fechaFinalizacion <= :fHasta)', {
+        fHasta: fH,
+      });
+    }
+
+    qb.orderBy('h.numeroFilaOrigen', 'ASC');
+    qb.addOrderBy('h.fechaCreacion', 'DESC', 'NULLS LAST');
+
+    const items = await qb.getMany();
+
+    for (const it of items) {
+      ws.addRow({
+        fila: it.numeroFilaOrigen || '',
+        idTarea: it.idTareaExterna,
+        titulo: it.tituloTarea,
+        deposito: it.semanaNormalizada || it.depositoSemana,
+        estado: it.estadoHomologado,
+        asignado: it.asignadoATexto,
+        cant: it.cantidadAsignados || 0,
+        creadoPor: it.creadoPorTexto,
+        fCreacion: it.fechaCreacion ? it.fechaCreacion.toISOString().slice(0, 10) : '',
+        fInicio: it.fechaInicio ? it.fechaInicio.toISOString().slice(0, 10) : '',
+        fVenc: it.fechaVencimiento ? it.fechaVencimiento.toISOString().slice(0, 10) : '',
+        fFin: it.fechaFinalizacion ? it.fechaFinalizacion.toISOString().slice(0, 10) : '',
+        completadoPor: it.completadoPorTexto,
+      });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return {
+      buffer: Buffer.from(buffer),
+      filename: `Historico_Mantenimientos_Planner_2026_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  async vaciarHistorico(user?: AuthUser | null): Promise<{ eliminados: number }> {
+    const count = await this.getHistoricoRepo().count();
+    await this.dataSource.query(`TRUNCATE TABLE "infrastructure-management".mantenimiento_historico_externo RESTART IDENTITY CASCADE;`);
+    return { eliminados: count };
+  }
 }
+
+

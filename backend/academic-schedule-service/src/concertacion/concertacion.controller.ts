@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req, SetMetadata } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req, SetMetadata } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
@@ -10,14 +10,17 @@ import { CLAVE_PUBLICA } from '../auth/jwt-auth.guard.js';
 import { idUserDe, rolesDe } from '../acceso/roles.js';
 import { tokenDe } from '../acceso/token.js';
 import { ConcertacionService } from './concertacion.service.js';
+import { NivelesRequestService } from '../acceso/niveles-request.service.js';
 import { PermisosPtaService } from './permisos-pta.service.js';
 
 /**
  * Concertación de la docencia — EFDS-2315. Apagada por defecto.
  *
- * El docente envía y firma desde el portal; revisores y aprobadores deciden con
- * los permisos del PTA (pta.review/approve.academica.<nivel>). Toda escritura
- * pasa además por el guard global (periodo cerrado, EFDS-2301).
+ * Orden nuevo (EFDS-2374, INTEGRACION-claude.md §23): el programador envía lo
+ * asignado; revisores y aprobadores deciden con los permisos del PTA
+ * (pta.review/approve.academica.<nivel>); el docente acepta (firma) o reporta una
+ * novedad desde el portal. Toda escritura pasa además por el guard global
+ * (periodo cerrado, EFDS-2301).
  */
 @Controller('concertacion')
 export class ConcertacionController {
@@ -25,6 +28,7 @@ export class ConcertacionController {
     private readonly concertacion: ConcertacionService,
     private readonly permisosPta: PermisosPtaService,
     private readonly permisos: ProgramacionPermissionsService,
+    private readonly niveles: NivelesRequestService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -59,12 +63,47 @@ export class ConcertacionController {
     return { success: true, data: await this.concertacion.delDocente(d.idPerson, String(periodo ?? '')) };
   }
 
-  /** POST /concertacion/:idPeriodo/enviar — el docente envía su docencia y firma. */
+  /**
+   * POST /concertacion/enviar { idPeriodo, documento } — el PROGRAMADOR envía a revisión lo
+   * asignado al docente, en los niveles que asigna (EFDS-2374).
+   */
+  @Post('enviar')
+  @EscrituraEn({ periodo: { body: 'idPeriodo' } })
+  async enviar(@Req() req: Request, @Body() body: { idPeriodo?: string; documento?: string }) {
+    const niveles = await this.niveles.asignables(req);
+    const data = await this.concertacion.enviar(
+      { idUser: idUserDe(req), niveles }, String(body?.documento ?? ''), String(body?.idPeriodo ?? ''), tokenDe(req));
+    return { success: true, data };
+  }
+
+  /** GET /concertacion/programador?periodo= — lo enviado, devuelto y con novedad, en sus niveles. */
+  @Get('programador')
+  async programador(@Req() req: Request, @Query('periodo') periodo: string) {
+    const niveles = await this.niveles.asignables(req);
+    return { success: true, data: await this.concertacion.delProgramador(niveles, String(periodo ?? '')) };
+  }
+
+  /** El docente ya no envía (EFDS-2374): se responde con el motivo, no con un 404 mudo. */
   @Post(':idPeriodo/enviar')
   @EscrituraEn({ periodo: { param: 'idPeriodo' } })
-  async enviar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string, @Body() body: { codigo?: string }) {
+  async enviarDocente() {
+    throw new ConflictException('El docente ya no envía su docencia: la envía el programador y usted la acepta en «Mi programación».');
+  }
+
+  /** POST /concertacion/:id/aceptar { codigo } — el docente acepta su programación y firma. */
+  @Post(':id/aceptar')
+  @EscrituraEn({ concertacion: { param: 'id' } })
+  async aceptar(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: { codigo?: string }) {
     const d = await this.docente(req);
-    return { success: true, data: await this.concertacion.enviar(d, idPeriodo, body?.codigo, tokenDe(req)) };
+    return { success: true, data: await this.concertacion.aceptar(id, d, body?.codigo, tokenDe(req)) };
+  }
+
+  /** POST /concertacion/:id/novedad { tipo, justificacion } — el docente reporta una novedad. */
+  @Post(':id/novedad')
+  @EscrituraEn({ concertacion: { param: 'id' } })
+  async novedad(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: { tipo?: string; justificacion?: string }) {
+    const d = await this.docente(req);
+    return { success: true, data: await this.concertacion.reportarNovedad(id, d, body?.tipo, body?.justificacion) };
   }
 
   /** GET /concertacion/bandeja?periodo= — por decidir, en los niveles donde el usuario decide. */
@@ -96,11 +135,11 @@ export class ConcertacionController {
     return { success: true, data: await this.concertacion.devolver(id, idUserDe(req), permisos, body?.comentario) };
   }
 
-  /** POST /concertacion/:id/aprobar — firmada; entrega la decisión al PTA. */
+  /** POST /concertacion/:id/aprobar — firmada; queda POR_ACEPTAR (la ve el docente). */
   @Post(':id/aprobar')
   @EscrituraEn({ concertacion: { param: 'id' } })
   async aprobar(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: { codigo?: string }) {
     const permisos = await this.permisosPta.resolver(idUserDe(req));
-    return { success: true, data: await this.concertacion.aprobar(id, idUserDe(req), permisos, body?.codigo, tokenDe(req)) };
+    return { success: true, data: await this.concertacion.aprobar(id, idUserDe(req), permisos, body?.codigo) };
   }
 }

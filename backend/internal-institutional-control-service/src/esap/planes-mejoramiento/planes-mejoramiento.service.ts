@@ -2421,14 +2421,14 @@ export class PlanesMejoramientoService {
     },
   ): Promise<SeguimientoPlan> {
     // Calcular métricas actuales de las acciones del plan
-    const acciones = await this.accionRepository.find({
-      where: { planMejoramientoId: planId } as any,
-    });
+    // La acción guarda el plan en planId; con planMejoramientoId TypeORM fallaba y el registro daba error (EFDS-2352)
+    const acciones = await this.accionRepository.find({ where: { planId } });
 
     let cumplen = 0, parcial = 0, noCumplen = 0;
     for (const a of acciones) {
-      const c = (a as any).cumplimientoEmfo;
-      if (c === 2) cumplen++;
+      const c = a.cumplimientoEmfo;
+      // Igual que en el cierre: una acción completada al 100 % cumple aunque no tenga el EM-FO-002 registrado
+      if (c === 2 || ((c ?? 0) === 0 && this.determinarEstadoAccionReal(a) === AccionCorrectivaEstado.COMPLETADA)) cumplen++;
       else if (c === 1) parcial++;
       else noCumplen++;
     }

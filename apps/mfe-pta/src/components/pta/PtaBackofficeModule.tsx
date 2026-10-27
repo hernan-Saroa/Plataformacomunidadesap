@@ -1978,7 +1978,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const preferred = preferredCode
         ? data.find((p: any) => getPeriodCode(p) === preferredCode)
         : null;
-      const activo = preferred || data.find((p: any) => p.estado === 'en_curso') || data[0];
+      const activo = preferred || data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario) || data[0];
       const codigo = getPeriodCode(activo);
       setPeriodoSeleccionadoPTA(codigo);
       setFiltroPeriodo(codigo);
@@ -2015,7 +2015,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return () => window.removeEventListener('esap:academic-catalog-period-changed', handleCatalogPeriodChange);
   }, [cargarPeriodosPTA]);
 
-  const periodoActivoPTA = periodosPTA.find((p: any) => p.estado === 'en_curso') || periodosPTA[0];
+  const periodoActivoPTA = periodosPTA.find((p: any) => p.estado === 'en_curso' && !p.extraordinario) || periodosPTA[0];
   const periodoActivoCodigoPTA = getPeriodCode(periodoActivoPTA);
   const esPeriodoActivoPTA = !!periodoSeleccionadoPTA && periodoSeleccionadoPTA === periodoActivoCodigoPTA;
   const [estadisticas, setEstadisticas] = useState<any>(null);

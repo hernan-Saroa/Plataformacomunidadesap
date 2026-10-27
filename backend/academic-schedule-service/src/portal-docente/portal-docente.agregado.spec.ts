@@ -35,6 +35,15 @@ const S = 'academic-schedule';
 const D1 = '39a6f90f-2daf-496d-9035-b057e4734873';
 const D2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';
 
+// Flujo ANTERIOR (EFDS-1938): el docente toma y suelta. Sigue en el código detrás del
+// interruptor PROG_PORTAL_TOMA_FRANJAS (EFDS-2348); esta suite lo prueba encendido.
+const tomaAntes = process.env.PROG_PORTAL_TOMA_FRANJAS;
+beforeAll(() => { process.env.PROG_PORTAL_TOMA_FRANJAS = 'true'; });
+afterAll(() => {
+  if (tomaAntes === undefined) delete process.env.PROG_PORTAL_TOMA_FRANJAS;
+  else process.env.PROG_PORTAL_TOMA_FRANJAS = tomaAntes;
+});
+
 describe('EFDS-1938 :: portal del docente (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;

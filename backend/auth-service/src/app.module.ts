@@ -29,6 +29,9 @@ import { EstructuraImportModule } from './estructura-import/estructura-import.mo
 import { LoginSettingsModule } from './settings/login-settings.module';
 import { SystemSetting } from './settings/system-setting.entity';
 import { FestivoColombia } from './settings/festivo-colombia.entity';
+import { TrdModule } from './trd/trd.module';
+import { TrdConfiguracion } from './trd/trd-configuracion.entity';
+import { TrdSerieSubserie } from './trd/trd-serie-subserie.entity';
 
 @NestModule({
   imports: [
@@ -61,6 +64,8 @@ import { FestivoColombia } from './settings/festivo-colombia.entity';
         DocumentoCarpetaDigital,
         SystemSetting,
         FestivoColombia,
+        TrdConfiguracion,
+        TrdSerieSubserie,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
       logging: true,
@@ -73,6 +78,7 @@ import { FestivoColombia } from './settings/festivo-colombia.entity';
     CarpetaDigitalModule,
     EstructuraImportModule,
     LoginSettingsModule,
+    TrdModule,
   ],
   providers: [
     {

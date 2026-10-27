@@ -40,14 +40,45 @@ export const PERMISO_PUBLICAR = 'programacion-academica.publicar';
 export const PERMISO_PORTAL_VER = 'portal-transaccional.programacion-academica.view';
 export const PERMISO_PORTAL_TOMAR = 'portal-transaccional.programacion-academica.tomar';
 
-/** Niveles cuyo catálogo puede ver este conjunto de permisos. */
-export function nivelesVisibles(permisos: ReadonlySet<string>): NivelAcademico[] {
-  if (permisos.has(PERMISO_PROGRAMACION_ALL)) return ['pregrado', 'posgrado'];
-  return (Object.keys(PERMISO_CATALOGO_POR_NIVEL) as NivelAcademico[])
-    .filter((nivel) => permisos.has(PERMISO_CATALOGO_POR_NIVEL[nivel]));
+/**
+ * Asignar el docente de los grupos ya programados — EFDS-2342 (migración 060).
+ * Es del rol PROGRAMADOR_DOCENTE_<NIVEL>, con la misma segregación por nivel que
+ * los programadores (RN-08). ⚠️ NO da derecho a programar: quien asigna ve la
+ * programación de su nivel pero no crea ni cambia grupos, franjas ni ciclos.
+ */
+export const PERMISO_ASIGNACION_POR_NIVEL: Record<NivelAcademico, string> = {
+  pregrado: 'programacion-academica.asignacion-docente.pregrado',
+  posgrado: 'programacion-academica.asignacion-docente.posgrado',
+};
+
+const NIVELES: NivelAcademico[] = ['pregrado', 'posgrado'];
+
+function nivelesCon(permisos: ReadonlySet<string>, porNivel: Record<NivelAcademico, string>): NivelAcademico[] {
+  if (permisos.has(PERMISO_PROGRAMACION_ALL)) return [...NIVELES];
+  return NIVELES.filter((nivel) => permisos.has(porNivel[nivel]));
 }
 
-/** ¿Puede ver el catálogo de este nivel? Fail-closed: sin permiso, no. */
+/** Niveles que puede PROGRAMAR (crear y cambiar grupos, franjas, ciclos). */
+export function nivelesProgramables(permisos: ReadonlySet<string>): NivelAcademico[] {
+  return nivelesCon(permisos, PERMISO_CATALOGO_POR_NIVEL);
+}
+
+/** Niveles en los que puede ASIGNAR docentes a los grupos (EFDS-2342). */
+export function nivelesAsignables(permisos: ReadonlySet<string>): NivelAcademico[] {
+  return nivelesCon(permisos, PERMISO_ASIGNACION_POR_NIVEL);
+}
+
+/**
+ * Niveles cuya programación puede VER: los que programa más los que asigna. Es
+ * la segregación de las lecturas; las escrituras usan `nivelesProgramables` o
+ * `nivelesAsignables`, según lo que hagan.
+ */
+export function nivelesVisibles(permisos: ReadonlySet<string>): NivelAcademico[] {
+  const ver = new Set([...nivelesProgramables(permisos), ...nivelesAsignables(permisos)]);
+  return NIVELES.filter((n) => ver.has(n));
+}
+
+/** ¿Puede ver la programación de este nivel? Fail-closed: sin permiso, no. */
 export function puedeVerNivel(permisos: ReadonlySet<string>, nivel: NivelAcademico): boolean {
   return nivelesVisibles(permisos).includes(nivel);
 }
@@ -61,4 +92,9 @@ export function puedeVerDisponibilidadDocente(permisos: ReadonlySet<string>): bo
   return permisos.has(PERMISO_DISPONIBILIDAD_DOCENTE)
     || permisos.has(PERMISO_PROGRAMACION_ALL)
     || nivelesVisibles(permisos).length > 0;
+}
+
+/** ¿Puede asignar docentes en algún nivel? */
+export function puedeAsignarDocentes(permisos: ReadonlySet<string>): boolean {
+  return nivelesAsignables(permisos).length > 0;
 }

@@ -6,13 +6,13 @@ import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 
 // Clasificación archivística institucional (ESAP - Control Disciplinario)
 export const FUID_ENTIDAD_PRODUCTORA = 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA (ESAP)';
-export const FUID_PERIODO_INSTITUCIONAL = 'TVD PERIODO 1';
+export const FUID_PERIODO_INSTITUCIONAL = 'TRD V4';
 export const FUID_UNIDAD_ADMINISTRATIVA = 'DESPACHO DE LA DIRECCIÓN NACIONAL';
 export const FUID_OFICINA_PRODUCTORA = 'OFICINA DE CONTROL INTERNO DISCIPLINARIO';
-export const FUID_CODIGO_OFICINA = 160;
+export const FUID_CODIGO_OFICINA = 150;
 export const FUID_OBJETO = 'Inventario Archivo de Gestión';
-export const FUID_CODIGO_CCDU = '780';
-export const FUID_CODIGO_SERIE_TVD = '780';
+export const FUID_CODIGO_CCDU = '250';
+export const FUID_CODIGO_SERIE_TVD = '250';
 export const FUID_SERIE = 'PROCESOS JURÍDICOS';
 export const FUID_SUBSERIE = 'PROCESOS DISCIPLINARIOS';
 
@@ -49,7 +49,11 @@ export interface FuidItemDto {
   fechaExtremaFinal?: string;   // Formato esperado: AAAA/MM/DD
   codigoCCDU?: string;
   codigoSerieTVD?: string;
+  codigoSerie?: string;
+  nombreSerie?: string;
   serie?: string;
+  codigoSubserie?: string;
+  nombreSubserie?: string;
   subserie?: string;
   ubicacion?: string;
   cantidadDocumentos?: number;
@@ -165,16 +169,33 @@ export class FuidExportService {
         : '';
 
       // Col I: Código CCDU
-      worksheet.getCell(`I${r}`).value = item.codigoCCDU || FUID_CODIGO_CCDU;
+      const codCCDU = String(item.codigoCCDU || item.codigoSerie || FUID_CODIGO_CCDU).trim();
+      worksheet.getCell(`I${r}`).value = codCCDU;
 
       // Col J: Código serie TVD
-      worksheet.getCell(`J${r}`).value = item.codigoSerieTVD || FUID_CODIGO_SERIE_TVD;
+      const codSerieTVD = String(item.codigoSerieTVD || item.codigoSerie || codCCDU || FUID_CODIGO_SERIE_TVD).trim();
+      worksheet.getCell(`J${r}`).value = codSerieTVD;
 
-      // Col K: Serie
-      worksheet.getCell(`K${r}`).value = item.serie || FUID_SERIE;
+      // Col K: Serie con número correspondiente
+      let serieTexto = (item.serie || item.nombreSerie || FUID_SERIE).trim();
+      const codParaSerie = codSerieTVD || codCCDU || FUID_CODIGO_SERIE_TVD;
+      if (codParaSerie && !new RegExp(`^${codParaSerie.replace('.', '\\.')}\\s*[-–]`, 'i').test(serieTexto)) {
+        serieTexto = `${codParaSerie} – ${serieTexto}`;
+      }
+      worksheet.getCell(`K${r}`).value = serieTexto;
 
-      // Col L: Subserie
-      worksheet.getCell(`L${r}`).value = item.subserie || FUID_SUBSERIE;
+      // Col L: Subserie con número correspondiente
+      let subserieTexto = (item.subserie || item.nombreSubserie || FUID_SUBSERIE).trim();
+      const codParaSubserie = String(
+        item.codigoSubserie ||
+        (codParaSerie === '1330' ? '60' : codParaSerie === '68' ? '22' : codParaSerie === '75' ? '01' : '05'),
+      ).trim();
+      if (subserieTexto.toUpperCase() === 'N/A' || subserieTexto.toUpperCase() === 'NO APLICA') {
+        subserieTexto = 'N/A';
+      } else if (codParaSubserie && !new RegExp(`^${codParaSubserie.replace('.', '\\.')}\\s*[-–]`, 'i').test(subserieTexto)) {
+        subserieTexto = `${codParaSubserie} – ${subserieTexto}`;
+      }
+      worksheet.getCell(`L${r}`).value = subserieTexto;
 
       // Col M / N: Soporte Físico / Electrónico (X en electrónico)
       worksheet.getCell(`M${r}`).value = null;

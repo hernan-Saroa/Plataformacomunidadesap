@@ -20,7 +20,7 @@ import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-e
 import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
-import { capturarDatosCarga, fechaCivilPersistencia } from './rund-carga-original';
+import { capturarDatosCarga, fechaCivilPersistencia, stableJson } from './rund-carga-original';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { confirmRundDeletion, deletionFingerprint, deletionIds } from './rund-registro-eliminacion';
@@ -1840,7 +1840,7 @@ export class BancoDocentesService implements OnModuleInit {
         for (const field of fieldsToCheck) {
           const newVal = docenteData[field];
           const oldVal = existingDocente[field];
-          const changed = field === 'datosCargaMasiva' ? JSON.stringify(newVal) !== JSON.stringify(oldVal) : String(newVal) !== String(oldVal);
+          const changed = field === 'datosCargaMasiva' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
           if (newVal !== undefined && newVal !== null && changed) {
             hasChanges = true;
             changedFields.push(String(field));
@@ -2084,7 +2084,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async bulkUpsert(rows: any[], options: BulkUpsertOptions = {}) {
-    const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' LIMIT 1`);
+    const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' AND NOT extraordinario LIMIT 1`);
     const activePeriod = periodRows.length > 0 ? periodRows[0].codigo : null;
     const fallbackPeriod = options.periodoCarga || activePeriod;
     const preparedRows = rows.map((item, index) => {

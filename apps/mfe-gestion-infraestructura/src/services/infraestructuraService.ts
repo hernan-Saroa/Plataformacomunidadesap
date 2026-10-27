@@ -61,7 +61,66 @@ export interface DependenciaCatalogo {
   idSede: number | null;
   sedeUmiId: string | null;
   sedeCodigo: string | null;
-  sedeNombre: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// FASE 4 · REQ. #10: Interfaces Histórico Planner / GLPI
+// ---------------------------------------------------------------------------
+export interface MantenimientoHistoricoItem {
+  idHistorico: string;
+  origenSistema: string;
+  idTareaExterna: string;
+  tituloTarea: string;
+  depositoSemana?: string;
+  semanaNormalizada?: string;
+  estadoOriginal?: string;
+  estadoHomologado: string;
+  prioridadOriginal?: string;
+  fechaCreacion?: string;
+  fechaInicio?: string;
+  fechaVencimiento?: string;
+  fechaFinalizacion?: string;
+  creadoPorTexto?: string;
+  completadoPorTexto?: string;
+  asignadoATexto?: string;
+  cantidadAsignados: number;
+  idSedeHomologada?: string;
+  nombreSedeSugerida?: string;
+  categoriaSugerida?: string;
+  nombreArchivoOrigen: string;
+  numeroFilaOrigen?: number;
+  cargadoPorNombre?: string;
+  fechaIngesta: string;
+  metadata?: Record<string, any>;
+}
+
+export interface HistoricoListResponse {
+  data: MantenimientoHistoricoItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  semanasDisponibles: Array<{ semana: string; cantidad: number }>;
+  tecnicosDisponibles?: Array<{ tecnico: string; cantidad: number }>;
+  solicitantesDisponibles?: Array<{ solicitante: string; cantidad: number }>;
+}
+
+export interface HistoricoEstadisticas {
+  totalRegistros: number;
+  totalCompletados: number;
+  totalSemanas: number;
+  totalTecnicos: number;
+  rangoFechas: { desde: string | null; hasta: string | null };
+  tasaCumplimiento: number;
+}
+
+export interface ResumenImportacionHistorico {
+  totalFilas: number;
+  insertados: number;
+  actualizados: number;
+  omitidos: number;
+  tiempoMs: number;
+  archivo: string;
 }
 
 export interface SolicitudEvidencia {
@@ -1269,6 +1328,20 @@ export const infraestructuraService = {
     );
   },
 
+  async getJerarquiaSedesDemo(): Promise<{
+    sedesActuales: any[];
+    territorialesNacionales: any[];
+  }> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sedes/jerarquia-completa`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getJerarquiaSedesDemo falló:', err);
+      return { sedesActuales: [], territorialesNacionales: [] };
+    }
+  },
+
   async crearSede(payload: Partial<Sede> & { codigo: string; nombre: string; departamento: string; municipio: string; direccion: string }): Promise<Sede> {
     const res = await fetch(`${API_BASE_URL}/sedes`, {
       method: 'POST',
@@ -2167,7 +2240,128 @@ export const infraestructuraService = {
     }
     return await res.blob();
   },
+
+  // ---------------------------------------------------------------------------
+  // Fase 4 Req. #10: Repositorio e Ingesta Histórica (Microsoft Planner / GLPI)
+  // ---------------------------------------------------------------------------
+  async getHistorico(filtros?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    semana?: string;
+    estado?: string;
+    tecnico?: string;
+    solicitante?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+  }): Promise<HistoricoListResponse> {
+    const sp = new URLSearchParams();
+    if (filtros?.page) sp.append('page', String(filtros.page));
+    if (filtros?.limit) sp.append('limit', String(filtros.limit));
+    if (filtros?.search) sp.append('search', filtros.search);
+    if (filtros?.semana && filtros.semana !== 'TODAS') sp.append('semana', filtros.semana);
+    if (filtros?.estado && filtros.estado !== 'TODOS') sp.append('estado', filtros.estado);
+    if (filtros?.tecnico && filtros.tecnico !== 'TODOS') sp.append('tecnico', filtros.tecnico);
+    if (filtros?.solicitante && filtros.solicitante !== 'TODOS') sp.append('solicitante', filtros.solicitante);
+    if (filtros?.fechaDesde) sp.append('fechaDesde', filtros.fechaDesde);
+    if (filtros?.fechaHasta) sp.append('fechaHasta', filtros.fechaHasta);
+    const qs = sp.toString();
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/historico${qs ? `?${qs}` : ''}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error consultando histórico de mantenimientos';
+      try { const b = await res.json(); if (b?.message) m = String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async getHistoricoEstadisticas(): Promise<HistoricoEstadisticas> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/historico/estadisticas`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error consultando estadísticas históricas';
+      try { const b = await res.json(); if (b?.message) m = String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async importarHistoricoArchivo(file: File): Promise<ResumenImportacionHistorico> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/historico/importar`, {
+      method: 'POST',
+      body: fd,
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error importando archivo histórico';
+      try { const b = await res.json(); if (b?.message) m = String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async cargarHistoricoDesdeServidor(): Promise<ResumenImportacionHistorico> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/historico/cargar-servidor`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error cargando histórico desde servidor';
+      try { const b = await res.json(); if (b?.message) m = String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async descargarHistoricoExcel(filtros?: {
+    search?: string;
+    semana?: string;
+    estado?: string;
+    tecnico?: string;
+    solicitante?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+  }): Promise<Blob> {
+    const sp = new URLSearchParams();
+    if (filtros?.search) sp.append('search', filtros.search);
+    if (filtros?.semana && filtros.semana !== 'TODAS') sp.append('semana', filtros.semana);
+    if (filtros?.estado && filtros.estado !== 'TODOS') sp.append('estado', filtros.estado);
+    if (filtros?.tecnico && filtros.tecnico !== 'TODOS') sp.append('tecnico', filtros.tecnico);
+    if (filtros?.solicitante && filtros.solicitante !== 'TODOS') sp.append('solicitante', filtros.solicitante);
+    if (filtros?.fechaDesde) sp.append('fechaDesde', filtros.fechaDesde);
+    if (filtros?.fechaHasta) sp.append('fechaHasta', filtros.fechaHasta);
+    const qs = sp.toString();
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/historico/exportar-excel${qs ? `?${qs}` : ''}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error exportando histórico a Excel';
+      try { const b = await res.json(); if (b?.message) m = String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
+
+  async vaciarHistorico(): Promise<{ eliminados: number }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/historico`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error vaciando registros históricos';
+      try { const b = await res.json(); if (b?.message) m = String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
 };
+
 
 export const getMisSolicitudes = (): Promise<SolicitudMantenimiento[]> =>
   infraestructuraService.getMisSolicitudes();
+
