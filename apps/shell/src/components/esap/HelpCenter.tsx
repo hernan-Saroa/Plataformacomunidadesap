@@ -17,7 +17,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, MotionConfig, type Variants } from 'motion/react';
 import { toast } from 'sonner';
 import {
   centroAyudaService,
@@ -27,6 +27,7 @@ import {
 } from '../../services/api/centroAyuda.service';
 import { ListaRecursos } from './centro-ayuda/ListaRecursos';
 import { VisorRecurso } from './centro-ayuda/VisorRecurso';
+import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/estilosAnimacion';
 
 interface HelpResource {
   id: CategoriaCentroAyuda;
@@ -86,6 +87,16 @@ export function HelpCenter() {
       setRecursoEnVisor(null);
     }
   }, [isOpen, cargarRecursos]);
+
+  // Esc cierra el panel; si hay un recurso abierto, el visor se cierra primero.
+  useEffect(() => {
+    if (!isOpen || recursoEnVisor) return;
+    const alPresionar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', alPresionar);
+    return () => window.removeEventListener('keydown', alPresionar);
+  }, [isOpen, recursoEnVisor]);
 
   const recursosDe = (categoria: CategoriaCentroAyuda) =>
     (recursos || []).filter((r) => r.categoria === categoria);
@@ -161,12 +172,12 @@ export function HelpCenter() {
 
   const recursoAbierto = helpResources.find((r) => r.id === categoriaAbierta);
 
-  const entradaTarjeta = {
+  const entradaTarjeta: Variants = {
     hidden: { opacity: 0, y: 10 },
     visible: (i: number) => ({
       opacity: 1,
       y: 0,
-      transition: { delay: i * 0.04, duration: 0.22, ease: [0.4, 0, 0.2, 1] },
+      transition: { delay: i * 0.03, duration: 0.18, ease: [0.4, 0, 0.2, 1] as const },
     }),
   };
 
@@ -176,11 +187,11 @@ export function HelpCenter() {
   );
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       {/* Help Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="w-10 h-10 lg:w-9 lg:h-9 xl:w-10 xl:h-10 rounded-lg border-2 border-slate-400 bg-white flex items-center justify-center hover:bg-slate-50 hover:border-slate-500 hover:-translate-y-0.5 transition-all active:scale-95"
+        className="w-10 h-10 lg:w-9 lg:h-9 xl:w-10 xl:h-10 rounded-lg border-2 border-gray-300 bg-white flex items-center justify-center hover:bg-slate-50 hover:border-gray-400 hover:-translate-y-0.5 transition-all active:scale-95"
         aria-label="Centro de ayuda"
       >
         <HelpCircle className="w-5 h-5 lg:w-4 lg:h-4 text-slate-700" strokeWidth={2} />
@@ -197,6 +208,7 @@ export function HelpCenter() {
               exit={{ opacity: 0 }}
               onClick={() => setIsOpen(false)}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              style={SIN_TRANSICION_CSS}
             />
 
             {/* Drawer/Slide-over Container - Desde la derecha */}
@@ -206,6 +218,7 @@ export function HelpCenter() {
               exit={{ x: 500, opacity: 0 }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
               className="relative w-full sm:w-[95vw] md:w-[85vw] lg:w-[500px] xl:w-[550px] bg-white shadow-2xl overflow-hidden flex flex-col h-full rounded-none sm:rounded-l-2xl"
+              style={SIN_TRANSICION_CSS}
             >
               {/* Handle Visual (Mobile) */}
               <div className="md:hidden flex justify-center pt-2 pb-1 bg-white">
@@ -243,7 +256,7 @@ export function HelpCenter() {
                   className={`px-3 py-2 h-9 rounded-lg text-xs transition-all duration-150 cursor-pointer flex-1 ${
                     activeTab === 'recursos'
                       ? 'bg-white text-[#1e5da8] shadow-sm font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border border-transparent hover:border-gray-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-gray-300'
                   }`}
                 >
                   Recursos
@@ -253,7 +266,7 @@ export function HelpCenter() {
                   className={`px-3 py-2 h-9 rounded-lg text-xs transition-all duration-150 cursor-pointer flex-1 ${
                     activeTab === 'faqs'
                       ? 'bg-white text-[#1e5da8] shadow-sm font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border border-transparent hover:border-gray-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-gray-300'
                   }`}
                 >
                   FAQs
@@ -263,7 +276,7 @@ export function HelpCenter() {
                   className={`px-3 py-2 h-9 rounded-lg text-xs transition-all duration-150 cursor-pointer flex-1 ${
                     activeTab === 'contacto'
                       ? 'bg-white text-[#1e5da8] shadow-sm font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border border-transparent hover:border-gray-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-gray-300'
                   }`}
                 >
                   Contacto
@@ -281,7 +294,8 @@ export function HelpCenter() {
                         initial={{ opacity: 0, x: 28 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 28 }}
-                        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                        transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
+                        style={SIN_TRANSICION_CSS}
                       >
                         {recursos ? (
                           <ListaRecursos
@@ -304,7 +318,7 @@ export function HelpCenter() {
                               </button>
                               <button
                                 onClick={cargarRecursos}
-                                className="px-3 py-2 rounded-lg text-xs bg-[#1e5da8] text-white hover:bg-[#154a85]"
+                                className="px-3 py-2 rounded-lg text-xs bg-[#1e5da8] text-white hover:bg-[#174a87]"
                               >
                                 Reintentar
                               </button>
@@ -323,8 +337,9 @@ export function HelpCenter() {
                         initial={{ opacity: 0, x: -28 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -28 }}
-                        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                        transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
                         className="p-4"
+                        style={SIN_TRANSICION_CSS}
                       >
                         <div className="grid grid-cols-2 gap-3">
                           {helpResources.map((resource, i) => {
@@ -339,14 +354,15 @@ export function HelpCenter() {
                                 whileHover={{ y: -2 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => abrirCategoria(resource.id)}
-                                className="relative p-4 min-h-[118px] rounded-xl border-2 border-slate-200 bg-white hover:border-[#1e5da8] hover:bg-blue-50/40 hover:shadow-md transition-colors duration-150 text-left group cursor-pointer"
+                                className="relative flex flex-col items-stretch justify-start p-4 min-h-[120px] rounded-xl border-2 border-slate-200 bg-white hover:border-[#1e5da8] hover:bg-blue-50 hover:shadow-md transition-colors duration-150 text-left group cursor-pointer"
+                                style={SOLO_TRANSICION_DE_COLOR}
                               >
                                 <div className="flex items-start justify-between gap-2 mb-3">
                                   <div
                                     className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                                       estado?.vacio
-                                        ? 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
-                                        : 'bg-blue-100 text-[#1e5da8] group-hover:bg-[#1e5da8] group-hover:text-white'
+                                        ? 'bg-slate-100 text-slate-400'
+                                        : 'bg-blue-50 text-[#1e5da8] group-hover:bg-blue-100'
                                     }`}
                                   >
                                     {resource.icon}
@@ -472,14 +488,14 @@ export function HelpCenter() {
                           <div className="space-y-2">
                             <a
                               href="mailto:soporte@esap.edu.co"
-                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#154a85] transition-colors font-medium"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
                             >
                               <Mail className="w-3.5 h-3.5" />
                               soporte@esap.edu.co
                             </a>
                             <a
                               href="tel:+576013536464"
-                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#154a85] transition-colors font-medium"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
                             >
                               <Phone className="w-3.5 h-3.5" />
                               +57 (601) 353 6464 Ext. 1234
@@ -505,7 +521,7 @@ export function HelpCenter() {
                           <div className="space-y-2">
                             <a
                               href="mailto:mesadeayuda@esap.edu.co"
-                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#154a85] transition-colors font-medium"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
                             >
                               <Mail className="w-3.5 h-3.5" />
                               mesadeayuda@esap.edu.co
@@ -537,7 +553,7 @@ export function HelpCenter() {
                     </div>
 
                     {/* Portal de Ayuda */}
-                    <button className="w-full p-4 rounded-xl bg-[#1e5da8] text-white hover:bg-[#154a85] transition-colors flex items-center justify-between group">
+                    <button className="w-full p-4 rounded-xl bg-[#1e5da8] text-white hover:bg-[#174a87] transition-colors flex items-center justify-between group">
                       <div className="text-left">
                         <h4 className="text-sm mb-0.5 font-medium">Portal de Ayuda ESAP</h4>
                         <p className="text-xs text-white/80">
@@ -555,7 +571,7 @@ export function HelpCenter() {
                 <span className="text-xs text-slate-600">
                   Versión 2.0.0
                 </span>
-                <button className="text-xs text-[#1e5da8] hover:text-[#154a85] flex items-center gap-1 transition-colors font-medium">
+                <button className="text-xs text-[#1e5da8] hover:text-[#174a8a] flex items-center gap-1 transition-colors font-medium">
                   ¿Sugerir mejora?
                   <ExternalLink className="w-3 h-3" />
                 </button>
@@ -570,6 +586,6 @@ export function HelpCenter() {
           <VisorRecurso recurso={recursoEnVisor} onCerrar={() => setRecursoEnVisor(null)} />
         )}
       </AnimatePresence>
-    </>
+    </MotionConfig>
   );
 }

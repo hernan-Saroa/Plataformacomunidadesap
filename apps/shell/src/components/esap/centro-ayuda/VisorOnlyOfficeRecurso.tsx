@@ -39,9 +39,11 @@ function cargarApiOnlyOffice(): Promise<void> {
 interface Props {
   recursoId: number;
   onFallo: (motivo: string) => void;
+  /** Se llama cuando el documento ya se ve. */
+  onListo?: () => void;
 }
 
-export function VisorOnlyOfficeRecurso({ recursoId, onFallo }: Props) {
+export function VisorOnlyOfficeRecurso({ recursoId, onFallo, onListo }: Props) {
   const contenedorId = useRef(`visor-centro-ayuda-${Math.random().toString(36).slice(2)}`);
   const editorRef = useRef<any>(null);
   const [cargando, setCargando] = useState(true);
@@ -66,7 +68,9 @@ export function VisorOnlyOfficeRecurso({ recursoId, onFallo }: Props) {
           height: '100%',
           events: {
             onDocumentReady: () => {
-              if (!cancelado) setCargando(false);
+              if (cancelado) return;
+              setCargando(false);
+              onListo?.();
             },
             onError: (evento: any) => {
               if (cancelado) return;

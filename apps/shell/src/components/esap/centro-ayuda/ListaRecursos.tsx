@@ -1,7 +1,7 @@
 /**
  * Contenido de una opción de la pestaña Recursos del Centro de Ayuda.
  */
-import { motion } from 'motion/react';
+import { motion, type Variants } from 'motion/react';
 import { ArrowLeft, Download, ExternalLink, Eye, Inbox, Play } from 'lucide-react';
 import {
   urlArchivoRecurso,
@@ -9,6 +9,7 @@ import {
   type RecursoCentroAyuda,
 } from '../../../services/api/centroAyuda.service';
 import { IconoRecurso, tamanoLegible, tipoDeRecurso } from './IconoRecurso';
+import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './estilosAnimacion';
 
 interface Props {
   titulo: string;
@@ -18,12 +19,12 @@ interface Props {
   onVer: (recurso: RecursoCentroAyuda) => void;
 }
 
-const entrada = {
+const entrada: Variants = {
   hidden: { opacity: 0, y: 8 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.04, duration: 0.22, ease: [0.4, 0, 0.2, 1] },
+    transition: { delay: i * 0.03, duration: 0.18, ease: [0.4, 0, 0.2, 1] as const },
   }),
 };
 
@@ -33,7 +34,8 @@ export function ContenidoNoDisponible() {
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/60 px-6 py-10 text-center"
+      className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center"
+      style={SIN_TRANSICION_CSS}
     >
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm border border-slate-200">
         <Inbox className="h-6 w-6 text-slate-400" />
@@ -53,7 +55,7 @@ function Teclas({ combinacion }: { combinacion: string }) {
       {teclas.map((tecla, i) => (
         <span key={i} className="flex items-center gap-1">
           {i > 0 && <span className="text-xs text-slate-400">+</span>}
-          <kbd className="min-w-[28px] rounded-md border border-slate-300 bg-gradient-to-b from-white to-slate-50 px-2 py-1 text-center font-mono text-xs font-semibold text-slate-700 shadow-[0_1px_0_1px_rgba(0,0,0,0.06)]">
+          <kbd className="min-w-[20px] rounded-md border border-slate-300 bg-gradient-to-b from-white to-slate-50 px-2 py-1 text-center font-mono text-xs font-semibold text-slate-700 shadow-sm">
             {tecla}
           </kbd>
         </span>
@@ -63,7 +65,7 @@ function Teclas({ combinacion }: { combinacion: string }) {
 }
 
 const botonPrimario =
-  'inline-flex items-center gap-1.5 rounded-lg bg-[#1e5da8] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-[#154a85] hover:shadow active:scale-[0.98]';
+  'inline-flex items-center gap-1.5 rounded-lg bg-[#1e5da8] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-[#174a87] hover:shadow active:scale-[0.98]';
 const botonSecundario =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-all hover:border-[#1e5da8] hover:text-[#1e5da8] active:scale-[0.98]';
 
@@ -113,6 +115,7 @@ function Tarjeta({ recurso, categoria, onVer, indice }: {
         initial="hidden"
         animate="visible"
         className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-slate-300"
+        style={SOLO_TRANSICION_DE_COLOR}
       >
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-900">{recurso.titulo}</p>
@@ -135,6 +138,7 @@ function Tarjeta({ recurso, categoria, onVer, indice }: {
       initial="hidden"
       animate="visible"
       className="rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm"
+      style={SOLO_TRANSICION_DE_COLOR}
     >
       <div className="flex items-start gap-3">
         <IconoRecurso recurso={recurso} />
@@ -178,7 +182,7 @@ export function ListaRecursos({ titulo, categoria, recursos, onVolver, onVer }: 
     <div className="p-4">
       <button
         onClick={onVolver}
-        className="group mb-3 inline-flex items-center gap-1.5 rounded-lg py-1 pr-2 text-xs font-medium text-[#1e5da8] transition-colors hover:text-[#154a85]"
+        className="group mb-3 inline-flex items-center gap-1.5 rounded-lg py-1 pr-2 text-xs font-medium text-[#1e5da8] transition-colors hover:text-[#174a8a]"
       >
         <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
         Todos los recursos

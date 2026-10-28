@@ -5,12 +5,18 @@ import {
   FileSpreadsheet,
   FileText,
   FileType,
+  Keyboard,
   Link2,
   Presentation,
   Video,
   type LucideIcon,
 } from 'lucide-react';
-import type { RecursoCentroAyuda } from '../../../services/api/centroAyuda.service';
+import type {
+  CategoriaCentroAyuda,
+  RecursoCentroAyuda,
+} from '../../../services/api/centroAyuda.service';
+
+type DatosDeTipo = Pick<RecursoCentroAyuda, 'archivo' | 'enlace'> & { categoria?: CategoriaCentroAyuda };
 
 export interface TipoRecurso {
   Icono: LucideIcon;
@@ -19,10 +25,13 @@ export interface TipoRecurso {
   tono: string;
 }
 
-export function tipoDeRecurso(recurso: Pick<RecursoCentroAyuda, 'archivo' | 'enlace'>): TipoRecurso {
+export function tipoDeRecurso(recurso: DatosDeTipo): TipoRecurso {
+  if (recurso.categoria === 'atajos') {
+    return { Icono: Keyboard, etiqueta: 'Atajo', tono: 'bg-blue-50 text-[#1e5da8]' };
+  }
   const archivo = recurso.archivo;
   if (archivo) {
-    if (archivo.esVideo) return { Icono: Video, etiqueta: 'Video', tono: 'bg-rose-50 text-rose-600' };
+    if (archivo.esVideo) return { Icono: Video, etiqueta: 'Video', tono: 'bg-purple-50 text-purple-600' };
     const ext = (archivo.nombre.split('.').pop() || '').toLowerCase();
     if (ext === 'pdf') return { Icono: FileText, etiqueta: 'PDF', tono: 'bg-red-50 text-red-600' };
     if (['xls', 'xlsx', 'ods', 'csv'].includes(ext)) {
@@ -43,7 +52,7 @@ export function tamanoLegible(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function IconoRecurso({ recurso, className = 'h-5 w-5' }: { recurso: Pick<RecursoCentroAyuda, 'archivo' | 'enlace'>; className?: string }) {
+export function IconoRecurso({ recurso, className = 'h-5 w-5' }: { recurso: DatosDeTipo; className?: string }) {
   const { Icono, tono } = tipoDeRecurso(recurso);
   return (
     <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${tono}`}>

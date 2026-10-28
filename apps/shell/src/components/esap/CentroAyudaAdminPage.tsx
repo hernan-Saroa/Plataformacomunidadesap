@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   CheckCircle2,
   Eye,
@@ -32,6 +32,7 @@ import {
 } from '../../services/api/centroAyuda.service';
 import { IconoRecurso, tamanoLegible, tipoDeRecurso } from './centro-ayuda/IconoRecurso';
 import { VisorRecurso } from './centro-ayuda/VisorRecurso';
+import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/estilosAnimacion';
 
 // Mismo límite que auth-service (TAMANO_MAXIMO_ARCHIVO).
 const TAMANO_MAXIMO_ARCHIVO = 500 * 1024 * 1024;
@@ -73,15 +74,39 @@ const datosDe = (r: RecursoCentroAyuda): DatosRecurso => ({
 });
 
 const campo =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus:border-[#1e5da8] focus:outline-none';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-gray-400 focus:border-[#1e5da8] focus:outline-none';
+const campoConError = campo.replace('border-slate-300', 'border-red-400').replace('focus:border-[#1e5da8]', 'focus:border-red-500');
 const etiqueta = 'mb-1 block text-xs font-medium text-slate-700';
+
+type CampoValidado = 'titulo' | 'version' | 'contenido' | 'enlace' | 'archivo';
+type Errores = Partial<Record<CampoValidado, string>>;
+
+/** Orden en que se revisan los campos y a cuál se lleva el foco si fallan. */
+const ID_DE_CAMPO: Record<CampoValidado, string> = {
+  titulo: 'ca-titulo',
+  version: 'ca-version',
+  contenido: 'ca-contenido',
+  enlace: 'ca-enlace',
+  archivo: 'ca-archivo',
+};
+
+const extensionDe = (nombre: string) => (nombre.split('.').pop() || '').toLowerCase();
+
+function ErrorDeCampo({ campo, errores }: { campo: CampoValidado; errores: Errores }) {
+  if (!errores[campo]) return null;
+  return (
+    <p id={`${ID_DE_CAMPO[campo]}-error`} className="mt-1 text-xs text-red-600">
+      {errores[campo]}
+    </p>
+  );
+}
 const botonPrimario =
-  'inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-[#154a85] hover:shadow active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100';
+  'inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-[#174a87] hover:shadow active:scale-[0.98] disabled:opacity-60';
 const botonSecundario =
   'inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60';
 
 /** Zona para soltar o elegir el archivo del recurso. */
-function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuitarActual, puedeQuitar }: {
+function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuitarActual, puedeQuitar, conError }: {
   acepta: string;
   archivo: File | null;
   actual: RecursoCentroAyuda['archivo'];
@@ -89,6 +114,7 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
   onArchivo: (archivo: File | null) => void;
   onQuitarActual: (quitar: boolean) => void;
   puedeQuitar: boolean;
+  conError: boolean;
 }) {
   const entradaRef = useRef<HTMLInputElement>(null);
   const [arrastrando, setArrastrando] = useState(false);
@@ -109,7 +135,8 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5"
+        className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5"
+        style={SIN_TRANSICION_CSS}
       >
         <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-emerald-600" />
         <div className="min-w-0 flex-1">
@@ -131,8 +158,11 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
   return (
     <div className="space-y-2">
       <div
+        id={ID_DE_CAMPO.archivo}
         role="button"
         tabIndex={0}
+        aria-invalid={conError || undefined}
+        aria-describedby={conError ? `${ID_DE_CAMPO.archivo}-error` : undefined}
         onClick={() => entradaRef.current?.click()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -152,8 +182,10 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
         }}
         className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-all ${
           arrastrando
-            ? 'border-[#1e5da8] bg-blue-50 scale-[1.01]'
-            : 'border-slate-300 bg-slate-50/60 hover:border-[#1e5da8] hover:bg-blue-50/50'
+            ? 'border-[#1e5da8] bg-blue-50'
+            : conError
+              ? 'border-red-400 bg-red-50 hover:border-[#1e5da8]'
+              : 'border-slate-300 bg-slate-50 hover:border-[#1e5da8] hover:bg-blue-50/50'
         }`}
       >
         <UploadCloud className={`h-7 w-7 transition-colors ${arrastrando ? 'text-[#1e5da8]' : 'text-slate-400'}`} />
@@ -171,7 +203,7 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
           </span>
           {puedeQuitar && (
             <label className="flex flex-shrink-0 cursor-pointer items-center gap-1.5 text-slate-600">
-              <input type="checkbox" checked={quitarActual} onChange={(e) => onQuitarActual(e.target.checked)} className="accent-[#1e5da8]" />
+              <input type="checkbox" checked={quitarActual} onChange={(e) => onQuitarActual(e.target.checked)} />
               Quitar
             </label>
           )}
@@ -195,10 +227,73 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
   const [archivo, setArchivo] = useState<File | null>(null);
   const [quitarArchivo, setQuitarArchivo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [errores, setErrores] = useState<Errores>({});
 
-  const cambiar = (cambios: Partial<DatosRecurso>) => setDatos((d) => ({ ...d, ...cambios }));
+  const limpiarError = (...campos: CampoValidado[]) =>
+    setErrores((previos) => {
+      if (!campos.some((c) => previos[c])) return previos;
+      const siguientes = { ...previos };
+      campos.forEach((c) => delete siguientes[c]);
+      return siguientes;
+    });
+
+  const cambiar = (cambios: Partial<DatosRecurso>) => {
+    setDatos((d) => ({ ...d, ...cambios }));
+    if ('categoria' in cambios) setErrores({});
+    if ('titulo' in cambios) limpiarError('titulo');
+    if ('version' in cambios) limpiarError('version');
+    // en documentación, cursos y prácticas basta con texto, enlace o archivo
+    if ('contenido' in cambios || 'enlace' in cambios) limpiarError('contenido', 'enlace', 'archivo');
+  };
+  const elegirArchivo = (nuevo: File | null) => {
+    setArchivo(nuevo);
+    limpiarError('archivo', 'contenido');
+  };
   const categoria = datos.categoria;
   const admiteArchivo = categoria !== 'atajos';
+
+  const propsDeCampo = (campoValidado: CampoValidado) => ({
+    id: ID_DE_CAMPO[campoValidado],
+    className: errores[campoValidado] ? campoConError : campo,
+    'aria-invalid': errores[campoValidado] ? true : undefined,
+    'aria-describedby': errores[campoValidado] ? `${ID_DE_CAMPO[campoValidado]}-error` : undefined,
+  });
+
+  /** Mismas reglas que auth-service (CentroAyudaService.validar), para avisar antes de enviar. */
+  const validar = (): Errores => {
+    const encontrados: Errores = {};
+    const enlace = (datos.enlace ?? '').trim();
+    const usaEnlace = categoria !== 'atajos' && categoria !== 'manual';
+    const conArchivo = Boolean(archivo) || (Boolean(recurso?.archivo) && !quitarArchivo);
+    const extension = archivo ? extensionDe(archivo.name) : recurso?.archivo ? extensionDe(recurso.archivo.nombre) : '';
+
+    if (!datos.titulo.trim()) encontrados.titulo = 'Escriba un título';
+    if (usaEnlace && enlace && !/^https?:\/\/\S+$/i.test(enlace)) {
+      encontrados.enlace = 'El enlace debe empezar por http:// o https://';
+    }
+    switch (categoria) {
+      case 'manual':
+        if (!datos.version?.trim()) encontrados.version = 'Indique la versión del sistema';
+        if (!conArchivo) encontrados.archivo = 'Cargue el PDF del manual';
+        else if (extension !== 'pdf') encontrados.archivo = 'El manual debe ser un PDF';
+        break;
+      case 'videos':
+        if (conArchivo && !['mp4', 'webm', 'ogg', 'ogv'].includes(extension)) {
+          encontrados.archivo = 'El video debe ser MP4, WebM u OGG';
+        } else if (!conArchivo && !enlace) {
+          encontrados.archivo = 'Cargue el video o escriba su enlace';
+        }
+        break;
+      case 'atajos':
+        if (!datos.contenido?.trim()) encontrados.contenido = 'Escriba la combinación de teclas';
+        break;
+      default:
+        if (!conArchivo && !enlace && !datos.contenido?.trim()) {
+          encontrados.contenido = 'Agregue un texto, un enlace o un archivo';
+        }
+    }
+    return encontrados;
+  };
 
   useEffect(() => {
     const alPresionar = (e: KeyboardEvent) => {
@@ -210,8 +305,11 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!datos.titulo.trim()) {
-      toast.error('El título es obligatorio');
+    const encontrados = validar();
+    const primero = (Object.keys(ID_DE_CAMPO) as CampoValidado[]).find((c) => encontrados[c]);
+    if (primero) {
+      setErrores(encontrados);
+      document.getElementById(ID_DE_CAMPO[primero])?.focus();
       return;
     }
     setGuardando(true);
@@ -247,6 +345,7 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
       aria-modal="true"
       aria-labelledby="ca-form-titulo"
       onClick={() => !guardando && onCerrar()}
+      style={SIN_TRANSICION_CSS}
     >
       <motion.form
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -256,6 +355,7 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
         onSubmit={guardar}
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        style={SIN_TRANSICION_CSS}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
@@ -286,7 +386,8 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
 
           <div>
             <label className={etiqueta} htmlFor="ca-titulo">Título <span className="text-red-500">*</span></label>
-            <input id="ca-titulo" className={campo} maxLength={200} autoFocus value={datos.titulo} onChange={(e) => cambiar({ titulo: e.target.value })} />
+            <input {...propsDeCampo('titulo')} maxLength={200} autoFocus value={datos.titulo} onChange={(e) => cambiar({ titulo: e.target.value })} />
+            <ErrorDeCampo campo="titulo" errores={errores} />
           </div>
 
           <div>
@@ -296,40 +397,50 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
 
           <AnimatePresence initial={false}>
             {categoria === 'documentacion' && (
-              <motion.div key="modulo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <motion.div key="modulo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                 <label className={etiqueta} htmlFor="ca-modulo">Módulo del sistema</label>
                 <input id="ca-modulo" className={campo} maxLength={100} placeholder="Ej.: Contratación" value={datos.modulo ?? ''} onChange={(e) => cambiar({ modulo: e.target.value })} />
               </motion.div>
             )}
 
             {categoria === 'manual' && (
-              <motion.div key="version" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <motion.div key="version" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                 <label className={etiqueta} htmlFor="ca-version">Versión del sistema <span className="text-red-500">*</span></label>
-                <input id="ca-version" className={campo} maxLength={30} placeholder="Ej.: 2.1" value={datos.version ?? ''} onChange={(e) => cambiar({ version: e.target.value })} />
+                <input {...propsDeCampo('version')} maxLength={30} placeholder="Ej.: 2.1" value={datos.version ?? ''} onChange={(e) => cambiar({ version: e.target.value })} />
+                <ErrorDeCampo campo="version" errores={errores} />
               </motion.div>
             )}
 
             {categoria === 'atajos' ? (
-              <motion.div key="teclas" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <motion.div key="teclas" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                 <label className={etiqueta} htmlFor="ca-contenido">Combinación de teclas <span className="text-red-500">*</span></label>
-                <input id="ca-contenido" className={`${campo} font-mono`} placeholder="Ctrl + K" value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
+                <input
+                  {...propsDeCampo('contenido')}
+                  className={`${errores.contenido ? campoConError : campo} font-mono`}
+                  placeholder="Ctrl + K"
+                  value={datos.contenido ?? ''}
+                  onChange={(e) => cambiar({ contenido: e.target.value })}
+                />
+                <ErrorDeCampo campo="contenido" errores={errores} />
               </motion.div>
             ) : categoria !== 'manual' && (
-              <motion.div key="texto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <motion.div key="texto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                 <label className={etiqueta} htmlFor="ca-contenido">Texto</label>
-                <textarea id="ca-contenido" className={campo} rows={4} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
+                <textarea {...propsDeCampo('contenido')} rows={4} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
+                <ErrorDeCampo campo="contenido" errores={errores} />
               </motion.div>
             )}
 
             {categoria !== 'atajos' && categoria !== 'manual' && (
-              <motion.div key="enlace" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <motion.div key="enlace" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                 <label className={etiqueta} htmlFor="ca-enlace">Enlace</label>
-                <input id="ca-enlace" type="url" className={campo} placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
+                <input {...propsDeCampo('enlace')} type="url" placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
+                <ErrorDeCampo campo="enlace" errores={errores} />
               </motion.div>
             )}
 
             {admiteArchivo && (
-              <motion.div key="archivo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <motion.div key="archivo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                 <label className={etiqueta}>
                   {categoria === 'manual' ? <>Archivo PDF <span className="text-red-500">*</span></> : 'Archivo'}
                 </label>
@@ -338,10 +449,12 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
                   archivo={archivo}
                   actual={recurso?.archivo ?? null}
                   quitarActual={quitarArchivo}
-                  onArchivo={setArchivo}
+                  onArchivo={elegirArchivo}
                   onQuitarActual={setQuitarArchivo}
                   puedeQuitar={categoria !== 'manual'}
+                  conError={Boolean(errores.archivo)}
                 />
+                <ErrorDeCampo campo="archivo" errores={errores} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -358,7 +471,7 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
           <button type="button" onClick={onCerrar} disabled={guardando} className={botonSecundario}>
             Cancelar
           </button>
@@ -389,6 +502,7 @@ function ConfirmarEliminar({ recurso, onCancelar, onConfirmar }: {
       role="alertdialog"
       aria-modal="true"
       onClick={() => !eliminando && onCancelar()}
+      style={SIN_TRANSICION_CSS}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -397,6 +511,7 @@ function ConfirmarEliminar({ recurso, onCancelar, onConfirmar }: {
         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+        style={SIN_TRANSICION_CSS}
       >
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-50">
@@ -437,7 +552,7 @@ function ConfirmarEliminar({ recurso, onCancelar, onConfirmar }: {
 }
 
 const botonFila =
-  'rounded-lg p-2 text-slate-500 transition-colors hover:bg-blue-50 hover:text-[#1e5da8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e5da8]';
+  'rounded-lg p-2 text-slate-500 transition-colors hover:bg-blue-50 hover:text-[#1e5da8] focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2';
 
 export default function CentroAyudaAdminPage() {
   const [recursos, setRecursos] = useState<RecursoCentroAyuda[] | null>(null);
@@ -481,6 +596,7 @@ export default function CentroAyudaAdminPage() {
   };
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="flex h-full flex-col" style={{ minHeight: '100%', backgroundColor: '#F8FAFC' }}>
       <header className="border-b px-6 py-5 shadow-sm" style={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0' }}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
@@ -524,6 +640,7 @@ export default function CentroAyudaAdminPage() {
                       layoutId="ca-pestana"
                       className="absolute inset-0 rounded-lg bg-[#1e5da8] shadow-sm"
                       transition={{ type: 'spring', damping: 30, stiffness: 380 }}
+                      style={SIN_TRANSICION_CSS}
                     />
                   )}
                   <span className="relative">
@@ -562,6 +679,7 @@ export default function CentroAyudaAdminPage() {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18 }}
                   className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
+                  style={SIN_TRANSICION_CSS}
                 >
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
                     <FolderOpen className="h-6 w-6 text-slate-400" />
@@ -576,7 +694,7 @@ export default function CentroAyudaAdminPage() {
                   </button>
                 </motion.div>
               ) : (
-                <motion.div key={`lista-${filtro}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2">
+                <motion.div key={`lista-${filtro}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
                   <AnimatePresence initial={false}>
                     {visibles.map((r, i) => {
                       const tipo = tipoDeRecurso(r);
@@ -596,6 +714,7 @@ export default function CentroAyudaAdminPage() {
                           className={`flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 border transition-shadow hover:shadow-md ${
                             r.activo ? 'border-slate-200' : 'border-slate-200 opacity-70'
                           }`}
+                          style={SOLO_TRANSICION_DE_COLOR}
                         >
                           <IconoRecurso recurso={r} />
                           <div className="min-w-0 flex-1">
@@ -626,7 +745,7 @@ export default function CentroAyudaAdminPage() {
                             <button onClick={() => setEditando(r)} className={botonFila} title="Editar" aria-label={`Editar ${r.titulo}`}>
                               <Pencil className="h-4 w-4" />
                             </button>
-                            <button onClick={() => setPorEliminar(r)} className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400" title="Eliminar" aria-label={`Eliminar ${r.titulo}`}>
+                            <button onClick={() => setPorEliminar(r)} className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2" title="Eliminar" aria-label={`Eliminar ${r.titulo}`}>
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
@@ -674,5 +793,6 @@ export default function CentroAyudaAdminPage() {
         {enVisor && <VisorRecurso key="visor" recurso={enVisor} onCerrar={() => setEnVisor(null)} />}
       </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }
