@@ -49,7 +49,7 @@ const faqs: FAQItem[] = [
   },
   {
     question: '¿Cómo asigno permisos a un rol?',
-    answer: 'En Roles y Permisos, selecciona el rol que deseas modificar y activa los permisos necesarios en el panel derecho. Los cambios se guardan automáticamente.',
+    answer: 'En Roles y Permisos, abre el menú ⋮ del rol y elige «Gestionar Permisos». Marca los permisos que necesites (puedes buscarlos por módulo o nombre) y toca «Guardar Permisos». Quienes tengan ese rol verán los cambios la próxima vez que inicien sesión.',
   },
   {
     question: '¿Puedo ver el historial de cambios?',
@@ -60,6 +60,32 @@ const faqs: FAQItem[] = [
     answer: 'En el módulo de Informes, selecciona el tipo de reporte, aplica los filtros necesarios y haz clic en "Exportar". Puedes elegir entre PDF, Excel o CSV.',
   },
 ];
+
+/**
+ * Canales oficiales de la ESAP, tomados de esap.edu.co el 27/10/2026: Dirección de
+ * Atención al Ciudadano, su directorio telefónico, la página de PQRSD y la de la OTIC.
+ * La ESAP no tiene un "portal de ayuda" propio; el soporte de sistemas es la Mesa de
+ * Servicios de la OTIC y las sugerencias se radican por PQRSD.
+ */
+const CANALES_ESAP = {
+  mesaDeServicios: 'https://forms.office.com/r/AerGNpXbAL',
+  correoMesaDeAyuda: 'mesadeayuda@esap.edu.co',
+  lineaNacional: '018000 423713',
+  lineaBogota: '(+57) 601 7956110',
+  lineaBogotaMarcacion: '+576017956110',
+  correoVentanilla: 'ventanillaunica@esap.edu.co',
+  sedeCentral: 'Calle 44 # 53-37, CAN, Bogotá D.C.',
+  atencionAlCiudadano:
+    'https://www.esap.edu.co/esap/organigrama/subdireccion-nacional-de-gestion-corporativa/direccion-de-atencion-al-ciudadano/',
+  pqrsd:
+    'https://www.esap.edu.co/esap/organigrama/subdireccion-nacional-de-gestion-corporativa/direccion-de-atencion-al-ciudadano/pqrsd/',
+  horarios: [
+    { canal: 'Línea telefónica, lunes a viernes', horario: '7:00 a.m. a 9:00 p.m.' },
+    { canal: 'Línea telefónica, sábados', horario: '7:00 a.m. a 2:00 p.m.' },
+    { canal: 'Presencial, lunes a viernes', horario: '8:00 a.m. a 5:00 p.m.' },
+    { canal: 'Agente virtual', horario: 'Todos los días, 24 horas' },
+  ],
+} as const;
 
 export function HelpCenter() {
   const [isOpen, setIsOpen] = useState(false);
@@ -448,8 +474,9 @@ export function HelpCenter() {
                                   ¿Necesitas ayuda inmediata?
                                 </h4>
                                 <p className="text-xs text-slate-600">
-                                  Nuestro equipo de soporte está disponible de lunes a viernes de 8:00 AM a 6:00 PM.
-                                  Escríbenos desde la pestaña Contacto.
+                                  Las fallas de la plataforma las atiende la Mesa de Servicios de la OTIC. La línea
+                                  {' '}{CANALES_ESAP.lineaNacional} atiende de lunes a viernes de 7:00 a.m. a 9:00 p.m.
+                                  y los sábados de 7:00 a.m. a 2:00 p.m. Todos los canales están en la pestaña Contacto.
                                 </p>
                               </div>
                             </div>
@@ -516,10 +543,10 @@ export function HelpCenter() {
                   </div>
                 )}
 
-                {/* Contacto Tab */}
+                {/* Contacto Tab: canales oficiales de la ESAP (ver CANALES_ESAP) */}
                 {activeTab === 'contacto' && (
                   <div className="p-4 space-y-4">
-                    {/* Soporte Técnico */}
+                    {/* Soporte de la plataforma: Mesa de Servicios de la OTIC */}
                     <div className="p-4 rounded-xl border-2 border-slate-200 hover:border-[#1e5da8] transition-colors">
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-lg bg-blue-100 text-[#1e5da8] flex items-center justify-center flex-shrink-0">
@@ -527,32 +554,34 @@ export function HelpCenter() {
                         </div>
                         <div className="flex-1">
                           <h4 className="text-sm text-slate-900 mb-1 font-medium">
-                            Soporte Técnico
+                            Soporte técnico de la plataforma
                           </h4>
                           <p className="text-xs text-slate-600 mb-3">
-                            Para problemas técnicos o errores del sistema
+                            Fallas, errores o problemas de acceso. Lo atiende la Mesa de Servicios de la Oficina de Tecnologías (OTIC).
                           </p>
                           <div className="space-y-2">
                             <a
-                              href="mailto:soporte@esap.edu.co"
+                              href={CANALES_ESAP.mesaDeServicios}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Abrir una solicitud en la Mesa de Servicios
+                            </a>
+                            <a
+                              href={`mailto:${CANALES_ESAP.correoMesaDeAyuda}`}
                               className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
                             >
                               <Mail className="w-3.5 h-3.5" />
-                              soporte@esap.edu.co
-                            </a>
-                            <a
-                              href="tel:+576013536464"
-                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              +57 (601) 353 6464 Ext. 1234
+                              {CANALES_ESAP.correoMesaDeAyuda}
                             </a>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Mesa de Ayuda */}
+                    {/* Atención al ciudadano */}
                     <div className="p-4 rounded-xl border-2 border-slate-200 hover:border-[#1e5da8] transition-colors">
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-lg bg-green-100 text-green-700 flex items-center justify-center flex-shrink-0">
@@ -560,18 +589,32 @@ export function HelpCenter() {
                         </div>
                         <div className="flex-1">
                           <h4 className="text-sm text-slate-900 mb-1 font-medium">
-                            Mesa de Ayuda
+                            Atención al ciudadano
                           </h4>
                           <p className="text-xs text-slate-600 mb-3">
-                            Consultas generales y solicitudes
+                            Información general sobre la ESAP, trámites y correspondencia
                           </p>
                           <div className="space-y-2">
                             <a
-                              href="mailto:mesadeayuda@esap.edu.co"
+                              href={`tel:${CANALES_ESAP.lineaNacional.replace(/\s/g, '')}`}
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              {CANALES_ESAP.lineaNacional} · línea nacional gratuita
+                            </a>
+                            <a
+                              href={`tel:${CANALES_ESAP.lineaBogotaMarcacion}`}
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              {CANALES_ESAP.lineaBogota} · Bogotá
+                            </a>
+                            <a
+                              href={`mailto:${CANALES_ESAP.correoVentanilla}`}
                               className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#174a8a] transition-colors font-medium"
                             >
                               <Mail className="w-3.5 h-3.5" />
-                              mesadeayuda@esap.edu.co
+                              {CANALES_ESAP.correoVentanilla}
                             </a>
                           </div>
                         </div>
@@ -581,34 +624,36 @@ export function HelpCenter() {
                     {/* Horarios */}
                     <div className="p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
                       <h4 className="text-sm text-slate-900 mb-2 font-medium">
-                        Horario de Atención
+                        Horarios de atención
                       </h4>
                       <div className="space-y-1.5 text-xs text-slate-700">
-                        <div className="flex justify-between">
-                          <span>Lunes a Viernes:</span>
-                          <span className="font-medium">8:00 AM - 6:00 PM</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Sábados:</span>
-                          <span className="font-medium">9:00 AM - 1:00 PM</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Domingos:</span>
-                          <span className="text-slate-500">Cerrado</span>
-                        </div>
+                        {CANALES_ESAP.horarios.map((h) => (
+                          <div key={h.canal} className="flex justify-between gap-3">
+                            <span>{h.canal}</span>
+                            <span className="font-medium text-right">{h.horario}</span>
+                          </div>
+                        ))}
                       </div>
+                      <p className="mt-3 text-[11px] text-slate-500">
+                        Sede central: {CANALES_ESAP.sedeCentral}
+                      </p>
                     </div>
 
-                    {/* Portal de Ayuda */}
-                    <button className="w-full p-4 rounded-xl bg-[#1e5da8] text-white hover:bg-[#174a87] transition-colors flex items-center justify-between group">
+                    {/* Todos los canales oficiales */}
+                    <a
+                      href={CANALES_ESAP.atencionAlCiudadano}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full p-4 rounded-xl bg-[#1e5da8] text-white hover:bg-[#174a87] transition-colors flex items-center justify-between group"
+                    >
                       <div className="text-left">
-                        <h4 className="text-sm mb-0.5 font-medium">Portal de Ayuda ESAP</h4>
+                        <h4 className="text-sm mb-0.5 font-medium">Atención al Ciudadano ESAP</h4>
                         <p className="text-xs text-white/80">
-                          Visita nuestro portal completo de soporte
+                          Todos los canales oficiales y el agente virtual en esap.edu.co
                         </p>
                       </div>
                       <ExternalLink className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                    </button>
+                    </a>
                   </div>
                 )}
               </div>
@@ -618,10 +663,16 @@ export function HelpCenter() {
                 <span className="text-xs text-slate-600">
                   Versión 2.0.0
                 </span>
-                <button className="text-xs text-[#1e5da8] hover:text-[#174a8a] flex items-center gap-1 transition-colors font-medium">
+                <a
+                  href={CANALES_ESAP.pqrsd}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Las sugerencias se radican en el formulario oficial de PQRSD de la ESAP"
+                  className="text-xs text-[#1e5da8] hover:text-[#174a8a] flex items-center gap-1 transition-colors font-medium"
+                >
                   ¿Sugerir mejora?
                   <ExternalLink className="w-3 h-3" />
-                </button>
+                </a>
               </div>
             </motion.div>
           </div>
