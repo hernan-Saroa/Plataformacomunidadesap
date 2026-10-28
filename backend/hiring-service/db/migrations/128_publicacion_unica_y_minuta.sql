@@ -15,10 +15,12 @@
 --
 -- 3. Los documentos de la 5.1 pasan por el abogado revisor y la Directora de
 --    Contratación antes de publicarse (quien los carga es el estructurador).
---    Se crea la cadena «Revisión de los documentos del proceso» con los mismos
---    escalones que la del pliego definitivo (113) y se asigna a la 5.1 en la
---    versión activa y en el borrador del flujo. Al quedar completos, la 5.1
---    entra en revisión en vez de cerrarse sola.
+--    Se crea la cadena «Revisión de los documentos del proceso» con esos dos
+--    escalones —el puesto Abogado revisor y el rol DIRECTOR_CONTRATACION— y se
+--    asigna a la 5.1 en la versión activa y en el borrador del flujo. No se
+--    copia la del pliego definitivo (113): esa se pudo editar en cada ambiente,
+--    y en local ya traía al estructurador de primer escalón. Al quedar
+--    completos, la 5.1 entra en revisión en vez de cerrarse sola.
 --
 -- Idempotente.
 -- ============================================================================
@@ -46,24 +48,37 @@ ON CONFLICT (numeral, codigo) DO NOTHING;
 
 DO $$
 DECLARE
-  cadena  uuid;
-  modelo  record;
-  version record;
+  cadena    uuid;
+  revisor   uuid;
+  pasos     jsonb;
+  version   record;
 BEGIN
+  SELECT id INTO revisor FROM hiring.puestos_proceso WHERE activo AND lower(nombre) = 'abogado revisor';
+  pasos := jsonb_build_array(
+    jsonb_build_object(
+      'nombre', 'Abogado revisor', 'roles', '[]'::jsonb, 'personas', '[]'::jsonb, 'papeles', '[]'::jsonb,
+      'puestos', CASE WHEN revisor IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(revisor::text) END,
+      'reglaDecision', 'UNO', 'acciones', '["APROBAR", "DEVOLVER"]'::jsonb),
+    jsonb_build_object(
+      'nombre', 'Directora', 'roles', '["DIRECTOR_CONTRATACION"]'::jsonb, 'personas', '[]'::jsonb,
+      'papeles', '[]'::jsonb, 'puestos', '[]'::jsonb, 'reglaDecision', 'UNO',
+      'acciones', '["APROBAR", "DEVOLVER"]'::jsonb)
+  );
+
   SELECT id INTO cadena FROM hiring.cadenas_aprobacion WHERE nombre = 'Revisión de los documentos del proceso';
 
   IF cadena IS NULL THEN
-    SELECT * INTO modelo FROM hiring.cadenas_aprobacion WHERE nombre = 'Revisión del pliego definitivo';
-    IF modelo IS NULL THEN
-      RAISE NOTICE 'Sin la cadena de la 113 no hay de dónde copiar los escalones: la 5.1 queda sin revisión';
-      RETURN;
-    END IF;
-
     INSERT INTO hiring.cadenas_aprobacion (nombre, descripcion, escalones, permite_mismo_aprobador, created_by)
     VALUES ('Revisión de los documentos del proceso',
             'El abogado revisor del proceso y después la Directora de Contratación revisan el aviso, el proyecto de pliego y la minuta antes de publicar (migración 128).',
-            modelo.escalones, modelo.permite_mismo_aprobador, 'migracion-128')
+            pasos, false, 'migracion-128')
     RETURNING id INTO cadena;
+  ELSE
+    -- Una primera versión de esta migración copiaba los escalones de la 113.
+    -- Si nadie la ha editado desde entonces, se corrige.
+    UPDATE hiring.cadenas_aprobacion
+       SET escalones = pasos, permite_mismo_aprobador = false
+     WHERE id = cadena AND created_by = 'migracion-128' AND updated_by IS NULL;
   END IF;
 
   FOR version IN SELECT id FROM hiring.flujo_versiones WHERE estado IN ('ACTIVA', 'BORRADOR') LOOP
