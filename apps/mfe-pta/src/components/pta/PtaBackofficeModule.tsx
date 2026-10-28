@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { isOlderPtaWorkflow } from './shared/ptaWorkflowSync';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1503,6 +1504,7 @@ type EstadoEtapaPersonal = 'sin_alcance' | 'pendiente' | 'resuelto';
 
 /** Combina el detalle general con las tareas personales ya autorizadas. */
 function mergePtaWorkflowUpdate(pta: any, update: any) {
+  if (isOlderPtaWorkflow(update, pta)) return pta;
   const merged = { ...pta, ...update };
   for (const etapa of ['revision', 'aprobacion']) {
     const personal = `componentes_${etapa}_usuario`;
@@ -2571,7 +2573,13 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     
     // Validación robusta: asegurar que siempre sean arrays
     if (ptaRes.success && Array.isArray(ptaRes.data)) {
-      setPtas(ptaRes.data);
+      setPtas(previous => {
+        const byId = new Map(previous.map(pta => [pta.id, pta]));
+        return ptaRes.data.map(pta => {
+          const current = byId.get(pta.id);
+          return current && isOlderPtaWorkflow(pta, current) ? current : pta;
+        });
+      });
     } else {
       console.warn('[PtaBackoffice] PTA data is not an array:', ptaRes);
       // Keep the last valid list on transient failures, including pending PTAs.
@@ -2585,7 +2593,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const actualizado = ptaRes.success && Array.isArray(ptaRes.data)
         ? ptaRes.data.find((item: any) => item.id === current.id && item.periodo === current.periodo) : null;
       const reporte = current.id === reportPtaId && reportRes?.success ? reportRes.data : null;
-      return actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+      const next = actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+      return isOlderPtaWorkflow(next, current) ? current : next;
     });
     setLoading(false);
     setLastRefreshed(new Date());

@@ -1352,6 +1352,38 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Todos').textContent).toContain('1');
   });
 
+  it.each(['revision', 'aprobacion'] as const)('mantiene la confirmación de %s ante consultas posteriores atrasadas y acepta una reapertura nueva', async etapa => {
+    sync.rol = 'docente';
+    sync.permissions.puedeRevisar = etapa === 'revision';
+    sync.permissions.puedeAprobar = etapa === 'aprobacion';
+    sync.permissions.componentesAprobables = etapa === 'aprobacion' ? ['academica_pregrado'] : [];
+    sync.permissions.componentesRevisables = etapa === 'revision' ? ['academica_pregrado:general'] : [];
+    const campo = `componentes_${etapa}_usuario`;
+    const row = { componente: 'academica_pregrado', subseccion: 'general', estado: 'pendiente', revision_completa: true };
+    const pta = { ...pendientes[0], flujo_actualizado_en: '2026-10-28T10:00:00Z',
+      componentes_en_alcance: ['academica_pregrado'],
+      componentes_revision_usuario: [], componentes_aprobacion_usuario: [], [campo]: [row] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    sync.updatedPta = { ...pta, flujo_actualizado_en: '2026-10-28T10:01:00Z',
+      [campo]: [{ ...row, estado: etapa === 'revision' ? 'revisado' : 'aprobado' }] };
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(2));
+    const pendientesTab = etapa === 'revision' ? 'Por revisar' : 'Por aprobar';
+    const resueltosTab = etapa === 'revision' ? 'Revisados' : 'Aprobados';
+    expect(tab(pendientesTab).textContent).not.toMatch(/\d/);
+    expect(tab(resueltosTab).textContent).toContain('1');
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab(resueltosTab).textContent).toContain('1');
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{ ...pta,
+      version: 2, flujo_actualizado_en: '2026-10-28T10:02:00Z' }] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab(pendientesTab).textContent).toContain('1');
+    expect(tab(resueltosTab).textContent).not.toMatch(/\d/);
+  });
+
   it('vuelve a una página con registros cuando la última página de pendientes queda vacía', async () => {
     const many = Array.from({ length: 51 }, (_, i) => ({ ...pendientes[0], id: `pta-${i}`, docente_nombre: `Docente número ${i}` }));
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: many });
@@ -1689,6 +1721,8 @@ describe('listado y contadores del backoffice', () => {
     };
     const pendingReview = {
       ...pendientes[0],
+      componentes_total: 1, componentes_aprobados: 0,
+      componentes_estado: [{ key: 'extension', label: 'Extensión', estado: 'en_revision', horas: 40 }],
       componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente' }],
       componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente', revision_completa: false }],
     };
@@ -1701,8 +1735,13 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
     expect(tab('Aprobados').textContent).toContain('1');
 
+    // El desglose permanece abierto mientras cambian las tarjetas y pestañas.
+    fireEvent.click(screen.getByTitle(/^Ver componentes: 0 de 1 componentes aprobados/));
+    expect(screen.getByText('En Revisión (1)')).toBeTruthy();
+
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
       ...pendingReview,
+      componentes_estado: [{ key: 'extension', label: 'Extensión', estado: 'pendiente', horas: 40 }],
       componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'revisado' }],
       componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente', revision_completa: true }],
     }, other] });
@@ -1711,9 +1750,13 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Revisados').textContent).toContain('1');
     expect(tab('Por aprobar').textContent).toContain('1');
     expect(tab('Aprobados').textContent).toContain('1');
+    expect(screen.queryByText('En Revisión (1)')).toBeNull();
+    expect(screen.getByText('Pendiente de aprobación (1)')).toBeTruthy();
 
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
       ...pendingReview, estado: 'Aprobado',
+      componentes_aprobados: 1,
+      componentes_estado: [{ key: 'extension', label: 'Extensión', estado: 'aprobado', horas: 40 }],
       componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'revisado' }],
       componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'aprobado', revision_completa: true }],
     }, other] });
@@ -1722,6 +1765,8 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Revisados').textContent).toContain('1');
     expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
     expect(tab('Aprobados').textContent).toContain('2');
+    expect(screen.getByText('Aprobados (1)')).toBeTruthy();
+    expect(screen.queryByText('Pendiente de aprobación (1)')).toBeNull();
     fireEvent.click(tab('Aprobados'));
     expect(screen.getByText('Docente uno')).toBeTruthy();
     expect(screen.getByText('Docente dos')).toBeTruthy();

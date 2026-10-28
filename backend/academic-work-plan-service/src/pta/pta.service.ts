@@ -3123,6 +3123,11 @@ export class PtaService {
 
     for (const dto of dtos) {
       const draft = isDraftPtaState(dto?.estado);
+      // Una revisión/aprobación parcial puede no cambiar estado, versión ni
+      // updatedAt del PTA. Su historial sí cambia y permite descartar respuestas
+      // anteriores en clientes atendidos por distintas instancias/cachés.
+      dto.flujo_actualizado_en = (historiesByPta.get(dto.id) || [])[0]?.createdAt
+        || dto.updatedAt || dto.updated_at || dto.createdAt || dto.created_at || null;
       const submission = (historiesByPta.get(dto.id) || []).find(h =>
         isPendingRoleApprovalState(h.estadoNuevo) &&
         !isPendingRoleApprovalState(h.estadoAnterior),
@@ -4045,10 +4050,9 @@ export class PtaService {
       this.historialRepo.find({ where: { ptaId: id }, order: { createdAt: 'DESC' } }),
     ]);
 
-    const [dto] = await this.enrichPtaSummaries([
-      this.toPtaDto(pta, await this.getExtMultiplicadores()) as any,
-    ]);
-    await this.attachPtaReferenceDates([dto]);
+    const baseDto = this.toPtaDto(pta, await this.getExtMultiplicadores()) as any;
+    await this.attachPtaReferenceDates([baseDto]);
+    const [dto] = await this.enrichPtaSummaries([baseDto]);
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
       // Reconciliar primero referencias legacy. Una recarga completa del catálogo
@@ -11419,6 +11423,7 @@ export class PtaService {
       const rows = await this.ptaRepo.find({ where: { id: In(ptaIds) } });
       const extMult = await this.getExtMultiplicadores();
       const dtos = rows.map(row => this.toPtaDto(row, extMult));
+      await this.attachPtaReferenceDates(dtos);
       await this.attachComponentApprovalProgress(dtos);
       return await this.filterGestionPtas(dtos, rows, auth);
     } catch (error) {
