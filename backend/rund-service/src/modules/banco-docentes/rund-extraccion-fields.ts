@@ -93,8 +93,30 @@ export function extractionFieldsForDocument(document: any) {
 }
 export const extractionValue = (value: any) => value == null ? '' : value instanceof Date ? value.toISOString().slice(0,10) : String(value).trim();
 export const comparable = (value: any) => extractionValue(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toUpperCase();
+/** Compara códigos del perfil con los valores legibles del asistente. */
+export function extractionComparisonValue(field: string, value: unknown): string {
+  const normalized = comparable(value);
+  const aliases: Record<string, Record<string, string>> = {
+    genero: { M: 'MASCULINO', F: 'FEMENINO' },
+    sexoBiologico: { M: 'HOMBRE', MASCULINO: 'HOMBRE', F: 'MUJER', FEMENINO: 'MUJER' },
+  };
+  return aliases[field]?.[normalized] || normalized;
+}
 const compactAlphanumeric = (value: any) => comparable(value).replace(/[^A-Z0-9]/g, '');
 const words = (value: any): string[] => comparable(value).match(/[A-Z]{2,}/g) || [];
+
+function documentTypeFromEvidence(text: string): string | undefined {
+  // El OCR puede unir palabras de una etiqueta pequeña. Solo se ignoran
+  // separadores: siguen siendo obligatorias las palabras del tipo documental.
+  const compact = compactAlphanumeric(text);
+  const matches = [
+    /CEDULA(?:DE)?CIUDADANIA/.test(compact) && 'CC',
+    /CEDULA(?:DE)?EXTRANJERIA/.test(compact) && 'CE',
+    /PASAPORTE/.test(compact) && 'PA',
+    (/PERMISO(?:ESPECIAL)?DEPERMANENCIA/.test(compact) || /\bPEP\b/.test(comparable(text))) && 'PEP',
+  ].filter(Boolean);
+  return matches.length === 1 ? matches[0] as string : undefined;
+}
 
 function normalizedValueIsGrounded(field: ExtractionField, value: string, quote: string): boolean {
   if (field.date) return true;
@@ -109,15 +131,7 @@ function normalizedValueIsGrounded(field: ExtractionField, value: string, quote:
     return tokens.length >= 2 && tokens.every(token => evidence.includes(token));
   }
   if (field.match === 'documentType') {
-    const normalized = comparable(value);
-    const evidence = comparable(quote);
-    const markers: Record<string, RegExp> = {
-      CC: /CEDULA(?:\s+DE)?\s+CIUDADANIA/,
-      CE: /CEDULA(?:\s+DE)?\s+EXTRANJERIA/,
-      PA: /PASAPORTE/,
-      PEP: /PERMISO(?:\s+ESPECIAL)?\s+DE\s+PERMANENCIA|\bPEP\b/,
-    };
-    return Boolean(markers[normalized]?.test(evidence));
+    return documentTypeFromEvidence(quote) === comparable(value);
   }
   const evidence = comparable(quote);
   const hasSexMarker = /\b(SEXO|GENERO)\b/.test(evidence);
@@ -149,8 +163,11 @@ function compactIdentityEvidence(fieldName: string, pageText: string, value: str
   if (!lines.length) return '';
 
   if (fieldName === 'documentType') {
-    const index = lines.findIndex(line => /CEDULA(?:\s+DE)?\s+(?:CIUDADANIA|EXTRANJERIA)|PASAPORTE|PERMISO(?:\s+ESPECIAL)?\s+DE\s+PERMANENCIA|\bPEP\b/.test(comparable(line)));
-    return index >= 0 ? excerpt(index - 1, index) : '';
+    for (let index = 0; index < lines.length; index++) for (let count = 1; count <= 3; count++) {
+      const quote = excerpt(index, index + count - 1);
+      if (documentTypeFromEvidence(quote) === comparable(value)) return quote;
+    }
+    return '';
   }
   if (fieldName === 'documentNumber') {
     const target = compactAlphanumeric(value);

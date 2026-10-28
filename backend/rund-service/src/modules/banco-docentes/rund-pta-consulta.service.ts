@@ -50,6 +50,7 @@ export class RundPtaConsultaService {
         d."periodoCarga" AS periodo
       FROM rund."Docente" d
       WHERE d."personaId" = $1::uuid
+        AND COALESCE(d."eliminadoRund", false)=false
       ORDER BY CASE WHEN d."periodoCarga" = $2::text THEN 0 ELSE 1 END,
         CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
         CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END,

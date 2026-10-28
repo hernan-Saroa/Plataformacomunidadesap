@@ -49,7 +49,9 @@ export class BancoDocentesRolesGuard implements CanActivate {
 
     const permissionAllowed = isSuperAdmin || (requiredPermissions || [])
       .some((permission) => effectivePermissions.has(permission));
-    if (roleAllowed || permissionAllowed) return true;
+    // A granular permission can be withdrawn even from a functional administrator.
+    // Explicit roles are only the fallback for routes without permission metadata.
+    if (isSuperAdmin || (requiredPermissions?.length ? permissionAllowed : roleAllowed)) return true;
 
     const requirements = [
       requiredRoles?.length ? `roles: ${requiredRoles.join(', ')}` : '',

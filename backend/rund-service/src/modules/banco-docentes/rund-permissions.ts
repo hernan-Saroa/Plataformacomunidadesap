@@ -1,4 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
+import { RUND_PROFILE_PERMISSIONS } from './rund-permission-policy';
 
 export const RUND_PERMISSIONS_KEY = 'rundPermissions';
 

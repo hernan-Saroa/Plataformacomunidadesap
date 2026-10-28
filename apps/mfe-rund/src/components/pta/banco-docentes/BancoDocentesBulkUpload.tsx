@@ -90,7 +90,8 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
   };
 
   const handleDownloadTemplate = () => {
-    downloadBancoDocentesTemplate();
+    const periodo = /^20\d{2}-[12]$/.test(periodoSeleccionado || '') ? periodoSeleccionado : undefined;
+    downloadBancoDocentesTemplate(periodo).catch(() => toast.error('No se pudo generar la plantilla.'));
   };
 
   const handleImportar = async (dryRun = true, fileToImport?: File, skipInvalid = false) => {
@@ -356,9 +357,9 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                     </h3>
                     <div className="space-y-4">
                       {[
-                        { n: '1', t: 'Descargue la plantilla Excel', s: 'Contiene el formato requerido con las dos hojas: Banco de Docentes.' },
-                        { n: '2', t: 'Complete los datos', s: 'Llene las hojas con los códigos, nombres y estados de cada docente y sede.' },
-                        { n: '3', t: 'Suba el archivo', s: 'Arrastre o seleccione — se valida automáticamente con las reglas G1-G7.' },
+                        { n: '1', t: 'Descargue la plantilla Excel', s: 'Hoja CARGA_DOCENTES con las 38 columnas oficiales, listas desplegables y el período en el título.' },
+                        { n: '2', t: 'Complete los datos', s: 'Una fila por docente. Las columnas naranja son obligatorias; las amarillas se calculan si las deja vacías.' },
+                        { n: '3', t: 'Suba el archivo', s: 'Arrastre o seleccione — se valida automáticamente fila por fila antes de importar.' },
                         { n: '4', t: 'Confirme la importación', s: 'Revise el preview y confirme. Puede corregir errores directamente.' },
                       ].map(({ n, t, s }) => (
                         <div key={n} className="flex items-start gap-3">
@@ -503,7 +504,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                     <div>
                       <h3 className="font-bold text-gray-900 text-sm">Datos ya cargados — Todos los registros están duplicados</h3>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Los {totalDts} registros de Direcciones Docentes y {totalCetaps} Docentes del archivo ya existen en la plataforma con información idéntica. No hay datos nuevos ni actualizaciones por procesar.
+                        Los {totalCetaps} docentes del archivo ya existen en la plataforma con información idéntica. No hay datos nuevos ni actualizaciones por procesar.
                       </p>
                     </div>
                   </div>

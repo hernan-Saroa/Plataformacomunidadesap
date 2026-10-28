@@ -7,6 +7,7 @@ import { BancoDocenteManualRequestModal } from './BancoDocenteManualRequestModal
 import { useBancoDocenteManualPreview } from './useBancoDocenteManualPreview';
 import type { RundSuggestion } from './RundExtractionPanel';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';
+import { bancoDocentesColumnList } from '../../../utils/bancoDocentesWorkbook';
 import {
   MANUAL_DEDICACIONES,
   MANUAL_DOCUMENT_TYPES,
@@ -186,6 +187,12 @@ const fieldFocusStyle = `
 /* ═══════════════════════════════════════════════════════════════════
    Main Component
    ═══════════════════════════════════════════════════════════════════ */
+
+/** Opciones del Excel de carga masiva; conserva el valor actual si es anterior a la lista (perfiles ya cargados). */
+const catalogOptions = (header: string, current: string) => {
+  const list = bancoDocentesColumnList(header);
+  return current && !list.includes(current) ? [...list, current] : list;
+};
 
 export function BancoDocenteEditModal(props: Props) {
   if (props.manualIdentityClient && !props.docente?.docente_id && !props.docente?.id) {
@@ -702,7 +709,10 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
                     <SectionHeader title="Clasificación y Remuneración" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                       <FloatingField label="Categoría / Escalafón" required error={fieldErrors.escalafon}>
-                        <input className="wizard-field" style={fieldStyle} value={form.escalafon} onChange={set('escalafon')} placeholder="Ej: Asociado, Titular" maxLength={100} aria-invalid={Boolean(fieldErrors.escalafon)} />
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.escalafon} onChange={set('escalafon')} aria-invalid={Boolean(fieldErrors.escalafon)}>
+                          <option value="">Seleccionar...</option>
+                          {catalogOptions('CATEGORIA_ESCALAFON', form.escalafon).map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
                       </FloatingField>
                       <FloatingField label="Puntaje Salarial" error={fieldErrors.puntajeSalarial} hint={sensitiveDataRestricted ? 'Información restringida para su rol.' : 'Solo números; use punto o coma para decimales.'}>
                         <input className="wizard-field" style={fieldStyle} value={form.puntajeSalarial} onChange={(e) => setValue('puntajeSalarial', sanitizeManualDecimal(e.target.value))} inputMode="decimal" placeholder={sensitiveDataRestricted ? 'Información restringida' : 'Ej: 145.5'} disabled={sensitiveDataRestricted} aria-invalid={Boolean(fieldErrors.puntajeSalarial)} />
@@ -730,7 +740,10 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
                         <input className="wizard-field" style={fieldStyle} value={form.situacionAdministrativa} onChange={set('situacionAdministrativa')} placeholder="Ej: Activo, Comisión, Licencia..." />
                       </FloatingField>
                       <FloatingField label="Situación / Categoría">
-                        <input className="wizard-field" style={fieldStyle} value={form.situacionCategoria} onChange={set('situacionCategoria')} placeholder="Ej: Servicio Activo" maxLength={100} />
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.situacionCategoria} onChange={set('situacionCategoria')}>
+                          <option value="">Seleccionar...</option>
+                          {catalogOptions('SITUACION_CATEGORIA', form.situacionCategoria).map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
                       </FloatingField>
                       <FloatingField
                         label="Estado del Perfil"
@@ -768,11 +781,7 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
                       <FloatingField label="Nivel de Formación" required error={fieldErrors.nivelFormacion}>
                         <select className="wizard-field wizard-select" style={fieldStyle} value={form.nivelFormacion} onChange={set('nivelFormacion')} aria-invalid={Boolean(fieldErrors.nivelFormacion)}>
                           <option value="">Seleccionar...</option>
-                          <option value="Pregrado">Pregrado</option>
-                          <option value="Especialización">Especialización</option>
-                          <option value="Maestría">Maestría</option>
-                          <option value="Doctorado">Doctorado</option>
-                          <option value="Posdoctorado">Posdoctorado</option>
+                          {catalogOptions('NIVEL_FORMACION', form.nivelFormacion).map((option) => <option key={option} value={option}>{option}</option>)}
                         </select>
                       </FloatingField>
                       <FloatingField label="Núcleo Temático" required error={fieldErrors.nucleoTematico} hint="Área temática principal usada por el perfil RUND.">

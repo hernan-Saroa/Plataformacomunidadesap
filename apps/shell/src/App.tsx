@@ -756,6 +756,18 @@ export default function App() {
     };
   }, [usuarioActual, resetearTimerInactividad]);
 
+  // Tras cerrar sesión, "Atrás" puede restaurar la página desde bfcache con el estado privado en memoria.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      // Una página restaurada desde bfcache conserva el estado privado en memoria: se recarga para revalidar la sesión.
+      if (event.persisted) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   const handleLogoutPorInactividad = () => {
     setMostrarAlertaInactividad(false);
     toast.error('Sesión cerrada por inactividad', {

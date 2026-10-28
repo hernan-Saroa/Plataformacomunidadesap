@@ -1,6 +1,15 @@
 import { BancoDocentesService } from './banco-docentes.service';
 
 describe('BancoDocentesService - filtros del listado', () => {
+  it('permite abrir los grupos sin territorial o dedicación y mantiene su periodo', () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    const params: any[] = [];
+    const where = service.buildAuthDocentesFilters({ territorial: 'SIN_TERRITORIAL', dedicacion: 'SIN_DEDICACION', periodoCarga: '2026-2' }, params);
+    expect(where).toContain("COALESCE(NULLIF(TRIM(territorial), ''), NULLIF(TRIM(auth_territorial), '')) IS NULL");
+    expect(where).toContain("NULLIF(TRIM(dedicacion_codigo), '') IS NULL");
+    expect(where).toContain('periodo_carga = $1');
+    expect(params).toEqual(['2026-2']);
+  });
   it('combina territorial, dedicación, vinculación, estado, periodo y búsqueda', () => {
     const service = Object.create(BancoDocentesService.prototype) as any;
     const params: any[] = [];

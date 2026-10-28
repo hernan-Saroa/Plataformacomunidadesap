@@ -112,5 +112,7 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 3000,
     open: true,
+    // Sin bfcache: tras cerrar sesión, "Atrás" no debe restaurar vistas privadas.
+    headers: { 'Cache-Control': 'no-store' },
   },
 }));

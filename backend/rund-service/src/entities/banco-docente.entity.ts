@@ -17,6 +17,10 @@ export class BancoDocenteEntity {
   @Column({ name: 'datosCargaMasiva', type: 'jsonb', nullable: true })
   datosCargaMasiva: Record<string, string | number | null> | null;
 
+  /** REQ-RUND: eliminación lógica del registro (no borra cuenta, persona ni expediente). */
+  @Column({ name: 'eliminadoRund', type: 'boolean', default: false })
+  eliminadoRund: boolean;
+
   @Column({ name: 'cetapId', type: 'text', nullable: true })
   cetapId: string | null;
 

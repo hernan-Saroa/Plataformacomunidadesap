@@ -104,7 +104,7 @@ describe('Revalidación documental y rollback ante fallos de identidad', () => {
       if (sql.includes('FROM rund."RundDocumentoPerfil"') && sql.includes('WHERE id =')) return [current];
       return [];
     });
-    const runner = { query: jest.fn(async (sql: string) => sql.includes('"Docente"') ? [{ ...profile }] : []),
+    const runner = { isTransactionActive: true, query: jest.fn(async (sql: string) => sql.includes('"Docente"') ? [{ ...profile }] : []),
       connect: jest.fn(), startTransaction: jest.fn(), commitTransaction: jest.fn(), rollbackTransaction: jest.fn(), release: jest.fn() };
     const createQueryRunner = jest.fn(() => runner);
     const storage = { store: jest.fn().mockResolvedValue({ provider: 'LOCAL', storagePath: 'temporal.pdf' }), remove: jest.fn().mockResolvedValue(undefined) };
@@ -121,7 +121,7 @@ describe('Revalidación documental y rollback ante fallos de identidad', () => {
     await expect(service.create('perfil', data, file, 'actor')).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(storage.store).not.toHaveBeenCalled(); expect(createQueryRunner).not.toHaveBeenCalled();
   });
-  it.each([null, 'unavailable'])('identidad cambia/falla en la revalidación %s: rollback y retiro del PDF recién guardado', async failure => {
+  it.each([null, 'unavailable'])('identidad cambia/falla en la revalidación %s: rollback sin dejar un PDF almacenado', async failure => {
     const { service, identities, storage, runner, file, data } = build();
     if (failure === null) identities.fichaPorPersona.mockResolvedValueOnce({ num_identificacion: '00123' }).mockResolvedValueOnce(null);
     else identities.fichaPorPersona.mockResolvedValueOnce({ num_identificacion: '00123' }).mockRejectedValueOnce(new ServiceUnavailableException());
@@ -130,7 +130,8 @@ describe('Revalidación documental y rollback ante fallos de identidad', () => {
     expect(runner.rollbackTransaction).toHaveBeenCalled(); expect(runner.release).toHaveBeenCalled();
     expect(runner.commitTransaction).not.toHaveBeenCalled();
     expect(runner.query.mock.calls.some(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\b/.test(sql))).toBe(false);
-    expect(storage.remove).toHaveBeenCalledWith('LOCAL', 'temporal.pdf');
+    // La revalidación ocurre bajo bloqueo y antes de escribir el archivo: no queda un PDF huérfano que retirar.
+    expect(storage.store).not.toHaveBeenCalled(); expect(storage.remove).not.toHaveBeenCalled();
   });
   it('dato nativo eliminado después del preflight se vuelve a validar dentro del bloqueo', async () => {
     const { service, identities, storage, runner, query, file } = build();
@@ -138,7 +139,7 @@ describe('Revalidación documental y rollback ante fallos de identidad', () => {
     query.mockImplementation(async sql => sql.includes('SELECT d.*') ? [{ id: 'perfil', personaId, pregrado: 'Título' }] : original(sql));
     await expect(service.create('perfil', { categoria: 'TITULOS', bloque: 'FORMACION', tipoSoporte: 'diploma_pregrado' }, file, 'actor')).rejects.toBeInstanceOf(BadRequestException);
     expect(identities.fichaPorPersona).not.toHaveBeenCalled();
-    expect(runner.rollbackTransaction).toHaveBeenCalled(); expect(storage.remove).toHaveBeenCalled();
+    expect(runner.rollbackTransaction).toHaveBeenCalled(); expect(storage.store).not.toHaveBeenCalled(); expect(storage.remove).not.toHaveBeenCalled();
   });
   it('reemplazo con Auth caído conserva la versión anterior y no almacena una nueva', async () => {
     const { service, identities, storage, runner, file } = build(); identities.fichaPorPersona.mockRejectedValue(new ServiceUnavailableException());

@@ -7,6 +7,25 @@ describe('Autogestión: sesión OTP, borradores y propiedad', () => {
   beforeAll(() => { process.env.JWT_SECRET = 'secreto-de-prueba-para-otp-0123456789'; });
   afterAll(() => { if (savedSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = savedSecret; });
 
+  it('con la ampliación apagada conserva OTP/envío anteriores sin leer políticas pendientes', async () => {
+    const keys = ['RUND_DOCUMENTAL_ENABLED', 'RUND_PRIVACY_POLICY_FILE'];
+    const saved = keys.map(key => process.env[key]);
+    delete process.env.RUND_DOCUMENTAL_ENABLED;
+    process.env.RUND_PRIVACY_POLICY_FILE = 'archivo-pendiente-inexistente.json';
+    try {
+      const { service, invitation } = build();
+      (service as any).identities = { fichaPorDocumento: jest.fn().mockResolvedValue(null) };
+      const upsert = jest.spyOn(service, 'upsertDocente').mockResolvedValue({ id: 'docente' } as any);
+      const response = await service.verifyOtpForEmail(invitation.correoInstitucional, '123456');
+      expect(response.politicaTratamiento).toBeUndefined();
+      await service.submitFromToken(response.sessionToken, { documentNumber: '1020304050' });
+      expect(upsert).toHaveBeenCalled();
+      expect(upsert.mock.calls[0][1]?.audit?.metadata?.habeasData).toBeUndefined();
+      expect(invitation.estado).toBe('Gestionada');
+    } finally {
+      keys.forEach((key, index) => { if (saved[index] === undefined) delete process.env[key]; else process.env[key] = saved[index]; });
+    }
+  });
   function build() {
     const invitation: any = { id: 'invite-1', correoInstitucional: 'prueba@example.test', tokenAcceso: 'enlace-publico',
       estado: 'Enviada', fechaExpiracion: new Date(Date.now() + 3600000),

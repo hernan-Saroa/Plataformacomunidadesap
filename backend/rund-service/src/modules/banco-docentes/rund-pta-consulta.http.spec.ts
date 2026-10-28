@@ -28,7 +28,7 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
   const cedula = '001020304050';
   const personaId = '33333333-3333-4333-8333-333333333333';
   const identities = { perfilPta: jest.fn(), permisosRoles: jest.fn(async (roles: string[]) =>
-    roles.includes('CONSULTOR_PTA') ? [RUND_PERMISSIONS.VIEW] : []) };
+    roles.some(role => ['CONSULTOR_PTA', 'GESTION_PROFESORAL', 'ADMIN'].includes(role)) ? [RUND_PERMISSIONS.VIEW] : []) };
   const catalogos = { territorialesBanco: jest.fn() };
   const oldSecret = process.env.JWT_SECRET;
   const oldPublicPaths = process.env.JWT_PUBLIC_PATHS;

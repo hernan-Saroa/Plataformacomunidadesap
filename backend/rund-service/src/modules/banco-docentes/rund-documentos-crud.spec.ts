@@ -12,7 +12,7 @@ const pdfFile = {
   buffer: Buffer.from('%PDF-1.7\n'),
 } as Express.Multer.File;
 
-const docente = { id: '11111111-1111-1111-1111-111111111111', document_number: '123456' };
+const docente = { id: '11111111-1111-1111-1111-111111111111', persona_id: '22222222-2222-4222-8222-222222222222', document_number: '123456' };
 const category = {
   codigo: 'TITULOS',
   nombre: 'Títulos',
@@ -36,8 +36,34 @@ function transaction(queryImplementation: (sql: string, params?: any[]) => any) 
   return runner;
 }
 
+/** La identidad del perfil se resuelve en una transacción de solo lectura con la API de Auth. */
+function withResolvedProfile<T extends object>(db: T) {
+  const manager = { query: jest.fn(async (sql: string) => sql.includes('jsonb_to_recordset') ? [docente]
+    : sql.startsWith('SET') ? [] : [{ personaId: docente.persona_id }]) };
+  return Object.assign(db, { transaction: jest.fn(async (_isolation: string, work: (m: any) => Promise<any>) => work(manager)) });
+}
+const authIdentities = () => ({ coincidenciasUnicidad: jest.fn().mockResolvedValue([{ personaId: docente.persona_id, documento: docente.document_number }]) });
+
 describe('RundDocumentosService - ciclo CRUD documental', () => {
+  it.each(['contrato', 'acto_administrativo_vinculacion', 'resolucion_escalafon', 'documento_identidad'])('comprueba el alcance de incorporación sobre el documento real: %s', async tipo_soporte => {
+    const db = withResolvedProfile({ query: jest.fn().mockResolvedValueOnce([{
+      id: 'documento', docente_id: docente.id, estado: 'ACTIVO', bloque: tipo_soporte === 'documento_identidad' ? 'IDENTIDAD' : 'VINCULACION', tipo_soporte,
+    }]) });
+    const operation = new RundDocumentosService(db as any, {} as any, authIdentities() as any).assertIncorporationDocument(docente.id, 'documento');
+    if (['contrato', 'acto_administrativo_vinculacion'].includes(tipo_soporte)) await expect(operation).resolves.toBeUndefined();
+    else await expect(operation).rejects.toThrow('solo gestiona contratos');
+  });
   afterEach(() => delete process.env.RUND_DOCUMENT_MAX_SIZE_BYTES);
+
+  it('conserva el archivo si se pierde la respuesta de COMMIT, evitando borrar una carga posiblemente confirmada', async () => {
+    const runner = transaction(sql => sql.includes('INSERT INTO rund."RundDocumentoPerfil"') ? [{ id: 'doc-v1' }] : []);
+    runner.commitTransaction.mockRejectedValue(new Error('CONNECTION_LOST'));
+    const db = withResolvedProfile({ query: jest.fn().mockResolvedValueOnce([category]), createQueryRunner: () => runner });
+    const storage = { store: jest.fn().mockResolvedValue({ provider: 'OPENKM', storageId: 'doc', storagePath: '/okm:root/RUND/doc' }), remove: jest.fn() };
+    await expect(new RundDocumentosService(db as any, storage as any, authIdentities() as any).create(docente.id, { categoria: 'TITULOS' }, pdfFile, 'actor'))
+      .rejects.toThrow('CONNECTION_LOST');
+    expect(storage.remove).not.toHaveBeenCalled();
+  });
 
   it('carga el PDF, crea la versión 1 y registra actor e IP', async () => {
     const runner = transaction((sql) => {
@@ -87,7 +113,7 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
       contenidoUrl: `/rund/api/v1/pta/banco-docentes/${docente.id}/documentos/doc-v1/contenido`,
     }));
     expect(storage.store).toHaveBeenCalledWith(expect.objectContaining({
-      documentNumber: '123456',
+      expedienteId: docente.persona_id,
       category: 'TITULOS',
       version: 1,
     }));

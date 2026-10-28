@@ -31,6 +31,8 @@ import { AuthBancoModule } from '../../common/auth-banco.client';
 import { RundCatalogosModule } from '../../common/rund-catalogos.client';
 import { AuthIdentityCorrectionModule } from '../../common/auth-identity-correction.client';
 import { RundOcrIdentityCorrection } from './rund-ocr-identity-correction';
+import { RundNucleosController } from './rund-nucleos.controller';
+import { RundNucleosService } from './rund-nucleos.service';
 
 @Module({
   imports: [
@@ -41,7 +43,7 @@ import { RundOcrIdentityCorrection } from './rund-ocr-identity-correction';
     AuthIdentityCorrectionModule,
     TypeOrmModule.forFeature([BancoDocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],
+  controllers: [RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],
   providers: [
     RundAuthStateSyncService,
     RundAuthStateSyncWorker,
@@ -58,7 +60,8 @@ import { RundOcrIdentityCorrection } from './rund-ocr-identity-correction';
     RundOcrIdentityCorrection,
     RundExtraccionNotificationsService,
     RundValidacionService,
+    RundNucleosService,
   ],
-  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundValidacionService],
+  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundValidacionService, RundNucleosService],
 })
 export class BancoDocentesModule {}

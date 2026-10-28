@@ -1,4 +1,5 @@
 import type { BancoDocenteEntity } from '../../entities/banco-docente.entity';
+import { stableJson } from './rund-carga-original';
 import type { RundNativeWriteInput } from './rund-native-profile-write';
 import { capturarDatosCarga, fechaCivilPersistencia } from './rund-carga-original';
 
@@ -63,7 +64,7 @@ export function planRundNativeProfile(input: RundNativeWriteInput, existingDocen
         for (const field of fieldsToCheck) {
           const newVal = docenteData[field];
           const oldVal = existingDocente[field];
-          const changed = field === 'datosCargaMasiva' ? JSON.stringify(newVal) !== JSON.stringify(oldVal) : String(newVal) !== String(oldVal);
+          const changed = field === 'datosCargaMasiva' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
           if (newVal !== undefined && newVal !== null && changed) {
             hasChanges = true;
             changedFields.push(String(field));

@@ -75,7 +75,7 @@ describe('OCR no procesa un contexto de identidad sin confirmar', () => {
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     await expect(service.tick()).resolves.toBeUndefined();
     expect(storage.read).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
-    expect(query).toHaveBeenCalledWith(expect.stringContaining("error_codigo='EXTRACCION_NO_DISPONIBLE'"), [job.id, job.lease_id]);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('error_codigo=$3'), [job.id, job.lease_id, 'EXTRACCION_NO_DISPONIBLE']);
     expect(query.mock.calls.some(([sql]) => /INSERT INTO rund\."RundExtraccionSugerencia"|UPDATE auth\.|UPDATE rund\."Docente"/.test(sql))).toBe(false);
     await service.onModuleDestroy();
   });

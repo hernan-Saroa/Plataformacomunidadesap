@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { RundManualOperatorConnection } from './rundManualOperator';
+import { expandRundPermissions } from '../../../shared/rund-permissions';
 
 export interface AuthSessionLite {
   rol?: string;
@@ -53,7 +54,7 @@ export function AuthProvider({
   userPersona,
 }: AuthProviderProps) {
   const value = useMemo<AuthContextValue>(() => {
-    const normalizedPermisos = Array.isArray(permisos) ? permisos : [];
+    const normalizedPermisos = [...expandRundPermissions(Array.isArray(permisos) ? permisos : [])];
     const hasPermission = (permissionId: string) =>
       Boolean(isSuperUser || normalizedPermisos.includes(permissionId));
     const hasAnyPermission = (permissionIds: string[]) =>

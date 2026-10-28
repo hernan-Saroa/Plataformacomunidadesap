@@ -54,8 +54,10 @@ export function getRequestRoleCodes(user: any): string[] {
 }
 
 /** Lista blanca deliberadamente estricta: cualquier rol no definido recibe datos protegidos. */
-export function canViewRundSensitiveData(user: any): boolean {
-  return getRequestRoleCodes(user).some((role) => FULL_ACCESS_ROLES.has(role));
+export function canViewRundSensitiveData(user: any, resolvedPermissions?: Set<string>): boolean {
+  // Only a set resolved by the server is accepted; JWT/body permission claims are ignored.
+  return getRequestRoleCodes(user).some((role) => FULL_ACCESS_ROLES.has(role))
+    || resolvedPermissions instanceof Set && resolvedPermissions.has('banco-docentes.rund.sensitive.view');
 }
 
 export function maskIdentityDocument(value: unknown): string | null {

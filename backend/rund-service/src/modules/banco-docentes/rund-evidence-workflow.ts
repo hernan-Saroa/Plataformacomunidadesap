@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DataSource, QueryRunner } from 'typeorm';
-import { EXTRACTION_FIELDS_BY_BLOCK } from './rund-extraccion-fields';
+import { hasRundData } from './rund-evidence-data';
 
 export const EVIDENCE_TYPES: Record<string, string[]> = {
   IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
@@ -12,6 +12,32 @@ export const EVIDENCE_TYPES: Record<string, string[]> = {
   TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
 };
 export const isReviewableEvidence = (type: string) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type);
+export const RUND_REVIEW_BLOCKS = Object.keys(EVIDENCE_TYPES);
+// Contact data can be reviewed, but never requires documentary evidence.
+export const RUND_REQUIRED_BLOCKS = RUND_REVIEW_BLOCKS.filter(block => block !== 'CONTACTO');
+
+export function canReturnEvidenceBlock(block: string, supports: any[]): boolean {
+  if (block === 'CONTACTO') return true;
+  return (supports || []).some(s => EVIDENCE_TYPES[block]?.includes(s.tipo_soporte) && isReviewableEvidence(s.tipo_soporte)
+    && (!s.bloque || s.bloque === block)
+    && (s.documento_perfil_id ? s.estado_documento === 'ACTIVO' : Boolean(String(s.documento_carpeta_id || '').trim())));
+}
+
+export async function withCurrentEvidenceDocuments(db: { query(sql: string, parameters?: any[]): Promise<any[]> }, docenteId: string, supports: any[]) {
+  const ids = [...new Set(supports.map(s => s.documento_perfil_id).filter(Boolean))];
+  const documents = ids.length ? await db.query(`SELECT id, estado FROM rund."RundDocumentoPerfil"
+    WHERE docente_id::text=$1 AND id::text=ANY($2::text[])`, [docenteId, ids]) : [];
+  const states = new Map(documents.map((d: any) => [String(d.id), d.estado]));
+  return supports.map(s => ({ ...s, estado_documento: s.documento_perfil_id ? states.get(String(s.documento_perfil_id)) || 'NO_DISPONIBLE' : null }));
+}
+
+export function evidenceSummary(rows: { bloque: string; estado: string }[]) {
+  const completitud = Object.fromEntries(rows.map(row => [row.bloque, row.estado]));
+  const activable = RUND_REQUIRED_BLOCKS.every(block => completitud[block] === 'Aprobado');
+  const estado = RUND_REVIEW_BLOCKS.some(block => completitud[block] === 'Devuelto')
+    ? 'DEVUELTO' : activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
+  return { activable: estado === 'ACTIVO_RUND', completitud, estado };
+}
 export function evidenceFields(type: string): string[] {
   if (['documento_identidad', 'cedula_extranjeria', 'pasaporte'].includes(type)) {
     return ['DOCUMENTO_IDENTIDAD', 'NOMBRE_COMPLETO', 'GENERO', 'SEXO_BIOLOGICO', 'FECHA_NACIMIENTO'];
@@ -31,16 +57,15 @@ export function evidenceFieldDecision(support: any, campo: string) {
 export function validateEvidenceType(block: string, type: string) {
   if (!EVIDENCE_TYPES[block]?.includes(type)) throw new BadRequestException('El tipo de soporte no corresponde al bloque seleccionado.');
 }
-const hasValue = (value: unknown) => !['', 'no', 'no aplica', 'n/a', 'na', 'ninguno', 'ninguna', 'sin información', 'no registrado'].includes(String(value ?? '').trim().toLowerCase());
 export function requiredEvidence(block: string, docente: any): string[][] {
   if (block === 'IDENTIDAD') return [EVIDENCE_TYPES.IDENTIDAD];
   if (block === 'VINCULACION') return EVIDENCE_TYPES.VINCULACION.map(type => [type]);
   if (block === 'TRANSVERSAL') return [['autorizacion_habeas_data']];
-  if (block === 'ACADEMICO') return [['acto_asignacion_nucleo'], ['acta_evaluacion_desempeno'], ...(hasValue(docente.investigacion) ? [['certificacion_investigacion']] : [])];
+  if (block === 'ACADEMICO') return [['acto_asignacion_nucleo'], ['acta_evaluacion_desempeno'], ...(hasRundData(docente.investigacion) ? [['certificacion_investigacion']] : [])];
   if (block === 'FORMACION') {
     const required = [['diploma_pregrado'], ['hoja_vida_pro']];
     for (const [field, type] of Object.entries({ especializacion: 'diploma_especializacion', maestria: 'diploma_maestria', doctorado: 'diploma_doctorado', posDoctorado: 'certificado_posdoctoral' })) {
-      if (hasValue(docente[field])) required.push([type]);
+      if (hasRundData(docente[field])) required.push([type]);
     }
     return required;
   }
@@ -59,15 +84,6 @@ export function evidenceBlocksForFields(fields: string[]): string[] {
   return Object.entries(mapping).filter(([, keys]) => fields.some(f => keys.includes(f))).map(([block]) => block);
 }
 
-async function hasPendingExtraction(runner: Pick<QueryRunner, 'query'>, docenteId: string, block: string) {
-  const [pending] = await runner.query(`SELECT s.id FROM rund."RundExtraccionSugerencia" s
-    JOIN rund."RundExtraccionTrabajo" j ON j.id=s.trabajo_id
-    JOIN rund."RundDocumentoPerfil" d ON d.id=j.documento_id
-    WHERE j.docente_id::text=$1 AND s.estado='PENDIENTE' AND d.estado='ACTIVO' AND s.campo=ANY($2::text[]) LIMIT 1`,
-  [docenteId,EXTRACTION_FIELDS_BY_BLOCK[block]||[]]);
-  return Boolean(pending);
-}
-
 export async function invalidateEditedEvidence(manager: Pick<QueryRunner, 'query'>, docenteId: string, fields: string[], actorId: string, ip?: string) {
   for (const block of evidenceBlocksForFields(fields)) {
     const rows = await manager.query('SELECT * FROM rund."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2', [docenteId, block]);
@@ -81,17 +97,15 @@ export async function invalidateEditedEvidence(manager: Pick<QueryRunner, 'query
   }
 }
 
-export async function lockEvidenceProfile(runner: QueryRunner, docenteId: string) {
+export async function lockEvidenceProfile(runner: Pick<QueryRunner, 'query'>, docenteId: string) {
   const [docente] = await runner.query('SELECT * FROM rund."Docente" WHERE id = $1 FOR UPDATE', [docenteId]);
-  if (!docente) throw new NotFoundException('Perfil docente no encontrado.');
+  if (!docente || docente.eliminadoRund) throw new NotFoundException('Perfil docente no encontrado o eliminado de RUND.');
   return docente;
 }
 
 export async function syncEvidenceSummary(runner: Pick<QueryRunner, 'query'>, docenteId: string) {
   const rows = await runner.query('SELECT bloque, estado FROM rund."RundCampoEstado" WHERE docente_id::text = $1', [docenteId]);
-  const completitud = Object.fromEntries(rows.map((row: any) => [row.bloque, row.estado]));
-  const activable = Object.keys(EVIDENCE_TYPES).filter(b => b !== 'CONTACTO').every(b => completitud[b] === 'Aprobado');
-  const estado = rows.some((row: any) => row.estado === 'Devuelto') ? 'DEVUELTO' : activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
+  const { completitud, estado } = evidenceSummary(rows);
   await runner.query('UPDATE rund."Docente" SET "estadoAprobacion" = $1, completitud = $2::jsonb WHERE id = $3', [estado, JSON.stringify(completitud), docenteId]);
   return { activable: estado === 'ACTIVO_RUND', completitud };
 }
@@ -123,6 +137,10 @@ export async function resetEvidenceBlock(runner: Pick<QueryRunner, 'query'>, doc
 export class RundEvidenceWorkflow {
   constructor(private readonly dataSource: DataSource) {}
 
+  async refreshSummary(docenteId: string) {
+    return this.transaction(docenteId, runner => syncEvidenceSummary(runner, docenteId));
+  }
+
   private async transaction<T>(docenteId: string, work: (runner: QueryRunner, docente: any) => Promise<T>): Promise<T> {
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
@@ -146,8 +164,10 @@ export class RundEvidenceWorkflow {
       if (!support) throw new NotFoundException('Soporte no encontrado en este bloque.');
       validateEvidenceType(block, support.tipo_soporte);
       if (!isReviewableEvidence(support.tipo_soporte)) throw new BadRequestException('Este soporte pertenece al trámite de edición del perfil.');
+      if (!canReturnEvidenceBlock(block, await withCurrentEvidenceDocuments(runner, docenteId, [support]))) {
+        throw new BadRequestException('El soporte no tiene un documento disponible en este bloque. Cargue una versión actual antes de revisarlo.');
+      }
       if (!data.documentoVersionId || data.documentoVersionId !== (support.documento_perfil_id || support.documento_carpeta_id)) throw new ConflictException('El documento cambió. Actualice y revise la versión vigente.');
-      if (support.cargado_por === actorId) throw new BadRequestException('La revisión requiere una persona distinta de quien cargó el soporte.');
       const [currentBlock] = await runner.query('SELECT version FROM rund."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
       if (!currentBlock || data.blockVersion !== Number(currentBlock.version)) throw new ConflictException('La información del espacio cambió. Actualice los datos antes de revisar el soporte.');
       if (data.estado === 'Aprobado' && support.fecha_vencimiento && new Date(support.fecha_vencimiento) < new Date()) throw new BadRequestException('El soporte está vencido. Cargue una versión vigente.');
@@ -176,7 +196,7 @@ export class RundEvidenceWorkflow {
     });
   }
 
-  async reviewBlock(docenteId: string, block: string, actorId: string, observation?: string, ip?: string) {
+  async reviewBlock(docenteId: string, block: string, actorId: string, observation?: string, ip?: string, blockVersion?: number) {
     block = block.toUpperCase();
     if (!EVIDENCE_TYPES[block]) throw new BadRequestException('Bloque inválido.');
     const returning = observation !== undefined;
@@ -184,17 +204,21 @@ export class RundEvidenceWorkflow {
     return this.transaction(docenteId, async (runner, docente) => {
       const [current] = await runner.query('SELECT * FROM rund."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2 FOR UPDATE', [docenteId, block]);
       if (!current) throw new NotFoundException('Bloque no encontrado.');
-      if (current.cargado_por === actorId) throw new BadRequestException('La revisión requiere una persona distinta de quien cargó los datos.');
+      if (!Number.isInteger(blockVersion) || blockVersion !== Number(current.version)) {
+        throw new ConflictException('La información del espacio cambió. Actualice los datos antes de aprobar o devolver el bloque.');
+      }
       const supports = (await runner.query('SELECT * FROM rund."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block])).filter((s: any) => isReviewableEvidence(s.tipo_soporte));
+      if (returning && !canReturnEvidenceBlock(block, block === 'CONTACTO' ? [] : await withCurrentEvidenceDocuments(runner, docenteId, supports))) {
+        throw new BadRequestException('Cargue al menos un soporte de este bloque antes de devolverlo.');
+      }
       if (!returning) {
-        if (await hasPendingExtraction(runner,docenteId,block)) throw new BadRequestException('Confirme o rechace las sugerencias OCR pendientes antes de aprobar el bloque.');
         const missing = requiredEvidence(block, docente).filter(group => !supports.some((s: any) => group.includes(s.tipo_soporte) && s.documento_carpeta_id));
         if (missing.length) throw new BadRequestException(`Faltan soportes obligatorios: ${missing.map(g => g[0]).join(', ')}.`);
         if (supports.some((s: any) => s.estado !== 'Aprobado' || evidenceFields(s.tipo_soporte).some(field => evidenceFieldDecision(s, field).estado !== 'Aprobado') || (s.fecha_vencimiento && new Date(s.fecha_vencimiento) < new Date()))) throw new BadRequestException('Revise y apruebe cada soporte vigente y cada fila antes de aprobar el bloque. Hay documentos pendientes, devueltos o vencidos.');
       }
       const estado = returning ? 'Devuelto' : 'Aprobado';
       await runner.query(`UPDATE rund."RundCampoEstado" SET estado = $1, revisado_por = $2,
-        fecha_revision = NOW(), observacion = $3, "updatedAt" = NOW() WHERE docente_id::text = $4 AND bloque = $5`, [estado, actorId, observation?.trim() || null, docenteId, block]);
+        fecha_revision = NOW(), observacion = $3, version = version + 1, "updatedAt" = NOW() WHERE docente_id::text = $4 AND bloque = $5`, [estado, actorId, observation?.trim() || null, docenteId, block]);
       // Returning a block requests correction of the data; individual decisions are preserved.
       await evidenceAudit(runner, docenteId, block, returning ? 'DEVOLVER' : 'APROBAR', actorId,
         { estadoAnterior: current.estado, estadoNuevo: estado, soportes: supports.map((s: any) => ({ id: s.id, documentoVersionId: s.documento_perfil_id || s.documento_carpeta_id, estado: s.estado })) }, observation?.trim(), ip);

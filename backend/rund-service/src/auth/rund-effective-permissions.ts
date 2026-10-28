@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { AuthIdentityClient } from '../common/auth-identity.client';
 import { getRequestRoleCodes } from '../modules/banco-docentes/banco-docentes-sensitive-data';
 import { RUND_PERMISSION_CODES } from './rund-permission-catalog';
+import { expandRundPermissions } from '../modules/banco-docentes/rund-permission-policy';
 
 const logger = new Logger('RundEffectivePermissions');
 const catalog = new Set<string>(RUND_PERMISSION_CODES);
@@ -20,7 +21,7 @@ async function resolve(identities: AuthIdentityClient, roles: string[]): Promise
   if (!roles.length) return new Set<string>();
   try {
     const codes = await identities.permisosRoles(roles);
-    return new Set(codes.filter((code) => catalog.has(code)));
+    return new Set([...expandRundPermissions(codes)].filter((code) => catalog.has(code)));
   } catch {
     logger.warn('No se pudieron resolver permisos RUND; se deniega el acceso por permiso.');
     return new Set<string>();

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { localRundUploadPath } from './rund-upload-paths';
 import { join, resolve, sep } from 'path';
 import { BancoDocentesService } from './banco-docentes.service';
 import { BancoDocentesController } from './banco-docentes.controller';
@@ -146,17 +147,23 @@ describe('Soportes históricos: diagnóstico y reparación sin duplicar rutas', 
     expect(supports[0].documento_carpeta_id).toBeNull();
   });
 
-  it('el soporte técnico apunta al archivo real, incluso si docenteNombre se recibió después', async () => {
-    const filePath = join(folder, 'soporte.pdf');
-    fs.writeFileSync(filePath, 'soporte');
+  it('el soporte técnico se guarda en memoria con el nombre recibido y su URL apunta al archivo real', async () => {
     const vincular = jest.fn(async (_id, _bloque, body) => ({ ...body }));
     const controller = new BancoDocentesController({ vincularSoporte: vincular } as any,
       { validate: jest.fn().mockResolvedValue({ validated: false }) } as any);
-    const result = await controller.vincularSoporte(docente.id, 'TRANSVERSAL', { tipoSoporte: 'soporte_edicion_perfil', docenteNombre: 'OTRO NOMBRE' },
-      { user: { userId: 'operador', roles: ['SUPER_ADMIN'] } },
-      { path: filePath, filename: 'soporte.pdf', originalname: 'original.pdf', mimetype: 'application/pdf', size: 7 } as any);
-    expect(result.data).toMatchObject({ documentoCarpetaId: '/rund/api/v1/uploads/carpeta-digital/DOCENTE%20PRUEBA/RUND/soporte.pdf' });
-    expect(fs.readFileSync(filePath, 'utf8')).toBe('soporte');
+    const otraCarpeta = join(process.cwd(), 'uploads', 'carpeta-digital', 'OTRO NOMBRE');
+    try {
+      const result = await controller.vincularSoporte(docente.id, 'TRANSVERSAL', { tipoSoporte: 'soporte_edicion_perfil', docenteNombre: 'OTRO NOMBRE' },
+        { user: { userId: 'operador', roles: ['SUPER_ADMIN'] } },
+        { buffer: Buffer.from('soporte'), originalname: 'original.pdf', mimetype: 'application/pdf', size: 7 } as any);
+      const url = (result.data as any).documentoCarpetaId as string;
+      expect(url).toMatch(new RegExp('^/rund/api/v1/uploads/carpeta-digital/OTRO%20NOMBRE/RUND/[0-9a-f-]{36}\\.pdf$'));
+      // Con multer en memoria el cuerpo ya está completo: el nombre llega antes de escribir y el archivo existe donde apunta la URL.
+      const local = localRundUploadPath(url)!;
+      expect(fs.readFileSync(local, 'utf8')).toBe('soporte');
+    } finally {
+      fs.rmSync(otraCarpeta, { recursive: true, force: true });
+    }
   });
 
   it.each(['/pta/api/v1/uploads/', '/rund/api/v1/uploads/', '/services/rund/api/v1/uploads/', '/uploads/', ''])('LEGACY_LOCAL lee y retira la misma copia local con %s', async prefix => {

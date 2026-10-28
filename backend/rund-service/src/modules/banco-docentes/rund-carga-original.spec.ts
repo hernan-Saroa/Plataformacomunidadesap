@@ -1,4 +1,4 @@
-import { capturarDatosCarga, fechaCivilPersistencia, RUND_COLUMNAS_CARGA } from './rund-carga-original';
+import { capturarDatosCarga, fechaCivilPersistencia, RUND_COLUMNAS_CARGA, stableJson } from './rund-carga-original';
 import { protectRundSensitiveData } from './banco-docentes-sensitive-data';
 import { BancoDocentesService, resolveTerritorial } from './banco-docentes.service';
 
@@ -84,5 +84,21 @@ describe('Información original de la carga RUND', () => {
     service.identities = { fichaPorPersona: jest.fn().mockResolvedValue({ num_identificacion: '1020304050' }) };
     await service.updateDocente('docente-1',{territorialNombre:'META',soporteEdicionId:'soporte-1',justificacionEdicion:'Corrección del teléfono',telefono:'3001234567'});
     expect(service.upsertDocente).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({preserveTerritorial:true}));
+  });
+
+  it('reimportar el mismo archivo no cuenta como cambio aunque PostgreSQL reordene las claves del jsonb', () => {
+    const nuevo = capturarDatosCarga({ DOCUMENTO_IDENTIDAD: '479678', TIPO_DOCUMENTO: 'CC', NOMBRE_COMPLETO: 'ABEL', TERRITORIAL: 'META', EDAD: 59 });
+    // jsonb guarda las claves ordenadas por longitud y luego alfabéticamente.
+    const comoJsonb = Object.fromEntries(Object.keys(nuevo).sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).map(k => [k, (nuevo as any)[k]]));
+    expect(Object.keys(comoJsonb)).not.toEqual(Object.keys(nuevo));
+    expect(JSON.stringify(nuevo)).not.toBe(JSON.stringify(comoJsonb));
+    expect(stableJson(nuevo)).toBe(stableJson(comoJsonb));
+  });
+
+  it('un cambio real en una columna del archivo sí se distingue', () => {
+    const a = capturarDatosCarga({ DOCUMENTO_IDENTIDAD: '479678', NUCLEO_TEMATICO: 'Gestión' });
+    const b = capturarDatosCarga({ DOCUMENTO_IDENTIDAD: '479678', NUCLEO_TEMATICO: 'Otro núcleo' });
+    expect(stableJson(a)).not.toBe(stableJson(b));
+    expect(stableJson(null)).toBe('null');
   });
 });

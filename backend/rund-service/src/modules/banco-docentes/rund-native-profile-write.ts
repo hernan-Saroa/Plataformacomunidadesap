@@ -4,6 +4,7 @@ import { planRundNativeProfile } from './rund-native-profile-plan';
 import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
 import { invalidateEditedEvidence } from './rund-evidence-workflow';
 import { recordRundAccess } from './rund-access-audit';
+import { registrationSnapshot } from './rund-registration-history';
 
 export interface RundNativeWriteInput {
   payload: any; rawPayload: any;
@@ -25,8 +26,8 @@ export async function upsertRundNativeProfileWithManager(manager: any, input: Ru
   const { authPersonId, authUser, authUserCreated, personaChangedFields, profileChanges } = input.identity;
       const targetPeriodoCarga = payload.periodoCarga || null;
       const existingDocente = targetPeriodoCarga
-        ? await manager.findOne(BancoDocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga } as any })
-        : await manager.findOne(BancoDocenteEntity, { where: { personaId: authPersonId } });
+        ? await manager.findOne(BancoDocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga, eliminadoRund: false } as any, lock: { mode: 'pessimistic_write' } })
+        : await manager.findOne(BancoDocenteEntity, { where: { personaId: authPersonId, eliminadoRund: false }, lock: { mode: 'pessimistic_write' } });
       if (existingDocente && options.rejectExisting) {
         throw new BadRequestException({
           message: `El documento ${payload.documentNumber} ya existe en el Banco de Docentes para el periodo ${targetPeriodoCarga || 'sin periodo'}.`,
@@ -84,8 +85,8 @@ export async function upsertRundNativeProfileWithManager(manager: any, input: Ru
         );
       }
 
-      if (action !== 'unchanged' && options.audit) {
-        const auditAction = options.audit.accion || (action === 'insert' ? 'CREAR' : 'EDITAR');
+      if (options.audit && (action !== 'unchanged' || options.audit.metadata?.habeasData?.aceptada === true)) {
+        const auditAction = options.audit.accion || (action === 'unchanged' ? 'CONFIRMAR_AUTOGESTION' : action === 'insert' ? 'CREAR' : 'EDITAR');
         await hooks.writeAuditWithManager(manager, {
           docenteId: docente.id,
           bloque: 'GENERAL',
@@ -99,6 +100,8 @@ export async function upsertRundNativeProfileWithManager(manager: any, input: Ru
           metadata: {
             ...(options.audit.metadata || {}),
             periodoCarga: docente.periodoCarga || null,
+            registro: registrationSnapshot(rawPayload, { fullName: finalFullName, documentNumber: payload.documentNumber,
+              email: emailFinal, periodoCarga: docente.periodoCarga }),
             camposModificados: action === 'insert'
               ? ['num_identificacion', ...Object.keys(docenteData)]
               : [...personaChangedFields, ...changedFields],
@@ -144,6 +147,7 @@ export async function upsertRundNativeProfileWithManager(manager: any, input: Ru
         usuarioId: authUser.id_user,
         documentNumber: payload.documentNumber!,
         fullName: finalFullName,
+        periodoCarga: docente.periodoCarga || null,
         email: emailFinal,
         territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
