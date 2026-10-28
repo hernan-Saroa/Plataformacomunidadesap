@@ -88,6 +88,8 @@ describe('CentroAyudaService', () => {
       expect(config.document.url).toMatch(/\/centro-ayuda\/recursos\/3\/archivo$/);
       expect(config.documentType).toBe('pdf');
       expect(config.editorConfig.mode).toBe('view');
+      // la descarga la da la ventana del visor; OnlyOffice no debe repetir el botón
+      expect(config.document.permissions.download).toBe(false);
     });
   });
 

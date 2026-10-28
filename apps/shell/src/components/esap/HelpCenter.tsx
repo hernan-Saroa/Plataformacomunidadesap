@@ -18,6 +18,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import {
   centroAyudaService,
   urlArchivoRecurso,
@@ -99,9 +100,22 @@ export function HelpCenter() {
       document.body.appendChild(enlace);
       enlace.click();
       enlace.remove();
+      toast.success('Descargando el manual de usuario', {
+        description: manualVigente.version ? `Versión ${manualVigente.version} · PDF` : 'PDF',
+      });
       return;
     }
     setCategoriaAbierta(categoria);
+  };
+
+  /** Lo que se ve en la esquina de cada opción antes de abrirla. */
+  const estadoDe = (categoria: CategoriaCentroAyuda) => {
+    if (!recursos) return null;
+    if (categoria === 'manual') {
+      return manualVigente ? { texto: manualVigente.version ? `v${manualVigente.version}` : 'PDF', vacio: false } : { texto: 'Sin contenido', vacio: true };
+    }
+    const total = recursosDe(categoria).length;
+    return total > 0 ? { texto: String(total), vacio: false } : { texto: 'Sin contenido', vacio: true };
   };
 
   const helpResources: HelpResource[] = [
@@ -147,6 +161,15 @@ export function HelpCenter() {
 
   const recursoAbierto = helpResources.find((r) => r.id === categoriaAbierta);
 
+  const entradaTarjeta = {
+    hidden: { opacity: 0, y: 10 },
+    visible: (i: number) => ({
+      opacity: 1,
+      y: 0,
+      transition: { delay: i * 0.04, duration: 0.22, ease: [0.4, 0, 0.2, 1] },
+    }),
+  };
+
   const filteredFaqs = faqs.filter(faq =>
     faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
     faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
@@ -157,10 +180,10 @@ export function HelpCenter() {
       {/* Help Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="w-10 h-10 lg:w-9 lg:h-9 xl:w-10 xl:h-10 rounded-lg border-2 border-[--esap-gray-400] bg-white flex items-center justify-center hover:bg-[--esap-gray-50] hover:border-[--esap-gray-500] hover:-translate-y-0.5 transition-all active:scale-95"
+        className="w-10 h-10 lg:w-9 lg:h-9 xl:w-10 xl:h-10 rounded-lg border-2 border-slate-400 bg-white flex items-center justify-center hover:bg-slate-50 hover:border-slate-500 hover:-translate-y-0.5 transition-all active:scale-95"
         aria-label="Centro de ayuda"
       >
-        <HelpCircle className="w-5 h-5 lg:w-4 lg:h-4 text-[--esap-gray-700]" strokeWidth={2} />
+        <HelpCircle className="w-5 h-5 lg:w-4 lg:h-4 text-slate-700" strokeWidth={2} />
       </button>
 
       {/* Help Drawer Premium */}
@@ -214,13 +237,13 @@ export function HelpCenter() {
               </div>
 
               {/* Tabs - Compacto */}
-              <div className="px-4 py-3 bg-[--esap-gray-50] border-b border-[--esap-gray-200] flex gap-1">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex gap-1">
                 <button
                   onClick={() => setActiveTab('recursos')}
                   className={`px-3 py-2 h-9 rounded-lg text-xs transition-all duration-150 cursor-pointer flex-1 ${
                     activeTab === 'recursos'
-                      ? 'bg-white text-[--esap-primary] shadow-sm font-semibold'
-                      : 'text-[--esap-gray-600] hover:text-[--esap-gray-900] hover:bg-white/70 border border-transparent hover:border-gray-200'
+                      ? 'bg-white text-[#1e5da8] shadow-sm font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border border-transparent hover:border-gray-200'
                   }`}
                 >
                   Recursos
@@ -229,8 +252,8 @@ export function HelpCenter() {
                   onClick={() => setActiveTab('faqs')}
                   className={`px-3 py-2 h-9 rounded-lg text-xs transition-all duration-150 cursor-pointer flex-1 ${
                     activeTab === 'faqs'
-                      ? 'bg-white text-[--esap-primary] shadow-sm font-semibold'
-                      : 'text-[--esap-gray-600] hover:text-[--esap-gray-900] hover:bg-white/70 border border-transparent hover:border-gray-200'
+                      ? 'bg-white text-[#1e5da8] shadow-sm font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border border-transparent hover:border-gray-200'
                   }`}
                 >
                   FAQs
@@ -239,8 +262,8 @@ export function HelpCenter() {
                   onClick={() => setActiveTab('contacto')}
                   className={`px-3 py-2 h-9 rounded-lg text-xs transition-all duration-150 cursor-pointer flex-1 ${
                     activeTab === 'contacto'
-                      ? 'bg-white text-[--esap-primary] shadow-sm font-semibold'
-                      : 'text-[--esap-gray-600] hover:text-[--esap-gray-900] hover:bg-white/70 border border-transparent hover:border-gray-200'
+                      ? 'bg-white text-[#1e5da8] shadow-sm font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border border-transparent hover:border-gray-200'
                   }`}
                 >
                   Contacto
@@ -249,87 +272,130 @@ export function HelpCenter() {
 
               {/* Content - Scroll Area */}
               <div className="flex-1 overflow-y-auto">
-                {/* Recursos Tab: contenido de una opción */}
-                {activeTab === 'recursos' && recursoAbierto && (
-                  recursos ? (
-                    <ListaRecursos
-                      titulo={recursoAbierto.title}
-                      categoria={recursoAbierto.id}
-                      recursos={recursosDe(recursoAbierto.id)}
-                      onVolver={() => setCategoriaAbierta(null)}
-                      onVer={setRecursoEnVisor}
-                    />
-                  ) : errorRecursos ? (
-                    <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
-                      <AlertCircle className="w-8 h-8 text-amber-500" />
-                      <p className="text-sm text-[--esap-gray-700]">No se pudieron cargar los recursos de ayuda.</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setCategoriaAbierta(null)}
-                          className="px-3 py-2 rounded-lg text-xs border border-[--esap-gray-200] hover:bg-[--esap-gray-50]"
-                        >
-                          Volver
-                        </button>
-                        <button
-                          onClick={cargarRecursos}
-                          className="px-3 py-2 rounded-lg text-xs bg-[--esap-primary] text-white hover:bg-[--esap-primary-dark]"
-                        >
-                          Reintentar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 py-12 text-[--esap-gray-600]">
-                      <Loader2 className="w-6 h-6 animate-spin text-[--esap-primary]" />
-                      <p className="text-xs">Cargando recursos...</p>
-                    </div>
-                  )
-                )}
-
-                {/* Recursos Tab */}
-                {activeTab === 'recursos' && !recursoAbierto && (
-                  <div className="p-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      {helpResources.map((resource) => (
-                        <button
-                          key={resource.id}
-                          onClick={() => abrirCategoria(resource.id)}
-                          className="relative p-4 min-h-[110px] rounded-xl border-2 border-[--esap-gray-200] hover:border-[--esap-primary] hover:bg-blue-50/50 hover:shadow-sm transition-all duration-150 text-left group cursor-pointer"
-                        >
-                          <div className="w-10 h-10 rounded-lg bg-blue-100 text-[--esap-primary] flex items-center justify-center mb-3 group-hover:bg-[--esap-primary] group-hover:text-white transition-colors">
-                            {resource.icon}
+                {/* Recursos Tab: la cuadrícula y el contenido de una opción se deslizan entre sí */}
+                {activeTab === 'recursos' && (
+                  <AnimatePresence mode="wait" initial={false}>
+                    {recursoAbierto ? (
+                      <motion.div
+                        key={`lista-${recursoAbierto.id}`}
+                        initial={{ opacity: 0, x: 28 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 28 }}
+                        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                      >
+                        {recursos ? (
+                          <ListaRecursos
+                            titulo={recursoAbierto.title}
+                            categoria={recursoAbierto.id}
+                            recursos={recursosDe(recursoAbierto.id)}
+                            onVolver={() => setCategoriaAbierta(null)}
+                            onVer={setRecursoEnVisor}
+                          />
+                        ) : errorRecursos ? (
+                          <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                            <AlertCircle className="w-8 h-8 text-amber-500" />
+                            <p className="text-sm text-slate-700">No se pudieron cargar los recursos de ayuda.</p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setCategoriaAbierta(null)}
+                                className="px-3 py-2 rounded-lg text-xs border border-slate-200 hover:bg-slate-50"
+                              >
+                                Volver
+                              </button>
+                              <button
+                                onClick={cargarRecursos}
+                                className="px-3 py-2 rounded-lg text-xs bg-[#1e5da8] text-white hover:bg-[#154a85]"
+                              >
+                                Reintentar
+                              </button>
+                            </div>
                           </div>
-                          <h4 className="text-sm text-[--esap-gray-900] mb-1 font-medium">
-                            {resource.title}
-                          </h4>
-                          <p className="text-xs text-[--esap-gray-600] line-clamp-2">
-                            {resource.description}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 py-12 text-slate-600">
+                            <Loader2 className="w-6 h-6 animate-spin text-[#1e5da8]" />
+                            <p className="text-xs">Cargando recursos...</p>
+                          </div>
+                        )}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="cuadricula"
+                        initial={{ opacity: 0, x: -28 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -28 }}
+                        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                        className="p-4"
+                      >
+                        <div className="grid grid-cols-2 gap-3">
+                          {helpResources.map((resource, i) => {
+                            const estado = estadoDe(resource.id);
+                            return (
+                              <motion.button
+                                key={resource.id}
+                                custom={i}
+                                variants={entradaTarjeta}
+                                initial="hidden"
+                                animate="visible"
+                                whileHover={{ y: -2 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => abrirCategoria(resource.id)}
+                                className="relative p-4 min-h-[118px] rounded-xl border-2 border-slate-200 bg-white hover:border-[#1e5da8] hover:bg-blue-50/40 hover:shadow-md transition-colors duration-150 text-left group cursor-pointer"
+                              >
+                                <div className="flex items-start justify-between gap-2 mb-3">
+                                  <div
+                                    className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+                                      estado?.vacio
+                                        ? 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
+                                        : 'bg-blue-100 text-[#1e5da8] group-hover:bg-[#1e5da8] group-hover:text-white'
+                                    }`}
+                                  >
+                                    {resource.icon}
+                                  </div>
+                                  {estado === null ? (
+                                    <span className="h-5 w-12 rounded-full bg-slate-100 animate-pulse" aria-hidden />
+                                  ) : (
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                                        estado.vacio
+                                          ? 'bg-slate-50 text-slate-500 border-slate-200'
+                                          : 'bg-blue-50 text-[#1e5da8] border-blue-100'
+                                      }`}
+                                    >
+                                      {estado.texto}
+                                    </span>
+                                  )}
+                                </div>
+                                <h4 className="text-sm text-slate-900 mb-1 font-medium">
+                                  {resource.title}
+                                </h4>
+                                <p className="text-xs text-slate-600 line-clamp-2">
+                                  {resource.description}
+                                </p>
+                              </motion.button>
+                            );
+                          })}
+                        </div>
 
-                    {/* Quick Access */}
-                    <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-[--esap-primary] text-white flex items-center justify-center flex-shrink-0">
-                          <Headphones className="w-5 h-5" />
+                        {/* Quick Access */}
+                        <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-[#1e5da8] text-white flex items-center justify-center flex-shrink-0">
+                              <Headphones className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="text-sm text-slate-900 mb-1 font-medium">
+                                ¿Necesitas ayuda inmediata?
+                              </h4>
+                              <p className="text-xs text-slate-600">
+                                Nuestro equipo de soporte está disponible de lunes a viernes de 8:00 AM a 6:00 PM.
+                                Escríbenos desde la pestaña Contacto.
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm text-[--esap-gray-900] mb-1 font-medium">
-                            ¿Necesitas ayuda inmediata?
-                          </h4>
-                          <p className="text-xs text-[--esap-gray-600] mb-3">
-                            Nuestro equipo de soporte está disponible de lunes a viernes de 8:00 AM a 6:00 PM
-                          </p>
-                          <button className="w-full px-4 py-2.5 h-10 bg-[--esap-primary] text-white rounded-lg text-xs hover:bg-[--esap-primary-dark] transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow-md font-medium">
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            Iniciar chat en vivo
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 )}
 
                 {/* FAQs Tab */}
@@ -337,13 +403,13 @@ export function HelpCenter() {
                   <div className="p-4">
                     {/* Search */}
                     <div className="relative mb-4">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[--esap-gray-400]" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <input
                         type="text"
                         placeholder="Buscar en preguntas frecuentes..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 h-10 rounded-lg border-2 border-[--esap-gray-200] text-sm focus:border-[--esap-primary] focus:outline-none transition-colors"
+                        className="w-full pl-10 pr-4 py-2 h-10 rounded-lg border-2 border-slate-200 text-sm focus:border-[#1e5da8] focus:outline-none transition-colors"
                       />
                     </div>
 
@@ -352,14 +418,14 @@ export function HelpCenter() {
                       {filteredFaqs.map((faq, index) => (
                         <details
                           key={index}
-                          className="group rounded-xl border-2 border-[--esap-gray-200] hover:border-[--esap-primary] transition-colors overflow-hidden"
+                          className="group rounded-xl border-2 border-slate-200 hover:border-[#1e5da8] transition-colors overflow-hidden"
                         >
                           <summary className="px-4 py-3 cursor-pointer list-none flex items-center justify-between bg-white hover:bg-blue-50/50 transition-colors">
-                            <span className="text-sm text-[--esap-gray-900] font-medium">
+                            <span className="text-sm text-slate-900 font-medium">
                               {faq.question}
                             </span>
                             <svg
-                              className="w-4 h-4 text-[--esap-gray-600] group-open:rotate-180 transition-transform"
+                              className="w-4 h-4 text-slate-600 group-open:rotate-180 transition-transform"
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
@@ -367,8 +433,8 @@ export function HelpCenter() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
                           </summary>
-                          <div className="px-4 py-3 bg-[--esap-gray-50] border-t border-[--esap-gray-200]">
-                            <p className="text-xs text-[--esap-gray-700] leading-relaxed">
+                          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200">
+                            <p className="text-xs text-slate-700 leading-relaxed">
                               {faq.answer}
                             </p>
                           </div>
@@ -378,8 +444,8 @@ export function HelpCenter() {
 
                     {filteredFaqs.length === 0 && (
                       <div className="py-12 text-center">
-                        <Search className="w-12 h-12 text-[--esap-gray-300] mx-auto mb-3" />
-                        <p className="text-sm text-[--esap-gray-600]">
+                        <Search className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                        <p className="text-sm text-slate-600">
                           No se encontraron resultados
                         </p>
                       </div>
@@ -391,29 +457,29 @@ export function HelpCenter() {
                 {activeTab === 'contacto' && (
                   <div className="p-4 space-y-4">
                     {/* Soporte Técnico */}
-                    <div className="p-4 rounded-xl border-2 border-[--esap-gray-200] hover:border-[--esap-primary] transition-colors">
+                    <div className="p-4 rounded-xl border-2 border-slate-200 hover:border-[#1e5da8] transition-colors">
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-blue-100 text-[--esap-primary] flex items-center justify-center flex-shrink-0">
+                        <div className="w-10 h-10 rounded-lg bg-blue-100 text-[#1e5da8] flex items-center justify-center flex-shrink-0">
                           <Headphones className="w-5 h-5" />
                         </div>
                         <div className="flex-1">
-                          <h4 className="text-sm text-[--esap-gray-900] mb-1 font-medium">
+                          <h4 className="text-sm text-slate-900 mb-1 font-medium">
                             Soporte Técnico
                           </h4>
-                          <p className="text-xs text-[--esap-gray-600] mb-3">
+                          <p className="text-xs text-slate-600 mb-3">
                             Para problemas técnicos o errores del sistema
                           </p>
                           <div className="space-y-2">
                             <a
                               href="mailto:soporte@esap.edu.co"
-                              className="flex items-center gap-2 text-xs text-[--esap-primary] hover:text-[--esap-primary-dark] transition-colors font-medium"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#154a85] transition-colors font-medium"
                             >
                               <Mail className="w-3.5 h-3.5" />
                               soporte@esap.edu.co
                             </a>
                             <a
                               href="tel:+576013536464"
-                              className="flex items-center gap-2 text-xs text-[--esap-primary] hover:text-[--esap-primary-dark] transition-colors font-medium"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#154a85] transition-colors font-medium"
                             >
                               <Phone className="w-3.5 h-3.5" />
                               +57 (601) 353 6464 Ext. 1234
@@ -424,22 +490,22 @@ export function HelpCenter() {
                     </div>
 
                     {/* Mesa de Ayuda */}
-                    <div className="p-4 rounded-xl border-2 border-[--esap-gray-200] hover:border-[--esap-primary] transition-colors">
+                    <div className="p-4 rounded-xl border-2 border-slate-200 hover:border-[#1e5da8] transition-colors">
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-lg bg-green-100 text-green-700 flex items-center justify-center flex-shrink-0">
                           <MessageCircle className="w-5 h-5" />
                         </div>
                         <div className="flex-1">
-                          <h4 className="text-sm text-[--esap-gray-900] mb-1 font-medium">
+                          <h4 className="text-sm text-slate-900 mb-1 font-medium">
                             Mesa de Ayuda
                           </h4>
-                          <p className="text-xs text-[--esap-gray-600] mb-3">
+                          <p className="text-xs text-slate-600 mb-3">
                             Consultas generales y solicitudes
                           </p>
                           <div className="space-y-2">
                             <a
                               href="mailto:mesadeayuda@esap.edu.co"
-                              className="flex items-center gap-2 text-xs text-[--esap-primary] hover:text-[--esap-primary-dark] transition-colors font-medium"
+                              className="flex items-center gap-2 text-xs text-[#1e5da8] hover:text-[#154a85] transition-colors font-medium"
                             >
                               <Mail className="w-3.5 h-3.5" />
                               mesadeayuda@esap.edu.co
@@ -451,10 +517,10 @@ export function HelpCenter() {
 
                     {/* Horarios */}
                     <div className="p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
-                      <h4 className="text-sm text-[--esap-gray-900] mb-2 font-medium">
+                      <h4 className="text-sm text-slate-900 mb-2 font-medium">
                         Horario de Atención
                       </h4>
-                      <div className="space-y-1.5 text-xs text-[--esap-gray-700]">
+                      <div className="space-y-1.5 text-xs text-slate-700">
                         <div className="flex justify-between">
                           <span>Lunes a Viernes:</span>
                           <span className="font-medium">8:00 AM - 6:00 PM</span>
@@ -465,13 +531,13 @@ export function HelpCenter() {
                         </div>
                         <div className="flex justify-between">
                           <span>Domingos:</span>
-                          <span className="text-[--esap-gray-500]">Cerrado</span>
+                          <span className="text-slate-500">Cerrado</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Portal de Ayuda */}
-                    <button className="w-full p-4 rounded-xl bg-[--esap-primary] text-white hover:bg-[--esap-primary-dark] transition-colors flex items-center justify-between group">
+                    <button className="w-full p-4 rounded-xl bg-[#1e5da8] text-white hover:bg-[#154a85] transition-colors flex items-center justify-between group">
                       <div className="text-left">
                         <h4 className="text-sm mb-0.5 font-medium">Portal de Ayuda ESAP</h4>
                         <p className="text-xs text-white/80">
@@ -485,11 +551,11 @@ export function HelpCenter() {
               </div>
 
               {/* Footer - Compacto */}
-              <div className="px-4 py-3 bg-[--esap-gray-50] border-t border-[--esap-gray-200] flex items-center justify-between">
-                <span className="text-xs text-[--esap-gray-600]">
+              <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs text-slate-600">
                   Versión 2.0.0
                 </span>
-                <button className="text-xs text-[--esap-primary] hover:text-[--esap-primary-dark] flex items-center gap-1 transition-colors font-medium">
+                <button className="text-xs text-[#1e5da8] hover:text-[#154a85] flex items-center gap-1 transition-colors font-medium">
                   ¿Sugerir mejora?
                   <ExternalLink className="w-3 h-3" />
                 </button>
@@ -499,9 +565,11 @@ export function HelpCenter() {
         )}
       </AnimatePresence>
 
-      {recursoEnVisor && (
-        <VisorRecurso recurso={recursoEnVisor} onCerrar={() => setRecursoEnVisor(null)} />
-      )}
+      <AnimatePresence>
+        {recursoEnVisor && (
+          <VisorRecurso recurso={recursoEnVisor} onCerrar={() => setRecursoEnVisor(null)} />
+        )}
+      </AnimatePresence>
     </>
   );
 }

@@ -58,12 +58,15 @@ export class OnlyOfficeService {
         url: `${this.urlInterna}${rutaDescarga}`,
         fileType: extension,
         key: clave.replace(/[^0-9a-zA-Z_-]/g, '').slice(0, 128),
+        // La descarga la ofrece la ventana del visor con el archivo original;
+        // sin esto OnlyOffice muestra un segundo botón de descargar.
         permissions: {
           edit: false,
-          download: true,
+          download: false,
           print: true,
           review: false,
           comment: false,
+          chat: false,
           fillForms: false,
         },
       },
@@ -72,12 +75,11 @@ export class OnlyOfficeService {
         lang: 'es',
         user: { id: usuario.id, name: usuario.nombre },
         customization: {
-          chat: false,
           comments: false,
           help: false,
           plugins: false,
-          toolbarNoTabs: true,
           hideRightMenu: true,
+          features: { tabStyle: 'line', tabBackground: 'toolbar' },
         },
       },
     };
