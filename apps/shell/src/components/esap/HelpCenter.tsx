@@ -25,7 +25,8 @@ import {
   type CategoriaCentroAyuda,
   type RecursoCentroAyuda,
 } from '../../services/api/centroAyuda.service';
-import { ListaRecursos } from './centro-ayuda/ListaRecursos';
+import { ListaRecursos, ResultadosBusqueda } from './centro-ayuda/ListaRecursos';
+import { buscarRecursos } from './centro-ayuda/busqueda';
 import { VisorRecurso } from './centro-ayuda/VisorRecurso';
 import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/estilosAnimacion';
 
@@ -68,6 +69,7 @@ export function HelpCenter() {
   const [errorRecursos, setErrorRecursos] = useState(false);
   const [categoriaAbierta, setCategoriaAbierta] = useState<CategoriaCentroAyuda | null>(null);
   const [recursoEnVisor, setRecursoEnVisor] = useState<RecursoCentroAyuda | null>(null);
+  const [busqueda, setBusqueda] = useState('');
 
   const cargarRecursos = useCallback(async () => {
     setErrorRecursos(false);
@@ -85,6 +87,7 @@ export function HelpCenter() {
     } else {
       setCategoriaAbierta(null);
       setRecursoEnVisor(null);
+      setBusqueda('');
     }
   }, [isOpen, cargarRecursos]);
 
@@ -102,6 +105,9 @@ export function HelpCenter() {
     (recursos || []).filter((r) => r.categoria === categoria);
 
   const manualVigente = recursosDe('manual').find((r) => r.archivo);
+
+  const consultaActiva = busqueda.trim().length > 0;
+  const resultadosBusqueda = consultaActiva ? buscarRecursos(recursos || [], busqueda) : [];
 
   const abrirCategoria = (categoria: CategoriaCentroAyuda) => {
     if (categoria === 'manual' && manualVigente) {
@@ -341,74 +347,114 @@ export function HelpCenter() {
                         className="p-4"
                         style={SIN_TRANSICION_CSS}
                       >
-                        <div className="grid grid-cols-2 gap-3">
-                          {helpResources.map((resource, i) => {
-                            const estado = estadoDe(resource.id);
-                            return (
-                              <motion.button
-                                key={resource.id}
-                                custom={i}
-                                variants={entradaTarjeta}
-                                initial="hidden"
-                                animate="visible"
-                                whileHover={{ y: -2 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => abrirCategoria(resource.id)}
-                                className="relative flex flex-col items-stretch justify-start p-4 min-h-[120px] rounded-xl border-2 border-slate-200 bg-white hover:border-[#1e5da8] hover:bg-blue-50 hover:shadow-md transition-colors duration-150 text-left group cursor-pointer"
-                                style={SOLO_TRANSICION_DE_COLOR}
-                              >
-                                <div className="flex items-start justify-between gap-2 mb-3">
-                                  <div
-                                    className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                                      estado?.vacio
-                                        ? 'bg-slate-100 text-slate-400'
-                                        : 'bg-blue-50 text-[#1e5da8] group-hover:bg-blue-100'
-                                    }`}
-                                  >
-                                    {resource.icon}
-                                  </div>
-                                  {estado === null ? (
-                                    <span className="h-5 w-12 rounded-full bg-slate-100 animate-pulse" aria-hidden />
-                                  ) : (
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                                        estado.vacio
-                                          ? 'bg-slate-50 text-slate-500 border-slate-200'
-                                          : 'bg-blue-50 text-[#1e5da8] border-blue-100'
-                                      }`}
-                                    >
-                                      {estado.texto}
-                                    </span>
-                                  )}
-                                </div>
-                                <h4 className="text-sm text-slate-900 mb-1 font-medium">
-                                  {resource.title}
-                                </h4>
-                                <p className="text-xs text-slate-600 line-clamp-2">
-                                  {resource.description}
-                                </p>
-                              </motion.button>
-                            );
-                          })}
+                        <div className="relative mb-4">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="search"
+                            placeholder="Buscar manuales, videos, guías..."
+                            aria-label="Buscar recursos de ayuda"
+                            value={busqueda}
+                            onChange={(e) => setBusqueda(e.target.value)}
+                            onKeyDown={(e) => {
+                              // Esc primero limpia la búsqueda; con el campo vacío cierra el panel
+                              if (e.key === 'Escape' && busqueda) {
+                                e.stopPropagation();
+                                setBusqueda('');
+                              }
+                            }}
+                            className="w-full pl-10 pr-10 py-2 h-10 rounded-lg border-2 border-slate-200 text-sm focus:border-[#1e5da8] focus:outline-none transition-colors"
+                          />
+                          {busqueda && (
+                            <button
+                              onClick={() => setBusqueda('')}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-gray-700"
+                              aria-label="Limpiar búsqueda"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
 
-                        {/* Quick Access */}
-                        <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-[#1e5da8] text-white flex items-center justify-center flex-shrink-0">
-                              <Headphones className="w-5 h-5" />
+                        {consultaActiva ? (
+                          recursos ? (
+                            <ResultadosBusqueda consulta={busqueda} resultados={resultadosBusqueda} onVer={setRecursoEnVisor} />
+                          ) : (
+                            <div className="flex justify-center py-10">
+                              <Loader2 className="w-6 h-6 animate-spin text-[#1e5da8]" />
                             </div>
-                            <div className="flex-1">
-                              <h4 className="text-sm text-slate-900 mb-1 font-medium">
-                                ¿Necesitas ayuda inmediata?
-                              </h4>
-                              <p className="text-xs text-slate-600">
-                                Nuestro equipo de soporte está disponible de lunes a viernes de 8:00 AM a 6:00 PM.
-                                Escríbenos desde la pestaña Contacto.
-                              </p>
+                          )
+                        ) : (
+                          <>
+                          <div className="grid grid-cols-2 gap-3">
+                            {helpResources.map((resource, i) => {
+                              const estado = estadoDe(resource.id);
+                              return (
+                                <motion.button
+                                  key={resource.id}
+                                  custom={i}
+                                  variants={entradaTarjeta}
+                                  initial="hidden"
+                                  animate="visible"
+                                  whileHover={{ y: -2 }}
+                                  whileTap={{ scale: 0.98 }}
+                                  onClick={() => abrirCategoria(resource.id)}
+                                  className="relative flex flex-col items-stretch justify-start p-4 min-h-[120px] rounded-xl border-2 border-slate-200 bg-white hover:border-[#1e5da8] hover:bg-blue-50 hover:shadow-md transition-colors duration-150 text-left group cursor-pointer"
+                                  style={SOLO_TRANSICION_DE_COLOR}
+                                >
+                                  <div className="flex items-start justify-between gap-2 mb-3">
+                                    <div
+                                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+                                        estado?.vacio
+                                          ? 'bg-slate-100 text-slate-400'
+                                          : 'bg-blue-50 text-[#1e5da8] group-hover:bg-blue-100'
+                                      }`}
+                                    >
+                                      {resource.icon}
+                                    </div>
+                                    {estado === null ? (
+                                      <span className="h-5 w-12 rounded-full bg-slate-100 animate-pulse" aria-hidden />
+                                    ) : (
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                                          estado.vacio
+                                            ? 'bg-slate-50 text-slate-500 border-slate-200'
+                                            : 'bg-blue-50 text-[#1e5da8] border-blue-100'
+                                        }`}
+                                      >
+                                        {estado.texto}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="text-sm text-slate-900 mb-1 font-medium">
+                                    {resource.title}
+                                  </h4>
+                                  <p className="text-xs text-slate-600 line-clamp-2">
+                                    {resource.description}
+                                  </p>
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Quick Access */}
+                          <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
+                            <div className="flex items-start gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-[#1e5da8] text-white flex items-center justify-center flex-shrink-0">
+                                <Headphones className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="text-sm text-slate-900 mb-1 font-medium">
+                                  ¿Necesitas ayuda inmediata?
+                                </h4>
+                                <p className="text-xs text-slate-600">
+                                  Nuestro equipo de soporte está disponible de lunes a viernes de 8:00 AM a 6:00 PM.
+                                  Escríbenos desde la pestaña Contacto.
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                          </>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>

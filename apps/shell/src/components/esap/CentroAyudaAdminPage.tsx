@@ -18,6 +18,8 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Search,
+  SearchX,
   Trash2,
   UploadCloud,
   X,
@@ -31,6 +33,7 @@ import {
   type RecursoCentroAyuda,
 } from '../../services/api/centroAyuda.service';
 import { IconoRecurso, tamanoLegible, tipoDeRecurso } from './centro-ayuda/IconoRecurso';
+import { buscarRecursos } from './centro-ayuda/busqueda';
 import { VisorRecurso } from './centro-ayuda/VisorRecurso';
 import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/estilosAnimacion';
 
@@ -561,6 +564,7 @@ export default function CentroAyudaAdminPage() {
   const [porEliminar, setPorEliminar] = useState<RecursoCentroAyuda | null>(null);
   const [enVisor, setEnVisor] = useState<RecursoCentroAyuda | null>(null);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [consulta, setConsulta] = useState('');
 
   const cargar = async () => {
     setErrorCarga(false);
@@ -583,7 +587,11 @@ export default function CentroAyudaAdminPage() {
     return total;
   }, [recursos]);
 
-  const visibles = (recursos || []).filter((r) => r.categoria === filtro);
+  // Mientras se busca, la lista muestra coincidencias de todas las opciones.
+  const buscando = consulta.trim().length > 0;
+  const visibles = buscando
+    ? buscarRecursos(recursos || [], consulta)
+    : (recursos || []).filter((r) => r.categoria === filtro);
 
   const alternarActivo = async (recurso: RecursoCentroAyuda) => {
     try {
@@ -654,7 +662,36 @@ export default function CentroAyudaAdminPage() {
             })}
           </div>
 
-          <p className="mb-4 text-xs text-slate-600">{AYUDA_CATEGORIA[filtro]}</p>
+          <div className="mb-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-600">
+              {buscando
+                ? `${visibles.length} ${visibles.length === 1 ? 'resultado' : 'resultados'} en todas las opciones`
+                : AYUDA_CATEGORIA[filtro]}
+            </p>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                placeholder="Buscar recurso..."
+                aria-label="Buscar recurso"
+                value={consulta}
+                onChange={(e) => setConsulta(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setConsulta('');
+                }}
+                className={campo.replace('px-3', 'pl-9 pr-10')}
+              />
+              {consulta && (
+                <button
+                  onClick={() => setConsulta('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-gray-700"
+                  aria-label="Limpiar búsqueda"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
 
           {recursos === null ? (
             errorCarga ? (
@@ -671,7 +708,25 @@ export default function CentroAyudaAdminPage() {
             )
           ) : (
             <AnimatePresence mode="wait" initial={false}>
-              {visibles.length === 0 ? (
+              {visibles.length === 0 && buscando ? (
+                <motion.div
+                  key="sin-resultados"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
+                  style={SIN_TRANSICION_CSS}
+                >
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
+                    <SearchX className="h-6 w-6 text-slate-400" />
+                  </span>
+                  <p className="text-sm font-medium text-slate-800">Ningún recurso coincide con «{consulta.trim()}»</p>
+                  <button onClick={() => setConsulta('')} className={botonSecundario}>
+                    Limpiar búsqueda
+                  </button>
+                </motion.div>
+              ) : visibles.length === 0 ? (
                 <motion.div
                   key={`vacio-${filtro}`}
                   initial={{ opacity: 0, y: 8 }}
@@ -694,7 +749,7 @@ export default function CentroAyudaAdminPage() {
                   </button>
                 </motion.div>
               ) : (
-                <motion.div key={`lista-${filtro}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
+                <motion.div key={buscando ? 'lista-busqueda' : `lista-${filtro}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
                   <AnimatePresence initial={false}>
                     {visibles.map((r, i) => {
                       const tipo = tipoDeRecurso(r);
@@ -720,6 +775,11 @@ export default function CentroAyudaAdminPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-sm font-medium text-slate-900">{r.titulo}</p>
+                              {buscando && (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                  {nombreCategoria(r.categoria)}
+                                </span>
+                              )}
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                                   r.activo ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-600'
