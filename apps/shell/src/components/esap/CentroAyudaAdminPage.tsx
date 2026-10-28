@@ -763,7 +763,7 @@ export default function CentroAyudaAdminPage() {
                   </button>
                 </motion.div>
               ) : (
-                <motion.div key={buscando ? 'lista-busqueda' : `lista-${filtro}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
+                <motion.div key="lista" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
                   <AnimatePresence initial={false}>
                     {visibles.map((r, i) => {
                       const tipo = tipoDeRecurso(r);
