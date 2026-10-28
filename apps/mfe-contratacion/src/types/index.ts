@@ -2580,6 +2580,8 @@ export interface EstadoPagos {
   puedeRadicar: boolean;
   /** Si quien consulta es el supervisor de este contrato y puede avalar. */
   esSupervisor: boolean;
+  /** Si puede registrar el trámite: el gestor en cualquiera, el supervisor en el suyo (133). */
+  puedeTramitar?: boolean;
   /** Mientras sea falso, los soportes se cargan a mano. */
   integracionClick: boolean;
   pagos: PagoContrato[];

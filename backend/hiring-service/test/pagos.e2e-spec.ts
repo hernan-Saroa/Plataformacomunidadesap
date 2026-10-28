@@ -474,7 +474,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         proceso.id,
         radicado.pagos[0].id,
         { referenciaPago: 'OP-2026-4471' },
-        financiero,
+        gestor,
       );
       expect(tramitado.pagos[0].estado).toBe('TRAMITADO');
       expect(tramitado.pagos[0].referenciaPago).toBe('OP-2026-4471');
@@ -491,7 +491,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
           proceso.id,
           radicado.pagos[0].id,
           { referenciaPago: 'OP-2026-0001' },
-          financiero,
+          gestor,
         ),
       ).rejects.toThrow(/todavía no la ha avalado/i);
     });
@@ -533,6 +533,34 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
   });
 
   describe('Criterio 3 · el aval es de quien vigila, no de quien tiene el rol', () => {
+    // Prueba en navegador de EFDS-1170 (migración 133): el supervisor también
+    // registra el trámite del pago, pero solo en el contrato que vigila.
+    it('el supervisor tramita el pago de su contrato', async () => {
+      const proceso = await contratoEnEjecucion();
+      const radicado = await radicar(proceso.id);
+      await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
+
+      const tramitado = await pagos.tramitar(
+        proceso.id,
+        radicado.pagos[0].id,
+        { referenciaPago: 'OP-2026-0133' },
+        supervisor,
+      );
+      expect(tramitado.puedeTramitar).toBe(true);
+      expect(tramitado.pagos[0].estado).toBe('TRAMITADO');
+    });
+
+    it('el supervisor de otro contrato no puede tramitar el pago', async () => {
+      const proceso = await contratoEnEjecucion();
+      const radicado = await radicar(proceso.id);
+      await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
+
+      expect((await pagos.estado(proceso.id, otroSupervisor)).puedeTramitar).toBe(false);
+      await expect(
+        pagos.tramitar(proceso.id, radicado.pagos[0].id, { referenciaPago: 'OP-2026-0134' }, otroSupervisor),
+      ).rejects.toThrow(/no eres el supervisor de este contrato/i);
+    });
+
     it('el supervisor de otro contrato no puede avalar', async () => {
       const proceso = await contratoEnEjecucion();
       const radicado = await radicar(proceso.id);
@@ -565,7 +593,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
           proceso.id,
           radicado.pagos[0].id,
           { referenciaPago: 'OP-2026-0002' },
-          financiero,
+          gestor,
         ),
       ).rejects.toThrow(/no se puede tramitar/i);
     });
@@ -639,7 +667,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       const pagoId = radicado.pagos[0].id;
 
       await pagos.avalar(proceso.id, pagoId, {}, supervisor);
-      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0003' }, financiero);
+      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0003' }, gestor);
 
       await expect(
         pagos.cargarSoporte(
@@ -692,7 +720,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       const pagoId = radicado.pagos[0].id;
 
       await pagos.avalar(proceso.id, pagoId, {}, supervisor);
-      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0004' }, financiero);
+      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0004' }, gestor);
 
       await expect(
         pagos.anular(proceso.id, pagoId, { motivo: 'Se radicó por error de digitación' }, gestor),
@@ -722,7 +750,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         proceso.id,
         radicado.pagos[0].id,
         { referenciaPago: 'OP-2026-0005' },
-        financiero,
+        gestor,
       );
       expect(await estadoDe()).toBe('APROBADO');
     });
@@ -749,7 +777,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       const pagoId = radicado.pagos[0].id;
 
       await pagos.avalar(proceso.id, pagoId, {}, supervisor);
-      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0006' }, financiero);
+      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0006' }, gestor);
 
       const trazas = await dataSource.query(
         `SELECT accion FROM hiring.trazabilidad

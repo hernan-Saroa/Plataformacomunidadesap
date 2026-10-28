@@ -461,7 +461,7 @@ describe('HU EFDS-1174 · publicación del acta y archivo del expediente (10.4)'
       procesoId,
       pagoId,
       { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
-      financiero,
+      gestor,
     );
     return pagoId;
   };

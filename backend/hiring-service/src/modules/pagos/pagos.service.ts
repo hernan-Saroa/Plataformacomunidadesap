@@ -22,6 +22,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { AlcanceService } from '../../auth/alcance.service';
 import {
   AnularPagoDto,
   AvalarPagoDto,
@@ -196,6 +197,7 @@ export class PagosService {
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
     private readonly puestos: PuestosService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -254,6 +256,8 @@ export class PagosService {
        * mostrarlo. La regla de verdad la aplica `exigirSupervisor`.
        */
       esSupervisor: await this.esElSupervisor(procesoId, acceso),
+      /** Si quien consulta puede registrar el trámite: lo aplica `exigirQuienTramita`. */
+      puedeTramitar: await this.puedeTramitar(procesoId, acceso),
       /** Mientras sea falso, los soportes se cargan a mano. */
       integracionClick: false,
       pagos: pagos.map((pago): PagoResumen => ({
@@ -520,6 +524,11 @@ export class PagosService {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
       const pago = await this.exigirPago(em, contrato.id, pagoId);
+      if (!(await this.puedeTramitar(procesoId, acceso, em))) {
+        throw new ForbiddenException(
+          'No eres el supervisor de este contrato: el trámite del pago lo registra su supervisor o la Dirección de Contratación',
+        );
+      }
 
       if (pago.estado !== 'AVALADO') {
         throw new ConflictException(
@@ -652,6 +661,22 @@ export class PagosService {
    */
   private esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
     return this.puestos.esElSupervisor(procesoId, acceso, em);
+  }
+
+  /**
+   * Si quien consulta puede registrar el trámite del pago (decidir la 9.4).
+   *
+   * El supervisor lo tiene por su rol, pero solo sobre el contrato que vigila:
+   * el permiso es del rol y el contrato es del puesto, como en el aval. Quien
+   * lo tiene por otro rol —el gestor de Contratación— lo registra en
+   * cualquiera.
+   */
+  private async puedeTramitar(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
+    if (!(await this.alcance.puedeEn(acceso, 'decidir', NUMERAL_PAGOS))) return false;
+    const otros = (acceso.roles ?? []).filter((r) => r !== 'SUPERVISOR_CONTRATO');
+    if (await this.alcance.puedeEn({ roles: otros }, 'decidir', NUMERAL_PAGOS)) return true;
+    return this.esElSupervisor(procesoId, acceso, em);
   }
 
   /**

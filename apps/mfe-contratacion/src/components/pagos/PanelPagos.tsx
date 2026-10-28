@@ -89,8 +89,9 @@ const VACIO = {
  * Actividad 9.4 · Trámite de pagos (EFDS-1170).
  *
  * Tres actos con tres responsables, y la pantalla los mantiene separados: se
- * radica la cuenta, el supervisor la avala o la devuelve, y Financiera la
- * tramita. El botón de avalar solo aparece para quien de verdad puede darlo.
+ * radica la cuenta, el supervisor la avala o la devuelve, y se registra el
+ * trámite del pago: lo hace Contratación o el supervisor del contrato (133).
+ * Los botones de avalar y tramitar solo aparecen para quien de verdad puede.
  *
  * La integración con Click quedó fuera del alcance, así que los soportes se
  * cargan a mano. Se dice de frente en la pantalla: es la carga triple que la
@@ -345,6 +346,7 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
               key={pago.id}
               pago={pago}
               esSupervisor={estado.esSupervisor}
+              puedeTramitar={estado.puedeTramitar !== false}
               guardando={guardando}
               onAvalar={() => avalar(pago.id)}
               onDevolver={() => devolver(pago.id)}
@@ -465,6 +467,7 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
 interface CuentaProps {
   pago: PagoContrato;
   esSupervisor: boolean;
+  puedeTramitar: boolean;
   guardando: boolean;
   onAvalar: () => void;
   onDevolver: () => void;
@@ -484,6 +487,7 @@ interface CuentaProps {
 function CuentaDeCobro({
   pago,
   esSupervisor,
+  puedeTramitar,
   guardando,
   onAvalar,
   onDevolver,
@@ -616,7 +620,7 @@ function CuentaDeCobro({
             </BotonSecundario>
           ) : null}
 
-          {pago.estado === 'AVALADO' ? (
+          {pago.estado === 'AVALADO' && puedeTramitar ? (
             <BotonSecundario
               icono={<Banknote className="w-3.5 h-3.5" />}
               disabled={guardando}
