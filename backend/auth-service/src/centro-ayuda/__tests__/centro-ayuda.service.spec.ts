@@ -271,6 +271,25 @@ describe('CentroAyudaService', () => {
     });
   });
 
+  describe('ocultar y mostrar', () => {
+    it('oculta un recurso sin tocar su contenido', async () => {
+      recursos.findOne.mockResolvedValue({ id: 5, idSeccion: 1, titulo: 'Guía', contenido: 'Texto', activo: true });
+      const oculto = await service.cambiarVisibilidadRecurso(5, false, 'admin');
+      expect(oculto).toMatchObject({ activo: false, contenido: 'Texto', actualizadoPor: 'admin' });
+    });
+
+    it('mostrar un manual lo deja como el único vigente de su sección', async () => {
+      recursos.findOne.mockResolvedValue({ id: 6, idSeccion: 4, titulo: 'Manual', activo: false });
+      await service.cambiarVisibilidadRecurso(6, true, 'admin');
+      expect(actualizacion.where).toHaveBeenCalledWith('id_seccion = :idSeccion', { idSeccion: 4 });
+    });
+
+    it('oculta una sección', async () => {
+      const oculta = await service.cambiarVisibilidadSeccion(2, false, 'admin');
+      expect(oculta.activo).toBe(false);
+    });
+  });
+
   describe('manual de usuario', () => {
     it('debe ser PDF', async () => {
       const archivo = subir('manual.docx');

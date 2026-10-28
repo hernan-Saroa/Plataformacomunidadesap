@@ -299,6 +299,15 @@ export class CentroAyudaService {
     return this.seccionDeSalida(await this.secciones.save(seccion));
   }
 
+  /** Oculta o muestra la sección; oculta, sus recursos tampoco se ven. */
+  async cambiarVisibilidadSeccion(id: number, activo: boolean, usuario: string): Promise<SeccionCentroAyuda> {
+    const seccion = await this.secciones.findOne({ where: { id } });
+    if (!seccion) throw new NotFoundException('La sección no existe');
+    seccion.activo = activo;
+    seccion.actualizadoPor = usuario;
+    return this.seccionDeSalida(await this.secciones.save(seccion));
+  }
+
   /** Guarda el orden en que aparecen las secciones en el Centro de Ayuda. */
   async ordenarSecciones(ids: number[], usuario: string): Promise<SeccionAdministrada[]> {
     const secciones = await this.secciones.find({ where: { id: In(ids) } });
@@ -429,6 +438,18 @@ export class CentroAyudaService {
       if (archivo) this.borrarArchivo(archivo.filename);
       throw error;
     }
+  }
+
+  /** Oculta o muestra el recurso sin cambiar su contenido. */
+  async cambiarVisibilidadRecurso(id: number, activo: boolean, usuario: string): Promise<RecursoCentroAyuda> {
+    const recurso = await this.recursos.findOne({ where: { id } });
+    if (!recurso) throw new NotFoundException('El recurso no existe');
+    const seccion = await this.seccionVigente(recurso.idSeccion);
+    recurso.activo = activo;
+    recurso.actualizadoPor = usuario;
+    const guardado = await this.recursos.save(recurso);
+    await this.dejarUnSoloManualVigente(guardado, seccion.tipo);
+    return this.recursoDeSalida(guardado);
   }
 
   /** Envía el recurso a la papelera; el archivo se conserva para poder restaurarlo. */

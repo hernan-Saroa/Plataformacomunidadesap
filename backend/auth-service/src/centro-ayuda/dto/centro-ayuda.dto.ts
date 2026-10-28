@@ -118,3 +118,10 @@ export class OrdenarSeccionesDto {
   @IsInt({ each: true })
   ids: number[];
 }
+
+/** Ocultar (false) o mostrar (true) una sección o un recurso sin tocar lo demás. */
+export class CambiarVisibilidadDto {
+  @Transform(aBooleano)
+  @IsBoolean({ message: 'Indique si queda visible u oculto' })
+  activo: boolean;
+}

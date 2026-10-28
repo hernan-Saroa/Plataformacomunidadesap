@@ -10,8 +10,9 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, Reorder, motion, useDragControls } from 'motion/react';
 import {
+  AlignLeft,
   ArchiveRestore,
   CheckCircle2,
   ChevronDown,
@@ -19,9 +20,12 @@ import {
   Eye,
   EyeOff,
   FolderOpen,
+  GripVertical,
   LifeBuoy,
+  Link2,
   Loader2,
   Lock,
+  Paperclip,
   Pencil,
   Plus,
   Search,
@@ -515,17 +519,44 @@ interface FormularioProps {
   onGuardado: () => void;
 }
 
+type Formato = 'archivo' | 'enlace' | 'texto';
+
+const FORMATOS: Record<Formato, { nombre: string; Icono: typeof Paperclip }> = {
+  archivo: { nombre: 'Archivo', Icono: Paperclip },
+  enlace: { nombre: 'Enlace', Icono: Link2 },
+  texto: { nombre: 'Texto', Icono: AlignLeft },
+};
+
+/** Qué formatos admite cada tipo de sección; los atajos solo llevan la combinación de teclas. */
+const FORMATOS_POR_TIPO: Record<TipoSeccion, Formato[]> = {
+  general: ['archivo', 'enlace', 'texto'],
+  videos: ['archivo', 'enlace'],
+  manual: ['archivo'],
+  atajos: [],
+};
+
+const formatoDe = (recurso: RecursoCentroAyuda | null, tipo: TipoSeccion): Formato => {
+  const permitidos = FORMATOS_POR_TIPO[tipo];
+  const actual: Formato | null = recurso?.archivo ? 'archivo' : recurso?.enlace ? 'enlace' : recurso?.contenido ? 'texto' : null;
+  return actual && permitidos.includes(actual) ? actual : permitidos[0] ?? 'texto';
+};
+
 function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGuardado }: FormularioProps) {
   const [datos, setDatos] = useState<DatosRecurso>(
     recurso ? datosDe(recurso) : { idSeccion: seccionInicial, titulo: '', orden: 0, activo: true },
   );
+  const seccion = secciones.find((s) => s.id === datos.idSeccion);
+  const tipo: TipoSeccion = seccion?.tipo ?? 'general';
+
+  const [formato, setFormato] = useState<Formato>(() => formatoDe(recurso, tipo));
   const [archivo, setArchivo] = useState<File | null>(null);
   const [quitarArchivo, setQuitarArchivo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errores, setErrores] = useState<Errores>({});
 
-  const seccion = secciones.find((s) => s.id === datos.idSeccion);
-  const tipo: TipoSeccion = seccion?.tipo ?? 'general';
+  const formatos = FORMATOS_POR_TIPO[tipo];
+  // Si se mueve a una sección que no admite el formato elegido, pasa al primero que sí.
+  const formatoVigente: Formato = formatos.includes(formato) ? formato : formatos[0] ?? 'texto';
 
   const limpiarError = (...campos: CampoValidado[]) =>
     setErrores((previos) => {
@@ -540,14 +571,13 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
     if ('idSeccion' in cambios) setErrores({});
     if ('titulo' in cambios) limpiarError('titulo');
     if ('version' in cambios) limpiarError('version');
-    // en una sección general basta con texto, enlace o archivo
-    if ('contenido' in cambios || 'enlace' in cambios) limpiarError('contenido', 'enlace', 'archivo');
+    if ('contenido' in cambios) limpiarError('contenido');
+    if ('enlace' in cambios) limpiarError('enlace');
   };
   const elegirArchivo = (nuevo: File | null) => {
     setArchivo(nuevo);
-    limpiarError('archivo', 'contenido');
+    limpiarError('archivo');
   };
-  const admiteArchivo = tipo !== 'atajos';
 
   const propsDeCampo = (campoValidado: CampoValidado) => ({
     id: ID_DE_CAMPO[campoValidado],
@@ -560,34 +590,29 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
   const validar = (): Errores => {
     const encontrados: Errores = {};
     const enlace = (datos.enlace ?? '').trim();
-    const usaEnlace = tipo !== 'atajos' && tipo !== 'manual';
     const conArchivo = Boolean(archivo) || (Boolean(recurso?.archivo) && !quitarArchivo);
     const extension = archivo ? extensionDe(archivo.name) : recurso?.archivo ? extensionDe(recurso.archivo.nombre) : '';
 
     if (!datos.titulo.trim()) encontrados.titulo = 'Escriba un título';
-    if (usaEnlace && enlace && !/^https?:\/\/\S+$/i.test(enlace)) {
-      encontrados.enlace = 'El enlace debe empezar por http:// o https://';
+    if (tipo === 'manual' && !datos.version?.trim()) encontrados.version = 'Indique la versión del sistema';
+    if (tipo === 'atajos') {
+      if (!datos.contenido?.trim()) encontrados.contenido = 'Escriba la combinación de teclas';
+      return encontrados;
     }
-    switch (tipo) {
-      case 'manual':
-        if (!datos.version?.trim()) encontrados.version = 'Indique la versión del sistema';
-        if (!conArchivo) encontrados.archivo = 'Cargue el PDF del manual';
-        else if (extension !== 'pdf') encontrados.archivo = 'El manual debe ser un PDF';
-        break;
-      case 'videos':
-        if (conArchivo && !['mp4', 'webm', 'ogg', 'ogv'].includes(extension)) {
+    switch (formatoVigente) {
+      case 'archivo':
+        if (!conArchivo) encontrados.archivo = tipo === 'manual' ? 'Cargue el PDF del manual' : 'Elija el archivo';
+        else if (tipo === 'manual' && extension !== 'pdf') encontrados.archivo = 'El manual debe ser un PDF';
+        else if (tipo === 'videos' && !['mp4', 'webm', 'ogg', 'ogv'].includes(extension)) {
           encontrados.archivo = 'El video debe ser MP4, WebM u OGG';
-        } else if (!conArchivo && !enlace) {
-          encontrados.archivo = 'Cargue el video o escriba su enlace';
         }
         break;
-      case 'atajos':
-        if (!datos.contenido?.trim()) encontrados.contenido = 'Escriba la combinación de teclas';
+      case 'enlace':
+        if (!enlace) encontrados.enlace = 'Escriba el enlace';
+        else if (!/^https?:\/\/\S+$/i.test(enlace)) encontrados.enlace = 'El enlace debe empezar por http:// o https://';
         break;
       default:
-        if (!conArchivo && !enlace && !datos.contenido?.trim()) {
-          encontrados.contenido = 'Agregue un texto, un enlace o un archivo';
-        }
+        if (!datos.contenido?.trim()) encontrados.contenido = 'Escriba el texto';
     }
     return encontrados;
   };
@@ -603,10 +628,16 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
     }
     setGuardando(true);
     try {
+      // Solo se guarda el contenido del formato elegido; lo demás queda vacío.
+      const usaArchivo = tipo !== 'atajos' && formatoVigente === 'archivo';
       const envio: DatosRecurso = {
         ...datos,
-        archivo: admiteArchivo ? archivo : null,
-        quitarArchivo: !archivo && (quitarArchivo || (!admiteArchivo && Boolean(recurso?.archivo))),
+        enlace: tipo !== 'atajos' && formatoVigente === 'enlace' ? datos.enlace : '',
+        contenido: tipo === 'atajos' || formatoVigente === 'texto' ? datos.contenido : '',
+        modulo: tipo === 'atajos' ? '' : datos.modulo,
+        version: tipo === 'manual' ? datos.version : '',
+        archivo: usaArchivo ? archivo : null,
+        quitarArchivo: !archivo && Boolean(recurso?.archivo) && (quitarArchivo || !usaArchivo),
       };
       if (recurso) {
         await centroAyudaService.actualizarRecurso(recurso.id, envio);
@@ -622,6 +653,8 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
       setGuardando(false);
     }
   };
+
+  const aparece = { initial: { opacity: 0, height: 0 }, animate: { opacity: 1, height: 'auto' }, exit: { opacity: 0, height: 0 } };
 
   return (
     <Ventana onCerrar={onCerrar} ocupado={guardando} etiquetaId="ca-form-titulo" ancho="max-w-4xl">
@@ -665,23 +698,60 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
               </div>
 
               <AnimatePresence initial={false}>
-                {tipo === 'general' && (
-                  <motion.div key="modulo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                    <label className={etiqueta} htmlFor="ca-modulo">Módulo del sistema</label>
+                {tipo !== 'atajos' && (
+                  <motion.div key="modulo" {...aparece} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-modulo">Módulo del sistema <span className="font-normal text-slate-500">(opcional)</span></label>
                     <input id="ca-modulo" className={campo} maxLength={100} placeholder="Ej.: Contratación" value={datos.modulo ?? ''} onChange={(e) => cambiar({ modulo: e.target.value })} />
+                    <p className="mt-1 text-[11px] text-slate-500">En el panel de ayuda los recursos se agrupan por este módulo.</p>
                   </motion.div>
                 )}
 
                 {tipo === 'manual' && (
-                  <motion.div key="version" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                  <motion.div key="version" {...aparece} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-version">Versión del sistema <span className="text-red-500">*</span></label>
                     <input {...propsDeCampo('version')} maxLength={30} placeholder="Ej.: 2.1" value={datos.version ?? ''} onChange={(e) => cambiar({ version: e.target.value })} />
                     <ErrorDeCampo campo="version" errores={errores} />
                   </motion.div>
                 )}
+              </AnimatePresence>
+            </section>
 
+            <section className="space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-5" aria-labelledby="ca-seccion-contenido">
+              <h3 id="ca-seccion-contenido" className={tituloSeccion}>Contenido y publicación</h3>
+
+              {formatos.length > 1 && (
+                <fieldset>
+                  <legend className={etiqueta}>¿Qué es este recurso?</legend>
+                  <div className="grid grid-cols-3 gap-2" role="radiogroup">
+                    {formatos.map((f) => {
+                      const { nombre, Icono } = FORMATOS[f];
+                      const elegido = formatoVigente === f;
+                      return (
+                        <button
+                          key={f}
+                          type="button"
+                          role="radio"
+                          aria-checked={elegido}
+                          onClick={() => {
+                            setFormato(f);
+                            setErrores((previos) => ({ titulo: previos.titulo, version: previos.version }));
+                          }}
+                          className={`flex flex-col items-center gap-1 rounded-lg border-2 px-2 py-2.5 text-xs font-medium transition-colors ${
+                            elegido ? 'border-[#1e5da8] bg-white text-[#1e5da8]' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <Icono className="h-4 w-4" />
+                          {nombre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
+
+              <AnimatePresence initial={false} mode="wait">
                 {tipo === 'atajos' ? (
-                  <motion.div key="teclas" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                  <motion.div key="teclas" {...aparece} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-contenido">Combinación de teclas <span className="text-red-500">*</span></label>
                     <input
                       {...propsDeCampo('contenido')}
@@ -692,33 +762,10 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
                     />
                     <ErrorDeCampo campo="contenido" errores={errores} />
                   </motion.div>
-                ) : tipo !== 'manual' && (
-                  <motion.div key="texto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                    <label className={etiqueta} htmlFor="ca-contenido">Texto</label>
-                    <textarea {...propsDeCampo('contenido')} rows={6} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
-                    <ErrorDeCampo campo="contenido" errores={errores} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
-
-            <section className="space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-5" aria-labelledby="ca-seccion-contenido">
-              <h3 id="ca-seccion-contenido" className={tituloSeccion}>
-                {tipo === 'atajos' ? 'Publicación' : 'Contenido y publicación'}
-              </h3>
-              <AnimatePresence initial={false}>
-                {tipo !== 'atajos' && tipo !== 'manual' && (
-                  <motion.div key="enlace" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                    <label className={etiqueta} htmlFor="ca-enlace">Enlace</label>
-                    <input {...propsDeCampo('enlace')} type="url" placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
-                    <ErrorDeCampo campo="enlace" errores={errores} />
-                  </motion.div>
-                )}
-
-                {admiteArchivo && (
-                  <motion.div key="archivo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                ) : formatoVigente === 'archivo' ? (
+                  <motion.div key="archivo" {...aparece} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta}>
-                      {tipo === 'manual' ? <>Archivo PDF <span className="text-red-500">*</span></> : 'Archivo'}
+                      {tipo === 'manual' ? 'Archivo PDF' : 'Archivo'} <span className="text-red-500">*</span>
                     </label>
                     <ZonaArchivo
                       acepta={ACEPTA[tipo]}
@@ -727,10 +774,23 @@ function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGua
                       quitarActual={quitarArchivo}
                       onArchivo={elegirArchivo}
                       onQuitarActual={setQuitarArchivo}
-                      puedeQuitar={tipo !== 'manual'}
+                      puedeQuitar={false}
                       conError={Boolean(errores.archivo)}
                     />
                     <ErrorDeCampo campo="archivo" errores={errores} />
+                  </motion.div>
+                ) : formatoVigente === 'enlace' ? (
+                  <motion.div key="enlace" {...aparece} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-enlace">Enlace <span className="text-red-500">*</span></label>
+                    <input {...propsDeCampo('enlace')} type="url" placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
+                    <ErrorDeCampo campo="enlace" errores={errores} />
+                    <p className="mt-1 text-[11px] text-slate-500">El usuario lo abre en una pestaña nueva.</p>
+                  </motion.div>
+                ) : (
+                  <motion.div key="texto" {...aparece} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-contenido">Texto <span className="text-red-500">*</span></label>
+                    <textarea {...propsDeCampo('contenido')} rows={7} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
+                    <ErrorDeCampo campo="contenido" errores={errores} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -931,6 +991,68 @@ const botonAccion =
 const botonAccionPeligro =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60';
 
+/** Una sección de la lista; se arrastra desde el asa para cambiar su orden. */
+function ItemSeccion({ seccion, activa, puedeOrdenar, onElegir, onSoltar }: {
+  seccion: SeccionAdministrada;
+  activa: boolean;
+  puedeOrdenar: boolean;
+  onElegir: () => void;
+  onSoltar: () => void;
+}) {
+  const controles = useDragControls();
+  return (
+    <Reorder.Item
+      as="li"
+      value={seccion}
+      dragListener={false}
+      dragControls={controles}
+      onDragEnd={onSoltar}
+      whileDrag={{ scale: 1.02, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.14)', zIndex: 10 }}
+      className={`relative flex items-center rounded-lg ${activa ? 'bg-blue-50' : 'bg-white'}`}
+      style={{ ...SIN_TRANSICION_CSS, position: 'relative' }}
+    >
+      {puedeOrdenar && (
+        <span
+          onPointerDown={(e) => controles.start(e)}
+          title="Arrastre para cambiar el orden"
+          aria-hidden
+          className="flex h-10 w-5 flex-shrink-0 items-center justify-center text-slate-400 hover:text-slate-900"
+          style={{ cursor: 'grab', touchAction: 'none' }}
+        >
+          <GripVertical className="h-4 w-4" />
+        </span>
+      )}
+      <button
+        onClick={onElegir}
+        aria-current={activa ? 'true' : undefined}
+        className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg py-2 pr-3 text-left transition-colors ${puedeOrdenar ? 'pl-1' : 'pl-3'} ${
+          activa ? 'text-[#1e5da8]' : 'text-slate-700 hover:bg-slate-50'
+        }`}
+      >
+        <span
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+            activa ? 'bg-white text-[#1e5da8] shadow-sm' : seccion.activo ? 'bg-slate-100 text-slate-600' : 'bg-slate-100 text-slate-400'
+          }`}
+        >
+          <IconoSeccion nombre={seccion.icono} className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-sm font-medium ${seccion.activo || activa ? '' : 'text-slate-400'}`}>{seccion.nombre}</span>
+          {!seccion.activo && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+              <EyeOff className="h-3 w-3" />
+              Oculta
+            </span>
+          )}
+        </span>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${activa ? 'bg-white text-[#1e5da8]' : 'bg-slate-100 text-slate-600'}`}>
+          {seccion.totalRecursos}
+        </span>
+      </button>
+    </Reorder.Item>
+  );
+}
+
 type PorEliminar =
   | { tipo: 'recurso'; recurso: RecursoCentroAyuda }
   | { tipo: 'seccion'; seccion: SeccionAdministrada };
@@ -950,6 +1072,10 @@ export default function CentroAyudaAdminPage() {
   const [enVisor, setEnVisor] = useState<RecursoCentroAyuda | null>(null);
   const [errorCarga, setErrorCarga] = useState(false);
   const [consulta, setConsulta] = useState('');
+  // Orden que tiene el servidor, para guardar solo si el arrastre lo cambió.
+  const ordenGuardado = useRef<number[]>([]);
+  const seccionesEnPantalla = useRef<SeccionAdministrada[]>([]);
+  seccionesEnPantalla.current = secciones ?? [];
 
   const cargar = useCallback(async () => {
     setErrorCarga(false);
@@ -960,6 +1086,7 @@ export default function CentroAyudaAdminPage() {
         centroAyudaService.papelera(),
       ]);
       setSecciones(listaSecciones);
+      ordenGuardado.current = listaSecciones.map((s) => s.id);
       setRecursos(listaRecursos);
       setPapelera(enPapelera);
       // si la sección elegida ya no existe, se pasa a la primera
@@ -998,7 +1125,7 @@ export default function CentroAyudaAdminPage() {
 
   const alternarActivo = async (recurso: RecursoCentroAyuda) => {
     try {
-      await centroAyudaService.actualizarRecurso(recurso.id, { ...datosDe(recurso), activo: !recurso.activo });
+      await centroAyudaService.cambiarVisibilidadRecurso(recurso.id, !recurso.activo);
       toast.success(recurso.activo ? 'El recurso quedó oculto' : 'El recurso ya es visible');
       cargar();
     } catch {
@@ -1008,7 +1135,7 @@ export default function CentroAyudaAdminPage() {
 
   const alternarSeccion = async (seccion: SeccionAdministrada) => {
     try {
-      await centroAyudaService.actualizarSeccion(seccion.id, { ...datosDeSeccion(seccion), activo: !seccion.activo });
+      await centroAyudaService.cambiarVisibilidadSeccion(seccion.id, !seccion.activo);
       toast.success(seccion.activo ? 'La sección quedó oculta' : 'La sección ya es visible', {
         description: seccion.activo ? 'Los usuarios dejan de verla, con todos sus recursos.' : undefined,
       });
@@ -1018,7 +1145,19 @@ export default function CentroAyudaAdminPage() {
     }
   };
 
-  const moverSeccion = async (seccion: SeccionAdministrada, paso: -1 | 1) => {
+  const guardarOrden = async (ids: number[]) => {
+    if (ids.join() === ordenGuardado.current.join()) return;
+    try {
+      const ordenadas = await centroAyudaService.ordenarSecciones(ids);
+      ordenGuardado.current = ordenadas.map((s) => s.id);
+      setSecciones(ordenadas);
+      toast.success('Orden guardado', { description: 'Así aparecen ahora en el botón de ayuda.' });
+    } catch {
+      cargar();
+    }
+  };
+
+  const moverSeccion = (seccion: SeccionAdministrada, paso: -1 | 1) => {
     if (!secciones) return;
     const ids = secciones.map((s) => s.id);
     const desde = ids.indexOf(seccion.id);
@@ -1027,11 +1166,7 @@ export default function CentroAyudaAdminPage() {
     [ids[desde], ids[hasta]] = [ids[hasta], ids[desde]];
     // se reordena de una vez para que la lista no salte mientras responde el servidor
     setSecciones(ids.map((id) => seccionPorId.get(id)!));
-    try {
-      setSecciones(await centroAyudaService.ordenarSecciones(ids));
-    } catch {
-      cargar();
-    }
+    guardarOrden(ids);
   };
 
   const indiceActual = seccionActual && secciones ? secciones.findIndex((s) => s.id === seccionActual.id) : -1;
@@ -1095,45 +1230,24 @@ export default function CentroAyudaAdminPage() {
             {/* Secciones: el mismo orden en que las ve el usuario */}
             <aside className="w-full flex-shrink-0 lg:w-72">
               <nav className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm" aria-label="Secciones del Centro de Ayuda">
-                <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Secciones · {secciones.length}
-                </p>
-                <ul className="space-y-0.5">
-                  {secciones.map((s) => {
-                    const activa = filtro === s.id && !buscando;
-                    return (
-                      <li key={s.id}>
-                        <button
-                          onClick={() => verSeccion(s.id)}
-                          aria-current={activa ? 'true' : undefined}
-                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                            activa ? 'bg-blue-50 text-[#1e5da8]' : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <span
-                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                              activa ? 'bg-white text-[#1e5da8] shadow-sm' : s.activo ? 'bg-slate-100 text-slate-600' : 'bg-slate-100 text-slate-400'
-                            }`}
-                          >
-                            <IconoSeccion nombre={s.icono} className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className={`block truncate text-sm font-medium ${s.activo || activa ? '' : 'text-slate-400'}`}>{s.nombre}</span>
-                            {!s.activo && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-                                <EyeOff className="h-3 w-3" />
-                                Oculta
-                              </span>
-                            )}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${activa ? 'bg-white text-[#1e5da8]' : 'bg-slate-100 text-slate-600'}`}>
-                            {s.totalRecursos}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <div className="flex items-baseline justify-between gap-2 px-3 pb-2 pt-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Secciones · {secciones.length}</p>
+                  {p.editarSecciones && secciones.length > 1 && (
+                    <p className="text-[10px] text-slate-400">Arrastre para ordenar</p>
+                  )}
+                </div>
+                <Reorder.Group as="ul" axis="y" values={secciones} onReorder={setSecciones} className="space-y-0.5">
+                  {secciones.map((s) => (
+                    <ItemSeccion
+                      key={s.id}
+                      seccion={s}
+                      activa={filtro === s.id && !buscando}
+                      puedeOrdenar={p.editarSecciones}
+                      onElegir={() => verSeccion(s.id)}
+                      onSoltar={() => guardarOrden(seccionesEnPantalla.current.map((x) => x.id))}
+                    />
+                  ))}
+                </Reorder.Group>
 
                 {p.crearSecciones && (
                   <button

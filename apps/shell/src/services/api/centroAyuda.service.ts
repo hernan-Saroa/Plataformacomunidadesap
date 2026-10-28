@@ -177,6 +177,10 @@ export const centroAyudaService = {
     return extraerData<SeccionCentroAyuda>(await apiClient.put<unknown>(`${BASE}/admin/secciones/${id}`, datos));
   },
 
+  async cambiarVisibilidadSeccion(id: number, activo: boolean): Promise<void> {
+    await apiClient.patch(`${BASE}/admin/secciones/${id}/visibilidad`, { activo });
+  },
+
   async ordenarSecciones(ids: number[]): Promise<SeccionAdministrada[]> {
     return lista<SeccionAdministrada>(await apiClient.put<unknown>(`${BASE}/admin/secciones/orden`, { ids }));
   },
@@ -200,6 +204,10 @@ export const centroAyudaService = {
 
   async actualizarRecurso(id: number, datos: DatosRecurso): Promise<RecursoCentroAyuda> {
     return extraerData<RecursoCentroAyuda>(await apiClient.put<unknown>(`${BASE}/admin/recursos/${id}`, aFormulario(datos)));
+  },
+
+  async cambiarVisibilidadRecurso(id: number, activo: boolean): Promise<void> {
+    await apiClient.patch(`${BASE}/admin/recursos/${id}/visibilidad`, { activo });
   },
 
   async eliminarRecurso(id: number): Promise<void> {

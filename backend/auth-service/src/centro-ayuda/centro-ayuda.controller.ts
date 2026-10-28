@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -35,6 +36,7 @@ import {
   type ArchivoSubido,
 } from './centro-ayuda.service';
 import {
+  CambiarVisibilidadDto,
   GuardarRecursoDto,
   GuardarSeccionDto,
   OrdenarSeccionesDto,
@@ -159,6 +161,17 @@ export class CentroAyudaController {
     return this.centroAyuda.actualizarSeccion(id, dto, usuarioDe(req));
   }
 
+  @Patch('admin/secciones/:id/visibilidad')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.editarSecciones)
+  cambiarVisibilidadSeccion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarVisibilidadDto,
+    @Req() req: any,
+  ) {
+    return this.centroAyuda.cambiarVisibilidadSeccion(id, dto.activo, usuarioDe(req));
+  }
+
   @Delete('admin/secciones/:id')
   @UseGuards(PermisosGuard)
   @RequierePermisos(P.eliminarSecciones)
@@ -204,6 +217,17 @@ export class CentroAyudaController {
     @Req() req: any,
   ) {
     return this.centroAyuda.actualizarRecurso(id, dto, archivo, usuarioDe(req));
+  }
+
+  @Patch('admin/recursos/:id/visibilidad')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.editarRecursos)
+  cambiarVisibilidadRecurso(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarVisibilidadDto,
+    @Req() req: any,
+  ) {
+    return this.centroAyuda.cambiarVisibilidadRecurso(id, dto.activo, usuarioDe(req));
   }
 
   @Delete('admin/recursos/:id')
