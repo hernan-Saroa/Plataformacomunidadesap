@@ -194,8 +194,9 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
       <Titulo>Cierre del expediente: publicación y archivo</Titulo>
       <Ayuda>
         El Archivo de Gestión publica el acta de liquidación y archiva el expediente, que queda
-        disponible para consulta y auditoría. La publicación se hace en SECOP II y el archivo
-        documental en Active Document: aquí se registran con su soporte.
+        disponible para consulta y auditoría. Va en dos pasos: primero la publicación, en SECOP II
+        o en la página web de la ESAP, y después el archivo documental en Active Document, con su
+        radicado. Aquí se registran los dos con su soporte.
       </Ayuda>
 
       {/* El plazo sin confirmar se advierte en vez de mostrarse como cierto. */}
@@ -267,7 +268,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
       {/* ----------------------------------------------- las publicaciones -- */}
       {estado.publicaciones.length > 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Publicaciones del acta</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Paso 1 · Publicaciones del acta</p>
           {estado.publicaciones.map((p) => (
             <Publicacion key={p.id} publicacion={p} />
           ))}
@@ -277,7 +278,9 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
       {/* ------------------------------------------------- qué falta -- */}
       {!archivado && estado.pendientesArchivo.length > 0 ? (
         <Pendiente
-          falta={estado.acta ? '10.3' : '10.2'}
+          // El cierre financiero se registra dentro de la 10.2 desde la
+          // revisión de QA de EFDS-1172: la 10.3 ya no está en el riel.
+          falta="10.2"
           texto={`Todavía no se puede archivar el expediente: ${estado.pendientesArchivo.join('; ')}.`}
         />
       ) : null}
@@ -285,7 +288,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
       {/* ------------------------------------------------ publicar -- */}
       {estado.acta && !archivado && estado.pendientesPublicacion.length > 0 && !publicando ? (
         <Boton icono={<Globe className="w-3.5 h-3.5" />} onClick={() => setPublicando(true)}>
-          Registrar la publicación
+          Paso 1 · Registrar la publicación
         </Boton>
       ) : null}
 
@@ -390,7 +393,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
       {/* -------------------------------------------------- archivar -- */}
       {estado.puedeArchivar && !archivando ? (
         <Boton icono={<Archive className="w-3.5 h-3.5" />} onClick={() => setArchivando(true)}>
-          Archivar el expediente
+          Paso 2 · Archivar el expediente
         </Boton>
       ) : null}
 
