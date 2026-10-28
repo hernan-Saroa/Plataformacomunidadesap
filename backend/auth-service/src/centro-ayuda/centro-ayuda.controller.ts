@@ -24,17 +24,21 @@ import { diskStorage } from 'multer';
 import { Public } from '../auth/decorators/public.decorator';
 import { RequierePermisos } from '../auth/decorators/permisos.decorator';
 import { PermisosGuard } from '../auth/guards/permisos.guard';
+import { CentroAyudaActivoGuard } from './centro-ayuda-activo.guard';
 import {
   CentroAyudaService,
+  PERMISOS_CENTRO_AYUDA as P,
   TAMANO_MAXIMO_ARCHIVO,
   directorioCentroAyuda,
   extensionDe,
   extensionPermitida,
   type ArchivoSubido,
 } from './centro-ayuda.service';
-import { GuardarRecursoDto } from './dto/centro-ayuda.dto';
-
-export const PERMISO_GESTIONAR_CENTRO_AYUDA = 'centro-ayuda.recursos.gestionar';
+import {
+  GuardarRecursoDto,
+  GuardarSeccionDto,
+  OrdenarSeccionesDto,
+} from './dto/centro-ayuda.dto';
 
 const subidaDeArchivo = FileInterceptor('archivo', {
   storage: diskStorage({
@@ -57,18 +61,30 @@ function usuarioDe(req: any): string {
   return req?.user?.username || req?.user?.email || 'desconocido';
 }
 
+function rolesDe(req: any): string[] {
+  const roles = req?.user?.roles;
+  if (!Array.isArray(roles)) return [];
+  return roles
+    .map((rol: any) => (typeof rol === 'string' ? rol : rol?.code))
+    .filter((codigo: unknown): codigo is string => typeof codigo === 'string' && codigo.length > 0);
+}
+
+/** Todo el controlador se apaga si el módulo está inactivo en Gestión de módulos. */
 @Controller('centro-ayuda')
+@UseGuards(CentroAyudaActivoGuard)
 export class CentroAyudaController {
   constructor(private readonly centroAyuda: CentroAyudaService) {}
 
-  /** Recursos activos del Centro de Ayuda; los ve cualquier usuario con sesión. */
-  @Get('recursos')
-  listar() {
-    return this.centroAyuda.listarActivos();
+  // ── Lo que ven los usuarios ───────────────────────────────────────────────
+
+  /** Secciones visibles con sus recursos visibles; lo ve cualquier usuario con sesión. */
+  @Get('secciones')
+  listarPublicado() {
+    return this.centroAyuda.listarPublicado();
   }
 
   /**
-   * Entrega el archivo de un recurso activo. Es público porque lo descarga
+   * Entrega el archivo de un recurso publicado. Es público porque lo descarga
    * también el contenedor de OnlyOffice, que no tiene sesión; el contenido es
    * material de ayuda, no información de los usuarios.
    */
@@ -101,43 +117,113 @@ export class CentroAyudaController {
     });
   }
 
+  // ── Administración ────────────────────────────────────────────────────────
+
+  /** Qué botones mostrar en la administración: se calcula con los permisos actuales del rol. */
+  @Get('admin/permisos')
+  misPermisos(@Req() req: any) {
+    return this.centroAyuda.permisosDe(rolesDe(req));
+  }
+
+  @Get('admin/secciones')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.ver)
+  listarSecciones() {
+    return this.centroAyuda.listarSecciones();
+  }
+
+  @Post('admin/secciones')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.crearSecciones)
+  @HttpCode(HttpStatus.CREATED)
+  crearSeccion(@Body() dto: GuardarSeccionDto, @Req() req: any) {
+    return this.centroAyuda.crearSeccion(dto, usuarioDe(req));
+  }
+
+  // Antes que admin/secciones/:id para que "orden" no se lea como un id.
+  @Put('admin/secciones/orden')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.editarSecciones)
+  ordenarSecciones(@Body() dto: OrdenarSeccionesDto, @Req() req: any) {
+    return this.centroAyuda.ordenarSecciones(dto.ids, usuarioDe(req));
+  }
+
+  @Put('admin/secciones/:id')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.editarSecciones)
+  actualizarSeccion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GuardarSeccionDto,
+    @Req() req: any,
+  ) {
+    return this.centroAyuda.actualizarSeccion(id, dto, usuarioDe(req));
+  }
+
+  @Delete('admin/secciones/:id')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.eliminarSecciones)
+  eliminarSeccion(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.centroAyuda.eliminarSeccion(id, usuarioDe(req));
+  }
+
+  @Post('admin/secciones/:id/restaurar')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.eliminarSecciones)
+  restaurarSeccion(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.centroAyuda.restaurarSeccion(id, usuarioDe(req));
+  }
+
   @Get('admin/recursos')
   @UseGuards(PermisosGuard)
-  @RequierePermisos(PERMISO_GESTIONAR_CENTRO_AYUDA)
-  listarParaAdministrar() {
-    return this.centroAyuda.listarTodos();
+  @RequierePermisos(P.ver)
+  listarRecursos() {
+    return this.centroAyuda.listarRecursos();
   }
 
   @Post('admin/recursos')
   @UseGuards(PermisosGuard)
-  @RequierePermisos(PERMISO_GESTIONAR_CENTRO_AYUDA)
+  @RequierePermisos(P.crearRecursos)
   @UseInterceptors(subidaDeArchivo)
   @HttpCode(HttpStatus.CREATED)
-  crear(
+  crearRecurso(
     @Body() dto: GuardarRecursoDto,
     @UploadedFile() archivo: ArchivoSubido | undefined,
     @Req() req: any,
   ) {
-    return this.centroAyuda.crear(dto, archivo, usuarioDe(req));
+    return this.centroAyuda.crearRecurso(dto, archivo, usuarioDe(req));
   }
 
   @Put('admin/recursos/:id')
   @UseGuards(PermisosGuard)
-  @RequierePermisos(PERMISO_GESTIONAR_CENTRO_AYUDA)
+  @RequierePermisos(P.editarRecursos)
   @UseInterceptors(subidaDeArchivo)
-  actualizar(
+  actualizarRecurso(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: GuardarRecursoDto,
     @UploadedFile() archivo: ArchivoSubido | undefined,
     @Req() req: any,
   ) {
-    return this.centroAyuda.actualizar(id, dto, archivo, usuarioDe(req));
+    return this.centroAyuda.actualizarRecurso(id, dto, archivo, usuarioDe(req));
   }
 
   @Delete('admin/recursos/:id')
   @UseGuards(PermisosGuard)
-  @RequierePermisos(PERMISO_GESTIONAR_CENTRO_AYUDA)
-  eliminar(@Param('id', ParseIntPipe) id: number) {
-    return this.centroAyuda.eliminar(id);
+  @RequierePermisos(P.eliminarRecursos)
+  eliminarRecurso(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.centroAyuda.eliminarRecurso(id, usuarioDe(req));
+  }
+
+  @Post('admin/recursos/:id/restaurar')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.eliminarRecursos)
+  restaurarRecurso(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.centroAyuda.restaurarRecurso(id, usuarioDe(req));
+  }
+
+  @Get('admin/papelera')
+  @UseGuards(PermisosGuard)
+  @RequierePermisos(P.ver)
+  papelera() {
+    return this.centroAyuda.papelera();
   }
 }

@@ -10,18 +10,18 @@ describe('PermisosGuard', () => {
       switchToHttp: () => ({ getRequest: () => ({ user }) }),
     }) as any;
 
-  const crear = (filas: any[], requeridos: string[] | undefined = ['centro-ayuda.recursos.gestionar']) => {
+  const crear = (filas: any[], requeridos: string[] | undefined = ['centro-ayuda.recursos.crear']) => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(requeridos) } as unknown as Reflector;
     const dataSource = { query: jest.fn().mockResolvedValue(filas) } as any;
     return { guard: new PermisosGuard(reflector, dataSource), dataSource };
   };
 
   it('deja pasar si algún rol del usuario tiene el permiso', async () => {
-    const { guard, dataSource } = crear([{ code: 'centro-ayuda.recursos.gestionar' }]);
+    const { guard, dataSource } = crear([{ code: 'centro-ayuda.recursos.crear' }]);
     await expect(guard.canActivate(contexto({ roles: ['coordinador'] }))).resolves.toBe(true);
     expect(dataSource.query.mock.calls[0][1]).toEqual([
       ['COORDINADOR'],
-      ['centro-ayuda.recursos.gestionar'],
+      ['centro-ayuda.recursos.crear'],
     ]);
   });
 

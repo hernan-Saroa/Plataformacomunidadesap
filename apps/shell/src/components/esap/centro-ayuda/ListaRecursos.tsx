@@ -1,20 +1,18 @@
 /**
- * Contenido de una opción de la pestaña Recursos del Centro de Ayuda.
+ * Contenido de una sección de la pestaña Recursos del Centro de Ayuda.
  */
 import { motion, type Variants } from 'motion/react';
 import { ArrowLeft, Download, ExternalLink, Eye, Inbox, Play, SearchX } from 'lucide-react';
 import {
-  CATEGORIAS_CENTRO_AYUDA,
   urlArchivoRecurso,
-  type CategoriaCentroAyuda,
   type RecursoCentroAyuda,
+  type SeccionCentroAyuda,
 } from '../../../services/api/centroAyuda.service';
 import { IconoRecurso, tamanoLegible, tipoDeRecurso } from './IconoRecurso';
 import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './estilosAnimacion';
 
 interface Props {
-  titulo: string;
-  categoria: CategoriaCentroAyuda;
+  seccion: SeccionCentroAyuda;
   recursos: RecursoCentroAyuda[];
   onVolver: () => void;
   onVer: (recurso: RecursoCentroAyuda) => void;
@@ -102,13 +100,13 @@ function Acciones({ recurso, onVer }: { recurso: RecursoCentroAyuda; onVer: (r: 
   );
 }
 
-function Tarjeta({ recurso, categoria, onVer, indice }: {
+function Tarjeta({ recurso, seccion, onVer, indice }: {
   recurso: RecursoCentroAyuda;
-  categoria: CategoriaCentroAyuda;
+  seccion: SeccionCentroAyuda;
   onVer: (r: RecursoCentroAyuda) => void;
   indice: number;
 }) {
-  if (categoria === 'atajos') {
+  if (seccion.tipo === 'atajos') {
     return (
       <motion.div
         custom={indice}
@@ -127,7 +125,7 @@ function Tarjeta({ recurso, categoria, onVer, indice }: {
     );
   }
 
-  const tipo = tipoDeRecurso(recurso);
+  const tipo = tipoDeRecurso(recurso, seccion);
   const detalle = [tipo.etiqueta, recurso.archivo ? tamanoLegible(recurso.archivo.tamano) : null]
     .filter(Boolean)
     .join(' · ');
@@ -142,7 +140,7 @@ function Tarjeta({ recurso, categoria, onVer, indice }: {
       style={SOLO_TRANSICION_DE_COLOR}
     >
       <div className="flex items-start gap-3">
-        <IconoRecurso recurso={recurso} />
+        <IconoRecurso recurso={recurso} seccion={seccion} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h4 className="text-sm font-medium leading-snug text-slate-900">{recurso.titulo}</h4>
@@ -166,9 +164,10 @@ function Tarjeta({ recurso, categoria, onVer, indice }: {
   );
 }
 
-/** Resultados de la búsqueda del panel, agrupados por opción del Centro de Ayuda. */
-export function ResultadosBusqueda({ consulta, resultados, onVer }: {
+/** Resultados de la búsqueda del panel, agrupados por sección del Centro de Ayuda. */
+export function ResultadosBusqueda({ consulta, secciones, resultados, onVer }: {
   consulta: string;
+  secciones: SeccionCentroAyuda[];
   resultados: RecursoCentroAyuda[];
   onVer: (recurso: RecursoCentroAyuda) => void;
 }) {
@@ -192,14 +191,14 @@ export function ResultadosBusqueda({ consulta, resultados, onVer }: {
       <p className="text-xs text-slate-500">
         {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'} para «{consulta.trim()}»
       </p>
-      {CATEGORIAS_CENTRO_AYUDA.map((c) => {
-        const lista = resultados.filter((r) => r.categoria === c.id);
+      {secciones.map((seccion) => {
+        const lista = resultados.filter((r) => r.idSeccion === seccion.id);
         if (lista.length === 0) return null;
         return (
-          <div key={c.id} className="space-y-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{c.nombre}</p>
+          <div key={seccion.id} className="space-y-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{seccion.nombre}</p>
             {lista.map((recurso) => (
-              <Tarjeta key={recurso.id} recurso={recurso} categoria={c.id} onVer={onVer} indice={indice++} />
+              <Tarjeta key={recurso.id} recurso={recurso} seccion={seccion} onVer={onVer} indice={indice++} />
             ))}
           </div>
         );
@@ -208,10 +207,10 @@ export function ResultadosBusqueda({ consulta, resultados, onVer }: {
   );
 }
 
-export function ListaRecursos({ titulo, categoria, recursos, onVolver, onVer }: Props) {
-  // La documentación se agrupa por módulo del sistema.
+export function ListaRecursos({ seccion, recursos, onVolver, onVer }: Props) {
+  // Si los recursos indican el módulo del sistema, se agrupan por él.
   const grupos =
-    categoria === 'documentacion'
+    seccion.tipo !== 'atajos' && recursos.some((r) => r.modulo?.trim())
       ? recursos.reduce<Record<string, RecursoCentroAyuda[]>>((acc, r) => {
           const modulo = r.modulo?.trim() || 'General';
           (acc[modulo] ||= []).push(r);
@@ -231,7 +230,7 @@ export function ListaRecursos({ titulo, categoria, recursos, onVolver, onVer }: 
         Todos los recursos
       </button>
       <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h3 className="text-base font-semibold text-slate-900">{titulo}</h3>
+        <h3 className="text-base font-semibold text-slate-900">{seccion.nombre}</h3>
         {recursos.length > 0 && (
           <span className="text-xs text-slate-500">
             {recursos.length} {recursos.length === 1 ? 'elemento' : 'elementos'}
@@ -249,7 +248,7 @@ export function ListaRecursos({ titulo, categoria, recursos, onVolver, onVer }: 
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{modulo}</p>
               )}
               {lista.map((recurso) => (
-                <Tarjeta key={recurso.id} recurso={recurso} categoria={categoria} onVer={onVer} indice={indice++} />
+                <Tarjeta key={recurso.id} recurso={recurso} seccion={seccion} onVer={onVer} indice={indice++} />
               ))}
             </div>
           ))}

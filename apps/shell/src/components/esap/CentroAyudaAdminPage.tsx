@@ -1,21 +1,27 @@
 /**
- * Administración de los recursos del Centro de Ayuda (EFDS-2399).
+ * Administración del Centro de Ayuda (EFDS-2399).
  *
- * Aquí se cargan y actualizan manuales, videos, documentación, cursos, atajos y
- * mejores prácticas sin intervención de desarrollo. La entrada del menú y los
- * endpoints exigen el permiso centro-ayuda.recursos.gestionar, que se asigna
- * desde Roles y Permisos.
+ * Aquí se crean y ordenan las secciones de la pestaña Recursos y se carga su
+ * contenido (manuales, videos, documentos, enlaces, textos y atajos) sin
+ * intervención de desarrollo. Cada acción es un permiso que se asigna desde
+ * Roles y Permisos; los botones se muestran según lo que el usuario puede
+ * hacer. Las secciones se listan a la izquierda, en el orden en que las ve el
+ * usuario; eliminar envía a la papelera, de donde se puede restaurar.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  ArchiveRestore,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Eye,
   EyeOff,
   FolderOpen,
   LifeBuoy,
   Loader2,
+  Lock,
   Pencil,
   Plus,
   Search,
@@ -26,13 +32,19 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  CATEGORIAS_CENTRO_AYUDA,
+  TIPOS_SECCION,
   centroAyudaService,
-  type CategoriaCentroAyuda,
   type DatosRecurso,
+  type DatosSeccion,
+  type ElementoEnPapelera,
+  type Papelera,
+  type PermisosCentroAyuda,
   type RecursoCentroAyuda,
+  type SeccionAdministrada,
+  type TipoSeccion,
 } from '../../services/api/centroAyuda.service';
 import { IconoRecurso, tamanoLegible, tipoDeRecurso } from './centro-ayuda/IconoRecurso';
+import { ICONOS_SECCION, IconoSeccion } from './centro-ayuda/IconoSeccion';
 import { buscarRecursos } from './centro-ayuda/busqueda';
 import { VisorRecurso } from './centro-ayuda/VisorRecurso';
 import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/estilosAnimacion';
@@ -40,32 +52,31 @@ import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/est
 // Mismo límite que auth-service (TAMANO_MAXIMO_ARCHIVO).
 const TAMANO_MAXIMO_ARCHIVO = 500 * 1024 * 1024;
 
-const nombreCategoria = (categoria: CategoriaCentroAyuda) =>
-  CATEGORIAS_CENTRO_AYUDA.find((c) => c.id === categoria)?.nombre || categoria;
-
 const EXT_DOCUMENTO = '.pdf,.doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp';
 const EXT_VIDEO = '.mp4,.webm,.ogg,.ogv';
 
-const ACEPTA: Record<CategoriaCentroAyuda, string> = {
+const ACEPTA: Record<TipoSeccion, string> = {
   manual: '.pdf',
   videos: EXT_VIDEO,
   atajos: '',
-  documentacion: EXT_DOCUMENTO,
-  cursos: `${EXT_DOCUMENTO},${EXT_VIDEO}`,
-  practicas: EXT_DOCUMENTO,
+  general: `${EXT_DOCUMENTO},${EXT_VIDEO}`,
 };
 
-const AYUDA_CATEGORIA: Record<CategoriaCentroAyuda, string> = {
-  documentacion: 'Guía de un módulo: archivo, enlace o texto. Se agrupa por el módulo que indique.',
-  videos: 'Archivo de video (MP4, WebM u OGG) o enlace al video publicado.',
-  atajos: 'Combinación de teclas, por ejemplo: Ctrl + K.',
-  manual: 'PDF del manual. Solo hay un manual vigente: al activar uno, el anterior se desactiva.',
-  cursos: 'Programa de capacitación: enlace a la plataforma del curso, archivo o texto.',
-  practicas: 'Recomendación de uso: texto, archivo o enlace.',
+const nombreDeTipo = (tipo: TipoSeccion) => TIPOS_SECCION.find((t) => t.id === tipo)?.nombre ?? tipo;
+const ayudaDeTipo = (tipo: TipoSeccion) => TIPOS_SECCION.find((t) => t.id === tipo)?.ayuda ?? '';
+
+const SIN_PERMISOS: PermisosCentroAyuda = {
+  ver: false,
+  crearSecciones: false,
+  editarSecciones: false,
+  eliminarSecciones: false,
+  crearRecursos: false,
+  editarRecursos: false,
+  eliminarRecursos: false,
 };
 
 const datosDe = (r: RecursoCentroAyuda): DatosRecurso => ({
-  categoria: r.categoria,
+  idSeccion: r.idSeccion,
   titulo: r.titulo,
   descripcion: r.descripcion ?? '',
   modulo: r.modulo ?? '',
@@ -75,6 +86,17 @@ const datosDe = (r: RecursoCentroAyuda): DatosRecurso => ({
   orden: r.orden,
   activo: r.activo,
 });
+
+const datosDeSeccion = (s: SeccionAdministrada): DatosSeccion => ({
+  nombre: s.nombre,
+  descripcion: s.descripcion ?? '',
+  icono: s.icono,
+  tipo: s.tipo,
+  activo: s.activo,
+});
+
+const fecha = (valor: string) =>
+  new Date(valor).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
 
 const campo =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-gray-400 focus:border-[#1e5da8] focus:outline-none';
@@ -108,6 +130,71 @@ const botonPrimario =
   'inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-[#174a87] hover:shadow active:scale-[0.98] disabled:opacity-60';
 const botonSecundario =
   'inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60';
+
+/** Fondo y entrada de las ventanas de esta página. */
+function Ventana({ children, onCerrar, ocupado, etiquetaId, rol = 'dialog', ancho }: {
+  children: React.ReactNode;
+  onCerrar: () => void;
+  ocupado: boolean;
+  etiquetaId?: string;
+  rol?: 'dialog' | 'alertdialog';
+  ancho: string;
+}) {
+  useEffect(() => {
+    const alPresionar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !ocupado) onCerrar();
+    };
+    window.addEventListener('keydown', alPresionar);
+    return () => window.removeEventListener('keydown', alPresionar);
+  }, [onCerrar, ocupado]);
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      role={rol}
+      aria-modal="true"
+      aria-labelledby={etiquetaId}
+      onClick={() => !ocupado && onCerrar()}
+      style={SIN_TRANSICION_CSS}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 8 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+        onClick={(e) => e.stopPropagation()}
+        className={`flex max-h-[92vh] w-full ${ancho} flex-col overflow-hidden rounded-2xl bg-white shadow-2xl`}
+        style={SIN_TRANSICION_CSS}
+      >
+        {children}
+      </motion.div>
+    </motion.div>,
+    document.body,
+  );
+}
+
+function EncabezadoVentana({ id, titulo, subtitulo, onCerrar }: {
+  id: string;
+  titulo: string;
+  subtitulo?: string;
+  onCerrar: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+      <div>
+        <h2 id={id} className="text-base font-semibold text-slate-900">{titulo}</h2>
+        {subtitulo && <p className="text-xs text-slate-500">{subtitulo}</p>}
+      </div>
+      <button type="button" onClick={onCerrar} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900" aria-label="Cerrar">
+        <X className="h-5 w-5" />
+      </button>
+    </div>
+  );
+}
 
 /** Zona para soltar o elegir el archivo del recurso. */
 function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuitarActual, puedeQuitar, conError }: {
@@ -217,21 +304,228 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
   );
 }
 
+/** Icono con el que nace una sección según su tipo; se puede cambiar después. */
+const ICONO_POR_TIPO: Record<TipoSeccion, string> = {
+  general: 'BookOpen',
+  videos: 'Video',
+  atajos: 'Keyboard',
+  manual: 'FileText',
+};
+
+function FormularioSeccion({ seccion, onCerrar, onGuardado }: {
+  seccion: SeccionAdministrada | null;
+  onCerrar: () => void;
+  onGuardado: (id: number) => void;
+}) {
+  const [datos, setDatos] = useState<DatosSeccion>(
+    seccion ? datosDeSeccion(seccion) : { nombre: '', descripcion: '', icono: ICONO_POR_TIPO.general, tipo: 'general', activo: true },
+  );
+  // Mientras no se elija un icono a mano, el icono sigue al tipo.
+  const [iconoAMano, setIconoAMano] = useState(Boolean(seccion));
+  const [verIconos, setVerIconos] = useState(false);
+  const [errorNombre, setErrorNombre] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  // Con recursos cargados el tipo no se cambia: sus reglas dejarían de cumplirse.
+  const tipoBloqueado = Boolean(seccion && seccion.totalRecursos > 0);
+
+  const elegirTipo = (tipo: TipoSeccion) =>
+    setDatos((d) => ({ ...d, tipo, icono: iconoAMano ? d.icono : ICONO_POR_TIPO[tipo] }));
+
+  const guardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!datos.nombre.trim()) {
+      setErrorNombre('Escriba el nombre de la sección');
+      document.getElementById('cs-nombre')?.focus();
+      return;
+    }
+    setGuardando(true);
+    try {
+      const guardada = seccion
+        ? await centroAyudaService.actualizarSeccion(seccion.id, datos)
+        : await centroAyudaService.crearSeccion(datos);
+      toast.success(seccion ? 'Sección actualizada' : 'Sección creada', {
+        description: datos.activo ? 'Ya aparece en la pestaña Recursos del Centro de Ayuda.' : 'Está oculta: los usuarios aún no la ven.',
+      });
+      onGuardado(guardada.id);
+    } catch {
+      // apiClient ya muestra el mensaje del servidor
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Ventana onCerrar={onCerrar} ocupado={guardando} etiquetaId="cs-titulo" ancho="max-w-xl">
+      <form onSubmit={guardar} className="flex min-h-0 flex-1 flex-col">
+        <EncabezadoVentana
+          id="cs-titulo"
+          titulo={seccion ? 'Editar sección' : 'Agregar sección'}
+          subtitulo="Será una nueva opción en la pestaña Recursos del botón de ayuda."
+          onCerrar={onCerrar}
+        />
+        <div className="flex-1 space-y-5 overflow-y-auto p-6">
+          <div>
+            <label className={etiqueta} htmlFor="cs-nombre">Nombre de la sección <span className="text-red-500">*</span></label>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1e5da8]">
+                <IconoSeccion nombre={datos.icono} />
+              </span>
+              <input
+                id="cs-nombre"
+                className={errorNombre ? campoConError : campo}
+                maxLength={100}
+                autoFocus
+                placeholder="Ej.: Preguntas de nómina"
+                value={datos.nombre}
+                aria-invalid={errorNombre ? true : undefined}
+                aria-describedby={errorNombre ? 'cs-nombre-error' : undefined}
+                onChange={(e) => {
+                  setDatos((d) => ({ ...d, nombre: e.target.value }));
+                  setErrorNombre('');
+                }}
+              />
+            </div>
+            {errorNombre && <p id="cs-nombre-error" className="mt-1 text-xs text-red-600">{errorNombre}</p>}
+          </div>
+
+          <fieldset>
+            <legend className={etiqueta}>¿Qué va a tener?</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup">
+              {TIPOS_SECCION.map((t) => {
+                const elegido = datos.tipo === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={elegido}
+                    disabled={tipoBloqueado && !elegido}
+                    onClick={() => elegirTipo(t.id)}
+                    className={`flex flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-3 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      elegido ? 'border-[#1e5da8] bg-blue-50 text-[#1e5da8]' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <IconoSeccion nombre={ICONO_POR_TIPO[t.id]} />
+                    <span className="text-xs font-medium">{t.nombre}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-slate-600">
+              {tipoBloqueado ? (
+                <span className="inline-flex items-center gap-1.5 text-slate-500">
+                  <Lock className="h-3.5 w-3.5" />
+                  El tipo no se puede cambiar mientras la sección tenga recursos.
+                </span>
+              ) : (
+                ayudaDeTipo(datos.tipo)
+              )}
+            </p>
+          </fieldset>
+
+          <div>
+            <label className={etiqueta} htmlFor="cs-descripcion">Descripción <span className="font-normal text-slate-500">(opcional)</span></label>
+            <input
+              id="cs-descripcion"
+              className={campo}
+              maxLength={300}
+              placeholder="Lo que encuentra el usuario aquí"
+              value={datos.descripcion ?? ''}
+              onChange={(e) => setDatos((d) => ({ ...d, descripcion: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setVerIconos((v) => !v)}
+              aria-expanded={verIconos}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1e5da8] hover:underline"
+            >
+              {verIconos ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              Cambiar el icono
+            </button>
+            <AnimatePresence initial={false}>
+              {verIconos && (
+                <motion.div
+                  key="iconos"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                  style={SIN_TRANSICION_CSS}
+                >
+                  <div className="flex flex-wrap gap-2 pt-3">
+                    {Object.entries(ICONOS_SECCION).map(([clave, { Icono, nombre }]) => {
+                      const elegido = datos.icono === clave;
+                      return (
+                        <button
+                          key={clave}
+                          type="button"
+                          title={nombre}
+                          aria-label={nombre}
+                          aria-pressed={elegido}
+                          onClick={() => {
+                            setIconoAMano(true);
+                            setDatos((d) => ({ ...d, icono: clave }));
+                          }}
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg border-2 transition-colors ${
+                            elegido ? 'border-[#1e5da8] bg-blue-50 text-[#1e5da8]' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <Icono className="h-4 w-4" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={datos.activo ?? true}
+              onChange={(e) => setDatos((d) => ({ ...d, activo: e.target.checked }))}
+            />
+            Visible para los usuarios
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-3">
+          <button type="button" onClick={onCerrar} disabled={guardando} className={botonSecundario}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={guardando} className={botonPrimario}>
+            {guardando && <Loader2 className="h-4 w-4 animate-spin" />}
+            {guardando ? 'Guardando...' : seccion ? 'Guardar cambios' : 'Agregar sección'}
+          </button>
+        </div>
+      </form>
+    </Ventana>
+  );
+}
+
 interface FormularioProps {
   recurso: RecursoCentroAyuda | null;
-  categoriaInicial: CategoriaCentroAyuda;
+  secciones: SeccionAdministrada[];
+  seccionInicial: number;
   onCerrar: () => void;
   onGuardado: () => void;
 }
 
-function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: FormularioProps) {
+function FormularioRecurso({ recurso, secciones, seccionInicial, onCerrar, onGuardado }: FormularioProps) {
   const [datos, setDatos] = useState<DatosRecurso>(
-    recurso ? datosDe(recurso) : { categoria: categoriaInicial, titulo: '', orden: 0, activo: true },
+    recurso ? datosDe(recurso) : { idSeccion: seccionInicial, titulo: '', orden: 0, activo: true },
   );
   const [archivo, setArchivo] = useState<File | null>(null);
   const [quitarArchivo, setQuitarArchivo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errores, setErrores] = useState<Errores>({});
+
+  const seccion = secciones.find((s) => s.id === datos.idSeccion);
+  const tipo: TipoSeccion = seccion?.tipo ?? 'general';
 
   const limpiarError = (...campos: CampoValidado[]) =>
     setErrores((previos) => {
@@ -243,18 +537,17 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
 
   const cambiar = (cambios: Partial<DatosRecurso>) => {
     setDatos((d) => ({ ...d, ...cambios }));
-    if ('categoria' in cambios) setErrores({});
+    if ('idSeccion' in cambios) setErrores({});
     if ('titulo' in cambios) limpiarError('titulo');
     if ('version' in cambios) limpiarError('version');
-    // en documentación, cursos y prácticas basta con texto, enlace o archivo
+    // en una sección general basta con texto, enlace o archivo
     if ('contenido' in cambios || 'enlace' in cambios) limpiarError('contenido', 'enlace', 'archivo');
   };
   const elegirArchivo = (nuevo: File | null) => {
     setArchivo(nuevo);
     limpiarError('archivo', 'contenido');
   };
-  const categoria = datos.categoria;
-  const admiteArchivo = categoria !== 'atajos';
+  const admiteArchivo = tipo !== 'atajos';
 
   const propsDeCampo = (campoValidado: CampoValidado) => ({
     id: ID_DE_CAMPO[campoValidado],
@@ -267,7 +560,7 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
   const validar = (): Errores => {
     const encontrados: Errores = {};
     const enlace = (datos.enlace ?? '').trim();
-    const usaEnlace = categoria !== 'atajos' && categoria !== 'manual';
+    const usaEnlace = tipo !== 'atajos' && tipo !== 'manual';
     const conArchivo = Boolean(archivo) || (Boolean(recurso?.archivo) && !quitarArchivo);
     const extension = archivo ? extensionDe(archivo.name) : recurso?.archivo ? extensionDe(recurso.archivo.nombre) : '';
 
@@ -275,7 +568,7 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
     if (usaEnlace && enlace && !/^https?:\/\/\S+$/i.test(enlace)) {
       encontrados.enlace = 'El enlace debe empezar por http:// o https://';
     }
-    switch (categoria) {
+    switch (tipo) {
       case 'manual':
         if (!datos.version?.trim()) encontrados.version = 'Indique la versión del sistema';
         if (!conArchivo) encontrados.archivo = 'Cargue el PDF del manual';
@@ -299,14 +592,6 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
     return encontrados;
   };
 
-  useEffect(() => {
-    const alPresionar = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !guardando) onCerrar();
-    };
-    window.addEventListener('keydown', alPresionar);
-    return () => window.removeEventListener('keydown', alPresionar);
-  }, [onCerrar, guardando]);
-
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
     const encontrados = validar();
@@ -324,11 +609,11 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
         quitarArchivo: !archivo && (quitarArchivo || (!admiteArchivo && Boolean(recurso?.archivo))),
       };
       if (recurso) {
-        await centroAyudaService.actualizar(recurso.id, envio);
+        await centroAyudaService.actualizarRecurso(recurso.id, envio);
         toast.success('Recurso actualizado');
       } else {
-        await centroAyudaService.crear(envio);
-        toast.success('Recurso publicado', { description: `Ya aparece en «${nombreCategoria(categoria)}» del Centro de Ayuda.` });
+        await centroAyudaService.crearRecurso(envio);
+        toast.success('Recurso publicado', { description: `Ya aparece en «${seccion?.nombre ?? ''}» del Centro de Ayuda.` });
       }
       onGuardado();
     } catch {
@@ -338,55 +623,32 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
     }
   };
 
-  return createPortal(
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ca-form-titulo"
-      onClick={() => !guardando && onCerrar()}
-      style={SIN_TRANSICION_CSS}
-    >
-      <motion.form
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 8 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-        onSubmit={guardar}
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-        style={SIN_TRANSICION_CSS}
-      >
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <h2 id="ca-form-titulo" className="text-base font-semibold text-slate-900">
-              {recurso ? 'Editar recurso' : 'Nuevo recurso'}
-            </h2>
-            <p className="text-xs text-slate-500">{AYUDA_CATEGORIA[categoria]}</p>
-          </div>
-          <button type="button" onClick={onCerrar} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900" aria-label="Cerrar">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+  return (
+    <Ventana onCerrar={onCerrar} ocupado={guardando} etiquetaId="ca-form-titulo" ancho="max-w-4xl">
+      <form onSubmit={guardar} className="flex min-h-0 flex-1 flex-col">
+        <EncabezadoVentana
+          id="ca-form-titulo"
+          titulo={recurso ? 'Editar recurso' : 'Nuevo recurso'}
+          subtitulo={ayudaDeTipo(tipo)}
+          onCerrar={onCerrar}
+        />
 
         <div className="flex-1 overflow-y-auto p-5">
           <div className="grid gap-5 md:grid-cols-2">
             <section className="space-y-4 p-5" aria-labelledby="ca-seccion-datos">
               <h3 id="ca-seccion-datos" className={tituloSeccion}>Datos del recurso</h3>
               <div>
-                <label className={etiqueta} htmlFor="ca-categoria">Opción del Centro de Ayuda</label>
+                <label className={etiqueta} htmlFor="ca-seccion">Sección del Centro de Ayuda</label>
                 <select
-                  id="ca-categoria"
+                  id="ca-seccion"
                   className={campo}
-                  value={categoria}
-                  onChange={(e) => cambiar({ categoria: e.target.value as CategoriaCentroAyuda })}
+                  value={datos.idSeccion}
+                  onChange={(e) => cambiar({ idSeccion: Number(e.target.value) })}
                 >
-                  {CATEGORIAS_CENTRO_AYUDA.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  {secciones.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre} · {nombreDeTipo(s.tipo)}{s.activo ? '' : ' (oculta)'}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -403,14 +665,14 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
               </div>
 
               <AnimatePresence initial={false}>
-                {categoria === 'documentacion' && (
+                {tipo === 'general' && (
                   <motion.div key="modulo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-modulo">Módulo del sistema</label>
                     <input id="ca-modulo" className={campo} maxLength={100} placeholder="Ej.: Contratación" value={datos.modulo ?? ''} onChange={(e) => cambiar({ modulo: e.target.value })} />
                   </motion.div>
                 )}
 
-                {categoria === 'manual' && (
+                {tipo === 'manual' && (
                   <motion.div key="version" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-version">Versión del sistema <span className="text-red-500">*</span></label>
                     <input {...propsDeCampo('version')} maxLength={30} placeholder="Ej.: 2.1" value={datos.version ?? ''} onChange={(e) => cambiar({ version: e.target.value })} />
@@ -418,19 +680,19 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
                   </motion.div>
                 )}
 
-                {categoria === 'atajos' ? (
+                {tipo === 'atajos' ? (
                   <motion.div key="teclas" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-contenido">Combinación de teclas <span className="text-red-500">*</span></label>
                     <input
                       {...propsDeCampo('contenido')}
                       className={`${errores.contenido ? campoConError : campo} font-mono`}
-                      placeholder="Ctrl + K"
+                      placeholder="Ctrl + B"
                       value={datos.contenido ?? ''}
                       onChange={(e) => cambiar({ contenido: e.target.value })}
                     />
                     <ErrorDeCampo campo="contenido" errores={errores} />
                   </motion.div>
-                ) : categoria !== 'manual' && (
+                ) : tipo !== 'manual' && (
                   <motion.div key="texto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-contenido">Texto</label>
                     <textarea {...propsDeCampo('contenido')} rows={6} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
@@ -442,10 +704,10 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
 
             <section className="space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-5" aria-labelledby="ca-seccion-contenido">
               <h3 id="ca-seccion-contenido" className={tituloSeccion}>
-                {categoria === 'atajos' ? 'Publicación' : 'Contenido y publicación'}
+                {tipo === 'atajos' ? 'Publicación' : 'Contenido y publicación'}
               </h3>
               <AnimatePresence initial={false}>
-                {categoria !== 'atajos' && categoria !== 'manual' && (
+                {tipo !== 'atajos' && tipo !== 'manual' && (
                   <motion.div key="enlace" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta} htmlFor="ca-enlace">Enlace</label>
                     <input {...propsDeCampo('enlace')} type="url" placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
@@ -456,16 +718,16 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
                 {admiteArchivo && (
                   <motion.div key="archivo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
                     <label className={etiqueta}>
-                      {categoria === 'manual' ? <>Archivo PDF <span className="text-red-500">*</span></> : 'Archivo'}
+                      {tipo === 'manual' ? <>Archivo PDF <span className="text-red-500">*</span></> : 'Archivo'}
                     </label>
                     <ZonaArchivo
-                      acepta={ACEPTA[categoria]}
+                      acepta={ACEPTA[tipo]}
                       archivo={archivo}
                       actual={recurso?.archivo ?? null}
                       quitarActual={quitarArchivo}
                       onArchivo={elegirArchivo}
                       onQuitarActual={setQuitarArchivo}
-                      puedeQuitar={categoria !== 'manual'}
+                      puedeQuitar={tipo !== 'manual'}
                       conError={Boolean(errores.archivo)}
                     />
                     <ErrorDeCampo campo="archivo" errores={errores} />
@@ -496,49 +758,28 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
             {guardando ? 'Guardando...' : recurso ? 'Guardar cambios' : 'Publicar'}
           </button>
         </div>
-      </motion.form>
-    </motion.div>,
-    document.body,
+      </form>
+    </Ventana>
   );
 }
 
-function ConfirmarEliminar({ recurso, onCancelar, onConfirmar }: {
-  recurso: RecursoCentroAyuda;
+function ConfirmarEliminar({ titulo, mensaje, onCancelar, onConfirmar }: {
+  titulo: string;
+  mensaje: string;
   onCancelar: () => void;
   onConfirmar: () => Promise<void>;
 }) {
   const [eliminando, setEliminando] = useState(false);
-  return createPortal(
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-      role="alertdialog"
-      aria-modal="true"
-      onClick={() => !eliminando && onCancelar()}
-      style={SIN_TRANSICION_CSS}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 8 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-        style={SIN_TRANSICION_CSS}
-      >
+  return (
+    <Ventana onCerrar={onCancelar} ocupado={eliminando} rol="alertdialog" etiquetaId="ca-eliminar-titulo" ancho="max-w-sm">
+      <div className="p-5">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-50">
             <Trash2 className="h-5 w-5 text-red-600" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-slate-900">¿Eliminar este recurso?</h2>
-            <p className="mt-1 text-sm text-slate-700">
-              «{recurso.titulo}» dejará de aparecer en el Centro de Ayuda{recurso.archivo ? ' y su archivo se borrará' : ''}.
-              Si solo quiere ocultarlo, desactívelo.
-            </p>
+            <h2 id="ca-eliminar-titulo" className="text-base font-semibold text-slate-900">{titulo}</h2>
+            <p className="mt-1 text-sm text-slate-700">{mensaje}</p>
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
@@ -558,63 +799,254 @@ function ConfirmarEliminar({ recurso, onCancelar, onConfirmar }: {
             className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-red-700 active:scale-[0.98] disabled:opacity-60"
           >
             {eliminando && <Loader2 className="h-4 w-4 animate-spin" />}
-            Eliminar
+            Enviar a la papelera
           </button>
         </div>
-      </motion.div>
-    </motion.div>,
-    document.body,
+      </div>
+    </Ventana>
+  );
+}
+
+function FilaPapelera({ elemento, detalle, bloqueo, puedeRestaurar, onRestaurar }: {
+  elemento: ElementoEnPapelera;
+  detalle: string;
+  bloqueo?: string;
+  puedeRestaurar: boolean;
+  onRestaurar: () => Promise<void>;
+}) {
+  const [restaurando, setRestaurando] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-slate-900">{elemento.titulo}</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {detalle}Eliminado el {fecha(elemento.eliminadoEn)}{elemento.eliminadoPor ? ` por ${elemento.eliminadoPor}` : ''}
+        </p>
+        {bloqueo && <p className="mt-1 text-xs text-amber-700">{bloqueo}</p>}
+      </div>
+      {puedeRestaurar && (
+        <button
+          disabled={restaurando || Boolean(bloqueo)}
+          onClick={async () => {
+            setRestaurando(true);
+            try {
+              await onRestaurar();
+            } finally {
+              setRestaurando(false);
+            }
+          }}
+          className={botonSecundario}
+        >
+          {restaurando ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArchiveRestore className="h-4 w-4" />}
+          Restaurar
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** La papelera se ve en el panel derecho, como una sección más. */
+function PanelPapelera({ papelera, permisos, onRestaurado }: {
+  papelera: Papelera;
+  permisos: PermisosCentroAyuda;
+  onRestaurado: () => void;
+}) {
+  const restaurar = async (accion: () => Promise<void>, mensaje: string) => {
+    try {
+      await accion();
+      toast.success(mensaje, { description: 'Quedó oculto: revíselo y márquelo como visible cuando esté listo.' });
+      onRestaurado();
+    } catch {
+      // apiClient ya muestra el mensaje del servidor
+    }
+  };
+
+  const vacia = papelera.secciones.length === 0 && papelera.recursos.length === 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+          <Trash2 className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Papelera</h2>
+          <p className="mt-0.5 text-xs text-slate-600">
+            Lo que se elimina no se borra: queda aquí y se puede restaurar. Vuelve oculto para revisarlo antes de publicarlo.
+          </p>
+        </div>
+      </div>
+
+      {vacia ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
+            <Trash2 className="h-6 w-6 text-slate-400" />
+          </span>
+          <p className="text-sm font-medium text-slate-800">La papelera está vacía</p>
+        </div>
+      ) : (
+        <>
+          {papelera.secciones.length > 0 && (
+            <div className="space-y-2">
+              <p className={tituloSeccion}>Secciones</p>
+              {papelera.secciones.map((s) => (
+                <FilaPapelera
+                  key={`s${s.id}`}
+                  elemento={s}
+                  detalle=""
+                  puedeRestaurar={permisos.eliminarSecciones}
+                  onRestaurar={() => restaurar(() => centroAyudaService.restaurarSeccion(s.id), 'Sección restaurada')}
+                />
+              ))}
+            </div>
+          )}
+          {papelera.recursos.length > 0 && (
+            <div className="space-y-2">
+              <p className={tituloSeccion}>Recursos</p>
+              {papelera.recursos.map((r) => (
+                <FilaPapelera
+                  key={`r${r.id}`}
+                  elemento={r}
+                  detalle={r.seccion ? `En «${r.seccion}» · ` : ''}
+                  bloqueo={r.seccionEnPapelera ? `Restaure primero la sección «${r.seccion}».` : undefined}
+                  puedeRestaurar={permisos.eliminarRecursos}
+                  onRestaurar={() => restaurar(() => centroAyudaService.restaurarRecurso(r.id), 'Recurso restaurado')}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
 const botonFila =
-  'rounded-lg p-2 text-slate-500 transition-colors hover:bg-blue-50 hover:text-[#1e5da8] focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2';
+  'rounded-lg p-2 text-slate-500 transition-colors hover:bg-blue-50 hover:text-[#1e5da8] focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 disabled:opacity-60';
+const botonFilaPeligro =
+  'rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 disabled:opacity-60';
+/** Acciones de la sección: con texto, para que se entienda qué hace cada una. */
+const botonAccion =
+  'inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-[#1e5da8] hover:text-[#1e5da8] disabled:cursor-not-allowed disabled:opacity-60';
+const botonAccionPeligro =
+  'inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60';
+
+type PorEliminar =
+  | { tipo: 'recurso'; recurso: RecursoCentroAyuda }
+  | { tipo: 'seccion'; seccion: SeccionAdministrada };
+
+/** Lo que muestra el panel derecho: una sección o la papelera. */
+type Vista = { tipo: 'seccion'; id: number } | { tipo: 'papelera' };
 
 export default function CentroAyudaAdminPage() {
+  const [permisos, setPermisos] = useState<PermisosCentroAyuda | null>(null);
+  const [secciones, setSecciones] = useState<SeccionAdministrada[] | null>(null);
   const [recursos, setRecursos] = useState<RecursoCentroAyuda[] | null>(null);
-  const [filtro, setFiltro] = useState<CategoriaCentroAyuda>('documentacion');
+  const [papelera, setPapelera] = useState<Papelera>({ secciones: [], recursos: [] });
+  const [vista, setVista] = useState<Vista | null>(null);
   const [editando, setEditando] = useState<RecursoCentroAyuda | 'nuevo' | null>(null);
-  const [porEliminar, setPorEliminar] = useState<RecursoCentroAyuda | null>(null);
+  const [editandoSeccion, setEditandoSeccion] = useState<SeccionAdministrada | 'nueva' | null>(null);
+  const [porEliminar, setPorEliminar] = useState<PorEliminar | null>(null);
   const [enVisor, setEnVisor] = useState<RecursoCentroAyuda | null>(null);
   const [errorCarga, setErrorCarga] = useState(false);
   const [consulta, setConsulta] = useState('');
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setErrorCarga(false);
     try {
-      setRecursos(await centroAyudaService.listarParaAdministrar());
+      const [listaSecciones, listaRecursos, enPapelera] = await Promise.all([
+        centroAyudaService.listarSecciones(),
+        centroAyudaService.listarRecursos(),
+        centroAyudaService.papelera(),
+      ]);
+      setSecciones(listaSecciones);
+      setRecursos(listaRecursos);
+      setPapelera(enPapelera);
+      // si la sección elegida ya no existe, se pasa a la primera
+      setVista((actual) => {
+        if (actual?.tipo === 'papelera') return actual;
+        if (actual && listaSecciones.some((s) => s.id === actual.id)) return actual;
+        return listaSecciones[0] ? { tipo: 'seccion', id: listaSecciones[0].id } : null;
+      });
     } catch {
       setErrorCarga(true);
     }
-  };
-
-  useEffect(() => {
-    cargar();
   }, []);
 
-  const conteo = useMemo(() => {
-    const total: Record<string, number> = {};
-    (recursos || []).forEach((r) => {
-      total[r.categoria] = (total[r.categoria] || 0) + 1;
-    });
-    return total;
-  }, [recursos]);
+  useEffect(() => {
+    centroAyudaService.misPermisos().then(setPermisos).catch(() => setPermisos(SIN_PERMISOS));
+    cargar();
+  }, [cargar]);
 
-  // Mientras se busca, la lista muestra coincidencias de todas las opciones.
+  const p = permisos ?? SIN_PERMISOS;
+  const filtro = vista?.tipo === 'seccion' ? vista.id : null;
+  const seccionActual = secciones?.find((s) => s.id === filtro) ?? null;
+  const seccionPorId = useMemo(() => new Map((secciones || []).map((s) => [s.id, s])), [secciones]);
+  const nombreDeSeccion = (id: number) => seccionPorId.get(id)?.nombre ?? '';
+  const enPapelera = papelera.secciones.length + papelera.recursos.length;
+
+  // Mientras se busca, la lista muestra coincidencias de todas las secciones.
   const buscando = consulta.trim().length > 0;
   const visibles = buscando
-    ? buscarRecursos(recursos || [], consulta)
-    : (recursos || []).filter((r) => r.categoria === filtro);
+    ? buscarRecursos(recursos || [], consulta, nombreDeSeccion)
+    : (recursos || []).filter((r) => r.idSeccion === filtro);
+
+  const verSeccion = (id: number) => {
+    setVista({ tipo: 'seccion', id });
+    setConsulta('');
+  };
 
   const alternarActivo = async (recurso: RecursoCentroAyuda) => {
     try {
-      await centroAyudaService.actualizar(recurso.id, { ...datosDe(recurso), activo: !recurso.activo });
+      await centroAyudaService.actualizarRecurso(recurso.id, { ...datosDe(recurso), activo: !recurso.activo });
       toast.success(recurso.activo ? 'El recurso quedó oculto' : 'El recurso ya es visible');
       cargar();
     } catch {
       // apiClient ya muestra el mensaje del servidor
     }
   };
+
+  const alternarSeccion = async (seccion: SeccionAdministrada) => {
+    try {
+      await centroAyudaService.actualizarSeccion(seccion.id, { ...datosDeSeccion(seccion), activo: !seccion.activo });
+      toast.success(seccion.activo ? 'La sección quedó oculta' : 'La sección ya es visible', {
+        description: seccion.activo ? 'Los usuarios dejan de verla, con todos sus recursos.' : undefined,
+      });
+      cargar();
+    } catch {
+      // apiClient ya muestra el mensaje del servidor
+    }
+  };
+
+  const moverSeccion = async (seccion: SeccionAdministrada, paso: -1 | 1) => {
+    if (!secciones) return;
+    const ids = secciones.map((s) => s.id);
+    const desde = ids.indexOf(seccion.id);
+    const hasta = desde + paso;
+    if (hasta < 0 || hasta >= ids.length) return;
+    [ids[desde], ids[hasta]] = [ids[hasta], ids[desde]];
+    // se reordena de una vez para que la lista no salte mientras responde el servidor
+    setSecciones(ids.map((id) => seccionPorId.get(id)!));
+    try {
+      setSecciones(await centroAyudaService.ordenarSecciones(ids));
+    } catch {
+      cargar();
+    }
+  };
+
+  const indiceActual = seccionActual && secciones ? secciones.findIndex((s) => s.id === seccionActual.id) : -1;
+
+  if (permisos && !permisos.ver) {
+    return (
+      <div className="flex h-full items-center justify-center p-8" style={{ backgroundColor: '#F8FAFC' }}>
+        <div className="max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <Lock className="mx-auto h-8 w-8 text-slate-400" />
+          <p className="mt-3 text-sm font-medium text-slate-900">No tiene permiso para administrar el Centro de Ayuda</p>
+          <p className="mt-1 text-xs text-slate-500">Pida el permiso «Ver la administración del Centro de Ayuda» en Roles y Permisos.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <MotionConfig reducedMotion="user">
@@ -630,87 +1062,25 @@ export default function CentroAyudaAdminPage() {
                 Centro de Ayuda
               </h1>
               <p className="mt-0.5 text-xs font-medium" style={{ color: '#64748B' }}>
-                Manuales, videos, documentación, cursos, atajos y mejores prácticas que ven los usuarios en el botón de ayuda.
+                Secciones y recursos que ven los usuarios en el botón de ayuda.
               </p>
             </div>
           </div>
-          <button onClick={() => setEditando('nuevo')} className={botonPrimario}>
-            <Plus className="h-4 w-4" />
-            Nuevo recurso
-          </button>
+          {p.crearRecursos && (
+            <button onClick={() => setEditando('nuevo')} className={botonPrimario} disabled={!secciones || secciones.length === 0}>
+              <Plus className="h-4 w-4" />
+              Nuevo recurso
+            </button>
+          )}
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-3 flex flex-wrap gap-1 rounded-xl bg-white p-1 shadow-sm border border-slate-200" role="tablist">
-            {CATEGORIAS_CENTRO_AYUDA.map((c) => {
-              const activa = filtro === c.id;
-              return (
-                <button
-                  key={c.id}
-                  role="tab"
-                  aria-selected={activa}
-                  onClick={() => setFiltro(c.id)}
-                  className={`relative rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                    activa ? 'text-white' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {activa && (
-                    <motion.span
-                      layoutId="ca-pestana"
-                      className="absolute inset-0 rounded-lg bg-[#1e5da8] shadow-sm"
-                      transition={{ type: 'spring', damping: 30, stiffness: 380 }}
-                      style={SIN_TRANSICION_CSS}
-                    />
-                  )}
-                  <span className="relative">
-                    {c.nombre}
-                    <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${activa ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>
-                      {conteo[c.id] || 0}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mb-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-slate-600">
-              {buscando
-                ? `${visibles.length} ${visibles.length === 1 ? 'resultado' : 'resultados'} en todas las opciones`
-                : AYUDA_CATEGORIA[filtro]}
-            </p>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                inputMode="search"
-                placeholder="Buscar recurso..."
-                aria-label="Buscar recurso"
-                value={consulta}
-                onChange={(e) => setConsulta(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setConsulta('');
-                }}
-                className={campo.replace('px-3', 'pl-9 pr-10')}
-              />
-              {consulta && (
-                <button
-                  onClick={() => setConsulta('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-gray-700"
-                  aria-label="Limpiar búsqueda"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {recursos === null ? (
+          {secciones === null || recursos === null ? (
             errorCarga ? (
               <div className="rounded-xl border bg-white p-8 text-center text-sm text-slate-700">
-                No se pudieron cargar los recursos.{' '}
+                No se pudo cargar el Centro de Ayuda.{' '}
                 <button onClick={cargar} className="font-medium text-[#1e5da8] underline">Reintentar</button>
               </div>
             ) : (
@@ -721,126 +1091,365 @@ export default function CentroAyudaAdminPage() {
               </div>
             )
           ) : (
-            <AnimatePresence mode="wait" initial={false}>
-              {visibles.length === 0 && buscando ? (
-                <motion.div
-                  key="sin-resultados"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
-                  style={SIN_TRANSICION_CSS}
-                >
-                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
-                    <SearchX className="h-6 w-6 text-slate-400" />
-                  </span>
-                  <p className="text-sm font-medium text-slate-800">Ningún recurso coincide con «{consulta.trim()}»</p>
-                  <button onClick={() => setConsulta('')} className={botonSecundario}>
-                    Limpiar búsqueda
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            {/* Secciones: el mismo orden en que las ve el usuario */}
+            <aside className="w-full flex-shrink-0 lg:w-72">
+              <nav className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm" aria-label="Secciones del Centro de Ayuda">
+                <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Secciones · {secciones.length}
+                </p>
+                <ul className="space-y-0.5">
+                  {secciones.map((s) => {
+                    const activa = filtro === s.id && !buscando;
+                    return (
+                      <li key={s.id}>
+                        <button
+                          onClick={() => verSeccion(s.id)}
+                          aria-current={activa ? 'true' : undefined}
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                            activa ? 'bg-blue-50 text-[#1e5da8]' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span
+                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                              activa ? 'bg-white text-[#1e5da8] shadow-sm' : s.activo ? 'bg-slate-100 text-slate-600' : 'bg-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <IconoSeccion nombre={s.icono} className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className={`block truncate text-sm font-medium ${s.activo || activa ? '' : 'text-slate-400'}`}>{s.nombre}</span>
+                            {!s.activo && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                                <EyeOff className="h-3 w-3" />
+                                Oculta
+                              </span>
+                            )}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${activa ? 'bg-white text-[#1e5da8]' : 'bg-slate-100 text-slate-600'}`}>
+                            {s.totalRecursos}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {p.crearSecciones && (
+                  <button
+                    onClick={() => setEditandoSeccion('nueva')}
+                    className="mt-1 flex w-full items-center gap-3 rounded-lg border-2 border-dashed border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-[#1e5da8] hover:text-[#1e5da8]"
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center">
+                      <Plus className="h-4 w-4" />
+                    </span>
+                    Agregar sección
                   </button>
-                </motion.div>
-              ) : visibles.length === 0 ? (
-                <motion.div
-                  key={`vacio-${filtro}`}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
-                  style={SIN_TRANSICION_CSS}
-                >
+                )}
+
+                <div className="mt-2 border-t border-slate-100 pt-2">
+                  <button
+                    onClick={() => {
+                      setVista({ tipo: 'papelera' });
+                      setConsulta('');
+                    }}
+                    aria-current={vista?.tipo === 'papelera' ? 'true' : undefined}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                      vista?.tipo === 'papelera' ? 'bg-blue-50 text-[#1e5da8]' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center">
+                      <Trash2 className="h-4 w-4" />
+                    </span>
+                    <span className="flex-1">Papelera</span>
+                    {enPapelera > 0 && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">{enPapelera}</span>
+                    )}
+                  </button>
+                </div>
+              </nav>
+            </aside>
+
+            <section className="min-w-0 flex-1">
+              {vista?.tipo === 'papelera' ? (
+                <PanelPapelera papelera={papelera} permisos={p} onRestaurado={cargar} />
+              ) : secciones.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center">
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
                     <FolderOpen className="h-6 w-6 text-slate-400" />
                   </span>
                   <div>
-                    <p className="text-sm font-medium text-slate-800">Aún no hay contenido en «{nombreCategoria(filtro)}»</p>
+                    <p className="text-sm font-medium text-slate-800">No hay secciones</p>
                     <p className="mt-1 text-xs text-slate-500">Los usuarios ven «Contenido no disponible por el momento».</p>
                   </div>
-                  <button onClick={() => setEditando('nuevo')} className={botonPrimario}>
-                    <Plus className="h-4 w-4" />
-                    Cargar el primero
-                  </button>
-                </motion.div>
+                  {p.crearSecciones && (
+                    <button onClick={() => setEditandoSeccion('nueva')} className={botonPrimario}>
+                      <Plus className="h-4 w-4" />
+                      Agregar la primera sección
+                    </button>
+                  )}
+                </div>
               ) : (
-                <motion.div key="lista" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
-                  <AnimatePresence initial={false}>
-                    {visibles.map((r, i) => {
-                      const tipo = tipoDeRecurso(r);
-                      const resumen = [
-                        r.categoria === 'atajos' ? r.contenido : tipo.etiqueta,
-                        r.archivo ? `${r.archivo.nombre} (${tamanoLegible(r.archivo.tamano)})` : null,
-                        r.enlace,
-                        // el comienzo del texto dice más que un «con texto»
-                        r.categoria !== 'atajos' && r.contenido ? r.contenido.replace(/\s+/g, ' ') : null,
-                      ].filter(Boolean).join(' · ');
-                      return (
-                        <motion.div
-                          key={r.id}
-                          layout
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 8) * 0.03 } }}
-                          exit={{ opacity: 0, x: -12, transition: { duration: 0.15 } }}
-                          className={`flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 border transition-shadow hover:shadow-md ${
-                            r.activo ? 'border-slate-200' : 'border-slate-200 opacity-70'
+              <>
+              {seccionActual && !buscando && (
+                <motion.div
+                  key={`detalle-${seccionActual.id}`}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="mb-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                  style={SIN_TRANSICION_CSS}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${seccionActual.activo ? 'bg-blue-50 text-[#1e5da8]' : 'bg-slate-100 text-slate-400'}`}>
+                      <IconoSeccion nombre={seccionActual.icono} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-base font-semibold text-slate-900">{seccionActual.nombre}</h2>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                          {nombreDeTipo(seccionActual.tipo)}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            seccionActual.activo ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-600'
                           }`}
-                          style={SOLO_TRANSICION_DE_COLOR}
                         >
-                          <IconoRecurso recurso={r} />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-medium text-slate-900">{r.titulo}</p>
-                              {buscando && (
-                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                                  {nombreCategoria(r.categoria)}
-                                </span>
-                              )}
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                  r.activo ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-600'
-                                }`}
-                              >
-                                {r.activo ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                                {r.activo ? 'Visible' : 'Oculto'}
-                              </span>
-                              {r.version && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#1e5da8] border border-blue-100">v{r.version}</span>}
-                              {r.modulo && <span className="text-[11px] text-slate-500">· {r.modulo}</span>}
-                            </div>
-                            <p className="mt-0.5 truncate text-xs text-slate-500">{resumen || r.descripcion || 'Sin contenido'}</p>
-                          </div>
-                          <div className="flex items-center gap-0.5">
-                            {r.activo && r.archivo && (r.archivo.esVideo || r.archivo.previsualizable) && (
-                              <button onClick={() => setEnVisor(r)} className={botonFila} title="Ver" aria-label={`Ver ${r.titulo}`}>
-                                <Eye className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button onClick={() => alternarActivo(r)} className={botonFila} title={r.activo ? 'Ocultar' : 'Mostrar'} aria-label={`${r.activo ? 'Ocultar' : 'Mostrar'} ${r.titulo}`}>
-                              {r.activo ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                            <button onClick={() => setEditando(r)} className={botonFila} title="Editar" aria-label={`Editar ${r.titulo}`}>
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => setPorEliminar(r)} className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2" title="Eliminar" aria-label={`Eliminar ${r.titulo}`}>
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
+                          {seccionActual.activo ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                          {seccionActual.activo ? 'Visible' : 'Oculta'}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {seccionActual.descripcion || ayudaDeTipo(seccionActual.tipo)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(p.editarSecciones || p.eliminarSecciones) && (
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                      {p.editarSecciones && (
+                        <>
+                          <button onClick={() => setEditandoSeccion(seccionActual)} className={botonAccion}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </button>
+                          <button onClick={() => alternarSeccion(seccionActual)} className={botonAccion}>
+                            {seccionActual.activo ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            {seccionActual.activo ? 'Ocultar' : 'Mostrar'}
+                          </button>
+                          <button onClick={() => moverSeccion(seccionActual, -1)} disabled={indiceActual <= 0} className={botonAccion}>
+                            <ChevronUp className="h-3.5 w-3.5" />
+                            Subir
+                          </button>
+                          <button onClick={() => moverSeccion(seccionActual, 1)} disabled={indiceActual >= secciones.length - 1} className={botonAccion}>
+                            <ChevronDown className="h-3.5 w-3.5" />
+                            Bajar
+                          </button>
+                        </>
+                      )}
+                      {p.eliminarSecciones && (
+                        <button
+                          onClick={() => setPorEliminar({ tipo: 'seccion', seccion: seccionActual })}
+                          disabled={seccionActual.totalRecursos > 0}
+                          className={botonAccionPeligro}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Eliminar
+                        </button>
+                      )}
+                      {p.eliminarSecciones && seccionActual.totalRecursos > 0 && (
+                        <span className="text-[11px] text-slate-500">
+                          Para eliminarla, primero mueva o elimine {seccionActual.totalRecursos === 1 ? 'su recurso' : `sus ${seccionActual.totalRecursos} recursos`}.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
               )}
-            </AnimatePresence>
+
+              <div className="mb-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-600">
+                  {buscando
+                    ? `${visibles.length} ${visibles.length === 1 ? 'resultado' : 'resultados'} en todas las secciones`
+                    : seccionActual
+                      ? `${seccionActual.totalRecursos} ${seccionActual.totalRecursos === 1 ? 'recurso' : 'recursos'}, ${seccionActual.recursosVisibles} ${seccionActual.recursosVisibles === 1 ? 'visible' : 'visibles'}`
+                      : ''}
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      inputMode="search"
+                      placeholder="Buscar en todas las secciones..."
+                      aria-label="Buscar recurso"
+                      value={consulta}
+                      onChange={(e) => setConsulta(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setConsulta('');
+                      }}
+                      className={campo.replace('px-3', 'pl-9 pr-10')}
+                    />
+                    {consulta && (
+                      <button
+                        onClick={() => setConsulta('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-gray-700"
+                        aria-label="Limpiar búsqueda"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {p.crearRecursos && seccionActual && !buscando && (
+                    <button onClick={() => setEditando('nuevo')} className={`${botonSecundario} flex-shrink-0`}>
+                      <Plus className="h-4 w-4" />
+                      Agregar recurso
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {visibles.length === 0 && buscando ? (
+                  <motion.div
+                    key="sin-resultados"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
+                    style={SIN_TRANSICION_CSS}
+                  >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
+                      <SearchX className="h-6 w-6 text-slate-400" />
+                    </span>
+                    <p className="text-sm font-medium text-slate-800">Ningún recurso coincide con «{consulta.trim()}»</p>
+                    <button onClick={() => setConsulta('')} className={botonSecundario}>
+                      Limpiar búsqueda
+                    </button>
+                  </motion.div>
+                ) : visibles.length === 0 ? (
+                  <motion.div
+                    key={`vacio-${filtro}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
+                    style={SIN_TRANSICION_CSS}
+                  >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
+                      <FolderOpen className="h-6 w-6 text-slate-400" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Aún no hay contenido en «{seccionActual?.nombre}»</p>
+                      <p className="mt-1 text-xs text-slate-500">Los usuarios ven «Contenido no disponible por el momento».</p>
+                    </div>
+                    {p.crearRecursos && (
+                      <button onClick={() => setEditando('nuevo')} className={botonPrimario}>
+                        <Plus className="h-4 w-4" />
+                        Cargar el primero
+                      </button>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div key="lista" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-2" style={SIN_TRANSICION_CSS}>
+                    <AnimatePresence initial={false}>
+                      {visibles.map((r, i) => {
+                        const seccion = seccionPorId.get(r.idSeccion);
+                        const esAtajo = seccion?.tipo === 'atajos';
+                        const tipo = tipoDeRecurso(r, seccion);
+                        const resumen = [
+                          esAtajo ? r.contenido : tipo.etiqueta,
+                          r.archivo ? `${r.archivo.nombre} (${tamanoLegible(r.archivo.tamano)})` : null,
+                          r.enlace,
+                          // el comienzo del texto dice más que un «con texto»
+                          !esAtajo && r.contenido ? r.contenido.replace(/\s+/g, ' ') : null,
+                        ].filter(Boolean).join(' · ');
+                        // un recurso visible dentro de una sección oculta tampoco lo ven los usuarios
+                        const publicado = r.activo && Boolean(seccion?.activo);
+                        return (
+                          <motion.div
+                            key={r.id}
+                            layout
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 8) * 0.03 } }}
+                            exit={{ opacity: 0, x: -12, transition: { duration: 0.15 } }}
+                            className={`flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 border transition-shadow hover:shadow-md ${
+                              r.activo ? 'border-slate-200' : 'border-slate-200 opacity-70'
+                            }`}
+                            style={SOLO_TRANSICION_DE_COLOR}
+                          >
+                            <IconoRecurso recurso={r} seccion={seccion} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-medium text-slate-900">{r.titulo}</p>
+                                {buscando && (
+                                  <button
+                                    onClick={() => verSeccion(r.idSeccion)}
+                                    className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-blue-50 hover:text-[#1e5da8]"
+                                    title="Ir a la sección"
+                                  >
+                                    {seccion?.nombre}
+                                  </button>
+                                )}
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    r.activo ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {r.activo ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                                  {r.activo ? 'Visible' : 'Oculto'}
+                                </span>
+                                {r.version && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#1e5da8] border border-blue-100">v{r.version}</span>}
+                                {r.modulo && <span className="text-[11px] text-slate-500">· {r.modulo}</span>}
+                              </div>
+                              <p className="mt-0.5 truncate text-xs text-slate-500">{resumen || r.descripcion || 'Sin contenido'}</p>
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              {publicado && r.archivo && (r.archivo.esVideo || r.archivo.previsualizable) && (
+                                <button onClick={() => setEnVisor(r)} className={botonFila} title="Ver" aria-label={`Ver ${r.titulo}`}>
+                                  <Eye className="h-4 w-4" />
+                                </button>
+                              )}
+                              {p.editarRecursos && (
+                                <>
+                                  <button onClick={() => alternarActivo(r)} className={botonFila} title={r.activo ? 'Ocultar' : 'Mostrar'} aria-label={`${r.activo ? 'Ocultar' : 'Mostrar'} ${r.titulo}`}>
+                                    {r.activo ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                  <button onClick={() => setEditando(r)} className={botonFila} title="Editar" aria-label={`Editar ${r.titulo}`}>
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                              {p.eliminarRecursos && (
+                                <button onClick={() => setPorEliminar({ tipo: 'recurso', recurso: r })} className={botonFilaPeligro} title="Eliminar" aria-label={`Eliminar ${r.titulo}`}>
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              </>
+              )}
+            </section>
+          </div>
           )}
         </div>
       </main>
 
       <AnimatePresence>
-        {editando && (
+        {editando && secciones && (
           <FormularioRecurso
             key="formulario"
             recurso={editando === 'nuevo' ? null : editando}
-            categoriaInicial={filtro}
+            secciones={secciones}
+            seccionInicial={filtro ?? secciones[0]?.id ?? 0}
             onCerrar={() => setEditando(null)}
             onGuardado={() => {
               setEditando(null);
@@ -848,15 +1457,37 @@ export default function CentroAyudaAdminPage() {
             }}
           />
         )}
+        {editandoSeccion && (
+          <FormularioSeccion
+            key="formulario-seccion"
+            seccion={editandoSeccion === 'nueva' ? null : editandoSeccion}
+            onCerrar={() => setEditandoSeccion(null)}
+            onGuardado={(id) => {
+              setEditandoSeccion(null);
+              verSeccion(id);
+              cargar();
+            }}
+          />
+        )}
         {porEliminar && (
           <ConfirmarEliminar
             key="eliminar"
-            recurso={porEliminar}
+            titulo={porEliminar.tipo === 'recurso' ? '¿Eliminar este recurso?' : '¿Eliminar esta sección?'}
+            mensaje={
+              porEliminar.tipo === 'recurso'
+                ? `«${porEliminar.recurso.titulo}» deja de verse en el Centro de Ayuda y pasa a la papelera, de donde se puede restaurar. Si solo quiere esconderlo un tiempo, ocúltelo.`
+                : `La sección «${porEliminar.seccion.nombre}» deja de verse en el Centro de Ayuda y pasa a la papelera, de donde se puede restaurar.`
+            }
             onCancelar={() => setPorEliminar(null)}
             onConfirmar={async () => {
               try {
-                await centroAyudaService.eliminar(porEliminar.id);
-                toast.success('Recurso eliminado');
+                if (porEliminar.tipo === 'recurso') {
+                  await centroAyudaService.eliminarRecurso(porEliminar.recurso.id);
+                  toast.success('Recurso enviado a la papelera');
+                } else {
+                  await centroAyudaService.eliminarSeccion(porEliminar.seccion.id);
+                  toast.success('Sección enviada a la papelera');
+                }
                 setPorEliminar(null);
                 cargar();
               } catch {

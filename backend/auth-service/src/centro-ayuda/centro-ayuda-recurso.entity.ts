@@ -1,29 +1,26 @@
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-
-export const CATEGORIAS_CENTRO_AYUDA = [
-  'documentacion',
-  'videos',
-  'atajos',
-  'manual',
-  'cursos',
-  'practicas',
-] as const;
-
-export type CategoriaCentroAyuda = (typeof CATEGORIAS_CENTRO_AYUDA)[number];
+import { CentroAyudaSeccion } from './centro-ayuda-seccion.entity';
 
 @Entity({ name: 'centro_ayuda_recurso', schema: 'auth' })
 export class CentroAyudaRecurso {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'varchar', length: 20 })
-  categoria: CategoriaCentroAyuda;
+  @Column({ name: 'id_seccion', type: 'int' })
+  idSeccion: number;
+
+  @ManyToOne(() => CentroAyudaSeccion)
+  @JoinColumn({ name: 'id_seccion' })
+  seccion?: CentroAyudaSeccion;
 
   @Column({ type: 'varchar', length: 200 })
   titulo: string;
@@ -31,7 +28,7 @@ export class CentroAyudaRecurso {
   @Column({ type: 'text', nullable: true })
   descripcion: string | null;
 
-  /** Módulo del sistema al que pertenece la guía (documentación). */
+  /** Módulo del sistema al que pertenece la guía; la sección agrupa por él. */
   @Column({ type: 'varchar', length: 100, nullable: true })
   modulo: string | null;
 
@@ -70,9 +67,16 @@ export class CentroAyudaRecurso {
   @Column({ name: 'actualizado_por', type: 'varchar', length: 150, nullable: true })
   actualizadoPor: string | null;
 
-  @CreateDateColumn({ name: 'creado_en', type: 'timestamp without time zone' })
+  @Column({ name: 'eliminado_por', type: 'varchar', length: 150, nullable: true })
+  eliminadoPor: string | null;
+
+  @CreateDateColumn({ name: 'creado_en', type: 'timestamp with time zone' })
   creadoEn: Date;
 
-  @UpdateDateColumn({ name: 'actualizado_en', type: 'timestamp without time zone' })
+  @UpdateDateColumn({ name: 'actualizado_en', type: 'timestamp with time zone' })
   actualizadoEn: Date;
+
+  /** Borrado suave: con fecha, el recurso está en la papelera y conserva su archivo. */
+  @DeleteDateColumn({ name: 'eliminado_en', type: 'timestamp with time zone' })
+  eliminadoEn: Date | null;
 }

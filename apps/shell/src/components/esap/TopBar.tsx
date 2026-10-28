@@ -34,6 +34,8 @@ interface TopBarProps {
   onRoleChange?: (roleId: string, roleName: string) => void;
   breadcrumbs?: BreadcrumbItem[];
   moduleTitle?: string;
+  /** El módulo centro-ayuda está activo en Gestión de módulos. */
+  centroAyudaActivo?: boolean;
 }
 
 export function TopBar({ 
@@ -54,7 +56,8 @@ export function TopBar({
   currentRole = 'Administrativo',
   onRoleChange,
   breadcrumbs = [],
-  moduleTitle = 'Dashboard'
+  moduleTitle = 'Dashboard',
+  centroAyudaActivo = true
 }: TopBarProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const { unreadCount } = useNotifications();
@@ -138,7 +141,7 @@ export function TopBar({
         {/* Dark Mode Toggle */}
         <DarkModeToggle />
 
-        <HelpCenter />
+        {centroAyudaActivo && <HelpCenter />}
 
         <UserMenu
           userName={userName}

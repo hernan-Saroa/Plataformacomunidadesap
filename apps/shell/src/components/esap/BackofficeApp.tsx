@@ -1042,6 +1042,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 hasBothSystemsAccess={userData?.hasBothSystemsAccess}
                 onSystemChange={onSystemChange}
                 currentSystem="backoffice"
+                centroAyudaActivo={activeModules.length === 0 || activeModules.some((module) => module.code === 'centro-ayuda')}
               />
             )}
 

@@ -2,10 +2,7 @@
  * Icono y etiqueta según el tipo de contenido de un recurso del Centro de Ayuda.
  */
 import {
-  BookOpen,
   FileSpreadsheet,
-  GraduationCap,
-  Lightbulb,
   FileText,
   FileType,
   Keyboard,
@@ -15,11 +12,18 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type {
-  CategoriaCentroAyuda,
   RecursoCentroAyuda,
+  TipoSeccion,
 } from '../../../services/api/centroAyuda.service';
+import { iconoDeSeccion } from './IconoSeccion';
 
-type DatosDeTipo = Pick<RecursoCentroAyuda, 'archivo' | 'enlace'> & { categoria?: CategoriaCentroAyuda };
+/** La sección del recurso: su tipo decide el icono de los atajos y su icono el de los textos. */
+export interface SeccionDelRecurso {
+  tipo: TipoSeccion;
+  icono: string;
+}
+
+type DatosDeTipo = Pick<RecursoCentroAyuda, 'archivo' | 'enlace'>;
 
 export interface TipoRecurso {
   Icono: LucideIcon;
@@ -28,8 +32,8 @@ export interface TipoRecurso {
   tono: string;
 }
 
-export function tipoDeRecurso(recurso: DatosDeTipo): TipoRecurso {
-  if (recurso.categoria === 'atajos') {
+export function tipoDeRecurso(recurso: DatosDeTipo, seccion?: SeccionDelRecurso): TipoRecurso {
+  if (seccion?.tipo === 'atajos') {
     return { Icono: Keyboard, etiqueta: 'Atajo', tono: 'bg-blue-50 text-[#1e5da8]' };
   }
   const archivo = recurso.archivo;
@@ -46,11 +50,8 @@ export function tipoDeRecurso(recurso: DatosDeTipo): TipoRecurso {
     return { Icono: FileType, etiqueta: 'Documento', tono: 'bg-blue-50 text-[#1e5da8]' };
   }
   if (recurso.enlace) return { Icono: Link2, etiqueta: 'Enlace', tono: 'bg-indigo-50 text-indigo-600' };
-  // Solo texto: el icono de su opción dice más que uno de documento genérico
-  if (recurso.categoria === 'practicas') return { Icono: Lightbulb, etiqueta: 'Recomendación', tono: 'bg-amber-50 text-amber-600' };
-  if (recurso.categoria === 'cursos') return { Icono: GraduationCap, etiqueta: 'Curso', tono: 'bg-blue-50 text-[#1e5da8]' };
-  if (recurso.categoria === 'documentacion') return { Icono: BookOpen, etiqueta: 'Guía', tono: 'bg-blue-50 text-[#1e5da8]' };
-  return { Icono: FileText, etiqueta: 'Texto', tono: 'bg-slate-100 text-slate-600' };
+  // Solo texto: el icono de su sección dice más que uno de documento genérico
+  return { Icono: iconoDeSeccion(seccion?.icono), etiqueta: 'Texto', tono: 'bg-blue-50 text-[#1e5da8]' };
 }
 
 export function tamanoLegible(bytes: number): string {
@@ -59,8 +60,12 @@ export function tamanoLegible(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function IconoRecurso({ recurso, className = 'h-5 w-5' }: { recurso: DatosDeTipo; className?: string }) {
-  const { Icono, tono } = tipoDeRecurso(recurso);
+export function IconoRecurso({ recurso, seccion, className = 'h-5 w-5' }: {
+  recurso: DatosDeTipo;
+  seccion?: SeccionDelRecurso;
+  className?: string;
+}) {
+  const { Icono, tono } = tipoDeRecurso(recurso, seccion);
   return (
     <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${tono}`}>
       <Icono className={className} />

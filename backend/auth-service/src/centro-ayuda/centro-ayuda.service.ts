@@ -1,17 +1,20 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { basename, extname, join, resolve } from 'path';
-import { Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
+import { CentroAyudaRecurso } from './centro-ayuda-recurso.entity';
 import {
-  CentroAyudaRecurso,
-  type CategoriaCentroAyuda,
-} from './centro-ayuda-recurso.entity';
-import { GuardarRecursoDto } from './dto/centro-ayuda.dto';
+  CentroAyudaSeccion,
+  type IconoSeccion,
+  type TipoSeccion,
+} from './centro-ayuda-seccion.entity';
+import { GuardarRecursoDto, GuardarSeccionDto } from './dto/centro-ayuda.dto';
 import { OnlyOfficeService } from './onlyoffice.service';
 
 const EXTENSIONES_DOCUMENTO = [
@@ -44,6 +47,19 @@ const MIME_POR_EXTENSION: Record<string, string> = {
 /** Tamaño máximo de un archivo del Centro de Ayuda (los videos son lo más pesado). */
 export const TAMANO_MAXIMO_ARCHIVO = 500 * 1024 * 1024;
 
+/** Permisos del Centro de Ayuda; se asignan a los roles desde Roles y Permisos. */
+export const PERMISOS_CENTRO_AYUDA = {
+  ver: 'centro-ayuda.administracion.ver',
+  crearSecciones: 'centro-ayuda.secciones.crear',
+  editarSecciones: 'centro-ayuda.secciones.editar',
+  eliminarSecciones: 'centro-ayuda.secciones.eliminar',
+  crearRecursos: 'centro-ayuda.recursos.crear',
+  editarRecursos: 'centro-ayuda.recursos.editar',
+  eliminarRecursos: 'centro-ayuda.recursos.eliminar',
+} as const;
+
+export type AccionCentroAyuda = keyof typeof PERMISOS_CENTRO_AYUDA;
+
 export function directorioCentroAyuda(): string {
   const directorio =
     process.env.CENTRO_AYUDA_STORAGE_PATH ||
@@ -56,7 +72,7 @@ export function extensionDe(nombreArchivo: string): string {
   return extname(nombreArchivo || '').replace('.', '').toLowerCase();
 }
 
-/** Extensiones que se aceptan al subir, sin importar la categoría. */
+/** Extensiones que se aceptan al subir, sin importar la sección. */
 export function extensionPermitida(nombreArchivo: string): boolean {
   const extension = extensionDe(nombreArchivo);
   return EXTENSIONES_DOCUMENTO.includes(extension) || EXTENSIONES_VIDEO.includes(extension);
@@ -81,7 +97,7 @@ export interface ArchivoSubido {
 
 export interface RecursoCentroAyuda {
   id: number;
-  categoria: CategoriaCentroAyuda;
+  idSeccion: number;
   titulo: string;
   descripcion: string | null;
   modulo: string | null;
@@ -98,34 +114,74 @@ export interface RecursoCentroAyuda {
     previsualizable: boolean;
   } | null;
   actualizadoEn: Date;
+  actualizadoPor: string | null;
+}
+
+export interface SeccionCentroAyuda {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  icono: IconoSeccion;
+  tipo: TipoSeccion;
+  orden: number;
+  activo: boolean;
+}
+
+/** Sección con lo que ve el usuario en el botón de ayuda. */
+export interface SeccionPublicada extends SeccionCentroAyuda {
+  recursos: RecursoCentroAyuda[];
+}
+
+/** Sección vista desde la administración, con cuántos recursos tiene. */
+export interface SeccionAdministrada extends SeccionCentroAyuda {
+  totalRecursos: number;
+  recursosVisibles: number;
+  actualizadoEn: Date;
+  actualizadoPor: string | null;
+}
+
+export interface ElementoEnPapelera {
+  id: number;
+  titulo: string;
+  /** Para un recurso, la sección a la que vuelve si se restaura. */
+  seccion: string | null;
+  seccionEnPapelera: boolean;
+  eliminadoEn: Date;
+  eliminadoPor: string | null;
 }
 
 @Injectable()
 export class CentroAyudaService {
   constructor(
     @InjectRepository(CentroAyudaRecurso)
-    private readonly repo: Repository<CentroAyudaRecurso>,
+    private readonly recursos: Repository<CentroAyudaRecurso>,
+    @InjectRepository(CentroAyudaSeccion)
+    private readonly secciones: Repository<CentroAyudaSeccion>,
     private readonly onlyOffice: OnlyOfficeService,
   ) {}
 
-  async listarActivos(): Promise<RecursoCentroAyuda[]> {
-    const recursos = await this.repo.find({
+  // ── Lo que ven los usuarios ───────────────────────────────────────────────
+
+  /** Secciones visibles, en su orden, con sus recursos visibles. */
+  async listarPublicado(): Promise<SeccionPublicada[]> {
+    const secciones = await this.secciones.find({
       where: { activo: true },
-      order: { categoria: 'ASC', orden: 'ASC', titulo: 'ASC' },
+      order: { orden: 'ASC', nombre: 'ASC' },
     });
-    return recursos.map((r) => this.aSalida(r));
+    if (secciones.length === 0) return [];
+    const recursos = await this.recursos.find({
+      where: { activo: true, idSeccion: In(secciones.map((s) => s.id)) },
+      order: { orden: 'ASC', titulo: 'ASC' },
+    });
+    return secciones.map((s) => ({
+      ...this.seccionDeSalida(s),
+      recursos: recursos.filter((r) => r.idSeccion === s.id).map((r) => this.recursoDeSalida(r)),
+    }));
   }
 
-  async listarTodos(): Promise<RecursoCentroAyuda[]> {
-    const recursos = await this.repo.find({
-      order: { categoria: 'ASC', orden: 'ASC', titulo: 'ASC' },
-    });
-    return recursos.map((r) => this.aSalida(r));
-  }
-
-  /** Archivo de un recurso activo, listo para enviarlo. */
+  /** Archivo de un recurso publicado, listo para enviarlo. */
   async obtenerArchivo(id: number) {
-    const recurso = await this.repo.findOne({ where: { id, activo: true } });
+    const recurso = await this.recursoPublicado(id);
     if (!recurso?.archivoRuta || !recurso.archivoNombre) {
       throw new NotFoundException('Contenido no disponible por el momento');
     }
@@ -141,7 +197,7 @@ export class CentroAyudaService {
   }
 
   async configOnlyOffice(id: number, usuario: { id: string; nombre: string }) {
-    const recurso = await this.repo.findOne({ where: { id, activo: true } });
+    const recurso = await this.recursoPublicado(id);
     if (!recurso?.archivoRuta || !recurso.archivoNombre) {
       throw new NotFoundException('Contenido no disponible por el momento');
     }
@@ -161,14 +217,148 @@ export class CentroAyudaService {
     );
   }
 
-  async crear(
+  /** Qué puede hacer el usuario en la administración, según los permisos de sus roles. */
+  async permisosDe(roles: string[]): Promise<Record<AccionCentroAyuda, boolean>> {
+    const codigos = Object.values(PERMISOS_CENTRO_AYUDA);
+    const filas: { code: string }[] = roles.length
+      ? await this.secciones.manager.query(
+          `SELECT DISTINCT LOWER(p.code) AS code
+             FROM auth.permission p
+             JOIN auth.role_permissions rp ON rp.id_permission = p.id_permission
+             JOIN auth.role r ON r.id = rp.id_rol
+            WHERE UPPER(r.code) = ANY($1::text[])
+              AND COALESCE(rp.is_active, true) = true
+              AND p.is_active = true
+              AND LOWER(p.code) = ANY($2::text[])`,
+          [roles.map((r) => r.toUpperCase()), codigos],
+        )
+      : [];
+    const tiene = new Set(filas.map((f) => f.code));
+    const resultado = {} as Record<AccionCentroAyuda, boolean>;
+    (Object.keys(PERMISOS_CENTRO_AYUDA) as AccionCentroAyuda[]).forEach((accion) => {
+      resultado[accion] = tiene.has(PERMISOS_CENTRO_AYUDA[accion]);
+    });
+    return resultado;
+  }
+
+  // ── Secciones ─────────────────────────────────────────────────────────────
+
+  async listarSecciones(): Promise<SeccionAdministrada[]> {
+    const [secciones, recursos] = await Promise.all([
+      this.secciones.find({ order: { orden: 'ASC', nombre: 'ASC' } }),
+      this.recursos.find({ select: { id: true, idSeccion: true, activo: true } }),
+    ]);
+    return secciones.map((s) => {
+      const propios = recursos.filter((r) => r.idSeccion === s.id);
+      return {
+        ...this.seccionDeSalida(s),
+        totalRecursos: propios.length,
+        recursosVisibles: propios.filter((r) => r.activo).length,
+        actualizadoEn: s.actualizadoEn,
+        actualizadoPor: s.actualizadoPor,
+      };
+    });
+  }
+
+  async crearSeccion(dto: GuardarSeccionDto, usuario: string): Promise<SeccionCentroAyuda> {
+    await this.exigirNombreLibre(dto.nombre);
+    const [ultima] = await this.secciones.find({ order: { orden: 'DESC' }, take: 1 });
+    const seccion = this.secciones.create({
+      nombre: dto.nombre,
+      descripcion: dto.descripcion || null,
+      icono: dto.icono,
+      tipo: dto.tipo,
+      orden: (ultima?.orden ?? 0) + 1,
+      activo: dto.activo ?? true,
+      creadoPor: usuario,
+      actualizadoPor: usuario,
+    });
+    return this.seccionDeSalida(await this.secciones.save(seccion));
+  }
+
+  async actualizarSeccion(id: number, dto: GuardarSeccionDto, usuario: string): Promise<SeccionCentroAyuda> {
+    const seccion = await this.secciones.findOne({ where: { id } });
+    if (!seccion) throw new NotFoundException('La sección no existe');
+    await this.exigirNombreLibre(dto.nombre, id);
+
+    if (dto.tipo !== seccion.tipo) {
+      const total = await this.recursos.count({ where: { idSeccion: id } });
+      if (total > 0) {
+        throw new BadRequestException(
+          'No se puede cambiar el tipo de una sección que ya tiene recursos. Muévalos a otra sección o elimínelos primero.',
+        );
+      }
+    }
+
+    seccion.nombre = dto.nombre;
+    seccion.descripcion = dto.descripcion || null;
+    seccion.icono = dto.icono;
+    seccion.tipo = dto.tipo;
+    seccion.activo = dto.activo ?? seccion.activo;
+    seccion.actualizadoPor = usuario;
+    return this.seccionDeSalida(await this.secciones.save(seccion));
+  }
+
+  /** Guarda el orden en que aparecen las secciones en el Centro de Ayuda. */
+  async ordenarSecciones(ids: number[], usuario: string): Promise<SeccionAdministrada[]> {
+    const secciones = await this.secciones.find({ where: { id: In(ids) } });
+    if (secciones.length !== new Set(ids).size) {
+      throw new BadRequestException('Alguna de las secciones ya no existe. Recargue la página.');
+    }
+    const posicion = new Map(ids.map((id, i) => [id, i + 1]));
+    secciones.forEach((s) => {
+      s.orden = posicion.get(s.id) ?? s.orden;
+      s.actualizadoPor = usuario;
+    });
+    await this.secciones.save(secciones);
+    return this.listarSecciones();
+  }
+
+  /** Envía la sección a la papelera. Solo se puede si ya no tiene recursos. */
+  async eliminarSeccion(id: number, usuario: string): Promise<{ id: number }> {
+    const seccion = await this.secciones.findOne({ where: { id } });
+    if (!seccion) throw new NotFoundException('La sección no existe');
+    const total = await this.recursos.count({ where: { idSeccion: id } });
+    if (total > 0) {
+      throw new ConflictException(
+        `La sección tiene ${total} ${total === 1 ? 'recurso' : 'recursos'}. Muévalos a otra sección o elimínelos primero.`,
+      );
+    }
+    seccion.eliminadoPor = usuario;
+    await this.secciones.save(seccion);
+    await this.secciones.softDelete(id);
+    return { id };
+  }
+
+  /** Saca la sección de la papelera; vuelve oculta para revisarla antes de publicarla. */
+  async restaurarSeccion(id: number, usuario: string): Promise<SeccionCentroAyuda> {
+    const seccion = await this.secciones.findOne({ where: { id, eliminadoEn: Not(IsNull()) }, withDeleted: true });
+    if (!seccion) throw new NotFoundException('La sección no está en la papelera');
+    await this.exigirNombreLibre(seccion.nombre, id);
+    await this.secciones.restore(id);
+    seccion.eliminadoEn = null;
+    seccion.eliminadoPor = null;
+    seccion.activo = false;
+    seccion.actualizadoPor = usuario;
+    return this.seccionDeSalida(await this.secciones.save(seccion));
+  }
+
+  // ── Recursos ──────────────────────────────────────────────────────────────
+
+  async listarRecursos(): Promise<RecursoCentroAyuda[]> {
+    const recursos = await this.recursos.find({ order: { orden: 'ASC', titulo: 'ASC' } });
+    return recursos.map((r) => this.recursoDeSalida(r));
+  }
+
+  async crearRecurso(
     dto: GuardarRecursoDto,
     archivo: ArchivoSubido | undefined,
     usuario: string,
   ): Promise<RecursoCentroAyuda> {
     try {
-      const recurso = this.repo.create({
-        categoria: dto.categoria,
+      const seccion = await this.seccionVigente(dto.idSeccion);
+      const recurso = this.recursos.create({
+        idSeccion: seccion.id,
         titulo: dto.titulo,
         descripcion: dto.descripcion || null,
         modulo: dto.modulo || null,
@@ -182,23 +372,23 @@ export class CentroAyudaService {
       });
       if (archivo) this.asignarArchivo(recurso, archivo);
 
-      this.validar(recurso);
-      const guardado = await this.repo.save(recurso);
-      await this.dejarUnSoloManualVigente(guardado);
-      return this.aSalida(guardado);
+      this.validar(recurso, seccion.tipo);
+      const guardado = await this.recursos.save(recurso);
+      await this.dejarUnSoloManualVigente(guardado, seccion.tipo);
+      return this.recursoDeSalida(guardado);
     } catch (error) {
       if (archivo) this.borrarArchivo(archivo.filename);
       throw error;
     }
   }
 
-  async actualizar(
+  async actualizarRecurso(
     id: number,
     dto: GuardarRecursoDto,
     archivo: ArchivoSubido | undefined,
     usuario: string,
   ): Promise<RecursoCentroAyuda> {
-    const recurso = await this.repo.findOne({ where: { id } });
+    const recurso = await this.recursos.findOne({ where: { id } });
     if (!recurso) {
       if (archivo) this.borrarArchivo(archivo.filename);
       throw new NotFoundException('El recurso no existe');
@@ -206,7 +396,8 @@ export class CentroAyudaService {
 
     const archivoAnterior = recurso.archivoRuta;
     try {
-      recurso.categoria = dto.categoria;
+      const seccion = await this.seccionVigente(dto.idSeccion);
+      recurso.idSeccion = seccion.id;
       recurso.titulo = dto.titulo;
       recurso.descripcion = dto.descripcion || null;
       recurso.modulo = dto.modulo || null;
@@ -226,30 +417,80 @@ export class CentroAyudaService {
         recurso.archivoTamano = null;
       }
 
-      this.validar(recurso);
-      const guardado = await this.repo.save(recurso);
-      await this.dejarUnSoloManualVigente(guardado);
+      this.validar(recurso, seccion.tipo);
+      const guardado = await this.recursos.save(recurso);
+      await this.dejarUnSoloManualVigente(guardado, seccion.tipo);
 
       if (archivoAnterior && archivoAnterior !== guardado.archivoRuta) {
         this.borrarArchivo(archivoAnterior);
       }
-      return this.aSalida(guardado);
+      return this.recursoDeSalida(guardado);
     } catch (error) {
       if (archivo) this.borrarArchivo(archivo.filename);
       throw error;
     }
   }
 
-  async eliminar(id: number): Promise<{ id: number }> {
-    const recurso = await this.repo.findOne({ where: { id } });
+  /** Envía el recurso a la papelera; el archivo se conserva para poder restaurarlo. */
+  async eliminarRecurso(id: number, usuario: string): Promise<{ id: number }> {
+    const recurso = await this.recursos.findOne({ where: { id } });
     if (!recurso) throw new NotFoundException('El recurso no existe');
-    await this.repo.delete(id);
-    if (recurso.archivoRuta) this.borrarArchivo(recurso.archivoRuta);
+    recurso.eliminadoPor = usuario;
+    await this.recursos.save(recurso);
+    await this.recursos.softDelete(id);
     return { id };
   }
 
-  /** Lo mínimo que necesita cada opción del Centro de Ayuda para mostrarse. */
-  private validar(recurso: CentroAyudaRecurso): void {
+  /** Saca el recurso de la papelera; vuelve oculto para revisarlo antes de publicarlo. */
+  async restaurarRecurso(id: number, usuario: string): Promise<RecursoCentroAyuda> {
+    const recurso = await this.recursos.findOne({ where: { id, eliminadoEn: Not(IsNull()) }, withDeleted: true });
+    if (!recurso) throw new NotFoundException('El recurso no está en la papelera');
+    const seccion = await this.secciones.findOne({ where: { id: recurso.idSeccion }, withDeleted: true });
+    if (seccion?.eliminadoEn) {
+      throw new ConflictException(`Restaure primero la sección «${seccion.nombre}»`);
+    }
+    await this.recursos.restore(id);
+    recurso.eliminadoEn = null;
+    recurso.eliminadoPor = null;
+    recurso.activo = false;
+    recurso.actualizadoPor = usuario;
+    return this.recursoDeSalida(await this.recursos.save(recurso));
+  }
+
+  async papelera(): Promise<{ secciones: ElementoEnPapelera[]; recursos: ElementoEnPapelera[] }> {
+    const [secciones, recursos, todas] = await Promise.all([
+      this.secciones.find({ where: { eliminadoEn: Not(IsNull()) }, withDeleted: true, order: { eliminadoEn: 'DESC' } }),
+      this.recursos.find({ where: { eliminadoEn: Not(IsNull()) }, withDeleted: true, order: { eliminadoEn: 'DESC' } }),
+      this.secciones.find({ withDeleted: true }),
+    ]);
+    const seccionPorId = new Map(todas.map((s) => [s.id, s]));
+    return {
+      secciones: secciones.map((s) => ({
+        id: s.id,
+        titulo: s.nombre,
+        seccion: null,
+        seccionEnPapelera: false,
+        eliminadoEn: s.eliminadoEn as Date,
+        eliminadoPor: s.eliminadoPor,
+      })),
+      recursos: recursos.map((r) => {
+        const seccion = seccionPorId.get(r.idSeccion);
+        return {
+          id: r.id,
+          titulo: r.titulo,
+          seccion: seccion?.nombre ?? null,
+          seccionEnPapelera: Boolean(seccion?.eliminadoEn),
+          eliminadoEn: r.eliminadoEn as Date,
+          eliminadoPor: r.eliminadoPor,
+        };
+      }),
+    };
+  }
+
+  // ── Reglas ────────────────────────────────────────────────────────────────
+
+  /** Lo mínimo que necesita cada tipo de sección para mostrar el recurso. */
+  private validar(recurso: CentroAyudaRecurso, tipo: TipoSeccion): void {
     if (!recurso.titulo?.trim()) {
       throw new BadRequestException('El título es obligatorio');
     }
@@ -260,7 +501,7 @@ export class CentroAyudaService {
     const extension = recurso.archivoNombre ? extensionDe(recurso.archivoNombre) : '';
     const tieneArchivo = Boolean(recurso.archivoRuta);
 
-    switch (recurso.categoria) {
+    switch (tipo) {
       case 'manual':
         if (!tieneArchivo || extension !== 'pdf') {
           throw new BadRequestException('El manual de usuario debe ser un archivo PDF');
@@ -289,16 +530,40 @@ export class CentroAyudaService {
     }
   }
 
-  private async dejarUnSoloManualVigente(recurso: CentroAyudaRecurso): Promise<void> {
-    if (recurso.categoria !== 'manual' || !recurso.activo) return;
-    await this.repo
+  /** En una sección de manual solo hay un manual vigente: el último que se publicó. */
+  private async dejarUnSoloManualVigente(recurso: CentroAyudaRecurso, tipo: TipoSeccion): Promise<void> {
+    if (tipo !== 'manual' || !recurso.activo) return;
+    await this.recursos
       .createQueryBuilder()
       .update(CentroAyudaRecurso)
       .set({ activo: false })
-      .where('categoria = :categoria', { categoria: 'manual' })
+      .where('id_seccion = :idSeccion', { idSeccion: recurso.idSeccion })
       .andWhere('activo = true')
       .andWhere('id <> :id', { id: recurso.id })
       .execute();
+  }
+
+  private async seccionVigente(id: number): Promise<CentroAyudaSeccion> {
+    const seccion = id ? await this.secciones.findOne({ where: { id } }) : null;
+    if (!seccion) throw new BadRequestException('La sección elegida no existe');
+    return seccion;
+  }
+
+  /** Dos secciones vigentes no pueden llamarse igual; las de la papelera no cuentan. */
+  private async exigirNombreLibre(nombre: string, excepto?: number): Promise<void> {
+    const consulta = this.secciones
+      .createQueryBuilder('s')
+      .where('LOWER(s.nombre) = LOWER(:nombre)', { nombre: nombre.trim() });
+    if (excepto) consulta.andWhere('s.id <> :excepto', { excepto });
+    const repetida = await consulta.getOne();
+    if (repetida) throw new ConflictException(`Ya existe una sección llamada «${repetida.nombre}»`);
+  }
+
+  /** Recurso visible dentro de una sección visible; lo demás no se entrega. */
+  private async recursoPublicado(id: number): Promise<CentroAyudaRecurso | null> {
+    const recurso = await this.recursos.findOne({ where: { id, activo: true }, relations: { seccion: true } });
+    if (!recurso?.seccion?.activo || recurso.seccion.eliminadoEn) return null;
+    return recurso;
   }
 
   private asignarArchivo(recurso: CentroAyudaRecurso, archivo: ArchivoSubido): void {
@@ -327,11 +592,23 @@ export class CentroAyudaService {
     }
   }
 
-  private aSalida(r: CentroAyudaRecurso): RecursoCentroAyuda {
+  private seccionDeSalida(s: CentroAyudaSeccion): SeccionCentroAyuda {
+    return {
+      id: s.id,
+      nombre: s.nombre,
+      descripcion: s.descripcion,
+      icono: s.icono,
+      tipo: s.tipo,
+      orden: s.orden,
+      activo: s.activo,
+    };
+  }
+
+  private recursoDeSalida(r: CentroAyudaRecurso): RecursoCentroAyuda {
     const extension = r.archivoNombre ? extensionDe(r.archivoNombre) : '';
     return {
       id: r.id,
-      categoria: r.categoria,
+      idSeccion: r.idSeccion,
       titulo: r.titulo,
       descripcion: r.descripcion,
       modulo: r.modulo,
@@ -351,6 +628,7 @@ export class CentroAyudaService {
             }
           : null,
       actualizadoEn: r.actualizadoEn,
+      actualizadoPor: r.actualizadoPor,
     };
   }
 }

@@ -2,40 +2,29 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   HelpCircle,
   X,
-  Book,
-  Video,
   MessageCircle,
-  FileText,
-  Keyboard,
   Mail,
   Phone,
   ExternalLink,
   Search,
-  Lightbulb,
   Headphones,
-  GraduationCap,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Inbox
 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig, type Variants } from 'motion/react';
 import { toast } from 'sonner';
 import {
   centroAyudaService,
   urlArchivoRecurso,
-  type CategoriaCentroAyuda,
   type RecursoCentroAyuda,
+  type SeccionPublicada,
 } from '../../services/api/centroAyuda.service';
 import { ListaRecursos, ResultadosBusqueda } from './centro-ayuda/ListaRecursos';
+import { IconoSeccion } from './centro-ayuda/IconoSeccion';
 import { buscarRecursos } from './centro-ayuda/busqueda';
 import { VisorRecurso } from './centro-ayuda/VisorRecurso';
 import { SIN_TRANSICION_CSS, SOLO_TRANSICION_DE_COLOR } from './centro-ayuda/estilosAnimacion';
-
-interface HelpResource {
-  id: CategoriaCentroAyuda;
-  icon: JSX.Element;
-  title: string;
-  description: string;
-}
 
 interface FAQItem {
   question: string;
@@ -91,16 +80,16 @@ export function HelpCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'recursos' | 'faqs' | 'contacto'>('recursos');
   const [searchQuery, setSearchQuery] = useState('');
-  const [recursos, setRecursos] = useState<RecursoCentroAyuda[] | null>(null);
+  const [secciones, setSecciones] = useState<SeccionPublicada[] | null>(null);
   const [errorRecursos, setErrorRecursos] = useState(false);
-  const [categoriaAbierta, setCategoriaAbierta] = useState<CategoriaCentroAyuda | null>(null);
+  const [seccionAbierta, setSeccionAbierta] = useState<number | null>(null);
   const [recursoEnVisor, setRecursoEnVisor] = useState<RecursoCentroAyuda | null>(null);
   const [busqueda, setBusqueda] = useState('');
 
   const cargarRecursos = useCallback(async () => {
     setErrorRecursos(false);
     try {
-      setRecursos(await centroAyudaService.listar());
+      setSecciones(await centroAyudaService.listarPublicado());
     } catch {
       setErrorRecursos(true);
     }
@@ -111,7 +100,7 @@ export function HelpCenter() {
     if (isOpen) {
       cargarRecursos();
     } else {
-      setCategoriaAbierta(null);
+      setSeccionAbierta(null);
       setRecursoEnVisor(null);
       setBusqueda('');
     }
@@ -127,82 +116,51 @@ export function HelpCenter() {
     return () => window.removeEventListener('keydown', alPresionar);
   }, [isOpen, recursoEnVisor]);
 
-  const recursosDe = (categoria: CategoriaCentroAyuda) =>
-    (recursos || []).filter((r) => r.categoria === categoria);
+  const recursos: RecursoCentroAyuda[] | null = secciones ? secciones.flatMap((s) => s.recursos) : null;
+  const nombreDeSeccion = (idSeccion: number) => secciones?.find((s) => s.id === idSeccion)?.nombre ?? '';
 
-  const manualVigente = recursosDe('manual').find((r) => r.archivo);
+  /** En una sección de manual, el PDF vigente que se descarga al tocarla. */
+  const manualDe = (seccion: SeccionPublicada) =>
+    seccion.tipo === 'manual' ? seccion.recursos.find((r) => r.archivo) : undefined;
 
   const consultaActiva = busqueda.trim().length > 0;
-  const resultadosBusqueda = consultaActiva ? buscarRecursos(recursos || [], busqueda) : [];
+  const resultadosBusqueda = consultaActiva ? buscarRecursos(recursos || [], busqueda, nombreDeSeccion) : [];
 
-  const abrirCategoria = (categoria: CategoriaCentroAyuda) => {
-    if (categoria === 'manual' && manualVigente) {
+  const abrirSeccion = (seccion: SeccionPublicada) => {
+    const manual = manualDe(seccion);
+    if (manual) {
       const enlace = document.createElement('a');
-      enlace.href = urlArchivoRecurso(manualVigente.id, true);
-      enlace.download = manualVigente.archivo?.nombre || 'manual.pdf';
+      enlace.href = urlArchivoRecurso(manual.id, true);
+      enlace.download = manual.archivo?.nombre || 'manual.pdf';
       document.body.appendChild(enlace);
       enlace.click();
       enlace.remove();
-      toast.success('Descargando el manual de usuario', {
-        description: manualVigente.version ? `Versión ${manualVigente.version} · PDF` : 'PDF',
+      toast.success(`Descargando: ${seccion.nombre}`, {
+        description: manual.version ? `Versión ${manual.version} · PDF` : 'PDF',
       });
       return;
     }
-    setCategoriaAbierta(categoria);
+    setSeccionAbierta(seccion.id);
   };
 
-  /** Lo que se ve en la esquina de cada opción antes de abrirla. */
-  const estadoDe = (categoria: CategoriaCentroAyuda) => {
-    if (!recursos) return null;
-    if (categoria === 'manual') {
-      return manualVigente ? { texto: manualVigente.version ? `v${manualVigente.version}` : 'PDF', vacio: false } : { texto: 'Sin contenido', vacio: true };
+  /** Lo que se ve en la esquina de cada sección antes de abrirla. */
+  const estadoDe = (seccion: SeccionPublicada) => {
+    if (seccion.tipo === 'manual') {
+      const manual = manualDe(seccion);
+      return manual ? { texto: manual.version ? `v${manual.version}` : 'PDF', vacio: false } : { texto: 'Sin contenido', vacio: true };
     }
-    const total = recursosDe(categoria).length;
+    const total = seccion.recursos.length;
     return total > 0 ? { texto: String(total), vacio: false } : { texto: 'Sin contenido', vacio: true };
   };
 
-  const helpResources: HelpResource[] = [
-    {
-      id: 'documentacion',
-      icon: <Book className="w-5 h-5" />,
-      title: 'Documentación completa',
-      description: 'Guías detalladas de todos los módulos del sistema',
-    },
-    {
-      id: 'videos',
-      icon: <Video className="w-5 h-5" />,
-      title: 'Video tutoriales',
-      description: 'Aprende con videos paso a paso',
-    },
-    {
-      id: 'atajos',
-      icon: <Keyboard className="w-5 h-5" />,
-      title: 'Atajos de teclado',
-      description: 'Trabaja más rápido con estos atajos',
-    },
-    {
-      id: 'manual',
-      icon: <FileText className="w-5 h-5" />,
-      title: 'Manual de usuario',
-      description: manualVigente?.version
-        ? `Descarga el manual en PDF (versión ${manualVigente.version})`
-        : 'Descarga el manual completo en PDF',
-    },
-    {
-      id: 'cursos',
-      icon: <GraduationCap className="w-5 h-5" />,
-      title: 'Cursos de capacitación',
-      description: 'Programas de entrenamiento para administradores',
-    },
-    {
-      id: 'practicas',
-      icon: <Lightbulb className="w-5 h-5" />,
-      title: 'Mejores prácticas',
-      description: 'Consejos y recomendaciones de uso',
-    },
-  ];
+  /** La descripción del manual dice qué versión se va a descargar. */
+  const descripcionDe = (seccion: SeccionPublicada) => {
+    const manual = manualDe(seccion);
+    if (manual?.version) return `${seccion.descripcion || 'Manual en PDF'} (versión ${manual.version})`;
+    return seccion.descripcion || '';
+  };
 
-  const recursoAbierto = helpResources.find((r) => r.id === categoriaAbierta);
+  const seccionEnLista = secciones?.find((s) => s.id === seccionAbierta);
 
   const entradaTarjeta: Variants = {
     hidden: { opacity: 0, y: 10 },
@@ -320,21 +278,20 @@ export function HelpCenter() {
                 {/* Recursos Tab: la cuadrícula y el contenido de una opción se deslizan entre sí */}
                 {activeTab === 'recursos' && (
                   <AnimatePresence mode="wait" initial={false}>
-                    {recursoAbierto ? (
+                    {seccionAbierta !== null ? (
                       <motion.div
-                        key={`lista-${recursoAbierto.id}`}
+                        key={`lista-${seccionAbierta}`}
                         initial={{ opacity: 0, x: 28 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 28 }}
                         transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
                         style={SIN_TRANSICION_CSS}
                       >
-                        {recursos ? (
+                        {seccionEnLista ? (
                           <ListaRecursos
-                            titulo={recursoAbierto.title}
-                            categoria={recursoAbierto.id}
-                            recursos={recursosDe(recursoAbierto.id)}
-                            onVolver={() => setCategoriaAbierta(null)}
+                            seccion={seccionEnLista}
+                            recursos={seccionEnLista.recursos}
+                            onVolver={() => setSeccionAbierta(null)}
                             onVer={setRecursoEnVisor}
                           />
                         ) : errorRecursos ? (
@@ -343,7 +300,7 @@ export function HelpCenter() {
                             <p className="text-sm text-slate-700">No se pudieron cargar los recursos de ayuda.</p>
                             <div className="flex gap-2">
                               <button
-                                onClick={() => setCategoriaAbierta(null)}
+                                onClick={() => setSeccionAbierta(null)}
                                 className="px-3 py-2 rounded-lg text-xs border border-slate-200 hover:bg-slate-50"
                               >
                                 Volver
@@ -403,8 +360,8 @@ export function HelpCenter() {
                         </div>
 
                         {consultaActiva ? (
-                          recursos ? (
-                            <ResultadosBusqueda consulta={busqueda} resultados={resultadosBusqueda} onVer={setRecursoEnVisor} />
+                          secciones ? (
+                            <ResultadosBusqueda consulta={busqueda} secciones={secciones} resultados={resultadosBusqueda} onVer={setRecursoEnVisor} />
                           ) : (
                             <div className="flex justify-center py-10">
                               <Loader2 className="w-6 h-6 animate-spin text-[#1e5da8]" />
@@ -412,56 +369,80 @@ export function HelpCenter() {
                           )
                         ) : (
                           <>
+                          {secciones === null ? (
+                            errorRecursos ? (
+                              <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 px-4 py-10 text-center">
+                                <AlertCircle className="w-8 h-8 text-amber-500" />
+                                <p className="text-sm text-slate-700">No se pudieron cargar los recursos de ayuda.</p>
+                                <button
+                                  onClick={cargarRecursos}
+                                  className="px-3 py-2 rounded-lg text-xs bg-[#1e5da8] text-white hover:bg-[#174a87]"
+                                >
+                                  Reintentar
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-3" aria-busy="true" aria-label="Cargando recursos">
+                                {[0, 1, 2, 3, 4, 5].map((i) => (
+                                  <div key={i} className="min-h-[120px] rounded-xl border-2 border-slate-200 bg-slate-50 animate-pulse" />
+                                ))}
+                              </div>
+                            )
+                          ) : secciones.length === 0 ? (
+                            <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm border border-slate-200">
+                                <Inbox className="h-6 w-6 text-slate-400" />
+                              </span>
+                              <p className="text-sm font-medium text-slate-800">Contenido no disponible por el momento</p>
+                            </div>
+                          ) : (
                           <div className="grid grid-cols-2 gap-3">
-                            {helpResources.map((resource, i) => {
-                              const estado = estadoDe(resource.id);
+                            {secciones.map((seccion, i) => {
+                              const estado = estadoDe(seccion);
                               return (
                                 <motion.button
-                                  key={resource.id}
+                                  key={seccion.id}
                                   custom={i}
                                   variants={entradaTarjeta}
                                   initial="hidden"
                                   animate="visible"
                                   whileHover={{ y: -2 }}
                                   whileTap={{ scale: 0.98 }}
-                                  onClick={() => abrirCategoria(resource.id)}
+                                  onClick={() => abrirSeccion(seccion)}
                                   className="relative flex flex-col items-stretch justify-start p-4 min-h-[120px] rounded-xl border-2 border-slate-200 bg-white hover:border-[#1e5da8] hover:bg-blue-50 hover:shadow-md transition-colors duration-150 text-left group cursor-pointer"
                                   style={SOLO_TRANSICION_DE_COLOR}
                                 >
                                   <div className="flex items-start justify-between gap-2 mb-3">
                                     <div
                                       className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                                        estado?.vacio
+                                        estado.vacio
                                           ? 'bg-slate-100 text-slate-400'
                                           : 'bg-blue-50 text-[#1e5da8] group-hover:bg-blue-100'
                                       }`}
                                     >
-                                      {resource.icon}
+                                      <IconoSeccion nombre={seccion.icono} className="w-5 h-5" />
                                     </div>
-                                    {estado === null ? (
-                                      <span className="h-5 w-12 rounded-full bg-slate-100 animate-pulse" aria-hidden />
-                                    ) : (
-                                      <span
-                                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                                          estado.vacio
-                                            ? 'bg-slate-50 text-slate-500 border-slate-200'
-                                            : 'bg-blue-50 text-[#1e5da8] border-blue-100'
-                                        }`}
-                                      >
-                                        {estado.texto}
-                                      </span>
-                                    )}
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                                        estado.vacio
+                                          ? 'bg-slate-50 text-slate-500 border-slate-200'
+                                          : 'bg-blue-50 text-[#1e5da8] border-blue-100'
+                                      }`}
+                                    >
+                                      {estado.texto}
+                                    </span>
                                   </div>
                                   <h4 className="text-sm text-slate-900 mb-1 font-medium">
-                                    {resource.title}
+                                    {seccion.nombre}
                                   </h4>
                                   <p className="text-xs text-slate-600 line-clamp-2">
-                                    {resource.description}
+                                    {descripcionDe(seccion)}
                                   </p>
                                 </motion.button>
                               );
                             })}
                           </div>
+                          )}
 
                           {/* Quick Access */}
                           <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
