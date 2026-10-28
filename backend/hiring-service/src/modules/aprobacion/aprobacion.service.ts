@@ -102,14 +102,26 @@ export class AprobacionService {
   /**
    * Abre la ronda de una actividad que entró en revisión por otro camino que
    * `enviar`: el registro con soporte la manda a revisión al guardarlo.
+   *
+   * `conTraza` deja la misma traza que `enviar`, que es la que avisa al primer
+   * escalón. El registro con soporte no la necesita porque su propia traza ya
+   * avisa; los documentos de la 5.1 sí (revisión de QA de EFDS-1150).
    */
-  abrirRonda(
+  async abrirRonda(
     em: EntityManager,
     actividad: ProcesoActividad,
     cadena: CadenaResuelta,
     acceso: HiringAccess,
+    conTraza = false,
   ) {
-    return this.cadenas.iniciar(em, actividad, cadena, acceso);
+    const ronda = await this.cadenas.iniciar(em, actividad, cadena, acceso);
+    if (conTraza) {
+      await this.traza(em, actividad.procesoId, actividad.id, 'ENVIAR', acceso, {
+        numeral: actividad.numeral,
+        ronda: ronda.ronda,
+      });
+    }
+    return ronda;
   }
 
   /**

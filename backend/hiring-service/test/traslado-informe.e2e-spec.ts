@@ -63,8 +63,10 @@ describe('HU EFDS-1158 · traslado del informe y subsanaciones (6.4 a 6.6)', () 
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  // Sobre la fecha de Bogotá, como los servicios: en UTC, de las 7 p. m. en
+  // adelante «ayer» caía en hoy y los términos no se vencían.
   const enDias = (d: number) => {
-    const f = new Date();
+    const f = new Date(`${hoy()}T12:00:00Z`);
     f.setUTCDate(f.getUTCDate() + d);
     return f.toISOString().slice(0, 10);
   };

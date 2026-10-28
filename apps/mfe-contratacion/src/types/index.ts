@@ -3140,6 +3140,8 @@ export interface EstadoModificaciones {
     hastaPrevista: string | null;
   } | null;
   puedeSolicitar: boolean;
+  /** Si quien consulta puede aprobar la 9.5; el supervisor solicita pero no decide. */
+  puedeAprobar?: boolean;
   motivoNoPuede: string | null;
   modificaciones: ModificacionRegistrada[];
 }

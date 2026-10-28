@@ -425,6 +425,10 @@ export class NotificadorService implements OnApplicationBootstrap {
         if (!pendientes.length) {
           const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad, undefined, ocurrido.procesoId);
           pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1).map((e) => ({ ...e, cuentas: [] })) : [];
+          // Sin ronda ni regla, la decisión va por permiso: las solicitudes de
+          // modificación (9.5) las aprueba quien puede aprobar la 9.5, y sin
+          // esto el aviso de EFDS-1176 no le llegaba a nadie.
+          if (!cadena) return this.alcance.cuentasQuePueden('aprobar', ocurrido.numeral);
         }
         const ids: string[] = [];
         for (const e of pendientes) {

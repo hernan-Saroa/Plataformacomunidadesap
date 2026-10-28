@@ -274,11 +274,14 @@ export class ActaInicioService {
         } as Partial<ActaInicio>),
       );
 
-      // El estado no lo declara nadie: se deriva de que la reunión existe, como
-      // el perfeccionamiento se deriva de las firmas.
-      contrato.estado = 'EJECUCION';
-      contrato.ejecucionDesde = dto.fechaInicio;
-      await em.save(contrato);
+      // El estado no lo declara nadie: se deriva de que el acta (8.7) o la
+      // reunión existen, como el perfeccionamiento se deriva de las firmas. Si
+      // el acta de la 8.7 ya lo puso en ejecución, la fecha es la de su firma.
+      if (contrato.estado !== 'EJECUCION') {
+        contrato.estado = 'EJECUCION';
+        contrato.ejecucionDesde = dto.fechaInicio;
+        await em.save(contrato);
+      }
 
       // Con el acta suscrita en la 8.7, esa casilla ya se cerró allá: la
       // reunión solo cierra la suya. Por el camino de antes cierra las dos.
@@ -341,7 +344,10 @@ export class ActaInicioService {
    *
    * Pide lo mismo que la reunión —contrato legalizado y con supervisor—, porque
    * el acta la firman el contratista y quien va a vigilar la ejecución. Cierra
-   * la 8.7 y nada más: el contrato entra en ejecución con la reunión (9.1).
+   * la 8.7 y con ella arranca la ejecución, desde la fecha de suscripción
+   * (revisión de QA de EFDS-1176 y EFDS-1167): la reunión de inicio (9.1) es
+   * opcional, y si fuera ella la que pone el contrato en ejecución, saltarla
+   * dejaría sin pagos ni modificaciones a un contrato que ya empezó.
    */
   async registrarActa(
     procesoId: string,
@@ -404,6 +410,10 @@ export class ActaInicioService {
           registradoPor: acceso.userName ?? null,
         }),
       );
+
+      contrato.estado = 'EJECUCION';
+      contrato.ejecucionDesde = dto.fechaSuscripcion;
+      await em.save(contrato);
 
       await this.cierre.resolverCierre(
         em,

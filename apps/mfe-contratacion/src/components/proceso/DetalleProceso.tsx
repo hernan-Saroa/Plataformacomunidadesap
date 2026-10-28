@@ -373,6 +373,15 @@ export function DetalleProceso({
 
     const flujoActual: PasoDelFlujo[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3)
       .filter((act: any) => act.numeral !== NUMERAL_REVISION)
+      // Lo que no está en el riel tampoco se ofrece como siguiente paso: la
+      // 5.4 y la 10.3 se registran dentro de la 5.3 y la 10.2, y las adendas y
+      // las modificaciones tienen su botón en la cabecera.
+      .filter(
+        (act: any) =>
+          ![NUMERAL_PUBLICACION_WEB, NUMERAL_CIERRE_FINANCIERO, NUMERAL_ADENDAS, NUMERAL_MODIFICACIONES].includes(
+            act.numeral,
+          ),
+      )
       .map((act: any) => ({
         numeral: act.numeral,
         // La 3.1 no vive en `proceso_actividades`: su estado es el del estudio
@@ -1066,7 +1075,7 @@ export function DetalleProceso({
         <>
           <FichaDelProceso
             procesoId={procesoId}
-            actividades={actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES)}
+            actividades={actividadesDelRiel}
             entrada={entradaSituacion}
             situacion={situacion}
             etapaActual={etapaActual}

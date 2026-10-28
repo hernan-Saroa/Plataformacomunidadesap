@@ -15,6 +15,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { AlcanceService } from '../../auth/alcance.service';
 import {
   CargarRpDto,
   ExpedirRpDto,
@@ -116,11 +117,12 @@ export class RegistroPresupuestalService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string, _acceso: HiringAccess) {
+  async estado(procesoId: string, acceso: HiringAccess) {
     const contrato = await this.contratoDelProceso(this.dataSource.manager, procesoId);
 
     if (!contrato) {
@@ -146,7 +148,12 @@ export class RegistroPresupuestalService {
       contrato: { numero: contrato.numero, valor: contrato.valor },
       puedeSolicitar: false,
       /** Lo que queda en la pantalla: cargar el RP ya expedido (o completar uno viejo). */
-      puedeCargar: suscrito && rp?.estado !== 'EXPEDIDO',
+      // Sin el permiso de editar la 8.3 el cargue respondería 403: el
+      // formulario no se ofrece, como en las garantías (8.4).
+      puedeCargar:
+        suscrito &&
+        rp?.estado !== 'EXPEDIDO' &&
+        (await this.alcance.puedeEn(acceso, 'editar', '8.3')),
       rp: rp
         ? {
             id: rp.id,

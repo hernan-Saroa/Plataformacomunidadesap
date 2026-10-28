@@ -219,14 +219,14 @@ export class DocumentosService implements OnModuleInit {
           ...datosEnvio,
         }),
       );
-      if (enviar) await this.aprobacion.abrirRonda(em, nueva, revisan!, acceso!);
+      if (enviar) await this.aprobacion.abrirRonda(em, nueva, revisan!, acceso!, true);
       return;
     }
 
     actividad.estado = estado as any;
     Object.assign(actividad, datosEnvio);
     await em.save(actividad);
-    if (enviar) await this.aprobacion.abrirRonda(em, actividad, revisan!, acceso!);
+    if (enviar) await this.aprobacion.abrirRonda(em, actividad, revisan!, acceso!, true);
   }
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
