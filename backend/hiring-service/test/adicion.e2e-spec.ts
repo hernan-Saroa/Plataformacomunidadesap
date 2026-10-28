@@ -97,8 +97,10 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  // Sobre la fecha de Bogotá, como los servicios: en UTC, de las 7 p. m. en
+  // adelante «ayer» caía en hoy y los términos no se vencían.
   const enDias = (d: number) => {
-    const f = new Date();
+    const f = new Date(`${hoy()}T12:00:00Z`);
     f.setUTCDate(f.getUTCDate() + d);
     return f.toISOString().slice(0, 10);
   };
