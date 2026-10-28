@@ -2,7 +2,10 @@
  * Icono y etiqueta según el tipo de contenido de un recurso del Centro de Ayuda.
  */
 import {
+  BookOpen,
   FileSpreadsheet,
+  GraduationCap,
+  Lightbulb,
   FileText,
   FileType,
   Keyboard,
@@ -43,6 +46,10 @@ export function tipoDeRecurso(recurso: DatosDeTipo): TipoRecurso {
     return { Icono: FileType, etiqueta: 'Documento', tono: 'bg-blue-50 text-[#1e5da8]' };
   }
   if (recurso.enlace) return { Icono: Link2, etiqueta: 'Enlace', tono: 'bg-indigo-50 text-indigo-600' };
+  // Solo texto: el icono de su opción dice más que uno de documento genérico
+  if (recurso.categoria === 'practicas') return { Icono: Lightbulb, etiqueta: 'Recomendación', tono: 'bg-amber-50 text-amber-600' };
+  if (recurso.categoria === 'cursos') return { Icono: GraduationCap, etiqueta: 'Curso', tono: 'bg-blue-50 text-[#1e5da8]' };
+  if (recurso.categoria === 'documentacion') return { Icono: BookOpen, etiqueta: 'Guía', tono: 'bg-blue-50 text-[#1e5da8]' };
   return { Icono: FileText, etiqueta: 'Texto', tono: 'bg-slate-100 text-slate-600' };
 }
 

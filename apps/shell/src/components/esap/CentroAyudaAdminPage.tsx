@@ -80,6 +80,7 @@ const campo =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-gray-400 focus:border-[#1e5da8] focus:outline-none';
 const campoConError = campo.replace('border-slate-300', 'border-red-400').replace('focus:border-[#1e5da8]', 'focus:border-red-500');
 const etiqueta = 'mb-1 block text-xs font-medium text-slate-700';
+const tituloSeccion = 'text-[11px] font-semibold uppercase tracking-wider text-slate-500';
 
 type CampoValidado = 'titulo' | 'version' | 'contenido' | 'enlace' | 'archivo';
 type Errores = Partial<Record<CampoValidado, string>>;
@@ -188,7 +189,7 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
             ? 'border-[#1e5da8] bg-blue-50'
             : conError
               ? 'border-red-400 bg-red-50 hover:border-[#1e5da8]'
-              : 'border-slate-300 bg-slate-50 hover:border-[#1e5da8] hover:bg-blue-50/50'
+              : 'border-slate-300 bg-white hover:border-[#1e5da8] hover:bg-blue-50/50'
         }`}
       >
         <UploadCloud className={`h-7 w-7 transition-colors ${arrastrando ? 'text-[#1e5da8]' : 'text-slate-400'}`} />
@@ -200,7 +201,7 @@ function ZonaArchivo({ acepta, archivo, actual, quitarActual, onArchivo, onQuita
       </div>
 
       {actual && (
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
           <span className={`truncate ${quitarActual ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
             Actual: {actual.nombre} ({tamanoLegible(actual.tamano)})
           </span>
@@ -357,10 +358,10 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
         onSubmit={guardar}
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         style={SIN_TRANSICION_CSS}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h2 id="ca-form-titulo" className="text-base font-semibold text-slate-900">
               {recurso ? 'Editar recurso' : 'Nuevo recurso'}
@@ -372,109 +373,121 @@ function FormularioRecurso({ recurso, categoriaInicial, onCerrar, onGuardado }: 
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <div>
-            <label className={etiqueta} htmlFor="ca-categoria">Opción del Centro de Ayuda</label>
-            <select
-              id="ca-categoria"
-              className={campo}
-              value={categoria}
-              onChange={(e) => cambiar({ categoria: e.target.value as CategoriaCentroAyuda })}
-            >
-              {CATEGORIAS_CENTRO_AYUDA.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid gap-5 md:grid-cols-2">
+            <section className="space-y-4 p-5" aria-labelledby="ca-seccion-datos">
+              <h3 id="ca-seccion-datos" className={tituloSeccion}>Datos del recurso</h3>
+              <div>
+                <label className={etiqueta} htmlFor="ca-categoria">Opción del Centro de Ayuda</label>
+                <select
+                  id="ca-categoria"
+                  className={campo}
+                  value={categoria}
+                  onChange={(e) => cambiar({ categoria: e.target.value as CategoriaCentroAyuda })}
+                >
+                  {CATEGORIAS_CENTRO_AYUDA.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div>
-            <label className={etiqueta} htmlFor="ca-titulo">Título <span className="text-red-500">*</span></label>
-            <input {...propsDeCampo('titulo')} maxLength={200} autoFocus value={datos.titulo} onChange={(e) => cambiar({ titulo: e.target.value })} />
-            <ErrorDeCampo campo="titulo" errores={errores} />
-          </div>
+              <div>
+                <label className={etiqueta} htmlFor="ca-titulo">Título <span className="text-red-500">*</span></label>
+                <input {...propsDeCampo('titulo')} maxLength={200} autoFocus value={datos.titulo} onChange={(e) => cambiar({ titulo: e.target.value })} />
+                <ErrorDeCampo campo="titulo" errores={errores} />
+              </div>
 
-          <div>
-            <label className={etiqueta} htmlFor="ca-descripcion">Descripción</label>
-            <textarea id="ca-descripcion" className={campo} rows={2} value={datos.descripcion ?? ''} onChange={(e) => cambiar({ descripcion: e.target.value })} />
-          </div>
+              <div>
+                <label className={etiqueta} htmlFor="ca-descripcion">Descripción</label>
+                <textarea id="ca-descripcion" className={campo} rows={2} value={datos.descripcion ?? ''} onChange={(e) => cambiar({ descripcion: e.target.value })} />
+              </div>
 
-          <AnimatePresence initial={false}>
-            {categoria === 'documentacion' && (
-              <motion.div key="modulo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                <label className={etiqueta} htmlFor="ca-modulo">Módulo del sistema</label>
-                <input id="ca-modulo" className={campo} maxLength={100} placeholder="Ej.: Contratación" value={datos.modulo ?? ''} onChange={(e) => cambiar({ modulo: e.target.value })} />
-              </motion.div>
-            )}
+              <AnimatePresence initial={false}>
+                {categoria === 'documentacion' && (
+                  <motion.div key="modulo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-modulo">Módulo del sistema</label>
+                    <input id="ca-modulo" className={campo} maxLength={100} placeholder="Ej.: Contratación" value={datos.modulo ?? ''} onChange={(e) => cambiar({ modulo: e.target.value })} />
+                  </motion.div>
+                )}
 
-            {categoria === 'manual' && (
-              <motion.div key="version" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                <label className={etiqueta} htmlFor="ca-version">Versión del sistema <span className="text-red-500">*</span></label>
-                <input {...propsDeCampo('version')} maxLength={30} placeholder="Ej.: 2.1" value={datos.version ?? ''} onChange={(e) => cambiar({ version: e.target.value })} />
-                <ErrorDeCampo campo="version" errores={errores} />
-              </motion.div>
-            )}
+                {categoria === 'manual' && (
+                  <motion.div key="version" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-version">Versión del sistema <span className="text-red-500">*</span></label>
+                    <input {...propsDeCampo('version')} maxLength={30} placeholder="Ej.: 2.1" value={datos.version ?? ''} onChange={(e) => cambiar({ version: e.target.value })} />
+                    <ErrorDeCampo campo="version" errores={errores} />
+                  </motion.div>
+                )}
 
-            {categoria === 'atajos' ? (
-              <motion.div key="teclas" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                <label className={etiqueta} htmlFor="ca-contenido">Combinación de teclas <span className="text-red-500">*</span></label>
-                <input
-                  {...propsDeCampo('contenido')}
-                  className={`${errores.contenido ? campoConError : campo} font-mono`}
-                  placeholder="Ctrl + K"
-                  value={datos.contenido ?? ''}
-                  onChange={(e) => cambiar({ contenido: e.target.value })}
-                />
-                <ErrorDeCampo campo="contenido" errores={errores} />
-              </motion.div>
-            ) : categoria !== 'manual' && (
-              <motion.div key="texto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                <label className={etiqueta} htmlFor="ca-contenido">Texto</label>
-                <textarea {...propsDeCampo('contenido')} rows={4} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
-                <ErrorDeCampo campo="contenido" errores={errores} />
-              </motion.div>
-            )}
+                {categoria === 'atajos' ? (
+                  <motion.div key="teclas" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-contenido">Combinación de teclas <span className="text-red-500">*</span></label>
+                    <input
+                      {...propsDeCampo('contenido')}
+                      className={`${errores.contenido ? campoConError : campo} font-mono`}
+                      placeholder="Ctrl + K"
+                      value={datos.contenido ?? ''}
+                      onChange={(e) => cambiar({ contenido: e.target.value })}
+                    />
+                    <ErrorDeCampo campo="contenido" errores={errores} />
+                  </motion.div>
+                ) : categoria !== 'manual' && (
+                  <motion.div key="texto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-contenido">Texto</label>
+                    <textarea {...propsDeCampo('contenido')} rows={6} value={datos.contenido ?? ''} onChange={(e) => cambiar({ contenido: e.target.value })} />
+                    <ErrorDeCampo campo="contenido" errores={errores} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </section>
 
-            {categoria !== 'atajos' && categoria !== 'manual' && (
-              <motion.div key="enlace" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                <label className={etiqueta} htmlFor="ca-enlace">Enlace</label>
-                <input {...propsDeCampo('enlace')} type="url" placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
-                <ErrorDeCampo campo="enlace" errores={errores} />
-              </motion.div>
-            )}
+            <section className="space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-5" aria-labelledby="ca-seccion-contenido">
+              <h3 id="ca-seccion-contenido" className={tituloSeccion}>
+                {categoria === 'atajos' ? 'Publicación' : 'Contenido y publicación'}
+              </h3>
+              <AnimatePresence initial={false}>
+                {categoria !== 'atajos' && categoria !== 'manual' && (
+                  <motion.div key="enlace" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta} htmlFor="ca-enlace">Enlace</label>
+                    <input {...propsDeCampo('enlace')} type="url" placeholder="https://" value={datos.enlace ?? ''} onChange={(e) => cambiar({ enlace: e.target.value })} />
+                    <ErrorDeCampo campo="enlace" errores={errores} />
+                  </motion.div>
+                )}
 
-            {admiteArchivo && (
-              <motion.div key="archivo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
-                <label className={etiqueta}>
-                  {categoria === 'manual' ? <>Archivo PDF <span className="text-red-500">*</span></> : 'Archivo'}
+                {admiteArchivo && (
+                  <motion.div key="archivo" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" style={SIN_TRANSICION_CSS}>
+                    <label className={etiqueta}>
+                      {categoria === 'manual' ? <>Archivo PDF <span className="text-red-500">*</span></> : 'Archivo'}
+                    </label>
+                    <ZonaArchivo
+                      acepta={ACEPTA[categoria]}
+                      archivo={archivo}
+                      actual={recurso?.archivo ?? null}
+                      quitarActual={quitarArchivo}
+                      onArchivo={elegirArchivo}
+                      onQuitarActual={setQuitarArchivo}
+                      puedeQuitar={categoria !== 'manual'}
+                      conError={Boolean(errores.archivo)}
+                    />
+                    <ErrorDeCampo campo="archivo" errores={errores} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex items-center gap-6">
+                <div className="w-28">
+                  <label className={etiqueta} htmlFor="ca-orden">Orden</label>
+                  <input id="ca-orden" type="number" min={0} className={campo} value={datos.orden ?? 0} onChange={(e) => cambiar({ orden: Number(e.target.value) || 0 })} />
+                </div>
+                <label className="mt-5 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={datos.activo ?? true} onChange={(e) => cambiar({ activo: e.target.checked })} className="h-4 w-4" />
+                  Visible para los usuarios
                 </label>
-                <ZonaArchivo
-                  acepta={ACEPTA[categoria]}
-                  archivo={archivo}
-                  actual={recurso?.archivo ?? null}
-                  quitarActual={quitarArchivo}
-                  onArchivo={elegirArchivo}
-                  onQuitarActual={setQuitarArchivo}
-                  puedeQuitar={categoria !== 'manual'}
-                  conError={Boolean(errores.archivo)}
-                />
-                <ErrorDeCampo campo="archivo" errores={errores} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="flex items-center gap-6">
-            <div className="w-28">
-              <label className={etiqueta} htmlFor="ca-orden">Orden</label>
-              <input id="ca-orden" type="number" min={0} className={campo} value={datos.orden ?? 0} onChange={(e) => cambiar({ orden: Number(e.target.value) || 0 })} />
-            </div>
-            <label className="mt-5 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={datos.activo ?? true} onChange={(e) => cambiar({ activo: e.target.checked })} className="h-4 w-4" />
-              Visible para los usuarios
-            </label>
+              </div>
+            </section>
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-3">
           <button type="button" onClick={onCerrar} disabled={guardando} className={botonSecundario}>
             Cancelar
           </button>
@@ -671,7 +684,8 @@ export default function CentroAyudaAdminPage() {
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                type="search"
+                type="text"
+                inputMode="search"
                 placeholder="Buscar recurso..."
                 aria-label="Buscar recurso"
                 value={consulta}
@@ -757,7 +771,8 @@ export default function CentroAyudaAdminPage() {
                         r.categoria === 'atajos' ? r.contenido : tipo.etiqueta,
                         r.archivo ? `${r.archivo.nombre} (${tamanoLegible(r.archivo.tamano)})` : null,
                         r.enlace,
-                        r.categoria !== 'atajos' && r.contenido ? 'con texto' : null,
+                        // el comienzo del texto dice más que un «con texto»
+                        r.categoria !== 'atajos' && r.contenido ? r.contenido.replace(/\s+/g, ' ') : null,
                       ].filter(Boolean).join(' · ');
                       return (
                         <motion.div

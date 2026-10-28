@@ -99,13 +99,14 @@ CREATE TABLE IF NOT EXISTS auth.centro_ayuda_recurso (
 CREATE INDEX IF NOT EXISTS idx_centro_ayuda_recurso_categoria
   ON auth.centro_ayuda_recurso (categoria, activo, orden);
 
--- Atajos que de verdad existen hoy en el backoffice (SidebarPremium y GlobalSearch).
+-- Atajos probados en el backoffice (SidebarPremium y el propio Centro de Ayuda).
+-- Ctrl + K no se incluye: el buscador global (GlobalSearch) no está montado en
+-- la barra superior y el atajo no hace nada.
 INSERT INTO auth.centro_ayuda_recurso (categoria, titulo, descripcion, contenido, orden, creado_por)
 SELECT v.categoria, v.titulo, v.descripcion, v.contenido, v.orden, 'migracion-675'
   FROM (VALUES
-    ('atajos', 'Búsqueda global', 'Abre el buscador de la barra superior desde cualquier pantalla. En Mac: ⌘ + K', 'Ctrl + K', 1),
-    ('atajos', 'Contraer o expandir el menú lateral', 'Muestra u oculta los nombres del menú de módulos. En Mac: ⌘ + B', 'Ctrl + B', 2),
-    ('atajos', 'Cerrar el buscador', 'Cierra la búsqueda global abierta', 'Esc', 3)
+    ('atajos', 'Contraer o expandir el menú lateral', 'Muestra u oculta los nombres del menú de módulos. En Mac: ⌘ + B', 'Ctrl + B', 1),
+    ('atajos', 'Cerrar el Centro de Ayuda', 'Cierra el panel de ayuda y las ventanas que se abren desde él, como el visor de documentos', 'Esc', 2)
   ) AS v(categoria, titulo, descripcion, contenido, orden)
  WHERE NOT EXISTS (
    SELECT 1 FROM auth.centro_ayuda_recurso r

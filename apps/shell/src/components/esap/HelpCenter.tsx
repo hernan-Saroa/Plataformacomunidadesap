@@ -350,7 +350,8 @@ export function HelpCenter() {
                         <div className="relative mb-4">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                           <input
-                            type="search"
+                            type="text"
+                            inputMode="search"
                             placeholder="Buscar manuales, videos, guías..."
                             aria-label="Buscar recursos de ayuda"
                             value={busqueda}
@@ -362,7 +363,7 @@ export function HelpCenter() {
                                 setBusqueda('');
                               }
                             }}
-                            className="w-full pl-10 pr-10 py-2 h-10 rounded-lg border-2 border-slate-200 text-sm focus:border-[#1e5da8] focus:outline-none transition-colors"
+                            className="w-full pl-10 pr-10 py-2 h-10 rounded-lg border-2 border-slate-200 bg-white text-sm text-slate-900 placeholder:text-gray-400 focus:border-[#1e5da8] focus:outline-none transition-colors"
                           />
                           {busqueda && (
                             <button
@@ -471,7 +472,7 @@ export function HelpCenter() {
                         placeholder="Buscar en preguntas frecuentes..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 h-10 rounded-lg border-2 border-slate-200 text-sm focus:border-[#1e5da8] focus:outline-none transition-colors"
+                        className="w-full pl-10 pr-4 py-2 h-10 rounded-lg border-2 border-slate-200 bg-white text-sm text-slate-900 placeholder:text-gray-400 focus:border-[#1e5da8] focus:outline-none transition-colors"
                       />
                     </div>
 
