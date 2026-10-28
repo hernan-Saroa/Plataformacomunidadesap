@@ -44,6 +44,7 @@ import {
   ConfirmarRecepcionInsumosDto,
   NotaRecepcionInsumosTecnicoDto,
   RegistrarVoBoDto,
+  VincularTramiteContractualDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
@@ -540,6 +541,21 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.registrarVoBo(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/tramite-contractual')
+  @ApiOperation({
+    summary:
+      'EFDS-2353 / RF-INF-012: Vincular proceso contractual / SECOP II para solicitudes de Mantenimiento Mayor con diagnóstico y VoBo.',
+  })
+  @ApiResponse({ status: 200, description: 'Trámite contractual vinculado exitosamente.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente (requiere rol de asignador o coordinación GIM).' })
+  vincularTramiteContractual(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: VincularTramiteContractualDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.vincularTramiteContractual(idSolicitud, body, req?.user);
   }
 
   @Post(':idSolicitud/rechazar')
