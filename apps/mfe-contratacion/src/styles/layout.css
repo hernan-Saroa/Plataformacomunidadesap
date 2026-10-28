@@ -1081,3 +1081,22 @@
   border-radius: 9999px;
   background: #6366f1;
 }
+
+/*
+ * La que no detiene el flujo: etiqueta y no borde, porque el borde punteado ya
+ * es de lo que la modalidad salta y el color del borde izquierdo es el estado.
+ */
+.flujo-marca-opcional {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  padding: 0 0.4rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1rem;
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

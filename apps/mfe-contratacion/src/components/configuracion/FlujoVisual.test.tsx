@@ -44,6 +44,7 @@ const DIAGRAMA: DiagramaFlujo = {
           },
         }),
         nodo('3.3', 'Radicación', { asigna: 'Se escoge a la persona de cada puesto del proceso' }),
+        nodo('3.4', 'Revisión y reparto', { noBloquea: true }),
         nodo('3.6', 'Causal', {
           hace: { modo: 'AL_EJECUTAR', accion: 'aprobar', propia: false, quien: 'Abogado del caso' },
           estado: 'ERROR',
@@ -102,6 +103,15 @@ describe('FlujoVisual', () => {
     expect(screen.queryByRole('button', { name: /3\.5/ })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /Mostrar lo que se salta/ }));
     expect(screen.getByRole('button', { name: /3\.5/ }).className).toContain('flujo-nodo--salta');
+  });
+
+  it('marca como opcional la que no detiene el flujo, y lo explica en la leyenda', async () => {
+    render(<FlujoVisual />);
+
+    const reparto = await screen.findByRole('button', { name: /3\.4.*Revisión y reparto/ });
+    expect(within(reparto).getByText('Opcional')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /3\.3.*Radicación/ })).queryByText('Opcional')).toBeNull();
+    expect(screen.getByText('No detiene el flujo')).toBeInTheDocument();
   });
 
   it('con algo por corregir no deja activar, y dice exactamente qué', async () => {

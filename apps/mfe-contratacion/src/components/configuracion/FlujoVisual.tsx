@@ -460,6 +460,9 @@ function Leyenda() {
       <span className="inline-flex items-center gap-1">
         <span className="flujo-marca-propia" /> Propio de la modalidad
       </span>
+      <span className="inline-flex items-center gap-1" title="Se marca en «Cuándo empieza», al abrir la actividad">
+        <span className="flujo-marca-opcional">Opcional</span> No detiene el flujo
+      </span>
       <span className="inline-flex items-center gap-1">
         <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> Falta configurar
       </span>
@@ -483,6 +486,11 @@ function Nodo({ nodo, elegido, onElegir }: { nodo: NodoFlujo; elegido: boolean; 
         <span className="text-xs font-black tabular-nums text-[#003DA5]">{nodo.numeral}</span>
         {nodo.hace.propia || nodo.aprueba.propia || nodo.secuenciaPropia ? (
           <span className="flujo-marca-propia" title="Propio de esta modalidad" />
+        ) : null}
+        {nodo.noBloquea && nodo.aplica && nodo.enLaPlataforma ? (
+          <span className="flujo-marca-opcional" title="No detiene el flujo: las siguientes avanzan aunque esta siga abierta">
+            Opcional
+          </span>
         ) : null}
         {nodo.estado === 'ERROR' && nodo.aplica && nodo.enLaPlataforma ? (
           <AlertTriangle className="ml-auto w-3.5 h-3.5 text-red-600" aria-label="Falta configurar" />
@@ -515,7 +523,6 @@ function Nodo({ nodo, elegido, onElegir }: { nodo: NodoFlujo; elegido: boolean; 
             </span>
           </span>
           {nodo.asigna ? <span className="mt-1.5 block text-xs font-bold text-indigo-700">{nodo.asigna}</span> : null}
-          {nodo.noBloquea ? <span className="mt-1 block text-xs text-slate-500">No detiene el flujo</span> : null}
         </>
       )}
     </button>
