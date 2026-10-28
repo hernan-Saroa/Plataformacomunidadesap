@@ -88,7 +88,7 @@ export function DarkModeToggle() {
         <TooltipTrigger asChild>
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="w-10 h-10 rounded-lg border-2 border-[--esap-gray-400] bg-white hover:bg-[--esap-gray-50] hover:border-[--esap-gray-500] transition-all flex items-center justify-center active:scale-95"
+            className="w-10 h-10 rounded-lg border-2 border-gray-300 bg-white hover:bg-slate-50 hover:border-gray-400 transition-all flex items-center justify-center active:scale-95"
             aria-label="Cambiar tema"
           >
             <AnimatePresence mode="wait">
@@ -100,7 +100,7 @@ export function DarkModeToggle() {
                   exit={{ opacity: 0, rotate: 180 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <Moon className="w-5 h-5 text-[--esap-gray-700]" strokeWidth={2} />
+                  <Moon className="w-5 h-5 text-slate-700" strokeWidth={2} />
                 </motion.div>
               ) : (
                 <motion.div
@@ -110,7 +110,7 @@ export function DarkModeToggle() {
                   exit={{ opacity: 0, rotate: -180 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <Sun className="w-5 h-5 text-[--esap-gray-700]" strokeWidth={2} />
+                  <Sun className="w-5 h-5 text-slate-700" strokeWidth={2} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -133,7 +133,7 @@ export function DarkModeToggle() {
 
             {/* Menu */}
             <motion.div
-              className="absolute right-0 top-full mt-2 w-48 bg-white border-2 border-[--esap-gray-300] rounded-xl overflow-hidden z-50"
+              className="absolute right-0 top-full mt-2 w-48 bg-white border-2 border-gray-300 rounded-xl overflow-hidden z-50"
               style={{ boxShadow: 'var(--esap-shadow-xl)' }}
               initial={{ opacity: 0, y: -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -142,8 +142,8 @@ export function DarkModeToggle() {
             >
               <button
                 onClick={() => handleThemeChange('light')}
-                className={`w-full px-4 py-3 text-left hover:bg-[--esap-gray-50] transition-colors flex items-center gap-3 ${
-                  theme === 'light' ? 'bg-blue-50 text-[--esap-primary]' : 'text-[--esap-gray-700]'
+                className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors flex items-center gap-3 ${
+                  theme === 'light' ? 'bg-blue-50 text-[#1e5da8]' : 'text-slate-700'
                 }`}
               >
                 <Sun className="w-4 h-4" strokeWidth={2} />
@@ -152,14 +152,14 @@ export function DarkModeToggle() {
                   <p className="text-xs opacity-70">Siempre claro</p>
                 </div>
                 {theme === 'light' && (
-                  <div className="w-2 h-2 rounded-full bg-[--esap-primary]" />
+                  <div className="w-2 h-2 rounded-full bg-[#1e5da8]" />
                 )}
               </button>
 
               <button
                 onClick={() => handleThemeChange('dark')}
-                className={`w-full px-4 py-3 text-left hover:bg-[--esap-gray-50] transition-colors flex items-center gap-3 ${
-                  theme === 'dark' ? 'bg-blue-50 text-[--esap-primary]' : 'text-[--esap-gray-700]'
+                className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors flex items-center gap-3 ${
+                  theme === 'dark' ? 'bg-blue-50 text-[#1e5da8]' : 'text-slate-700'
                 }`}
               >
                 <Moon className="w-4 h-4" strokeWidth={2} />
@@ -168,14 +168,14 @@ export function DarkModeToggle() {
                   <p className="text-xs opacity-70">Siempre oscuro</p>
                 </div>
                 {theme === 'dark' && (
-                  <div className="w-2 h-2 rounded-full bg-[--esap-primary]" />
+                  <div className="w-2 h-2 rounded-full bg-[#1e5da8]" />
                 )}
               </button>
 
               <button
                 onClick={() => handleThemeChange('system')}
-                className={`w-full px-4 py-3 text-left hover:bg-[--esap-gray-50] transition-colors flex items-center gap-3 ${
-                  theme === 'system' ? 'bg-blue-50 text-[--esap-primary]' : 'text-[--esap-gray-700]'
+                className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors flex items-center gap-3 ${
+                  theme === 'system' ? 'bg-blue-50 text-[#1e5da8]' : 'text-slate-700'
                 }`}
               >
                 <Monitor className="w-4 h-4" strokeWidth={2} />
@@ -184,7 +184,7 @@ export function DarkModeToggle() {
                   <p className="text-xs opacity-70">Detectar automático</p>
                 </div>
                 {theme === 'system' && (
-                  <div className="w-2 h-2 rounded-full bg-[--esap-primary]" />
+                  <div className="w-2 h-2 rounded-full bg-[#1e5da8]" />
                 )}
               </button>
             </motion.div>

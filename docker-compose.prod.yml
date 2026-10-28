@@ -138,6 +138,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      # Archivos del Centro de Ayuda (EFDS-2399): fuera del contenedor para que no se pierdan al desplegar
+      - ./backend/auth-service/uploads/centro-ayuda:/app/uploads/centro-ayuda
     networks:
       - superapp-net-prod
     restart: unless-stopped

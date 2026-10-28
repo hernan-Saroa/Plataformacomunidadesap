@@ -219,7 +219,9 @@ export class GatewayService {
       const isBinaryFileRoute =
         /\/(?:documentos|evidencias|documents)\/[^/]+\/(?:preview|download)(?:\?|$)/i.test(req.originalUrl) ||
         /\.pdf(?:\?|$)/i.test(req.originalUrl) ||
-        /\/disciplinary-autos\/[^/]+\/pdf(?:\?|$)/i.test(req.originalUrl);
+        /\/disciplinary-autos\/[^/]+\/pdf(?:\?|$)/i.test(req.originalUrl) ||
+        // Manuales y videos del Centro de Ayuda (EFDS-2399): el video pide rangos y no debe cargarse entero en memoria
+        /\/centro-ayuda\/recursos\/\d+\/archivo(?:\?|$)/i.test(req.originalUrl);
       const expectsBinaryFile = acceptHeader.includes('application/zip') ||
                                 acceptHeader.includes('application/octet-stream') ||
                                 acceptHeader.includes('application/pdf') ||
