@@ -437,7 +437,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       procesoId,
       pagoId,
       { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
-      financiero,
+      gestor,
     );
     return pagoId;
   };

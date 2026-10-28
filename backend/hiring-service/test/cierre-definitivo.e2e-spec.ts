@@ -468,7 +468,7 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
       procesoId,
       pagoId,
       { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
-      financiero,
+      gestor,
     );
     return pagoId;
   };

@@ -472,7 +472,7 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       procesoId,
       pagoId,
       { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
-      financiero,
+      gestor,
     );
     return pagoId;
   };

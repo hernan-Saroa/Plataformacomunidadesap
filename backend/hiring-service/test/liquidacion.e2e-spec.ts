@@ -444,7 +444,7 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
       procesoId,
       pagoId,
       { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
-      financiero,
+      gestor,
     );
     return pagoId;
   };
