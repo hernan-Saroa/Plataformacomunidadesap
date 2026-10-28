@@ -144,7 +144,9 @@ function FilaDePuesto({
           </p>
         ) : puesto.seOcupaEn ? (
           // Vacío hasta la etapa 8 es lo normal: no es una tarea pendiente de la 3.3.
-          <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">Todavía sin designar.</p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">
+            Todavía sin designar: se designa cuando el proceso llegue a la {puesto.seOcupaEn}.
+          </p>
         ) : (
           <p className="text-[11.5px] font-bold text-amber-700 m-0 mt-0.5">
             Sin asignar: mientras tanto lo que hace este puesto no lo hace nadie.
@@ -155,7 +157,9 @@ function FilaDePuesto({
       {/* El del supervisor lo llena el acto de designación, no esta pantalla. */}
       {puesto.seOcupaEn ? (
         <p className="text-[11px] text-slate-500 m-0">
-          Se ocupa con la designación de la {puesto.seOcupaEn}, junto con el acto que lo nombra.
+          No se asigna aquí. Se asigna en la actividad {puesto.seOcupaEn} «Designación de supervisor»: ahí se
+          elige a la persona y se carga el acto que la nombra. Para cambiarlo después se usa la 9.3
+          «Reasignación de supervisión».
         </p>
       ) : null}
 
