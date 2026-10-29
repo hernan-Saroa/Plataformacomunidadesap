@@ -359,7 +359,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
       {estado.margen ? <Margen margen={estado.margen} /> : null}
 
       {!estado.puedeSolicitar && estado.motivoNoPuede ? (
-        <Pendiente falta="9.1" texto={`No se puede modificar: ${estado.motivoNoPuede}.`} />
+        <Pendiente falta="8.7" texto={`No se puede modificar: ${estado.motivoNoPuede}.`} />
       ) : null}
 
       {(estado.modificaciones ?? []).length > 0 ? (
@@ -368,6 +368,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
             <Modificacion
               key={m.id}
               modificacion={m}
+              puedeAprobar={estado.puedeAprobar !== false}
               guardando={guardando}
               aprobando={aprobando === m.id}
               aprobacion={aprobacion}
@@ -709,6 +710,7 @@ function Margen({ margen }: { margen: MargenDeAdicion }) {
 /** Una modificación con su respaldo presupuestal y su publicación. */
 function Modificacion({
   modificacion: m,
+  puedeAprobar,
   guardando,
   aprobando,
   aprobacion,
@@ -722,6 +724,7 @@ function Modificacion({
   onRevocar,
 }: {
   modificacion: ModificacionRegistrada;
+  puedeAprobar: boolean;
   guardando: boolean;
   aprobando: boolean;
   aprobacion: { numero: string; fechaSuscripcion: string };
@@ -844,7 +847,11 @@ function Modificacion({
       ) : null}
 
       {/* Aprobar o rechazar se hace solo en la pantalla de revisión. */}
-      {enTramite && !aprobando && !enLaRevision ? (
+      {enTramite && !aprobando && !enLaRevision && !puedeAprobar ? (
+        <p className="text-[11.5px] text-slate-600 m-0">
+          En trámite: la aprueba o la rechaza la Dirección de Contratación.
+        </p>
+      ) : enTramite && !aprobando && !enLaRevision ? (
         <IrALaRevision numeral="9.5" que="aprobarla o rechazarla" />
       ) : enTramite && !aprobando ? (
         <div className="flex flex-wrap gap-2">

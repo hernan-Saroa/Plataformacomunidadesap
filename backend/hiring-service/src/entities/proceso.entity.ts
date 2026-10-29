@@ -11,8 +11,16 @@ import { Expediente } from './expediente.entity';
  * lo que el área radicó y dice que la contratación no procede. No es
  * «desierto» —desierto es que el proceso salió al mercado y no hubo con quién
  * contratar—; aquí no llegó a salir.
+ *
+ * `CANCELADO` es el cuarto (migración 097): cambiaron las condiciones con las
+ * que nació —la línea del PAA desapareció o cambió la vigencia— y quien revisa
+ * el cambio decide que no puede seguir. No lo niega la Dirección ni sale
+ * desierto: deja de tener sustento.
  */
-export type EstadoProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO';
+export type EstadoProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO' | 'CANCELADO';
+
+/** Los estados en que el proceso todavía ocupa su línea del PAA. */
+export const ESTADOS_VIVOS: readonly EstadoProceso[] = ['EN_CURSO', 'ADJUDICADO'];
 
 @Entity('procesos', { schema: 'hiring' })
 export class Proceso {
@@ -100,6 +108,44 @@ export class Proceso {
    */
   @Column({ length: 20, default: 'EN_CURSO' })
   estado: EstadoProceso;
+
+  /**
+   * Línea del PAA de la que sale, en la última versión que se le aplicó.
+   *
+   * Nula en los procesos creados antes de la 097: inventarles un origen
+   * falsearía el expediente, y ninguna actualización del PAA los toca.
+   */
+  @Column({ name: 'paa_linea_id', type: 'uuid', nullable: true })
+  paaLineaId: string | null;
+
+  /** `LINEA 12`: se guarda aparte para no tener que cruzar la línea al listar. */
+  @Column({ name: 'paa_codigo', length: 40, nullable: true })
+  paaCodigo: string | null;
+
+  @Column({ name: 'paa_region_id', type: 'uuid', nullable: true })
+  paaRegionId: string | null;
+
+  @Column({ name: 'paa_anio', type: 'smallint', nullable: true })
+  paaAnio: number | null;
+
+  /**
+   * Lo que trajo el PAA la última vez que se le aplicó, por campo de la 3.1.
+   *
+   * Es lo que permite decir si un valor de la 3.1 lo sigue controlando el
+   * Excel o alguien lo corrigió a mano: si coincide con esto, vino del PAA y
+   * una versión nueva puede reemplazarlo; si no, es del usuario y se respeta.
+   */
+  @Column({ name: 'paa_origen', type: 'jsonb', nullable: true })
+  paaOrigen: Record<string, unknown> | null;
+
+  @Column({ name: 'cancelado_por', length: 150, nullable: true })
+  canceladoPor: string | null;
+
+  @Column({ name: 'cancelado_at', type: 'timestamptz', nullable: true })
+  canceladoAt: Date | null;
+
+  @Column({ name: 'motivo_cancelacion', type: 'text', nullable: true })
+  motivoCancelacion: string | null;
 
   @Column({ name: 'fecha_radicacion', type: 'timestamptz', default: () => 'now()' })
   fechaRadicacion: Date;

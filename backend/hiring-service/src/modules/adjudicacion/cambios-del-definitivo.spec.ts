@@ -53,6 +53,7 @@ describe('calcularCambios', () => {
       preliminar('r-1', 'of-2'),
       { id: 'r-1', oferenteId: 'of-2' },
       OFERENTES,
+      'of-2',
     );
 
     expect(cambios).toMatchObject({
@@ -71,6 +72,7 @@ describe('calcularCambios', () => {
       preliminar('r-1', 'of-2'),
       { id: 'r-2', oferenteId: 'of-2' },
       OFERENTES,
+      'of-2',
     );
 
     expect(cambios.huboRectificacion).toBe(true);
@@ -84,6 +86,7 @@ describe('calcularCambios', () => {
       preliminar('r-1', 'of-2'),
       { id: 'r-2', oferenteId: 'of-1' },
       OFERENTES,
+      'of-1',
     );
 
     expect(cambios.cambioLaGanadora).toBe(true);
@@ -101,6 +104,7 @@ describe('calcularCambios', () => {
       preliminar('r-1', 'of-2'),
       { id: 'r-1', oferenteId: 'of-2' },
       OFERENTES,
+      'of-2',
     );
 
     // Lo aceptado es lo que suele explicar el cambio; lo negado y lo pendiente
@@ -117,8 +121,22 @@ describe('calcularCambios', () => {
       preliminar('r-1', 'of-2'),
       { id: 'r-1', oferenteId: 'of-2' },
       OFERENTES,
+      'of-2',
     );
 
     expect(cambios.subsanacionesAceptadas[0].oferente).toBe('Oferta retirada');
   });
+
+  it('un preliminar sin ganadora (desde la 120) no cuenta como cambio de ganadora', async () => {
+    const cambios = await (servicio() as any).calcularCambios(
+      em([]),
+      { id: 'inf-1', resultadoId: 'r-1', resultado: { ganadora: null } },
+      { id: 'r-1', oferenteId: null },
+      OFERENTES,
+      'of-2',
+    );
+
+    expect(cambios.cambioLaGanadora).toBe(false);
+  });
 });
+

@@ -21,7 +21,10 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ComiteService } from '../comite/comite.service';
 import {
+  ActualizarInformeDto,
   CargarEvidenciaDto,
+  DimensionInforme,
+  NOMBRE_DIMENSION,
   RectificarResultadoDto,
   RegistrarResultadoDto,
 } from './dto/evaluacion.dto';
@@ -39,18 +42,26 @@ interface ArchivoCargado {
   path: string;
 }
 
+/** Un archivo del informe con su hash, como lo entrega el controller. */
+export interface ArchivoDelInforme {
+  archivo: ArchivoCargado;
+  hash: string;
+}
+
 /**
- * Evaluación de las ofertas — actividad 6.3 (EFDS-1157).
+ * Evaluación preliminar de las ofertas — actividad 6.3 (EFDS-1157).
  *
- * **La plataforma no califica.** El comité evalúa por fuera, con sus formatos y
- * su cuadro comparativo, y elige la ganadora; lo que llega aquí es la decisión
- * ya tomada, su valoración y los documentos que la sustentan. Así lo dice la
- * matriz de roles del Comité Evaluador: "consulta y cargue de archivos".
+ * **La plataforma no califica.** El comité evalúa por fuera y entrega un
+ * informe consolidado, en uno o varios archivos (jurídico, técnico, financiero
+ * y económico). En este punto la evaluación es preliminar y todavía no se sabe
+ * qué oferta gana, así que no se registran puntajes ni ganadora: eso se decide
+ * en el informe definitivo (7.2). El informe se carga una vez y alimenta la 6.3
+ * y la 6.4; si tiene un error se vuelve a cargar, y el anterior queda en el
+ * historial con su motivo.
  *
- * De ahí que este servicio no tenga ninguna regla de puntuación. Lo que sí
- * cuida es que el registro sea creíble: que haya comité designado, que quien
- * registra sea miembro de ese comité, que la ganadora sea una de las ofertas
- * recibidas y que el informe venga adjunto.
+ * Lo que este servicio cuida es que el registro sea creíble: que haya comité
+ * designado, que quien registra sea miembro de ese comité y que el informe
+ * venga adjunto.
  */
 @Injectable()
 export class EvaluacionService {
@@ -89,7 +100,15 @@ export class EvaluacionService {
     });
     const vigente = historial.find((r) => r.estado === 'VIGENTE') ?? null;
 
-    const evidencias = vigente ? await this.evidenciasDe(vigente.id) : [];
+    // Las de todos: en un informe rectificado son sus archivos, y el historial
+    // tiene que poder abrirlos (EFDS-1157).
+    const evidencias = historial.length
+      ? await this.dataSource.getRepository(EvidenciaEvaluacion).find({
+          where: { resultadoId: In(historial.map((r) => r.id)) },
+          order: { createdAt: 'ASC' },
+        })
+      : [];
+    const evidenciasDe = (id: string) => evidencias.filter((e) => e.resultadoId === id);
     const documentos = await this.documentosDe([
       ...historial.map((r) => r.informeDocumentoId),
       ...evidencias.map((e) => e.documentoId),
@@ -115,6 +134,8 @@ export class EvaluacionService {
         oferentes.length > 0 &&
         misDimensiones.length > 0 &&
         !vigente,
+      // Volver a cargar el informe si tiene un error u omisión (EFDS-1157).
+      puedeActualizar: !excluida && misDimensiones.length > 0 && !!vigente,
       ofertas: oferentes.map((oferta) => ({
         id: oferta.id,
         numero: oferta.numero,
@@ -123,110 +144,94 @@ export class EvaluacionService {
         valorOfertado: oferta.valorOfertado != null ? Number(oferta.valorOfertado) : null,
       })),
       resultado: vigente
-        ? this.presentarResultado(vigente, porOferente, documentos, evidencias)
+        ? this.presentarResultado(vigente, porOferente, documentos, evidenciasDe(vigente.id))
         : null,
       // Los rectificados se muestran: son los que explican que el expediente
       // tenga dos informes de evaluación del mismo proceso.
       rectificados: historial
         .filter((r) => r.estado === 'RECTIFICADO')
-        .map((r) => this.presentarResultado(r, porOferente, documentos, [])),
+        .map((r) => this.presentarResultado(r, porOferente, documentos, evidenciasDe(r.id))),
     };
   }
 
   // ------------------------------------------------------------- registro --
 
   /**
-   * Recibe el resultado de la evaluación con el informe del comité.
+   * Recibe el informe de evaluación preliminar del comité.
    *
-   * No valida la valoración contra nada porque no hay contra qué: el cuadro
+   * No hay valoración que validar: la evaluación es preliminar y el cuadro
    * comparativo vive en el informe. Lo que se exige es que el registro tenga
-   * quién responda por él —un miembro del comité designado— y que la ganadora
-   * sea una de las ofertas que el proceso recibió.
+   * quién responda por él —un miembro del comité designado— y el informe.
    */
   async registrar(
     procesoId: string,
     dto: RegistrarResultadoDto,
-    informe: ArchivoCargado,
-    hash: string,
+    informes: ArchivoDelInforme[],
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
-      await this.exigirQueAplique(em, proceso);
-
-      // El cierre va primero porque es el paso anterior de la cadena: el comité
-      // se designa sobre una lista en firme (EFDS-1156), así que con la
-      // recepción abierta la falta no es el comité sino el cierre que nadie
-      // hizo, y eso es lo que hay que decir.
-      const { recepcionCerrada, oferentes } = await this.ofertasPublicadas(em, procesoId);
-      if (!recepcionCerrada) {
-        throw new ConflictException(
-          'La recepción de ofertas sigue abierta: no hay resultado que registrar mientras la lista pueda cambiar',
-        );
-      }
-
-      // Sin comité no hay evaluación: es el segundo criterio de EFDS-1156, ya
-      // construido y probado allí. No se repite la regla.
-      await this.comite.exigirComiteParaEvaluar(procesoId, em);
-      await this.exigirQueSeaDelComite(procesoId, acceso);
-
-      const ganadora = oferentes.find((o) => o.id === dto.oferenteId);
-      if (!ganadora) {
-        throw new NotFoundException('La oferta ganadora no está en la lista de este proceso');
-      }
+      await this.exigirQueSePuedaCargar(em, procesoId, acceso);
 
       if (await this.resultadoVigente(procesoId, em)) {
         throw new ConflictException(
-          'El proceso ya tiene resultado registrado: para corregirlo se rectifica el actual y se registra otro',
+          'El proceso ya tiene el informe preliminar cargado: si tiene un error, vuelve a cargarlo',
         );
       }
-
-      this.validarValoracion(dto);
 
       if (await this.cierre.exigeFirma(em, NUMERAL_EVALUACION)) {
         this.cierre.exigirFirmaValida(dto.firma);
       }
 
-      const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
-
-      const doc = await this.guardarDocumento(
-        em,
-        expediente.id,
-        'Informe de evaluación del comité',
-        informe,
-        hash,
-        acceso,
-      );
-
-      const resultado = await em.save(
-        em.create(ResultadoEvaluacion, {
-          procesoId,
-          oferenteId: ganadora.id,
-          informeDocumentoId: doc.id,
-          puntajeObtenido: dto.puntajeObtenido != null ? String(dto.puntajeObtenido) : null,
-          puntajeMaximo: dto.puntajeMaximo != null ? String(dto.puntajeMaximo) : null,
-          // Si el comité no corrigió la cifra, el valor evaluado es el que la
-          // oferta presentó: se copia para que el resultado se lea solo.
-          valorEvaluado:
-            dto.valorEvaluado != null
-              ? String(dto.valorEvaluado)
-              : ganadora.valorOfertado != null
-                ? String(ganadora.valorOfertado)
-                : null,
-          justificacion: dto.justificacion.trim(),
-          estado: 'VIGENTE' as const,
-          registradoPor: acceso.userName,
-        }),
-      );
-
+      const resultado = await this.crearResultado(em, procesoId, dto, informes, acceso);
       await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, resultado.id, 'GUARDAR', acceso, {
         actividad: NUMERAL_EVALUACION,
-        ganadora: ganadora.numero,
-        puntaje: dto.puntajeObtenido ?? null,
-        puntajeMaximo: dto.puntajeMaximo ?? null,
+        archivos: informes.length,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Vuelve a cargar el informe preliminar (EFDS-1157).
+   *
+   * El vigente queda rectificado con el motivo, la fecha y el usuario, y el
+   * nuevo toma su lugar en la misma transacción: el proceso no queda ni un
+   * momento sin informe. Lo que ya se trasladó no cambia: el traslado congeló
+   * lo que se notificó.
+   */
+  async actualizar(
+    procesoId: string,
+    dto: ActualizarInformeDto,
+    informes: ArchivoDelInforme[],
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirProceso(em, procesoId);
+      await this.exigirQueSeaDelComite(procesoId, acceso);
+
+      const vigente = await this.resultadoVigente(procesoId, em);
+      if (!vigente) {
+        throw new NotFoundException('Todavía no se ha cargado el informe preliminar');
+      }
+
+      const motivo = dto.motivo.trim();
+      vigente.estado = 'RECTIFICADO';
+      vigente.rectificadoAt = new Date();
+      vigente.rectificadoPor = acceso.userName;
+      vigente.motivoRectificacion = motivo;
+      await em.save(vigente);
+
+      const nuevo = await this.crearResultado(em, procesoId, dto, informes, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
+
+      await this.traza(em, procesoId, nuevo.id, 'RECTIFICAR', acceso, {
+        actividad: NUMERAL_EVALUACION,
+        motivo,
+        anterior: vigente.id,
+        archivos: informes.length,
       });
     });
 
@@ -342,27 +347,98 @@ export class EvaluacionService {
     }
   }
 
-  /**
-   * La valoración va completa o no va.
-   *
-   * Un puntaje sin la escala no se puede leer, y uno por encima del máximo es
-   * un error de digitación que quedaría en el informe trasladado. La base tiene
-   * el mismo control; aquí se atrapa antes para poder explicarlo.
-   */
-  private validarValoracion(dto: RegistrarResultadoDto) {
-    const tieneObtenido = dto.puntajeObtenido != null;
-    const tieneMaximo = dto.puntajeMaximo != null;
+  /** Lo que piden cargar y volver a cargar: proceso, recepción en firme, comité y ser de él. */
+  private async exigirQueSePuedaCargar(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+    const proceso = await this.exigirProceso(em, procesoId);
+    await this.exigirQueAplique(em, proceso);
 
-    if (tieneObtenido !== tieneMaximo) {
-      throw new BadRequestException(
-        'El puntaje va con su escala: un 85 sin saber sobre cuánto no dice nada',
+    // El cierre va primero porque es el paso anterior de la cadena: el comité
+    // se designa sobre una lista en firme (EFDS-1156).
+    const { recepcionCerrada } = await this.ofertasPublicadas(em, procesoId);
+    if (!recepcionCerrada) {
+      throw new ConflictException(
+        'La recepción de ofertas sigue abierta: no hay nada que evaluar mientras la lista pueda cambiar',
       );
     }
-    if (tieneObtenido && dto.puntajeObtenido! > dto.puntajeMaximo!) {
+
+    // Sin comité no hay evaluación (EFDS-1156). No se repite la regla.
+    await this.comite.exigirComiteParaEvaluar(procesoId, em);
+    await this.exigirQueSeaDelComite(procesoId, acceso);
+  }
+
+  /**
+   * Guarda el informe —todos sus archivos— y el resultado que lo agrupa.
+   *
+   * El primer archivo es el informe del resultado, que es el que se traslada y
+   * se congela; todos, el primero incluido, quedan como sus archivos con la
+   * dimensión que sustentan.
+   */
+  private async crearResultado(
+    em: EntityManager,
+    procesoId: string,
+    dto: RegistrarResultadoDto,
+    informes: ArchivoDelInforme[],
+    acceso: HiringAccess,
+  ) {
+    if (!informes.length) {
       throw new BadRequestException(
-        `El puntaje obtenido (${dto.puntajeObtenido}) no puede superar el máximo (${dto.puntajeMaximo})`,
+        'Adjunta el informe del comité: sin él la evaluación es la opinión de quien la digitó',
       );
     }
+    const dimensiones = dto.dimensiones ?? [];
+    if (dimensiones.length && dimensiones.length !== informes.length) {
+      throw new BadRequestException('Di de qué es cada archivo: una dimensión por archivo');
+    }
+
+    const expediente = await em.findOne(Expediente, { where: { procesoId } });
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+    const nombres = informes.map((_, i) => {
+      const dimension: DimensionInforme = dimensiones[i] ?? 'CONSOLIDADO';
+      const repetidas = dimensiones.filter((d) => d === dimension).length;
+      const base = NOMBRE_DIMENSION[dimension];
+      // Sin dimensiones, todos son partes del consolidado y se numeran.
+      return !dimensiones.length && informes.length > 1
+        ? `${base} (${i + 1} de ${informes.length})`
+        : repetidas > 1
+          ? `${base} (${dimensiones.slice(0, i + 1).filter((d) => d === dimension).length})`
+          : base;
+    });
+
+    const documentos = [];
+    // Uno tras otro: comparten la transacción.
+    for (const [i, { archivo, hash }] of informes.entries()) {
+      documentos.push(
+        await this.guardarDocumento(em, expediente.id, nombres[i], archivo, hash, acceso),
+      );
+    }
+
+    const resultado = await em.save(
+      em.create(ResultadoEvaluacion, {
+        procesoId,
+        oferenteId: null,
+        informeDocumentoId: documentos[0].id,
+        puntajeObtenido: null,
+        puntajeMaximo: null,
+        valorEvaluado: null,
+        justificacion: dto.observacion?.trim() || null,
+        estado: 'VIGENTE' as const,
+        registradoPor: acceso.userName,
+      }),
+    );
+
+    await em.save(
+      documentos.map((doc, i) =>
+        em.create(EvidenciaEvaluacion, {
+          resultadoId: resultado.id,
+          documentoId: doc.id,
+          descripcion: nombres[i],
+          cargadaPor: acceso.userName,
+        }),
+      ),
+    );
+
+    return resultado;
   }
 
   private presentarResultado(
@@ -371,7 +447,7 @@ export class EvaluacionService {
     documentos: Map<string, Documento>,
     evidencias: EvidenciaEvaluacion[],
   ) {
-    const ganadora = ofertas.get(resultado.oferenteId);
+    const ganadora = resultado.oferenteId ? ofertas.get(resultado.oferenteId) : undefined;
     const informe = documentos.get(resultado.informeDocumentoId);
 
     return {
@@ -405,6 +481,7 @@ export class EvaluacionService {
           descripcion: e.descripcion,
           cargadaPor: e.cargadaPor,
           cargadaAt: e.createdAt,
+          nombre: doc?.archivoNombreOriginal ?? doc?.nombre ?? null,
           archivoUrl: doc?.archivoUrl ?? null,
         };
       }),
@@ -430,13 +507,6 @@ export class EvaluacionService {
     return manager
       .getRepository(ResultadoEvaluacion)
       .findOne({ where: { procesoId, estado: 'VIGENTE' } });
-  }
-
-  private evidenciasDe(resultadoId: string) {
-    return this.dataSource.getRepository(EvidenciaEvaluacion).find({
-      where: { resultadoId },
-      order: { createdAt: 'ASC' },
-    });
   }
 
   private async documentosDe(ids: string[]): Promise<Map<string, Documento>> {

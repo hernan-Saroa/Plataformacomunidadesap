@@ -1,10 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, Not } from 'typeorm';
 
 import {
   CambiosDelDefinitivo,
   InformeDefinitivo,
 } from '../../entities/informe-definitivo.entity';
+import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
 import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
 import { Subsanacion } from '../../entities/subsanacion.entity';
 import { ResultadoEvaluacion } from '../../entities/resultado-evaluacion.entity';
@@ -25,7 +31,7 @@ import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-defini
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
- * Informe de evaluación definitivo — actividad 7.3 (EFDS-1159).
+ * Informe de evaluación definitivo — actividad 7.2 (EFDS-1159).
  *
  * El que se produce después de la audiencia y sobre el que se adjudica.
  *
@@ -56,7 +62,11 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     const vigente = informes.find((i) => i.estado !== 'ANULADO') ?? null;
 
     const documentos = await this.documentosDe(
-      informes.flatMap((i) => [i.informeDocumentoId, i.evidenciaDocumentoId]),
+      informes.flatMap((i) => [
+        i.informeDocumentoId,
+        i.evidenciaDocumentoId,
+        ...(i.versiones ?? []).flatMap((v) => [v.documentoId, v.evidenciaDocumentoId]),
+      ]),
     );
 
     const preliminar = await this.preliminarEnJuego(em, procesoId);
@@ -76,7 +86,11 @@ export class InformeDefinitivoService extends AdjudicacionBase {
         preliminar?.estado === 'CERRADO' &&
         !audienciaPendiente &&
         !!resultado &&
-        (!vigente || vigente.estado === 'BORRADOR'),
+        (!vigente ||
+          vigente.estado === 'BORRADOR' ||
+          (vigente.estado === 'PUBLICADO' && !(await this.hayActo(em, procesoId)))),
+      // Actualizar un informe que ya existe pide motivo: queda en su historial.
+      actualizarPideMotivo: !!vigente,
       puedePublicar:
         !excluida && !!vigente && vigente.estado === 'BORRADOR' && !!vigente.informeDocumentoId,
       informe: vigente ? this.presentar(vigente, documentos) : null,
@@ -99,6 +113,8 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     archivo: ArchivoCargado | null,
     hash: string | null,
     acceso: HiringAccess,
+    motivo?: string,
+    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
@@ -116,9 +132,17 @@ export class InformeDefinitivoService extends AdjudicacionBase {
       }
 
       const previo = await this.definitivoEnJuego(em, procesoId);
-      if (previo && previo.estado !== 'BORRADOR') {
+      // Publicado también se actualiza (EFDS-1159): el informe cambia después
+      // de la audiencia. Lo que ya no se mueve es lo adjudicado sobre él.
+      if (previo && previo.estado === 'PUBLICADO' && (await this.hayActo(em, procesoId))) {
         throw new ConflictException(
-          'El informe definitivo ya se publicó: para rehacerlo hay que anularlo y generar otro',
+          'El proceso ya se adjudicó sobre este informe: para cambiarlo hay que revocar el acto',
+        );
+      }
+      const elMotivo = motivo?.trim() || null;
+      if (previo && !elMotivo) {
+        throw new BadRequestException(
+          'Di por qué se actualiza el informe definitivo: queda en su historial de versiones',
         );
       }
 
@@ -127,8 +151,24 @@ export class InformeDefinitivoService extends AdjudicacionBase {
         .getRepository(EvidenciaEvaluacion)
         .find({ where: { resultadoId: resultado.id }, order: { createdAt: 'ASC' } });
 
-      const snapshot = congelarResultado(proceso.modalidad, resultado, oferentes, evidencias);
-      const cambios = await this.calcularCambios(em, preliminar, resultado, oferentes);
+      // La ganadora se decide aquí (EFDS-1157). Al actualizar sin nombrarla se
+      // conserva la que ya tenía el informe, con su valor y su justificación.
+      const anterior = previo?.resultado ?? null;
+      const ganadoraId = decision.oferenteId ?? anterior?.ganadora?.oferenteId ?? null;
+      if (!ganadoraId) {
+        throw new BadRequestException(
+          'Di cuál oferta gana: la evaluación preliminar no la nombra, se decide en el informe definitivo',
+        );
+      }
+      const mismaGanadora = ganadoraId === anterior?.ganadora?.oferenteId;
+      const snapshot = congelarResultado(proceso.modalidad, resultado, oferentes, evidencias, {
+        oferenteId: ganadoraId,
+        valorEvaluado:
+          decision.valorEvaluado ?? (mismaGanadora ? anterior?.valorEvaluado : undefined),
+        justificacion:
+          decision.justificacion ?? (mismaGanadora ? anterior?.justificacion : undefined),
+      });
+      const cambios = await this.calcularCambios(em, preliminar, resultado, oferentes, ganadoraId);
 
       const documentoId = archivo
         ? (
@@ -155,6 +195,27 @@ export class InformeDefinitivoService extends AdjudicacionBase {
       informe.estado = 'BORRADOR';
       informe.generadoPor = acceso.userName;
       informe.generadoAt = new Date();
+      // Una versión actualizada se publica otra vez: la publicación anterior
+      // queda en su versión del historial.
+      informe.evidenciaDocumentoId = null;
+      informe.enlacePublicacion = null;
+      informe.publicadoAt = null;
+      informe.publicadoPor = null;
+      const versiones = previo?.versiones ?? [];
+      informe.versiones = [
+        ...versiones,
+        {
+          numero: versiones.length + 1,
+          documentoId,
+          generadoAt: informe.generadoAt.toISOString(),
+          generadoPor: acceso.userName,
+          motivo: elMotivo,
+          evidenciaDocumentoId: null,
+          enlacePublicacion: null,
+          publicadoAt: null,
+          publicadoPor: null,
+        },
+      ];
 
       const guardado = await em.save(informe);
 
@@ -173,6 +234,9 @@ export class InformeDefinitivoService extends AdjudicacionBase {
           // hay que poder rastrear después.
           huboRectificacion: cambios.huboRectificacion,
           cambioLaGanadora: cambios.cambioLaGanadora,
+          version: informe.versiones.length,
+          motivo: elMotivo,
+          estabaPublicado: previo?.estado === 'PUBLICADO',
         },
       );
     });
@@ -214,8 +278,22 @@ export class InformeDefinitivoService extends AdjudicacionBase {
 
       informe.estado = 'PUBLICADO';
       informe.evidenciaDocumentoId = doc.id;
+      informe.enlacePublicacion = dto.enlace.trim();
       informe.publicadoPor = acceso.userName;
       informe.publicadoAt = new Date();
+      // La publicación se anota en la versión vigente, que es la última.
+      const versiones = [...(informe.versiones ?? [])];
+      const ultima = versiones[versiones.length - 1];
+      if (ultima) {
+        versiones[versiones.length - 1] = {
+          ...ultima,
+          evidenciaDocumentoId: doc.id,
+          enlacePublicacion: informe.enlacePublicacion,
+          publicadoAt: informe.publicadoAt.toISOString(),
+          publicadoPor: acceso.userName,
+        };
+      }
+      informe.versiones = versiones;
       await em.save(informe);
 
       await this.marcarActividad(
@@ -228,7 +306,7 @@ export class InformeDefinitivoService extends AdjudicacionBase {
       );
       await this.traza(em, procesoId, informe.id, 'informe_definitivo', 'PUBLICAR', acceso, {
         actividad: NUMERAL_INFORME_DEFINITIVO,
-        medio: dto.medioPublicacion.trim(),
+        enlace: dto.enlace.trim(),
       });
     });
 
@@ -260,6 +338,15 @@ export class InformeDefinitivoService extends AdjudicacionBase {
 
   // ----------------------------------------------------------- auxiliares --
 
+  /** Si ya hay acto de adjudicación vigente: sobre él el informe no se mueve. */
+  private async hayActo(em: EntityManager, procesoId: string) {
+    return (
+      (await em
+        .getRepository(ActoAdjudicacion)
+        .count({ where: { procesoId, estado: 'VIGENTE' } })) > 0
+    );
+  }
+
   /**
    * Qué cambió entre lo que se notificó y lo que se va a adjudicar.
    *
@@ -272,6 +359,7 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     preliminar: InformeEvaluacion,
     vigente: ResultadoEvaluacion,
     oferentes: Oferente[],
+    ganadoraId: string,
   ): Promise<CambiosDelDefinitivo> {
     const escritos = await em
       .getRepository(Subsanacion)
@@ -292,7 +380,10 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     return {
       huboRectificacion: preliminar.resultadoId !== vigente.id,
       motivoRectificacion: rectificado?.motivoRectificacion ?? null,
-      cambioLaGanadora: preliminar.resultado?.ganadora?.oferenteId !== vigente.oferenteId,
+      // Desde la 120 el preliminar no nombra ganadora: solo cambia si la nombró.
+      cambioLaGanadora:
+        !!preliminar.resultado?.ganadora &&
+        preliminar.resultado.ganadora.oferenteId !== ganadoraId,
       subsanacionesAceptadas: aceptadas.map((e) => ({
         id: e.id,
         oferente: porOferta.get(e.oferenteId)?.nombre ?? 'Oferta retirada',
@@ -320,6 +411,26 @@ export class InformeDefinitivoService extends AdjudicacionBase {
       evidencia: evidencia
         ? { id: evidencia.id, nombre: evidencia.nombre, archivoUrl: evidencia.archivoUrl }
         : null,
+      enlacePublicacion: informe.enlacePublicacion,
+      versiones: (informe.versiones ?? []).map((v) => {
+        const documento = v.documentoId ? documentos.get(v.documentoId) : undefined;
+        const soporte = v.evidenciaDocumentoId ? documentos.get(v.evidenciaDocumentoId) : undefined;
+        return {
+          numero: v.numero,
+          generadoAt: v.generadoAt,
+          generadoPor: v.generadoPor,
+          motivo: v.motivo,
+          informe: documento
+            ? { id: documento.id, nombre: documento.nombre, archivoUrl: documento.archivoUrl }
+            : null,
+          evidencia: soporte
+            ? { id: soporte.id, nombre: soporte.nombre, archivoUrl: soporte.archivoUrl }
+            : null,
+          enlacePublicacion: v.enlacePublicacion,
+          publicadoAt: v.publicadoAt,
+          publicadoPor: v.publicadoPor,
+        };
+      }),
       generadoPor: informe.generadoPor,
       generadoAt: informe.generadoAt,
       publicadoPor: informe.publicadoPor,

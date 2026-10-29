@@ -9,10 +9,8 @@ import {
   FolderOpen,
   ArrowRight,
   Send,
-  Lock,
   List as ListIcon,
   Columns3,
-  Lightbulb,
   Inbox,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,10 +18,9 @@ import { EmptyState } from '@esap-mfe/shared-ui/empty-state';
 import { SkeletonTable } from '@esap-mfe/shared-ui/skeleton';
 
 import { contratacionService } from '../../services/contratacionService';
-import { useSugerenciaModalidad } from '../../hooks/useSugerenciaModalidad';
-import { Modalidad, ProcesoResumen } from '../../types';
+import { ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
-import { Modal } from '../shared/Modal';
+import { CrearProcesoDesdePaa } from '../paa/CrearProcesoDesdePaa';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { useAlcance } from '../../auth/alcance';
 import { TableroProcesos } from './TableroProcesos';
@@ -55,17 +52,6 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
   maximumFractionDigits: 0,
 });
 
-/**
- * Acepta lo que la gente escribe de verdad —"45.000.000", "45000000",
- * "$ 45.000.000"— y devuelve el número, o null si no hay uno válido.
- */
-function aNumero(texto: string): number | null {
-  const limpio = texto.replace(/[^\d,]/g, '').replace(',', '.');
-  if (!limpio) return null;
-  const n = Number(limpio);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
 export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const [procesos, setProcesos] = useState<ProcesoResumen[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -73,12 +59,6 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   // solo un toast. El detalle del error va en la notificación.
   const [fallo, setFallo] = useState(false);
   const [creando, setCreando] = useState(false);
-  const [objeto, setObjeto] = useState('');
-  const [valorTexto, setValorTexto] = useState('');
-  const [modalidades, setModalidades] = useState<Modalidad[]>([]);
-  const [modalidad, setModalidad] = useState('');
-  const [errorModalidades, setErrorModalidades] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroModalidad, setFiltroModalidad] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -160,60 +140,8 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
 
   useEffect(() => {
     cargar();
-    // El catálogo cambia con la normativa, así que se lee del backend en vez
-    // de fijarlo en el bundle. Si falla hay que decirlo: la modalidad es
-    // obligatoria, y un desplegable vacío sin explicación deja al usuario sin
-    // poder crear el proceso ni saber por qué.
-    contratacionService
-      .modalidades()
-      .then((lista) => {
-        setModalidades(lista);
-        setErrorModalidades(
-          lista.length === 0 ? 'No hay modalidades configuradas. Avisa al administrador.' : null,
-        );
-      })
-      .catch((err: any) => setErrorModalidades(err.message));
   }, []);
 
-  const valorEstimado = useMemo(() => aNumero(valorTexto), [valorTexto]);
-  const { sugerencia, consultando } = useSugerenciaModalidad(creando ? valorEstimado : null);
-
-  const bloqueadas = sugerencia?.modalidadesBloqueadas ?? [];
-
-  // Superado el umbral, la licitación pública es obligatoria: se fija sola en
-  // vez de dejar al usuario elegir algo que el backend va a rechazar. Solo se
-  // pisa lo que quedó vetado; si eligió una modalidad permitida, se respeta.
-  useEffect(() => {
-    if (!sugerencia?.forzosa || !sugerencia.modalidad) return;
-    if (modalidad === '' || bloqueadas.includes(modalidad)) {
-      setModalidad(sugerencia.modalidad);
-    }
-  }, [sugerencia, modalidad]);
-
-  const crear = async () => {
-    if (!objeto.trim() || !modalidad || valorEstimado === null) return;
-    setGuardando(true);
-    try {
-      const proceso = await contratacionService.crearProceso(
-        objeto.trim(),
-        modalidad,
-        valorEstimado,
-      );
-      setCreando(false);
-      setObjeto('');
-      setModalidad('');
-      setValorTexto('');
-      toast.success(`Proceso ${proceso.radicado} creado`);
-      // Recién creado, lo que sigue es redactar el estudio previo.
-      onAbrir(proceso.id, '3.1');
-    } catch (err: any) {
-      // El modal sigue abierto con lo digitado, para que no haya que
-      // reescribirlo si el guardado falla.
-      toast.error('No se pudo crear el proceso', { description: err.message });
-    } finally {
-      setGuardando(false);
-    }
-  };
 
   /**
    * Modalidades presentes en los procesos, con cuántos hay de cada una.
@@ -285,138 +213,17 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
         }
       />
 
-      <Modal
+      {/* El proceso nace de una línea del PAA (migración 097): región, línea
+          y confirmación. Objeto, valor y modalidad ya no se teclean. */}
+      <CrearProcesoDesdePaa
         isOpen={creando}
         onClose={() => setCreando(false)}
-        title="Nuevo proceso contractual"
-        description="Se abrirá su expediente electrónico y se habilitará el estudio previo"
-        icon={<Plus className="w-5 h-5 text-white" />}
-        size="medium"
-        footer={
-          <>
-            <button
-              onClick={crear}
-              disabled={!objeto.trim() || !modalidad || valorEstimado === null || guardando}
-              className="px-3.5 py-2 text-xs font-extrabold rounded-lg text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all"
-            >
-              {guardando ? 'Creando…' : 'Crear y abrir estudio previo'}
-            </button>
-            <button
-              onClick={() => setCreando(false)}
-              className="px-3.5 py-2 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:border-[#003DA5] hover:text-[#003DA5]"
-            >
-              Cancelar
-            </button>
-          </>
-        }
-      >
-        <label htmlFor="nuevo-objeto" className="block text-xs font-bold text-gray-600 mb-1.5">
-          Objeto a contratar <span className="text-red-600">*</span>
-        </label>
-        <textarea
-          id="nuevo-objeto"
-          value={objeto}
-          onChange={(e) => setObjeto(e.target.value)}
-          placeholder="Ej.: Adquisición de 50 equipos de cómputo para las sedes territoriales"
-          className="w-full min-h-[110px] px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-        />
-        <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
-          Describe con precisión el bien, servicio u obra a contratar. Este texto queda como objeto
-          del proceso y se precarga en el estudio previo.
-        </p>
-
-        {/* Se pide aquí y no en el estudio previo porque de la cuantía depende
-            la modalidad aplicable (EFDS-1147). */}
-        <label htmlFor="nuevo-valor" className="block text-xs font-bold text-gray-600 mb-1.5 mt-4">
-          Valor estimado del contrato <span className="text-red-600">*</span>
-        </label>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">
-            $
-          </span>
-          <input
-            id="nuevo-valor"
-            type="text"
-            inputMode="numeric"
-            value={valorTexto}
-            onChange={(e) => setValorTexto(e.target.value)}
-            placeholder="45.000.000"
-            className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-gray-300 tabular-nums focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-          />
-        </div>
-        <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
-          {valorEstimado !== null
-            ? `${formatoPesos.format(valorEstimado)} · presupuesto oficial en pesos, según el análisis del sector.`
-            : 'Presupuesto oficial en pesos, según el análisis del sector.'}
-        </p>
-
-        <label htmlFor="nueva-modalidad" className="block text-xs font-bold text-gray-600 mb-1.5 mt-4">
-          Modalidad de selección <span className="text-red-600">*</span>
-        </label>
-        <select
-          id="nueva-modalidad"
-          value={modalidad}
-          onChange={(e) => setModalidad(e.target.value)}
-          disabled={modalidades.length === 0}
-          aria-describedby="ayuda-modalidad"
-          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-        >
-          <option value="">
-            {modalidades.length === 0 ? 'No se pudo cargar el listado' : 'Selecciona la modalidad…'}
-          </option>
-          {modalidades.map((m) => {
-            // Se deshabilitan en vez de ocultarse: ver la opción vetada y su
-            // motivo explica la regla; quitarla del listado la haría parecer
-            // inexistente.
-            const vetada = bloqueadas.includes(m.codigo);
-            return (
-              <option key={m.codigo} value={m.codigo} disabled={vetada}>
-                {m.nombre}
-                {vetada ? ' — no aplica por la cuantía' : ''}
-              </option>
-            );
-          })}
-        </select>
-
-        <div id="ayuda-modalidad">
-          {errorModalidades ? (
-            <p role="alert" className="text-[11px] font-bold text-red-600 mt-2 mb-0 leading-relaxed">
-              {errorModalidades}
-            </p>
-          ) : consultando ? (
-            <p className="text-[11px] text-gray-400 mt-2 mb-0">Calculando la modalidad…</p>
-          ) : sugerencia?.forzosa && sugerencia.modalidad ? (
-            // Asignación obligatoria: el tono es de aviso, no de sugerencia.
-            <div
-              role="status"
-              className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-start gap-2"
-            >
-              <Lock className="w-3.5 h-3.5 text-amber-700 mt-0.5 flex-shrink-0" />
-              <p className="text-[11px] text-amber-900 m-0 leading-relaxed">
-                <span className="font-bold">{sugerencia.nombre} obligatoria.</span>{' '}
-                {sugerencia.motivo}. Las modalidades de menor cuantía quedan deshabilitadas.
-              </p>
-            </div>
-          ) : sugerencia?.modalidad ? (
-            // Orientación: se puede ignorar, y se dice explícitamente.
-            <div
-              role="status"
-              className="mt-2 rounded-lg border border-[#003DA5]/20 bg-[#E0EDFF] px-3 py-2 flex items-start gap-2"
-            >
-              <Lightbulb className="w-3.5 h-3.5 text-[#003DA5] mt-0.5 flex-shrink-0" />
-              <p className="text-[11px] text-slate-700 m-0 leading-relaxed">
-                Por la cuantía corresponde <span className="font-bold">{sugerencia.nombre}</span>.
-                Es una sugerencia: puedes elegir otra si la causal lo justifica.
-              </p>
-            </div>
-          ) : (
-            <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
-              Define qué actividades recorre el proceso: no todas aplican a todas las modalidades.
-              Se ratifica al definir la modalidad en la actividad 3.5.
-            </p>
-          )}
-        </div>
-      </Modal>
+        onCreado={(proceso) => {
+          toast.success(`Proceso ${proceso.radicado} creado`);
+          // Recién creado, lo que sigue es completar el estudio previo.
+          onAbrir(proceso.id, '3.1');
+        }}
+      />
 
       {/* Barra de herramientas: buscar a la izquierda, elegir vista a la derecha. */}
       {!cargando && !fallo && procesos.length > 0 && (
@@ -647,11 +454,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                           {p.participacion.contratacion.nombre}
                           {p.participacion.contratacion.esMio ? ' (tú)' : ''}
                         </span>
-                        {p.participacion.abogado
-                          ? ` · revisa ${p.participacion.abogado.nombre}${
-                              p.participacion.abogado.esMio ? ' (tú)' : ''
-                            }`
-                          : ' · sin abogado'}
+                        {(p.participacion.puestos ?? []).map(
+                          (x) => ` · ${x.puesto}: ${x.nombre}${x.esMio ? ' (tú)' : ''}`,
+                        )}
                       </p>
                     ) : null}
                   </div>

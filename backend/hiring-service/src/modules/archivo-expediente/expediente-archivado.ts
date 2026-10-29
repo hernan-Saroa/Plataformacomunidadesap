@@ -30,11 +30,11 @@ export function pendientesParaArchivar(estado: {
     pendientes.push('el contrato todavía no tiene acta de liquidación vigente (10.2)');
   } else if (!estado.publicadaEnSecop) {
     // Solo tiene sentido pedir la publicación cuando hay acta que publicar.
-    pendientes.push('el acta de liquidación no se ha publicado en SECOP II');
+    pendientes.push('el acta de liquidación no se ha publicado (paso 1: SECOP II o página web)');
   }
 
   if (!estado.cierreVigente) {
-    pendientes.push('el contrato no tiene cierre financiero vigente (10.3)');
+    pendientes.push('el contrato no tiene cierre financiero vigente (se registra con la liquidación)');
   }
 
   return pendientes;

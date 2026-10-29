@@ -108,7 +108,7 @@ export class ArchivoExpedienteService {
 
     const pendientes = pendientesParaArchivar({
       actaVigente: !!acta,
-      publicadaEnSecop: publicaciones.some((p) => p.destino === 'SECOP_II'),
+      publicadaEnSecop: publicaciones.length > 0,
       cierreVigente: !!cierre,
     });
 
@@ -256,7 +256,9 @@ export class ArchivoExpedienteService {
       const publicadaEnSecop = acta
         ? !!(await em
             .getRepository(PublicacionActa)
-            .findOne({ where: { actaId: acta.id, destino: 'SECOP_II' } }))
+            // En SECOP II o en la página web: cualquiera de las dos es la
+            // publicación del paso 1 (revisión de QA de EFDS-1175).
+            .findOne({ where: { actaId: acta.id } }))
         : false;
 
       const pendientes = pendientesParaArchivar({

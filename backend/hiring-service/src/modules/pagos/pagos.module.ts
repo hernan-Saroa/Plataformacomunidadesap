@@ -14,6 +14,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
+import { ParticipacionModule } from '../participacion/participacion.module';
 
 @Module({
   imports: [
@@ -30,6 +31,8 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
       Expediente,
     ]),
     CierreActividadModule,
+    // Avala quien ocupa el puesto del supervisor en el proceso (121).
+    ParticipacionModule,
   ],
   controllers: [PagosController],
   providers: [PagosService],

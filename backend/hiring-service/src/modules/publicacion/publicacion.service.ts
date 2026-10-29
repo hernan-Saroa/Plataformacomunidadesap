@@ -25,6 +25,7 @@ import {
   PERMISO_PLAZO_TERMINAR,
   tienePermiso,
 } from '../../auth/permisos';
+import { OfertasService } from '../ofertas/ofertas.service';
 import { AlcanceService } from '../../auth/alcance.service';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from './dias-habiles';
 import { festivosEntre } from './festivos-colombia';
@@ -34,8 +35,8 @@ import {
   RegistrarPublicacionDto,
 } from './dto/publicacion.dto';
 
-/** Actividad 5.2 de la matriz: la publicación del proyecto de pliego. */
-export const NUMERAL_PUBLICACION = '5.2';
+/** Actividad 5.3 de la matriz: la publicación del proyecto de pliego. */
+export const NUMERAL_PUBLICACION = '5.3';
 
 @Injectable()
 export class PublicacionService {
@@ -43,6 +44,8 @@ export class PublicacionService {
     private readonly dataSource: DataSource,
     /** Quién puede registrar la publicación (migración 083). */
     private readonly alcance: AlcanceService,
+    /** Donde no hay apertura (mínima cuantía), la publicación abre la recepción. */
+    private readonly ofertas: OfertasService,
   ) {}
 
   // ------------------------------------------------------- calendario ------
@@ -333,7 +336,7 @@ export class PublicacionService {
   // ------------------------------------------------------------ registro ---
 
   /**
-   * Actividad 5.2: se registra que el proyecto de pliego quedó publicado.
+   * Actividad 5.3: se registra que el proyecto de pliego quedó publicado.
    *
    * La evidencia entra en la misma operación y no como paso posterior: sin
    * integración con SECOP II es lo único que sostiene el registro, y el
@@ -412,6 +415,11 @@ export class PublicacionService {
       // Se cierra de una: el registro ya trae su evidencia, que era lo único
       // que faltaba para darla por cumplida.
       await this.marcarActividad(em, procesoId, 'APROBADO', acceso);
+
+      // En la modalidad sin apertura (5.7) el plazo de ofertas corre desde
+      // aquí; donde sí la hay, `abrirRecepcion` no encuentra de dónde contar
+      // y no hace nada, y la recepción la abre la apertura como siempre.
+      await this.ofertas.abrirRecepcion(procesoId, acceso, em);
 
       await this.traza(em, procesoId, publicacion.id, 'PUBLICAR', acceso, {
         fechaPublicacion: dto.fechaPublicacion,
@@ -524,9 +532,9 @@ export class PublicacionService {
   }
 
   /**
-   * Deja la actividad 5.2 en el estado dado, creándola si no existía.
+   * Deja la actividad 5.3 en el estado dado, creándola si no existía.
    *
-   * Crea y actualiza en el mismo sitio porque la 5.2 no se instancia en ningún
+   * Crea y actualiza en el mismo sitio porque la 5.3 no se instancia en ningún
    * momento previo: el proceso llega a la etapa 5 sin ella, y el registro de la
    * publicación es lo primero que la hace existir. Un `update` que no
    * encontrara fila la habría dejado invisible en el riel.
@@ -569,7 +577,7 @@ export class PublicacionService {
    * Da por terminado el término de publicidad, para poder probar el flujo.
    *
    * Mueve `fecha_vencimiento` a ayer en vez de fingir que venció: el resto del
-   * módulo —la 5.3 y su «cerrar sin observaciones», el conteo de días hábiles,
+   * módulo —la 5.6 y su «cerrar sin observaciones», el conteo de días hábiles,
    * el `fueraDeTermino` de lo que llegue después— sigue leyendo la misma fecha
    * de siempre y se comporta exactamente como en producción. Un atajo que
    * fingiera el vencimiento dejaría el expediente diciendo una cosa y la

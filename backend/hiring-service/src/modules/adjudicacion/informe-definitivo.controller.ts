@@ -16,7 +16,7 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { InformeDefinitivoService } from './informe-definitivo.service';
-import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-definitivo.dto';
+import { AnularDefinitivoDto, GenerarDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-definitivo.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -31,7 +31,7 @@ import {
 } from '../archivos';
 
 /**
- * Informe de evaluación definitivo — actividad 7.3 (EFDS-1159).
+ * Informe de evaluación definitivo — actividad 7.2 (EFDS-1159).
  *
  * Lo produce la entidad, no el comité: el comité evaluó y, si hubo que
  * rectificar, ya lo hizo en la 6.3. Aquí se congela lo que quedó y se publica.
@@ -42,7 +42,7 @@ export class InformeDefinitivoController {
   constructor(private readonly service: InformeDefinitivoService) {}
 
   @Get()
-  @Puede('ver', '7.3')
+  @Puede('ver', '7.2')
   @ApiOperation({
     summary: 'Estado del informe definitivo',
     description:
@@ -53,7 +53,7 @@ export class InformeDefinitivoController {
   }
 
   @Post()
-  @Puede('editar', '7.3')
+  @Puede('editar', '7.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -62,26 +62,34 @@ export class InformeDefinitivoController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 7.3 · Generar el informe de evaluación definitivo',
+    summary: 'Actividad 7.2 · Generar el informe de evaluación definitivo',
     description:
-      'Congela el resultado vigente del comité y resuelve qué cambió respecto del preliminar. El archivo es opcional si ya se adjuntó.',
+      'Congela el resultado vigente del comité y resuelve qué cambió respecto del preliminar. El archivo es opcional si ya se adjuntó. Actualizarlo —también publicado, mientras no haya acto— exige motivo y deja una versión nueva.',
   })
   async generar(
     @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: GenerarDefinitivoDto,
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
     // Sin archivo es un caso legítimo: regenerar la fotografía porque el comité
     // rectificó, conservando el documento que ya se había adjuntado.
     if (!file) {
-      return this.service.generar(procesoId, null, null, getHiringAccess(req));
+      return this.service.generar(procesoId, null, null, getHiringAccess(req), dto.motivo, dto);
     }
 
     const ruta = join(STORAGE_PATH, file.filename);
 
     try {
       const hash = await sha256Archivo(ruta);
-      return await this.service.generar(procesoId, file, hash, getHiringAccess(req));
+      return await this.service.generar(
+        procesoId,
+        file,
+        hash,
+        getHiringAccess(req),
+        dto.motivo,
+        dto,
+      );
     } catch (error) {
       await unlink(ruta).catch(() => undefined);
       throw error;
@@ -89,7 +97,7 @@ export class InformeDefinitivoController {
   }
 
   @Post('publicar')
-  @Puede('editar', '7.3')
+  @Puede('editar', '7.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -128,7 +136,7 @@ export class InformeDefinitivoController {
   }
 
   @Post('anular')
-  @Puede('editar', '7.3')
+  @Puede('editar', '7.2')
   @ApiOperation({
     summary: 'Anular el informe definitivo',
     description: 'Deja sin efecto el informe para poder generar otro; el anulado queda con su motivo.',

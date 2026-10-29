@@ -72,42 +72,4 @@ export class PersonasController {
 
     return filas;
   }
-
-  /**
-   * Cargos con los que se acota al jefe del área antes de elegirlo.
-   *
-   * Los de la dependencia según gestión de personas (auth.dependencias_cargos)
-   * más los que de hecho tiene alguien de ella: si a una persona le asignaron
-   * un cargo que no quedó en la relación, filtrar por la relación sola la
-   * dejaría imposible de elegir. Sin dependencia, todos los activos.
-   */
-  @Get('cargos')
-  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
-  @ApiOperation({ summary: 'Cargos para filtrar los selectores de persona del estudio previo' })
-  async cargos(@Query('dependencia') dependencia?: string) {
-    const area = (dependencia ?? '').trim();
-
-    return this.dataSource.query(
-      `SELECT c.id_cargo::text AS id, c.nom_cargo AS nombre
-         FROM auth.cargos c
-        WHERE c.activo
-          AND (
-            $1 = ''
-            OR EXISTS (
-              SELECT 1
-                FROM auth.dependencias_cargos dc
-                JOIN auth.dependencias d ON d.id_dependencia = dc.id_dependencia
-               WHERE dc.id_cargo = c.id_cargo AND dc.activo AND d.nom_dependencia = $1
-            )
-            OR EXISTS (
-              SELECT 1
-                FROM auth.personas p
-                JOIN auth.dependencias d ON d.id_dependencia = p.id_dependencia
-               WHERE p.id_cargo = c.id_cargo AND d.nom_dependencia = $1
-            )
-          )
-        ORDER BY c.nom_cargo`,
-      [area],
-    );
-  }
 }

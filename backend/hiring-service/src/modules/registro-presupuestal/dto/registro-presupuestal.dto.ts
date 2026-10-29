@@ -105,3 +105,49 @@ export class RechazarRpDto {
   @MaxLength(1000)
   observaciones: string;
 }
+
+/**
+ * El RP ya expedido, como lo entregó la Dirección Financiera (revisión de QA
+ * de EFDS-1163): el abogado lo solicita por el canal de siempre y solo carga
+ * el resultado, igual que el CDP desde la 103.
+ */
+export class CargarRpDto {
+  @ApiPropertyOptional({
+    description: 'Rubro presupuestal; si no se dice, el del CDP',
+    example: 'A-02-02-02-008',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  rubro?: string;
+
+  @ApiProperty({ description: 'Número del RP', example: 'RP-2026-0123' })
+  @IsString()
+  @IsNotEmpty({ message: 'El número del RP es obligatorio' })
+  @MaxLength(60)
+  numero: string;
+
+  @ApiProperty({ description: 'Valor comprometido, en pesos', example: 45000000 })
+  @Transform(aNumero)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor debe ser un número' })
+  @IsPositive({ message: 'El valor del RP debe ser mayor que cero' })
+  valor: number;
+
+  @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)', example: '2026-10-20' })
+  @IsDateString({}, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  fechaExpedicion: string;
+
+  @ApiPropertyOptional({ description: 'Vigencia fiscal', example: 2026 })
+  @IsOptional()
+  @Transform(aNumero)
+  @IsInt()
+  @Min(2000)
+  vigenciaFiscal?: number;
+
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @FirmaDelMultipart()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}

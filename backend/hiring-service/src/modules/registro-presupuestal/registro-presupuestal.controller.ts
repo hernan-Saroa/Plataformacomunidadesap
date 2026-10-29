@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -15,8 +16,7 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { RegistroPresupuestalService } from './registro-presupuestal.service';
-import { ExpedirRpDto, RechazarRpDto, SolicitarRpDto } from './dto/registro-presupuestal.dto';
-import { RolesGuard } from '../../auth/roles.guard';
+import { CargarRpDto } from './dto/registro-presupuestal.dto';
 
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
@@ -26,10 +26,8 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
 /**
  * Registro presupuestal — actividad 8.3 (EFDS-1163).
  *
- * Los roles son los mismos del CDP y por la misma razón: la solicitud la radica
- * quien lleva el contrato, pero verificar la disponibilidad y expedir es
- * competencia de la Dirección Financiera, que es la que compromete el
- * presupuesto de la entidad.
+ * Sin interacción con la Dirección Financiera dentro de la plataforma
+ * (revisión de QA, 2026-10-16): el RP se expide por fuera y aquí solo se carga.
  */
 @ApiTags('Etapa 8 · Registro presupuestal')
 @Controller('procesos/:id/registro-presupuestal')
@@ -47,60 +45,31 @@ export class RegistroPresupuestalController {
     return this.service.estado(procesoId, getHiringAccess(req));
   }
 
-  @Post()
+  @Post('cargue')
   @Puede('editar', '8.3')
-  @ApiOperation({
-    summary: 'Actividad 8.3 · Radicar la solicitud del RP',
-    description: 'Solo sobre un contrato ya firmado por las dos partes.',
-  })
-  solicitar(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: SolicitarRpDto,
-    @Req() req: any,
-  ) {
-    return this.service.solicitar(procesoId, dto, getHiringAccess(req));
-  }
-
-  @Post('verificar')
-  @Puede('decidir', '8.3')
-  @ApiOperation({
-    summary: 'Verificar la disponibilidad',
-    description:
-      'La Dirección Financiera confirma que hay recursos que comprometer. Es el paso que certifica el compromiso antes de expedirlo.',
-  })
-  verificar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.verificar(procesoId, getHiringAccess(req));
-  }
-
-  @Post('expedir')
-  @Puede('decidir', '8.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
-      opcionesDeCarga(MIME_DOCUMENTOS, 'El soporte del RP se carga en PDF, Word o Excel'),
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El RP se carga en PDF, Word o Excel'),
     ),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Expedir el registro presupuestal',
+    summary: 'Actividad 8.3 · Cargar el RP expedido',
     description:
-      'Con su número, valor y fecha: son lo que hace verificable el compromiso ante los entes de control.',
+      'La Dirección Financiera expide el RP por el canal de siempre; aquí se carga el PDF con su número, valor, fecha y rubro (si no se dice, el del CDP).',
   })
-  async expedir(
+  async cargar(
     @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: ExpedirRpDto,
+    @Body() dto: CargarRpDto,
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    // El soporte es opcional: el número y la fecha son lo que compromete, y en
-    // el CDP se resolvió igual.
-    if (!file) {
-      return this.service.expedir(procesoId, dto, null, null, getHiringAccess(req));
-    }
+    if (!file) throw new BadRequestException('Adjunta el PDF del RP expedido');
 
     const ruta = join(STORAGE_PATH, file.filename);
     try {
-      return await this.service.expedir(
+      return await this.service.cargar(
         procesoId,
         dto,
         file,
@@ -111,19 +80,5 @@ export class RegistroPresupuestalController {
       await unlink(ruta).catch(() => undefined);
       throw error;
     }
-  }
-
-  @Post('rechazar')
-  @Puede('decidir', '8.3')
-  @ApiOperation({
-    summary: 'Rechazar la solicitud',
-    description: 'Con el motivo: sin él, quien solicita no sabe si corregir el rubro o el valor.',
-  })
-  rechazar(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: RechazarRpDto,
-    @Req() req: any,
-  ) {
-    return this.service.rechazar(procesoId, dto, getHiringAccess(req));
   }
 }

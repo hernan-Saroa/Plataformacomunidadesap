@@ -15,7 +15,7 @@ interface Props {
   onCambio?: () => void;
 }
 
-const NUMERAL = '5.6';
+const NUMERAL = '5.13';
 
 const ETIQUETA_TIPO = {
   FONDO: 'Requisitos de fondo',
@@ -29,7 +29,7 @@ const TONO_ESTADO = {
 } as const;
 
 /**
- * Actividad 5.6 · Adendas del proceso (EFDS-1154).
+ * Actividad 5.13 · Adendas del proceso (EFDS-1154).
  *
  * Emitir y publicar están separados en la pantalla como lo están en el negocio:
  * la adenda se firma un día y se publica otro, y hasta que no se publica no
@@ -73,9 +73,15 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
     setEmitiendo(false);
   };
 
+  // Cerrada la recepción de ofertas solo caben las de cronograma, y ya no
+  // mueven una fecha que la plataforma controle (revisión de QA de EFDS-1154).
+  const soloCronograma = !!estado?.soloCronograma;
+  const tipoElegido = soloCronograma ? 'CRONOGRAMA' : tipo;
+  const pideVencimiento = tipoElegido === 'CRONOGRAMA' && !soloCronograma;
+
   const emitir = async () => {
     if (!objeto.trim() || !documento) return;
-    if (tipo === 'CRONOGRAMA' && !vencimiento) return;
+    if (pideVencimiento && !vencimiento) return;
 
     setGuardando(true);
     try {
@@ -83,9 +89,9 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
         await contratacionService.emitirAdenda(
           procesoId,
           {
-            tipo,
+            tipo: tipoElegido,
             objeto: objeto.trim(),
-            vencimientoNuevo: tipo === 'CRONOGRAMA' ? vencimiento : undefined,
+            vencimientoNuevo: pideVencimiento ? vencimiento : undefined,
           },
           documento,
         ),
@@ -193,6 +199,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
               key={adenda.id}
               adenda={adenda}
               ocupada={guardando}
+              puedeGestionar={estado.puedeGestionar}
               onPublicar={(archivo) => firma.conFirma((firmaOtp) => publicar(adenda, archivo, firmaOtp))}
               onAnular={() => firma.conFirma((firmaOtp) => anular(adenda, firmaOtp))}
             />
@@ -200,16 +207,29 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
         </div>
       ) : null}
 
-      {/* Sin pliego publicado no hay nada que adendar; con el proceso abierto
-          rige el pliego definitivo. Se dice cuál de las dos cosas pasa. */}
+      {/* Desde la 112, como en la matriz: las adendas van de la apertura al
+          cierre de ofertas (donde no hay apertura, desde la publicación). Se
+          dice qué falta o qué las cerró, en vez de esconder el botón. */}
       {!estado.publicado ? (
         <Pendiente
-          falta="5.2"
-          texto="Todavía no hay proyecto de pliego publicado: una adenda modifica algo que ya se hizo público."
+          falta="5.3"
+          texto="Todavía no hay pliego publicado en SECOP II: una adenda modifica algo que ya se hizo público."
         />
-      ) : estado.abierto ? (
-        <Aviso tono="aviso" titulo="El proceso ya fue abierto">
-          A partir de la apertura rige el pliego definitivo, así que no se emiten más adendas.
+      ) : !estado.puedeEmitir && !estado.abierto ? (
+        <Pendiente
+          falta="5.7"
+          texto={
+            estado.motivoNoPuedeEmitir ??
+            'Las adendas se emiten a partir de la apertura del proceso.'
+          }
+        />
+      ) : !estado.puedeGestionar ? (
+        <Aviso tono="aviso" titulo="Solo de consulta">
+          {estado.motivoNoPuedeEmitir ?? 'Las adendas las genera el abogado dueño del proceso.'}
+        </Aviso>
+      ) : !estado.puedeEmitir ? (
+        <Aviso tono="aviso" titulo="Ya no se emiten adendas">
+          {estado.motivoNoPuedeEmitir ?? 'El pliego ya no admite adendas.'}
         </Aviso>
       ) : emitiendo ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
@@ -221,13 +241,19 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
             </label>
             <select
               id="adenda-tipo"
-              value={tipo}
+              value={tipoElegido}
               onChange={(e) => setTipo(e.target.value as 'FONDO' | 'CRONOGRAMA')}
               className={campo}
             >
-              <option value="FONDO">Requisitos de fondo</option>
+              {!soloCronograma && <option value="FONDO">Requisitos de fondo</option>}
               <option value="CRONOGRAMA">Cronograma</option>
             </select>
+            {soloCronograma && (
+              <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
+                {estado.motivoNoFondo} Las nuevas fechas de evaluación o adjudicación van en el
+                documento de la adenda.
+              </p>
+            )}
           </div>
 
           <div>
@@ -244,13 +270,16 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
             />
           </div>
 
-          {tipo === 'CRONOGRAMA' ? (
+          {pideVencimiento ? (
             <div>
               <label
                 htmlFor="adenda-vencimiento"
                 className="block text-xs font-bold text-gray-600 mb-1.5"
               >
-                Nuevo vencimiento del plazo <span className="text-red-600">*</span>
+                {estado.mueve === 'CIERRE_OFERTAS'
+                  ? 'Nueva fecha de cierre de ofertas'
+                  : 'Nuevo vencimiento del plazo de observaciones'}{' '}
+                <span className="text-red-600">*</span>
               </label>
               <input
                 id="adenda-vencimiento"
@@ -280,7 +309,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
                 guardando ||
                 !objeto.trim() ||
                 !documento ||
-                (tipo === 'CRONOGRAMA' && !vencimiento)
+                (pideVencimiento && !vencimiento)
               }
               onClick={emitir}
             >
@@ -296,7 +325,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : (
-        <Permitido accion="editar" punto="5.6" quien="el gestor de contratación">
+        <Permitido accion="editar" punto="5.13" quien="el gestor de contratación">
           <Boton icono={<FilePlus2 className="w-3.5 h-3.5" />} onClick={() => setEmitiendo(true)}>
             Emitir una adenda
           </Boton>
@@ -312,11 +341,14 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
 function FilaAdenda({
   adenda,
   ocupada,
+  puedeGestionar,
   onPublicar,
   onAnular,
 }: {
   adenda: Adenda;
   ocupada: boolean;
+  /** Publicar y anular también son del abogado dueño (EFDS-1154). */
+  puedeGestionar: boolean;
   onPublicar: (evidencia: File) => void;
   onAnular: () => void;
 }) {
@@ -365,7 +397,7 @@ function FilaAdenda({
         </div>
       </div>
 
-      {adenda.estado === 'EMITIDA' ? (
+      {adenda.estado === 'EMITIDA' && puedeGestionar ? (
         <>
           <input
             ref={input}

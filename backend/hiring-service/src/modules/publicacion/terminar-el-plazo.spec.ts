@@ -6,7 +6,7 @@ import { PERMISO_PLAZO_TERMINAR, permisosDelUsuario, tienePermiso } from '../../
 /**
  * La llave de pruebas para no esperar los días hábiles de un término.
  *
- * Los dos plazos que bloquean —el de publicidad del pliego, que la 5.3
+ * Los dos plazos que bloquean —el de publicidad del pliego, que la 5.6
  * necesita vencido para cerrarse sin observaciones, y el de subsanaciones de
  * la 6.5— duran días hábiles reales, así que recorrer un proceso completo en
  * una sesión de QA exigía esperarlos.
@@ -46,7 +46,7 @@ describe('contratacion.plazo.terminar · quién puede acortar un término', () =
 /**
  * Terminar el plazo mueve la fecha, no finge el vencimiento.
  *
- * De eso depende que lo que viene después —el cierre de la 5.3, el
+ * De eso depende que lo que viene después —el cierre de la 5.6, el
  * `fueraDeTermino` de lo que llegue tarde, el conteo de días— se comporte
  * exactamente como en producción, que es justo lo que hay que poder probar.
  */
@@ -59,7 +59,7 @@ describe('PublicacionService · terminarPlazo', () => {
 
     const instancia = new PublicacionService({
       transaction: async (cb: (em: any) => Promise<any>) => cb(em),
-    } as never, {} as never);
+    } as never, {} as never, {} as never);
 
     (instancia as any).exigirPublicacion = async () => publicacion;
     (instancia as any).estadoPublicacion = async () => ({ publicacion });

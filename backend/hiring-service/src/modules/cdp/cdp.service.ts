@@ -3,10 +3,12 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
-import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
+import { Cdp, CdpAntesDeRadicar, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
+import { Modalidad } from '../../entities/modalidad.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
 import { ETAPA_LIQUIDACION } from '../../entities/informe-final.entity';
@@ -19,118 +21,21 @@ import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AlcanceService } from '../../auth/alcance.service';
 import {
-  ExpedirCdpConSoporteDto,
-  ExpedirCdpDto,
-  RechazarCdpDto,
-  SolicitarCdpDto,
-  VerificarCdpDto,
+  CargarCdpDto,
+  GuardarCdpAntesDeRadicarDto,
+  RegistrarCdpExistenteDto,
 } from './dto/cdp.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
-import { respondeElAsignado } from '../participacion/quien-responde';
+import { cargarResponde, respondeEn, secuenciaEn } from '../participacion/quien-responde';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 /**
- * Días que una solicitud de CDP puede estar sin que nadie la atienda.
+ * La actividad en que se carga el CDP.
  *
- * Tres y no dos: la solicitud llega a una bandeja compartida de otra dirección,
- * que no está mirando el expediente como sí lo está quien tomó el proceso. Y
- * tres y no treinta: esto no anticipa una fecha futura, cuenta un trámite que
- * ya está detenido. Sin CDP expedido el proceso no puede abrirse, así que lo
- * que se acumula aquí frena la etapa 5.
- *
- * Un solo número para los dos sitios que lo dicen: la bandeja marca con él qué
- * solicitudes van demoradas y el correo diario declara con él cuáles están «sin
- * atender». Si fueran dos constantes, la pantalla y el aviso acabarían
- * discrepando sobre la misma solicitud.
+ * Desde la 103 el CDP se pide y se expide por fuera del aplicativo, y aquí solo
+ * se carga el certificado: la 4.1 (la solicitud) se desactivó y la 4.2 quedó
+ * como el cargue. El soporte queda en el expediente bajo este numeral.
  */
-export const TOLERANCIA_CDP_SIN_ATENDER = 3;
-
-/**
- * Los tres montones de la bandeja, a partir de las solicitudes abiertas.
- *
- * Se separa del servicio porque es la decisión, no la consulta: qué es «mío» y
- * qué está «sin tomar» es lo que hace que dos personas no trabajen la misma
- * solicitud, y tiene que poder fijarse sin una base de datos delante.
- *
- * De quién es cada una se decide por `usuarioId` y no por el nombre: dos
- * personas pueden llamarse igual, y el nombre que guarda la participación es
- * una copia del día en que se tomó la solicitud.
- */
-export function repartirLaBandeja(solicitudes: SolicitudEnBandeja[], usuarioId?: string) {
-  const esMia = (s: SolicitudEnBandeja) => !!usuarioId && s.financieraId === usuarioId;
-  const sinFinancieraId = ({ financieraId, ...resto }: SolicitudEnBandeja) => resto;
-
-  return {
-    sinTomar: solicitudes.filter((s) => !s.financieraId).map(sinFinancieraId),
-    mias: solicitudes.filter(esMia).map(sinFinancieraId),
-    /**
-     * Las que lleva otro compañero. No se ocultan: la bandeja es compartida y
-     * saber que algo ya está atendido —y por quién— es justo lo que evita que
-     * dos personas trabajen la misma solicitud.
-     */
-    deOtros: solicitudes.filter((s) => s.financieraId && !esMia(s)).map(sinFinancieraId),
-  };
-}
-
-/**
- * Una solicitud de CDP tal como la ve la Dirección Financiera en su bandeja.
- *
- * `financieraId` es de uso interno —reparte las solicitudes en los tres
- * montones— y no sale hacia la pantalla: allí basta con de qué montón vino y,
- * si la lleva alguien, su nombre en `aCargoDe`.
- */
-export interface SolicitudEnBandeja {
-  financieraId: string | null;
-  procesoId: string;
-  radicado: string;
-  objeto: string;
-  modalidad: string | null;
-  valor: number | null;
-  valorEsEstimado: boolean;
-  rubro: string | null;
-  estado: EstadoCdp;
-  solicitadoPor: string | null;
-  solicitadoAt: string;
-  diasEsperando: number;
-  demorada: boolean;
-  aCargoDe: string | null;
-}
-
-/** `numeric` llega del driver como string; la bandeja lo devuelve ya en número. */
-function aNumeroONulo(valor: string | number | null): number | null {
-  if (valor === null || valor === undefined) return null;
-  const n = Number(valor);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Con qué rubro se queda el CDP, entre el que llega y el que ya tenía.
- *
- * Lo usan la verificación y la expedición, y de que sea el mismo criterio
- * depende que la 4.3 no contradiga lo que la 4.2 certificó:
- *
- *   · lo que llega manda, porque es una corrección deliberada;
- *   · lo que no llega no borra: omitir el campo al expedir conserva el rubro
- *     verificado, en vez de dejar el certificado sin imputación;
- *   · en blanco es no haber escrito nada, no haber escrito «ningún rubro».
- *
- * Devuelve `null` cuando no hay ninguno de los dos, que es lo que el servicio
- * traduce en pedirlo: sin rubro el certificado no se concilia con la ejecución
- * presupuestal.
- */
-export function rubroResultante(
-  recibido: string | undefined | null,
-  actual: string | null,
-): string | null {
-  return recibido?.trim() || actual || null;
-}
-
-/**
- * La actividad en que la Financiera trabaja el CDP: verifica, expide y adjunta.
- *
- * Desde la 096 son una sola —antes eran la 4.2, la 4.3 y la 4.4—, así que el
- * certificado y su soporte quedan en el expediente bajo este numeral.
- */
-export const NUMERAL_EXPEDICION_CDP = '4.2';
+export const NUMERAL_CARGUE_CDP = '4.2';
 
 /**
  * La etapa que termina justo antes del CDP: los estudios previos.
@@ -193,7 +98,7 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * prueba de que llega al riel.
  *
  * La declaratoria desierta no suma numeral —la matriz no le da uno—: se trabaja
- * desde el panel de la 7.1 a la 7.4.
+ * desde el panel de la 7.1 a la 7.3.
  *
  * La 9 entra con EFDS-1167 (acta de inicio) y EFDS-1170 (trámite de pagos), y
  * la 10 con EFDS-1171 (informe final). De las dos solo tienen panel las
@@ -275,7 +180,7 @@ export function cdpCubreElProceso(
  * Si una etapa no tiene nada pendiente, dados los estados de lo que le aplica.
  *
  * Función pura y exportada, como `puedeTransicionar`: de esto depende que el
- * CDP se radique solo, y es la clase de regla que hay que poder fijar sin base
+ * proceso pase solo a la etapa 4, y es la clase de regla que hay que poder fijar sin base
  * de datos —qué cuenta como «cerrada» es una decisión, no una consulta—.
  *
  * Cierran la etapa dos estados: `APROBADO`, que es el trabajo hecho, y
@@ -287,11 +192,33 @@ export function cdpCubreElProceso(
  * no tiene instanciada, y deja la etapa abierta: falta por hacerse.
  *
  * Una lista vacía no es «todo cerrado». Es una matriz a medio parametrizar, y
- * darla por terminada radicaría un CDP en un proceso que no ha recorrido nada.
+ * darla por terminada pasaría a la etapa 4 un proceso que no ha recorrido nada.
  */
 export function laEtapaCerro(estados: (EstadoActividad | undefined)[]): boolean {
   if (estados.length === 0) return false;
   return estados.every((estado) => estado === 'APROBADO' || estado === 'NO_APLICA');
+}
+
+/**
+ * Si el estudio previo se puede enviar a revisión por el lado del CDP.
+ *
+ * Función pura, como `laEtapaCerro`: es la regla que el backend impone al
+ * enviar y la que la pantalla anuncia antes, y tiene que poder fijarse sin base
+ * de datos. Desde la 103 exige el CDP cargado: ya no hay solicitud que baste,
+ * porque el aplicativo no la tramita.
+ */
+export function cdpPermiteRadicar(estado: {
+  aplica: boolean;
+  obligatorio: boolean;
+  cargado: boolean;
+}): { permite: boolean; motivo: string | null } {
+  if (!estado.aplica || !estado.obligatorio || estado.cargado) {
+    return { permite: true, motivo: null };
+  }
+  return {
+    permite: false,
+    motivo: 'Antes de enviar el estudio previo a revisión carga el CDP que expidió la Dirección Financiera.',
+  };
 }
 
 @Injectable()
@@ -333,7 +260,7 @@ export class CdpService {
    * la matriz tiene 63 actividades y corregir el nombre de una no debería
    * exigir un despliegue del microfrontend.
    */
-  async actividadesDelProceso(procesoId: string, etapa?: number) {
+  async actividadesDelProceso(procesoId: string, etapa?: number, acceso?: HiringAccess) {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
 
     // Sin etapa se devuelve todo el camino entregado hasta hoy, no solo la
@@ -358,6 +285,8 @@ export class CdpService {
 
     const noAplica = new Set(excluidas.map((e) => e.numeral));
     const porNumeral = new Map(instanciadas.map((a) => [a.numeral, a]));
+    // Quién hace cada actividad en este proceso, de la configuración (109).
+    const responde = await cargarResponde(this.dataSource.manager, [procesoId], acceso);
 
     return actividades.map((a) => {
       const propia = porNumeral.get(a.numeral);
@@ -375,7 +304,9 @@ export class CdpService {
         // roles del alcance para decir a quién le toca.
         responsableCargo: a.responsableCargo,
         // Si de ella responde una persona del proceso y no los roles.
-        responde: respondeElAsignado(a.numeral),
+        responde: respondeEn(responde, procesoId, proceso.modalidad ?? null, a.numeral, acceso),
+        // De qué depende y si detiene a las siguientes, en su versión del flujo (125).
+        secuencia: secuenciaEn(responde, procesoId, proceso.modalidad ?? null, a.numeral),
       };
     });
   }
@@ -456,8 +387,7 @@ export class CdpService {
     // token. Si la pantalla lo dedujera por su cuenta, ofrecería botones que la
     // API rechaza con un 403 cuando ya es tarde.
     const permisos = {
-      puedeSolicitar: await this.alcance.puedeEn(acceso, 'editar', '4.1'),
-      puedeGestionar: await this.alcance.puedeEn(acceso, 'editar', '4.2'),
+      puedeCargar: await this.alcance.puedeEn(acceso, 'editar', NUMERAL_CARGUE_CDP),
     };
 
     const aplica = await this.aplicaCdp(proceso.modalidad, em);
@@ -494,7 +424,7 @@ export class CdpService {
         ? null
         : cdp
           ? `El CDP del proceso está en estado ${cdp.estado} y aún no ha sido expedido`
-          : 'El proceso no tiene CDP solicitado',
+          : 'El proceso no tiene CDP cargado',
       ...permisos,
     };
   }
@@ -511,236 +441,103 @@ export class CdpService {
     return cdp;
   }
 
-  // --------------------------------------------------------- ciclo (4.1-4.2)
+  // ------------------------------------------------------ cargue (4.2) ---
 
   /**
-   * Actividad 4.1: el área solicitante radica la solicitud formal.
+   * Actividad 4.2: el área carga el CDP que la Financiera expidió por fuera.
    *
-   * Aquí nacen también las actividades de la etapa, porque es el momento en que
-   * el proceso entra de verdad a la etapa 4.
+   * Desde la 103 el aplicativo no tramita el CDP: nadie lo solicita ni lo
+   * verifica aquí. El certificado ya existe cuando llega, así que queda EXPEDIDO
+   * de una vez, con el soporte, y la 4.2 se cierra en la misma transacción.
+   *
+   * Si el proceso arrastra una solicitud de antes de la 103 —SOLICITADO o
+   * VERIFICADO—, cargar la completa en vez de chocar contra ella: es el mismo
+   * CDP, que la Financiera expidió por fuera.
+   *
+   * El soporte lo exige el endpoint. Aquí puede faltar porque las pruebas de
+   * otras etapas solo necesitan el CDP cargado; si falta, se adjunta después.
    */
-  async solicitar(procesoId: string, dto: SolicitarCdpDto, acceso: HiringAccess) {
+  async cargar(
+    procesoId: string,
+    dto: CargarCdpDto,
+    soporte: { archivo: ArchivoCargado; hash: string } | null,
+    acceso: HiringAccess,
+  ) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
-
       if (!(await this.aplicaCdp(proceso.modalidad, em))) {
-        throw new BadRequestException(
-          'Esta modalidad no requiere CDP: la entidad no compromete gasto',
-        );
+        throw new BadRequestException('Esta modalidad no requiere CDP: la entidad no compromete gasto');
       }
 
-      const enCurso = await this.delProceso(procesoId, em);
-      if (enCurso) {
+      const pendiente = await this.delProceso(procesoId, em);
+      if (pendiente?.estado === 'EXPEDIDO') {
         throw new ConflictException(
-          `El proceso ya tiene un CDP en estado ${enCurso.estado}`,
+          pendiente.origen === 'REGISTRADO_EN_ETAPA_3'
+            ? 'El CDP ya se cargó desde el estudio previo'
+            : 'El proceso ya tiene el CDP cargado',
         );
       }
 
-      await this.instanciarEtapa4(em, proceso);
+      let cdp: Cdp;
+      if (pendiente) {
+        if (pendiente.estado === 'SOLICITADO') await this.transicionar(pendiente, 'VERIFICADO');
+        await this.transicionar(pendiente, 'EXPEDIDO');
+        cdp = pendiente;
+      } else {
+        await this.instanciarEtapa4(em, proceso);
+        cdp = em.create(Cdp, {
+          procesoId,
+          estado: 'EXPEDIDO' as const,
+          origen: 'ETAPA_4' as const,
+          solicitadoPor: acceso.userName,
+          solicitadoAt: new Date(),
+        });
+      }
 
-      // Radicar la solicitud es lo que mete al proceso en la etapa 4. Sin esto
-      // el proceso se quedaría en la 3 con su CDP en curso, y el stepper
-      // mostraría una etapa que ya no es la que se está trabajando.
+      const documento = soporte
+        ? await this.guardarSoporte(em, procesoId, soporte.archivo, soporte.hash, acceso)
+        : null;
+
+      cdp.numero = dto.numero.trim();
+      cdp.valor = dto.valor;
+      cdp.rubro = dto.rubro.trim();
+      cdp.fechaExpedicion = dto.fechaExpedicion;
+      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
+      // Quién lo cargó, que no es quien lo expidió: el certificado lo firmó la
+      // Financiera por fuera, y este nombre es a quién pedirle cuentas del dato.
+      cdp.expedidoPor = acceso.userName;
+      if (documento) cdp.documentoId = documento.id;
+      cdp.updatedAt = new Date();
+      const guardado = await em.save(cdp);
+
       if (proceso.etapa < ETAPA_CDP) {
         proceso.etapa = ETAPA_CDP;
         await em.save(proceso);
       }
 
-      const cdp = await em.save(
-        em.create(Cdp, {
-          procesoId,
-          rubro: dto.rubro,
-          valor: dto.valor,
-          vigenciaFiscal: dto.vigenciaFiscal ?? new Date().getFullYear(),
-          observaciones: dto.observaciones ?? null,
-          estado: 'SOLICITADO' as const,
-          solicitadoPor: acceso.userName,
-          solicitadoAt: new Date(),
-        }),
-      );
-
-      await this.cerrarActividad(em, procesoId, '4.1', proceso.modalidad ?? null, acceso, dto.firma);
-      await this.traza(em, procesoId, cdp.id, 'SOLICITAR', acceso, {
-        rubro: dto.rubro,
-        valor: dto.valor,
-      });
-
-      return this.conAdvertencia(cdp, proceso);
-    });
-  }
-
-  /**
-   * La Dirección Financiera verifica la disponibilidad (paso de la 4.2).
-   *
-   * No cierra la actividad: desde la 096 la 4.2 termina al expedir, y el
-   * certificado se verifica y se expide en el mismo formulario
-   * (`expedirConSoporte`). Se conserva como paso suelto de la API.
-   *
-   * Verificar es decir contra qué rubro hay saldo, no pulsar un botón. Hasta la
-   * 073 no se guardaba ninguno y el expediente quedaba afirmando una
-   * disponibilidad que no se podía conciliar con la ejecución presupuestal.
-   *
-   * El rubro solo se exige si el CDP no lo trae: el área pudo adelantarlo al
-   * radicar a mano, y pedirlo otra vez sería pedir dos veces el mismo dato. La
-   * solicitud automática nunca lo trae —el estudio previo no lo captura— así
-   * que en la práctica es aquí donde entra.
-   */
-  async verificar(procesoId: string, dto: VerificarCdpDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
-      const cdp = await this.exigirCdp(em, procesoId);
-
-      const rubro = rubroResultante(dto.rubro, cdp.rubro);
-      if (!rubro) {
-        throw new BadRequestException(
-          'Indica el rubro presupuestal contra el que verificas la disponibilidad',
-        );
-      }
-
-      await this.transicionar(cdp, 'VERIFICADO');
-      cdp.rubro = rubro;
-      await em.save(cdp);
-
-      await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso, { rubro });
-
-      return this.conAdvertencia(cdp, proceso);
-    });
-  }
-
-  /**
-   * Se expide el CDP y queda afectado al proceso; cierra la 4.2.
-   *
-   * Mientras no exista la integración con KLIC (EFDS-1343), el número y el
-   * valor se registran a mano con el soporte que expide la Financiera.
-   */
-  async expedir(procesoId: string, dto: ExpedirCdpDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
-      const cdp = await this.exigirCdp(em, procesoId);
-
-      // Se acepta para corregirlo —al buscar el saldo la Financiera pudo acabar
-      // imputando a otro rubro—, no para volver a pedirlo: omitirlo conserva el
-      // que se verificó. Si tampoco lo hubo allí, el certificado no puede
-      // salir: sin rubro no se concilia con la ejecución (restricción de la 073).
-      const rubro = rubroResultante(dto.rubro, cdp.rubro);
-      if (!rubro) {
-        throw new BadRequestException(
-          'Indica el rubro presupuestal que afecta el certificado',
-        );
-      }
-
-      await this.transicionar(cdp, 'EXPEDIDO');
-      cdp.numero = dto.numero;
-      cdp.valor = dto.valor;
-      cdp.rubro = rubro;
-      cdp.fechaExpedicion = dto.fechaExpedicion;
-      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? cdp.vigenciaFiscal;
-      cdp.expedidoPor = acceso.userName;
-      await em.save(cdp);
-
       await this.cerrarActividad(
         em,
         procesoId,
-        NUMERAL_EXPEDICION_CDP,
+        NUMERAL_CARGUE_CDP,
         proceso.modalidad ?? null,
         acceso,
         dto.firma,
       );
-      await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
-        numero: dto.numero,
-        valor: dto.valor,
-        rubro,
+      await this.traza(em, procesoId, guardado.id, 'EXPEDIR', acceso, {
+        cargado: true,
+        numero: guardado.numero,
+        valor: guardado.valor,
+        rubro: guardado.rubro,
+        fechaExpedicion: guardado.fechaExpedicion,
       });
-
-      return this.conAdvertencia(cdp, proceso);
-    });
-  }
-
-  /** No hay disponibilidad en el rubro: el ciclo se cierra con su motivo. */
-  async rechazar(procesoId: string, dto: RechazarCdpDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
-      const cdp = await this.exigirCdp(em, procesoId);
-
-      await this.transicionar(cdp, 'RECHAZADO');
-      cdp.observaciones = dto.observaciones;
-      await em.save(cdp);
-
-      await this.traza(em, procesoId, cdp.id, 'RECHAZAR', acceso, {
-        observaciones: dto.observaciones,
-      });
-
-      return this.conAdvertencia(cdp, proceso);
-    });
-  }
-
-  /**
-   * Actividad 4.2: la Financiera verifica, expide y adjunta el CDP de una vez.
-   *
-   * Desde la 096 es una sola actividad. Quien verifica la disponibilidad ya
-   * tiene el certificado en la mano, y partirlo en tres pantallas solo
-   * obligaba a firmar tres veces lo mismo. Todo va en una transacción: un
-   * certificado expedido sin su soporte, o un soporte de un CDP que no llegó a
-   * expedirse, es justo el expediente a medias que esto quiere evitar.
-   *
-   * Acepta el CDP solicitado o ya verificado: los procesos que pasaron por la
-   * 4.2 antes de la 096 llegan verificados y les falta lo demás.
-   */
-  async expedirConSoporte(
-    procesoId: string,
-    dto: ExpedirCdpConSoporteDto,
-    archivo: ArchivoCargado,
-    hash: string,
-    acceso: HiringAccess,
-  ) {
-    return this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
-      const cdp = await this.exigirCdp(em, procesoId);
-
-      const rubro = rubroResultante(dto.rubro, cdp.rubro);
-      if (!rubro) {
-        throw new BadRequestException(
-          'Indica el rubro presupuestal que afecta el certificado',
-        );
+      if (documento && soporte) {
+        await this.traza(em, procesoId, guardado.id, 'ADJUNTAR', acceso, {
+          documento: documento.id,
+          nombre: soporte.archivo.originalname,
+        });
       }
 
-      const verificadoAqui = cdp.estado === 'SOLICITADO';
-      if (verificadoAqui) await this.transicionar(cdp, 'VERIFICADO');
-      await this.transicionar(cdp, 'EXPEDIDO');
-
-      const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
-
-      cdp.numero = dto.numero;
-      cdp.valor = dto.valor;
-      cdp.rubro = rubro;
-      cdp.fechaExpedicion = dto.fechaExpedicion;
-      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? cdp.vigenciaFiscal;
-      cdp.expedidoPor = acceso.userName;
-      cdp.documentoId = documento.id;
-      await em.save(cdp);
-
-      await this.cerrarActividad(
-        em,
-        procesoId,
-        NUMERAL_EXPEDICION_CDP,
-        proceso.modalidad ?? null,
-        acceso,
-        dto.firma,
-      );
-      if (verificadoAqui) {
-        await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso, { rubro });
-      }
-      await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
-        numero: dto.numero,
-        valor: dto.valor,
-        rubro,
-      });
-      await this.traza(em, procesoId, cdp.id, 'ADJUNTAR', acceso, {
-        documento: documento.id,
-        nombre: archivo.originalname,
-      });
-
-      return { ...this.conAdvertencia(cdp, proceso), documento };
+      return { ...this.conAdvertencia(guardado, proceso), documento };
     });
   }
 
@@ -748,8 +545,8 @@ export class CdpService {
    * Carga el soporte de un CDP que ya se expidió sin él.
    *
    * Queda para los procesos que expidieron por la 4.3 antes de la 096 y no
-   * llegaron a la 4.4: desde entonces el soporte va con la expedición. No
-   * cierra ninguna actividad —la 4.2 la cerró la expedición—.
+   * llegaron a la 4.4, y para un CDP cargado sin él: desde la 096 el soporte va
+   * con el certificado. No cierra ninguna actividad —la 4.2 ya está cerrada—.
    *
    * Se exige el CDP expedido: el soporte prueba lo que el registro afirma.
    */
@@ -799,7 +596,7 @@ export class CdpService {
     return em.save(
       em.create(Documento, {
         expedienteId: expediente.id,
-        numeral: NUMERAL_EXPEDICION_CDP,
+        numeral: NUMERAL_CARGUE_CDP,
         tipo: 'ADJUNTO',
         nombre: archivo.originalname,
         archivoUrl: `hiring/files/${archivo.filename}`,
@@ -810,6 +607,238 @@ export class CdpService {
         subidoPor: acceso.userName,
       } as Partial<Documento>),
     );
+  }
+
+  // ------------------------------------- gestión desde el estudio previo ---
+
+  /**
+   * Si el estudio previo de la modalidad exige el CDP antes de enviarse.
+   *
+   * Sin fila es opcional: es el comportamiento de antes de la 100, y una
+   * modalidad nueva no debe quedar frenada porque nadie la configuró todavía.
+   */
+  async exigeCdpAntesDeRadicar(modalidad: string | null, em?: EntityManager): Promise<boolean> {
+    if (!modalidad) return false;
+    const fila = await (em ?? this.dataSource.manager)
+      .getRepository(CdpAntesDeRadicar)
+      .findOne({ where: { modalidad } });
+    return fila?.obligatorio === true;
+  }
+
+  /**
+   * El CDP tal como se ve desde el estudio previo: si aplica, si es
+   * obligatorio para radicar y el que está en curso.
+   */
+  async gestionDesdeElEstudioPrevio(procesoId: string, em?: EntityManager) {
+    const manager = em ?? this.dataSource.manager;
+    const proceso = await this.exigirProceso(manager, procesoId);
+
+    const aplica = await this.aplicaCdp(proceso.modalidad, manager);
+    const obligatorio = aplica && (await this.exigeCdpAntesDeRadicar(proceso.modalidad, manager));
+    const enCurso = aplica ? await this.delProceso(procesoId, manager) : null;
+
+    const { permite, motivo } = cdpPermiteRadicar({
+      aplica,
+      obligatorio,
+      cargado: enCurso?.estado === 'EXPEDIDO',
+    });
+
+    return {
+      aplica,
+      obligatorio,
+      cdp: enCurso ? this.conAdvertencia(enCurso, proceso) : null,
+      /** Si con lo que hay se puede enviar el estudio previo a revisión. */
+      permiteRadicar: permite,
+      motivo,
+    };
+  }
+
+  /**
+   * La regla que frena el envío del estudio previo cuando la modalidad exige
+   * el CDP y nadie lo ha cargado.
+   *
+   * Corre dentro de la transacción del envío: que el área retire el CDP justo
+   * mientras otro envía no debe dejar pasar un estudio previo sin él.
+   */
+  async exigirGestionAntesDeRadicar(em: EntityManager, proceso: Proceso) {
+    const aplica = await this.aplicaCdp(proceso.modalidad, em);
+    const obligatorio = aplica && (await this.exigeCdpAntesDeRadicar(proceso.modalidad, em));
+    const enCurso = obligatorio ? await this.delProceso(proceso.id, em) : null;
+
+    const { permite, motivo } = cdpPermiteRadicar({
+      aplica,
+      obligatorio,
+      cargado: enCurso?.estado === 'EXPEDIDO',
+    });
+    if (!permite) {
+      throw new UnprocessableEntityException({ message: motivo, cdpPendiente: true });
+    }
+  }
+
+  /**
+   * El área carga desde el estudio previo el CDP que ya tiene.
+   *
+   * Queda EXPEDIDO de una vez: la Financiera lo expidió por fuera, y desde la
+   * 103 el aplicativo no lo tramita. La 4.2 se da por atendida al cerrarse la
+   * etapa 3, no aquí: mientras el estudio previo esté en manos del área, el
+   * registro todavía se corrige.
+   *
+   * Si ya hay uno registrado por el área, esto lo corrige: mismo registro, sin
+   * duplicar. El soporte es obligatorio al registrar y opcional al corregir.
+   */
+  async registrarDesdeElEstudioPrevio(
+    em: EntityManager,
+    procesoId: string,
+    dto: RegistrarCdpExistenteDto,
+    archivo: ArchivoCargado | null,
+    hash: string | null,
+    acceso: HiringAccess,
+  ) {
+    const proceso = await this.exigirProceso(em, procesoId);
+    const actual = await this.delProceso(procesoId, em);
+    const corrige = actual?.origen === 'REGISTRADO_EN_ETAPA_3';
+
+    if (!corrige) await this.exigirQueNoTengaCdp(em, proceso);
+    if (!corrige && !archivo) {
+      throw new BadRequestException('Adjunta el certificado: es la evidencia del CDP en el expediente');
+    }
+
+    const cdp =
+      corrige && actual
+        ? actual
+        : em.create(Cdp, {
+            procesoId,
+            estado: 'EXPEDIDO' as const,
+            origen: 'REGISTRADO_EN_ETAPA_3' as const,
+            solicitadoPor: acceso.userName,
+            solicitadoAt: new Date(),
+          });
+
+    if (archivo && hash) {
+      const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
+      cdp.documentoId = documento.id;
+    }
+    cdp.numero = dto.numero.trim();
+    cdp.valor = dto.valor;
+    cdp.rubro = dto.rubro.trim();
+    cdp.fechaExpedicion = dto.fechaExpedicion;
+    cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
+    // Quién lo transcribió, que no es quien lo expidió: `origen` dice que lo
+    // registró el área, y este nombre a quién pedirle cuentas del dato.
+    cdp.expedidoPor = acceso.userName;
+    cdp.updatedAt = new Date();
+    const guardado = await em.save(cdp);
+
+    await this.traza(em, procesoId, guardado.id, corrige ? 'GUARDAR' : 'EXPEDIR', acceso, {
+      registradoPorElArea: true,
+      numero: guardado.numero,
+      valor: guardado.valor,
+      rubro: guardado.rubro,
+      fechaExpedicion: guardado.fechaExpedicion,
+      ...(archivo ? { soporte: archivo.originalname } : {}),
+    });
+
+    return this.conAdvertencia(guardado, proceso);
+  }
+
+  /**
+   * El área retira el CDP que cargó desde el estudio previo.
+   *
+   * Para corregir un cargue equivocado. También retira una solicitud hecha
+   * desde el estudio previo antes de la 103 que nadie llegó a atender: desde
+   * entonces nadie la va a atender, y el área la reemplaza cargando el CDP.
+   *
+   * Anula, no borra: el expediente conserva que se cargó o se pidió.
+   */
+  async retirarDesdeElEstudioPrevio(em: EntityManager, procesoId: string, motivo: string | undefined, acceso: HiringAccess) {
+    const cdp = await this.exigirCdp(em, procesoId);
+
+    const esSuSolicitud = cdp.origen === 'SOLICITADO_EN_ETAPA_3' && cdp.estado !== 'EXPEDIDO';
+    const esSuRegistro = cdp.origen === 'REGISTRADO_EN_ETAPA_3';
+    if (!esSuSolicitud && !esSuRegistro) {
+      throw new ConflictException('Este CDP no se cargó desde el estudio previo');
+    }
+
+    await this.transicionar(cdp, 'ANULADO');
+    cdp.observaciones = motivo?.trim() || cdp.observaciones;
+    await em.save(cdp);
+
+    await this.traza(em, procesoId, cdp.id, 'ANULAR', acceso, {
+      desdeElEstudioPrevio: true,
+      origen: cdp.origen,
+      motivo: motivo?.trim() || null,
+    });
+    return { id: cdp.id, estado: cdp.estado };
+  }
+
+  /** Configuración: la regla de cada modalidad activa, con su fundamento. */
+  async exigenciasAntesDeRadicar() {
+    const [modalidades, filas] = await Promise.all([
+      this.dataSource.getRepository(Modalidad).find({ where: { activa: true }, order: { orden: 'ASC' } }),
+      this.dataSource.getRepository(CdpAntesDeRadicar).find(),
+    ]);
+    const porModalidad = new Map(filas.map((f) => [f.modalidad, f]));
+    const exentas = new Set<string>();
+    for (const m of modalidades) {
+      if (!(await this.aplicaCdp(m.codigo))) exentas.add(m.codigo);
+    }
+
+    return modalidades.map((m) => {
+      const fila = porModalidad.get(m.codigo);
+      return {
+        modalidad: m.codigo,
+        nombre: m.nombre,
+        // Una modalidad sin CDP no tiene nada que exigir: se lista para que no
+        // parezca olvidada, y la pantalla no ofrece el interruptor.
+        aplicaCdp: !exentas.has(m.codigo),
+        obligatorio: fila?.obligatorio ?? false,
+        fundamento: fila?.fundamento ?? null,
+        confirmado: fila?.confirmado ?? false,
+        actualizadoPor: fila?.actualizadoPor ?? null,
+        updatedAt: fila?.updatedAt ?? null,
+      };
+    });
+  }
+
+  /**
+   * Cambia la regla de una modalidad.
+   *
+   * Solo pesa en los envíos que vengan: un estudio previo que ya está en
+   * revisión o aprobado no se devuelve porque la regla cambió.
+   */
+  async guardarExigenciaAntesDeRadicar(
+    modalidad: string,
+    dto: GuardarCdpAntesDeRadicarDto,
+    acceso: HiringAccess,
+  ) {
+    const existe = await this.dataSource.getRepository(Modalidad).findOne({ where: { codigo: modalidad } });
+    if (!existe) throw new NotFoundException('La modalidad no existe');
+
+    const repo = this.dataSource.getRepository(CdpAntesDeRadicar);
+    const fila = (await repo.findOne({ where: { modalidad } })) ?? repo.create({ modalidad });
+    fila.obligatorio = dto.obligatorio;
+    if (dto.fundamento !== undefined) fila.fundamento = dto.fundamento.trim() || null;
+    if (dto.confirmado !== undefined) fila.confirmado = dto.confirmado;
+    fila.actualizadoPor = acceso.userName;
+    fila.updatedAt = new Date();
+    await repo.save(fila);
+
+    return (await this.exigenciasAntesDeRadicar()).find((e) => e.modalidad === modalidad);
+  }
+
+  /** Un solo CDP en curso por proceso, y solo si la modalidad lo lleva. */
+  private async exigirQueNoTengaCdp(em: EntityManager, proceso: Proceso) {
+    if (!(await this.aplicaCdp(proceso.modalidad, em))) {
+      throw new BadRequestException('Esta modalidad no requiere CDP: la entidad no compromete gasto');
+    }
+    const enCurso = await this.delProceso(proceso.id, em);
+    if (enCurso) {
+      throw new ConflictException(
+        enCurso.origen === 'REGISTRADO_EN_ETAPA_3'
+          ? 'El proceso ya tiene registrado un CDP'
+          : `El proceso ya tiene un CDP en estado ${enCurso.estado}`,
+      );
+    }
   }
 
   // ------------------------------------------------------ apertura (5.7) ---
@@ -970,97 +999,61 @@ export class CdpService {
   }
 
   /**
-   * Marca cumplida la actividad del riel.
+   * Abre la etapa 4 cuando la etapa 3 termina.
    *
-   * Si no existe no se crea al vuelo: significaría que la modalidad no la
-   * incluye, y darla por cumplida falsearía el expediente.
-   */
-  /**
-   * Crea la solicitud de CDP cuando la etapa 3 termina (actividad 4.1).
-   *
-   * El estudio previo aprobado **es** la solicitud formal: el área ya dijo qué
-   * contrata, por cuánto y con qué respaldo documental, y volver a pedírselo en
-   * un formulario era transcribir lo que el proceso ya tiene. Lo que faltaba no
-   * era un dato, era que alguien lo radicara, y eso puede hacerlo el sistema.
+   * Desde la 103 el aplicativo no pide el CDP: la Financiera lo expide por
+   * fuera y el área lo carga. Así que al cerrarse la etapa 3 el proceso pasa a
+   * la 4 y la 4.2 queda esperando el cargue, salvo que el área ya lo haya
+   * cargado desde el estudio previo: entonces la 4.2 se da por atendida,
+   * sellada como del sistema (decisión de Juan, desde la 100).
    *
    * Se dispara al cerrarse la **última actividad de la etapa 3 que aplique a la
    * modalidad**, y no en un numeral fijo: el comité no está en todas las
-   * modalidades, así que atarlo a la 3.7 dejaría a mínima cuantía sin disparo y
-   * atarlo a la 3.4 pediría el CDP antes de que la modalidad esté ratificada.
-   * Preguntando por lo que queda pendiente, la regla sobrevive a que la entidad
-   * reparametrice la matriz.
+   * modalidades, así que atarlo a la 3.7 dejaría a mínima cuantía sin disparo.
    *
-   * Sin rubro: el estudio previo no lo captura desde que la 006 lo dejó fuera
-   * de sus metadatos, y quien sabe contra qué rubro va es la Financiera al
-   * expedir.
-   *
-   * Idempotente y silencioso: si el proceso no lleva CDP, si ya tiene uno en
-   * curso o si aún queda algo abierto en la etapa 3, no hace nada y devuelve
-   * `null`. Por eso puede llamarse desde cualquier punto que cierre una
-   * actividad sin que quien llama tenga que comprobar nada.
+   * Idempotente y silencioso: si el proceso no lleva CDP o si aún queda algo
+   * abierto en la etapa 3, no hace nada. Por eso puede llamarse desde cualquier
+   * punto que cierre una actividad sin que quien llama tenga que comprobar nada.
    */
-  async crearSolicitudSiCerroLaEtapa3(
+  async abrirEtapa4SiCerroLaEtapa3(
     em: EntityManager,
     procesoId: string,
     acceso: HiringAccess,
-  ): Promise<Cdp | null> {
+  ): Promise<void> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
 
-    // Un proceso negado o cerrado no pide CDP: lo que terminó fue la
+    // Un proceso negado o cerrado no sigue: lo que terminó fue la
     // contratación, no la etapa.
-    if (!proceso || proceso.estado !== 'EN_CURSO') return null;
-
-    if (!(await this.aplicaCdp(proceso.modalidad, em))) return null;
-
-    // Ya hay solicitud —automática o radicada a mano antes de esto—: volver a
-    // crearla chocaría contra el cupo de «CDP en curso» del proceso.
-    if (await this.delProceso(procesoId, em)) return null;
-
-    if (!(await this.etapa3Cerrada(em, proceso))) return null;
+    if (!proceso || proceso.estado !== 'EN_CURSO') return;
+    if (!(await this.aplicaCdp(proceso.modalidad, em))) return;
+    if (!(await this.etapa3Cerrada(em, proceso))) return;
 
     await this.instanciarEtapa4(em, proceso);
-
-    const cdp = await em.save(
-      em.create(Cdp, {
-        procesoId,
-        rubro: null,
-        // El valor estimado del proceso, que es contra lo que la Financiera
-        // verifica la disponibilidad. Si al expedir certifica menos, el propio
-        // panel avisa de que no cubre.
-        valor: proceso.valorEstimado ?? null,
-        vigenciaFiscal: new Date().getFullYear(),
-        observaciones: null,
-        estado: 'SOLICITADO' as const,
-        solicitadoPor: AUTOR_AUTOMATICO,
-        solicitadoAt: new Date(),
-      }),
-    );
-
     if (proceso.etapa < ETAPA_CDP) {
       proceso.etapa = ETAPA_CDP;
       await em.save(proceso);
     }
 
-    // La 4.1 queda cumplida por la propia solicitud, y sellada como del
-    // sistema: nadie la radicó, así que atribuírsela a quien cerró la etapa 3
-    // pondría en el expediente una actuación que esa persona no hizo.
+    const cdp = await this.delProceso(procesoId, em);
+    if (cdp?.estado !== 'EXPEDIDO') return;
+
+    const cargue = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_CARGUE_CDP },
+    });
+    if (!cargue || cargue.estado === 'APROBADO' || cargue.estado === 'NO_APLICA') return;
+
     // Sin pasar por `cerrarActividad`: la firma la pone quien trabaja la
-    // actividad, y aquí no hay quien la ponga. Exigirla bloquearía para
-    // siempre la solicitud automática de una modalidad que la tuviera
-    // configurada. La aprobación sí puede aplicar —queda en revisión de quien
-    // corresponda—, así que se resuelve igual que en el camino manual.
-    await this.cierre.resolverCierre(em, procesoId, '4.1', proceso.modalidad ?? null, {
+    // actividad, y aquí no hay quien la ponga. La aprobación sí puede aplicar.
+    await this.cierre.resolverCierre(em, procesoId, NUMERAL_CARGUE_CDP, proceso.modalidad ?? null, {
       ...acceso,
       userName: AUTOR_AUTOMATICO,
     });
-
-    await this.traza(em, procesoId, cdp.id, 'SOLICITAR', acceso, {
+    await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
       automatica: true,
-      valor: cdp.valor,
-      modalidad: proceso.modalidad,
+      yaCargado: true,
+      origen: cdp.origen,
+      atendidas: [NUMERAL_CARGUE_CDP],
     });
-
-    return cdp;
   }
 
   /**
@@ -1126,93 +1119,6 @@ export class CdpService {
       this.cierre.exigirFirmaValida(firma);
     }
     await this.cierre.resolverCierre(em, procesoId, numeral, modalidad, acceso, firma);
-  }
-
-  /**
-   * La bandeja de la Dirección Financiera: su trabajo de la etapa 4, en una
-   * sola consulta y sin entrar proceso por proceso.
-   *
-   * Dos montones y no uno, porque no se atienden igual:
-   *
-   *   · `sinTomar` son las solicitudes que nadie ha recibido. Es la bandeja
-   *     compartida que decidió la 069: quien llega primero se queda con una, y
-   *     hasta que alguien lo haga el trámite está parado sin que nadie responda
-   *     por él. Es lo que hay que mirar primero.
-   *
-   *   · `mias` son las que ya tomé y todavía no cerré —`SOLICITADO` mientras no
-   *     verifico, `VERIFICADO` mientras no expido—. Un CDP expedido o rechazado
-   *     salió del trabajo pendiente y no vuelve a la bandeja.
-   *
-   * Se cuenta desde `solicitado_at`, igual que la alerta de `CDP_SIN_ATENDER`, y
-   * se marca contra la misma `TOLERANCIA_CDP_SIN_ATENDER`: lo que la pantalla
-   * llama «lleva esperando» y lo que el correo llama «sin atender» tienen que
-   * ser el mismo número, o la bandeja y el aviso discreparán sobre la misma
-   * solicitud.
-   *
-   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
-   * adición tiene su propio trámite y no entra aquí.
-   */
-  async bandeja(acceso: HiringAccess) {
-    const filas = await this.dataSource.query(
-      `SELECT p.id              AS proceso_id,
-              p.radicado        AS radicado,
-              p.objeto          AS objeto,
-              p.modalidad       AS modalidad,
-              p.valor_estimado  AS valor_estimado,
-              c.id              AS cdp_id,
-              c.estado          AS estado,
-              c.valor           AS valor,
-              c.rubro           AS rubro,
-              c.solicitado_por  AS solicitado_por,
-              c.solicitado_at   AS solicitado_at,
-              f.usuario_id      AS financiera_id,
-              f.nombre          AS financiera_nombre
-         FROM hiring.cdp c
-         JOIN hiring.procesos p ON p.id = c.proceso_id
-         LEFT JOIN hiring.participaciones_proceso f
-                ON f.proceso_id = p.id
-               AND f.papel = 'FINANCIERA'
-               AND f.estado = 'VIGENTE'
-        WHERE c.modificacion_id IS NULL
-          AND p.estado = 'EN_CURSO'
-          AND c.estado IN ('SOLICITADO', 'VERIFICADO')
-        ORDER BY c.solicitado_at ASC`,
-    );
-
-    const ahora = Date.now();
-    const solicitudes: SolicitudEnBandeja[] = filas.map((f: any) => {
-      const desde = f.solicitado_at instanceof Date ? f.solicitado_at : new Date(f.solicitado_at);
-      const diasEsperando = Math.floor((ahora - desde.getTime()) / (24 * 60 * 60 * 1000));
-
-      return {
-        /**
-         * Quién la lleva, para repartir en los tres montones de abajo. No sale
-         * hacia la pantalla: la pantalla ya sabe de qué montón vino, y `aCargoDe`
-         * le dice el nombre.
-         */
-        financieraId: f.financiera_id as string | null,
-        procesoId: f.proceso_id,
-        radicado: f.radicado,
-        objeto: f.objeto,
-        modalidad: f.modalidad,
-        // El valor del CDP si ya lo tiene; si no, el estimado del proceso, que
-        // es contra lo que se va a verificar la disponibilidad.
-        valor: f.valor === null ? aNumeroONulo(f.valor_estimado) : aNumeroONulo(f.valor),
-        // Se dice cuál de los dos es para que la pantalla no presente un
-        // estimado como si ya fuera la cifra certificada.
-        valorEsEstimado: f.valor === null,
-        rubro: f.rubro,
-        estado: f.estado as EstadoCdp,
-        solicitadoPor: f.solicitado_por,
-        solicitadoAt: desde.toISOString(),
-        diasEsperando,
-        /** Si lleva más de lo tolerable parada, que es lo que alarma el correo. */
-        demorada: diasEsperando > TOLERANCIA_CDP_SIN_ATENDER,
-        aCargoDe: f.financiera_nombre ?? null,
-      };
-    });
-
-    return repartirLaBandeja(solicitudes, acceso.userId);
   }
 
   /** El CDP con el aviso de si alcanza a cubrir el valor estimado. */

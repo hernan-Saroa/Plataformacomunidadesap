@@ -9,6 +9,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -387,6 +388,34 @@ export class GuardarAprobacionDto {
   @IsArray()
   @IsString({ each: true })
   personas?: string[];
+
+  /** Puestos del proceso (109): la aprueba quien ocupe alguno en el proceso. */
+  @ApiPropertyOptional({ type: [String], description: 'Ids de puesto del proceso.' })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  puestos?: string[];
+
+  /**
+   * Una cadena de escalones en vez de roles, personas y puestos (migración
+   * 101). Si llega, lo demás se ignora.
+   */
+  @ApiPropertyOptional({ description: 'Id de la cadena de aprobación por escalones.' })
+  @IsOptional()
+  @IsUUID()
+  cadenaId?: string;
+
+  /** La modalidad (111); sin ella, la asignación general. */
+  @ApiPropertyOptional({ description: 'Código de la modalidad; sin ella, la general.' })
+  @IsOptional()
+  @IsString()
+  modalidad?: string;
+
+  /** Con modalidad: deja de reemplazar a la general y vuelve a heredarla. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  usarGeneral?: boolean;
 }
 
 /**
@@ -402,4 +431,33 @@ export class GuardarFirmaDto {
   @ApiProperty({ description: 'False retira la exigencia de firma.' })
   @IsBoolean()
   requiereFirma: boolean;
+}
+
+/**
+ * Quién hace la actividad (109): un puesto del proceso o unas personas. Sin
+ * ninguno de los dos, la hace quien tenga el permiso, que es lo de siempre.
+ */
+export class GuardarLaHaceDto {
+  @ApiPropertyOptional({ description: 'Id del puesto del proceso que la hace.' })
+  @IsOptional()
+  @IsUUID()
+  puestoId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Ids de persona del directorio.' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  personas?: string[];
+
+  /** La modalidad (111); sin ella, la asignación general. */
+  @ApiPropertyOptional({ description: 'Código de la modalidad; sin ella, la general.' })
+  @IsOptional()
+  @IsString()
+  modalidad?: string;
+
+  /** Con modalidad: deja de reemplazar a la general y vuelve a heredarla. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  usarGeneral?: boolean;
 }

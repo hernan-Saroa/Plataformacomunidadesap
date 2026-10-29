@@ -34,27 +34,17 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 export const NUMERAL_PUBLICACION_CONTRATO = '8.8';
 
 /**
- * Si el contrato admite publicarse.
+ * Si el contrato admite publicarse: firmado por las dos partes.
  *
- * Aquí la matriz y la historia coinciden, al revés de lo que pasa en 8.2.
- *
- * La matriz sitúa la publicación en el último puesto de la etapa, así que
- * leerla como flujo lineal significa exigir cumplidas las anteriores; la
- * historia lo enuncia como «dado un contrato perfeccionado y legalizado», que
- * es la misma condición dicha por el estado. Legalizado es precisamente haber
- * pasado por las garantías (8.4) y la ARL (8.5), las últimas actividades con
- * implementación antes de esta.
- *
- * Publicar antes anunciaría como firme un contrato al que aún pueden faltarle
- * las coberturas.
- *
- * Con una salvedad: la 8.6 —comunicación de inicio— y la 8.7 —acta de inicio—
- * están entre medias en la matriz y no tienen implementación, la primera
- * porque no tiene historia asignada y la segunda porque Jira la ubica en la
- * etapa 9. Cuando existan, esta regla tendrá que mirarlas.
+ * El Decreto 1082 (art. 2.2.1.1.1.7.1) manda publicar dentro de los tres días
+ * siguientes a la expedición, y el plazo ya se contaba desde el
+ * perfeccionamiento. Exigir además las garantías y la ARL (como decía la
+ * historia EFDS-1166, «perfeccionado y legalizado») podía dejar vencer el
+ * término legal esperando a la aseguradora: la publicación es del contrato,
+ * no de sus coberturas. Decisión de Juan (2026-10-21).
  */
 export function admitePublicacion(estado: EstadoContrato): boolean {
-  return alMenos(estado, 'LEGALIZADO');
+  return alMenos(estado, 'PERFECCIONADO');
 }
 
 interface ArchivoCargado {
@@ -90,15 +80,15 @@ export class PublicacionContratoService {
 
     if (!contrato) {
       return {
-        legalizado: false,
-        motivoNoLegalizado: 'el proceso todavía no tiene contrato generado',
+        suscrito: false,
+        motivoNoSuscrito: 'el proceso todavía no tiene contrato generado',
         plazo,
         publicaciones: [] as any[],
         pendientes: [] as DestinoPublicacion[],
       };
     }
 
-    const legalizado = admitePublicacion(contrato.estado);
+    const suscrito = admitePublicacion(contrato.estado);
     const publicaciones = await this.dataSource.getRepository(PublicacionContrato).find({
       where: { contratoId: contrato.id },
       order: { fechaPublicacion: 'ASC' },
@@ -108,12 +98,8 @@ export class PublicacionContratoService {
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
     return {
-      legalizado,
-      motivoNoLegalizado: legalizado
-        ? null
-        : contrato.estado === 'PERFECCIONADO'
-          ? 'al contrato le faltan las garantías o la ARL'
-          : 'el contrato todavía no lo han firmado las dos partes',
+      suscrito,
+      motivoNoSuscrito: suscrito ? null : 'el contrato todavía no lo han firmado las dos partes',
       contrato: { numero: contrato.numero, objeto: contrato.objeto },
       plazo,
       publicaciones: publicaciones.map((p) => {
@@ -155,7 +141,7 @@ export class PublicacionContratoService {
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
-      const contrato = await this.exigirContratoLegalizado(em, procesoId);
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
 
       const repetida = await em.getRepository(PublicacionContrato).findOne({
         where: { contratoId: contrato.id, destino: dto.destino },
@@ -348,13 +334,13 @@ export class PublicacionContratoService {
     return consulta.getOne();
   }
 
-  private async exigirContratoLegalizado(em: EntityManager, procesoId: string) {
+  private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
     if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
 
     if (!admitePublicacion(contrato.estado)) {
       throw new ConflictException(
-        'El contrato todavía no está legalizado: publicarlo anunciaría como firme algo que aún puede cambiar',
+        'El contrato todavía no lo han firmado las dos partes: no hay contrato que publicar',
       );
     }
 

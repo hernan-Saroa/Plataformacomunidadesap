@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
-  FileText,
   Megaphone,
   MessageSquare,
   Plus,
@@ -85,8 +84,6 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
   const [guardando, setGuardando] = useState(false);
 
   // Generación y traslado del informe
-  const [observacion, setObservacion] = useState('');
-  const [documentoInforme, setDocumentoInforme] = useState<File | null>(null);
   const [medioPublicacion, setMedioPublicacion] = useState('');
   const [evidencia, setEvidencia] = useState<File | null>(null);
 
@@ -94,12 +91,9 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
   const [registrando, setRegistrando] = useState(false);
   const [oferente, setOferente] = useState('');
   const [tipo, setTipo] = useState<TipoSubsanacion>('SUBSANACION');
-  const [presentadoPor, setPresentadoPor] = useState('');
-  const [identificacion, setIdentificacion] = useState('');
   const [fechaPresentacion, setFechaPresentacion] = useState(hoyEnBogota());
   const [asunto, setAsunto] = useState('');
-  const [contenido, setContenido] = useState('');
-  const [soporte, setSoporte] = useState<File | null>(null);
+  const [soportes, setSoportes] = useState<File[]>([]);
 
   // Respuesta a un escrito
   const [respondiendo, setRespondiendo] = useState<string | null>(null);
@@ -124,22 +118,6 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
     setCargando(true);
     leer();
   }, [procesoId]);
-
-  const generar = async () => {
-    setGuardando(true);
-    try {
-      setTraslado(
-        await contratacionService.generarInformeTraslado(procesoId, observacion, documentoInforme),
-      );
-      setDocumentoInforme(null);
-      toast.success('Informe preliminar generado');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
 
   const trasladar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!evidencia || medioPublicacion.trim().length < 10) return;
@@ -191,19 +169,14 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
   const limpiarEscrito = () => {
     setOferente('');
-    setPresentadoPor('');
-    setIdentificacion('');
     setFechaPresentacion(hoyEnBogota());
     setAsunto('');
-    setContenido('');
-    setSoporte(null);
+    setSoportes([]);
     setRegistrando(false);
   };
 
   const registrar = async () => {
-    if (!oferente || !soporte || !presentadoPor.trim() || !asunto.trim() || !contenido.trim()) {
-      return;
-    }
+    if (!oferente || soportes.length === 0 || !asunto.trim()) return;
 
     setGuardando(true);
     try {
@@ -213,13 +186,10 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
           {
             oferenteId: oferente,
             tipo,
-            presentadoPor: presentadoPor.trim(),
-            identificacion: identificacion.trim() || undefined,
             fechaPresentacion,
             asunto: asunto.trim(),
-            contenido: contenido.trim(),
           },
-          soporte,
+          soportes,
         ),
       );
       limpiarEscrito();
@@ -233,7 +203,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
   };
 
   const responder = async (subsanacionId: string, firmaOtp?: EvidenciaFirmaOtp) => {
-    if (respuesta.trim().length < 10) return;
+    if (!respuesta.trim()) return;
 
     setGuardando(true);
     try {
@@ -333,7 +303,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
       {!traslado.hayResultado && (
         <Pendiente
           falta="6.3"
-          texto="El comité todavía no ha registrado el resultado de la evaluación: no hay informe que trasladar."
+          texto="El comité todavía no ha cargado el informe de evaluación preliminar: no hay informe que trasladar."
         />
       )}
 
@@ -355,50 +325,15 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
       {informe && <ResumenInforme informe={informe} />}
 
-      {traslado.puedeGenerar && (
-        <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">
-            {informe ? 'Actualizar el informe preliminar' : 'Generar el informe preliminar'}
-          </p>
-          <p className="text-[11.5px] text-slate-500 m-0">
-            Se congela el resultado que el comité registró. Si el comité rectifica antes de
-            trasladar, vuelve a generarlo para tomar la fotografía otra vez.
-          </p>
-
-          <textarea
-            className={`${campo} min-h-[64px]`}
-            placeholder="Observación de la entidad sobre el informe (opcional)"
-            value={observacion}
-            onChange={(e) => setObservacion(e.target.value)}
-          />
-
-          <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
-            <UploadCloud size={15} className="text-slate-400" />
-            <span>{documentoInforme?.name ?? 'Adjuntar el informe preliminar (PDF, Word, Excel)'}</span>
-            <input
-              type="file"
-              className="hidden"
-              onChange={(e) => setDocumentoInforme(e.target.files?.[0] ?? null)}
-            />
-          </label>
-
-          <Boton
-            icono={<FileText className="w-3.5 h-3.5" />}
-            onClick={generar}
-            disabled={guardando || (!informe && !documentoInforme)}
-          >
-            {informe ? 'Actualizar informe' : 'Generar informe'}
-          </Boton>
-        </div>
-      )}
-
       {traslado.puedeTrasladar && (
         <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Publicar y trasladar</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">
+            Publicación y traslado del informe preliminar
+          </p>
           <p className="text-[11.5px] text-slate-500 m-0">
-            No hay integración con SECOP II: la publicación la hace el gestor por allá y aquí se
-            registra con su soporte. Trasladar abre el término y ya no se puede rehacer el informe
-            sin anularlo.
+            El informe que se traslada es el que el comité cargó en la 6.3; aquí se carga la
+            evidencia de su publicación y traslado. No hay integración con SECOP II: la publicación
+            se hace por allá. Trasladar abre el término de subsanaciones y observaciones.
           </p>
 
           <input
@@ -410,7 +345,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
           <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
             <UploadCloud size={15} className="text-slate-400" />
-            <span>{evidencia?.name ?? 'Adjuntar el soporte de la publicación'}</span>
+            <span>{evidencia?.name ?? 'Adjuntar la evidencia de la publicación y el traslado'}</span>
             <input
               type="file"
               className="hidden"
@@ -521,7 +456,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                             onClick={() =>
                               firmaRespuesta.conFirma((firmaOtp) => responder(escrito.id, firmaOtp))
                             }
-                            disabled={guardando || respuesta.trim().length < 10}
+                            disabled={guardando || !respuesta.trim()}
                           >
                             Guardar respuesta
                           </Boton>
@@ -555,7 +490,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                   value={oferente}
                   onChange={(e) => setOferente(e.target.value)}
                 >
-                  <option value="">¿A qué oferta se refiere?</option>
+                  <option value="">Proveedor</option>
                   {ofertas.map((o) => (
                     <option key={o.oferenteId} value={o.oferenteId}>
                       {o.numero}. {o.nombre}
@@ -576,18 +511,6 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                   </option>
                 </select>
 
-                <input
-                  className={campo}
-                  placeholder="Quién lo presenta, tal como firma"
-                  value={presentadoPor}
-                  onChange={(e) => setPresentadoPor(e.target.value)}
-                />
-                <input
-                  className={campo}
-                  placeholder="NIT o cédula (opcional)"
-                  value={identificacion}
-                  onChange={(e) => setIdentificacion(e.target.value)}
-                />
                 <label className="block">
                   <span className="text-[11.5px] text-slate-500">
                     Fecha en que lo presentó el oferente
@@ -605,21 +528,47 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                   value={asunto}
                   onChange={(e) => setAsunto(e.target.value)}
                 />
-                <textarea
-                  className={`${campo} min-h-[80px]`}
-                  placeholder="Lo que dice el oferente"
-                  value={contenido}
-                  onChange={(e) => setContenido(e.target.value)}
-                />
                 <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
                   <UploadCloud size={15} className="text-slate-400" />
-                  <span>{soporte?.name ?? 'Adjuntar el escrito del oferente'}</span>
+                  <span>
+                    {soportes.length > 0
+                      ? 'Agregar otro archivo'
+                      : 'Adjuntar el escrito del oferente (uno o varios archivos)'}
+                  </span>
                   <input
                     type="file"
+                    multiple
                     className="hidden"
-                    onChange={(e) => setSoporte(e.target.files?.[0] ?? null)}
+                    aria-label="Archivos del escrito"
+                    onChange={(e) => {
+                      // Se suman a los que ya había: el escrito puede llegar en
+                      // varias tandas y elegir de nuevo no debe borrar lo anterior.
+                      const elegidos = Array.from(e.target.files ?? []);
+                      setSoportes((previos) => [...previos, ...elegidos]);
+                      e.target.value = '';
+                    }}
                   />
                 </label>
+                {soportes.length > 0 && (
+                  <ul className="m-0 p-0 list-none space-y-1">
+                    {soportes.map((archivo, i) => (
+                      <li
+                        key={`${archivo.name}-${i}`}
+                        className="flex items-center gap-2 text-[12px] text-slate-700"
+                      >
+                        <span className="truncate">{archivo.name}</span>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-red-600"
+                          aria-label={`Quitar ${archivo.name}`}
+                          onClick={() => setSoportes((previos) => previos.filter((_, j) => j !== i))}
+                        >
+                          <X size={13} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 {/* Se avisa antes de guardar, no después: registrarlo sigue
                     siendo lo correcto, pero el gestor tiene que saberlo. */}
@@ -637,10 +586,8 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                     disabled={
                       guardando ||
                       !oferente ||
-                      !soporte ||
-                      !presentadoPor.trim() ||
-                      !asunto.trim() ||
-                      !contenido.trim()
+                      soportes.length === 0 ||
+                      !asunto.trim()
                     }
                   >
                     Registrar
@@ -739,19 +686,22 @@ function ResumenInforme({ informe }: { informe: InformeEvaluacion }) {
         )}
       </div>
 
-      <p className="text-[12px] text-slate-600 m-0">
-        Ganadora: <strong>{resultado.ganadora.nombre}</strong>
-        {resultado.puntajeObtenido != null && (
-          <>
-            {' '}
-            · {resultado.puntajeObtenido} de {resultado.puntajeMaximo}
-          </>
-        )}
-        {resultado.valorEvaluado != null && <> · {pesos(resultado.valorEvaluado)}</>}
-      </p>
+      {/* Desde la 120 el preliminar no nombra ganadora; los de antes sí. */}
+      {resultado.ganadora && (
+        <p className="text-[12px] text-slate-600 m-0">
+          Ganadora: <strong>{resultado.ganadora.nombre}</strong>
+          {resultado.puntajeObtenido != null && (
+            <>
+              {' '}
+              · {resultado.puntajeObtenido} de {resultado.puntajeMaximo}
+            </>
+          )}
+          {resultado.valorEvaluado != null && <> · {pesos(resultado.valorEvaluado)}</>}
+        </p>
+      )}
       <p className="text-[11.5px] text-slate-500 m-0">
-        {informe.ofertasRecibidas} ofertas recibidas. Es una copia del resultado que registró el
-        comité; si lo rectifica después, este informe no cambia.
+        {informe.ofertasRecibidas} ofertas recibidas. Es una copia del informe que cargó el comité;
+        si lo vuelve a cargar después, lo trasladado no cambia.
       </p>
 
       {informe.observacionEntidad && (
@@ -796,16 +746,25 @@ function FilaEscrito({ escrito }: { escrito: Subsanacion }) {
       </div>
       <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">
         {escrito.oferta ? `${escrito.oferta.numero}. ${escrito.oferta.nombre}` : 'Oferta retirada'} ·{' '}
-        {escrito.presentadoPor} · presentada el {fechaLarga(escrito.fechaPresentacion)}
+        {/* Los registrados antes de la 116 traen quien firmó; los nuevos, el mismo proveedor. */}
+        {escrito.presentadoPor !== escrito.oferta?.nombre && `${escrito.presentadoPor} · `}
+        presentada el {fechaLarga(escrito.fechaPresentacion)}
       </p>
-      <p className="text-[12px] text-slate-600 m-0 mt-1 whitespace-pre-wrap">{escrito.contenido}</p>
-      {escrito.soporte && (
-        <a
-          className="text-[11.5px] text-blue-700 inline-flex items-center gap-1 mt-1"
-          href={contratacionService.urlDescarga(escrito.soporte.archivoUrl)}
-        >
-          <Download size={12} /> {escrito.soporte.nombre}
-        </a>
+      {escrito.contenido && (
+        <p className="text-[12px] text-slate-600 m-0 mt-1 whitespace-pre-wrap">{escrito.contenido}</p>
+      )}
+      {escrito.soportes.length > 0 && (
+        <div className="flex flex-col items-start gap-0.5 mt-1">
+          {escrito.soportes.map((soporte) => (
+            <a
+              key={soporte.id}
+              className="text-[11.5px] text-blue-700 inline-flex items-center gap-1"
+              href={contratacionService.urlDescarga(soporte.archivoUrl)}
+            >
+              <Download size={12} /> {soporte.nombre}
+            </a>
+          ))}
+        </div>
       )}
     </>
   );

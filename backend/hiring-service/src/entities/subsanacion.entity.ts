@@ -60,11 +60,13 @@ export class Subsanacion {
   @Column({ length: 300 })
   asunto: string;
 
-  @Column({ type: 'text' })
-  contenido: string;
+  /** Solo los escritos registrados antes de la 116: los nuevos no se transcriben. */
+  @Column({ type: 'text', nullable: true })
+  contenido: string | null;
 
-  @Column({ name: 'soporte_documento_id' })
-  soporteDocumentoId: string;
+  /** El escrito del oferente, en uno o varios archivos, en el orden en que se adjuntaron. */
+  @Column({ name: 'soportes_documento_ids', type: 'uuid', array: true, default: () => "'{}'" })
+  soportesDocumentoIds: string[];
 
   @Column({ type: 'text', nullable: true })
   respuesta: string | null;
