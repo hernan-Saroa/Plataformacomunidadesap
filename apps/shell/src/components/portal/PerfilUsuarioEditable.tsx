@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { PHOTO_ACCEPT, PHOTO_HELP, uploadOwnPhoto, usePublishedPhoto } from '../../../../shared/profile-photos';
+import { RundPhotoPanel } from '../../../../mfe-pta/src/components/pta/banco-docentes/RundPhotoPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -163,7 +165,7 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
     biografia: { esPublico: true },
   });
 
-  const [fotoPerfil, setFotoPerfil] = useState<string | null>(null);
+  const fotoPerfil = usePublishedPhoto();
   const [dragActive, setDragActive] = useState(false);
   const [misPuntajes, setMisPuntajes] = useState<any[]>([]);
 
@@ -313,14 +315,11 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
     }
   };
 
-  const handleArchivoFoto = (file: File) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFotoPerfil(reader.result as string);
-      handleAutoGuardar();
-      toast.success('Foto de perfil actualizada', { duration: 2000 });
-    };
-    reader.readAsDataURL(file);
+  const handleArchivoFoto = async (file: File) => {
+    try {
+      await uploadOwnPhoto(file);
+      toast.success('Foto enviada a validación del grupo. Se conserva la foto aprobada.');
+    } catch (error: any) { toast.error(error.message || 'No se pudo cargar la foto.'); }
   };
 
   // Calcular completitud del perfil
@@ -507,7 +506,7 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
                       </div>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept={PHOTO_ACCEPT}
                         onChange={handleCambioFoto}
                         className="hidden"
                       />
@@ -520,6 +519,8 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
                     )}
                   </div>
 
+                  <p className="mt-3 text-xs text-gray-600 text-center">{PHOTO_HELP} Sujeta a validación del grupo RUND.</p>
+                  <RundPhotoPanel own name={userName} />
                   <h2 className="mt-4 text-xl font-black text-gray-900 text-center">
                     {datosPersonales.nombres} {datosPersonales.apellidos}
                   </h2>

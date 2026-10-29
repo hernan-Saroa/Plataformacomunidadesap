@@ -4,6 +4,14 @@ import { RUND_PROFILE_CAPABILITIES as backendCapabilities } from '../../../../ba
 import { retainLegacyRundPermissions, simplifyRundPermissionModules } from '../../../shared/rund-permission-catalog';
 
 describe('Tres perfiles operativos RUND', () => {
+  it('conserva visibles y asignables los permisos específicos de fotos sin inferirlos del perfil', () => {
+    const photos = ['banco-docentes.rund.photos.manage', 'banco-docentes.rund.photos.validate'];
+    const permissions = [...Object.values(RUND_PROFILE_PERMISSIONS), ...photos].map(code => ({ id: code, code }));
+    expect(simplifyRundPermissionModules([{ permissions }])[0].permissions).toHaveLength(5);
+    for (const profile of Object.values(RUND_PROFILE_PERMISSIONS)) {
+      for (const permission of photos) expect(expandRundPermissions([profile]).has(permission)).toBe(false);
+    }
+  });
   it('conserva la misma matriz de autorización en navegador y servidor', () => {
     expect(RUND_PROFILE_CAPABILITIES).toEqual(backendCapabilities);
     expect(Object.keys(RUND_PROFILE_PERMISSIONS)).toHaveLength(3);

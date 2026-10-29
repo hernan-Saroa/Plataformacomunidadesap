@@ -1,3 +1,4 @@
+import { uploadOwnPhoto } from '../../../../shared/profile-photos';
 /**
  * API del portal consumida por el MFE de PTA.
  *
@@ -120,13 +121,9 @@ export async function updatePrivacidad(personaId: string, config: any) {
 // FOTO DE PERFIL
 // ============================================================================
 
-export async function uploadFotoPerfil(file: File, personaId: string) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('personaId', personaId);
-
-  const uploaded = await apiClient.upload<any>(`${PORTAL_PREFIX}/foto-perfil`, formData);
-  return asPortalResult(uploaded);
+export async function uploadFotoPerfil(file: File, _personaId: string) {
+  const data = await uploadOwnPhoto(file);
+  return { success: true, data };
 }
 
 // ============================================================================

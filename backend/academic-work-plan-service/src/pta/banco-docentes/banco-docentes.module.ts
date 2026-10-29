@@ -21,13 +21,16 @@ import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
 import { RundNucleosController } from './rund-nucleos.controller';
 import { RundNucleosService } from './rund-nucleos.service';
+import { RundPhotosService } from './rund-photos.service';
+import { RundPhotosController } from './rund-photos.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController],
+  controllers: [RundPhotosController, RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController],
   providers: [
+    RundPhotosService,
     BancoDocentesService,
     DocumentTypeValidatorService,
     BancoDocentesRolesGuard,

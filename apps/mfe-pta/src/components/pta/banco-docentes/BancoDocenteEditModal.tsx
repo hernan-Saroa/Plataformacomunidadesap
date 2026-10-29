@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from '../../../../../shell/src/services/api';
+import { PHOTO_ACCEPT, PHOTO_API, PHOTO_HELP, PHOTO_MANAGE, photoChanged, validatePhotoFile } from '../../../../../shared/profile-photos';
+import { hasRundPermission } from '../../../../../shared/rund-permissions';
+import { RundPhotoPanel } from './RundPhotoPanel';
 import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles, Upload } from 'lucide-react';
 import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../../../services/api/ptaApi';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -194,6 +198,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ManualDocenteErrors>({});
   const [supportFile, setSupportFile] = useState<File | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
+  const [createdPhotoTarget, setCreatedPhotoTarget] = useState<string | null>(null);
   const [touchedSteps, setTouchedSteps] = useState<Set<number>>(new Set([0]));
   const auth = useAuth();
   const sensitiveDataRestricted = Boolean(docente?.proteccion_datos?.acceso_completo === false);
@@ -494,6 +500,20 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         : await createBancoDocente(payload);
 
       if (res.success) {
+        if (!isEditing && profilePhoto) {
+          const target = (res.data as any)?.docenteId || (res.data as any)?.personaId;
+          if (target) {
+            setCreatedPhotoTarget(target);
+            try {
+              const photoForm = new FormData(); photoForm.append('file', profilePhoto);
+              await apiClient.upload(`${PHOTO_API}/docentes/${encodeURIComponent(target)}`, photoForm);
+              photoChanged();
+            } catch (photoError: any) {
+              setError('El docente se guardó correctamente. No se pudo cargar la foto; puede reintentar en el panel de Identidad a continuación.');
+              return;
+            }
+          }
+        }
         onSaved();
       } else {
         setError((res as any).message || (res as any).error || 'Error al guardar el docente');
@@ -506,6 +526,14 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
   const currentStep = STEPS[activeStep];
   const StepIcon = currentStep.icon;
   const isLastStep = activeStep === 3;
+
+  if (createdPhotoTarget) return <div role="dialog" aria-modal="true" aria-label="Foto del docente registrado" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,.5)', display: 'grid', placeItems: 'center', padding: 16 }}>
+    <div style={{ width: '100%', maxWidth: 760, maxHeight: '90dvh', overflowY: 'auto', background: '#fff', padding: 20, borderRadius: 16 }}>
+      <h3>Docente registrado</h3>{error && <p role="alert">{error}</p>}
+      {saving ? <p role="status">Enviando foto a validación…</p> : <RundPhotoPanel docenteId={createdPhotoTarget} name={form.nombreCompleto} canUpload={hasRundPermission(auth, PHOTO_MANAGE)} />}
+      <button type="button" disabled={saving} onClick={onSaved}>Finalizar registro</button>
+    </div>
+  </div>;
 
   return (
     <>
@@ -615,6 +643,20 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
               {/* ═══ STEP 0: Vinculación ═══ */}
               {activeStep === 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                  {hasRundPermission(auth, PHOTO_MANAGE) && (isEditing
+                    ? <RundPhotoPanel docenteId={docente?.docente_id || docente?.id} name={form.nombreCompleto} canUpload />
+                    : <div style={{ padding: 16, border: '1px solid #dbe4ef', borderRadius: 12 }}>
+                        <label style={{ display: 'grid', gap: 8 }}>Foto de perfil (opcional)
+                          <input type="file" accept={PHOTO_ACCEPT} disabled={saving} aria-label="Foto de perfil del nuevo docente" onChange={async event => {
+                            const file = event.target.files?.[0]; event.target.value = ''; setProfilePhoto(null);
+                            if (!file) return;
+                            try { await validatePhotoFile(file); setProfilePhoto(file); setError(null); }
+                            catch (photoError: any) { setError(photoError.message); }
+                          }} />
+                        </label>
+                        <p style={{ fontSize: 12, color: '#475569' }}>{PHOTO_HELP} Se enviará a validación al guardar el docente.</p>
+                        {profilePhoto && <p>{profilePhoto.name} <button type="button" onClick={() => setProfilePhoto(null)}>Quitar foto seleccionada</button></p>}
+                      </div>)}
                   {/* Identification group */}
                   <div>
                     <SectionHeader title="Identificación" description="Datos de identidad del docente" />

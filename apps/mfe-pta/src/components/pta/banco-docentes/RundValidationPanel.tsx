@@ -19,6 +19,8 @@ import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
 import { hasRundPermission, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
 import { RundIncorporationPanel } from './RundIncorporationPanel';
+import { RundPhotoPanel } from './RundPhotoPanel';
+import { PHOTO_MANAGE, PHOTO_VALIDATE } from '../../../../../shared/profile-photos';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -896,6 +898,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                   </h4>
                   <p style={{ margin: 0, fontSize: 13, color: '#64748B', marginTop: 4 }}>{cfg.subtitle}</p>
                 </div>
+
+                {b.bloque === 'IDENTIDAD' && <RundPhotoPanel docenteId={docenteId}
+                  name={docente?.nombre_completo || ''} canUpload={hasRundPermission(auth, PHOTO_MANAGE)}
+                  canValidate={hasRundPermission(auth, PHOTO_VALIDATE)} onChanged={onUpdated} />}
 
                 {canReadExtraction && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError && (
                   <RundExtractionPanel key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
