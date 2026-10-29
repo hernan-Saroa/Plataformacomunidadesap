@@ -17,9 +17,13 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { diskStorage, memoryStorage } from 'multer';
+import { dirname, extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { mkdir, writeFile } from 'fs/promises';
+import { DocumentosService } from '../documentos/documentos.service';
+import { EtapaDocumento, TipoDocumento } from '../documentos/entities/documento.entity';
+import { AdjuntoCorreo } from '../notificaciones/notificaciones.service';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { PlanesMejoramientoService } from '../planes-mejoramiento/planes-mejoramiento.service';
@@ -49,6 +53,7 @@ export class AuditoriasController {
     private readonly hallazgosService: HallazgosService,
     private readonly planesMejoramientoService: PlanesMejoramientoService,
     private readonly jwtService: JwtService,
+    private readonly documentosService: DocumentosService,
   ) {}
 
   /**
@@ -836,9 +841,20 @@ export class AuditoriasController {
   @Post(':id/informe-preliminar/generar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  async generarInformePreliminar(@Param('id') id: string, @Req() req: any) {
+  // El PDF llega en la misma petición: quien puede generar el informe no necesita además
+  // el permiso de subir documentos para que quede guardado y adjunto (EFDS-2350)
+  @UseInterceptors(FileInterceptor('informe', { storage: memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }))
+  async generarInformePreliminar(
+    @Param('id') id: string,
+    @Req() req: any,
+    @UploadedFile() informe?: any,
+  ) {
     const user = req.user || this.extractUserFromToken(req);
-    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId);
+    const adjuntos = await this.guardarInformePreliminar(id, informe, user);
+    const { count, total, areaNotificada, motivoNoNotificada } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId, {
+      adjuntos,
+      urlPlataforma: this.origenPeticion(req),
+    });
 
     // ✅ Actualizar fecha de inicio de comunicación en la auditoría a la fecha de hoy
     try {
@@ -849,7 +865,9 @@ export class AuditoriasController {
     }
 
     let mensaje: string;
-    if (count > 0) {
+    if (!areaNotificada) {
+      mensaje = 'Informe preliminar generado, pero el área auditada no fue notificada.';
+    } else if (count > 0) {
       mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 5 días hábiles iniciado.`;
     } else if (total > 0) {
       mensaje = `Informe preliminar generado. Los ${total} hallazgo(s) ya estaban notificados o procesados (aceptados/ratificados).`;
@@ -859,8 +877,60 @@ export class AuditoriasController {
     return {
       generado: true,
       hallazgosNotificados: count,
+      informeAdjunto: adjuntos.length > 0,
+      // Si no se pudo avisar al área auditada, la pantalla lo dice con el motivo (EFDS-2350)
+      areaNotificada,
+      motivoNoNotificada,
       mensaje,
     };
+  }
+
+  /**
+   * Guarda el PDF del informe preliminar entre los documentos de la auditoría (etapa Comunicación)
+   * y lo deja listo para adjuntarlo al correo del área auditada (EFDS-2350). Si no llegó, el correo
+   * sale sin adjunto; si no se pudo guardar, igual se adjunta.
+   */
+  private async guardarInformePreliminar(auditoriaId: string, informe: any, user: any): Promise<AdjuntoCorreo[]> {
+    if (!informe?.buffer?.length) return [];
+    const nombre = /\.pdf$/i.test(informe.originalname || '') ? informe.originalname : `Informe_Preliminar_${auditoriaId}.pdf`;
+    const adjunto: AdjuntoCorreo = {
+      filename: nombre,
+      contentBase64: Buffer.from(informe.buffer).toString('base64'),
+      contentType: informe.mimetype || 'application/pdf',
+    };
+    try {
+      const ruta = this.documentosService.generarRutaArchivo(nombre, auditoriaId, EtapaDocumento.COMUNICACION);
+      await mkdir(dirname(ruta), { recursive: true });
+      await writeFile(ruta, informe.buffer);
+      await this.documentosService.create(
+        {
+          nombre,
+          descripcion: 'Informe preliminar enviado al área auditada',
+          tipoDocumento: TipoDocumento.INFORME_PRELIMINAR,
+          etapa: EtapaDocumento.COMUNICACION,
+          auditoriaId,
+          nombreArchivo: nombre,
+          tipoMime: adjunto.contentType,
+          tamanioBytes: informe.size ?? informe.buffer.length,
+          subidoPor: user?.username || user?.email || 'Sistema',
+        } as any,
+        ruta,
+      );
+    } catch (err: any) {
+      console.error('[AuditoriasController] No se pudo guardar el informe preliminar en los documentos:', err.message);
+    }
+    return [adjunto];
+  }
+
+  /** Dirección pública desde la que se usa la plataforma (para el botón del correo). */
+  private origenPeticion(req: any): string | undefined {
+    const origen = req?.headers?.origin || req?.headers?.referer;
+    if (!origen) return undefined;
+    try {
+      return new URL(String(origen)).origin;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

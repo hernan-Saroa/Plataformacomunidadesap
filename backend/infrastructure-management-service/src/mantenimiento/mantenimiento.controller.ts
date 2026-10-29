@@ -42,18 +42,73 @@ import {
   IniciarValoracionDto,
   GuardarValoracionCompletaDto,
   ConfirmarRecepcionInsumosDto,
+  NotaRecepcionInsumosTecnicoDto,
+  RegistrarVoBoDto,
+  VincularTramiteContractualDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { AuthUser } from '../auth/types.js';
 
 const MAX_SIZE_20MB = 20 * 1024 * 1024;
 const MIMES_PERMITIDOS =
   /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf|video\/(mp4|webm|quicktime|x-m4v|x-msvideo|mpeg))$/i;
 const EXTENSIONES_EVIDENCIA_PERMITIDAS =
   /\.(png|jpe?g|gif|webp|heic|heif|pdf|mp4|webm|mov|m4v|avi|mpeg)$/i;
+
+const parseCsvHeader = (raw: unknown): string[] => {
+  if (raw == null) return [];
+  const txt = String(raw).trim();
+  if (!txt) return [];
+  try {
+    const parsed = JSON.parse(txt);
+    if (Array.isArray(parsed)) return parsed.map((x) => String(x)).filter(Boolean);
+  } catch {
+    // ignore
+  }
+  return txt.split(/[,\s;|]+/).map((x) => x.trim()).filter(Boolean);
+};
+
+const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
+  const actual = req?.user;
+  if (actual && typeof actual === 'object') {
+    return {
+      userId: String(actual.userId || ''),
+      username: actual.username != null ? String(actual.username) : undefined,
+      email: actual.email != null ? String(actual.email) : undefined,
+      name: actual.name != null ? String(actual.name) : undefined,
+      roles: Array.isArray(actual.roles) ? actual.roles.map(String).filter(Boolean) : [],
+      permissions: actual.permissions,
+      codigoTecnico: actual.codigoTecnico != null ? String(actual.codigoTecnico).trim() : undefined,
+    };
+  }
+
+  const headerUserId = req?.headers?.['x-user-id'];
+  const headerEmail = req?.headers?.['x-user-email'];
+  const headerUsername = req?.headers?.['x-user-username'];
+  const headerName = req?.headers?.['x-user-name'];
+  if (headerUserId == null && headerEmail == null && headerUsername == null) {
+    return undefined;
+  }
+
+  return {
+    userId: headerUserId != null ? String(headerUserId) : '',
+    username: headerUsername != null ? String(headerUsername) : undefined,
+    email: headerEmail != null ? String(headerEmail) : undefined,
+    name: headerName != null ? String(headerName) : undefined,
+    roles: parseCsvHeader(req?.headers?.['x-user-roles'] ?? req?.headers?.['x-user-role']),
+    permissions: parseCsvHeader(req?.headers?.['x-user-permissions']),
+    codigoTecnico:
+      req?.headers?.['x-user-technical-code'] != null
+        ? String(req.headers['x-user-technical-code']).trim()
+        : (req?.headers?.['x-user-codigo-tecnico'] != null
+          ? String(req.headers['x-user-codigo-tecnico']).trim()
+          : undefined),
+  };
+};
 
 @ApiTags('Mantenimiento e Infraestructura')
 @ApiBearerAuth()
@@ -263,6 +318,26 @@ export class MantenimientoController {
     return this.mantenimientoService.actualizarReglaEscalamiento(idRegla, body);
   }
 
+  @Get('parametros/vobo-config')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 3 Req. #3: Consultar configuración parametrizable de Visto Bueno (VoBo) sobre valoración técnica.',
+  })
+  getVoBoConfig() {
+    return this.mantenimientoService.getVoBoConfig();
+  }
+
+  @Patch('parametros/vobo-config')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 3 Req. #3: Actualizar configuración parametrizable de Visto Bueno (VoBo) sobre valoración técnica.',
+  })
+  actualizarVoBoConfig(@Body() body: any) {
+    return this.mantenimientoService.updateVoBoConfig(body);
+  }
+
   // ---------------------------------------------------------------------------
   // EFDS-1733 / EFDS-174X: Técnicos mantenimiento
   // OPCIÓN A (DECISIÓN FINAL): Source of Truth = auth-service roles P3/P4.
@@ -445,10 +520,42 @@ export class MantenimientoController {
       tecnicoCodigo?: string | null;
       idTecnicoAsignado?: string | null;
       observaciones?: string | null;
+      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+      requiereContratacion?: boolean;
     },
     @Req() req: any,
   ) {
     return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/vobo')
+  @ApiOperation({
+    summary:
+      'Registrar Visto Bueno (VoBo) del Coordinador / Encargado UMI sobre la valoración técnica de una solicitud.',
+  })
+  @ApiResponse({ status: 200, description: 'VoBo registrado correctamente en la solicitud.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere Encargado UMI o Administrador).' })
+  registrarVoBo(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: RegistrarVoBoDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarVoBo(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/tramite-contractual')
+  @ApiOperation({
+    summary:
+      'EFDS-2353 / RF-INF-012: Vincular proceso contractual / SECOP II para solicitudes de Mantenimiento Mayor con diagnóstico y VoBo.',
+  })
+  @ApiResponse({ status: 200, description: 'Trámite contractual vinculado exitosamente.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente (requiere rol de asignador o coordinación GIM).' })
+  vincularTramiteContractual(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: VincularTramiteContractualDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.vincularTramiteContractual(idSolicitud, body, req?.user);
   }
 
   @Post(':idSolicitud/rechazar')
@@ -571,6 +678,21 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.confirmarRecepcionInsumos(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/recepcion-insumos-tecnico')
+  @ApiOperation({
+    summary:
+      'Fase 2 / Req #4: Micro-registro del técnico sobre la entrega de insumos (COMPLETA | PARCIAL | OBSERVADA). No bloqueante.',
+  })
+  @ApiResponse({ status: 200, description: 'Nota de verificación registrada en el histórico de la solicitud.' })
+  @ApiResponse({ status: 403, description: 'Usuario no autorizado (no es técnico asignado ni gestor).' })
+  registrarRecepcionInsumosTecnico(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: NotaRecepcionInsumosTecnicoDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarRecepcionInsumosTecnico(idSolicitud, dto, req?.user);
   }
 
   @Get(':idSolicitud/valoraciones')
@@ -787,6 +909,159 @@ export class MantenimientoController {
     res!.status(HttpStatus.OK).send(buffer);
   }
 
+  @Get('exportar-operacional/excel')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #9: Exportar consolidado operacional detallado de solicitudes de mantenimiento en Excel (.xlsx) con estados, responsables, SLA y traza completa. Exclusivo para roles de reportes.',
+  })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx listo para descarga (attachment).' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente (requiere roles de reportes/auditoría).' })
+  async exportarOperacionalExcel(
+    @Query('estado') estado?: string,
+    @Query('prioridad') prioridad?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('idSede') idSede?: string,
+    @Query('areaResponsable') areaResponsable?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('ids') ids?: string,
+    @Req() req?: any,
+    @Res() res?: Response,
+  ) {
+    const idsArray = ids ? ids.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+    const catNum = idCategoria && Number.isInteger(+idCategoria) ? Number(idCategoria) : undefined;
+    const { buffer, filename } = await this.mantenimientoService.generarExcelConsolidadoOperacional(
+      {
+        estado,
+        prioridad,
+        idCategoria: catNum,
+        idSede,
+        areaResponsable,
+        codigoTecnico,
+        fechaDesde,
+        fechaHasta,
+        ids: idsArray,
+      },
+      req?.user,
+    );
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res!.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res!.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    res!.setHeader('Content-Length', String(buffer.length));
+    res!.status(HttpStatus.OK).send(buffer);
+  }
+
+  // ---------------------------------------------------------------------------
+  // FASE 4 · REQ. #10: Ingesta y Consulta Histórica (Planner / GLPI)
+  // ---------------------------------------------------------------------------
+
+  @Post('historico/importar')
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Importar mantenimientos históricos desde archivo Excel (Planner/GLPI). Segregado de la tabla viva de solicitudes.',
+  })
+  @ApiResponse({ status: 200, description: 'Resumen de filas importadas, omitidas y tiempo de procesamiento.' })
+  async importarHistoricoExcel(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file || !file.buffer || file.size === 0) {
+      throw new BadRequestException('Debe adjuntar un archivo Excel válido (.xlsx o .xls).');
+    }
+    const ext = (file.originalname || '').toLowerCase();
+    if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls')) {
+      throw new BadRequestException('Formato de archivo no compatible. Solo se admiten archivos .xlsx o .xls');
+    }
+    return this.mantenimientoService.importarHistoricoExcel(file.buffer, file.originalname, req?.user);
+  }
+
+  @Post('historico/cargar-servidor')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Ingesta directa en un clic desde el archivo oficial del servidor Mantenimientos_Infraestructura_2026.xlsx.',
+  })
+  async cargarHistoricoDesdeServidor(@Req() req: any) {
+    return this.mantenimientoService.importarHistoricoDesdeServidor(req?.user);
+  }
+
+  @Get('historico')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Listar solicitudes históricas migradas de Microsoft Planner / GLPI con paginación y filtros.',
+  })
+  listarHistorico(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('semana') semana?: string,
+    @Query('estado') estado?: string,
+    @Query('tecnico') tecnico?: string,
+    @Query('solicitante') solicitante?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Req() req?: any,
+  ) {
+    return this.mantenimientoService.listarHistorico(
+      {
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        search,
+        semana,
+        estado,
+        tecnico,
+        solicitante,
+        fechaDesde,
+        fechaHasta,
+      },
+      req?.user,
+    );
+  }
+
+  @Get('historico/estadisticas')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Estadísticas y métricas generales del repositorio histórico migrado de Planner.',
+  })
+  obtenerEstadisticasHistorico(@Req() req?: any) {
+    return this.mantenimientoService.obtenerEstadisticasHistorico(req?.user);
+  }
+
+  @Get('historico/exportar-excel')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Descargar consolidado del repositorio histórico en formato Excel (.xlsx).',
+  })
+  async exportarHistoricoExcel(
+    @Query() query: any,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.mantenimientoService.exportarHistoricoExcel(query, req?.user);
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.status(HttpStatus.OK).send(buffer);
+  }
+
+  @Delete('historico')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Fase 4 Req. #10: Vaciar todos los registros del repositorio histórico de Planner/GLPI.',
+  })
+  async vaciarHistorico(@Req() req: any) {
+    return this.mantenimientoService.vaciarHistorico(req?.user);
+  }
+
   @Get('estadisticas/reporte-gestion/pdf')
   @ApiBearerAuth()
   @ApiOperation({
@@ -896,7 +1171,6 @@ export class MantenimientoController {
   // Evidencias / Upload
   // ---------------------------------------------------------------------------
   @Post('evidencias/upload')
-  @Public()
   @ApiOperation({
     summary:
       'Subir un archivo evidencia al storage local (uploads/). Se pueden subir antes de radicar y luego ligar por uploadedEvidenciaIds, o después con idSolicitud opcional.',
@@ -942,7 +1216,7 @@ export class MantenimientoController {
       buffer: file.buffer,
       mimeType,
       tamanoBytes: file.size,
-      user: req?.user,
+      user: obtenerUsuarioOpcionalDesdeRequest(req),
       idSolicitud: body?.idSolicitud,
       orden: body?.orden ? parseInt(body.orden, 10) : undefined,
       notas: body?.notas,

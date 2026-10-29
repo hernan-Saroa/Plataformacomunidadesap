@@ -26,9 +26,15 @@ export class CreateTarifaTransporteTerminalDto {
   @MaxLength(150)
   ciudadAeropuerto: string;
 
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  valorMaximo: number;
+  valorMaximo?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  valorMaximoTrayecto?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -59,6 +65,11 @@ export class UpdateTarifaTransporteTerminalDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   valorMaximo?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  valorMaximoTrayecto?: number;
 
   @IsOptional()
   @IsBoolean()

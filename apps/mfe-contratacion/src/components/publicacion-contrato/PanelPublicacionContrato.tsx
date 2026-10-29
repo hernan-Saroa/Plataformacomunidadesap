@@ -139,13 +139,22 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
         registra dónde se publicó y con qué evidencia.
       </Ayuda>
 
-      {/* La publicación cierra la etapa, así que espera a las anteriores: la
-          última con implementación es la ARL. */}
-      {!estado.legalizado ? (
+      {/* Revisión de QA de EFDS-1166: la publicación en la página web se hace
+          una sola vez por proceso, en la 5.3. Esta es un recordatorio para
+          confirmar la evidencia y no detiene el proceso. */}
+      <Aviso tono="aviso" titulo="Recordatorio, no detiene el proceso">
+        La publicación del proceso en la página web de la ESAP ya se registró con la publicación del
+        proyecto de pliego (5.3). Aquí solo se confirma la evidencia de lo que corresponda publicar
+        ahora (en Tienda Virtual, la orden de compra); el proceso sigue aunque quede pendiente.
+      </Aviso>
+
+      {/* El plazo corre desde el perfeccionamiento (Decreto 1082, art.
+          2.2.1.1.1.7.1): no espera a las garantías ni a la ARL. */}
+      {!estado.suscrito ? (
         <Pendiente
-          falta="8.5"
-          texto={`El contrato se publica cuando está legalizado: ${
-            estado.motivoNoLegalizado ?? 'todavía no lo está'
+          falta="8.1"
+          texto={`El contrato se publica cuando lo firman las dos partes: ${
+            estado.motivoNoSuscrito ?? 'todavía no lo han firmado'
           }.`}
         />
       ) : null}
@@ -212,7 +221,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
       ))}
 
       {/* Qué destinos faltan lo dice el servidor: la pantalla no conoce la lista. */}
-      {estado.legalizado && estado.pendientes.length > 0 && !registrando ? (
+      {estado.suscrito && estado.pendientes.length > 0 && !registrando ? (
         <Permitido accion="editar" punto="8.8" quien="el gestor de contratación">
           <Boton
             icono={<Upload className="w-3.5 h-3.5" />}
@@ -226,7 +235,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
         </Permitido>
       ) : null}
 
-      {estado.legalizado && estado.pendientes.length === 0 ? (
+      {estado.suscrito && estado.pendientes.length === 0 ? (
         <Aviso tono="ok" titulo="El contrato está publicado">
           Quedó registrada la publicación en los dos sitios.
         </Aviso>

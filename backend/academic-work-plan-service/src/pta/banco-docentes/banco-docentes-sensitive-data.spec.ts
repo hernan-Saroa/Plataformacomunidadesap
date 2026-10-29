@@ -7,6 +7,12 @@ import {
 } from './banco-docentes-sensitive-data';
 
 describe('RBAC de datos sensibles RUND', () => {
+  it('acepta exclusivamente el permiso de originales resuelto por el servidor', () => {
+    const user = { roles: ['RUND_CARGADOR'], permissions: ['banco-docentes.rund.sensitive.view'] };
+    expect(canViewRundSensitiveData(user)).toBe(false);
+    expect(canViewRundSensitiveData(user, new Set(['banco-docentes.rund.manage']))).toBe(false);
+    expect(canViewRundSensitiveData(user, new Set(['banco-docentes.rund.sensitive.view']))).toBe(true);
+  });
   it('normaliza roles y solo concede acceso completo a GGP o SUPER_ADMIN', () => {
     expect(getRequestRoleCodes({ roles: [{ code: 'gestion_profesoral' }, 'Docente'] }))
       .toEqual(['GESTION_PROFESORAL', 'DOCENTE']);

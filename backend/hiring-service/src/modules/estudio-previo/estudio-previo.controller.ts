@@ -22,16 +22,16 @@ import { createReadStream } from 'fs';
 import { EstudioPrevioService } from './estudio-previo.service';
 import {
   AnotarRadicadoDto,
-  CambiarCuantiaDto,
-  CambiarModalidadDto,
-  CrearProcesoDto,
+  CrearProcesoDesdePaaDto,
   EnviarEstudioPrevioDto,
   GuardarBorradorDto,
   RevisarDto,
 } from './dto/estudio-previo.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
-import { NOMBRE_EN_UTF8 } from '../archivos';
+import { MAX_BYTES_ADJUNTO, NOMBRE_EN_UTF8, MIME_DOCUMENTOS, opcionesDeCarga } from '../archivos';
+import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
+import { RetirarCdpDto } from './dto/estudio-previo.dto';
 
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
@@ -60,9 +60,12 @@ export class EstudioPrevioController {
 
   @Post()
   @Puede('editar', '3.1')
-  @ApiOperation({ summary: 'Crear proceso en etapa 3 y abrir su expediente electrónico' })
-  crearProceso(@Body() dto: CrearProcesoDto, @Req() req: any) {
-    return this.service.crearProceso(dto, getHiringAccess(req));
+  @ApiOperation({
+    summary: 'Crear proceso en etapa 3 desde una línea del PAA y abrir su expediente electrónico',
+    description: 'Objeto, modalidad y valor salen de la línea; la 3.1 nace con lo que el PAA ya dice.',
+  })
+  crearProceso(@Body() dto: CrearProcesoDesdePaaDto, @Req() req: any) {
+    return this.service.crearProcesoDesdePaa(dto, getHiringAccess(req));
   }
 
   @Get()
@@ -98,36 +101,6 @@ export class EstudioPrevioController {
     return this.service.guardarBorrador(id, dto, getHiringAccess(req));
   }
 
-  @Put(':id/estudio-previo/modalidad')
-  @Puede('editar', '3.1')
-  @ApiOperation({
-    summary: 'Cambiar la modalidad mientras se arma el estudio previo',
-    description:
-      'Cambia la lista de chequeo de la 3.1 y recalcula qué actividades recorre el proceso. Solo el área que radicó, con la 3.1 en borrador o devuelta.',
-  })
-  cambiarModalidad(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CambiarModalidadDto,
-    @Req() req: any,
-  ) {
-    return this.service.cambiarModalidad(id, dto, getHiringAccess(req));
-  }
-
-  @Put(':id/estudio-previo/cuantia')
-  @Puede('editar', '3.1')
-  @ApiOperation({
-    summary: 'Corregir el valor estimado mientras se arma el estudio previo',
-    description:
-      'Valida el valor contra los umbrales de cuantía, igual que al crear el proceso. Admite la modalidad en la misma llamada, porque un valor que obliga a licitación pública rechaza la de menor cuantía. Solo el área que radicó, con la 3.1 en borrador o devuelta.',
-  })
-  cambiarCuantia(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CambiarCuantiaDto,
-    @Req() req: any,
-  ) {
-    return this.service.cambiarCuantia(id, dto, getHiringAccess(req));
-  }
-
   @Post(':id/estudio-previo/enviar')
   @Puede('editar', '3.1')
   @ApiOperation({
@@ -144,8 +117,55 @@ export class EstudioPrevioController {
     return this.service.enviar(id, getHiringAccess(req), dto?.firma);
   }
 
+  // ------------------------------------------- el CDP desde la 3.1 (100) ---
+
+  @Get(':id/estudio-previo/cdp')
+  @Puede('ver', '3.1')
+  @ApiOperation({
+    summary: 'El CDP visto desde el estudio previo',
+    description:
+      'Si la modalidad lo lleva, si es obligatorio para enviar a revisión, el CDP cargado y si quien consulta puede gestionarlo.',
+  })
+  cdp(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.cdpDelEstudioPrevio(id, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/cdp/registro')
+  @Puede('editar', '3.1')
+  @UseInterceptors(
+    FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'Solo se admiten archivos PDF, Word o Excel')),
+  )
+  @ApiOperation({
+    summary: 'Cargar el CDP desde el estudio previo',
+    description:
+      'Número, valor, rubro, fecha y soporte del CDP que la Dirección Financiera expidió por fuera. Queda expedido; al cerrarse la etapa 3, la 4.2 se da por atendida. Si ya hay uno cargado por el área, lo corrige (el soporte es opcional al corregir).',
+  })
+  async registrarCdp(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: any,
+    @Body() dto: RegistrarCdpExistenteDto,
+    @Req() req: any,
+  ) {
+    const hash = file ? await sha256Archivo(join(STORAGE_PATH, file.filename)) : null;
+    return this.service.registrarCdp(id, dto, file ?? null, hash, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/cdp/retiro')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Retirar el CDP cargado desde el estudio previo',
+    description:
+      'Anula el CDP que cargó el área, o una solicitud hecha desde el estudio previo antes de que el CDP se tramitara por fuera. Queda en la trazabilidad.',
+  })
+  retirarCdp(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RetirarCdpDto, @Req() req: any) {
+    return this.service.retirarCdp(id, dto?.motivo, getHiringAccess(req));
+  }
+
   @Post(':id/estudio-previo/aprobar')
-  @Puede('aprobar', '3.4')
+  // En la 3.1 y no en la 3.4: la ronda que decide quién aprueba es la de la
+  // 3.1 y mira ese permiso. Con la 3.4 aquí, quien la ronda dejaba decidir
+  // —un puesto elegido por tener «aprobar la 3.1»— recibía un rechazo.
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Aprobar el estudio previo (numeral 3.4)',
     description: 'Solo aplica si está en revisión. Tras aprobarlo no admite cambios.',
@@ -159,7 +179,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/devolver')
-  @Puede('aprobar', '3.4')
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Devolver el estudio previo con observaciones (numeral 3.4)',
     description: 'Regresa a borrador para que el gestor corrija y lo reenvíe.',
@@ -173,7 +193,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/negar')
-  @Puede('aprobar', '3.4')
+  @Puede('aprobar', '3.1')
   @ApiOperation({
     summary: 'Negar el proceso (numeral 3.4)',
     description:
@@ -205,7 +225,7 @@ export class EstudioPrevioController {
         filename: (_req, file, cb) =>
           cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: MAX_BYTES_ADJUNTO },
       fileFilter: (_req, file, cb) =>
         MIME_PERMITIDOS.includes(file.mimetype)
           ? cb(null, true)
@@ -248,7 +268,7 @@ export class EstudioPrevioController {
         filename: (_req, file, cb) =>
           cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: MAX_BYTES_ADJUNTO },
       fileFilter: (_req, file, cb) =>
         MIME_PERMITIDOS.includes(file.mimetype)
           ? cb(null, true)

@@ -4,6 +4,7 @@ import {
   PTA_COMPONENT_KEYS,
   PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
   PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION,
+  PTA_MANAGE_CONFIGURATION_PERMISSION,
   type PTAComponentKey,
 } from './shared/ptaComponentPermissions';
 
@@ -14,6 +15,21 @@ const perfil: PerfilRolPTA = {
   territorial_ids: [],
   programa_ids: [],
 };
+
+describe('PermisosPTAContext - configuración exclusiva', () => {
+  it('el permiso abre únicamente Configuración, sin conceder revisión ni aprobación', () => {
+    const permisos = deriveFromGranular([PTA_MANAGE_CONFIGURATION_PERMISSION], perfil);
+    expect(permisos?.vistasPerm).toEqual(['configuracion']);
+    expect(permisos?.puedeAprobar).toBe(false);
+    expect(permisos?.puedeRevisar).toBe(false);
+    expect(permisos?.componentesAprobables).toEqual([]);
+    expect(permisos?.componentesRevisables).toEqual([]);
+  });
+
+  it.each(['pta.backoffice.ver_gestion', 'pta.approve.all', 'pta.review.all', 'pta.requests.edit.manage', 'pta.backoffice.seguimiento'])('%s no concede Configuración', permiso => {
+    expect(deriveFromGranular([permiso], perfil)?.vistasPerm).not.toContain('configuracion');
+  });
+});
 
 describe('PermisosPTAContext - solicitudes de edición', () => {
   it('muestra Solicitudes PTA cuando el rol tiene el permiso funcional', () => {

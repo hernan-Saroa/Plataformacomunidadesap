@@ -19,12 +19,14 @@ import { RundPtaConsultaService } from './rund-pta-consulta.service';
 import { RundExtraccionService } from './rund-extraccion.service';
 import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
+import { RundNucleosController } from './rund-nucleos.controller';
+import { RundNucleosService } from './rund-nucleos.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [BancoDocentesController, RundPtaConsultaController, RundExtraccionController],
+  controllers: [RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController],
   providers: [
     BancoDocentesService,
     DocumentTypeValidatorService,
@@ -35,7 +37,8 @@ import { RundExtraccionNotificationsService } from './rund-extraccion-notificati
     RundPtaJwtGuard,
     RundExtraccionService,
     RundExtraccionNotificationsService,
+    RundNucleosService,
   ],
-  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService],
+  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundNucleosService],
 })
 export class BancoDocentesModule {}

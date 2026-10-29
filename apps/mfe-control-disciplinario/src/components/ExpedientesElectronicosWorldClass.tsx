@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { ModalCompartirExpediente } from './ModalCompartirExpediente';
+import { ModalCompartirFuid } from './ModalCompartirFuid';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { apiClient } from '../../../services/api/apiClient';
@@ -468,6 +469,7 @@ export function ExpedientesElectronicosWorldClass({
   // ✅ NUEVO: Estado para modal de compartir expediente
   const [showModalCompartir, setShowModalCompartir] = useState(false);
   const [expedienteParaCompartir, setExpedienteParaCompartir] = useState<ExpedienteElectronico | null>(null);
+  const [fuidParaCompartir, setFuidParaCompartir] = useState<{ items: any[]; header: any; filename: string } | null>(null);
 
   // ✅ NUEVO: Expediente destino al subir un documento adicional desde la vista cronológica
   const [expedienteParaSubir, setExpedienteParaSubir] = useState<ExpedienteElectronico | null>(null);
@@ -541,6 +543,15 @@ export function ExpedientesElectronicosWorldClass({
            tipoProceso: proceso.news?.conductas?.[0] || proceso.news?.conducta || 'Proceso Disciplinario',
            responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
            fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+           codigoDependencia: proceso.codigoDependencia,
+           nombreDependencia: proceso.nombreDependencia,
+           codigoSerie: proceso.codigoSerie,
+           nombreSerie: proceso.nombreSerie,
+           codigoSubserie: proceso.codigoSubserie,
+           nombreSubserie: proceso.nombreSubserie,
+           trdVersion: proceso.trdVersion,
+           codigoIdentificacionExpediente: proceso.codigoIdentificacionExpediente,
+           fechaHechos: proceso.news?.fechaHechos || proceso.fechaHechos,
            totalDocumentos: 0, // Se actualizará al cargar documentos
            documentosPorTipo: {}
          };
@@ -1031,18 +1042,41 @@ export function ExpedientesElectronicosWorldClass({
     }
 
     const estadoLabel = getEstadoConfig(exp.estado).label;
+    // Solo los procesos cerrados (finalizados/archivados) tienen fecha final y descriptor;
+    // si el proceso sigue activo, esas casillas del FUID deben ir vacías.
+    const cerrado = exp.estado === 'finalizado';
+
+    const codSerie = String((exp as any).codigoSerie || (exp as any).codigoCCDU || (exp as any).codigoSerieTVD || '250').trim();
+    const nomSerie = String((exp as any).nombreSerie || (exp as any).serie || 'PROCESOS JURÍDICOS').trim();
+    const codSubserie = String((exp as any).codigoSubserie || (codSerie === '1330' ? '60' : codSerie === '68' ? '22' : codSerie === '75' ? '01' : '05')).trim();
+    const nomSubserie = String((exp as any).nombreSubserie || (exp as any).subserie || 'PROCESOS DISCIPLINARIOS').trim();
+
+    const serieConNumero = !new RegExp(`^${codSerie.replace('.', '\\.')}\\s*[-–]`, 'i').test(nomSerie)
+      ? `${codSerie} – ${nomSerie}`
+      : nomSerie;
+
+    const subserieConNumero = nomSubserie.toUpperCase() === 'N/A'
+      ? 'N/A'
+      : (!new RegExp(`^${codSubserie.replace('.', '\\.')}\\s*[-–]`, 'i').test(nomSubserie)
+          ? `${codSubserie} – ${nomSubserie}`
+          : nomSubserie);
 
     return {
       radicado: exp.radicado,
       nombreDisciplinado: exp.nombreDisciplinado,
       asunto: exp.tipoProceso,
-      descriptorIdentificacion: `NED: ${exp.nombreDisciplinado}`,
+      descriptorIdentificacion: cerrado ? `NED: ${exp.nombreDisciplinado}` : '',
       fechaExtremaInicial: fechaInicial,
-      fechaExtremaFinal: fechaFinal,
-      codigoCCDU: '780',
-      codigoSerieTVD: '780',
-      serie: 'PROCESOS JURÍDICOS',
-      subserie: 'PROCESOS DISCIPLINARIOS',
+      fechaExtremaFinal: cerrado ? fechaFinal : '',
+      cerrado,
+      codigoCCDU: codSerie,
+      codigoSerieTVD: codSerie,
+      codigoSerie: codSerie,
+      nombreSerie: nomSerie,
+      serie: serieConNumero,
+      codigoSubserie: codSubserie,
+      nombreSubserie: nomSubserie,
+      subserie: subserieConNumero,
       cantidadDocumentos: docs.length,
       tamanoDocumentos: tamanoStr,
       notas: estadoLabel,
@@ -1111,45 +1145,40 @@ export function ExpedientesElectronicosWorldClass({
     }
   };
 
-  // ✅ Compartir FUID individual
-  const handleCompartirFuidIndividual = (exp: ExpedienteElectronico) => {
-    setExpedienteParaCompartir(exp);
-    setShowModalCompartir(true);
+  const construirFuidHeader = () => {
+    const currentUser = authService.getCurrentUser();
+    return {
+      elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
+      cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
+    };
   };
 
-  // ✅ Compartir seleccionados
-  const handleCompartirSeleccionados = async () => {
+  const fechaPrefijoFuid = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`;
+  };
+
+  // ✅ Compartir FUID individual (envía el archivo FUID, no el Índice Electrónico)
+  const handleCompartirFuidIndividual = (exp: ExpedienteElectronico) => {
+    setFuidParaCompartir({
+      items: [construirFuidItem(exp)],
+      header: construirFuidHeader(),
+      filename: `${fechaPrefijoFuid()}_FUID_${exp.radicado}.xlsx`,
+    });
+  };
+
+  // ✅ Compartir FUID de los expedientes seleccionados
+  const handleCompartirSeleccionados = () => {
     const seleccionados = documentosPorExpediente.filter(g => expedientesSeleccionados.has(g.expedienteId));
     if (seleccionados.length === 0) {
       toast.warning('Seleccione al menos un expediente');
       return;
     }
-    try {
-      toast.info(`Generando archivo FUID de ${seleccionados.length} expediente(s)...`, { id: 'fuid-share' });
-      const items = seleccionados.map(g => construirFuidItem(g.expediente));
-      const currentUser = authService.getCurrentUser();
-      const hoy = new Date();
-      const yyyy = hoy.getFullYear();
-      const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-      const dd = String(hoy.getDate()).padStart(2, '0');
-      const filename = `${yyyy}${mm}${dd}_FUID.xlsx`;
-
-      await disciplinaryService.descargarFuidLote(
-        items,
-        {
-          elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
-          cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
-        },
-        filename,
-      );
-      toast.success(`FUID generado para compartir (${seleccionados.length} expedientes)`, {
-        id: 'fuid-share',
-        description: `El archivo ${filename} está listo para ser remitido a Gestión Documental.`,
-      });
-    } catch (error: any) {
-      console.error('Error al compartir seleccionados:', error);
-      toast.error('Error al compartir FUID seleccionados', { id: 'fuid-share', description: error.message });
-    }
+    setFuidParaCompartir({
+      items: seleccionados.map(g => construirFuidItem(g.expediente)),
+      header: construirFuidHeader(),
+      filename: `${fechaPrefijoFuid()}_FUID.xlsx`,
+    });
   };
 
   const handleSubirDocumento = (tipoId: string) => {
@@ -1573,6 +1602,8 @@ export function ExpedientesElectronicosWorldClass({
           radicado: expediente.radicado,
           numeroExpediente: expediente.radicado,
           codigoIdentificacionExpediente: (expediente as any).codigoIdentificacionExpediente,
+          codigoDependencia: (expediente as any).codigoDependencia,
+          nombreDependencia: (expediente as any).nombreDependencia,
           codigoSerie: (expediente as any).codigoSerie,
           nombreSerie: (expediente as any).nombreSerie,
           serie: (expediente as any).serie,
@@ -1580,6 +1611,9 @@ export function ExpedientesElectronicosWorldClass({
           nombreSubserie: (expediente as any).nombreSubserie,
           subserie: (expediente as any).subserie,
           tieneSubserie: (expediente as any).tieneSubserie,
+          trdVersion: (expediente as any).trdVersion,
+          fechaHechos: (expediente as any).fechaHechos,
+          fechaRadicacion: (expediente as any).fechaInicio,
           asunto: expediente.tipoProceso,
           responsable: expediente.responsable,
         },
@@ -2739,6 +2773,16 @@ export function ExpedientesElectronicosWorldClass({
             setShowModalCompartir(false);
             setExpedienteParaCompartir(null);
           }}
+        />
+      )}
+
+      {/* ✅ MODAL: COMPARTIR FUID (EI-FO-003) */}
+      {fuidParaCompartir && (
+        <ModalCompartirFuid
+          items={fuidParaCompartir.items}
+          header={fuidParaCompartir.header}
+          filename={fuidParaCompartir.filename}
+          onClose={() => setFuidParaCompartir(null)}
         />
       )}
     </div>

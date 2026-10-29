@@ -7890,6 +7890,8 @@ function SeccionGestionYSeguimiento({
   // responsable propio, de los del rol y la actividad. Los demás la ven. Misma regla del backend (EFDS-2322)
   const puedeIntervenirTarea = (rol: any, actividad: any, tarea: any): boolean => {
     if (esSuperUsuario) return true;
+    // Con el permiso de seguimiento de todas las tareas (el Jefe OCI) se gestionan también las de otros (EFDS-2376)
+    if (puedeSeguirTodasLasTareas) return true;
     const actor = actorDeSesion(currentUser);
     if (!actor) return false;
     return actorEsResponsable(responsablesQueMandan(tarea, rol, actividad), actor);
@@ -8463,9 +8465,10 @@ function SeccionGestionYSeguimiento({
   // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // PERMISOS: Sistema flexible basado en permisos para Control Interno
   // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-  const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
+  const { puedeRealizar, esSuperUsuario, tienePermiso } = useControlInternoPermissions();
   const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
+  const puedeSeguirTodasLasTareas = tienePermiso('control-interno.plan-anual.follow-up.all');
   const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
   const puedeAsignarActividades = puedeRealizar('plan-anual', 'assign');
   const puedeVerPlan = puedeRealizar('plan-anual', 'view') || esSuperUsuario;
@@ -12763,7 +12766,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   );
 
   // Observación, subsanación y firma OTP: los usan la vista completa y la del aprobador (EFDS-2320)
-  const modalesAprobacion = (
+  // Al body con un portal: dentro del contenido del shell quedaban recortados y sin cubrir toda la pantalla
+  const modalesAprobacion = createPortal(
     <>
         {/* Modal / Dialogo de Observación (Render Flotante Top-Level Z-Index) */}
         <AnimatePresence>
@@ -12903,7 +12907,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           userEmail={modalOTPConfig.userEmail}
           accionDetalle={modalOTPConfig.detalle}
         />
-    </>
+    </>,
+    document.body,
   );
 
   if (modo === 'aprobador') {

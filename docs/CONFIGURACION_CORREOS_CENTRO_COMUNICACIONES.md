@@ -21,6 +21,15 @@ directo a legal-management, por eso siempre llegó bien.
 - `docker-compose.{dev,pre,qa,prod}.yml` → legal-management ahora recibe `NOTIFICATIONS_EMAIL_ACCOUNT`
   y `LEGAL_SYNC_EXCLUDED_SENDERS`.
 
+- **Notificaciones redirigidas (`EMAIL_REDIRECT_TO`)**: en dev/QA/pre notifications-service redirige todo
+  correo a `desarrollo.ccd@esap.edu.co`, la misma cuenta del buzón judicial y compartida entre ambientes.
+  Esos correos (asunto `[Redirigido — Ambiente X de: ...]`) llegan a la bandeja de entrada con el buzón
+  como remitente, así que el filtro por remitente no los detectaba y cada ambiente ingería los de los otros.
+  `esRemitenteExcluido` ahora los descarta por ese marcador, y `getAll` oculta los ya importados.
+- `docker-compose.{dev,qa,pre,prod}.yml` → internal-disciplinary-control-service recibe
+  `LEGAL_MANAGEMENT_SERVICE_URL`. Sin ella el traslado directo ("Enviar a Jurídica") apuntaba a
+  `localhost:3008`, fallaba en silencio y el pliego de cargos no llegaba al Centro (caso QA).
+
 Con esto funciona aunque notificaciones y buzón judicial sean la misma cuenta. Separarlas es lo ideal.
 
 ## Configuración correcta (paso a paso)

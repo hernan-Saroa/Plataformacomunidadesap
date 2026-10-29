@@ -7,8 +7,10 @@ import {
   Param,
   Body,
   UseGuards,
+  Req,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,6 +21,18 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
 import { efectoDeActivar } from './periodo-activacion';
+import { fechaCivil, fechaCivilGuardada } from './fecha-periodo';
+import { PtaPermissionsService } from './auth/pta-permissions.service';
+
+/** Permiso propio de activar un periodo extraordinario (migración 672, EFDS-2346). */
+export const PERMISO_ACTIVAR_EXTRAORDINARIO = 'pta.periodos.activar_extraordinario';
+
+/** Código de un periodo personalizado: año, guion y 1 a 5 letras o dígitos (p. ej. 2027-INT). */
+const CODIGO_PERSONALIZADO = /^\d{4}-[A-Z0-9]{1,5}$/;
+
+/** El periodo ACTIVO de la plataforma es el principal: en curso y no extraordinario (EFDS-2346). */
+export const esPrincipalEnCurso = (p: { estado: string; extraordinario?: boolean }) =>
+  p.estado === 'en_curso' && !p.extraordinario;
 
 @UseGuards(RolesGuard)
 @Controller(['periodos-academicos', 'pta/periodos-academicos'])
@@ -27,70 +41,120 @@ export class PeriodoAcademicoController {
     @InjectRepository(PeriodoAcademicoEntity)
     private readonly repo: Repository<PeriodoAcademicoEntity>,
     private readonly ptaService: PtaService,
+    private readonly permisos: PtaPermissionsService,
   ) {}
 
   @Public()
   @Get()
   async list() {
-    let periods = await this.repo.find({
+    // Una consulta no escribe: sin periodos devuelve la lista vacía y la pantalla muestra su estado vacío.
+    // (Antes sembraba un «2025-2» en curso si no había ninguno.)
+    const periods = await this.repo.find({
       order: { createdAt: 'DESC', anio: 'DESC', semestre: 'DESC' },
     });
 
-    if (periods.length === 0) {
-      const defaultPeriod = this.repo.create({
-        codigo: '2025-2',
-        anio: 2025,
-        semestre: 2,
-        fechaInicio: new Date('2025-08-01'),
-        fechaFin: new Date('2025-12-15'),
-        estado: 'en_curso',
-      });
-      try {
-        await this.repo.save(defaultPeriod);
-        periods = [defaultPeriod];
-      } catch (e) {
-        console.warn('Error seeding default period:', e);
-      }
+    // EFDS-2346: con un extraordinario en curso, el principal va antes que él. Así
+    // quien busca «el activo» con el primer en curso de la lista recibe el principal.
+    const principal = periods.findIndex(esPrincipalEnCurso);
+    const extra = periods.findIndex((p) => p.estado === 'en_curso' && p.extraordinario);
+    if (principal > -1 && extra > -1 && extra < principal) {
+      const [p] = periods.splice(principal, 1);
+      periods.splice(extra, 0, p);
     }
     return periods;
+  }
+
+  /**
+   * POST /periodos-academicos/:id/activar-extraordinario { motivo } — EFDS-2346.
+   *
+   * Pone el periodo en curso COMO EXTRAORDINARIO, a la vez que el principal. Es una
+   * excepción: permiso propio, motivo obligatorio, cualquier tipo de periodo, uno a
+   * la vez. No cierra el principal, no mueve otros periodos y no termina ningún PTA.
+   */
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
+  @Post(':id/activar-extraordinario')
+  async activarExtraordinario(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const idUser = String(req?.user?.userId ?? req?.user?.sub ?? '');
+    const ctx = await this.permisos.resolveForUser(idUser);
+    if (!ctx.isSuperUser && !ctx.permissions.has(PERMISO_ACTIVAR_EXTRAORDINARIO)) {
+      throw new ForbiddenException('Activar un periodo extraordinario requiere el permiso «Periodos — Activar periodo extraordinario».');
+    }
+    const motivo = String(body?.motivo ?? '').trim();
+    if (motivo.length < 10) throw new BadRequestException('Explique el motivo del periodo extraordinario (mínimo 10 caracteres).');
+    const period = await this.repo.findOne({ where: { id } });
+    if (!period) throw new NotFoundException('Periodo académico no encontrado.');
+    if (period.estado === 'en_curso') {
+      throw new ConflictException(`El periodo ${period.codigo} ya está en curso${period.extraordinario ? ' como extraordinario' : ''}.`);
+    }
+    if (period.estado === 'cerrado') {
+      throw new ConflictException(`El periodo ${period.codigo} está cerrado: no se activa como extraordinario.`);
+    }
+    const otro = await this.repo.findOne({ where: { estado: 'en_curso', extraordinario: true } });
+    if (otro) {
+      throw new ConflictException(`Ya hay un periodo extraordinario en curso (${otro.codigo}): ciérrelo antes de activar otro.`);
+    }
+    period.estado = 'en_curso';
+    period.extraordinario = true;
+    period.motivoExtraordinario = motivo;
+    period.extraordinarioPor = idUser || null;
+    period.extraordinarioEn = new Date();
+    try {
+      return await this.repo.save(period);
+    } catch (error) {
+      this.rethrowDatabaseError(error, period.codigo);
+    }
   }
 
   @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
   @Post()
   async create(@Body() body: any) {
     const { anio, semestre, fechaInicio, fechaFin } = body;
+    // EFDS-2346: un periodo personalizado (p. ej. interperiodo) es un periodo más, con
+    // las mismas reglas; lo distinguen su código y su nombre, no un semestre.
+    const personalizado = String(body?.tipo ?? 'semestral') === 'personalizado';
+    if (!personalizado && body?.tipo != null && body.tipo !== 'semestral') {
+      throw new BadRequestException("El tipo de periodo debe ser 'semestral' o 'personalizado'.");
+    }
 
     const parsedAnio = parseInt(anio, 10);
-    const parsedSemestre = parseInt(semestre, 10);
+    const parsedSemestre = personalizado ? null : parseInt(semestre, 10);
 
     if (isNaN(parsedAnio) || parsedAnio < 2020 || parsedAnio > 2050) {
       throw new BadRequestException('El año debe ser un número entero entre 2020 y 2050.');
     }
 
-    if (parsedSemestre !== 1 && parsedSemestre !== 2) {
+    if (!personalizado && parsedSemestre !== 1 && parsedSemestre !== 2) {
       throw new BadRequestException('El semestre debe ser 1 o 2.');
+    }
+    const nombre = String(body?.nombre ?? '').trim();
+    const codigoPersonalizado = String(body?.codigo ?? '').trim().toUpperCase();
+    if (personalizado) {
+      if (!nombre) throw new BadRequestException('Un periodo personalizado necesita un nombre (p. ej. «Interperiodo 2027»).');
+      if (!CODIGO_PERSONALIZADO.test(codigoPersonalizado) || !codigoPersonalizado.startsWith(`${parsedAnio}-`)) {
+        throw new BadRequestException(`El código debe ser el año, un guion y hasta 5 letras o dígitos (p. ej. ${parsedAnio}-INT).`);
+      }
+      if (/^\d{4}-[12]$/.test(codigoPersonalizado)) {
+        throw new BadRequestException('Ese código es de un periodo semestral.');
+      }
     }
 
     if (!fechaInicio || !fechaFin) {
       throw new BadRequestException('Se requieren las fechas de inicio y fin.');
     }
 
-    const start = new Date(fechaInicio);
-    const end = new Date(fechaFin);
-
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      throw new BadRequestException('Las fechas de inicio y fin deben ser fechas válidas.');
-    }
+    // Fechas civiles (sin hora ni zona): ver fecha-periodo.ts.
+    const start = fechaCivil(fechaInicio, 'Las fechas de inicio y fin deben ser fechas válidas.');
+    const end = fechaCivil(fechaFin, 'Las fechas de inicio y fin deben ser fechas válidas.');
 
     if (end <= start) {
       throw new BadRequestException('La fecha de fin debe ser posterior a la fecha de inicio.');
     }
 
-    const codigo = `${parsedAnio}-${parsedSemestre}`;
+    const codigo = personalizado ? codigoPersonalizado : `${parsedAnio}-${parsedSemestre}`;
 
     // Validar si ya existe el código o la combinación de año y semestre
     const existing = await this.repo.findOne({
-      where: [{ codigo }, { anio: parsedAnio, semestre: parsedSemestre }],
+      where: personalizado ? [{ codigo }] : [{ codigo }, { anio: parsedAnio, semestre: parsedSemestre! }],
     });
 
     if (existing) {
@@ -103,6 +167,8 @@ export class PeriodoAcademicoController {
       codigo,
       anio: parsedAnio,
       semestre: parsedSemestre,
+      tipo: personalizado ? 'personalizado' : 'semestral',
+      nombre: personalizado ? nombre : null,
       fechaInicio: start,
       fechaFin: end,
       estado: 'planeacion',
@@ -127,6 +193,16 @@ export class PeriodoAcademicoController {
     }
 
     const { anio, semestre, fechaInicio, fechaFin, estado } = body;
+    // EFDS-2346: el personalizado no tiene semestre; su identidad (código) no se edita.
+    const personalizado = period.tipo === 'personalizado';
+    if (personalizado && (anio !== undefined || semestre !== undefined)) {
+      throw new BadRequestException('El año y el código de un periodo personalizado no se modifican.');
+    }
+    if (personalizado && body?.nombre !== undefined) {
+      const nombre = String(body.nombre ?? '').trim();
+      if (!nombre) throw new BadRequestException('El nombre del periodo personalizado no puede quedar vacío.');
+      period.nombre = nombre;
+    }
     const parsedAnio = anio !== undefined ? parseInt(anio, 10) : period.anio;
     const parsedSemestre = semestre !== undefined
       ? parseInt(semestre, 10)
@@ -137,7 +213,7 @@ export class PeriodoAcademicoController {
     if (isNaN(parsedAnio) || parsedAnio < 2020 || parsedAnio > 2050) {
       throw new BadRequestException('El año debe ser un número entero entre 2020 y 2050.');
     }
-    if (parsedSemestre !== 1 && parsedSemestre !== 2) {
+    if (!personalizado && parsedSemestre !== 1 && parsedSemestre !== 2) {
       throw new BadRequestException('El semestre debe ser 1 o 2.');
     }
 
@@ -177,29 +253,21 @@ export class PeriodoAcademicoController {
     }
 
     if (fechaInicio) {
-      const start = new Date(fechaInicio);
-      if (isNaN(start.getTime())) {
-        throw new BadRequestException('Fecha de inicio no válida.');
-      }
-      period.fechaInicio = start;
+      period.fechaInicio = fechaCivil(fechaInicio, 'Fecha de inicio no válida.');
     }
 
     if (fechaFin) {
-      const end = new Date(fechaFin);
-      if (isNaN(end.getTime())) {
-        throw new BadRequestException('Fecha de fin no válida.');
-      }
-      period.fechaFin = end;
+      period.fechaFin = fechaCivil(fechaFin, 'Fecha de fin no válida.');
     }
 
-    if (new Date(period.fechaFin) <= new Date(period.fechaInicio)) {
+    if (fechaCivilGuardada(period.fechaFin) <= fechaCivilGuardada(period.fechaInicio)) {
       throw new BadRequestException('La fecha de fin debe ser posterior a la fecha de inicio.');
     }
 
     if (fechaInicio || fechaFin) {
       await this.validateNoDateOverlap(
-        new Date(period.fechaInicio),
-        new Date(period.fechaFin),
+        fechaCivilGuardada(period.fechaInicio),
+        fechaCivilGuardada(period.fechaFin),
         period.id,
       );
     }
@@ -210,8 +278,10 @@ export class PeriodoAcademicoController {
         throw new BadRequestException(`El estado debe ser uno de: ${validStates.join(', ')}`);
       }
 
-      if (estado !== 'en_curso' && period.estado === 'en_curso') {
-        const activeCount = await this.repo.count({ where: { estado: 'en_curso' } });
+      // EFDS-2346: la regla de «exactamente un activo» es del PRINCIPAL. El
+      // extraordinario se cierra por aquí sin exigir otro activo.
+      if (estado !== 'en_curso' && esPrincipalEnCurso(period)) {
+        const activeCount = await this.repo.count({ where: { estado: 'en_curso', extraordinario: false } });
         if (activeCount <= 1) {
           throw new BadRequestException(
             'Debe haber exactamente un periodo activo ("En Curso") en el sistema. ' +
@@ -219,14 +289,20 @@ export class PeriodoAcademicoController {
           );
         }
       }
+      if (estado === 'en_curso' && period.estado === 'en_curso' && period.extraordinario) {
+        throw new ConflictException(
+          `El periodo ${period.codigo} está en curso como extraordinario: ciérrelo antes de activarlo como periodo principal.`);
+      }
 
       period.estado = estado;
 
       if (estado === 'en_curso') {
+        period.extraordinario = false;
         const allOtherPeriods = await this.repo.find();
         for (const p of allOtherPeriods) {
           if (p.id !== period.id) {
-            // Misma regla que la vista previa de impacto (periodo-activacion.ts).
+            // Misma regla que la vista previa de impacto (periodo-activacion.ts):
+            // el extraordinario en curso no se toca.
             const efecto = efectoDeActivar(period, p);
             if (efecto) p.estado = efecto;
             await this.repo.save(p);
@@ -401,7 +477,8 @@ export class PeriodoAcademicoController {
     // Además, si el período consultado es el ACTIVO (en_curso), se incluyen los
     // programas heredados/sin período propio y sin ofertas, que viven en el
     // período activo (mismo criterio que el listado de programas).
-    const periodoActivo = period.estado === 'en_curso';
+    // EFDS-2346: el ACTIVO es el principal; el extraordinario no hereda los programas sin periodo.
+    const periodoActivo = esPrincipalEnCurso(period);
     const programsPropiosQuery = `
       SELECT
         p.id,
@@ -483,14 +560,11 @@ export class PeriodoAcademicoController {
   }
 
   private async validateNoDateOverlap(
-    start: Date,
-    end: Date,
+    start: string,
+    end: string,
     excludeId?: string,
   ): Promise<void> {
-    const parameters: any[] = [
-      start.toISOString().slice(0, 10),
-      end.toISOString().slice(0, 10),
-    ];
+    const parameters: any[] = [start, end];
     let exclusion = '';
     if (excludeId) {
       parameters.push(excludeId);

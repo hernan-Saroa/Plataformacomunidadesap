@@ -16,6 +16,7 @@ import { CdpService } from '../src/modules/cdp/cdp.service';
 import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion, deObraPublica } from './apoyo-etapas';
 
 /**
  * HU EFDS-1159 · Adjudicar el proceso (actividades 7.1 a 7.4).
@@ -31,7 +32,7 @@ import { HiringAccess } from '../src/auth/hiring-access';
  * se quede esperando una audiencia que nunca va a existir es justamente lo que
  * hay que comprobar.
  */
-describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
+describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
   let app: INestApplication;
   let audiencia: AudienciaService;
   let definitivo: InformeDefinitivoService;
@@ -72,8 +73,10 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  // Sobre la fecha de Bogotá, como los servicios: en UTC, de las 7 p. m. en
+  // adelante «ayer» caía en hoy y los términos no se vencían.
   const enDias = (d: number) => {
-    const f = new Date();
+    const f = new Date(`${hoy()}T12:00:00Z`);
     f.setUTCDate(f.getUTCDate() + d);
     return f.toISOString().slice(0, 10);
   };
@@ -102,28 +105,13 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: 'CDP-2026-159', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-159', valor: 60_000_000, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
-    // La licitación pública no se abre sin la audiencia de asignación de
-    // riesgos (5.5); la menor cuantía no la exige. Es la misma cadena de la
-    // etapa 5, y aquí solo hay que satisfacerla para llegar a la 7.
-    if (modalidad === 'LICITACION_PUBLICA') {
-      await riesgos.registrar(
-        proceso.id,
-        { fechaCelebracion: hoy() },
-        archivo('acta-riesgos.pdf'),
-        'g'.repeat(64),
-        archivo('matriz-riesgos.xlsx'),
-        'h'.repeat(64),
-        gestor,
-      );
-    }
-
+    await aprobarSegundaSesion(dataSource, proceso.id);
     await apertura.registrar(
       proceso.id,
       { resolucionNumero: 'RES-2026-159', resolucionFecha: hoy() },
@@ -135,6 +123,21 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       'e'.repeat(64),
       gestor,
     );
+
+    // En licitación pública la audiencia de asignación de riesgos (5.12) va
+    // después de la apertura y se exige para cerrar las ofertas (112); la
+    // menor cuantía no la exige. Aquí solo hay que satisfacerla para seguir.
+    if (modalidad === 'LICITACION_PUBLICA') {
+      await riesgos.registrar(
+        proceso.id,
+        { fechaCelebracion: hoy() },
+        archivo('acta-riesgos.pdf'),
+        'g'.repeat(64),
+        archivo('matriz-riesgos.xlsx'),
+        'h'.repeat(64),
+        gestor,
+      );
+    }
 
     await ofertas.fijarPlazo(proceso.id, { vencimiento: haceHoras(3) }, gestor);
     const registrar = (id: string, nombre: string, valor: number) =>
@@ -165,17 +168,11 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       ordenador,
     );
 
-    // Gana la segunda: así se nota si el definitivo toma otro resultado.
+    // El informe preliminar no nombra ganadora: se decide en la 7.2 (EFDS-1157).
     await evaluacion.registrar(
       proceso.id,
-      {
-        oferenteId: estado.oferentes[1].id,
-        puntajeObtenido: 92.5,
-        puntajeMaximo: 100,
-        justificacion: JUSTIFICACION,
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      { observacion: JUSTIFICACION },
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
 
@@ -210,6 +207,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
   const listoParaAdjudicar = async (modalidad = 'LICITACION_PUBLICA') => {
     const datos = await hastaTrasladoCerrado(modalidad);
     await vencerYCerrar(datos.proceso.id);
+    // La licitación de estas pruebas es de obra: es la que abre sobre (114).
+    if (modalidad === 'LICITACION_PUBLICA') await deObraPublica(dataSource, datos.proceso.id);
     return datos;
   };
 
@@ -226,13 +225,28 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       gestor,
     );
 
-  const generarDefinitivo = (procesoId: string) =>
-    definitivo.generar(procesoId, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
+  /** Las ofertas del proceso, en el orden en que se recibieron. */
+  const ofertasDe = async (procesoId: string): Promise<{ id: string }[]> =>
+    dataSource.query(
+      `SELECT o.id FROM hiring.oferentes o
+         JOIN hiring.recepciones_ofertas r ON r.id = o.recepcion_id
+        WHERE r.proceso_id = $1 ORDER BY o.numero`,
+      [procesoId],
+    );
+
+  /**
+   * El definitivo nombra la ganadora (EFDS-1157). Gana la segunda oferta, Cara
+   * SAS, salvo que la prueba diga otra.
+   */
+  const generarDefinitivo = async (procesoId: string, ganadoraId?: string) =>
+    definitivo.generar(procesoId, archivo('definitivo.pdf'), 'd'.repeat(64), gestor, undefined, {
+      oferenteId: ganadoraId ?? (await ofertasDe(procesoId))[1].id,
+    });
 
   const publicarDefinitivo = (procesoId: string) =>
     definitivo.publicar(
       procesoId,
-      { medioPublicacion: MEDIO },
+      { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
       archivo('evidencia-definitivo.png', 'image/png'),
       'w'.repeat(64),
       gestor,
@@ -467,7 +481,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
           null,
           gestor,
         ),
-      ).rejects.toThrow(/no adelanta la actividad 7\.2/i);
+      ).rejects.toThrow(/no adelanta la actividad 7\.1\.1/i);
     });
   });
 
@@ -502,13 +516,10 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
         {
           oferenteId: oferentes[0].id,
           tipo: 'SUBSANACION',
-          presentadoPor: 'Barata SAS',
           fechaPresentacion: hoy(),
           asunto: 'Aporta certificación de experiencia',
-          contenido: 'Se adjunta la certificación que no se cargó con la oferta.',
         },
-        archivo('escrito.pdf'),
-        's'.repeat(64),
+        [{ archivo: archivo('escrito.pdf'), hash: 's'.repeat(64) }],
         gestor,
       );
       await escritos.responder(
@@ -521,34 +532,57 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       );
       await vencerYCerrar(proceso.id);
 
-      // El comité rectifica y ahora gana la otra.
-      await evaluacion.rectificar(
+      // El comité vuelve a cargar el informe con lo aportado.
+      await evaluacion.actualizar(
         proceso.id,
         { motivo: 'Se aceptó la certificación aportada en el traslado' },
-        juridica.acceso,
-      );
-      await evaluacion.registrar(
-        proceso.id,
-        { oferenteId: oferentes[0].id, justificacion: JUSTIFICACION },
-        archivo('informe-comite-2.pdf'),
-        'j'.repeat(64),
+        [{ archivo: archivo('informe-comite-2.pdf'), hash: 'j'.repeat(64) }],
         juridica.acceso,
       );
 
-      const estado = await generarDefinitivo(proceso.id);
+      const estado = await generarDefinitivo(proceso.id, oferentes[0].id);
 
-      expect(estado.informe!.resultado.ganadora.nombre).toBe('Barata SAS');
-      // Y deja escrito por qué el desenlace no es el que se notificó.
+      expect(estado.informe!.resultado.ganadora!.nombre).toBe('Barata SAS');
+      // Y deja escrito qué movió el desenlace respecto de lo notificado.
       expect(estado.informe!.cambios.huboRectificacion).toBe(true);
-      expect(estado.informe!.cambios.cambioLaGanadora).toBe(true);
+      // El preliminar no nombró ganadora: no hay una que haya cambiado.
+      expect(estado.informe!.cambios.cambioLaGanadora).toBe(false);
       expect(estado.informe!.cambios.motivoRectificacion).toMatch(/certificación/i);
       expect(estado.informe!.cambios.subsanacionesAceptadas).toHaveLength(1);
       expect(estado.informe!.cambios.subsanacionesAceptadas[0].oferente).toBe('Barata SAS');
       expect(estado.informe!.cambios.escritosPresentados).toBe(1);
 
-      // El informe preliminar sigue diciendo lo que se notificó.
+      // El informe preliminar sigue diciendo lo que se notificó, sin ganadora.
       const preliminar = await traslado.estado(proceso.id, gestor);
-      expect(preliminar.informe!.resultado.ganadora.nombre).toBe('Cara SAS');
+      expect(preliminar.informe!.resultado.ganadora).toBeNull();
+    });
+
+    it('el definitivo es donde se nombra la ganadora (QA, EFDS-1157)', async () => {
+      const { proceso, oferentes } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
+
+      await expect(
+        definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor),
+      ).rejects.toThrow(/cuál oferta gana/i);
+
+      const estado = await definitivo.generar(
+        proceso.id,
+        archivo('definitivo.pdf'),
+        'd'.repeat(64),
+        gestor,
+        undefined,
+        { oferenteId: oferentes[0].id, valorEvaluado: 39_500_000 },
+      );
+      expect(estado.informe!.resultado.ganadora!.nombre).toBe('Barata SAS');
+      expect(estado.informe!.resultado.valorEvaluado).toBe(39_500_000);
+      expect(estado.informe!.resultado.ofertas.find((o) => o.ganadora)!.oferenteId).toBe(
+        oferentes[0].id,
+      );
+
+      // Y el acto propone la que el definitivo nombró.
+      await publicarDefinitivo(proceso.id);
+      const elActo = await acto.estado(proceso.id);
+      expect(elActo.ganadoraPropuesta!.oferenteId).toBe(oferentes[0].id);
+      expect(elActo.ganadoraPropuesta!.valorEvaluado).toBe(39_500_000);
     });
 
     it('sin cambios, el definitivo lo dice también', async () => {
@@ -561,7 +595,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       expect(estado.informe!.cambios.escritosPresentados).toBe(0);
     });
 
-    it('publicar deja la actividad 7.3 cumplida', async () => {
+    it('publicar deja la actividad 7.2 cumplida', async () => {
       const { proceso } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
       await generarDefinitivo(proceso.id);
 
@@ -569,10 +603,67 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
 
       expect(estado.informe!.estado).toBe('PUBLICADO');
       const actividad = await dataSource.query(
-        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.3'`,
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.2'`,
         [proceso.id],
       );
       expect(actividad[0].estado).toBe('APROBADO');
+    });
+  });
+
+  // ------------------------------------- versiones del definitivo (QA) --
+
+  describe('El informe definitivo se actualiza con historial (EFDS-1159)', () => {
+    it('guarda el enlace de SECOP y la primera versión sin motivo', async () => {
+      const { proceso } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
+      await generarDefinitivo(proceso.id);
+
+      const estado = await publicarDefinitivo(proceso.id);
+
+      expect(estado.informe!.enlacePublicacion).toMatch(/^https:\/\/community\.secop\.gov\.co/);
+      expect(estado.informe!.versiones).toHaveLength(1);
+      expect(estado.informe!.versiones[0].motivo).toBeNull();
+      expect(estado.informe!.versiones[0].enlacePublicacion).toBe(estado.informe!.enlacePublicacion);
+    });
+
+    it('actualizar exige motivo', async () => {
+      const { proceso } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
+      await generarDefinitivo(proceso.id);
+
+      await expect(
+        definitivo.generar(proceso.id, archivo('definitivo-2.pdf'), 'e'.repeat(64), gestor),
+      ).rejects.toThrow(/por qué se actualiza/i);
+    });
+
+    it('publicado y sin acto, se actualiza: vuelve a borrador y conserva la versión anterior', async () => {
+      const { proceso } = await conDefinitivoPublicado('ABREVIADA_MENOR_CUANTIA');
+
+      const estado = await definitivo.generar(
+        proceso.id,
+        archivo('definitivo-2.pdf'),
+        'e'.repeat(64),
+        gestor,
+        'Se aplicaron las fórmulas a la oferta económica',
+      );
+
+      expect(estado.informe!.estado).toBe('BORRADOR');
+      expect(estado.informe!.enlacePublicacion).toBeNull();
+      expect(estado.informe!.versiones).toHaveLength(2);
+      expect(estado.informe!.versiones[0].publicadoAt).not.toBeNull();
+      expect(estado.informe!.versiones[1].motivo).toBe(
+        'Se aplicaron las fórmulas a la oferta económica',
+      );
+      expect(estado.informe!.versiones[1].generadoPor).toBe('prueba.gestor');
+    });
+
+    it('con el acto emitido ya no se actualiza', async () => {
+      const { proceso, oferentes } = await conDefinitivoPublicado('ABREVIADA_MENOR_CUANTIA');
+      await adjudicar(proceso.id, oferentes[1].id);
+
+      const estado = await definitivo.estado(proceso.id);
+      expect(estado.puedeGenerar).toBe(false);
+      await expect(
+        definitivo.generar(proceso.id, null, null, gestor, 'Llegó una observación tarde'),
+      ).rejects.toThrow(/ya se adjudicó/i);
     });
   });
 
@@ -587,7 +678,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       await expect(adjudicar(proceso.id, oferentes[1].id)).rejects.toThrow(/no se ha publicado/i);
     });
 
-    it('adjudica a la ganadora del informe y deja la 7.4 cumplida', async () => {
+    it('adjudica a la ganadora del informe y deja la 7.3 cumplida', async () => {
       const { proceso, oferentes } = await conDefinitivoPublicado('ABREVIADA_MENOR_CUANTIA');
 
       const estado = await adjudicar(proceso.id, oferentes[1].id);
@@ -598,7 +689,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       expect(estado.acto!.emitidoPor).toBe('prueba.ordenador');
 
       const actividad = await dataSource.query(
-        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.4'`,
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.3'`,
         [proceso.id],
       );
       expect(actividad[0].estado).toBe('APROBADO');
@@ -697,14 +788,14 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
 
       const actividades = await dataSource.query(
         `SELECT numeral, estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral IN ('7.1','7.2','7.3','7.4') ORDER BY numeral`,
+          WHERE proceso_id = $1 AND numeral IN ('7.1','7.1.1','7.2','7.3') ORDER BY numeral`,
         [proceso.id],
       );
       expect(actividades.map((a: any) => `${a.numeral}:${a.estado}`)).toEqual([
         '7.1:APROBADO',
+        '7.1.1:APROBADO',
         '7.2:APROBADO',
         '7.3:APROBADO',
-        '7.4:APROBADO',
       ]);
     });
 
@@ -720,7 +811,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       // Las dos actividades que no aplican no dejan fila cumplida ni bloquean.
       const actividades = await dataSource.query(
         `SELECT numeral, estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral IN ('7.1','7.2') AND estado = 'APROBADO'`,
+          WHERE proceso_id = $1 AND numeral IN ('7.1','7.1.1') AND estado = 'APROBADO'`,
         [proceso.id],
       );
       expect(actividades).toHaveLength(0);
@@ -746,7 +837,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       const actividades = await cdp.actividadesDelProceso(proceso.id);
       const numerales = actividades.map((a) => a.numeral);
 
-      expect(numerales).toEqual(expect.arrayContaining(['7.1', '7.2', '7.3', '7.4']));
+      expect(numerales).toEqual(expect.arrayContaining(['7.1', '7.1.1', '7.2', '7.3']));
       // Y sin perder las que ya estaban.
       expect(numerales).toContain('6.1');
       expect(numerales).toContain('5.7');
@@ -763,6 +854,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
         gestor,
       );
 
+      await deObraPublica(dataSource, licitacion.id);
+
       const deEtapa7 = async (procesoId: string) =>
         (await cdp.actividadesDelProceso(procesoId)).filter((a) => a.etapa === 7);
 
@@ -774,8 +867,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       // menor cuantía debe recibirlas tachadas —no ocultas— o el riel volvería
       // a exigirlas para dar la etapa por completa.
       expect(enLicitacion.every((a) => a.aplica)).toBe(true);
-      expect(enMenor.filter((a) => !a.aplica).map((a) => a.numeral)).toEqual(['7.1', '7.2']);
-      expect(enMenor.filter((a) => a.aplica).map((a) => a.numeral)).toEqual(['7.3', '7.4']);
+      expect(enMenor.filter((a) => !a.aplica).map((a) => a.numeral)).toEqual(['7.1', '7.1.1']);
+      expect(enMenor.filter((a) => a.aplica).map((a) => a.numeral)).toEqual(['7.2', '7.3']);
     });
   });
 });

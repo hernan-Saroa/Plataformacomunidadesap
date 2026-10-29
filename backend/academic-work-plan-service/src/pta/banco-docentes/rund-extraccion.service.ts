@@ -2,10 +2,11 @@ import { BadRequestException, ConflictException, Injectable, Logger, OnModuleDes
 import { DataSource } from 'typeorm';
 import { createHash, randomUUID } from 'crypto';
 import { RundDocumentStorageService } from './rund-document-storage.service';
-import { comparable, confirmExtractionSuggestions, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
+import { comparable, confirmExtractionSuggestions, extractionComparisonValue, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { postLocalJson } from './rund-local-http';
-import { invalidateEditedEvidence } from './rund-evidence-workflow';
+import { invalidateEditedEvidence, lockEvidenceProfile } from './rund-evidence-workflow';
+import { extractRundPdf } from './rund-ocr-client';
 
 const EXTRACTION_BLOCK: Record<string,string> = {
   documentType:'IDENTIDAD',documentNumber:'IDENTIDAD',nombreCompleto:'IDENTIDAD',genero:'IDENTIDAD',sexoBiologico:'IDENTIDAD',fechaNacimiento:'IDENTIDAD',
@@ -43,7 +44,7 @@ export function localExtractionUrl(value: string): string {
 
 export function localExtractionModel(value: string): string {
   const model = value.trim();
-  if (!/^qwen3\.5:4b(?:-[a-z0-9_.-]+)?$/i.test(model) || /cloud/i.test(model))
+  if (!/^(?:qwen3\.5:4b(?:-[a-z0-9_.-]+)?|gemma4:e4b)$/i.test(model) || /cloud/i.test(model))
     throw new Error('MODELO_LOCAL_REQUERIDO');
   return model;
 }
@@ -77,14 +78,14 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     await recordRundAccess(this.db, { ...actor, endpoint: 'RUND_EXTRACCION_CONSULTA', docenteIds: [docenteId], fields: ['DOCUMENTO_IDENTIDAD'] });
     const jobs = await this.db.query(`SELECT j.id, j.estado, j.intentos, j.error_codigo, j.motor, j.creado_en,
       j.etapa,j.etapa_desde,j.iniciado_en,j.actualizado_en,j.disponible_en,
-      d.id AS documento_id, d.nombre_archivo, d.version, d.estado AS documento_estado, d.tipo_soporte, d.categoria_codigo,
+      d.id AS documento_id, d.nombre_archivo, d.version, d.estado AS documento_estado, d.bloque, d.tipo_soporte, d.categoria_codigo,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s.id,'campo',s.campo,'valor',s.valor,'valor_previo',s.valor_previo,
         'pagina',s.pagina,'evidencia',s.evidencia,'confianza',s.confianza,'baja_confianza',s.baja_confianza,
         'estado',s.estado,'valor_confirmado',s.valor_confirmado,'revisado_por',s.revisado_por,'revisado_en',s.revisado_en,'motivo',s.motivo) ORDER BY s.campo)
         FROM academic_work_plan."RundExtraccionSugerencia" s WHERE s.trabajo_id = j.id), '[]'::jsonb) AS sugerencias
       FROM academic_work_plan."RundExtraccionTrabajo" j JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
       WHERE j.docente_id::text = $1 ORDER BY j.creado_en DESC LIMIT 100`, [docenteId]);
-    const documents = await this.db.query(`SELECT d.id, d.nombre_archivo, d.tipo_soporte, d.categoria_codigo FROM academic_work_plan."RundDocumentoPerfil" d
+    const documents = await this.db.query(`SELECT d.id, d.nombre_archivo, d.bloque, d.tipo_soporte, d.categoria_codigo FROM academic_work_plan."RundDocumentoPerfil" d
       WHERE d.docente_id::text = $1 AND d.estado = 'ACTIVO' AND NOT EXISTS
       (SELECT 1 FROM academic_work_plan."RundExtraccionTrabajo" j WHERE j.documento_id = d.id AND
         (j.estado IN ('PENDIENTE','PROCESANDO','ERROR') OR EXISTS (SELECT 1 FROM academic_work_plan."RundExtraccionSugerencia" s WHERE s.trabajo_id=j.id AND s.estado='PENDIENTE')))
@@ -99,13 +100,14 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     if (!d || !extractionFieldsForDocument(d).length) throw new BadRequestException('Seleccione un soporte vigente de un tipo compatible con la extracción.');
     await recordRundAccess(this.db, { ...actor, endpoint: 'RUND_EXTRACCION_SOLICITAR', resourceId: documentId, docenteIds: [docenteId], fields: ['DOCUMENTO_IDENTIDAD'] });
     await this.db.transaction(async manager => {
-      const [current] = await manager.query('SELECT estado FROM academic_work_plan."RundDocumentoPerfil" WHERE id=$1 FOR UPDATE',[documentId]);
+      await lockEvidenceProfile(manager, docenteId);
+      const [current] = await manager.query('SELECT * FROM academic_work_plan."RundDocumentoPerfil" WHERE id=$1 FOR UPDATE',[documentId]);
       if (current?.estado !== 'ACTIVO') throw new ConflictException('El documento fue reemplazado o eliminado. Actualice el expediente.');
       const [pending] = await manager.query(`SELECT s.id FROM academic_work_plan."RundExtraccionSugerencia" s
         JOIN academic_work_plan."RundExtraccionTrabajo" j ON j.id=s.trabajo_id WHERE j.documento_id=$1 AND s.estado='PENDIENTE' LIMIT 1`,[documentId]);
       if (pending) throw new ConflictException('Revise o descarte las sugerencias pendientes antes de volver a extraer.');
       await manager.query(`INSERT INTO academic_work_plan."RundExtraccionTrabajo" (documento_id, docente_id, creado_por)
-        VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [documentId, docenteId, actor.actorId]);
+        VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id`, [documentId, docenteId, actor.actorId]);
     });
     return { queued: true };
   }
@@ -138,30 +140,38 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async confirm(docenteId: string, suggestionId: string, actor: RundAccessActor) {
+  async confirm(docenteId: string, suggestionId: string, actor: RundAccessActor, correction?: { valorCorregido?: string; motivo?: string }) {
+    const correcting = correction != null && Object.prototype.hasOwnProperty.call(correction, 'valorCorregido');
+    if (correcting && (typeof correction?.valorCorregido !== 'string' || !correction.valorCorregido.trim() || correction.valorCorregido.length > 2000
+      || typeof correction.motivo !== 'string' || correction.motivo.trim().length < 3 || correction.motivo.length > 1000)) {
+      throw new BadRequestException('Indique el valor corregido y el motivo de la corrección (3 a 1000 caracteres).');
+    }
     return this.db.transaction(async manager => {
       const [candidate] = await manager.query(`SELECT s.id,s.campo,s.valor,s.valor_previo,s.trabajo_id,j.documento_id
         FROM academic_work_plan."RundExtraccionSugerencia" s
         JOIN academic_work_plan."RundExtraccionTrabajo" j ON j.id=s.trabajo_id
         WHERE s.id::text=$1 AND j.docente_id::text=$2`, [suggestionId,docenteId]);
       if (!candidate) throw new ConflictException('La sugerencia no pertenece al docente.');
-      const payload = { [candidate.campo]: String(candidate.valor || '').trim() };
+      const payload = { [candidate.campo]: correcting ? correction!.valorCorregido!.trim() : String(candidate.valor || '').trim() };
       const [suggestion] = await lockExtractionSuggestions(manager,docenteId,[suggestionId],payload);
 
-      const changed = comparable(suggestion.valor)!==comparable(suggestion.valor_previo);
-      if (changed) await this.applyConfirmedValue(manager,docenteId,suggestion.campo,String(suggestion.valor).trim(),actor,suggestion.id);
+      const value = payload[suggestion.campo];
+      const formatError = extractionValueValidationError(suggestion.campo, value);
+      if (formatError) throw new BadRequestException(formatError);
+      const changed = extractionComparisonValue(suggestion.campo,value)!==extractionComparisonValue(suggestion.campo,suggestion.valor_previo);
+      if (changed) await this.applyConfirmedValue(manager,docenteId,suggestion.campo,value,actor,suggestion.id);
 
-      const reason = changed ? 'Valor OCR confirmado contra el documento original.' : 'Coincidencia OCR verificada contra el documento original.';
+      const reason = correcting ? correction!.motivo!.trim() : changed ? 'Valor OCR confirmado contra el documento original.' : 'Coincidencia OCR verificada contra el documento original.';
       await confirmExtractionSuggestions(manager,[suggestion],payload,actor.actorId,reason);
       const previousAudit = suggestion.campo==='documentNumber'?'[PROTEGIDO]':String(suggestion.valor_previo||'');
-      const nextAudit = suggestion.campo==='documentNumber'?'[PROTEGIDO]':String(suggestion.valor||'');
+      const nextAudit = suggestion.campo==='documentNumber'?'[PROTEGIDO]':value;
       await manager.query(`INSERT INTO academic_work_plan."RundAprobacionLog"
         (id,docente_id,bloque,accion,actor_id,canal_origen,campo_afectado,dato_previo,dato_nuevo,observacion,soporte_id,ip,metadata,"createdAt")
         VALUES($1,$2,$3,$4,$5,'OCR_LOCAL',$6,$7,$8,$9,$10,$11,$12::jsonb,NOW())`,
-      [randomUUID(),docenteId,EXTRACTION_BLOCK[suggestion.campo]||null,changed?'APLICAR_SUGERENCIA_OCR':'CONFIRMAR_COINCIDENCIA_OCR',actor.actorId,
+      [randomUUID(),docenteId,EXTRACTION_BLOCK[suggestion.campo]||null,correcting?'CORREGIR_SUGERENCIA_OCR':changed?'APLICAR_SUGERENCIA_OCR':'CONFIRMAR_COINCIDENCIA_OCR',actor.actorId,
         suggestion.campo,previousAudit,nextAudit,reason,suggestion.documento_id||candidate.documento_id,actor.ip||null,JSON.stringify({sugerenciaId:suggestionId,validacionHumana:true})]);
       await recordRundAccess(manager, { ...actor, endpoint: 'RUND_EXTRACCION_CONFIRMAR', resourceId: suggestionId, docenteIds: [docenteId], fields: ['DOCUMENTO_IDENTIDAD'] });
-      return { confirmed:true,changed,campo:suggestion.campo,valor:suggestion.valor };
+      return { confirmed:true,changed,campo:suggestion.campo,valor:value };
     });
   }
 
@@ -171,7 +181,7 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     if (field==='documentNumber') {
       const normalized=value.replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
       const [identity]=await manager.query(`SELECT UPPER(COALESCE((
-          SELECT sibling.valor FROM academic_work_plan."RundExtraccionSugerencia" current_suggestion
+          SELECT COALESCE(sibling.valor_confirmado, sibling.valor) FROM academic_work_plan."RundExtraccionSugerencia" current_suggestion
           JOIN academic_work_plan."RundExtraccionSugerencia" sibling ON sibling.trabajo_id=current_suggestion.trabajo_id
           WHERE current_suggestion.id::text=$2 AND sibling.campo='documentType'
             AND sibling.estado IN ('PENDIENTE','APROBADA','CORREGIDA') LIMIT 1
@@ -191,6 +201,7 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
       // La excepción queda limitada por el trigger a esta sugerencia OCR pendiente,
       // su documento vigente y la misma persona; además vive solo en la transacción.
       await manager.query("SELECT set_config('app.rund_ocr_suggestion_id',$1,true)",[suggestionId]);
+      await manager.query("SELECT set_config('app.rund_ocr_confirmed_document_number',$1,true)",[normalized]);
       try {
         await manager.query(`UPDATE auth.personas SET num_identificacion=$2,fec_modificacion=CURRENT_DATE
           WHERE id_person=(SELECT "personaId" FROM academic_work_plan."Docente" WHERE id::text=$1)`,[docenteId,normalized]);
@@ -266,13 +277,17 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
       },20000);
       this.heartbeat.unref();
       await this.process(job);
-    } catch {
+    } catch (error) {
       // Nunca registrar el texto OCR, el PDF ni la respuesta del modelo en logs.
+      const knownErrors = new Set(['TOKEN_OCR_REQUERIDO','PROVEEDOR_OCR_INVALIDO','CONFIGURACION_LOCAL_INVALIDA',
+        'OCR_CONEXION_FALLIDA','OCR_NO_DISPONIBLE','OCR_INVALIDO','MODELO_LOCAL_REQUERIDO','MODELO_NO_DISPONIBLE',
+        'MODELO_TIMEOUT','RESPUESTA_MODELO_INVALIDA','RESPUESTA_MODELO_DEMASIADO_GRANDE','PDF_INVALIDO','DOCUMENTO_MODIFICADO']);
+      const failureCode = error instanceof Error && knownErrors.has(error.message) ? error.message : 'EXTRACCION_NO_DISPONIBLE';
       if (job) await this.db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET estado=CASE WHEN intentos<3 THEN 'PENDIENTE' ELSE 'ERROR' END,
-        error_codigo='EXTRACCION_NO_DISPONIBLE', etapa='REINTENTO',etapa_desde=now(),
+        error_codigo=$3, etapa='REINTENTO',etapa_desde=now(),
         disponible_en=now()+interval '1 minute', lease_id=NULL, lease_hasta=NULL, actualizado_en=now()
-        WHERE id=$1 AND lease_id=$2`, [job.id, job.lease_id]).catch(() => undefined);
-      this.logger.warn('Extracción experimental no disponible; la operación documental continúa. Revise configuración y salud del servicio local.');
+        WHERE id=$1 AND lease_id=$2`, [job.id, job.lease_id, failureCode]).catch(() => undefined);
+      this.logger.warn(`Extracción experimental no disponible (${failureCode}); la operación documental continúa. Revise configuración y salud del servicio local.`);
     } finally {
       if (this.heartbeat) clearInterval(this.heartbeat);
       this.heartbeat=undefined;this.activeJob=undefined;this.busy = false;
@@ -302,18 +317,10 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     if (content.length > 25 * 1024 * 1024 || content.subarray(0,5).toString() !== '%PDF-') throw new Error('PDF_INVALIDO');
     const checksum = createHash('sha256').update(content).digest('hex');
     if (/^[a-f0-9]{64}$/i.test(document.checksum_sha256) && checksum !== document.checksum_sha256) throw new Error('DOCUMENTO_MODIFICADO');
-    const token = process.env.RUND_OCR_TOKEN;
-    if (!token || token.length < 32) throw new Error('TOKEN_OCR_REQUERIDO');
     const ocr = localExtractionUrl(process.env.RUND_OCR_URL || 'http://localhost:8091');
     await this.advance(job,'OCR');
-    const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(content)], { type: 'application/pdf' }), 'documento.pdf');
-    const response = await fetch(`${ocr}/extract`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form, signal: AbortSignal.timeout(180000), redirect: 'error' });
-    if (!response.ok) throw new Error('OCR_NO_DISPONIBLE');
-    const extracted = await response.json() as any;
+    const extracted = await extractRundPdf(content, ocr);
     const pages = extracted.paginas;
-    if (!Array.isArray(pages) || pages.length > 25 || pages.some(p => !Number.isInteger(p.pagina) || p.pagina<1 || typeof p.texto!=='string')
-      || pages.reduce((sum,p) => sum+p.texto.length,0)>50000) throw new Error('OCR_INVALIDO');
     const model = localExtractionModel(process.env.RUND_OLLAMA_MODEL || 'qwen3.5:4b');
     const ollama = localExtractionUrl(process.env.RUND_OLLAMA_URL || 'http://localhost:11434');
     await this.advance(job,'MODELO');
@@ -332,6 +339,7 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     await this.advance(job,'VALIDANDO');
     const candidates = validateCandidates(JSON.parse(result.message?.content || ''), pages, fields);
     await this.db.transaction(async manager => {
+      await lockEvidenceProfile(manager, job.docente_id);
       const [current] = await manager.query(`SELECT j.id,d.estado FROM academic_work_plan."RundExtraccionTrabajo" j
         JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id=j.documento_id WHERE j.id=$1 AND j.lease_id=$2 FOR UPDATE OF j,d`, [job.id,job.lease_id]);
       if (!current) return;

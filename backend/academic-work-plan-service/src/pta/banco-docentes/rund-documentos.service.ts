@@ -1,4 +1,5 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
+import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { lockEvidenceProfile, resetEvidenceBlock, validateEvidenceType } from './rund-evidence-workflow';
 import {
   BadRequestException,
@@ -17,6 +18,7 @@ import { isTechnicalRundSupport, RUND_STANDARD_FOLDERS } from './rund-expediente
 import { readRetentionPolicy, retentionReport, retentionSnapshot } from './rund-retention';
 import { rundPrivacyPolicy } from './rund-privacy-policy';
 import { requireRundDocumental, rundDocumentalEnabled } from './rund-documental-feature';
+import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 
 type DocumentUploadData = {
   categoria: string;
@@ -28,6 +30,13 @@ type DocumentUploadData = {
 
 @Injectable()
 export class RundDocumentosService {
+  async assertIncorporationDocument(docenteId: string, documentId: string) {
+    const docente = await this.requireDocente(docenteId);
+    const document = await this.requireDocument(docente.id, documentId, true);
+    if (document.bloque !== 'VINCULACION' || !RUND_INCORPORATION_SUPPORTS.includes(document.tipo_soporte)) {
+      throw new ForbiddenException('El responsable de incorporación solo gestiona contratos y actos de vinculación.');
+    }
+  }
   constructor(
     private readonly dataSource: DataSource,
     private readonly storage: RundDocumentStorageService,
@@ -152,7 +161,8 @@ export class RundDocumentosService {
        ORDER BY c.orden, d."createdAt" DESC`,
       params,
     );
-    return rows.map((row: any) => this.toResponse(row));
+    const names = await resolveRundActorNames(this.dataSource, rows.flatMap((row: any) => [row.creado_por, row.eliminado_por, row.revisado_por]));
+    return rows.map((row: any) => this.toResponse(row, names));
   }
 
   async create(
@@ -244,7 +254,8 @@ export class RundDocumentosService {
       });
       commitAttempted = true;
       await runner.commitTransaction();
-      return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: 1 });
+      const names = await resolveRundActorNames(this.dataSource, [created.creado_por]);
+      return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: 1 }, names);
     } catch (error) {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
       if (stored && !commitAttempted) await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
@@ -340,7 +351,8 @@ export class RundDocumentosService {
       });
       commitAttempted = true;
       await runner.commitTransaction();
-      return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: nextVersion });
+      const names = await resolveRundActorNames(this.dataSource, [created.creado_por]);
+      return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: nextVersion }, names);
     } catch (error) {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
       if (stored && !commitAttempted) await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
@@ -421,7 +433,8 @@ export class RundDocumentosService {
       `SELECT d.id, d."personaId" AS persona_id, COALESCE(p.num_identificacion, d.id::text) AS document_number
        FROM academic_work_plan."Docente" d
        LEFT JOIN auth.personas p ON p.id_person = d."personaId"
-       WHERE d.id::text = $1 OR d."personaId"::text = $1 OR p.num_identificacion = $1
+       WHERE (d.id::text = $1 OR d."personaId"::text = $1 OR p.num_identificacion = $1)
+         AND COALESCE(d."eliminadoRund", false)=false
        ORDER BY d."updatedAt" DESC NULLS LAST
        LIMIT 1`,
       [identifier],
@@ -535,7 +548,7 @@ export class RundDocumentosService {
     );
   }
 
-  private toResponse(row: any) {
+  private toResponse(row: any, names = new Map<string, string>()) {
     return {
       id: row.id,
       documentoLogicoId: row.documento_logico_id,
@@ -553,14 +566,17 @@ export class RundDocumentosService {
       tamanoBytes: Number(row.tamano_bytes || 0),
       estado: row.estado,
       creadoPor: row.creado_por,
+      creadoPorNombre: rundActorName(names, row.creado_por),
       creadoEn: row.createdAt,
       eliminadoPor: row.eliminado_por,
+      eliminadoPorNombre: row.eliminado_por ? rundActorName(names, row.eliminado_por) : null,
       eliminadoEn: row.eliminado_en,
       contenidoUrl: this.contentUrl(row.docente_id, row.id),
       rundSoporteId: row.rund_soporte_id,
       estadoRevision: row.estado_revision || null,
       observacionRevision: row.observacion_revision || null,
       revisadoPor: row.revisado_por || null,
+      revisadoPorNombre: row.revisado_por ? rundActorName(names, row.revisado_por) : null,
     };
   }
 

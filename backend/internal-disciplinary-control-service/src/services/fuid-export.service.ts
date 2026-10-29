@@ -6,19 +6,21 @@ import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 
 // Clasificación archivística institucional (ESAP - Control Disciplinario)
 export const FUID_ENTIDAD_PRODUCTORA = 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA (ESAP)';
-export const FUID_PERIODO_INSTITUCIONAL = 'TVD PERIODO 1';
+export const FUID_PERIODO_INSTITUCIONAL = 'TRD V4';
 export const FUID_UNIDAD_ADMINISTRATIVA = 'DESPACHO DE LA DIRECCIÓN NACIONAL';
 export const FUID_OFICINA_PRODUCTORA = 'OFICINA DE CONTROL INTERNO DISCIPLINARIO';
-export const FUID_CODIGO_OFICINA = 160;
+export const FUID_CODIGO_OFICINA = 150;
 export const FUID_OBJETO = 'Inventario Archivo de Gestión';
-export const FUID_CODIGO_CCDU = '780';
-export const FUID_CODIGO_SERIE_TVD = '780';
+export const FUID_CODIGO_CCDU = '250';
+export const FUID_CODIGO_SERIE_TVD = '250';
 export const FUID_SERIE = 'PROCESOS JURÍDICOS';
 export const FUID_SUBSERIE = 'PROCESOS DISCIPLINARIOS';
 
 const FIRST_DATA_ROW = 13;
 const TEMPLATE_CAPACITY_ROWS = 99; // Filas 13 a 111 reservadas en la plantilla original
 const TEMPLATE_PIE_START_ROW = 112;
+const FUID_DATA_FONT_SIZE = 11;
+const FUID_DATA_COLUMNS = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB'];
 
 function resolveTemplateAssetPath(filename: string): string {
   const candidates = [
@@ -47,12 +49,22 @@ export interface FuidItemDto {
   fechaExtremaFinal?: string;   // Formato esperado: AAAA/MM/DD
   codigoCCDU?: string;
   codigoSerieTVD?: string;
+  codigoSerie?: string;
+  nombreSerie?: string;
   serie?: string;
+  codigoSubserie?: string;
+  nombreSubserie?: string;
   subserie?: string;
   ubicacion?: string;
   cantidadDocumentos?: number;
   tamanoDocumentos?: string;
   notas?: string; // Estado del expediente (Indagación, Valoración, Finalizado, etc.)
+  /**
+   * Indica si el proceso está cerrado (finalizado/archivado). Si es `false`, el proceso
+   * sigue activo y la Fecha Extrema Final y el Descriptor de identificación quedan vacíos.
+   * Si no se envía, se conserva el comportamiento anterior (se asume cerrado).
+   */
+  cerrado?: boolean;
 }
 
 export interface FuidHeaderDto {
@@ -99,6 +111,14 @@ export class FuidExportService {
     worksheet.getCell('O6').value = header?.codigoOficina ?? FUID_CODIGO_OFICINA;
     worksheet.getCell('E6').value = header?.objeto || FUID_OBJETO;
 
+    for (const cellId of ['X3', 'E5', 'H5', 'J5', 'J6', 'O6', 'E6']) {
+      const c = worksheet.getCell(cellId);
+      c.font = {
+        ...(c.font || {}),
+        color: { argb: 'FF000000' },
+      };
+    }
+
     // 2. Si son más expedientes que los 99 que la plantilla reserva (filas 13 a 111),
     // duplicamos la fila 111 para desplazar el pie sin sobrescribir las firmas.
     const totalExpedientes = items.length;
@@ -140,26 +160,50 @@ export class FuidExportService {
       // Col E: Nombre de la unidad documental
       worksheet.getCell(`E${r}`).value = `Expediente ${item.radicado}`;
 
-      // Col F: Descriptor de identificación (NED / Asunto)
-      const descriptor = item.descriptorIdentificacion ||
-        (item.nombreDisciplinado ? `NED: ${item.nombreDisciplinado}` : (item.asunto || 'Expediente Disciplinario'));
+      // Un proceso activo (no cerrado) aún no tiene fecha final ni descriptor definitivo
+      const procesoCerrado = item.cerrado !== false;
+
+      // Col F: Descriptor de identificación (NED / Asunto) — vacío si el proceso sigue activo
+      const descriptor = procesoCerrado
+        ? (item.descriptorIdentificacion ||
+          (item.nombreDisciplinado ? `NED: ${item.nombreDisciplinado}` : (item.asunto || 'Expediente Disciplinario')))
+        : '';
       worksheet.getCell(`F${r}`).value = descriptor;
 
-      // Col G / H: Fechas extremas inicial / final (AAAA/MM/DD)
+      // Col G / H: Fechas extremas inicial / final (AAAA/MM/DD) — final vacía si el proceso sigue activo
       worksheet.getCell(`G${r}`).value = item.fechaExtremaInicial || '';
-      worksheet.getCell(`H${r}`).value = item.fechaExtremaFinal || item.fechaExtremaInicial || '';
+      worksheet.getCell(`H${r}`).value = procesoCerrado
+        ? (item.fechaExtremaFinal || item.fechaExtremaInicial || '')
+        : '';
 
       // Col I: Código CCDU
-      worksheet.getCell(`I${r}`).value = item.codigoCCDU || FUID_CODIGO_CCDU;
+      const codCCDU = String(item.codigoCCDU || item.codigoSerie || FUID_CODIGO_CCDU).trim();
+      worksheet.getCell(`I${r}`).value = codCCDU;
 
       // Col J: Código serie TVD
-      worksheet.getCell(`J${r}`).value = item.codigoSerieTVD || FUID_CODIGO_SERIE_TVD;
+      const codSerieTVD = String(item.codigoSerieTVD || item.codigoSerie || codCCDU || FUID_CODIGO_SERIE_TVD).trim();
+      worksheet.getCell(`J${r}`).value = codSerieTVD;
 
-      // Col K: Serie
-      worksheet.getCell(`K${r}`).value = item.serie || FUID_SERIE;
+      // Col K: Serie con número correspondiente
+      let serieTexto = (item.serie || item.nombreSerie || FUID_SERIE).trim();
+      const codParaSerie = codSerieTVD || codCCDU || FUID_CODIGO_SERIE_TVD;
+      if (codParaSerie && !new RegExp(`^${codParaSerie.replace('.', '\\.')}\\s*[-–]`, 'i').test(serieTexto)) {
+        serieTexto = `${codParaSerie} – ${serieTexto}`;
+      }
+      worksheet.getCell(`K${r}`).value = serieTexto;
 
-      // Col L: Subserie
-      worksheet.getCell(`L${r}`).value = item.subserie || FUID_SUBSERIE;
+      // Col L: Subserie con número correspondiente
+      let subserieTexto = (item.subserie || item.nombreSubserie || FUID_SUBSERIE).trim();
+      const codParaSubserie = String(
+        item.codigoSubserie ||
+        (codParaSerie === '1330' ? '60' : codParaSerie === '68' ? '22' : codParaSerie === '75' ? '01' : '05'),
+      ).trim();
+      if (subserieTexto.toUpperCase() === 'N/A' || subserieTexto.toUpperCase() === 'NO APLICA') {
+        subserieTexto = 'N/A';
+      } else if (codParaSubserie && !new RegExp(`^${codParaSubserie.replace('.', '\\.')}\\s*[-–]`, 'i').test(subserieTexto)) {
+        subserieTexto = `${codParaSubserie} – ${subserieTexto}`;
+      }
+      worksheet.getCell(`L${r}`).value = subserieTexto;
 
       // Col M / N: Soporte Físico / Electrónico (X en electrónico)
       worksheet.getCell(`M${r}`).value = null;
@@ -170,7 +214,7 @@ export class FuidExportService {
         worksheet.getCell(`${colLetter}${r}`).value = null;
       }
 
-      // Col U: Ubicación (URL del expediente en la plataforma)
+      // Col U: Ubicación (URL del expediente en la plataforma) - letra negra y sin subrayado
       const expUrl = item.ubicacion || `${baseUrl}/control-disciplinario/expedientes?radicado=${encodeURIComponent(item.radicado)}`;
       const cellU = worksheet.getCell(`U${r}`);
       cellU.value = {
@@ -180,9 +224,9 @@ export class FuidExportService {
       };
       cellU.font = {
         name: 'Arial',
-        size: 9,
-        color: { argb: 'FF0563C1' },
-        underline: true,
+        size: FUID_DATA_FONT_SIZE,
+        color: { argb: 'FF000000' },
+        underline: false,
       };
 
       // Col V: Cantidad de documentos electrónicos
@@ -196,6 +240,18 @@ export class FuidExportService {
 
       // Col AB: Rótulo (vacío)
       worksheet.getCell(`AB${r}`).value = null;
+
+      // Fuente legible: tamaño 11, color negro y sin subrayado en todas las celdas de detalle
+      for (const col of FUID_DATA_COLUMNS) {
+        const cell = worksheet.getCell(`${col}${r}`);
+        cell.font = {
+          ...(cell.font || {}),
+          name: 'Arial',
+          size: FUID_DATA_FONT_SIZE,
+          color: { argb: 'FF000000' },
+          underline: false,
+        };
+      }
     });
 
     // 4. Limpiar filas restantes de la reserva de 100 que no tengan datos (limpiar D..AB, conservando fórmulas en B y C)
@@ -209,19 +265,37 @@ export class FuidExportService {
       });
     }
 
-    // 5. Pie de página y firmas (ELABORADO POR, cargo y fecha)
+    // 5. Pie de página y firmas (ELABORADO POR, cargo y fecha) con letra en negro
     const elaboradoTexto = header?.elaboradoPor
       ? `ELABORADO POR: ${header.elaboradoPor.trim()}`
       : 'ELABORADO POR: ';
-    worksheet.getCell(`B${pieStartRow}`).value = elaboradoTexto;
+    const cellElaborado = worksheet.getCell(`B${pieStartRow}`);
+    cellElaborado.value = elaboradoTexto;
+    cellElaborado.font = { ...(cellElaborado.font || {}), color: { argb: 'FF000000' } };
 
     if (header?.cargoElaboradoPor) {
-      worksheet.getCell(`E${pieStartRow + 1}`).value = header.cargoElaboradoPor;
+      const cellCargo = worksheet.getCell(`E${pieStartRow + 1}`);
+      cellCargo.value = header.cargoElaboradoPor;
+      cellCargo.font = { ...(cellCargo.font || {}), color: { argb: 'FF000000' } };
     }
 
-    worksheet.getCell(`B${pieStartRow + 4}`).value = `FECHA: ${fechaActualFormato}`;
+    const cellFechaPie = worksheet.getCell(`B${pieStartRow + 4}`);
+    cellFechaPie.value = `FECHA: ${fechaActualFormato}`;
+    cellFechaPie.font = { ...(cellFechaPie.font || {}), color: { argb: 'FF000000' } };
 
-    // 6. Eliminar definiciones de tablas de las hojas auxiliares
+    // 6. Asegurar que toda la tipografía de la hoja esté en negro (FF000000) y ninguna celda en azul
+    worksheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (cell.font) {
+          cell.font = {
+            ...cell.font,
+            color: { argb: 'FF000000' },
+          };
+        }
+      });
+    });
+
+    // 7. Eliminar definiciones de tablas de las hojas auxiliares
     // ExcelJS tiene un bug conocido al re-serializar tablas (/xl/tables/table*.xml)
     // omitiendo atributos requeridos y provocando la advertencia de reparación de Excel.
     // Al limpiar ws.tables se conservan intactos todos los datos, fórmulas, estilos y celdas

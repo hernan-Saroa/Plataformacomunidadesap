@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Undo2 } from 'lucide-react';
+import { Ban, Check, ChevronDown, Undo2 } from 'lucide-react';
 
 import { RevisionDeActividad } from './usarAprobacion';
 import { VerSoportes } from './VerSoporte';
@@ -61,12 +61,18 @@ export function HistorialRevisiones({
             <li key={i} className="flex items-start gap-2">
               <span
                 className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                  r.decision === 'APROBADO' ? 'bg-emerald-100' : 'bg-amber-100'
+                  r.decision === 'APROBADO'
+                    ? 'bg-emerald-100'
+                    : r.decision === 'NEGADO'
+                      ? 'bg-red-50'
+                      : 'bg-amber-100'
                 }`}
                 aria-hidden="true"
               >
                 {r.decision === 'APROBADO' ? (
                   <Check className="w-2.5 h-2.5 text-emerald-700" strokeWidth={3.5} />
+                ) : r.decision === 'NEGADO' ? (
+                  <Ban className="w-2.5 h-2.5 text-red-700" strokeWidth={3} />
                 ) : (
                   <Undo2 className="w-2.5 h-2.5 text-amber-700" strokeWidth={3} />
                 )}
@@ -74,10 +80,16 @@ export function HistorialRevisiones({
 
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-slate-700 m-0 leading-snug">
-                  {r.decision === 'APROBADO' ? 'Aprobada' : 'Devuelta'} por {r.revisadoPor}
+                  {r.decision === 'APROBADO' ? 'Aprobada' : r.decision === 'NEGADO' ? 'Negada' : 'Devuelta'} por{' '}
+                  {r.revisadoPor}
                 </p>
+                {/* El envío y el escalón dicen a qué vuelta pertenece cada
+                    observación (migración 101): una devolución del envío 1 no
+                    es lo que hay que corregir hoy si ya se reenvió. */}
                 <p className="text-[10.5px] text-slate-400 m-0 tabular-nums">
                   {momento(r.fecha)} · versión {r.versionRevisada}
+                  {r.ronda ? ` · envío ${r.ronda}` : ''}
+                  {r.escalon ? `, escalón ${r.escalon}` : ''}
                 </p>
                 {/* La observación completa, sin recortar: es lo que hubo que
                     corregir, y a medias no sirve para saber qué se pidió. */}

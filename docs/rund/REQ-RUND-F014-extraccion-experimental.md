@@ -12,6 +12,8 @@ Los artefactos reproducibles están en `.local/rund-extraction-real/`. No se ana
 
 ## Uso del operador
 
+El OCR es una ayuda opcional: el cargador puede adjuntar los soportes y el revisor puede validar los campos y aprobar los bloques sin usar, confirmar ni descartar sugerencias OCR. Sus estados de cola, procesamiento, error y propuestas pendientes no bloquean ese flujo. Analizar un documento o publicar sus sugerencias conserva las aprobaciones existentes. Solo aplicar voluntariamente una propuesta que cambie datos del perfil requiere revisar otra vez los bloques afectados. La validación humana descrita en este documento es obligatoria para **aplicar** un dato extraído, no para utilizar la revisión documental convencional.
+
 1. Cargar el PDF mediante la gestión documental RUND existente. Las nuevas versiones se detectan automáticamente después de habilitar la función.
 2. Abrir el expediente con acceso GGP. Debajo de los documentos aparece **Asistente de captura · Experimental**; los estados se consultan cada 10 segundos sin bloquear el perfil.
 3. Revisar el dato previo, la sugerencia, el fragmento OCR y su página. **Ver PDF de origen** abre la versión exacta. Una confianza baja queda marcada en naranja.
@@ -126,6 +128,7 @@ Después de preparar los motores:
 
 ```dotenv
 RUND_OCR_ENABLED=true
+RUND_OCR_PROVIDER=LOCAL
 RUND_OCR_URL=http://localhost:8091
 RUND_OCR_TOKEN=<token generado, mínimo 32 caracteres>
 RUND_OLLAMA_URL=http://localhost:11435
@@ -143,6 +146,57 @@ node scripts/verify-rund-ocr-active.cjs
 ```
 
 La verificación HTTP usa identidades sintéticas con JWT de un minuto: exige 401 sin sesión, 403 para docente y 200 con la función activa para GGP. Solo consulta un UUID inexistente y deja su registro de acceso en la auditoría local.
+
+### Conectar el grupo Docker RUND existente
+
+El grupo `rund` con imágenes `ocastelblanco/rund-ocr` usa `POST /extract-text`
+en el puerto 8000 y devuelve `details` con texto y confianza por página. Para
+conectar el asistente de captura de PTA a esa instalación, configurar en el
+`.env` de **academic-work-plan-service** (y en `.env.rund-ocr.local` para los
+comandos de comprobación):
+
+```dotenv
+RUND_OCR_ENABLED=true
+RUND_OCR_PROVIDER=RUND
+RUND_OCR_URL=http://localhost:8000
+RUND_OLLAMA_URL=http://localhost:11434
+RUND_OLLAMA_MODEL=gemma4:e4b
+```
+
+Reiniciar el proceso PTA con estas variables actualizadas. Si se lanzó con
+`npm run dev:backend`, el lanzador conserva las variables cargadas al iniciar:
+reiniciar solo su proceso hijo compilado reutiliza los valores anteriores.
+El proveedor `RUND` adapta las páginas al contrato del asistente y conserva
+la revisión humana obligatoria. `LOCAL` sigue usando `/extract` y exige su
+token; `RUND` no envía ese token a un motor que tiene otro contrato.
+
+Comprobar `GET http://localhost:8000/health`, los modelos de `rund-ollama` y
+`node scripts/verify-rund-extraction.cjs --real`. Este último usa documentos
+ficticios y tablas temporales con rollback. Los trabajos que agotaron sus
+reintentos conservan su historial; pueden volver a solicitarse con **Reintentar**.
+Los nuevos fallos guardan códigos de diagnóstico acotados, sin texto del PDF,
+credenciales ni mensajes privados de los motores.
+
+La imagen con PaddleOCR 2.9 y Paddle 3.2 requiere desactivar MKLDNN
+explícitamente en los predictores: el valor `enable_mkldnn=False` de la capa
+PaddleOCR no lo desactiva en esa combinación. El arranque de compatibilidad
+está en `backend/rund-ocr-service/legacy-entrypoint.py`. Montarlo como archivo
+de solo lectura en `/app/rund-local-entrypoint.py` y configurar el comando
+`["python", "/app/rund-local-entrypoint.py"]` del servicio `rund-ocr`.
+Conserva `/extract-text`, los modelos y el puerto 8000; limita el procesamiento
+a un documento simultáneo. Conserva la imagen a color al pasar de RGB a BGR:
+el umbral adaptativo del servicio anterior puede borrar texto sobre fondos de
+seguridad de documentos de identidad. Comprobar varias solicitudes consecutivas:
+`/health` por sí solo no detecta un fallo de inferencia posterior.
+
+La detección usa un límite de 2048 píxeles en lugar de los 960 originales para
+conservar etiquetas pequeñas cuando la cédula ocupa parte de una hoja completa.
+La validación admite etiquetas documentales con palabras unidas por el OCR,
+como `CEDULADECIUDADANIA`, conservando la cita exacta y exigiendo el nombre del
+tipo documental en la evidencia. La comparación del perfil reconoce los códigos
+demográficos (`M`/`Masculino`, `F`/`Femenino`) sin registrar una modificación por
+un simple cambio de representación. El perfil no se utiliza para completar
+datos ausentes del documento y la aplicación de propuestas sigue siendo manual.
 
 Para apagar el experimento: `RUND_OCR_ENABLED=false` y reiniciar PTA. Se oculta el asistente y no se ejecuta el worker; se conservan sugerencias y trazabilidad. No borrar las tablas ni los documentos para desactivarlo. Para detener únicamente los motores locales:
 

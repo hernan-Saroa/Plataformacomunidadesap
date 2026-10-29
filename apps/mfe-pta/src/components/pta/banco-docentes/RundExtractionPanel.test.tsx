@@ -21,6 +21,94 @@ const openAssistant=async()=>{
 };
 
 describe('revisión humana de OCR',()=>{
+  it('presenta el OCR como opcional y no obliga a usar o rechazar sus propuestas',async()=>{
+    render(<RundExtractionPanel {...props}/>);
+    await openAssistant();
+    expect(screen.getByText(/Ayuda opcional: puedes aplicar, corregir o dejar sin usar/)).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it.each(['REEMPLAZADO','ELIMINADO'])('los resultados de un PDF %s no bloquean el documento vigente', async documento_estado=>{
+    const onPendingChange=vi.fn();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],bloque:'FORMACION',documento_estado,estado:'PROCESANDO'}]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION" onPendingChange={onPendingChange}/>);
+    await waitFor(()=>expect(onPendingChange).toHaveBeenLastCalledWith('FORMACION',0,false));
+  });
+
+  it('permite corregir el valor OCR con motivo sin aprobar el soporte',async()=>{
+    vi.mocked(apiClient.post).mockResolvedValue({confirmed:true,changed:true});
+    render(<RundExtractionPanel {...props}/>);
+    await openAssistant();
+    fireEvent.click(screen.getByRole('button',{name:'Corregir dato'}));
+    expect((screen.getByRole('button',{name:'Guardar corrección'}) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Valor corregido de Pregrado'),{target:{value:'Administración Pública corregida'}});
+    fireEvent.change(screen.getByLabelText('Motivo de la corrección'),{target:{value:'El OCR omitió una palabra del diploma.'}});
+    fireEvent.click(screen.getByRole('button',{name:'Guardar corrección'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/sugerencias/s-1/confirmar'),{valorCorregido:'Administración Pública corregida',motivo:'El OCR omitió una palabra del diploma.'},expect.anything()));
+    expect(vi.mocked(apiClient.post).mock.calls.some(([url])=>url.includes('/aprobar')||url.includes('/revision'))).toBe(false);
+  });
+
+  it('el aprobador consulta la evidencia sin acciones de edición, descarte ni extracción',async()=>{
+    render(<RundExtractionPanel {...props} canEdit={false}/>);
+    await openAssistant();
+    expect(screen.getByText('Pregrado')).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Ver PDF'})).toBeTruthy();
+    for(const name of ['Aplicar al perfil','Corregir dato','Rechazar sugerencia','Extraer datos','Reintentar'])expect(screen.queryByRole('button',{name})).toBeNull();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it('conserva visible la corrección humana para el aprobador aunque exista otro análisis más reciente',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[
+      {...data.jobs[0],id:'nuevo',estado:'PROCESANDO',sugerencias:[]},
+      {...data.jobs[0],sugerencias:[{...suggestion,estado:'CORREGIDA',valor_confirmado:'Título verificado por el cargador',motivo:'El OCR omitió una palabra.'}]},
+    ]});
+    render(<RundExtractionPanel {...props} canEdit={false}/>);
+    await openAssistant();
+    expect(screen.getByText('Corregido y confirmado')).toBeTruthy();
+    expect(screen.getByText('Título verificado por el cargador')).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it('conserva el origen del documento al cambiar de pestaña aunque el resultado incluya un campo de otro bloque', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{
+      ...data.jobs[0], bloque:'IDENTIDAD',tipo_soporte:'documento_identidad',nombre_archivo:'identidad.pdf',
+      sugerencias:[suggestion,{...suggestion,id:'identity',campo:'documentNumber',label:'Número de documento',valor:'12345678'}],
+    }]});
+    const view=render(<RundExtractionPanel {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad"/>);
+    expect(await screen.findByText(/1 dato por revisar/)).toBeTruthy();
+    view.rerender(<RundExtractionPanel {...props} activeBlock="FORMACION" activeBlockLabel="Formación Académica"/>);
+    expect(await screen.findByText('Sin sugerencias OCR para Formación Académica')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Revisar sugerencias'})).toBeNull();
+    expect(screen.queryByText('identidad.pdf')).toBeNull();
+    view.rerender(<RundExtractionPanel {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad"/>);
+    expect(await screen.findByText(/1 dato por revisar/)).toBeTruthy();
+    await openAssistant();
+    expect(screen.getByText('Número de documento')).toBeTruthy();
+    expect(screen.queryByText('Pregrado')).toBeNull();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it.each(['PENDIENTE','PROCESANDO','ERROR','COMPLETADO'])('oculta un trabajo %s de otra sección y sus documentos disponibles', async estado => {
+    vi.mocked(apiClient.get).mockResolvedValue({...data,documents:[{
+      id:'new-identity',bloque:'IDENTIDAD',tipo_soporte:'documento_identidad',nombre_archivo:'nuevo.pdf',
+    }],jobs:[{...data.jobs[0],bloque:'IDENTIDAD',estado,sugerencias:[]}]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION" activeBlockLabel="Formación Académica"/>);
+    expect(await screen.findByText('Sin sugerencias OCR para Formación Académica')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Revisar sugerencias'})).toBeNull();
+    expect(screen.queryByText('nuevo.pdf')).toBeNull();
+  });
+
+  it('compara los códigos demográficos con sus etiquetas sin inventar cambios ni confirmar automáticamente',async()=>{
+    const identitySuggestions=[
+      {...suggestion,id:'s-gender',campo:'genero',label:'Género',valor:'Masculino',valor_previo:'M',baja_confianza:false},
+      {...suggestion,id:'s-sex',campo:'sexoBiologico',label:'Sexo biológico',valor:'Mujer',valor_previo:'F',baja_confianza:false},
+    ];
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],sugerencias:identitySuggestions}]});
+    render(<RundExtractionPanel {...props} activeBlock="IDENTIDAD"/>);
+    expect(await screen.findByText(/2 datos por revisar · 0 diferencias/)).toBeTruthy();
+    await openAssistant();
+    expect(screen.getAllByRole('button',{name:'Confirmar coincidencia'})).toHaveLength(2);
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
   it('resume el análisis y mantiene ocultos los detalles hasta que se solicitan',async()=>{
     render(<RundExtractionPanel {...props}/>);
     expect(await screen.findByText(/1 dato por revisar/)).toBeTruthy();

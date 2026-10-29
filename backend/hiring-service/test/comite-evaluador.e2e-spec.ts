@@ -79,11 +79,10 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
 
   /** Lleva el proceso hasta abierto, que es cuando arranca el plazo de ofertas. */
   const abrir = async (procesoId: string) => {
-    await cdp.solicitar(procesoId, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(procesoId, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       procesoId,
-      { numero: 'CDP-2026-156', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-156', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 
@@ -233,6 +232,74 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
           ordenador,
         ),
       ).rejects.toThrow(/posterior a hoy/i);
+    });
+  });
+
+  // ------------------------------------------ el memorando llega después --
+
+  describe('Memorando después de designar (EFDS-1156)', () => {
+    it('designa sin memorando y la 6.2 queda cumplida', async () => {
+      const proceso = await cerrarConOferta();
+
+      const estado = await comite.designar(
+        proceso.id,
+        { miembros: [JURIDICA] },
+        null,
+        null,
+        ordenador,
+      );
+
+      expect(estado.designado).toBe(true);
+      expect(estado.comite!.memorando).toBeNull();
+      expect(estado.comite!.fechaDesignacion).toBeNull();
+      expect(estado.comite!.puedeCargarMemorando).toBe(true);
+
+      const [fila] = await dataSource.query(
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '6.2'`,
+        [proceso.id],
+      );
+      expect(fila.estado).toBe('APROBADO');
+    });
+
+    it('carga el memorando después, una sola vez', async () => {
+      const proceso = await cerrarConOferta();
+      await comite.designar(proceso.id, { miembros: [JURIDICA] }, null, null, ordenador);
+
+      const estado = await comite.cargarMemorando(
+        proceso.id,
+        { fechaDesignacion: hoy() },
+        archivo('memorando.pdf'),
+        'm'.repeat(64),
+        ordenador,
+      );
+
+      expect(estado.comite!.memorando).not.toBeNull();
+      expect(estado.comite!.fechaDesignacion).toBe(hoy());
+      expect(estado.comite!.puedeCargarMemorando).toBe(false);
+
+      await expect(
+        comite.cargarMemorando(
+          proceso.id,
+          { fechaDesignacion: hoy() },
+          archivo('otro.pdf'),
+          'n'.repeat(64),
+          ordenador,
+        ),
+      ).rejects.toThrow(/ya tiene su memorando/i);
+    });
+
+    it('si adjunta el memorando exige su fecha', async () => {
+      const proceso = await cerrarConOferta();
+
+      await expect(
+        comite.designar(
+          proceso.id,
+          { miembros: [JURIDICA] },
+          archivo('memorando.pdf'),
+          'm'.repeat(64),
+          ordenador,
+        ),
+      ).rejects.toThrow(/fecha del memorando/i);
     });
   });
 

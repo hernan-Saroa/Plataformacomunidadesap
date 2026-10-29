@@ -12,7 +12,7 @@ export class AlcanceDto {
 
   @ApiProperty({ description: "TODO, una etapa (E3), un punto (7.2) o un trámite (INC.1)", example: 'E3' })
   @IsString()
-  @Matches(/^(TODO|E\d{1,2}|\d{1,2}\.\d{1,2}|INC\.[12])$/, {
+  @Matches(/^(TODO|E\d{1,2}|\d{1,2}\.\d{1,2}(\.\d{1,2})?|INC\.[12])$/, {
     message: 'El lugar es TODO, una etapa como E3, un punto como 7.2 o un trámite INC.1 / INC.2',
   })
   lugar: string;

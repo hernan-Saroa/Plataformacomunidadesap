@@ -750,9 +750,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  const handleDescargarPDFPreliminar = useCallback(async () => {
-    if (!informePreliminar.generado) return;
-    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+  // Arma el contenido del PDF del informe preliminar (lo usan la descarga y el adjunto del correo, EFDS-2350)
+  const prepararPDFPreliminar = useCallback(async (toastId: string) => {
     const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
     let hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
       codigo: h.codigo,
@@ -768,13 +767,13 @@ export const ComunicacionAuditoriaModule: React.FC<{
     const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informePreliminar);
     let auditoriaFinal = { ...auditoriaBase };
 
-    toast.loading('Generando contenido del informe...', { id: 'pdf-gen' });
+    toast.loading('Generando contenido del informe...', { id: toastId });
     let informeFinalTmp = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
     try {
       const contenidoIA = await generarContenidoInformeIA(
         auditoriaBase,
         hallazgosParaPDF,
-        (msg) => toast.loading(msg, { id: 'pdf-gen' })
+        (msg) => toast.loading(msg, { id: toastId })
       );
       auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
       if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
@@ -783,14 +782,38 @@ export const ComunicacionAuditoriaModule: React.FC<{
       if (!informePreliminar.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
         informeFinalTmp = { ...informeFinalTmp, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
-      toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
     } catch {
-      toast.dismiss('pdf-gen');
+      /* sin contenido IA se usa el de la auditoría */
     }
+    return { auditoriaFinal, informeFinalTmp, hallazgosParaPDF };
+  }, [auditoria, informePreliminar]);
 
+  const handleDescargarPDFPreliminar = useCallback(async () => {
+    if (!informePreliminar.generado) return;
+    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+    const { auditoriaFinal, informeFinalTmp, hallazgosParaPDF } = await prepararPDFPreliminar('pdf-gen');
+    toast.loading('Descargando PDF...', { id: 'pdf-gen' });
     await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinalTmp, hallazgosParaPDF);
     toast.dismiss('pdf-gen');
-  }, [auditoria, informePreliminar]);
+  }, [informePreliminar.generado, prepararPDFPreliminar]);
+
+  // Arma el PDF del informe preliminar para enviarlo con "Generar": el backend lo guarda en los
+  // documentos de la auditoría y lo adjunta al correo del área auditada. Viaja en la misma petición
+  // para no depender del permiso de subir documentos (EFDS-2350). Si falla, se genera igual, sin adjunto.
+  const armarPDFPreliminar = useCallback(async (): Promise<File | undefined> => {
+    try {
+      const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+      const { auditoriaFinal, informeFinalTmp, hallazgosParaPDF } = await prepararPDFPreliminar('inf-prel');
+      toast.loading('Preparando el informe para el correo del área auditada...', { id: 'inf-prel' });
+      const blob = await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinalTmp, hallazgosParaPDF, 'blob');
+      return new File([blob], `Informe_Preliminar_${auditoria.codigo || id}.pdf`, { type: 'application/pdf' });
+    } catch (err: any) {
+      console.warn('[Comunicación] No se pudo preparar el PDF del informe preliminar para el correo:', err?.message);
+      return undefined;
+    } finally {
+      toast.dismiss('inf-prel');
+    }
+  }, [prepararPDFPreliminar, auditoria.codigo, id]);
 
   const handleDescargarPDFFinal = useCallback(async () => {
     if (!informeFinal.generado) return;
@@ -843,8 +866,15 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const handleGenerarInformePreliminar = useCallback(async () => {
     if (useAPI) {
       try {
-        const res = await controlInternoService.generarInformePreliminar(id);
+        const informe = await armarPDFPreliminar();
+        const res = await controlInternoService.generarInformePreliminar(id, informe);
         toast.success(res?.mensaje || 'Informe preliminar generado');
+        if (res?.areaNotificada === false) {
+          // No se pudo avisar al área auditada: se dice por qué, para corregirlo y volver a notificar (EFDS-2350)
+          toast.error(`No se notificó al área auditada: ${res.motivoNoNotificada || 'motivo desconocido'}.`, { duration: 12000 });
+        } else if (!res?.informeAdjunto) {
+          toast.warning('El correo al área auditada salió sin el PDF adjunto; pueden consultarlo en la plataforma.');
+        }
         setInformePreliminar(prev => ({ ...prev, generado: true }));
         await cargarDatos();
       } catch (err: any) {
@@ -854,7 +884,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
       setInformePreliminar(prev => ({ ...prev, generado: true }));
       toast.success('Informe Preliminar generado (demo)');
     }
-  }, [useAPI, id, cargarDatos]);
+  }, [useAPI, id, cargarDatos, armarPDFPreliminar]);
 
   const handleGenerarInformeFinal = useCallback(async () => {
     if (estadoComunicacion?.hayControversiasPendientes) {

@@ -17,7 +17,7 @@ describe('pendientesParaArchivar (EFDS-1174)', () => {
   it('pide la publicación cuando el acta existe y no se publicó', () => {
     const pendientes = pendientesParaArchivar({ ...todo, publicadaEnSecop: false });
 
-    expect(pendientes).toEqual(['el acta de liquidación no se ha publicado en SECOP II']);
+    expect(pendientes).toEqual(['el acta de liquidación no se ha publicado (paso 1: SECOP II o página web)']);
   });
 
   /**
@@ -28,7 +28,7 @@ describe('pendientesParaArchivar (EFDS-1174)', () => {
   it('exige el cierre financiero aunque el acta ya esté publicada', () => {
     const pendientes = pendientesParaArchivar({ ...todo, cierreVigente: false });
 
-    expect(pendientes).toEqual(['el contrato no tiene cierre financiero vigente (10.3)']);
+    expect(pendientes).toEqual(['el contrato no tiene cierre financiero vigente (se registra con la liquidación)']);
   });
 
   it('acumula lo que falte, para que el Archivo de Gestión no lo descubra de a uno', () => {

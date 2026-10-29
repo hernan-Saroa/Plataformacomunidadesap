@@ -5,6 +5,9 @@ import {
   PERMISO_PROCESO_ASIGNAR,
 } from '../../auth/permisos';
 import { AlcanceService } from '../../auth/alcance.service';
+import { accionQueHace, reglaLaHace } from '../../auth/la-hace';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { FilaAsignacion, asignacionQueRige, filasDeVersion, versionDelProceso } from '../../flujo/lectura';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -45,11 +48,16 @@ export class NotificadorService implements OnApplicationBootstrap {
      * funcionando con solo la fuente de datos.
      */
     @Optional() alcance?: AlcanceService,
+    /** Quién decide el escalón que está esperando (migración 101). */
+    @Optional() cadenas?: CadenaAprobacionService,
   ) {
     this.campana = new Campana(dataSource, this.logger);
     this.avisos = avisos ?? new AvisosService(dataSource);
     this.alcance = alcance ?? new AlcanceService(dataSource);
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
   }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   async despachar(ocurridos: EventoOcurrido[]): Promise<number> {
     if (!motorDeAvisosEncendido() || !ocurridos.length) return 0;
@@ -229,9 +237,20 @@ export class NotificadorService implements OnApplicationBootstrap {
 
   /** Anota las actividades que se pueden empezar y devuelve las que no estaban anotadas. */
   private async anotarHabilitadas(procesoId: string): Promise<string[]> {
+    // La secuencia que rige es la de la versión del flujo del proceso (125).
+    // Si no se puede leer, rige lo predeterminado: un aviso tarde es mejor que
+    // ninguno.
+    let filasDelFlujo: FilaAsignacion[] = [];
+    try {
+      const em = this.dataSource.manager;
+      filasDelFlujo = await filasDeVersion(em, await versionDelProceso(em, procesoId));
+    } catch (error: any) {
+      this.logger.warn(`No se pudo leer la secuencia del flujo: ${error.message}`);
+    }
     const pasos: PasoDelFlujo[] = (
       await this.dataSource.query(
         `SELECT a.numeral,
+                p.modalidad,
                 pa.estado,
                 NOT EXISTS (
                   SELECT 1 FROM hiring.actividades_excluidas x
@@ -250,6 +269,7 @@ export class NotificadorService implements OnApplicationBootstrap {
       estado: f.estado ?? null,
       aplica: f.aplica === true,
       construida: !SIN_PANEL.has(f.numeral),
+      secuencia: asignacionQueRige(filasDelFlujo, f.numeral, f.modalidad ?? null).secuencia,
     }));
     if (!pasos.length) return [];
 
@@ -321,8 +341,40 @@ export class NotificadorService implements OnApplicationBootstrap {
     ocurrido: EventoOcurrido,
     modalidad: string | null,
   ): Promise<string[]> {
+    // Quien ocupa el puesto en el proceso (109).
+    if (papel.startsWith('PUESTO:')) {
+      const filas = await this.dataSource.query(
+        `SELECT usuario_id::text AS id FROM hiring.asignaciones_puesto
+          WHERE proceso_id = $1 AND puesto_id::text = $2 AND estado = 'VIGENTE'`,
+        [ocurrido.procesoId, papel.slice('PUESTO:'.length)],
+      );
+      return filas.map((f: any) => f.id);
+    }
+
     switch (papel) {
-      case 'ABOGADO':
+      case 'QUIEN_LA_HACE': {
+        // Lo que dice su regla «quién la hace»; sin regla, quien puede editarla.
+        const regla = await reglaLaHace(this.dataSource.manager, ocurrido.numeral, modalidad, ocurrido.procesoId);
+        if (regla && 'puestoId' in regla) {
+          return this.quienCumple(`PUESTO:${regla.puestoId}`, ocurrido, modalidad);
+        }
+        // Ids de persona: `cuentasDe` las traduce a sus cuentas.
+        if (regla && 'personas' in regla) return regla.personas;
+        return this.alcance.cuentasQuePueden(accionQueHace(ocurrido.numeral), ocurrido.numeral);
+      }
+      case 'DECIDE_REVISION_PAA': {
+        const filas = await this.dataSource.query(
+          `SELECT DISTINCT ur.id_user::text AS id
+             FROM auth.user_roles ur
+             JOIN auth.role r ON r.id = ur.id_rol AND r.is_active
+             JOIN hiring.alcances_permiso a ON a.rol_id = r.id AND a.activo AND a.accion = 'decidir'
+             JOIN auth.permission p ON p.code = 'contratacion.decidir' AND p.is_active
+             JOIN auth.role_permissions rp ON rp.id_rol = r.id AND rp.id_permission = p.id_permission AND rp.is_active
+            WHERE ur.is_active
+              AND (a.tramite = 'PAA.R' OR (a.etapa IS NULL AND a.numeral IS NULL AND a.tramite IS NULL))`,
+        );
+        return filas.map((f: any) => f.id);
+      }
       case 'CONTRATACION': {
         const filas = await this.dataSource.query(
           `SELECT usuario_id::text AS id
@@ -361,26 +413,45 @@ export class NotificadorService implements OnApplicationBootstrap {
       }
       case 'QUIEN_APRUEBA': {
         /*
-         * Los que la pestaña de Aprobación designó para esta actividad. La regla
-         * de la modalidad manda sobre la general, igual que al aprobar: avisar a
-         * alguien distinto de quien puede decidir sería mandarlo a un botón que
-         * no le va a funcionar.
+         * Los responsables del escalón que está esperando, no los de toda la
+         * cadena (migración 101): avisar al director mientras el técnico aún
+         * no decide sería mandarlo a un botón que no le va a funcionar. Tras
+         * una aprobación intermedia, el escalón que espera es el siguiente, y
+         * a él le llega el aviso.
          */
-        const reglas: { modalidad: string | null; config: any }[] = await this.dataSource.query(
-          `SELECT modalidad, config
-             FROM hiring.reglas_actividad
-            WHERE tipo = 'EXIGE_APROBACION'
-              AND vigente_hasta IS NULL
-              AND numeral = $1
-              AND (modalidad IS NULL OR modalidad = $2)`,
-          [ocurrido.numeral, modalidad],
-        );
-        const regla = reglas.find((r) => r.modalidad) ?? reglas[0];
-        if (!regla) return [];
-
-        const roles: string[] = Array.isArray(regla.config?.roles) ? regla.config.roles : [];
-        const personas: string[] = Array.isArray(regla.config?.personas) ? regla.config.personas : [];
-        return [...(roles.length ? await this.cuentasConRol(roles) : []), ...personas];
+        let pendientes = await this.cadenas.responsablesPendientes(ocurrido.procesoId, ocurrido.numeral);
+        // Sin ronda —la 3.1 con la regla de siempre, que decide el abogado—,
+        // los que nombra la regla, como antes de la 101.
+        if (!pendientes.length) {
+          const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad, undefined, ocurrido.procesoId);
+          pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1).map((e) => ({ ...e, cuentas: [] })) : [];
+          // Sin ronda ni regla, la decisión va por permiso: las solicitudes de
+          // modificación (9.5) las aprueba quien puede aprobar la 9.5, y sin
+          // esto el aviso de EFDS-1176 no le llegaba a nadie.
+          if (!cadena) return this.alcance.cuentasQuePueden('aprobar', ocurrido.numeral);
+        }
+        const ids: string[] = [];
+        for (const e of pendientes) {
+          if (e.roles?.length) ids.push(...(await this.cuentasConRol(e.roles)));
+          // Ids de persona: `cuentasDe` las traduce a sus cuentas.
+          ids.push(...(e.personas ?? []));
+          // El designado en la 3.3 para el escalón (102): ya es una cuenta.
+          ids.push(...(e.cuentas ?? []));
+          for (const papel of e.papeles ?? []) {
+            if (papel === 'SUPERVISOR') {
+              ids.push(...(await this.quienCumple('SUPERVISOR', ocurrido, modalidad)));
+            } else {
+              const filas = await this.dataSource.query(
+                `SELECT usuario_id::text AS id
+                   FROM hiring.participaciones_proceso
+                  WHERE proceso_id = $1 AND papel = $2 AND estado = 'VIGENTE' AND usuario_id IS NOT NULL`,
+                [ocurrido.procesoId, papel],
+              );
+              ids.push(...filas.map((f: any) => f.id));
+            }
+          }
+        }
+        return ids;
       }
       case 'BANDEJA_CONTRATACION':
         // Quien puede tomar de la bandeja es quien edita la 3.3, y quien
@@ -388,6 +459,11 @@ export class NotificadorService implements OnApplicationBootstrap {
         // con el que el guard y el listado deciden quién lo ve.
         return this.alcance.cuentasQuePueden('editar', '3.3');
       case 'EQUIPO_FINANCIERO':
+        // La Financiera trabaja por fuera (103, 106): el aviso va a quien
+        // registra en el aplicativo lo que ella hizo. El RP y el cierre los
+        // registra Contratación (107); el CDP, el área en la 4.2.
+        if (ocurrido.numeral === '8.3') return this.alcance.cuentasQuePueden('decidir', '8.3');
+        if (ocurrido.numeral === '10.3') return this.alcance.cuentasQuePueden('editar', '10.3');
         return this.alcance.cuentasQuePueden('editar', '4.2');
       // Los mismos permisos que protegen la pantalla de cada cosa: quien puede
       // hacerla es a quien le toca.
@@ -418,11 +494,14 @@ export class NotificadorService implements OnApplicationBootstrap {
         return filas.map((f: any) => f.id);
       }
       case 'SUPERVISOR': {
+        // La cuenta designada (121); las designaciones de antes solo tienen la
+        // persona, y `cuentasDe` la traduce.
         const filas = await this.dataSource.query(
-          `SELECT s.persona_id::text AS id
+          `SELECT COALESCE(s.usuario_id::text, s.persona_id::text) AS id
              FROM hiring.supervisiones_contrato s
              JOIN hiring.contratos k ON k.id = s.contrato_id
-            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE' AND s.persona_id IS NOT NULL`,
+            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE'
+              AND COALESCE(s.usuario_id, s.persona_id) IS NOT NULL`,
           [ocurrido.procesoId],
         );
         return filas.map((f: any) => f.id);

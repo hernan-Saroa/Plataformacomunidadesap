@@ -1149,6 +1149,16 @@ export class ProcessController {
             numeroExpediente: expediente?.numeroExpediente || proceso.radicadoProceso || id,
             asunto: expediente?.asunto || (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
             responsable: expediente?.responsable || (proceso.abogadoAsignado as any)?.nombre || 'Sin asignar',
+            codigoDependencia: expediente?.codigoDependencia || (proceso as any)?.codigoDependencia,
+            nombreDependencia: expediente?.nombreDependencia || (proceso as any)?.nombreDependencia,
+            codigoSerie: expediente?.codigoSerie || (proceso as any)?.codigoSerie,
+            nombreSerie: expediente?.nombreSerie || (proceso as any)?.nombreSerie,
+            codigoSubserie: expediente?.codigoSubserie || (proceso as any)?.codigoSubserie,
+            nombreSubserie: expediente?.nombreSubserie || (proceso as any)?.nombreSubserie,
+            codigoIdentificacionExpediente: expediente?.codigoIdentificacionExpediente || (proceso as any)?.codigoIdentificacionExpediente,
+            trdVersion: expediente?.trdVersion || (proceso as any)?.trdVersion,
+            fechaHechos: expediente?.fechaHechos || (proceso.news as any)?.fechaHechos || (proceso as any)?.fechaHechos,
+            fechaRadicacion: expediente?.fechaRadicacion || (proceso as any)?.createdAt,
           };
         }
       } catch (err) {
@@ -1209,6 +1219,107 @@ export class ProcessController {
 
     await workbook.xlsx.write(res);
     res.end();
+  }
+
+  /**
+   * Compartir el FUID (EI-FO-003) por correo electrónico como archivo adjunto (.xlsx).
+   * A diferencia de "Compartir expediente", este envío NO comparte el Índice Electrónico
+   * ni un enlace al expediente: remite únicamente el formato FUID generado.
+   */
+  @Post('fuid/share')
+  @ApiOperation({
+    summary: 'Compartir FUID por correo (EI-FO-003)',
+    description: 'Genera el FUID en formato oficial EI-FO-003 y lo envía como adjunto al correo indicado',
+  })
+  async compartirFuid(
+    @Body() body: {
+      items: FuidItemDto[];
+      header?: FuidHeaderDto;
+      emailDestinatario: string;
+      mensaje?: string;
+      filename?: string;
+    },
+  ): Promise<{ success: boolean; message: string; filename: string }> {
+    const email = (body?.emailDestinatario || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new HttpException('Debe indicar un correo electrónico válido', HttpStatus.BAD_REQUEST);
+    }
+    const items = Array.isArray(body?.items) ? body.items : [];
+    if (items.length === 0) {
+      throw new HttpException('No hay expedientes para incluir en el FUID', HttpStatus.BAD_REQUEST);
+    }
+
+    const workbook = await this.fuidExportService.generar(items, body.header);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    const hoy = new Date();
+    const fechaPrefix = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`;
+    const defaultName = items.length === 1
+      ? `${fechaPrefix}_FUID_${items[0].radicado}.xlsx`
+      : `${fechaPrefix}_FUID.xlsx`;
+    const filename = (body.filename || defaultName).replace(/[\\/:*?"<>|]/g, '_');
+
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const radicados = items.map(i => i.radicado).filter(Boolean);
+    const listaRadicados = radicados.length <= 10
+      ? radicados.join(', ')
+      : `${radicados.slice(0, 10).join(', ')} y ${radicados.length - 10} más`;
+    const mensaje = (body.mensaje || '').trim();
+    const remitente = body.header?.elaboradoPor?.trim();
+
+    const subject = items.length === 1
+      ? `FUID - Expediente ${radicados[0]} - Control Interno Disciplinario ESAP`
+      : `FUID - ${items.length} expedientes - Control Interno Disciplinario ESAP`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #1e293b;">
+        <h2 style="color: #003DA5;">Formato Único de Inventario Documental (FUID)</h2>
+        <p>Se remite adjunto el FUID (EI-FO-003) de la Oficina de Control Interno Disciplinario
+        correspondiente a ${items.length === 1 ? 'el expediente' : 'los expedientes'}: <strong>${escapeHtml(listaRadicados)}</strong>.</p>
+        ${mensaje ? `<p><strong>Mensaje:</strong><br/>${escapeHtml(mensaje).replace(/\n/g, '<br/>')}</p>` : ''}
+        ${remitente ? `<p><strong>Elaborado por:</strong> ${escapeHtml(remitente)}</p>` : ''}
+        <hr />
+        <p style="font-size: 12px; color: #64748b;">Escuela Superior de Administración Pública - ESAP</p>
+      </div>
+    `;
+
+    const baseNotifUrl = process.env.NOTIFICATION_SERVICE_URL || process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const uniqueBases = Array.from(new Set([
+      baseNotifUrl,
+      baseNotifUrl.replace('notifications-service', 'localhost'),
+      'http://localhost:3009',
+      'http://127.0.0.1:3009',
+    ].map(u => (u || '').replace(/\/+$/, ''))));
+
+    const emailPayload = {
+      to: email,
+      subject,
+      text: `Se remite adjunto el FUID (EI-FO-003) de: ${listaRadicados}.${mensaje ? ` Mensaje: ${mensaje}` : ''}`,
+      html,
+      attachments: [{
+        filename,
+        contentBase64: buffer.toString('base64'),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }],
+    };
+
+    let lastError = '';
+    for (const base of uniqueBases) {
+      try {
+        await firstValueFrom(
+          this.httpService.post(`${base}/api/v1/emails/send`, emailPayload, { timeout: 15000 }),
+        );
+        return { success: true, message: `FUID enviado a ${email}`, filename };
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+        console.warn(`⚠️ [CompartirFUID] Intento vía ${base} no completado: ${lastError}`);
+      }
+    }
+
+    throw new HttpException(
+      `No fue posible enviar el FUID por correo: ${lastError}`,
+      HttpStatus.BAD_GATEWAY,
+    );
   }
 
   /**

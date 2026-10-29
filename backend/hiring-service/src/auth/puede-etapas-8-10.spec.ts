@@ -41,10 +41,9 @@ const ESPERADO: [string, any, string, unknown, unknown][] = [
   ['supervisión', SupervisionController, 'registrarAviso', 'decidir', '8.2'],
   ['supervisión', SupervisionController, 'reasignar', 'decidir', '9.3'],
   ['RP', RegistroPresupuestalController, 'estado', 'ver', '8.3'],
-  ['RP', RegistroPresupuestalController, 'solicitar', 'editar', '8.3'],
-  ['RP', RegistroPresupuestalController, 'verificar', 'decidir', '8.3'],
-  ['RP', RegistroPresupuestalController, 'expedir', 'decidir', '8.3'],
-  ['RP', RegistroPresupuestalController, 'rechazar', 'decidir', '8.3'],
+  // Desde la revisión de QA de EFDS-1163 el RP solo se carga ya expedido.
+  ['RP', RegistroPresupuestalController, 'cargar', 'editar', '8.3'],
+  ['legalización', LegalizacionController, 'agregarAmparo', 'editar', '8.4'],
   ['legalización', LegalizacionController, 'estado', 'ver', '8.4'],
   ['legalización', LegalizacionController, 'cargarGarantia', 'editar', '8.4'],
   ['legalización', LegalizacionController, 'aprobar', 'aprobar', '8.4'],

@@ -1,4 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
 import {
@@ -13,14 +20,14 @@ import {
 
 /** Actividad 3.3 de la matriz: la radicación en la Dirección. */
 export const NUMERAL_RADICACION = '3.3';
+
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
 import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
-import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
 import { CdpService } from '../cdp/cdp.service';
-import { respondeElAsignado } from './quien-responde';
+import { PuestosService } from './puestos.service';
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
 export interface CuentaCandidata {
@@ -30,14 +37,6 @@ export interface CuentaCandidata {
   nombre: string;
   cargo: string | null;
   email: string | null;
-}
-
-/** Lo que lleva un abogado, para repartir con criterio. */
-export interface CargaDeAbogado {
-  /** Procesos en los que es el abogado vigente. */
-  procesosACargo: number;
-  /** De esos, cuántos tienen el estudio previo esperando su decisión. */
-  revisionesPendientes: number;
 }
 
 /**
@@ -65,45 +64,17 @@ export function esSuya(
   );
 }
 
-/** Por qué alguien no puede decidir sobre este proceso, o `null` si sí puede. */
-export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
-
-/**
- * Quién puede resolver una revisión del proceso (EFDS-1183).
- *
- * El abogado repartido en la 3.3, y nadie más. No basta con tener el permiso de
- * aprobar: eso lo tienen todos los revisores de la Dirección, y el flujo dice
- * que de este expediente responde el que lo recibió. El Director que quiera
- * decidir se lo reasigna a sí mismo, que deja constancia de quién lo hizo.
- *
- * Sin abogado repartido no se decide. Es deliberado y no un descuido: el
- * reparto es lo que pone a alguien a responder por el proceso, y aprobar
- * saltándoselo dejaría el expediente sin decir quién revisó. Un proceso en
- * revisión y sin abogado aparece en las alertas para que se reparta.
- *
- * Función pura para poder fijar la regla sin base de datos.
- */
-export function motivoParaNoDecidir(
-  tienePermisoDeAprobar: boolean,
-  hayAbogado: boolean,
-  esElAbogado: boolean,
-): MotivoNoDecide | null {
-  if (!tienePermisoDeAprobar) return 'SIN_PERMISO';
-  if (!hayAbogado) return 'SIN_ABOGADO';
-  if (!esElAbogado) return 'NO_ES_TUYO';
-  return null;
-}
-
 /**
  * Quién está en cada proceso (EFDS-1183).
  *
  * Dos papeles con reglas distintas de entrada:
  *
- * - `CONTRATACION` se **toma**. La bandeja es compartida y quien llega primero
- *   se queda con el proceso; nadie se lo entrega.
- * - `ABOGADO` se **asigna**, y lo hace quien tomó el proceso.
+ * `CONTRATACION` se **toma**: la bandeja es compartida y quien llega primero
+ * se queda con el proceso; nadie se lo entrega. Salir es relevo con motivo,
+ * conservando al anterior.
  *
- * Salir es igual para los dos: relevo con motivo, conservando al anterior.
+ * El abogado dejó de ser un papel (109): es un puesto del proceso, y los
+ * puestos los lleva `PuestosService`.
  */
 @Injectable()
 export class ParticipacionService {
@@ -119,7 +90,16 @@ export class ParticipacionService {
     private readonly cdp: CdpService,
     /** Quién puede qué en cada punto (migración 083). */
     private readonly alcance: AlcanceService,
-  ) {}
+    /**
+     * Los puestos del proceso (109): quien ocupa uno también está en el
+     * proceso. Opcional para las pruebas que construyen el servicio a mano.
+     */
+    @Optional() puestos?: PuestosService,
+  ) {
+    this.puestos = puestos ?? new PuestosService(dataSource, alcance);
+  }
+
+  private readonly puestos: PuestosService;
 
   // ------------------------------------------------------------- consulta --
 
@@ -135,42 +115,23 @@ export class ParticipacionService {
       todas.find((p) => p.papel === papel && p.estado === 'VIGENTE') ?? null;
 
     const contratacion = vigente('CONTRATACION');
-    const abogado = vigente('ABOGADO');
     const financiera = vigente('FINANCIERA');
 
-    // Quien tomó el proceso es quien reparte el abogado. El Director también,
+    // Quien tomó el proceso es quien asigna los puestos. El Director también,
     // porque `proceso.assign` es suyo y tiene que poder corregir un reparto.
     const soyElDeContratacion = !!contratacion && esSuya(contratacion, acceso);
     const puedeRepartir = soyElDeContratacion || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
-
-    /**
-     * Ofrecer tomar la solicitud solo donde hay una que tomar.
-     *
-     * Se comprueba contra la bandeja y no solo contra el permiso porque si no
-     * la pantalla enseñaría el botón en todos los procesos, incluidos los que
-     * no han pedido CDP y los que ya lo tienen expedido, y la API lo rechazaría
-     * cuando ya es tarde.
-     */
-    const puedeTomarFinanciera =
-      !financiera &&
-      (await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
-      (await this.estaEnLaBandejaFinanciera(procesoId));
 
     return {
       /** Sin tomar: el proceso está en la bandeja y nadie responde por él. */
       puedeTomar: !contratacion && (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION)),
       puedeRepartir,
       contratacion: contratacion ? this.aVista(contratacion, acceso) : null,
-      abogado: abogado ? this.aVista(abogado, acceso) : null,
-      /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
-      financiera: financiera ? this.aVista(financiera, acceso) : null,
-      puedeTomarFinanciera,
       /**
-       * No debería pasar, pero quitar un abogado sin poner otro es una
-       * situación real. En vez de impedirla se dice, para que el proceso no se
-       * quede quieto sin que nadie lo note.
+       * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP
+       * se tramita por fuera y nadie lo toma: queda como historia.
        */
-      sinAbogado: !!contratacion && !abogado,
+      financiera: financiera ? this.aVista(financiera, acceso) : null,
       // Quien llevó el proceso antes respondió por lo que hizo en él: el
       // expediente conserva a los relevados con el motivo del cambio.
       historial: todas
@@ -186,70 +147,6 @@ export class ParticipacionService {
           motivoRelevo: p.motivoRelevo,
         })),
     };
-  }
-
-  /**
-   * Las cuentas a las que se les puede dar el papel de abogado.
-   *
-   * Se resuelven por alcance y no por código de rol —quien pueda aprobar la
-   * 3.4 es quien puede revisar el proceso—, igual que hacen los endpoints. Nombrar aquí `REVISOR_CONTRATACION` ataría el reparto a un rol
-   * que el administrador puede renombrar o desdoblar mañana desde el
-   * backoffice, que es justo lo que la migración 060 vino a quitar del código.
-   */
-  async abogados(termino = ''): Promise<(CuentaCandidata & CargaDeAbogado)[]> {
-    const cuentas = await this.cuentasCon('aprobar', '3.4', termino);
-    const carga = await this.cargaDeAbogados();
-
-    /*
-     * Con su carga, como la sección «Profesionales» del módulo disciplinario:
-     * quien reparte elige mejor si ve que uno lleva diez procesos y otro dos,
-     * y cuántos estudios previos le esperan ahora mismo.
-     */
-    return cuentas.map((c) => {
-      const suya =
-        carga.get(`id:${c.usuarioId}`) ?? carga.get(`nombre:${c.usuarioNombre.trim().toLowerCase()}`);
-      return { ...c, procesosACargo: suya?.procesos ?? 0, revisionesPendientes: suya?.pendientes ?? 0 };
-    });
-  }
-
-  /** Cuántos procesos lleva cada abogado y cuántos estudios previos le esperan. */
-  private async cargaDeAbogados(): Promise<Map<string, { procesos: number; pendientes: number }>> {
-    const filas: { usuario_id: string | null; usuario_nombre: string; procesos: string; pendientes: string }[] =
-      await this.dataSource.query(
-        `SELECT pp.usuario_id::text AS usuario_id,
-                pp.usuario_nombre,
-                count(DISTINCT pp.proceso_id) AS procesos,
-                count(DISTINCT pp.proceso_id) FILTER (WHERE pa.estado = 'EN_REVISION') AS pendientes
-           FROM hiring.participaciones_proceso pp
-           LEFT JOIN hiring.proceso_actividades pa
-                  ON pa.proceso_id = pp.proceso_id AND pa.numeral = '3.1'
-          WHERE pp.papel = 'ABOGADO' AND pp.estado = 'VIGENTE'
-          GROUP BY pp.usuario_id, pp.usuario_nombre`,
-      );
-
-    const carga = new Map<string, { procesos: number; pendientes: number }>();
-    for (const f of filas) {
-      const valor = { procesos: Number(f.procesos), pendientes: Number(f.pendientes) };
-      if (f.usuario_id) carga.set(`id:${f.usuario_id}`, valor);
-      carga.set(`nombre:${f.usuario_nombre.trim().toLowerCase()}`, valor);
-    }
-    return carga;
-  }
-
-  /**
-   * Las cuentas de la Dirección Financiera que pueden resolver un CDP.
-   *
-   * Por alcance y no por rol, igual que los abogados: quien pueda editar la
-   * 4.2 es quien verifica la disponibilidad y expide. Nombrar aquí
-   * `ESTRUCTURADOR_FINANCIERO` ataría la etapa 4 a un código de rol que el
-   * administrador puede renombrar o desdoblar mañana desde el backoffice.
-   *
-   * No lo consume un desplegable —la solicitud no se reparte, se toma— sino el
-   * aviso: mientras nadie la ha tomado no hay responsable a quien notificar, y
-   * esta es la lista a la que se le manda.
-   */
-  async financieros(termino = ''): Promise<CuentaCandidata[]> {
-    return this.cuentasCon('editar', '4.2', termino);
   }
 
   // ------------------------------------------------------------ el proceso --
@@ -290,162 +187,10 @@ export class ParticipacionService {
         quien: cuenta.nombre,
       });
 
-      // Dentro de la transacción: si la creación del CDP falla, tomar el
-      // proceso tampoco queda hecho, y no hay un estado intermedio en el que la
-      // etapa 3 esté cerrada sin su solicitud.
-      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
-    });
-
-    return this.estado(procesoId, acceso);
-  }
-
-  /**
-   * Tomar la solicitud de CDP de la bandeja de la Financiera (actividad 4.1).
-   *
-   * Mismo acto que `tomar` y por el mismo motivo: nadie la entrega, la toma
-   * quien va a resolverla. Lo que cambia es de qué bandeja sale —una solicitud
-   * sin atender, no un proceso sin recibir— y que aquí no se cierra ninguna
-   * actividad: la 4.1 la cumple la solicitud misma, no el hecho de tomarla.
-   *
-   * Tomarla es lo que pone nombre al responsable, y con eso el aviso deja de ir
-   * a toda la Dirección Financiera y pasa a ser suyo.
-   */
-  async tomarFinanciera(procesoId: string, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirProceso(em, procesoId, true);
-
-      const actual = await this.vigente(procesoId, 'FINANCIERA', em);
-      if (actual) {
-        throw new ConflictException(
-          esSuya(actual, acceso)
-            ? 'Ya habías tomado esta solicitud'
-            : `${actual.nombre} tomó esta solicitud antes que tú`,
-        );
-      }
-
-      // Que la solicitud exista y siga sin resolver. Sin esto se podría tomar
-      // el CDP de un proceso que no lo ha pedido —o uno ya expedido—, y el
-      // responsable quedaría puesto sobre algo que nadie tiene que atender.
-      const [solicitud] = await em.query(
-        `SELECT 1
-           FROM hiring.cdp
-          WHERE proceso_id = $1
-            AND modificacion_id IS NULL
-            AND estado = 'SOLICITADO'
-          LIMIT 1`,
-        [procesoId],
-      );
-      if (!solicitud) {
-        throw new ConflictException(
-          'Este proceso no tiene una solicitud de CDP esperando a que la atiendan',
-        );
-      }
-
-      const cuenta = await this.exigirCuenta(acceso.userId, acceso.userName);
-      const nueva = await this.guardar(em, procesoId, 'FINANCIERA', cuenta, acceso);
-
-      // RADICAR y no DESIGNAR, con el criterio con que se eligió para la 3.3:
-      // designar es poner a otro, y aquí nadie entrega nada.
-      await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
-        papel: 'FINANCIERA',
-        quien: cuenta.nombre,
-      });
-    });
-
-    return this.estado(procesoId, acceso);
-  }
-
-  // ------------------------------------------------------------- el abogado --
-
-  async asignarAbogado(procesoId: string, dto: AsignarAbogadoDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirProceso(em, procesoId, true);
-      await this.exigirQuePuedaRepartir(em, procesoId, acceso);
-
-      if (await this.vigente(procesoId, 'ABOGADO', em)) {
-        throw new ConflictException(
-          'El proceso ya tiene abogado: para cambiarlo se reasigna, que releva al actual con su motivo',
-        );
-      }
-
-      const cuenta = await this.exigirCuenta(dto.usuarioId);
-      const nueva = await this.guardar(em, procesoId, 'ABOGADO', cuenta, acceso);
-
-      await this.traza(em, procesoId, nueva.id, 'DESIGNAR', acceso, {
-        papel: 'ABOGADO',
-        abogado: cuenta.nombre,
-        usuario: cuenta.usuarioNombre,
-      });
-    });
-
-    return this.estado(procesoId, acceso);
-  }
-
-  /**
-   * Reasigna el proceso a otro abogado.
-   *
-   * Releva al vigente y asigna al nuevo en un solo acto, como la reasignación
-   * de la supervisión (EFDS-1169): en dos pasos el proceso se queda sin revisor
-   * entre uno y otro, y si el segundo falla queda así.
-   */
-  async reasignarAbogado(procesoId: string, dto: ReasignarAbogadoDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirProceso(em, procesoId, true);
-      await this.exigirQuePuedaRepartir(em, procesoId, acceso);
-
-      const actual = await this.vigente(procesoId, 'ABOGADO', em);
-      if (!actual) {
-        throw new NotFoundException(
-          'El proceso no tiene abogado: no hay a quién relevar, se asigna uno',
-        );
-      }
-
-      const cuenta = await this.exigirCuenta(dto.usuarioId);
-      if (esSuya(actual, { userId: cuenta.usuarioId, userName: cuenta.usuarioNombre })) {
-        throw new ConflictException(
-          'Ese abogado ya lleva el proceso: reasignar exige designar a otro',
-        );
-      }
-
-      await this.relevar(em, actual, dto.motivo, acceso);
-      const nueva = await this.guardar(em, procesoId, 'ABOGADO', cuenta, acceso);
-
-      await this.traza(em, procesoId, nueva.id, 'DESIGNAR', acceso, {
-        papel: 'ABOGADO',
-        reasignacion: true,
-        abogadoAnterior: actual.nombre,
-        abogado: cuenta.nombre,
-        motivo: dto.motivo,
-      });
-    });
-
-    return this.estado(procesoId, acceso);
-  }
-
-  /**
-   * Quita al abogado sin poner otro.
-   *
-   * «No debería, pero puede pasar»: el abogado se va de la entidad, o el
-   * reparto estaba mal. Se permite en vez de obligar a nombrar un sustituto
-   * ahí mismo —que sería inventar un responsable—, y el proceso queda marcado
-   * como pendiente de reasignar para que no se pierda.
-   */
-  async quitarAbogado(procesoId: string, dto: MotivoDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirProceso(em, procesoId, true);
-      await this.exigirQuePuedaRepartir(em, procesoId, acceso);
-
-      const actual = await this.vigente(procesoId, 'ABOGADO', em);
-      if (!actual) throw new NotFoundException('El proceso no tiene abogado que quitar');
-
-      await this.relevar(em, actual, dto.motivo, acceso);
-
-      await this.traza(em, procesoId, actual.id, 'REVOCAR', acceso, {
-        papel: 'ABOGADO',
-        abogado: actual.nombre,
-        motivo: dto.motivo,
-        sinReemplazo: true,
-      });
+      // Dentro de la transacción: si abrir la etapa 4 falla, tomar el proceso
+      // tampoco queda hecho, y no hay un estado intermedio en el que la etapa 3
+      // esté cerrada sin que el proceso haya pasado a la 4.
+      await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, acceso);
@@ -454,31 +199,12 @@ export class ParticipacionService {
   // ------------------------------------------------ lo que consumen otras --
 
   /**
-   * Quién resuelve las revisiones de este proceso, y si le toca a quien
-   * pregunta.
-   *
-   * Vive aquí y no en el estudio previo porque ya son dos las actividades que
-   * lo preguntan —la revisión del estudio previo y la de la modalidad— y con
-   * una copia en cada una acabarían discrepando sobre el mismo proceso.
-   *
-   * `numeral` es la actividad que se decide (3.4, 3.5, 3.6 o 3.7): el permiso
-   * de aprobar se mira con el alcance de ese punto, no en general.
+   * Quién hace esa actividad en este proceso y, si no es quien pregunta, por
+   * qué (regla `LA_HACE`, 109). Lo usan la causal (3.6) y el comité (3.7),
+   * que son las que se hacen fuera del guard.
    */
-  async quienDecide(procesoId: string, acceso: HiringAccess, numeral: string) {
-    // La regla sale de `RESPONDE_EL_ASIGNADO`, que es también lo que la
-    // pantalla lee para decir a quién le toca: si una actividad decidiera por
-    // el abogado sin figurar ahí, la pantalla nombraría a otro.
-    const regla = respondeElAsignado(numeral);
-    if (regla?.papel !== 'ABOGADO') {
-      throw new Error(`La ${numeral} no figura en RESPONDE_EL_ASIGNADO como del abogado`);
-    }
-    const abogado = await this.vigente(procesoId, 'ABOGADO');
-    const motivo = motivoParaNoDecidir(
-      await this.alcance.puedeEn(acceso, regla.accion, numeral),
-      !!abogado,
-      !!abogado && esSuya(abogado, acceso),
-    );
-    return { abogado, motivo };
+  quienHace(procesoId: string, acceso: HiringAccess, numeral: string) {
+    return this.alcance.quienHace(acceso, procesoId, numeral);
   }
 
   /** Quién ocupa ese papel en el proceso, o nulo si nadie. */
@@ -549,7 +275,14 @@ export class ParticipacionService {
     }
 
     const suyas = await consulta.getMany();
-    return [...new Set(suyas.filter((p) => esSuya(p, acceso)).map((p) => p.procesoId))];
+    // Y los procesos en los que ocupa un puesto (109): quien decide un escalón
+    // tiene que poder ver el proceso que decide.
+    return [
+      ...new Set([
+        ...suyas.filter((p) => esSuya(p, acceso)).map((p) => p.procesoId),
+        ...(await this.puestos.procesosDe(acceso)),
+      ]),
+    ];
   }
 
   /**
@@ -593,43 +326,6 @@ export class ParticipacionService {
     return (await this.idsEnBandeja(procesoId)).length > 0;
   }
 
-  /**
-   * Las solicitudes de CDP que están en la bandeja de la Financiera.
-   *
-   * «Estar» es tener un CDP en SOLICITADO que nadie ha tomado. Se define por el
-   * estado del CDP y no por la etapa del proceso a propósito: `procesos.etapa`
-   * es dónde se está trabajando, y un proceso puede haber avanzado mientras la
-   * solicitud sigue sin resolver.
-   *
-   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
-   * adición es suyo y no entra a esta bandeja.
-   */
-  async idsEnBandejaFinanciera(soloEste?: string): Promise<string[]> {
-    const filas: { id: string }[] = await this.dataSource.query(
-      `SELECT p.id
-         FROM hiring.procesos p
-         JOIN hiring.cdp c
-           ON c.proceso_id = p.id
-          AND c.modificacion_id IS NULL
-          AND c.estado = 'SOLICITADO'
-        WHERE p.estado = 'EN_CURSO'
-          AND ($1::uuid IS NULL OR p.id = $1::uuid)
-          AND NOT EXISTS (
-            SELECT 1 FROM hiring.participaciones_proceso pp
-             WHERE pp.proceso_id = p.id
-               AND pp.papel = 'FINANCIERA'
-               AND pp.estado = 'VIGENTE'
-          )`,
-      [soloEste ?? null],
-    );
-    return filas.map((f) => f.id);
-  }
-
-  /** Si esa solicitud concreta sigue en la bandeja de la Financiera. */
-  async estaEnLaBandejaFinanciera(procesoId: string): Promise<boolean> {
-    return (await this.idsEnBandejaFinanciera(procesoId)).length > 0;
-  }
-
   /** Quién está en cada proceso del listado, en una sola consulta. */
   async vigentesDe(procesoIds: string[]): Promise<Map<string, ParticipacionProceso[]>> {
     if (procesoIds.length === 0) return new Map();
@@ -663,34 +359,6 @@ export class ParticipacionService {
       /** Si le toca a quien está mirando. */
       esMio: esSuya(p, acceso),
     };
-  }
-
-  /**
-   * Repartir el abogado lo hace quien tomó el proceso.
-   *
-   * Y el Director, porque `proceso.assign` es suyo: tiene que poder corregir un
-   * reparto sin quitarle el proceso a quien lo lleva. Cualquier otro con el
-   * permiso general no basta —eso lo hace todo el mundo repartidor de todo—,
-   * por eso se comprueba contra la participación y no solo contra el permiso.
-   */
-  private async exigirQuePuedaRepartir(
-    em: EntityManager,
-    procesoId: string,
-    acceso: HiringAccess,
-  ) {
-    if (tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR)) return;
-
-    const contratacion = await this.vigente(procesoId, 'CONTRATACION', em);
-    if (!contratacion) {
-      throw new ConflictException(
-        'Nadie ha tomado este proceso todavía: primero se toma de la bandeja y luego se reparte',
-      );
-    }
-    if (!esSuya(contratacion, acceso)) {
-      throw new ForbiddenException(
-        `Este proceso lo lleva ${contratacion.nombre}: el abogado lo reparte quien lo tomó`,
-      );
-    }
   }
 
   /**
@@ -807,44 +475,6 @@ export class ParticipacionService {
     }
 
     throw new NotFoundException('Esa cuenta no existe o está inactiva');
-  }
-
-  /**
-   * Las cuentas que pueden hacer esa acción en ese punto, para los
-   * desplegables.
-   *
-   * Quién puede lo decide `AlcanceService`, que es donde vive la regla de qué
-   * alcance cubre qué punto; aquí solo se les pone nombre y correo. Repetir
-   * esa regla en esta consulta haría que el desplegable y el guard pudieran
-   * discrepar sobre la misma persona.
-   */
-  private async cuentasCon(
-    accion: Accion,
-    numeral: string,
-    termino: string,
-  ): Promise<CuentaCandidata[]> {
-    const ids = await this.alcance.cuentasQuePueden(accion, numeral);
-    if (!ids.length) return [];
-
-    // Parámetros ligados, nunca interpolados: el término viene del navegador.
-    return this.dataSource.query(
-      `SELECT DISTINCT
-              u.id_user   AS "usuarioId",
-              u.username  AS "usuarioNombre",
-              p.id_person AS "personaId",
-              COALESCE(p.nom_largo, p.nom_tercero, u.username) AS nombre,
-              NULL::varchar                     AS cargo,
-              COALESCE(p.dir_email, u.username) AS email
-         FROM auth."user" u
-         LEFT JOIN auth.personas p ON p.id_person = u.id_person
-        WHERE u.id_user::text = ANY($1::text[])
-          AND ($2 = ''
-               OR COALESCE(p.nom_largo, p.nom_tercero, u.username) ILIKE '%' || $2 || '%'
-               OR u.username ILIKE '%' || $2 || '%')
-        ORDER BY nombre
-        LIMIT 50`,
-      [ids, termino.trim()],
-    );
   }
 
   private guardar(

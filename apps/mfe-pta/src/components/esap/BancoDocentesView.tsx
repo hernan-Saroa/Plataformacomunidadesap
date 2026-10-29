@@ -85,14 +85,14 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
         const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
         const data = Array.isArray(res) ? res : [];
         setPeriodos(data);
-        const activo = data.find((p: any) => p.estado === 'en_curso');
+        const activo = data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
         if (activo) setPeriodoSeleccionado(activo.codigo || `${activo.anio}-${activo.semestre}`);
       } catch { setPeriodoSeleccionado('2025-2'); }
     };
     cargarPeriodos();
   }, []);
 
-  const periodoActivo = periodos.find((p: any) => p.estado === 'en_curso');
+  const periodoActivo = periodos.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
   const periodoActivoCodigo = periodoActivo?.codigo || periodoActivo?.periodo || '2025-2';
   const esPeriodoActivo = !periodoSeleccionado || periodoSeleccionado === periodoActivoCodigo;
   const [expandedDocenteId, setExpandedDocenteId] = useState<string | null>(null);
@@ -383,9 +383,13 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
     .sort((a, b) => b[1] - a[1])
     .map(([name, value]) => ({ name: name.length > 12 ? name.substring(0, 12) + '...' : name, fullName: name, value }));
 
-  const descargarPlantilla = () => {
-    downloadBancoDocentesTemplate();
-    toast.success('Plantilla del Banco de Docentes descargada');
+  const descargarPlantilla = async () => {
+    try {
+      await downloadBancoDocentesTemplate();
+      toast.success('Plantilla del Banco de Docentes descargada');
+    } catch {
+      toast.error('No se pudo generar la plantilla.');
+    }
   };
 
   const toggleExpandedDocente = (docenteId: string | null) => {

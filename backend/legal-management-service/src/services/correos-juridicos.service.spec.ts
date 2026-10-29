@@ -390,6 +390,94 @@ describe('CorreosJuridicosService', () => {
         });
     });
 
+    describe('syncInbox() - correos de sistema no deben entrar al Centro de Comunicaciones', () => {
+        const mail = (over: any) => ({
+            id: over.id,
+            subject: 'x',
+            from: { emailAddress: { address: 'tercero@externo.com' } },
+            receivedDateTime: new Date(),
+            isRead: false,
+            ...over,
+        });
+
+        beforeEach(() => {
+            mockCorreoRepo.findOne.mockResolvedValue(null);
+            mockSmartService.classify.mockResolvedValue({ category: 'CORREO', module: 'CENTRO_COMUNICACIONES', confidence: 0.8 });
+            mockCorreoRepo.save.mockImplementation(async (data) => ({ id: 'saved-1', ...data }));
+        });
+
+        it('omite notificaciones redirigidas aunque el remitente sea la propia cuenta del buzón', async () => {
+            mockGraphService.getEmailsPage.mockResolvedValue({
+                emails: [
+                    mail({
+                        id: 'e1',
+                        subject: '[Redirigido — Ambiente QA de: juan@esap.edu.co] Auto aprobado',
+                        from: { emailAddress: { address: 'juridica@esap.gov.co' } },
+                    }),
+                    mail({
+                        id: 'e2',
+                        subject: 'Asignación de proceso',
+                        body: { contentType: 'html', content: '<div><strong>[Correo Redirigido — Ambiente PRE]</strong> ...</div>' },
+                        from: { emailAddress: { address: 'juridica@esap.gov.co' } },
+                    }),
+                ],
+                nextLink: null,
+            });
+
+            const result = await service.syncInbox();
+
+            expect(result.synced).toBe(0);
+            expect(mockCorreoRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('omite correos enviados por NOTIFICATIONS_EMAIL_ACCOUNT y LEGAL_SYNC_EXCLUDED_SENDERS', async () => {
+            process.env.NOTIFICATIONS_EMAIL_ACCOUNT = 'notificaciones@esap.edu.co';
+            process.env.LEGAL_SYNC_EXCLUDED_SENDERS = 'bot@esap.edu.co, otro@esap.edu.co';
+            mockGraphService.getEmailsPage.mockResolvedValue({
+                emails: [
+                    mail({ id: 'e1', from: { emailAddress: { address: 'Notificaciones@esap.edu.co' } } }),
+                    mail({ id: 'e2', from: { emailAddress: { address: 'bot@esap.edu.co' } } }),
+                ],
+                nextLink: null,
+            });
+
+            const result = await service.syncInbox();
+
+            expect(result.synced).toBe(0);
+            expect(mockCorreoRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('sigue sincronizando comunicaciones legítimas (incluida la propia cuenta del buzón)', async () => {
+            process.env.NOTIFICATIONS_EMAIL_ACCOUNT = 'notificaciones@esap.edu.co';
+            mockGraphService.getEmailsPage.mockResolvedValue({
+                emails: [
+                    mail({ id: 'e1', subject: 'Notificación de tutela' }),
+                    mail({ id: 'e2', subject: 'Respuesta', from: { emailAddress: { address: 'juridica@esap.gov.co' } } }),
+                ],
+                nextLink: null,
+            });
+
+            const result = await service.syncInbox();
+
+            expect(result.synced).toBe(2);
+            expect(mockCorreoRepo.save).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('getAll() - oculta notificaciones redirigidas ya sincronizadas', () => {
+        it('excluye asuntos [Redirigido ...] y conserva el resto, incluido el traslado disciplinario', async () => {
+            mockCorreoRepo.find.mockResolvedValue([
+                { id: '1', asunto: '[Redirigido — Ambiente DEV de: a@b.co] Auto aprobado', remitenteEmail: 'x' },
+                { id: '2', asunto: 'RE: [Redirigido — Ambiente QA de: a@b.co] Asignación', remitenteEmail: 'x' },
+                { id: '3', asunto: '[PLIEGO DE CARGOS] Proceso P-046-2026 - Traslado a Oficina Jurídica', remitenteEmail: 'x' },
+            ]);
+
+            const result = await service.getAll();
+
+            expect(result.map(c => c.id)).toEqual(['3']);
+        });
+    });
+
     describe('markAsRead()', () => {
         it('debe actualizar estado en BD aunque MicrosoftGraphService.markAsRead falle', async () => {
             const correo = { id: 'correo-read', graphMessageId: 'graph-1', leido: false, direccion: 'ENTRANTE', threadId: 'thread-1', asunto: 'Tema' };

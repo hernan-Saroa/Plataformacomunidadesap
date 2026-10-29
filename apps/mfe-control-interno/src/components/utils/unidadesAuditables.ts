@@ -46,3 +46,15 @@ export function tituloConUnidades(proceso: string, unidades: string[], respaldo 
   const detalle = unidades.length > 0 ? unidades.join('; ') : respaldo;
   return detalle ? `${proceso} (${detalle})` : proceso;
 }
+
+/**
+ * Dependencias del proceso de una fila del Universo (EFDS-2367): las que
+ * Configuración → Procesos le asigna ("A; B"); si no, la dependencia que se
+ * guardó en la fila ("Dependencia||Unidades").
+ */
+export function dependenciasDeLaEvaluacion(evaluacion: any): string[] {
+  const delCatalogo = parseUnidades(evaluacion?.proceso?.dependencia);
+  if (delCatalogo.length > 0) return delCatalogo;
+  const dependencia = String(evaluacion?.dependenciaResponsable || '');
+  return parseUnidades(dependencia.includes('||') ? dependencia.split('||')[0] : dependencia);
+}

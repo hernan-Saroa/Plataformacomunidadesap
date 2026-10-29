@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fijarAlcance, olvidarAlcance } from '../auth/alcance';
@@ -23,9 +23,6 @@ vi.mock('./trabajo/VistaMiTrabajo', () => ({
 vi.mock('./expedientes/VistaExpedientes', () => ({
   VistaExpedientes: () => <div>vista de expedientes</div>,
 }));
-vi.mock('./cdp/VistaBandejaCdp', () => ({
-  VistaBandejaCdp: () => <div>bandeja de solicitudes de CDP</div>,
-}));
 // El alcance se fija a mano en cada caso: que el módulo no salga a pedirlo.
 vi.mock('../services/contratacionService', () => ({
   contratacionService: { alcanceMio: vi.fn(() => new Promise(() => undefined)) },
@@ -42,11 +39,10 @@ const conAlcance = (lugares: [string, string][], transversales: string[] = []) =
 const GESTOR: [string, string][] = [
   ['ver', 'TODO'],
   ['editar', '3.1'],
-  ['editar', '4.1'],
 ];
 const FINANCIERA: [string, string][] = [
-  ['ver', 'E4'],
-  ['editar', '4.2'],
+  ['ver', 'E8'],
+  ['decidir', '8.3'],
   ['aprobar', '9.5'],
 ];
 
@@ -114,58 +110,21 @@ describe('ContratacionModulePremium · menú según el alcance', () => {
 });
 
 /**
- * La Dirección Financiera entra por su cola; los demás, por «Mi trabajo».
+ * Todos entran por «Mi trabajo».
  *
- * Su trabajo en el módulo no es un expediente sino las solicitudes de CDP que
- * esperan.
+ * Desde la 103 la Financiera ya no tiene una cola propia: el CDP se tramita por
+ * fuera y lo carga el área, así que la bandeja de solicitudes desapareció.
  */
-describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
-  it('quien solo mueve presupuesto entra directo a la bandeja', () => {
+describe('ContratacionModulePremium · por dónde se entra', () => {
+  it('la Financiera entra por «Mi trabajo» y ya no tiene la bandeja de CDP', () => {
     conAlcance(FINANCIERA);
     render(<ContratacionModulePremium />);
 
-    expect(screen.getByText('bandeja de solicitudes de CDP')).toBeInTheDocument();
-    expect(screen.queryByText('mi trabajo')).toBeNull();
-  });
-
-  it('también si su alcance llega después de abrir el módulo', () => {
-    // El alcance viene del servicio: al montar todavía no se sabe quién entra.
-    render(<ContratacionModulePremium />);
     expect(screen.getByText('mi trabajo')).toBeInTheDocument();
-
-    act(() => conAlcance(FINANCIERA));
-
-    expect(screen.getByText('bandeja de solicitudes de CDP')).toBeInTheDocument();
-  });
-
-  it('y la tiene en el menú', () => {
-    conAlcance(FINANCIERA);
-    render(<ContratacionModulePremium />);
-
-    expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
-  });
-
-  it('quien además diligencia procesos entra por «Mi trabajo»', () => {
-    // Un mismo usuario puede tener los dos papeles. Entonces los procesos sí
-    // son su trabajo, y mandarlo a la bandeja le escondería la mitad.
-    conAlcance([...FINANCIERA, ['editar', '3.1']]);
-    render(<ContratacionModulePremium />);
-
-    expect(screen.getByText('mi trabajo')).toBeInTheDocument();
-    expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
-  });
-
-  it('a quien no mueve presupuesto no se le ofrece', () => {
-    conAlcance(GESTOR);
-    render(<ContratacionModulePremium />);
-
     expect(screen.queryByText('Solicitudes de CDP')).toBeNull();
-    expect(screen.getByText('mi trabajo')).toBeInTheDocument();
   });
 
   it('sin alcance se entra por «Mi trabajo»', () => {
-    // Ante la duda todo responde que sí, así que sin este cuidado cualquiera
-    // aterrizaría en la bandeja.
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('mi trabajo')).toBeInTheDocument();

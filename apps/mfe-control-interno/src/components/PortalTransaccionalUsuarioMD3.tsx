@@ -200,7 +200,7 @@ const SERVICIOS_MOCK: ServicioPortal[] = [
   {
     id: '1',
     codigo: 'OCIG-001',
-    titulo: 'Control Interno de Gestión',
+    titulo: 'Control Interno',
     descripcion: 'Gestiona investigaciones, auditorías y seguimiento de procesos disciplinarios',
     categoria: 'Control Interno',
     estado: 'Requiere atención',
@@ -596,7 +596,7 @@ function HeaderMD3({
             </motion.div>
             <div className="hidden md:block border-l border-gray-300 pl-3">
               <p className="text-sm font-semibold text-gray-900">Portal Transaccional</p>
-              <p className="text-xs text-gray-500">Control Interno de Gestión</p>
+              <p className="text-xs text-gray-500">Control Interno</p>
             </div>
           </div>
 

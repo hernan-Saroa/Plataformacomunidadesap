@@ -9,10 +9,12 @@ const backendFile = path.join(service, '.env');
 const localFile = path.join(root, '.env.rund-ocr.local');
 const local = dotenv.parse(fs.readFileSync(localFile));
 const backend = dotenv.parse(fs.readFileSync(backendFile));
-const keys = ['RUND_OCR_ENABLED','RUND_OCR_URL','RUND_OCR_TOKEN','RUND_OLLAMA_URL','RUND_OLLAMA_MODEL'];
+local.RUND_OCR_PROVIDER = (local.RUND_OCR_PROVIDER || 'LOCAL').trim().toUpperCase();
+const keys = ['RUND_OCR_ENABLED','RUND_OCR_URL','RUND_OCR_TOKEN','RUND_OLLAMA_URL','RUND_OLLAMA_MODEL','RUND_OCR_PROVIDER'];
 function configure(file) {
   let content = fs.readFileSync(file, 'utf8');
   for (const key of keys) {
+    if (key === 'RUND_OCR_TOKEN' && !local[key] && local.RUND_OCR_PROVIDER === 'RUND') continue;
     const line = `${key}=${key === 'RUND_OCR_ENABLED' ? 'true' : local[key]}`;
     const pattern = new RegExp(`^${key}=.*$`, 'm');
     content = pattern.test(content) ? content.replace(pattern, () => line) : content.trimEnd() + '\n' + line + '\n';
@@ -21,12 +23,14 @@ function configure(file) {
 }
 (async () => {
   if (!['localhost','127.0.0.1','::1'].includes(backend.DB_HOST)) throw new Error('Este activador solo admite PostgreSQL local.');
-  for (const key of keys.slice(1)) if (!local[key] || /[\r\n]/.test(local[key])) throw new Error(`Configuración local incompleta: ${key}`);
-  if (local.RUND_OCR_TOKEN.length < 32) throw new Error('Token OCR local inválido.');
+  if (!['LOCAL','RUND'].includes(local.RUND_OCR_PROVIDER)) throw new Error('Proveedor OCR local inválido.');
+  for (const key of keys.slice(1).filter(key => key !== 'RUND_OCR_TOKEN')) if (!local[key] || /[\r\n]/.test(local[key])) throw new Error(`Configuración local incompleta: ${key}`);
+  if (local.RUND_OCR_PROVIDER === 'LOCAL' && (!local.RUND_OCR_TOKEN || local.RUND_OCR_TOKEN.length < 32 || /[\r\n]/.test(local.RUND_OCR_TOKEN))) throw new Error('Token OCR local inválido.');
   for (const key of ['RUND_OCR_URL','RUND_OLLAMA_URL']) if (!['localhost','127.0.0.1','[::1]'].includes(new URL(local[key]).hostname)) throw new Error('Los motores deben estar en localhost para esta activación.');
   const health = await fetch(`${local.RUND_OCR_URL}/health`, {signal:AbortSignal.timeout(10000)});
   const status = await health.json();
-  if (!health.ok || !status.configured || status.status !== 'ready') throw new Error('Primero ejecute la prueba real y compruebe que PaddleOCR está listo.');
+  const ready = local.RUND_OCR_PROVIDER === 'RUND' ? status.service === 'rund-ocr' && status.status === 'healthy' : status.configured && status.status === 'ready';
+  if (!health.ok || !ready) throw new Error('Primero ejecute la prueba real y compruebe que PaddleOCR está listo.');
   const tags = await fetch(`${local.RUND_OLLAMA_URL}/api/tags`, {signal:AbortSignal.timeout(10000)});
   const models = await tags.json();
   if (!tags.ok || !models.models?.some(m=>m.name===local.RUND_OLLAMA_MODEL)) throw new Error('El modelo local configurado no está instalado.');

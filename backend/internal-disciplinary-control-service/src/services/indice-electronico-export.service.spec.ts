@@ -102,18 +102,68 @@ describe('IndiceElectronicoExportService', () => {
       const worksheet = workbook.getWorksheet('Formato EI-FO-020');
       expect(worksheet).toBeDefined();
 
-      // Celda A6: Debe contener NÚMERO DE EXPEDIENTE y CÓDIGO IDENTIFICACIÓN EXPEDIENTE (12_160_780_60 conservado)
+      // Celda A6: Debe contener NÚMERO DE EXPEDIENTE, CÓDIGO IDENTIFICACIÓN EXPEDIENTE e INSTRUMENTO ARCHIVÍSTICO
       const valA6 = String(worksheet!.getCell('A6').value);
       expect(valA6).toContain('NÚMERO DE EXPEDIENTE: P-137-2026');
-      expect(valA6).toContain('CÓDIGO IDENTIFICACIÓN EXPEDIENTE: 12_160_780_60');
+      expect(valA6).toContain(`CÓDIGO IDENTIFICACIÓN EXPEDIENTE: ${TRD_CODIGO_IDENTIFICACION_EXPEDIENTE}`);
+      expect(valA6).toContain('INSTRUMENTO ARCHIVÍSTICO: TRD V4 - TRD (2021 a Actualidad)');
 
-      // Celda A7: SERIE [Código serie] – PROCESOS JURÍDICOS (780 – PROCESOS JURÍDICOS)
+      // Celda F6: Debe contener UNIDAD PRODUCTORA con su código (150)
+      expect(worksheet!.getCell('F6').value).toBe('UNIDAD PRODUCTORA: 150 – OFICINA DE CONTROL INTERNO DISCIPLINARIO');
+
+      // Celda A7: SERIE [Código serie] – PROCESOS JURÍDICOS (250 – PROCESOS JURÍDICOS)
+      const valA7 = String(worksheet!.getCell('A7').value);
+      expect(valA7).toBe(`SERIE: ${TRD_SERIE}`);
+
+      // Celda C7: SUBSERIE [Código subserie] – PROCESOS DISCIPLINARIOS (05 – PROCESOS DISCIPLINARIOS)
+      const valC7 = String(worksheet!.getCell('C7').value);
+      expect(valC7).toBe(`SUBSERIE: ${TRD_SUBSERIE}`);
+    });
+
+    it('debe respetar la clasificación histórica de expedientes ya registrados (ej. TRD V1-V3 con serie 780 y subserie 60)', async () => {
+      const expedienteHistorico = {
+        radicado: 'P-012-2012',
+        asunto: 'Proceso Histórico Periodo 2',
+        responsable: 'Abogado Anterior',
+        codigoSerie: '780',
+        nombreSerie: 'PROCESOS JURÍDICOS',
+        codigoSubserie: '60',
+        nombreSubserie: 'PROCESOS DISCIPLINARIOS',
+        codigoIdentificacionExpediente: '12_160_780_60',
+      };
+
+      const workbook = await service.generar(expedienteHistorico, []);
+      const worksheet = workbook.getWorksheet('Formato EI-FO-020');
+      expect(worksheet).toBeDefined();
+
+      const valA6 = String(worksheet!.getCell('A6').value);
+      expect(valA6).toContain('NÚMERO DE EXPEDIENTE: P-012-2012');
+      expect(valA6).toContain('CÓDIGO IDENTIFICACIÓN EXPEDIENTE: 12_160_780_60');
+      expect(valA6).toContain('TRD V2 - TRD (2007 a 2014)');
+
+      expect(worksheet!.getCell('F6').value).toBe('UNIDAD PRODUCTORA: 10200 – OFICINA DE CONTROL INTERNO DISCIPLINARIO');
+
       const valA7 = String(worksheet!.getCell('A7').value);
       expect(valA7).toBe('SERIE: 780 – PROCESOS JURÍDICOS');
 
-      // Celda C7: SUBSERIE [Código subserie] – PROCESOS DISCIPLINARIOS (60 – PROCESOS DISCIPLINARIOS)
       const valC7 = String(worksheet!.getCell('C7').value);
       expect(valC7).toBe('SUBSERIE: 60 – PROCESOS DISCIPLINARIOS');
+    });
+
+    it('debe mostrar TVD y periodo 1998 a 2006 para expedientes del periodo 1', async () => {
+      const expedienteV1 = {
+        radicado: 'P-005-2004',
+        asunto: 'Proceso Histórico TVD',
+      };
+      const workbook = await service.generar(expedienteV1, []);
+      const worksheet = workbook.getWorksheet('Formato EI-FO-020');
+      expect(worksheet).toBeDefined();
+
+      const valA6 = String(worksheet!.getCell('A6').value);
+      expect(valA6).toContain('INSTRUMENTO ARCHIVÍSTICO: TRD V1 - TVD (1998 a 2006)');
+      expect(worksheet!.getCell('F6').value).toBe('UNIDAD PRODUCTORA: 1101 – OFICINA DE CONTROL INTERNO DISCIPLINARIO');
+      expect(worksheet!.getCell('A7').value).toBe('SERIE: 75 – PROCESOS');
+      expect(worksheet!.getCell('C7').value).toBe('SUBSERIE: 01 – PROCESOS DISCIPLINARIOS');
     });
 
     it('debe mostrar "N/A" en SUBSERIE si un expediente no tiene subserie', async () => {
@@ -165,7 +215,7 @@ describe('IndiceElectronicoExportService', () => {
       const ws2 = wb2.getWorksheet('Formato EI-FO-020');
 
       expect(String(ws1!.getCell('A6').value)).toContain('NÚMERO DE EXPEDIENTE: P-137-2026');
-      expect(String(ws1!.getCell('C7').value)).toBe('SUBSERIE: 60 – PROCESOS DISCIPLINARIOS');
+      expect(String(ws1!.getCell('C7').value)).toBe(`SUBSERIE: ${TRD_SUBSERIE}`);
 
       expect(String(ws2!.getCell('A6').value)).toContain('NÚMERO DE EXPEDIENTE: P-205-2026');
       expect(String(ws2!.getCell('C7').value)).toBe('SUBSERIE: N/A');

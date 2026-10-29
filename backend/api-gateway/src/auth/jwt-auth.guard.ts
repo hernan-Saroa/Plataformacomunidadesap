@@ -83,6 +83,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   ];
 
   private readonly publicByMethodPatterns: Array<{ method: RegExp; path: RegExp }> = [
+    // Solo disponibilidad y orientación sin historial. Las conversaciones conservan JWT.
+    { method: /^GET$/i, path: /^\/chatbot\/api\/v1\/public\/config\/?(?:\?.*)?$/i },
+    { method: /^POST$/i, path: /^\/chatbot\/api\/v1\/public\/consultas\/?(?:\?.*)?$/i },
     // Catálogos de EFDS-1730 Gestión de Infraestructura UMI. Son públicos igual
     // que la geopolitica del auth service, porque los usan tanto el MFE sin
     // sesion (preview) como fallos de SSR / primer render. Limitar a GET para

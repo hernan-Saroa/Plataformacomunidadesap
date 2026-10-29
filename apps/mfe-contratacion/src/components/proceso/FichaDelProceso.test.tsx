@@ -40,15 +40,20 @@ const participacion = (cambios: Record<string, unknown> = {}) =>
     puedeTomar: false,
     puedeRepartir: true,
     contratacion: { nombre: 'Laura Pineda', esMio: true },
-    abogado: null,
     financiera: null,
-    puedeTomarFinanciera: false,
-    sinAbogado: true,
     historial: [],
     ...cambios,
   }) as any;
 
-const pintar = (cambios: { participacion?: any } = {}) => {
+/** Los puestos que configuró la Dirección (109): aquí, el Abogado vacío. */
+const puestos = (puedeAsignar = true) =>
+  ({
+    puedeAsignar,
+    puestos: [{ id: 'p-abogado', nombre: 'Abogado', descripcion: null, obligatorio: true, usos: [], ocupante: null, problema: null }],
+    historial: [],
+  }) as any;
+
+const pintar = (cambios: { participacion?: any; puestos?: any } = {}) => {
   const onAbrir = vi.fn();
   render(
     <FichaDelProceso
@@ -76,6 +81,7 @@ const pintar = (cambios: { participacion?: any } = {}) => {
       situacion={situacion}
       etapaActual={3}
       participacion={cambios.participacion ?? participacion()}
+      puestos={cambios.puestos ?? puestos()}
       plazos={[]}
       onAbrir={onAbrir}
       onCambio={vi.fn()}
@@ -123,10 +129,11 @@ describe('FichaDelProceso', () => {
     expect(onAbrir).toHaveBeenCalledWith('3.5');
   });
 
-  it('el equipo dice quién lleva el proceso y deja asignar a quien puede', async () => {
+  it('el equipo dice quién lleva el proceso y sus puestos, y deja asignar a quien puede', async () => {
     pintar();
 
     expect(screen.getByText('Laura Pineda (tú)')).toBeInTheDocument();
+    expect(screen.getByText('Abogado')).toBeInTheDocument();
     expect(screen.getByText('Sin asignar')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Asignar' }));
@@ -135,7 +142,7 @@ describe('FichaDelProceso', () => {
   });
 
   it('a quien no puede asignar no le ofrece hacerlo', () => {
-    pintar({ participacion: participacion({ puedeRepartir: false }) });
+    pintar({ participacion: participacion({ puedeRepartir: false }), puestos: puestos(false) });
 
     expect(screen.queryByRole('button', { name: 'Asignar' })).toBeNull();
     expect(screen.getByText(/Las asignaciones las hace la Dirección de Contratación/)).toBeInTheDocument();

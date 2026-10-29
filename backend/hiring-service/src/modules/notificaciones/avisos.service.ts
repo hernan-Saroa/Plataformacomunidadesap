@@ -130,13 +130,11 @@ export class AvisosService {
   private async requiereAprobacion(numeral: string): Promise<boolean> {
     try {
       const [fila] = await this.dataSource.query(
+        // En el flujo que rige o en el borrador, en alguna modalidad (111).
         `SELECT EXISTS (
-           SELECT 1 FROM hiring.reglas_actividad
-            WHERE tipo = 'EXIGE_APROBACION'
-              AND vigente_hasta IS NULL
-              AND numeral = $1
-              AND (jsonb_array_length(COALESCE(config -> 'roles', '[]'::jsonb)) > 0
-                OR jsonb_array_length(COALESCE(config -> 'personas', '[]'::jsonb)) > 0)
+           SELECT 1 FROM hiring.flujo_asignaciones f
+           JOIN hiring.flujo_versiones v ON v.id = f.version_id AND v.estado IN ('ACTIVA', 'BORRADOR')
+            WHERE f.numeral = $1 AND f.aprobacion ->> 'tipo' IN ('CADENA', 'ESCALON')
          ) AS requiere`,
         [numeral],
       );
@@ -184,7 +182,18 @@ export class AvisosService {
       this.requiereAprobacion(numeral),
       this.porCorreo(numeral),
     ]);
-    const nombrePapel = (codigo: PapelAviso) => PAPELES.find((p) => p.codigo === codigo)?.nombre ?? codigo;
+    // Los papeles fijos y uno por puesto del proceso (109): los puestos los
+    // crea la Dirección, así que no caben en una lista escrita.
+    const puestos: { id: string; nombre: string }[] = await this.dataSource
+      .query(`SELECT id::text AS id, nombre FROM hiring.puestos_proceso WHERE activo ORDER BY orden, nombre`)
+      .catch(() => []);
+    const papeles = [
+      ...PAPELES,
+      ...puestos.map((p) => ({ codigo: `PUESTO:${p.id}` as PapelAviso, nombre: `Quien ocupa el puesto ${p.nombre}` })),
+    ];
+    const nombrePapel = (codigo: PapelAviso) =>
+      papeles.find((p) => p.codigo === codigo)?.nombre ??
+      (codigo.startsWith('PUESTO:') ? 'Un puesto archivado' : codigo);
 
     const definiciones = eventosDeActividad(numeral);
 
@@ -230,7 +239,7 @@ export class AvisosService {
       .catch(() => []);
 
     return {
-      papeles: PAPELES,
+      papeles,
       requiereAprobacion: requiere,
       porCorreo,
       siempre,
