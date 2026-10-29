@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Camera, CheckCircle, RefreshCw, Upload, XCircle } from 'lucide-react';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { PHOTO_ACCEPT, PHOTO_API, PHOTO_HELP, PublishedAvatar, onPhotoChanged, photoChanged, validatePhotoFile } from '../../../../../shared/profile-photos';
 import './RundPhotoPanel.css';
+import { PHOTO_STATUS_LABELS as labels, photoSourceLabel, RundPhotoHistory, type RundProfilePhoto } from './RundPhotoHistory';
 
-type Photo = { id: string; nombre: string; estado: string; origen: string; creado_en: string; revisado_en?: string; observacion?: string; ancho: number; alto: number };
+type Photo = RundProfilePhoto;
 type Status = { personaId: string; publicada: Photo | null; solicitud: Photo | null; historial: Photo[] };
-const labels: Record<string,string> = { PENDIENTE: 'Pendiente de validación',APROBADA: 'Aprobada',RECHAZADA: 'Rechazada',REEMPLAZADA: 'Solicitud reemplazada',ARCHIVADA: 'Foto anterior' };
 
 export function RundPhotoPanel({ docenteId, canUpload = false, canValidate = false, own = false, name = '', onChanged }: {
   docenteId?: string; canUpload?: boolean; canValidate?: boolean; own?: boolean; name?: string; onChanged?: () => void;
@@ -22,6 +22,9 @@ export function RundPhotoPanel({ docenteId, canUpload = false, canValidate = fal
   const [previewError,setPreviewError] = useState('');
   const [previewReady,setPreviewReady] = useState<string | null>(null);
   const [previewAttempt,setPreviewAttempt] = useState(0);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const photoHelpId = useId();
+  const [historyOpen,setHistoryOpen] = useState(false);
   const request = useRef(0);
   const refresh = useCallback(async () => {
     const sequence = ++request.current;
@@ -82,17 +85,30 @@ export function RundPhotoPanel({ docenteId, canUpload = false, canValidate = fal
           {candidate && candidate.id !== data.publicada?.id ? <>
             {preview?.id === candidate.id ? <img className="rund-photo-preview" src={preview.url} alt="Foto propuesta para revisión" onLoad={() => setPreviewReady(candidate.id)} onError={() => { setPreview(null); setPreviewReady(null); setPreviewError('No se pudo leer la imagen. Solicite una nueva foto válida antes de aprobar.'); }} /> : <p role={previewError ? 'alert' : 'status'}>{previewError || 'Cargando vista previa…'}</p>}
             <span>{candidate.nombre} · {candidate.ancho} × {candidate.alto} px</span>
-            <small>Origen: {candidate.origen} · {new Date(candidate.creado_en).toLocaleString('es-CO')}</small>
+            <small>Origen: {photoSourceLabel(candidate.origen)} · {new Date(candidate.creado_en).toLocaleString('es-CO')}</small>
             {candidate.observacion && <p className="rund-photo-error">Observación: {candidate.observacion}</p>}
           </> : <span>No hay una foto pendiente de validación.</span>}
         </div>
       </div>
-      {(own || canUpload) && <div className="rund-photo-upload"><label>Seleccionar nueva foto<input aria-label="Seleccionar nueva foto" type="file" accept={PHOTO_ACCEPT} disabled={busy} onChange={upload} /></label><p>{PHOTO_HELP}</p><small>Si existe una solicitud pendiente, la nueva carga la reemplaza. La foto aprobada permanece publicada.</small></div>}
+      {(own || canUpload) && <div className="rund-photo-upload">
+        <strong className="rund-photo-upload-title">Seleccionar nueva foto</strong>
+        <input ref={photoInput} aria-label="Seleccionar nueva foto" aria-describedby={photoHelpId} type="file" accept={PHOTO_ACCEPT} disabled={busy} onChange={upload} hidden />
+        <div className="rund-photo-upload-controls">
+          <button type="button" className="rund-photo-select-button" aria-describedby={photoHelpId} disabled={busy} onClick={() => photoInput.current?.click()}>
+            <Upload size={18} aria-hidden="true" /> {busy ? 'Cargando foto…' : 'Seleccionar foto'}
+          </button>
+          <span className="rund-photo-upload-hint">La foto se enviará a validación al seleccionarla.</span>
+        </div>
+        <p id={photoHelpId}>{PHOTO_HELP}</p>
+        <small>Si existe una solicitud pendiente, la nueva carga la reemplaza. La foto aprobada permanece publicada.</small>
+      </div>}
       {canValidate && !own && candidate?.estado === 'PENDIENTE' && <div className="rund-photo-review">
         <label>Observación de revisión (obligatoria para rechazar)<textarea maxLength={1000} value={note} disabled={busy} onChange={event=>setNote(event.target.value)} placeholder="Explique qué debe corregir el docente" /></label>
         <div className="rund-photo-actions"><button type="button" disabled={busy || !!error || previewReady !== candidate.id} onClick={()=>decide('APROBADA')}><CheckCircle size={16} /> Aprobar foto</button><button type="button" disabled={busy || !!error || note.trim().length < 5} onClick={()=>decide('RECHAZADA')}><XCircle size={16} /> Rechazar foto</button></div>
       </div>}
-      {data.historial.length > 0 && <details><summary>Historial de fotos ({data.historial.length})</summary><ul>{data.historial.map(photo=><li key={photo.id}><strong>{labels[photo.estado]}</strong> · {photo.nombre} · {photo.origen} · {new Date(photo.creado_en).toLocaleString('es-CO')}{photo.observacion && <span> · {photo.observacion}</span>}</li>)}</ul></details>}
+      {data.historial.length > 0 && <details onToggle={event => setHistoryOpen(event.currentTarget.open)}><summary>Historial de fotos ({data.historial.length})</summary>
+        {historyOpen && <RundPhotoHistory key={base} base={base} photos={data.historial} />}
+      </details>}
     </>}
   </section>;
 }

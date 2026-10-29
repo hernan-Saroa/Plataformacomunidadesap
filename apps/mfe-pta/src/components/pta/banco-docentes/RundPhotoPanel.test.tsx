@@ -47,7 +47,15 @@ describe('Revisión de foto en Identidad',()=>{
   it('en PTA la carga permanece pendiente y no muestra acciones del grupo',async()=>{
     vi.mocked(apiClient.upload).mockResolvedValue({});
     render(<RundPhotoPanel own name="Docente" />);
-    const input=await screen.findByLabelText('Seleccionar nueva foto');
+    const button=await screen.findByRole('button',{name:'Seleccionar foto'});
+    const input=screen.getByLabelText('Seleccionar nueva foto') as HTMLInputElement;
+    expect(input.hidden).toBe(true);
+    const picker=vi.spyOn(input,'click').mockImplementation(()=>{});
+    fireEvent.click(screen.getByText('Seleccionar nueva foto'));
+    fireEvent.click(screen.getByText('PNG o JPEG. Máximo 2 MB. 200 a 4096 px.'));
+    expect(picker).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    expect(picker).toHaveBeenCalledTimes(1);
     fireEvent.change(input,{ target: { files: [new File(['test'],'nueva.png',{ type: 'image/png' })] } });
     await screen.findByText(/Foto enviada/);
     expect(apiClient.upload).toHaveBeenCalledWith('/pta/api/v1/pta/fotos-perfil/mia',expect.any(FormData));

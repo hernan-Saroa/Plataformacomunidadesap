@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { validateProfilePhoto } from './rund-photo-validation';
+import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 
 const TABLE = 'academic_work_plan.rund_foto_perfil';
 const metadata = 'id,persona_id,nombre,mime,ancho,alto,estado,origen,creado_por,creado_en,revisado_por,revisado_en,observacion';
@@ -22,8 +23,13 @@ export class RundPhotosService {
       AND (estado IN ('APROBADA','PENDIENTE') OR id IN
         (SELECT id FROM ${TABLE} WHERE persona_id=$1 ORDER BY creado_en DESC,id DESC LIMIT 50))
       ORDER BY creado_en DESC,id DESC`, [person]);
-    return { personaId: person, publicada: rows.find((r: any) => r.estado === 'APROBADA') || null,
-      solicitud: rows.find((r: any) => r.estado === 'PENDIENTE') || rows[0] || null, historial: rows };
+    const names = await resolveRundActorNames(this.db, rows.flatMap((row: any) => [row.creado_por, row.revisado_por]));
+    const history = rows.map((row: any) => ({ ...row,
+      creadoPorNombre: rundActorName(names, row.creado_por),
+      revisadoPorNombre: row.revisado_por ? rundActorName(names, row.revisado_por) : null,
+    }));
+    return { personaId: person, publicada: history.find((r: any) => r.estado === 'APROBADA') || null,
+      solicitud: history.find((r: any) => r.estado === 'PENDIENTE') || history[0] || null, historial: history };
   }
 
   async published(person: string) {

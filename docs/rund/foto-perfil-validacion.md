@@ -12,6 +12,22 @@ de 5 a 1000 caracteres y conserva la foto publicada. La aprobación sustituye la
 publicación y conserva el historial. Una decisión sobre una versión ya reemplazada
 o revisada devuelve 409; debe actualizarse la revisión.
 
+Al desplegar **Historial de fotos**, se muestran miniaturas y un botón **Ver foto**
+para ampliar cada imagen, junto con el origen, el nombre de quien la cargó, la
+fecha de carga y el nombre de quien la aprobó o rechazó, con fecha y observación.
+Los orígenes se presentan como **Módulo RUND**, **Carga masiva RUND** o **Portal del
+docente (PTA)**. Las fotos aprobadas que ya fueron sustituidas conservan su revisor
+y aparecen como **Aprobada anteriormente**. Una solicitud reemplazada antes de
+ser revisada no se presenta como una aprobación ni un rechazo.
+
+Las imágenes del historial se consultan al abrirlo, seis por página, usando los
+mismos endpoints protegidos del propietario o de RUND. La vista ampliada es solo
+de consulta. El historial conserva el límite existente de los últimos 50 registros
+más las versiones publicada y pendiente cuando están fuera de ese grupo. Los
+nombres se resuelven desde las referencias de auditoría ya guardadas; si una
+identidad no está disponible, se indica **Usuario no disponible**. No se requiere
+otra migración ni se modifica una decisión histórica para mostrar esta información.
+
 ## Permisos administrables
 
 | Código | Operación |
