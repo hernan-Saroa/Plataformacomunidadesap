@@ -377,7 +377,7 @@ export class GuardarAprobacionDto {
   @IsBoolean()
   requiereAprobacion: boolean;
 
-  @ApiPropertyOptional({ type: [String], example: ['DIRECTOR_CONTRATACION'] })
+  @ApiPropertyOptional({ type: [String], example: ['DIRECTORA_DE_CONTRATACION'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

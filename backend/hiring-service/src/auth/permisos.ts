@@ -85,29 +85,16 @@ export const PERMISOS_TRANSVERSALES = [
  * propósito. Su alcance vive en la base, y un rol creado desde el backoffice
  * tiene que funcionar sin que el código lo nombre.
  */
+// Los roles por defecto de la 137: la Directora lo tiene todo y el Secretario
+// recibe y reparte, así que ve toda la entidad y sus informes.
 export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
-  // Una sola X en la Hoja1 del formato, la del Jefe de Oficina: ver toda la
-  // entidad es la excepción y no el modo de trabajo de la Dirección (068).
-  [PERMISO_PROCESO_VER_TODOS]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
-  // Las dos únicas casillas que la Hoja1 le marca al «Administrador», que no
-  // es el SUPER_ADMIN de la plataforma: parametriza y no toca un proceso.
-  [PERMISO_CONFIG_ADMINISTRAR]: [
-    'DIRECTOR_CONTRATACION',
-    'ADMINISTRADOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  // Y los informes se suman al apoyo a la supervisión, que es de quien la
-  // Hoja2 dice «generamos informes, estadísticas, certificaciones».
-  [PERMISO_REPORTE_VER]: [
-    'DIRECTOR_CONTRATACION',
-    'ADMINISTRADOR_CONTRATACION',
-    'APOYO_SUPERVISION',
-    'SUPER_ADMIN',
-  ],
-  // El único sin rol funcional: es una llave de pruebas.
-  [PERMISO_PLAZO_TERMINAR]: ['SUPER_ADMIN'],
-  [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
+  [PERMISO_PROCESO_VER_TODOS]: ['DIRECTORA_DE_CONTRATACION', 'SECRETARIO_DE_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_ASIGNAR]: ['DIRECTORA_DE_CONTRATACION', 'SECRETARIO_DE_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_CONFIG_ADMINISTRAR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_REPORTE_VER]: ['DIRECTORA_DE_CONTRATACION', 'SECRETARIO_DE_CONTRATACION', 'SUPER_ADMIN'],
+  // Las llaves de pruebas: la Directora también las tiene desde la 137.
+  [PERMISO_PLAZO_TERMINAR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_BORRAR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
 };
 
 /**

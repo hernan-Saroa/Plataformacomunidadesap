@@ -68,26 +68,46 @@ const GRUPOS_DE_TRAMITES = [
  * Los perfiles por defecto (EFDS-1183), como punto de partida.
  *
  * Catorce roles confunden a quien configura, y la Dirección los resumió en
- * cuatro perfiles —la Financiera salió con su rol en la 106—. Cada uno lo
- * encarna un rol del catálogo; partir de un perfil
- * copia el alcance vigente de ese rol, así que si la Dirección cambia lo que
- * hace el abogado, el perfil cambia con él sin tocar el código.
+ * perfiles. Desde la 137 los encarnan los roles que Juan armó en la pantalla
+ * de roles, que son los que trae el módulo. Partir de un perfil copia el
+ * alcance vigente de ese rol, así que si la Dirección cambia lo que hace el
+ * abogado, el perfil cambia con él sin tocar el código.
  */
 const PERFILES = [
   {
     nombre: 'Área solicitante',
-    rol: 'ESTRUCTURADOR_TECNICO',
-    queHace: 'Diligencia el estudio previo (3.1 y 3.2) y lo corrige si se lo devuelven; después solo consulta.',
+    rol: 'AREA_RADICADORA',
+    queHace: 'Diligencia el estudio previo (3.1) y el CDP (4.2) y los corrige si se los devuelven; después solo consulta.',
   },
   {
     nombre: 'Contratación',
-    rol: 'GESTOR_CONTRATACION',
-    queHace: 'Recibe el proceso en la 3.3, asigna los puestos y lleva el expediente de ahí en adelante.',
+    rol: 'SECRETARIO_DE_CONTRATACION',
+    queHace: 'Ve todos los procesos, los recibe en la 3.3 y asigna los puestos.',
   },
   {
-    nombre: 'Abogado',
-    rol: 'REVISOR_CONTRATACION',
-    queHace: 'Revisa en la 3.4 (aprueba, devuelve o niega) y aprueba lo que carga Contratación.',
+    nombre: 'Abogado estructurador',
+    rol: 'ABOGADO_ESTRUCTURADOR',
+    queHace: 'Lleva el caso: aprueba el estudio previo y hace las etapas 5 a 8 y lo jurídico de la 9 y la 10.',
+  },
+  {
+    nombre: 'Abogado revisor',
+    rol: 'ABOGADO_REVISOR',
+    queHace: 'Aprueba el estudio previo, el CDP, el proyecto de pliego y el pliego definitivo.',
+  },
+  {
+    nombre: 'Experto en sector y mercado',
+    rol: 'EXPERTO_EN_ANALISIS_DEL_SECTOR_Y_DEL_MERCADO',
+    queHace: 'Aprueba el estudio previo y el CDP en lo del análisis del sector y del mercado.',
+  },
+  {
+    nombre: 'Archivo y supervisión',
+    rol: 'GESTOR_DE_ARCHIVO_Y_SUPERVISION',
+    queHace: 'Registra la ejecución por el supervisor (pólizas, pagos, informe final) y archiva el expediente.',
+  },
+  {
+    nombre: 'Dirección',
+    rol: 'DIRECTORA_DE_CONTRATACION',
+    queHace: 'Lo puede todo en el módulo: aprueba al final de las cadenas, reparte y configura.',
   },
   { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Consulta todo el proceso sin modificar nada.' },
 ];
