@@ -229,10 +229,10 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
     expect(getEvidenciasSeguimientoPTA).toHaveBeenCalledWith('pta-1');
   });
 
-  it('reconoce en Seguimiento el permiso territorial granular por nivel', async () => {
+  it.each(['pta.approve.academica.territorial.pregrado', 'pta.review.academica.territorial.pregrado'])('reconoce en Seguimiento el permiso territorial %s', async permission => {
     permisosGranulares.clear();
     permisosGranulares.add('pta.backoffice.seguimiento');
-    permisosGranulares.add('pta.approve.academica.territorial.pregrado');
+    permisosGranulares.add(permission);
     vi.mocked(getEvidenciasSeguimientoPTA).mockResolvedValueOnce({ success: true, data: [{
       id: 'ev-territorial', nombre: 'soporte-territorial.pdf', componentePta: 'docencia',
       estadoRevision: 'pendiente', horasAvance: 96,

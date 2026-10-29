@@ -6019,13 +6019,13 @@ export class PtaService {
     return rows.map((row) => this.toEvidenciaDto(row));
   }
 
-  /** Consulta administrativa protegida y limitada al alcance aprobable del actor. */
+  /** Consulta administrativa limitada a los componentes revisables o aprobables del actor. */
   async getEvidenciasSeguimientoPTA(ptaId: string, auth?: PtaAuthenticatedUser) {
     if (!this.puedeGestionarSeguimientoDocumental(auth)) {
       throw new ForbiddenException('No tienes permiso para consultar el Seguimiento documental del PTA.');
     }
     const authenticated = auth as PtaAuthenticatedUser;
-    if (!authenticated.isSuperUser && !authenticated.approvesAll && !(authenticated.allowedComponents || []).length) {
+    if (!this.tieneComponentesSeguimiento(authenticated)) {
       return [];
     }
 
@@ -6101,9 +6101,25 @@ export class PtaService {
   private puedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity, docenciaEnAlcance = true): boolean {
     if (!auth) return false;
     if (!docenciaEnAlcance && this.grupoSeguimientoParaEvidencia(evidencia) === 'docencia') return false;
-    if (auth.isSuperUser || auth.approvesAll) return true;
-    const permitidos = new Set(auth.allowedComponents || []);
+    if (auth.isSuperUser || auth.approvesAll || auth.reviewsAll) return true;
+    const permitidos = new Set([
+      ...(auth.allowedComponents || []),
+      ...(auth.allowedReviewSubsecciones || []).map(key => key.split(':')[0]),
+    ]);
     return this.componentKeysForEvidencia(evidencia).some(key => permitidos.has(key));
+  }
+
+  private tieneComponentesSeguimiento(auth: PtaAuthenticatedUser): boolean {
+    return Boolean(auth.isSuperUser || auth.approvesAll || auth.reviewsAll
+      || auth.allowedComponents?.length || auth.allowedReviewSubsecciones?.length);
+  }
+
+  private tieneAlcanceSeguimiento(pta: any, soloDocencia = false): boolean {
+    const componentes = [
+      ...(pta.componentes_aprobacion_en_alcance || []),
+      ...(pta.componentes_revision_en_alcance || []).map((key: string) => key.split(':')[0]),
+    ];
+    return componentes.some(key => !soloDocencia || DOCENCIA_COMPONENT_KEYS.includes(key));
   }
 
   private puedeGestionarSeguimientoDocumental(auth?: PtaAuthenticatedUser): boolean {
@@ -6115,8 +6131,8 @@ export class PtaService {
 
   /**
    * Comprueba el alcance real del PTA, incluido el territorial, antes de exponer
-   * o modificar sus evidencias. Se eliminan expresamente los permisos de revisión:
-   * en Seguimiento el alcance lo conceden solo los permisos de aprobación.
+   * o modificar sus evidencias. Cada etapa conserva su permiso y su alcance;
+   * un revisor no recibe por ello permisos para aprobar componentes del PTA.
    */
   private async getPtaEnAlcanceSeguimiento(
     ptaId: string,
@@ -6140,10 +6156,12 @@ export class PtaService {
         reviewsAll: false,
         allowedComponents: auth.approvesAll ? DOCENCIA_COMPONENT_KEYS
           : auth.allowedComponents.filter(key => DOCENCIA_COMPONENT_KEYS.includes(key)),
+        allowedReviewSubsecciones: auth.reviewsAll
+          ? DOCENCIA_COMPONENT_KEYS.map(key => `${key}:general`)
+          : auth.allowedReviewSubsecciones.filter(key => DOCENCIA_COMPONENT_KEYS.includes(key.split(':')[0] as PTAComponentKey)),
       } : {}),
-      allowedReviewSubsecciones: [],
     });
-    return visibles.some(item => (item.componentes_aprobacion_en_alcance || []).length > 0)
+    return visibles.some(item => this.tieneAlcanceSeguimiento(item, acotarDocencia))
       ? pta : null;
   }
 
@@ -7516,8 +7534,8 @@ export class PtaService {
     }
     const authenticated = auth as PtaAuthenticatedUser;
     // El permiso funcional abre la bandeja, pero no debe ampliar el alcance. Un
-    // rol sin permisos de aprobación por componente recibe una bandeja vacía.
-    if (!authenticated.isSuperUser && !authenticated.approvesAll && !(authenticated.allowedComponents || []).length) {
+    // rol sin permisos de revisión ni aprobación recibe una bandeja vacía.
+    if (!this.tieneComponentesSeguimiento(authenticated)) {
       return [];
     }
     const qb = this.ptaRepo.createQueryBuilder('pta');
@@ -7530,13 +7548,10 @@ export class PtaService {
     const dtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
     await this.attachPtaReferenceDates(dtos);
     const summaries = await this.enrichPtaSummaries(dtos);
-    // Seguimiento usa exclusivamente el alcance de aprobación. Los permisos de
-    // revisión pueden convivir en el rol, pero no deben hacer visibles PTAs ni
-    // evidencias adicionales dentro de esta bandeja.
-    const scopedPtas = this.sortPtasByReferenceDate((await this.filterGestionPtas(summaries, ptas, {
-      ...authenticated,
-      allowedReviewSubsecciones: [],
-    })).filter(pta => (pta.componentes_aprobacion_en_alcance || []).length > 0)).slice(0, 500);
+    // Se conserva cada etapa para aplicar su nivel y territorial antes de unir
+    // los componentes visibles en Seguimiento.
+    const scopedPtas = this.sortPtasByReferenceDate((await this.filterGestionPtas(summaries, ptas, authenticated))
+      .filter(pta => this.tieneAlcanceSeguimiento(pta))).slice(0, 500);
     const ids = scopedPtas.map((pta) => pta.id || pta.pta_id).filter(Boolean);
     if (ids.length === 0) return [];
 
@@ -7578,7 +7593,7 @@ export class PtaService {
     const docenciaEnAlcanceByPta = new Map(scopedPtasActualizados.map(pta => [
       String(pta.id || pta.pta_id),
       !(pta.asignaturas || []).length
-        || (pta.componentes_aprobacion_en_alcance || []).some((key: PTAComponentKey) => DOCENCIA_COMPONENT_KEYS.includes(key)),
+        || this.tieneAlcanceSeguimiento(pta, true),
     ]));
     const resumenByPta: Record<string, Record<string, { horas_aprobadas: number }>> = {};
     for (const ev of evidencias) {

@@ -1,7 +1,59 @@
 import { PtaPermissionsService } from './pta-permissions.service';
-import { PtaAuthGuard } from './pta-auth.guard';
+import { PtaAuthGuard, PtaRoleAccessGuard } from './pta-auth.guard';
 
 describe('permisos vigentes de las decisiones PTA', () => {
+  it('consulta roles sin exigir una ficha territorial, pero conserva esa validación en las decisiones', async () => {
+    const permissions = {
+      resolveForUser: jest.fn().mockResolvedValue({ roles: ['REVISOR'], isSuperUser: false,
+        permissions: new Set(['pta.backoffice.seguimiento']) }),
+      resolvePersonalScopeForUser: jest.fn().mockRejectedValue(new Error('Persona no vinculada')),
+    };
+    const jwt = { verify: jest.fn().mockReturnValue({ sub: 'cuenta', roles: ['SUPER_ADMIN'] }) };
+    const request: any = { headers: { cookie: 'esap_access_token=token-firmado' } };
+    const context: any = { switchToHttp: () => ({ getRequest: () => request }) };
+    await expect(new PtaRoleAccessGuard(jwt as any, permissions as any).canActivate(context)).resolves.toBe(true);
+    expect(request.ptaAuth).toMatchObject({ userId: 'cuenta', roles: ['REVISOR'], isSuperUser: false });
+    expect(permissions.resolvePersonalScopeForUser).not.toHaveBeenCalled();
+    await expect(new PtaAuthGuard(jwt as any, permissions as any).canActivate(context)).rejects.toThrow('Persona no vinculada');
+    expect(permissions.resolvePersonalScopeForUser).toHaveBeenCalledWith('cuenta');
+  });
+
+  it.each(['sin-token', 'invalido', 'sin-cuenta', 'revocado'])('la consulta de roles rechaza una sesión %s', async mode => {
+    const permissions = { resolveForUser: jest.fn().mockRejectedValue(new Error('Cuenta revocada')) };
+    const jwt = { verify: jest.fn(() => {
+      if (mode === 'invalido') throw new Error('Firma inválida');
+      return mode === 'sin-cuenta' ? {} : { sub: 'cuenta' };
+    }) };
+    const request = { headers: mode === 'sin-token' ? {} : { authorization: 'Bearer token' } };
+    await expect(new PtaRoleAccessGuard(jwt as any, permissions as any).canActivate({
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as any)).rejects.toThrow();
+    if (mode !== 'revocado') expect(permissions.resolveForUser).not.toHaveBeenCalled();
+  });
+  it('Seguimiento suma los permisos de los roles activos y aplica altas y retiradas en el siguiente acceso', async () => {
+    const query = jest.fn().mockResolvedValueOnce([
+      { role_code: 'REVISOR_TERRITORIAL', permission_code: 'pta.backoffice.seguimiento' },
+      { role_code: 'REVISOR_TERRITORIAL', permission_code: 'pta.review.academica.territorial.pregrado' },
+      { role_code: 'INVESTIGACION', permission_code: 'pta.approve.investigacion' },
+    ]).mockResolvedValueOnce([
+      { role_code: 'INVESTIGACION', permission_code: 'pta.approve.investigacion' },
+    ]).mockResolvedValueOnce([]);
+    const service = new PtaPermissionsService({ query } as any);
+    const first = await service.resolveForUser('coordinador');
+    expect(first.roles).toEqual(['REVISOR_TERRITORIAL', 'INVESTIGACION']);
+    expect(first.permissions.has('pta.backoffice.seguimiento')).toBe(true);
+    expect(first.allowedComponents).toEqual(['investigacion']);
+    expect(first.allowedReviewSubsecciones).toEqual(['academica_territorial:general']);
+    const removed = await service.resolveForUser('coordinador');
+    expect(removed.permissions.has('pta.backoffice.seguimiento')).toBe(false);
+    expect(removed.allowedReviewSubsecciones).toEqual([]);
+    expect((await service.resolveForUser('coordinador')).permissions.size).toBe(0);
+    expect(query).toHaveBeenCalledTimes(3);
+    const sql = query.mock.calls[0][0];
+    for (const activeCondition of ['ur.is_active', 'r.is_active', 'rp.is_active', 'p.is_active', 'u.is_active']) {
+      expect(sql).toContain(`COALESCE(${activeCondition}, true) = true`);
+    }
+  });
   it.each([
     ['pta.review.academica.pregrado', 'academica_pregrado:general'],
     ['pta.review.investigacion', 'investigacion:general'],

@@ -14,6 +14,6 @@ export function canAccessPTAView(vista: string, tieneVista: (vista: string) => b
 }
 
 export function defaultPTAView(tieneVista: (vista: string) => boolean) {
-  return (['gestion', 'solicitudes_pta', 'seguimiento_docs', 'configuracion'] as const)
-    .find(tieneVista) || 'gestion';
+  return (['gestion', 'solicitudes_pta', 'seguimiento_docs', 'configuracion', 'banco_docentes', 'tablero_unificado'] as const)
+    .find(view => canAccessPTAView(view, tieneVista)) || 'gestion';
 }
