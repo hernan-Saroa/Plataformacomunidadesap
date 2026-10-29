@@ -136,6 +136,9 @@ const HISTORIAL_COMP_LABELS: Record<string, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_decanatura: 'Complementarias (Decanatura)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   academicas_admin: 'Acad. Admin.',
 };
 
@@ -365,7 +368,23 @@ export function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }
    * `componentes_estado`.
    */
   const getStatusForComponent = (collapsedKey: string) => {
-    return getPtaComponentDisplayStatus({ ...pta, estado }, collapsedKey, componentesAprobacion);
+    const status = getPtaComponentDisplayStatus({ ...pta, estado }, collapsedKey, componentesAprobacion);
+    if (collapsedKey !== 'academica' || status !== 'no_iniciado') return status;
+
+    // La Docencia concertada puede estar aprobada aun cuando el PTA es Borrador.
+    // El estado global no debe ocultar la decisión que ya registró Programación.
+    const docencia = componentesAprobacion.filter((fila) =>
+      String(fila?.componente || '').startsWith('academica'),
+    );
+    const concertadas = docencia.filter((fila) => fila?.scope === 'programacion');
+    if (concertadas.length === 0) return status;
+    const aplicables = docencia.filter((fila) =>
+      fila?.scope === 'programacion' || Number(fila?.horas || 0) > 0,
+    );
+    if (aplicables.some((fila) => String(fila?.estado || '').toLowerCase() === 'devuelto')) return 'devuelto';
+    return aplicables.every((fila) => String(fila?.estado || '').toLowerCase() === 'aprobado')
+      ? 'aprobado'
+      : 'pendiente';
   };
 
   return (
@@ -612,6 +631,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const loadPtasRequestRef = useRef(0);
   const loadPtasPendingRef = useRef<number | null>(null);
   const loadSolicitudesRequestRef = useRef(0);
+  const docenteActualRef = useRef(userPersonId);
+  docenteActualRef.current = userPersonId;
   const loadDetalleRequestRef = useRef(0);
   const selectedPtaIdRef = useRef(selectedPtaId);
   selectedPtaIdRef.current = selectedPtaId;
@@ -711,12 +732,11 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
       if (requestId !== loadSolicitudesRequestRef.current) return;
       if (res.success && Array.isArray(res.data)) {
         setTodasLasSolicitudes(res.data);
-      } else {
-        setTodasLasSolicitudes([]);
       }
+      // Una consulta fallida no confirma que la solicitud desapareció. Mantener
+      // el último estado válido; al cambiar de docente se limpia por separado.
     } catch (err) {
       if (requestId !== loadSolicitudesRequestRef.current) return;
-      setTodasLasSolicitudes([]);
       console.log('[Portal] Error loading solicitudes:', err);
     }
   }, [userPersonId]);
@@ -729,6 +749,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     loadPtasRequestRef.current += 1;
     loadDetalleRequestRef.current += 1;
     setTodasLasSolicitudes([]);
+    setShowSolicitudModal(false);
     setAllPtas([]);
     setComponentApprovalsByPta({});
     setDocentePerfil(null);
@@ -2118,8 +2139,11 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
           docenteNombre={userName || ''}
           docenteEmail={userEmail}
           ptas={ptas}
-          onClose={() => setShowSolicitudModal(false)}
-          onSuccess={() => { loadPtas(); loadSolicitudes(); }}
+          onClose={() => { if (docenteActualRef.current === userPersonId) setShowSolicitudModal(false); }}
+          onSuccess={() => {
+            if (docenteActualRef.current !== userPersonId) return;
+            loadPtas(); loadSolicitudes();
+          }}
         />
       )}
     </div>

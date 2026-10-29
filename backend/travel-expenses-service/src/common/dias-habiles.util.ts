@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { FestivoColombiaEntity } from '../entities/festivo-colombia.entity';
+import { ConfigJornadaLaboralEntity } from '../entities/config/config-jornada-laboral.entity';
 
 /**
  * Normaliza cualquier entrada de fecha a una cadena 'YYYY-MM-DD' en UTC.
@@ -31,19 +32,43 @@ export function aFechaUtc(val: Date | string): Date {
 }
 
 /**
- * Retorna true si es sábado (6) o domingo (0).
+ * Opciones configurables de jornada laboral y días hábiles.
  */
-export function esFinDeSemana(fecha: Date | string): boolean {
+export interface OpcionesJornadaLaboral {
+  horaInicio?: string;
+  horaFin?: string;
+  diasLaborales?: number[];
+  diasAnticipacionMinima?: number;
+  diasUmbralAvance?: number;
+}
+
+/**
+ * Días laborales por defecto: Lunes (1) a Viernes (5).
+ */
+export const DIAS_LABORALES_DEFAULT: number[] = [1, 2, 3, 4, 5];
+
+/**
+ * Retorna true si el día NO es laboral según los días laborales configurados.
+ * Si no se configuran días laborales, por defecto evalúa sábado (6) o domingo (0).
+ */
+export function esFinDeSemana(fecha: Date | string, diasLaborales?: number[]): boolean {
   const d = aFechaUtc(fecha);
-  const day = d.getUTCDay();
+  const day = d.getUTCDay(); // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+  if (Array.isArray(diasLaborales) && diasLaborales.length > 0) {
+    return !diasLaborales.includes(day);
+  }
   return day === 0 || day === 6;
 }
 
 /**
- * Retorna true si la fecha es día hábil (no es fin de semana ni festivo).
+ * Retorna true si la fecha es día hábil (no es día de descanso ni festivo oficial).
  */
-export function esDiaHabil(fecha: Date | string, festivosSet?: ReadonlySet<string>): boolean {
-  if (esFinDeSemana(fecha)) return false;
+export function esDiaHabil(
+  fecha: Date | string,
+  festivosSet?: ReadonlySet<string>,
+  diasLaborales?: number[],
+): boolean {
+  if (esFinDeSemana(fecha, diasLaborales)) return false;
   if (!festivosSet) return true;
   return !festivosSet.has(aYMDUtc(fecha));
 }
@@ -74,6 +99,33 @@ export async function cargarFestivosAuth(dataSource: DataSource): Promise<Set<st
 }
 
 /**
+ * Obtiene la configuración de jornada laboral activa desde BD (con fallback seguro).
+ */
+export async function cargarConfigJornada(
+  dataSource: DataSource,
+): Promise<OpcionesJornadaLaboral | null> {
+  if (!dataSource || typeof dataSource.getRepository !== 'function') {
+    return null;
+  }
+  try {
+    const repo = dataSource.getRepository(ConfigJornadaLaboralEntity);
+    const config = await repo.findOne({ where: { activo: true }, order: { id: 'DESC' } });
+    if (config) {
+      return {
+        horaInicio: config.horaInicio,
+        horaFin: config.horaFin,
+        diasLaborales: Array.isArray(config.diasLaborales) ? config.diasLaborales : DIAS_LABORALES_DEFAULT,
+        diasAnticipacionMinima: config.diasAnticipacionMinima,
+        diasUmbralAvance: config.diasUmbralAvance,
+      };
+    }
+  } catch (err: any) {
+    // Si la tabla no existe o error temporal, se usa fallback
+  }
+  return null;
+}
+
+/**
  * Conteo estándar de días hábiles entre dos fechas.
  * Por defecto cuenta estrictamente los días previos (modo 'previos' para anticipación y RP).
  */
@@ -82,6 +134,7 @@ export function contarDiasHabiles(
   hasta: Date | string,
   festivosSet?: ReadonlySet<string>,
   modo: 'previos' | 'rango_completo' | 'terminos_legales' = 'previos',
+  diasLaborales?: number[],
 ): number {
   const dInicio = aFechaUtc(desde);
   const dFin = aFechaUtc(hasta);
@@ -95,7 +148,7 @@ export function contarDiasHabiles(
 
   if (modo === 'rango_completo') {
     while (cursor.getTime() <= dFin.getTime()) {
-      if (esDiaHabil(cursor, festivosSet)) {
+      if (esDiaHabil(cursor, festivosSet, diasLaborales)) {
         habiles++;
       }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -106,7 +159,7 @@ export function contarDiasHabiles(
   if (modo === 'terminos_legales') {
     cursor.setUTCDate(cursor.getUTCDate() + 1);
     while (cursor.getTime() <= dFin.getTime()) {
-      if (esDiaHabil(cursor, festivosSet)) {
+      if (esDiaHabil(cursor, festivosSet, diasLaborales)) {
         habiles++;
       }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -117,7 +170,7 @@ export function contarDiasHabiles(
   // modo === 'previos' (estrictamente entre inicio y fin)
   cursor.setUTCDate(cursor.getUTCDate() + 1);
   while (cursor.getTime() < dFin.getTime()) {
-    if (esDiaHabil(cursor, festivosSet)) {
+    if (esDiaHabil(cursor, festivosSet, diasLaborales)) {
       habiles++;
     }
     cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -129,8 +182,24 @@ export function contarDiasHabiles(
 /** Colombia no tiene horario de verano: UTC-5 todo el año. */
 const DESFASE_COLOMBIA_MS = 5 * 60 * 60 * 1000;
 
-/** Corte de la jornada laboral para radicar: 4:30 p. m. (RF-VAL-002). */
-const MINUTOS_CORTE_JORNADA = 16 * 60 + 30;
+/** Corte por defecto de la jornada laboral para radicar: 4:30 p. m. (16:30). */
+export const MINUTOS_CORTE_JORNADA_DEFAULT = 16 * 60 + 30;
+
+/**
+ * Convierte una hora en formato 'HH:mm' a minutos transcurridos desde medianoche.
+ */
+export function minutosDesdeHoraStr(horaStr?: string, fallbackMinutos: number = MINUTOS_CORTE_JORNADA_DEFAULT): number {
+  if (!horaStr) return fallbackMinutos;
+  const parts = horaStr.trim().split(':');
+  if (parts.length >= 2) {
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      return h * 60 + m;
+    }
+  }
+  return fallbackMinutos;
+}
 
 /**
  * Fecha ('YYYY-MM-DD') y minutos del día de un instante en hora de Colombia,
@@ -145,36 +214,56 @@ export function fechaHoraColombia(instante: Date = new Date()): { ymd: string; m
 }
 
 /**
- * Radicación fuera de jornada: después de las 4:30 p. m. (hora Colombia) o en día
- * no hábil (fin de semana o festivo).
+ * Radicación fuera de jornada:
+ * - Ocurre después de la hora de corte configurada (o antes del inicio si se especifica).
+ * - O en día no hábil (fin de semana o festivo).
  */
 export function esRadicacionFueraDeJornada(
   instante: Date,
   festivosSet?: ReadonlySet<string>,
+  opcionesJornada?: OpcionesJornadaLaboral | null,
 ): boolean {
   const { ymd, minutos } = fechaHoraColombia(instante);
-  return minutos >= MINUTOS_CORTE_JORNADA || !esDiaHabil(ymd, festivosSet);
+  const minutosCorte = minutosDesdeHoraStr(opcionesJornada?.horaFin, MINUTOS_CORTE_JORNADA_DEFAULT);
+  const diasLaborales = opcionesJornada?.diasLaborales;
+
+  let antesDeInicio = false;
+  if (opcionesJornada?.horaInicio) {
+    const minutosInicio = minutosDesdeHoraStr(opcionesJornada.horaInicio, 8 * 60);
+    antesDeInicio = minutos < minutosInicio;
+  }
+
+  return (
+    minutos >= minutosCorte ||
+    antesDeInicio ||
+    !esDiaHabil(ymd, festivosSet, diasLaborales)
+  );
 }
 
 /** Primer día hábil posterior a la fecha indicada ('YYYY-MM-DD'). */
-export function siguienteDiaHabil(ymd: string, festivosSet?: ReadonlySet<string>): string {
+export function siguienteDiaHabil(
+  ymd: string,
+  festivosSet?: ReadonlySet<string>,
+  diasLaborales?: number[],
+): string {
   const cursor = aFechaUtc(ymd);
   do {
     cursor.setUTCDate(cursor.getUTCDate() + 1);
-  } while (!esDiaHabil(cursor, festivosSet));
+  } while (!esDiaHabil(cursor, festivosSet, diasLaborales));
   return cursor.toISOString().slice(0, 10);
 }
 
 /**
  * Fecha desde la que corre el trámite: el mismo día si se radica en jornada, o el
- * siguiente día hábil si se radica después de las 4:30 p. m. o en día no hábil.
+ * siguiente día hábil si se radica fuera de horario o en día no hábil.
  */
 export function fechaEfectivaRadicacion(
   instante: Date,
   festivosSet?: ReadonlySet<string>,
+  opcionesJornada?: OpcionesJornadaLaboral | null,
 ): string {
   const { ymd } = fechaHoraColombia(instante);
-  return esRadicacionFueraDeJornada(instante, festivosSet)
-    ? siguienteDiaHabil(ymd, festivosSet)
+  return esRadicacionFueraDeJornada(instante, festivosSet, opcionesJornada)
+    ? siguienteDiaHabil(ymd, festivosSet, opcionesJornada?.diasLaborales)
     : ymd;
 }

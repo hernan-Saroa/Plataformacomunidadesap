@@ -21,7 +21,9 @@ import {
   Eye,
   X,
 } from "lucide-react";
-import { getConfiguracionPTAGlobal, updateConfiguracionPTAGlobal } from "../../services/api/ptaApi";
+import { getConfiguracionPTAGlobal, getConfiguracionPTAAdministracion, updateConfiguracionPTAGlobal } from "../../services/api/ptaApi";
+import { useAuth } from '../../contexts/AuthContext';
+import { PTA_MANAGE_CONFIGURATION_PERMISSION } from './shared/ptaComponentPermissions';
 import { TabInvestigacion } from "./config-tabs/TabInvestigacion";
 import { TabExtension } from "./config-tabs/TabExtension";
 import { TabDocencia } from './config-tabs/TabDocencia';
@@ -285,10 +287,10 @@ export interface PTARules {
     min_horas?: number;
     porcentaje_pta?: number;
     consumeTotalidad?: boolean;
-    // Programa asociado a este TIPO de actividad (no por instancia): enruta su
-    // aprobación/revisión a Complementarias Pregrado/Posgrado (mismo aprobador que
-    // Docencia por nivel) en vez del componente "Complementarias" sin programa.
+    // Programa asociado a este tipo de actividad, configurable por separado
+    // del responsable seleccionado en tipo_aprobacion.
     nivel_programa?: 'pregrado' | 'posgrado' | null;
+    tipo_aprobacion?: 'gestion_profesoral' | 'decanatura' | 'territorial';
   }>>;
 
   // Actividades Académico-Administrativas (configurables)
@@ -1106,23 +1108,30 @@ function cacheAndBroadcastPTARules(rules: PTARules): void {
   window.dispatchEvent(new CustomEvent(PTA_RULES_UPDATED_EVENT, { detail: rules }));
 }
 
-export function usePTARules() {
+export function usePTARules(administracion = false) {
+  const auth = useAuth();
   const [rules, setRules] = useState<PTARules>(() => normalizePTARules(defaultPTARules));
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await getConfiguracionPTAGlobal();
+        const res = await (administracion ? getConfiguracionPTAAdministracion() : getConfiguracionPTAGlobal());
+        if (administracion && !res.success) throw new Error('No se pudo consultar la configuración.');
         if (res.success && res.data) {
           setRules(normalizePTARules(res.data));
-        } else {
+        } else if (!administracion) {
           // Fallback locale dev
           const stored = localStorage.getItem(PTA_RULES_STORAGE_KEY);
           if (stored) setRules(normalizePTARules(JSON.parse(stored)));
         }
       } catch (e) {
         console.error("Error fetching PTA rules v2", e);
+        if (administracion) {
+          setLoadError(true);
+          return;
+        }
         const stored = localStorage.getItem(PTA_RULES_STORAGE_KEY);
         if (stored) setRules(normalizePTARules(JSON.parse(stored)));
       } finally {
@@ -1130,9 +1139,13 @@ export function usePTARules() {
       }
     }
     load();
-  }, []);
+  }, [administracion]);
 
   const saveRules = async (newRules: PTARules): Promise<boolean> => {
+    if (!auth.hasPermission(PTA_MANAGE_CONFIGURATION_PERMISSION)) {
+      toast.error('No tiene permiso para ver ni editar la configuración de PTA.');
+      return false;
+    }
     const normalizedRules = normalizePTARules(newRules);
     const normativeErrors = getNormativeRangeErrors(normalizedRules);
     if (normativeErrors.length > 0) {
@@ -1179,14 +1192,12 @@ export function usePTARules() {
         return false;
       }
     } catch (e) {
-      setRules(normalizedRules);
-      cacheAndBroadcastPTARules(normalizedRules);
-      toast.warning('No se pudo conectar con la base de datos. La configuración quedó guardada solo localmente.');
-      return true;
+      toast.error('No se pudo guardar la configuración. Intente nuevamente.');
+      return false;
     }
   };
 
-  return { rules, saveRules, loading };
+  return { rules, saveRules, loading, loadError };
 }
 
 // Sub-component for Toggle Buttons
@@ -1265,9 +1276,15 @@ export function getDeviations(current: PTARules): Array<{ field: string; default
 export default function ConfiguracionReglasPTA({
   onClose,
 }: {
-  onClose: () => void;
+  onClose?: () => void;
 }) {
-  const { rules, saveRules } = usePTARules();
+  const auth = useAuth();
+  if (!auth.hasPermission(PTA_MANAGE_CONFIGURATION_PERMISSION)) return null;
+  return <ConfiguracionReglasPTAEditor onClose={onClose} />;
+}
+
+function ConfiguracionReglasPTAEditor({ onClose }: { onClose?: () => void }) {
+  const { rules, saveRules, loading, loadError } = usePTARules(true);
   const [draft, setDraft] = useState<PTARules>(rules);
   const [guardado, setGuardado] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -1468,6 +1485,9 @@ export default function ConfiguracionReglasPTA({
     setShowRollbackModal(false);
     toast.info(`Config restaurada al snapshot de ${snap.fecha}. Guarde para confirmar.`);
   };
+
+  if (loading) return <p role="status">Cargando configuración de PTA…</p>;
+  if (loadError) return <p role="alert">No se pudo cargar la configuración de PTA. Verifique sus permisos e intente nuevamente.</p>;
 
   return (
     <div className="min-h-screen bg-[conic-gradient(at_top_right,_var(--tw-gradient-stops))] from-blue-50/60 via-white to-sky-50/60 pb-24 font-sans selection:bg-blue-100">

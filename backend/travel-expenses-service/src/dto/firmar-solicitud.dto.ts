@@ -7,6 +7,9 @@ export enum TipoFirmaAprobacion {
   ENLACE_ELABORO = 'ENLACE_ELABORO',
   ANALISTA = 'ANALISTA',
   CONTROL_VIATICOS = 'CONTROL_VIATICOS',
+  PRESUPUESTO = 'PRESUPUESTO',
+  TESORERIA = 'TESORERIA',
+  VOBO_DURACION = 'VOBO_DURACION',
 }
 
 export class FirmarSolicitudDto {
@@ -226,5 +229,91 @@ export class SolicitarFirmasDto {
   @IsOptional()
   @IsString()
   documentoIdentidad?: string;
+
+  @ApiPropertyOptional({
+    description: 'Justificación requerida si la comisión al interior del país supera los 3 días calendario (3.5 días de valor)',
+  })
+  @IsOptional()
+  @IsString()
+  justificacionDuracion?: string;
+}
+
+export class RegistrarVoBoDuracionDto {
+  @ApiProperty({
+    description: 'Decisión del visto bueno sobre la duración de la comisión',
+    enum: ['APROBADO', 'RECHAZADO'],
+    example: 'APROBADO',
+  })
+  @IsString()
+  @IsNotEmpty()
+  decision: 'APROBADO' | 'RECHAZADO';
+
+  @ApiPropertyOptional({
+    description: 'Comentarios u observaciones del Visto Bueno',
+    example: 'Visto Bueno aprobado conforme a la justificación y agenda presentada.',
+  })
+  @IsOptional()
+  @IsString()
+  comentarios?: string;
+
+  @ApiPropertyOptional({
+    description: 'Firma en base64 (data:image/png;base64,...)',
+  })
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código numérico OTP verificado',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de la verificación OTP',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Cargo oficial del firmante',
+    example: 'Director Nacional',
+  })
+  @IsOptional()
+  @IsString()
+  cargoFirmante?: string;
+
+  @ApiPropertyOptional({
+    description: 'Nombre del firmante',
+    example: 'Dr. Hernán Gómez',
+  })
+  @IsOptional()
+  @IsString()
+  nombreFirmante?: string;
+
+  @ApiPropertyOptional({
+    description: 'Documento de identidad del firmante',
+    example: '19876543',
+  })
+  @IsOptional()
+  @IsString()
+  documentoIdentidad?: string;
+
+  @ApiPropertyOptional({
+    description: 'Certificado digital ESAP si fue emitido externamente',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash SHA-256 criptográfico de la firma digital de VoBo',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
 }
 

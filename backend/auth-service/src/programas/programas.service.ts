@@ -68,16 +68,20 @@ export class ProgramasService {
             AND ocp.activa = TRUE
             AND pa.codigo = :periodo
         )
-        OR p.id_periodo_academico = (
+        OR (p.id_periodo_academico = (
           SELECT pa2.id FROM academic_work_plan.periodo_academico pa2
           WHERE pa2.codigo = :periodo
           LIMIT 1
-        )
+        ) AND NOT EXISTS (
+          SELECT 1 FROM academic_work_plan.oferta_cetap_programa retirada
+          JOIN academic_work_plan.periodo_academico per_retirada ON per_retirada.id = retirada.id_periodo_academico
+          WHERE retirada.id_programa = p.id AND per_retirada.codigo = :periodo
+        ))
         OR (
           p.id_periodo_academico IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp_any
-            WHERE ocp_any.id_programa = p.id AND ocp_any.activa = TRUE
+            WHERE ocp_any.id_programa = p.id
           )
           AND EXISTS (
             SELECT 1 FROM academic_work_plan.periodo_academico pa3
@@ -98,7 +102,7 @@ export class ProgramasService {
       )
       OR NOT EXISTS (
         SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp_any
-        WHERE ocp_any.id_programa = p.id AND ocp_any.activa = TRUE
+        WHERE ocp_any.id_programa = p.id
       )
     )`, { periodo: periodoAcademico });
   }
@@ -183,6 +187,7 @@ export class ProgramasService {
     }
 
     const qb = this.programaRepo.createQueryBuilder('p');
+    qb.andWhere('p.deleted_at IS NULL');
 
     if (where.tipo) qb.andWhere('p.tipo = :tipo', { tipo: where.tipo });
     if (where.modalidad) qb.andWhere('p.modalidad = :modalidad', { modalidad: where.modalidad });
@@ -710,106 +715,64 @@ export class ProgramasService {
   }
 
   async eliminarPrograma(id: string, periodoCodigo?: string): Promise<void> {
-    const programa = await this.programaRepo.findOne({ where: { id } });
-    if (!programa) {
-      throw new NotFoundException(`Programa con ID ${id} no encontrado`);
+    const codigo = periodoCodigo?.trim();
+    if (periodoCodigo !== undefined && !codigo) {
+      throw new BadRequestException('Seleccione un período válido para retirar el programa.');
     }
+    await this.programaRepo.manager.transaction(async (manager) => {
+      // Serializar el retiro y conservar las filas que referencian los PTAs y la programación.
+      const programas = await manager.query(
+        `SELECT id FROM academic_work_plan.programa WHERE id = $1 FOR UPDATE`, [id],
+      );
+      if (!programas.length) throw new NotFoundException('Programa no encontrado');
+      if (codigo) {
+        const periodos = await manager.query(
+          `SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1`, [codigo],
+        );
+        const periodoId = periodos[0]?.id;
+        if (!periodoId) throw new NotFoundException('El período seleccionado no existe.');
 
-    try {
-      await this.programaRepo.manager.transaction(async (manager) => {
-        const codigo = periodoCodigo?.trim();
-
-        // ── BORRADO POR PERÍODO ──
-        // Eliminar un programa desde la vista de un período NO debe afectar a los
-        // demás períodos. Si el programa sigue presente en otro período, solo se
-        // quita de este; si este era su único período, se elimina por completo.
-        if (codigo) {
-          const per = await manager.query(
-            `SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1`,
-            [codigo],
+        // Se conserva la oferta como referencia histórica y marca de retiro en este período.
+        await manager.query(
+          `UPDATE academic_work_plan.oferta_cetap_programa SET activa = FALSE
+           WHERE id_programa = $1 AND id_periodo_academico = $2`, [id, periodoId],
+        );
+        const otrasOfertas = await manager.query(
+          `SELECT id_periodo_academico FROM academic_work_plan.oferta_cetap_programa
+           WHERE id_programa = $1 AND activa = TRUE AND id_periodo_academico <> $2
+           ORDER BY id_periodo_academico LIMIT 1`, [id, periodoId],
+        );
+        const tienePeriodoColumna = await this.hasProgramaPeriodoColumn();
+        let idPeriodoActual: any = null;
+        if (tienePeriodoColumna) {
+          const filas = await manager.query(
+            `SELECT id_periodo_academico FROM academic_work_plan.programa WHERE id = $1`, [id],
           );
-          const periodoId = per[0]?.id;
-
-          if (periodoId) {
-            // 1) Quitar las ofertas del programa SOLO en este período.
+          idPeriodoActual = filas[0]?.id_periodo_academico ?? null;
+        }
+        const perteneceAOtroPeriodo = idPeriodoActual != null && String(idPeriodoActual) !== String(periodoId);
+        if (otrasOfertas.length || perteneceAOtroPeriodo) {
+          if (tienePeriodoColumna && String(idPeriodoActual) === String(periodoId)) {
             await manager.query(
-              `DELETE FROM academic_work_plan.oferta_cetap_programa
-                WHERE id_programa = $1 AND id_periodo_academico = $2`,
-              [id, periodoId],
+              `UPDATE academic_work_plan.programa SET id_periodo_academico = $1 WHERE id = $2`,
+              [otrasOfertas[0].id_periodo_academico, id],
             );
-
-            // 2) ¿El programa sigue en OTROS períodos? (ofertas activas en otro
-            //    período, o pertenece a un período distinto a este).
-            const otrasOfertas = await manager.query(
-              `SELECT id_periodo_academico
-                 FROM academic_work_plan.oferta_cetap_programa
-                WHERE id_programa = $1 AND activa = TRUE AND id_periodo_academico <> $2
-                LIMIT 1`,
-              [id, periodoId],
-            );
-            // Período "dueño" del programa (columna id_periodo_academico, si existe).
-            let idPeriodoActual: any = null;
-            const tienePeriodoColumna = await this.hasProgramaPeriodoColumn();
-            if (tienePeriodoColumna) {
-              const progRow = await manager.query(
-                `SELECT id_periodo_academico FROM academic_work_plan.programa WHERE id = $1`,
-                [id],
-              );
-              idPeriodoActual = progRow[0]?.id_periodo_academico ?? null;
-            }
-            const perteneceAOtroPeriodo =
-              idPeriodoActual != null &&
-              String(idPeriodoActual) !== String(periodoId);
-
-            if (otrasOfertas.length > 0 || perteneceAOtroPeriodo) {
-              // El programa sobrevive en otro período: NO se borra globalmente.
-              // Si "pertenecía" a este período, se reasigna a otro donde aparezca.
-              if (tienePeriodoColumna && String(idPeriodoActual) === String(periodoId)) {
-                const destino = otrasOfertas[0]?.id_periodo_academico ?? null;
-                await manager.query(
-                  `UPDATE academic_work_plan.programa SET id_periodo_academico = $1 WHERE id = $2`,
-                  [destino, id],
-                );
-              }
-              return; // No se hace borrado completo.
-            }
-            // Si no quedó en ningún otro período, continúa al borrado completo.
           }
+          return;
         }
-
-        // ── BORRADO COMPLETO ──
-        // (sin período indicado, o el programa solo existía en este período).
-        // Orden de FK: ofertas -> asignaturas -> núcleos -> programa.
+      } else {
         await manager.query(
-          `DELETE FROM academic_work_plan.oferta_cetap_programa WHERE id_programa = $1`,
-          [id],
+          `UPDATE academic_work_plan.oferta_cetap_programa SET activa = FALSE WHERE id_programa = $1`, [id],
         );
-        await manager.query(
-          `DELETE FROM academic_work_plan.asignatura WHERE id_programa = $1`,
-          [id],
-        );
-        await manager.query(
-          `DELETE FROM academic_work_plan.nucleo_tematico WHERE id_programa = $1`,
-          [id],
-        );
-        await manager.query(
-          `DELETE FROM academic_work_plan.programa WHERE id = $1`,
-          [id],
-        );
-      });
-    } catch (error) {
-      if (error instanceof QueryFailedError) {
-        const code = (error.driverError as { code?: string })?.code;
-        if (code === '23503') {
-          throw new ConflictException(
-            'No se puede eliminar el programa porque tiene información académica en uso (planes de trabajo o registros asociados).',
-          );
-        }
       }
-      throw error;
-    }
+      // Último período (o retiro global): ocultar el programa sin borrar su plan ni sus referencias.
+      await manager.query(
+        `UPDATE academic_work_plan.programa
+         SET activo = FALSE, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`, [id],
+      );
+    });
   }
-
   async obtenerAsignaturasPrograma(programaId: string) {
       const asignaturas = await this.asignaturaRepo
       .createQueryBuilder('a')

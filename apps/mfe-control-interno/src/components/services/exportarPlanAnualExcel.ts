@@ -3,6 +3,22 @@ import logoBase64 from '../../assets/esap-logo-certificaciones.b64?raw';
 import { fechaSeguimientoTarea } from './fechaSeguimientoTarea';
 
 /**
+ * Columna "Evidencias": los archivos subidos a la tarea en el seguimiento, uno por
+ * línea. Antes leía un campo que ninguna tarea tiene y siempre salía "Sin evidencia"
+ * (EFDS-2324).
+ */
+function textoEvidencias(tarea: any): string {
+  if (!tarea) return 'Sin evidencia';
+  const adjuntos = tarea.adjuntosTarea || tarea.adjuntos_tarea || tarea.adjuntos || [];
+  const nombres = (Array.isArray(adjuntos) ? adjuntos : [])
+    .map((a: any) => (typeof a === 'string' ? a : a?.nombre || a?.name || a?.filename || a?.nombreArchivo || ''))
+    .map((s: unknown) => String(s ?? '').trim())
+    .filter(Boolean);
+  if (nombres.length === 0) return tarea.evidencia || 'Sin evidencia';
+  return `${nombres.length} evidencia(s):\n${nombres.join('\n')}`;
+}
+
+/**
  * Columnas del informe en el orden en que se escriben. Es la única fuente: alimenta
  * tanto el selector de columnas de la pantalla como la exportación.
  */
@@ -198,8 +214,9 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
         case 'estado': return act.estado === 'COMPLETADA' ? 100 : pct;
         case 'seguimiento': return tarea ? (tarea.nombre || tarea.descripcion || '') : 'Sin tareas';
         case 'fecha': return formatearFecha(fechaSeguimientoTarea(act, tarea));
-        case 'evaluacion_tarea': return tarea ? (tarea.estado === 'Completada' ? 100 : (tarea.avance || 0)) : 0;
-        case 'evidencias': return tarea ? (tarea.evidencia || 'Sin evidencia') : 'Sin evidencia';
+        // La tarea completada vale 100, como en el PDF (EFDS-2324)
+        case 'evaluacion_tarea': return tarea ? (tarea.completada || tarea.estado === 'Completada' ? 100 : (tarea.avance || 0)) : 0;
+        case 'evidencias': return textoEvidencias(tarea);
         default: return '';
       }
     };

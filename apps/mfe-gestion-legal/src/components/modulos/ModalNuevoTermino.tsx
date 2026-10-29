@@ -53,10 +53,12 @@ const nuevaFuenteNormativa = (): FuenteNormativaEntry => ({
 });
 
 export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoTerminoProps) {
-    const { getDestinatariosInformeActivos, getEntesSolicitantesInformeActivos, getTiposFuenteNormativaActivos } = useConfiguracionesSIGL();
+    const { getDestinatariosInformeActivos, getEntesSolicitantesInformeActivos, getTiposFuenteNormativaActivos, getRolesResponsablesTermino } = useConfiguracionesSIGL();
     const destinatariosDisponibles = getDestinatariosInformeActivos();
     const entesSolicitantesDisponibles = getEntesSolicitantesInformeActivos();
     const tiposFuenteNormativaDisponibles = getTiposFuenteNormativaActivos();
+    const rolesResponsables = getRolesResponsablesTermino();
+    const rolesResponsablesKey = rolesResponsables.join('|');
     const [loading, setLoading] = useState(false);
     const [profesionales, setProfesionales] = useState<any[]>([]);
     const [programacion, setProgramacion] = useState<ProgramacionVencimientos | null>(null);
@@ -100,13 +102,14 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
     // Cargar profesionales
     useEffect(() => {
         if (open) {
-            legalService.getAbogados().then((data: any[]) => {
+            legalService.getResponsablesTermino(rolesResponsables).then((data: any[]) => {
                 setProfesionales(Array.isArray(data) ? data : []);
             }).catch(() => {
                 // Silently fail, dropdown will just be empty
             });
         }
-    }, [open]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, rolesResponsablesKey]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -507,7 +510,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     <div className="space-y-2">
                         <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
                             <User className="w-4 h-4" />
-                            Responsable / Abogado
+                            Responsable
                         </Label>
                         <Select
                             value={formData.responsableId}

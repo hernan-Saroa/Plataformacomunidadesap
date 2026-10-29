@@ -31,4 +31,29 @@ describe('tarjetas superiores del portal docente', () => {
     expect(screen.getAllByText('No aplica')).toHaveLength(5);
     expect(screen.getAllByText('Aprobado')).toHaveLength(3);
   });
+
+  it('muestra Docencia aprobada por concertación aunque el PTA siga en borrador', () => {
+    const borrador = { estado: 'Borrador', horas_docencia: 172, horas_investigacion: 0, horas_extension: 0, horas_complementarias: 0 };
+    const rows = [
+      { componente: 'academica_pregrado', estado: 'aprobado', scope: 'programacion', horas: 64 },
+      { componente: 'academica_posgrado', estado: 'aprobado', scope: 'programacion', horas: 108 },
+      { componente: 'academica_territorial', estado: 'pendiente', horas: 0 },
+    ];
+    render(<ComponentApprovalBar estado={borrador.estado} pta={borrador} componentesAprobacion={rows} />);
+    const docencia = screen.getAllByText('Docencia')[0].parentElement!;
+    expect(within(docencia).getByText('Aprobado')).toBeTruthy();
+    expect(within(docencia).queryByText('No iniciado')).toBeNull();
+  });
+
+  it('no marca toda Docencia aprobada si otro componente con horas está pendiente', () => {
+    const borrador = { estado: 'Borrador', horas_docencia: 172 };
+    const rows = [
+      { componente: 'academica_pregrado', estado: 'aprobado', scope: 'programacion', horas: 64 },
+      { componente: 'academica_territorial', estado: 'pendiente', horas: 108 },
+    ];
+    render(<ComponentApprovalBar estado={borrador.estado} pta={borrador} componentesAprobacion={rows} />);
+    const docencia = screen.getAllByText('Docencia')[0].parentElement!;
+    expect(within(docencia).queryByText('Aprobado')).toBeNull();
+    expect(within(docencia).getByText('Pendiente')).toBeTruthy();
+  });
 });

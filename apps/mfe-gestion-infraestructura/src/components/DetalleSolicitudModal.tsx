@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, FileText, Paperclip, Clock, AlertTriangle, Calendar, User,
   Building2, MapPin, Wrench, Download, Image,
@@ -7,8 +7,8 @@ import {
   Eye, Monitor, GitBranch, Send, AlertCircle, Wand2, Users,
   ChevronDown, Zap, ChevronUp, ThumbsUp, Ban as IconRechazar,
   Repeat as RedistribuirIcon, CheckCircle2, ThumbsDown, RotateCcw,
-  BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge,
-  ScrollText, Star
+  BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge, Upload,
+  ScrollText, Star, UserCheck, ShoppingCart, Tag, ExternalLink
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -23,7 +23,7 @@ import {
 import { DetalleValoracionForm } from './DetalleValoracionForm';
 import { DetalleCierreEjecucionForm } from './DetalleCierreEjecucionForm';
 import { DetalleConformidadForm, ModoConformidad } from './DetalleConformidadForm';
-import { Play as PlayIcon, ClipboardCheck as ClipboarCheckIcon, PackageX, Truck } from 'lucide-react';
+import { Play as PlayIcon, ClipboardCheck as ClipboarCheckIcon, PackageX, Truck, PackageCheck } from 'lucide-react';
 
 interface DetalleSolicitudModalProps {
   open: boolean;
@@ -64,11 +64,33 @@ const formatearTamano = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
+const FECHA_SOLO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+const parsearFechaVisual = (valor?: string | Date): { fecha: Date; soloFecha: boolean } | null => {
+  if (!valor) return null;
+  if (valor instanceof Date) {
+    return isNaN(valor.getTime()) ? null : { fecha: valor, soloFecha: false };
+  }
+  const txt = String(valor).trim();
+  const soloFecha = FECHA_SOLO_RE.exec(txt);
+  if (soloFecha) {
+    const fecha = new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]));
+    return isNaN(fecha.getTime()) ? null : { fecha, soloFecha: true };
+  }
+  const fecha = new Date(txt);
+  return isNaN(fecha.getTime()) ? null : { fecha, soloFecha: false };
+};
+
 const formatearFecha = (valor?: string | Date): string => {
   if (!valor) return '—';
-  const d = valor instanceof Date ? valor : new Date(valor);
-  if (isNaN(d.getTime())) return String(valor);
-  return d.toLocaleDateString('es-CO', {
+  const parsed = parsearFechaVisual(valor);
+  if (!parsed) return String(valor);
+  if (parsed.soloFecha) {
+    return parsed.fecha.toLocaleDateString('es-CO', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+  }
+  return parsed.fecha.toLocaleDateString('es-CO', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -79,6 +101,20 @@ const formatearDinero = (valor: number | string | null | undefined): string => {
   const num = Number(valor);
   if (isNaN(num)) return String(valor);
   return `$${num.toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP`;
+};
+
+const normalizarComparacion = (valor?: string | null): string =>
+  String(valor || '').trim().toLowerCase();
+
+const formatearActorEvidencia = (email?: string | null, fallback = 'Actor no identificado'): string => {
+  const limpio = String(email || '').trim().toLowerCase();
+  if (!limpio) return fallback;
+  const local = limpio.split('@')[0] || limpio;
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+    .join(' ');
 };
 
 const dedupeEvidencias = (listas: SolicitudEvidencia[][]): SolicitudEvidencia[] => {
@@ -126,36 +162,44 @@ const resumirExtensionSLA = (obj: Record<string, any>): string | null => {
   if (!dias && !fechaOrig) return null;
   const parts: string[] = [];
   if (dias) parts.push(`+${dias} día(s) adicionales`);
-  if (fechaOrig) parts.push(`tope original: ${new Date(fechaOrig).toLocaleDateString('es-CO', { day:'numeric', month:'short' })}`);
-  if (fechaNueva) parts.push(`nuevo tope: ${new Date(fechaNueva).toLocaleDateString('es-CO', { day:'numeric', month:'short' })}`);
+  if (fechaOrig) parts.push(`tope original: ${new Date(fechaOrig).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}`);
+  if (fechaNueva) parts.push(`nuevo tope: ${new Date(fechaNueva).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}`);
   return parts.join(' · ');
 };
 
-const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; icon: React.ComponentType<any> }> = {
-  APROBADA_Y_ASIGNADA:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',     dot: 'bg-emerald-500', icon: BadgeCheck },
-  RECHAZADA:                { badge: 'bg-rose-100 text-rose-800 border-rose-200',              dot: 'bg-rose-500',    icon: XCircle },
-  REDISTRIBUIDA:            { badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',          dot: 'bg-indigo-500',  icon: Users },
-  INICIO_VALORACION:        { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-500',     icon: ClipboardList },
-  FINALIZA_VALORACION_CON_DISPONIBLES: { badge: 'bg-teal-100 text-teal-800 border-teal-200',     dot: 'bg-teal-600',    icon: CheckCircle2 },
-  FINALIZA_VALORACION_EN_ESPERA:       { badge: 'bg-amber-100 text-amber-800 border-amber-200',   dot: 'bg-amber-500',   icon: PackageX },
-  EXTENSION_SLA_POR_INSUMOS:{ badge: 'bg-orange-100 text-orange-800 border-orange-200',          dot: 'bg-orange-500',  icon: Clock },
-  RECEPCION_MATERIALES_Y_PASO_A_EJECUCION: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', icon: Truck },
-  EDICION_VALORACION_POR_ENCARGADO:    { badge: 'bg-slate-100 text-slate-800 border-slate-200',  dot: 'bg-slate-500',   icon: FileBadge },
-  INICIO_EJECUCION_DIRECTA: { badge: 'bg-green-100 text-green-800 border-green-200',             dot: 'bg-green-500',   icon: PlayIcon },
-  CIERRE_TECNICO:           { badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',       dot: 'bg-emerald-700',  icon: ClipboarCheckIcon },
-  CONFORMIDAD_CONFIRMADA:   { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
-  CONFORMIDAD_SIN_RESPUESTA:{ badge: 'bg-slate-100 text-slate-700 border-slate-200',              dot: 'bg-slate-500',    icon: Clock },
-  CONFORMIDAD_RECHAZADA_Y_REABIERTA: { badge: 'bg-amber-100 text-amber-800 border-amber-200',     dot: 'bg-amber-500',    icon: RotateCcw },
-  REMITIDA_TI:              { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-600',     icon: Monitor },
-  RECHAZO_REMISION_TI:      { badge: 'bg-rose-100 text-rose-800 border-rose-200',                dot: 'bg-rose-600',    icon: Ban },
-  APROBADA_REMISION_TI:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
+const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; colorHex: string; icon: React.ComponentType<any> }> = {
+  APROBADA_Y_ASIGNADA: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: BadgeCheck },
+  ASIGNACION_MANTENIMIENTO_MAYOR_ESCALADO: { badge: 'bg-purple-100 text-purple-800 border-purple-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: Building2 },
+  RECHAZADA: { badge: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-600', colorHex: '#e11d48', icon: XCircle },
+  REDISTRIBUIDA: { badge: 'bg-indigo-100 text-indigo-800 border-indigo-200', dot: 'bg-indigo-600', colorHex: '#4f46e5', icon: Users },
+  INICIO_VALORACION: { badge: 'bg-sky-100 text-sky-800 border-sky-200', dot: 'bg-blue-600', colorHex: '#2563eb', icon: ClipboardList },
+  FINALIZA_VALORACION_CON_DISPONIBLES: { badge: 'bg-teal-100 text-teal-800 border-teal-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: CheckCircle2 },
+  FINALIZA_VALORACION_EN_ESPERA: { badge: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500', colorHex: '#d97706', icon: PackageX },
+  EXTENSION_SLA_POR_INSUMOS: { badge: 'bg-orange-100 text-orange-800 border-orange-200', dot: 'bg-orange-500', colorHex: '#ea580c', icon: Clock },
+  RECEPCION_MATERIALES_Y_PASO_A_EJECUCION: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: Truck },
+  RECEPCION_INSUMOS_TECNICO: { badge: 'bg-teal-100 text-teal-800 border-teal-200', dot: 'bg-teal-600', colorHex: '#0d9488', icon: PackageCheck },
+  EDICION_VALORACION_POR_ENCARGADO: { badge: 'bg-slate-100 text-slate-800 border-slate-200', dot: 'bg-slate-600', colorHex: '#475569', icon: FileBadge },
+  INICIO_EJECUCION_DIRECTA: { badge: 'bg-green-100 text-green-800 border-green-200', dot: 'bg-green-600', colorHex: '#16a34a', icon: PlayIcon },
+  CIERRE_TECNICO: { badge: 'bg-emerald-200 text-emerald-900 border-emerald-300', dot: 'bg-emerald-600', colorHex: '#059669', icon: ClipboarCheckIcon },
+  CONFORMIDAD_CONFIRMADA: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: ThumbsUp },
+  CONFORMIDAD_SIN_RESPUESTA: { badge: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-600', colorHex: '#475569', icon: Clock },
+  CONFORMIDAD_RECHAZADA_Y_REABIERTA: { badge: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500', colorHex: '#d97706', icon: RotateCcw },
+  REMITIDA_TI: { badge: 'bg-sky-100 text-sky-800 border-sky-200', dot: 'bg-sky-600', colorHex: '#0284c7', icon: Monitor },
+  RECHAZO_REMISION_TI: { badge: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-600', colorHex: '#e11d48', icon: Ban },
+  APROBADA_REMISION_TI: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: ThumbsUp },
+  VISTO_BUENO_REGISTRADO: { badge: 'bg-violet-100 text-violet-800 border-violet-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: BadgeCheck },
+  VOBO_VALORACION_APROBADO: { badge: 'bg-violet-100 text-violet-800 border-violet-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: BadgeCheck },
+  VINCULACION_TRAMITE_CONTRACTUAL: { badge: 'bg-purple-100 text-purple-800 border-purple-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: FileText },
+  VOBO_VALORACION_OBSERVADO: { badge: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500', colorHex: '#d97706', icon: AlertTriangle },
 };
+
+const EMPTY_CS: CatalogoItem[] = [];
 
 export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   open,
   idSolicitud,
   onClose,
-  catalogoCS = [],
+  catalogoCS = EMPTY_CS,
   onCambioExitoso,
 }) => {
   const [detalle, setDetalle] = useState<SolicitudMantenimiento | null>(null);
@@ -195,7 +239,38 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
 
   const [ejecutandoAprobar, setEjecutandoAprobar] = useState<boolean>(false);
   const [aprobacionObservaciones, setAprobacionObservaciones] = useState<string>('');
-  const [historicoAbierto, setHistoricoAbierto] = useState<boolean>(true);
+  const [clasificacionMantenimiento, setClasificacionMantenimiento] = useState<'MENOR' | 'MAYOR'>('MENOR');
+  const [requiereContratacion, setRequiereContratacion] = useState<boolean>(false);
+
+// EFDS-2353: Filtrado reactivo de técnicos según clasificación Menor vs Mayor
+  const tecnicosFiltrados = useMemo(() => {
+    if (!Array.isArray(tecnicosCatalogo)) return [];
+    if (clasificacionMantenimiento === 'MAYOR') {
+      const mayorList = tecnicosCatalogo.filter((t) => {
+        const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+        const cod = String(t.codigo || '').toUpperCase();
+        return rol === 'P5' || rol === 'P3' || cod.includes('P5') || cod.includes('P3');
+      });
+      return mayorList.length > 0 ? mayorList : tecnicosCatalogo;
+    }
+    return tecnicosCatalogo;
+  }, [tecnicosCatalogo, clasificacionMantenimiento]);
+
+  // Fase 3: Visto Bueno (VoBo)
+  const [mostrarModalTramiteContractual, setMostrarModalTramiteContractual] = useState<boolean>(false);
+  const [procesoContractualInput, setProcesoContractualInput] = useState<string>('');
+  const [radicadoOrfeoInput, setRadicadoOrfeoInput] = useState<string>('');
+  const [presupuestoContratoInput, setPresupuestoContratoInput] = useState<string>('');
+  const [observacionesContratoInput, setObservacionesContratoInput] = useState<string>('');
+  const [enviandoTramiteContractual, setEnviandoTramiteContractual] = useState<boolean>(false);
+  const [errorTramiteContractual, setErrorTramiteContractual] = useState<string>('');
+  const [mostrarModalVoBo, setMostrarModalVoBo] = useState<boolean>(false);
+  const [voboDecision, setVoboDecision] = useState<boolean>(true);
+  const [voboObservacionesInput, setVoboObservacionesInput] = useState<string>('');
+  const [ejecutandoVoBo, setEjecutandoVoBo] = useState<boolean>(false);
+  const [errorVoBo, setErrorVoBo] = useState<string>('');
+
+  const [mostrarModalHistorico, setMostrarModalHistorico] = useState<boolean>(false);
   const [toastModal, setToastModal] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
 
   // ---------------------------------------------------------------------------
@@ -205,16 +280,26 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [valoracionesCargando, setValoracionesCargando] = useState<boolean>(false);
   const [mostrarDetalleValoracion, setMostrarDetalleValoracion] = useState<boolean>(false);
   const [idValoracionAbierta, setIdValoracionAbierta] = useState<string | null>(null);
+  const [idValoracionSeleccionada, setIdValoracionSeleccionada] = useState<string | null>(null);
 
   const [ejecutandoInicioDirecto, setEjecutandoInicioDirecto] = useState<boolean>(false);
-  const [ejecutandoInicioValoracion, setEjecutandoInicioValoracion] = useState<boolean>(false);
 
   const [mostrarModalConfirmarRecepcion, setMostrarModalConfirmarRecepcion] = useState<boolean>(false);
   const [recepcionObservaciones, setRecepcionObservaciones] = useState<string>('');
   const [ejecutandoRecepcion, setEjecutandoRecepcion] = useState<boolean>(false);
   const [errorRecepcion, setErrorRecepcion] = useState<string>('');
 
+  const [mostrarModalVerificarInsumos, setMostrarModalVerificarInsumos] = useState<boolean>(false);
+  const [verifResultado, setVerifResultado] = useState<'COMPLETA' | 'PARCIAL' | 'OBSERVADA'>('COMPLETA');
+  const [verifObservaciones, setVerifObservaciones] = useState<string>('');
+  const [enviandoVerifInsumos, setEnviandoVerifInsumos] = useState<boolean>(false);
+  const [errorVerifInsumos, setErrorVerifInsumos] = useState<string>('');
+
   const [descargandoZip, setDescargandoZip] = useState<boolean>(false);
+  const [archivosEvidenciaExtra, setArchivosEvidenciaExtra] = useState<File[]>([]);
+  const [subiendoEvidenciaExtra, setSubiendoEvidenciaExtra] = useState<boolean>(false);
+  const [errorEvidenciaExtra, setErrorEvidenciaExtra] = useState<string>('');
+  const inputEvidenciaExtraRef = useRef<HTMLInputElement | null>(null);
 
   const [valoracionesAbierto, setValoracionesAbierto] = useState<boolean>(true);
 
@@ -281,10 +366,19 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
       setAprobacionObservaciones('');
+      setClasificacionMantenimiento('MENOR');
+      setRequiereContratacion(false);
+      setMostrarModalVoBo(false);
+      setVoboDecision(true);
+      setVoboObservacionesInput('');
+      setErrorVoBo('');
       setValoraciones([]);
       setIdValoracionAbierta(null);
+      setIdValoracionSeleccionada(null);
       setMostrarDetalleValoracion(false);
       setMostrarModalConfirmarRecepcion(false);
+      setMostrarModalVerificarInsumos(false);
+      setErrorVerifInsumos('');
       return;
     }
     const cargar = async () => {
@@ -331,11 +425,20 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           tecnicosResult = results[idx++];
         }
         setDetalle(d);
+        if (d?.clasificacionMantenimiento) {
+          setClasificacionMantenimiento(d.clasificacionMantenimiento as 'MENOR' | 'MAYOR');
+        } else {
+          setClasificacionMantenimiento('MENOR');
+        }
+        setRequiereContratacion(!!d?.requiereContratacion);
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
         setRemisiones(Array.isArray(rems) ? rems : []);
         setValoraciones(Array.isArray(vals) ? vals : []);
-        const valoracionAbierta = (vals || []).find((v: SolicitudValoracion) => !v.estadoAlFinalizar);
+        const valoracionAbierta = puedeEditarValoracion
+          ? (vals || []).find((v: SolicitudValoracion) => !v.estadoAlFinalizar && !v.fechaFinValoracion)
+          : null;
         if (valoracionAbierta) setIdValoracionAbierta(valoracionAbierta.idValoracion);
+        else setIdValoracionAbierta(null);
         setCatalogoEstado(est);
         setCatalogoPrioridad(pri);
         if (csFallback && Array.isArray(csFallback)) setCatalogoCSLocal(csFallback);
@@ -383,7 +486,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   }, [evidenciasEndpoint, detalle]);
 
   type GrupoEvidencias = {
-    key: 'radicacion' | 'valoracion' | 'cierre' | 'otras';
+    key: string;
     label: string;
     icon: React.ComponentType<any>;
     claseBadge: string;
@@ -405,31 +508,74 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     const evRadArr: SolicitudEvidencia[] = [];
     const evValArr: SolicitudEvidencia[] = [];
     const evCieArr: SolicitudEvidencia[] = [];
-    const evOtrArr: SolicitudEvidencia[] = [];
+    const otrosPorActor = new Map<string, { label: string; items: SolicitudEvidencia[] }>();
+    const fechaRadicacionMs = detalle?.fechaRadicacion
+      ? new Date(detalle.fechaRadicacion).getTime()
+      : detalle?.createdAt
+        ? new Date(detalle.createdAt).getTime()
+        : Number.NaN;
+    const margenRadicacionMs = 1000 * 60 * 45;
+    const ordenarPorFecha = (items: SolicitudEvidencia[]) =>
+      items.slice().sort((a, b) => {
+        const fa = new Date(a.fechaSubida || 0).getTime();
+        const fb = new Date(b.fechaSubida || 0).getTime();
+        return (isFinite(fa) ? fa : 0) - (isFinite(fb) ? fb : 0);
+      });
 
     for (const e of evidenciasFinales) {
       const idMatch = e.idEvidencia;
       const ruta = (e.rutaObjeto || '').toLowerCase();
+      const notas = String(e.notas || '').toLowerCase();
+      const uploaderEmail = normalizarComparacion(e.usuarioQueSubioEmail);
+      const uploaderId = normalizarComparacion(e.usuarioQueSubioId);
+      const fechaSubidaMs = e.fechaSubida ? new Date(e.fechaSubida).getTime() : Number.NaN;
+      const esCercanaARadicacion =
+        isFinite(fechaRadicacionMs) &&
+        isFinite(fechaSubidaMs) &&
+        Math.abs(fechaSubidaMs - fechaRadicacionMs) <= margenRadicacionMs;
+      const esEvidenciaAdicional = notas.includes('evidencia_adicional_actor');
+      const esRadicacionInicial =
+        !esEvidenciaAdicional && (
+          esCercanaARadicacion ||
+          notas.includes('radicacion_inicial') ||
+          notas.includes('radicacion inicial') ||
+          notas.includes('inicial')
+        );
       if (idsCierre.has(idMatch) || ruta.includes('/cierre-tecnico') || ruta.includes('cierre_tecnico')) {
         evCieArr.push(e);
       } else if (idsValoracion.has(idMatch) || ruta.includes('/valoracion') || ruta.includes('valoracion_') || (e.notas || '').toLowerCase().includes('valor')) {
         evValArr.push(e);
-      } else if (evRadArr.length === 0 && (
-        (e.orden === 1) ||
-        (detalle?.evidenciaInicialUrl && (e.urlPublica === detalle.evidenciaInicialUrl || e.urlPresigned?.startsWith(detalle.evidenciaInicialUrl.split('?')[0]))) ||
-        ruta.includes('/mantenimiento/2026') || ruta.endsWith(`/${e.nombreAlmacenado}`)
-      )) {
+      } else if (
+        esRadicacionInicial ||
+        (detalle?.evidenciaInicialUrl && (e.urlPublica === detalle.evidenciaInicialUrl || e.urlPresigned?.startsWith(detalle.evidenciaInicialUrl.split('?')[0])))
+      ) {
         evRadArr.push(e);
       } else {
-        evOtrArr.push(e);
+        const actorKey = uploaderEmail || uploaderId || 'sin-actor';
+        const actorLabel = uploaderEmail
+          ? `Otras evidencias · ${formatearActorEvidencia(uploaderEmail)}`
+          : 'Otras evidencias';
+        const grupoActor = otrosPorActor.get(actorKey) || { label: actorLabel, items: [] };
+        grupoActor.items.push(e);
+        otrosPorActor.set(actorKey, grupoActor);
       }
     }
     const grupos: GrupoEvidencias[] = [
-      { key: 'radicacion', label: 'Radicación inicial', icon: FileText,     claseBadge: 'bg-slate-100 text-slate-700 border border-slate-200',           items: evRadArr },
-      { key: 'valoracion', label: 'Valoración en campo', icon: ClipboardList, claseBadge: 'bg-sky-100 text-sky-800 border border-sky-200',              items: evValArr },
-      { key: 'cierre',     label: 'Cierre técnico',       icon: ClipboarCheckIcon, claseBadge: 'bg-emerald-100 text-emerald-800 border border-emerald-200', items: evCieArr },
-      { key: 'otras',      label: 'Otras evidencias',     icon: Paperclip,   claseBadge: 'bg-indigo-100 text-indigo-800 border border-indigo-200',        items: evOtrArr },
+      { key: 'radicacion', label: 'Radicación inicial', icon: FileText, claseBadge: 'bg-slate-100 text-slate-700 border border-slate-200', items: ordenarPorFecha(evRadArr) },
+      { key: 'valoracion', label: 'Valoración en campo', icon: ClipboardList, claseBadge: 'bg-sky-100 text-sky-800 border border-sky-200', items: ordenarPorFecha(evValArr) },
+      { key: 'cierre', label: 'Cierre técnico', icon: ClipboarCheckIcon, claseBadge: 'bg-emerald-100 text-emerald-800 border border-emerald-200', items: ordenarPorFecha(evCieArr) },
     ];
+    Array.from(otrosPorActor.entries())
+      .sort((a, b) => a[1].label.localeCompare(b[1].label, 'es'))
+      .forEach(([actorKey, grupoActor]) => {
+        grupos.push({
+          key: `otras-${actorKey}`,
+          label: grupoActor.label,
+          icon: Paperclip,
+          claseBadge: 'bg-indigo-100 text-indigo-800 border border-indigo-200',
+          items: ordenarPorFecha(grupoActor.items),
+        });
+      });
     return grupos;
   }, [evidenciasFinales, detalle]);
 
@@ -520,13 +666,66 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     }
   };
 
+  const recargarDetalleYEvidencias = async () => {
+    if (!idSolicitud) return;
+    try {
+      const [d, evs] = await Promise.all([
+        infraestructuraService.getMantenimientoById(idSolicitud),
+        infraestructuraService.getEvidenciasBySolicitud(idSolicitud),
+      ]);
+      setDetalle(d);
+      setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
+    } catch {
+      // ignore; keep stale
+    }
+  };
+
+  const handleSeleccionarEvidenciaExtra = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setArchivosEvidenciaExtra(files);
+    setErrorEvidenciaExtra('');
+  };
+
+  const handleSubirEvidenciaExtra = async () => {
+    if (!idSolicitud || archivosEvidenciaExtra.length === 0) return;
+    setSubiendoEvidenciaExtra(true);
+    setErrorEvidenciaExtra('');
+    try {
+      for (let i = 0; i < archivosEvidenciaExtra.length; i++) {
+        const archivo = archivosEvidenciaExtra[i];
+        await infraestructuraService.uploadEvidencia(archivo, {
+          idSolicitud,
+          orden: evidenciasFinales.length + i + 1,
+          notas: 'evidencia_adicional_actor',
+        });
+      }
+      setArchivosEvidenciaExtra([]);
+      if (inputEvidenciaExtraRef.current) inputEvidenciaExtraRef.current.value = '';
+      await recargarDetalleYEvidencias();
+      await onCambioExitoso?.();
+      setToastModal({
+        tipo: 'ok',
+        texto:
+          archivosEvidenciaExtra.length === 1
+            ? 'Evidencia adicional cargada correctamente.'
+            : `${archivosEvidenciaExtra.length} evidencias adicionales cargadas correctamente.`,
+      });
+    } catch (err: any) {
+      const msg = err?.message || 'No se pudo cargar la evidencia adicional.';
+      setErrorEvidenciaExtra(msg);
+      setToastModal({ tipo: 'err', texto: msg });
+    } finally {
+      setSubiendoEvidenciaExtra(false);
+    }
+  };
+
   const tipoAtencionNorm = (detalle?.tipoAtencion || detalle?.tipo_atencion || '').toString().trim().toUpperCase();
   const areaRespNorm = (detalle?.areaResponsableActual || detalle?.area_responsable_actual || '').toString().trim().toUpperCase();
   const esAreaTI = (() => {
     if (!detalle) return false;
-    if (['TI','OFICINA TI','TIC','TECNOLOGIAS','INFORMATICA','OFICINA TIC'].includes(areaRespNorm)) return true;
+    if (['TI', 'OFICINA TI', 'TIC', 'TECNOLOGIAS', 'INFORMATICA', 'OFICINA TIC'].includes(areaRespNorm)) return true;
     if (areaRespNorm.includes('TI') && !areaRespNorm.includes('TIERRA')) return true;
-    if (['TECNOLOGICA','TECNOLOGICO','ATENCION TECNOLOGICA'].includes(tipoAtencionNorm)) return true;
+    if (['TECNOLOGICA', 'TECNOLOGICO', 'ATENCION TECNOLOGICA'].includes(tipoAtencionNorm)) return true;
     return false;
   })();
 
@@ -549,6 +748,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         tecnicoCodigo: areaTI ? undefined : codTec,
         idTecnicoAsignado: areaTI ? undefined : (idTecnicoAsignado || undefined),
         observaciones: aprobacionObservaciones.trim() || undefined,
+        clasificacionMantenimiento,
+        requiereContratacion,
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
       if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
@@ -655,6 +856,80 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorRedist(err?.message || 'No se pudo redistribuir la solicitud. Intenta nuevamente.');
     } finally {
       setEjecutandoRedist(false);
+    }
+  };
+
+
+  const ultimoTramiteContractual = useMemo(() => {
+    const asigs = Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones : [];
+    const entry = asigs.slice().reverse().find((a: any) => a.accion === 'VINCULACION_TRAMITE_CONTRACTUAL');
+    if (!entry) return null;
+    const parsed = parseJsonSeguro(entry.observaciones);
+    return {
+      ...entry,
+      parsed: parsed || {},
+    };
+  }, [detalle]);
+
+  const handleGuardarTramiteContractual = async () => {
+    if (!idSolicitud) return;
+    const proc = procesoContractualInput.trim();
+    if (!proc) {
+      setErrorTramiteContractual('El número de proceso contractual o SECOP II es obligatorio.');
+      return;
+    }
+    setEnviandoTramiteContractual(true);
+    setErrorTramiteContractual('');
+    try {
+      const presNum = presupuestoContratoInput.trim() ? Number(presupuestoContratoInput.replace(/[^0-9]/g, '')) : undefined;
+      await infraestructuraService.vincularTramiteContractual(idSolicitud, {
+        procesoContractual: proc,
+        radicadoOrfeo: radicadoOrfeoInput.trim() || undefined,
+        presupuestoEstimadoCop: presNum && presNum > 0 ? presNum : undefined,
+        observaciones: observacionesContratoInput.trim() || undefined,
+      });
+      setMostrarModalTramiteContractual(false);
+      setToastModal({ tipo: 'ok', texto: 'Trámite contractual vinculado exitosamente a la solicitud.' });
+      if (onCambioExitoso) await onCambioExitoso();
+      const actualizado = await infraestructuraService.getMantenimientoById(idSolicitud);
+      setDetalle(actualizado);
+    } catch (err: any) {
+      setErrorTramiteContractual(err?.message || 'Error al guardar el trámite contractual.');
+    } finally {
+      setEnviandoTramiteContractual(false);
+    }
+  };
+  const registrarVoBoHandler = async () => {
+    if (!idSolicitud || !detalle) return;
+    if (!voboDecision && (!voboObservacionesInput.trim() || voboObservacionesInput.trim().length < 5)) {
+      setErrorVoBo('Debe ingresar el motivo / observaciones del rechazo u observaciones del Visto Bueno (mínimo 5 caracteres).');
+      return;
+    }
+    setEjecutandoVoBo(true);
+    setErrorVoBo('');
+    try {
+      const res = await infraestructuraService.registrarVoBo(idSolicitud, {
+        aprobado: voboDecision,
+        voboAprobado: voboDecision,
+        observaciones: voboObservacionesInput.trim() || undefined,
+        voboObservaciones: voboObservacionesInput.trim() || undefined,
+      });
+      if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) {
+        setDetalle(res);
+      }
+      setToastModal({
+        tipo: 'ok',
+        texto: voboDecision
+          ? 'Visto Bueno APROBADO exitosamente. Notificación enviada al técnico asignado.'
+          : 'Visto Bueno REGISTRADO CON OBSERVACIONES. Notificación enviada al técnico asignado.',
+      });
+      setMostrarModalVoBo(false);
+      await recargarDetalle();
+      await onCambioExitoso?.();
+    } catch (err: any) {
+      setErrorVoBo(err?.message || 'No se pudo registrar el Visto Bueno.');
+    } finally {
+      setEjecutandoVoBo(false);
     }
   };
 
@@ -813,27 +1088,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     }
   };
 
-  const handleIniciarValoracion = async () => {
-    if (!detalle || !idSolicitud) return;
-    setEjecutandoInicioValoracion(true);
-    setToastModal(null);
-    try {
-      const r = await infraestructuraService.iniciarValoracion(idSolicitud, {});
-      setDetalle(r.solicitud);
-      const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
-      setValoraciones(lista);
-      setIdValoracionAbierta(r.valoracion.idValoracion);
-      setMostrarDetalleValoracion(true);
-      setToastModal({ tipo: 'ok', texto: 'Valoración previa iniciada. Complete el formulario y guarde.' });
-    } catch (err: any) {
-      setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar la valoración.' });
-    } finally {
-      setEjecutandoInicioValoracion(false);
-    }
-  };
-
   const handleAbrirValoracionExistente = (v: SolicitudValoracion) => {
-    setIdValoracionAbierta(v.idValoracion);
+    setIdValoracionSeleccionada(v.idValoracion);
     setMostrarDetalleValoracion(true);
   };
 
@@ -842,8 +1098,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     if (idSolicitud) {
       const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
       setValoraciones(lista);
+      const abierta = lista.find((x) => !x.estadoAlFinalizar && !x.fechaFinValoracion);
+      setIdValoracionAbierta(abierta?.idValoracion || null);
     }
-    setIdValoracionAbierta(null);
+    setIdValoracionSeleccionada(null);
   };
 
   const abrirConfirmarRecepcion = () => {
@@ -867,6 +1125,47 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorRecepcion(err?.message || 'Error al confirmar recepción.');
     } finally {
       setEjecutandoRecepcion(false);
+    }
+  };
+
+  const abrirModalVerificarInsumos = () => {
+    setErrorVerifInsumos('');
+    if (ultimaRecepcionInsumosTecnico) {
+      setVerifResultado(
+        ['COMPLETA', 'PARCIAL', 'OBSERVADA'].includes(ultimaRecepcionInsumosTecnico.resultado)
+          ? (ultimaRecepcionInsumosTecnico.resultado as any)
+          : 'COMPLETA',
+      );
+      setVerifObservaciones(ultimaRecepcionInsumosTecnico.observaciones || '');
+    } else {
+      setVerifResultado('COMPLETA');
+      setVerifObservaciones('');
+    }
+    setMostrarModalVerificarInsumos(true);
+  };
+
+  const handleGuardarVerifInsumos = async () => {
+    if (!idSolicitud) return;
+    setErrorVerifInsumos('');
+    setEnviandoVerifInsumos(true);
+    try {
+      const actualizado = await infraestructuraService.registrarRecepcionInsumosTecnico(idSolicitud, {
+        resultado: verifResultado,
+        observaciones: verifObservaciones.trim() || undefined,
+      });
+      if (actualizado) {
+        setDetalle(actualizado);
+      }
+      await recargarDetalle();
+      setMostrarModalVerificarInsumos(false);
+      setToastModal({ tipo: 'ok', texto: `Recepción técnica de insumos registrada como ${verifResultado} y asentada en el histórico.` });
+      if (onCambioExitoso) {
+        await onCambioExitoso();
+      }
+    } catch (err: any) {
+      setErrorVerifInsumos(err?.message || 'Error al guardar la verificación técnica de insumos.');
+    } finally {
+      setEnviandoVerifInsumos(false);
     }
   };
 
@@ -940,6 +1239,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     !esAreaTI &&
     (estadoActual === 'ASIGNADA') &&
     (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'));
+
+  const esMantenimientoMayor = Boolean(
+    detalle?.clasificacionMantenimiento === 'MAYOR' ||
+    clasificacionMantenimiento === 'MAYOR' ||
+    detalle?.requiereContratacion
+  );
   const puedeConfirmarRecepcionMateriales =
     detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS' &&
     (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all') || tienePerm('infraestructura.solicitud.execute_assigned') || tienePerm('infraestructura.solicitud.cierre_tecnico'));
@@ -951,7 +1256,11 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // 4) SOLICITANTE P1 NUNCA (no cae en ningun permiso arriba)
   // La validación real de "si el técnico es el asignado" la hace el backend (403 si no corresponde).
   // El frontend solo separa quién ve el botón para no confundir.
-  const puedeConfirmarRecepcionMaterialesFinal = puedeConfirmarRecepcionMateriales;
+  const puedeConfirmarRecepcionMaterialesFinal = puedeConfirmarRecepcionMateriales && !esMantenimientoMayor;
+  const puedeEmitirVoBo =
+    detalle &&
+    !esAreaTI &&
+    (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.solicitud.approve') || tienePerm('infraestructura.view_all'));
   const puedeIniciarEjecOValoracionAsignado =
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
@@ -964,7 +1273,24 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // EFDS-1737 L17 + CP-05 + CP-10/11: actor conformidad = (a) SOLICITANTE ORIGINAL match exacto, OR (b) SUPER_ADMIN / ADMIN_FUNCIONAL bypass.
   // NUNCA P2 (assign), NUNCA P3/P4 TECNICOS, NUNCA P7 CALIDAD. Guardia UI = backend hace 403 real.
   const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
-  const rolesNormConformidad = useMemo(() => new Set((sesionUmi?.roles ?? []).map(String).map(s => s.trim().toUpperCase())), [sesionUmi]);
+  const rolesNormConformidad = useMemo(() => {
+    const raw = (sesionUmi?.roles ?? []) as unknown as Array<any>;
+    const set = new Set<string>();
+    for (const r of raw) {
+      if (!r) continue;
+      if (typeof r === 'string') {
+        const n = r.trim().toUpperCase();
+        if (n) set.add(n);
+      } else if (typeof r === 'object') {
+        const c = r.code || r.codigo || r.role || r.rol || r.name;
+        if (typeof c === 'string') {
+          const n = c.trim().toUpperCase();
+          if (n) set.add(n);
+        }
+      }
+    }
+    return set;
+  }, [sesionUmi]);
   const esSolicitanteOriginalDeEstaSolicitud = useMemo(() => {
     if (!detalle) return false;
     const userIdActual = String(sesionUmi.userId || '').trim().toLowerCase();
@@ -980,7 +1306,39 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL') ||
     rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL_INFRA')
   ));
+  const esAdminFuncionalInfra = !!(sesionUmi && (
+    rolesNormConformidad.has('SUPER_ADMIN') ||
+    rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+    rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL') ||
+    rolesNormConformidad.has('COORDINADOR_INFRAESTRUCTURA') ||
+    rolesNormConformidad.has('P5')
+  ));
+  const esResponsableTecnicoAsignado = useMemo(() => {
+    if (!detalle || !sesionUmi) return false;
+    const userId = String(sesionUmi.userId || '').trim().toLowerCase();
+    const idTecnico = String((detalle as any).idTecnicoAsignado || '').trim().toLowerCase();
+    if (userId && idTecnico && userId === idTecnico) return true;
+    const email = String(sesionUmi.email || '').trim().toLowerCase();
+    const responsable = String(detalle.responsableAsignado || '').trim().toLowerCase();
+    if (email && responsable && responsable.includes(email)) return true;
+    return false;
+  }, [detalle, sesionUmi]);
   const esUsuarioSolicitanteConforme = !!(detalle && (esSolicitanteOriginalDeEstaSolicitud || esBypassConformidadValido));
+  const puedeAdjuntarEvidenciaAdicional = !!(
+    detalle &&
+    idSolicitud &&
+    (
+      esSolicitanteOriginalDeEstaSolicitud ||
+      tienePerm('infraestructura.solicitud.assign')
+    )
+  );
+  const tieneRemisionesRegistradas = remisiones.length > 0;
+  const tieneValoracionesRegistradas = valoraciones.length > 0;
+  const tieneHistoricoAsignaciones =
+    Array.isArray((detalle as any)?.asignaciones) && (detalle as any).asignaciones.length > 0;
+  const mostrarSeccionRemisiones = tieneRemisionesRegistradas;
+  const mostrarSeccionValoraciones = tieneValoracionesRegistradas;
+  const mostrarSeccionHistorico = tieneHistoricoAsignaciones;
 
   // EFDS-1736 helpers footer
   // Reapertura por rechazo conformidad (EFDS-1737 RF-INF-008 RECHAZADA_Y_REABIERTA):
@@ -991,12 +1349,25 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     (detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION')
     && !conformidadRechazadaReabierta
   );
-  const puedeCerrarTecnicamente =
+  const puedeCerrarTecnicamente = Boolean(
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
     estadoActual === 'EN_PROGRESO' &&
     !yaCerradoTecnicamente &&
-    tienePerm('infraestructura.solicitud.cierre_tecnico');
+    !esSolicitanteOriginalDeEstaSolicitud &&
+    !rolesNormConformidad.has('SOLICITANTE_INFRA') &&
+    !rolesNormConformidad.has('ANALISTA_ASIGNADOR_UMI') &&
+    !rolesNormConformidad.has('CONSULTA_CALIDAD_INFRA') &&
+    !rolesNormConformidad.has('P1') &&
+    !rolesNormConformidad.has('P2') &&
+    !rolesNormConformidad.has('P7') &&
+    (
+      esAdminFuncionalInfra ||
+      esResponsableTecnicoAsignado ||
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.close_with_evidence')
+    )
+  );
   // EFDS-1736 + EFDS-1737: quien puede VER cierre técnico modal (solo lectura, no edita):
   // (a) Técnicos (ejecutaron la labor: cierre_tecnico / close_with_evidence)
   // (b) SUPER_ADMIN / P2 / P5 / P7 (view_all o reportes.gestion)
@@ -1018,7 +1389,56 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeReenviarTI = detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
     tienePerm('infraestructura.solicitud.forward_ti') &&
-    ['RECIBIDA','EN_ANALISIS','PENDIENTE_CLASIFICACION','PENDIENTE_APROBACION','ASIGNADA'].includes(estadoActual);
+    ['RECIBIDA', 'EN_ANALISIS', 'PENDIENTE_CLASIFICACION', 'PENDIENTE_APROBACION', 'ASIGNADA'].includes(estadoActual);
+
+  const puedeEditarValoracion = Boolean(
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    (estadoActual === 'ASIGNADA' || estadoActual === 'EN_CAMPO_VALORACION') &&
+    (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'))
+  );
+
+  const valoracionesAbiertasCount = puedeEditarValoracion
+    ? valoraciones.filter((v) => !v.estadoAlFinalizar && !v.fechaFinValoracion).length
+    : 0;
+
+  const puedeRegistrarRecepcionInsumosTecnico = !esMantenimientoMayor && !!(
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    estadoActual === 'EN_PROGRESO' &&
+    (
+      tienePerm('infraestructura.solicitud.execute_assigned') ||
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.assign') ||
+      tienePerm('infraestructura.view_all')
+    )
+  );
+
+  const ultimaRecepcionInsumosTecnico = useMemo(() => {
+    const arr: any[] = Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones : [];
+    const item = arr
+      .slice()
+      .reverse()
+      .find((a) => String(a?.accion) === 'RECEPCION_INSUMOS_TECNICO');
+    if (!item) return null;
+    let resultado = 'COMPLETA';
+    let obs = '';
+    try {
+      const parsed = typeof item.observaciones === 'string' ? JSON.parse(item.observaciones) : item.observaciones;
+      if (parsed?.resultado) resultado = String(parsed.resultado);
+      if (parsed?.observaciones) obs = String(parsed.observaciones);
+    } catch {
+      if (item.motivo && ['COMPLETA', 'PARCIAL', 'OBSERVADA'].includes(String(item.motivo))) {
+        resultado = String(item.motivo);
+      }
+    }
+    return {
+      resultado,
+      observaciones: obs,
+      fecha: item.fecha,
+      tecnico: item.tecnico_nombre_display || item.tecnico_codigo || 'Técnico',
+    };
+  }, [detalle]);
 
   const usuarioEsSolicitanteOAsignador = !!(detalle && esUsuarioSolicitanteConforme);
 
@@ -1041,7 +1461,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       const av = Math.abs(totalSeg);
       const dv = Math.floor(av / 86400);
       const hv = Math.floor((av % 86400) / 3600);
-      const txt = dv > 0 ? `Vencido hace ${dv}d ${hv}h` : hv > 0 ? `Vencido hace ${hv}h` : `Vencido hace ${Math.floor(av/60)}m`;
+      const txt = dv > 0 ? `Vencido hace ${dv}d ${hv}h` : hv > 0 ? `Vencido hace ${hv}h` : `Vencido hace ${Math.floor(av / 60)}m`;
       return { vencido: true, dias: 0, horas: 0, minutos: 0, texto: txt };
     }
     if (dias > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${dias}d ${horas}h` };
@@ -1084,6 +1504,57 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return null;
   }, [detalle]);
 
+  const resumenEconomico = useMemo(() => {
+    if (!detalle) {
+      return { valor: '—', nota: null as string | null };
+    }
+
+    const costoFinal = Number(detalle.costoFinalEfectivoCop);
+    if (Number.isFinite(costoFinal) && costoFinal > 0) {
+      return {
+        valor: formatearDinero(costoFinal),
+        nota: 'Costo final registrado',
+      };
+    }
+
+    const totalEstimadoInsumos = Number(detalle.totalEstimadoInsumosCop);
+    if (Number.isFinite(totalEstimadoInsumos) && totalEstimadoInsumos > 0) {
+      return {
+        valor: formatearDinero(totalEstimadoInsumos),
+        nota: 'Estimado de materiales e insumos',
+      };
+    }
+
+    const costoLegacy = Number(detalle.costoEstimado);
+    if (Number.isFinite(costoLegacy) && costoLegacy > 0) {
+      return {
+        valor: formatearDinero(costoLegacy),
+        nota: 'Costo estimado registrado',
+      };
+    }
+
+    const tieneTrazaEconomica =
+      !!detalle.fechaCierreTecnico ||
+      !!detalle.fechaFinValoracion ||
+      detalle.totalEstimadoInsumosCop != null ||
+      detalle.costoFinalEfectivoCop != null ||
+      (Array.isArray(detalle.asignaciones) &&
+        detalle.asignaciones.some((item) =>
+          ['FINALIZA_VALORACION_EN_ESPERA', 'FINALIZA_VALORACION_CON_DISPONIBLES', 'CIERRE_TECNICO'].includes(
+            String(item?.accion || ''),
+          ),
+        ));
+
+    if (tieneTrazaEconomica) {
+      return {
+        valor: 'Por definir',
+        nota: 'Aún no hay un monto mayor a $0 registrado',
+      };
+    }
+
+    return { valor: '—', nota: null as string | null };
+  }, [detalle]);
+
   const abrirConformidad = (modo: ModoConformidad) => {
     if (!puedeConfirmarConformidad || bloqueado) return;
     setModoConformidad(modo);
@@ -1097,8 +1568,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     ejecutandoRedist ||
     remitirEnviando ||
     ejecutandoInicioDirecto ||
-    ejecutandoInicioValoracion ||
-    ejecutandoRecepcion;
+    ejecutandoRecepcion ||
+    enviandoVerifInsumos;
 
   return (
     <>
@@ -1139,410 +1610,592 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         aria-modal="true"
         aria-label={`Detalle de solicitud de mantenimiento ${detalle?.consecutivo || ''}`}
       >
-      <div
-        style={{
-          position: 'fixed',
-          top: 120,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '95vw',
-          maxWidth: 960,
-          height: 'calc(100vh - 152px)',
-          overflow: 'hidden',
-        }}
-      >
-        <div className="flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-200 h-full">
-
         <div
-          className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-white flex items-start gap-4"
+          style={{
+            position: 'fixed',
+            top: 120,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '95vw',
+            maxWidth: 960,
+            height: 'calc(100vh - 152px)',
+            overflow: 'hidden',
+          }}
         >
-          <div className="flex-1 min-w-0 space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono font-black text-xs bg-slate-900 text-gray-200 px-3 py-1 rounded-lg shadow-sm">
-                {detalle?.consecutivo || cargando ? (detalle?.consecutivo || 'Cargando...') : 'Sin consecutivo'}
-              </span>
-              {detalle && (
-                <span
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shadow-sm ${claseEstado(detalle.estado)}`}
-                >
-                  {iconoEstado(detalle.estado, 13)}
-                  {detalle.estado || 'RECIBIDA'}
-                </span>
-              )}
-              {detalle && (
-                <span
-                  className={`inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1 rounded-full border shadow-sm ${clasePrioridad(detalle.prioridad || 'MEDIA')}`}
-                >
-                  <AlertTriangle className="w-3 h-3" />
-                  {detalle.prioridad || 'MEDIA'}
-                </span>
-              )}
-              {detalle?.tipoMantenimiento && (
-                <span className="inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                  {detalle.tipoMantenimiento}
-                </span>
-              )}
-              {detalle?.tipoAtencion && (
-                <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${
-                  detalle.tipoAtencion === 'TECNOLOGICA'
-                    ? 'bg-sky-100 text-sky-800 border-sky-200'
-                    : 'bg-amber-100 text-amber-800 border-amber-200'
-                }`}>
-                  Atención {detalle.tipoAtencion}
-                </span>
-              )}
-              {detalle?.areaResponsableActual && (
-                (() => {
-                  const b = badgeAreaResp(detalle.areaResponsableActual);
-                  return (
-                    <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${b.clase}`}>
-                      {b.label}
+          <div className="relative flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-200 h-full">
+
+            <div
+              className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-white flex items-start gap-4 shrink-0"
+            >
+              <div className="flex-1 min-w-0 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono font-black text-xl bg-slate-900 text-gray-200 px-3 py-1 rounded-lg shadow-sm">
+                    {detalle?.consecutivo || cargando ? (detalle?.consecutivo || 'Cargando...') : 'Sin consecutivo'}
+                  </span>
+                  {detalle && (
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shadow-sm ${claseEstado(detalle.estado)}`}
+                    >
+                      {iconoEstado(detalle.estado, 13)}
+                      {detalle.estado || 'RECIBIDA'}
                     </span>
-                  );
-                })()
-              )}
-              {Number.isInteger(detalle?.idCategoria) && (() => {
-                const cat = mapIdCategoria.get(detalle!.idCategoria as number);
-                if (!cat) return null;
-                const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-                return (
-                  <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
-                    {cat.nombre}
-                  </span>
-                );
-              })()}
-              {Number.isInteger(detalle?.idSubcategoria) && (() => {
-                const sub = mapIdCategoria.get(detalle!.idSubcategoria as number);
-                if (!sub) return null;
-                return (
-                  <span className="inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200" title={sub.codigo || ''}>
-                    Sub: {sub.nombre}
-                  </span>
-                );
-              })()}
-              {detalle && Number(detalle.diasExtendidosPorInsumos || 0) > 0 && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 shadow-sm text-[11px] font-bold">
-                  <AlertTriangle className="w-3 h-3" />
-                  SLA extendida · +{detalle.diasExtendidosPorInsumos} d por materiales
-                </span>
-              )}
-              {detalle && detalle.esperaInsumosFlag && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-300 shadow-sm text-[11px] font-bold">
-                  <PackageX className="w-3 h-3" />
-                  En espera de insumos
-                </span>
-              )}
-            </div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-              {cargando ? (
-                <span className="inline-flex items-center gap-2 text-slate-400">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Cargando detalle...
-                </span>
-              ) : detalle?.descripcion ? detalle.descripcion : 'No se pudo cargar la información de esta solicitud'}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar detalle"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-7 bg-white">
-          {cargando && !detalle && (
-            <div className="py-16 text-center text-slate-400 text-sm bg-white border border-slate-200 rounded-2xl shadow-sm">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
-              Consultando el detalle de la solicitud...
-            </div>
-          )}
-
-          {!cargando && !detalle && (
-            <div className="py-16 text-center space-y-3 bg-rose-50/50 border border-rose-100 rounded-2xl">
-              <XCircle className="w-10 h-10 text-rose-500 mx-auto" />
-              <p className="font-bold text-rose-900">No se pudo cargar la solicitud</p>
-              <p className="text-xs text-rose-700 max-w-md mx-auto">
-                Puede que la solicitud haya sido eliminada o no cuentes con permisos para verla. Cierra esta ventana y actualiza el listado.
-              </p>
-            </div>
-          )}
-
-          {detalle && (
-            <>
-              {toastModal && (
-                <div className={`rounded-xl p-3 border shadow-sm text-xs font-bold flex items-start gap-2 animate-in slide-in-from-top fade-in ${
-                  toastModal.tipo === 'ok'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : toastModal.tipo === 'warn'
-                    ? 'bg-amber-50 border-amber-300 text-amber-900'
-                    : 'bg-rose-50 border-rose-200 text-rose-700'
-                }`}>
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="leading-5">{toastModal.texto}</span>
-                </div>
-              )}
-
-              {String((detalle.estado || '')).toUpperCase() === 'RECHAZADA' && detalle.motivoRechazo && (
-                <div className="rounded-2xl border-2 border-rose-300 bg-gradient-to-br from-rose-50 via-rose-50/60 to-white p-4 space-y-2 shadow-sm animate-in fade-in zoom-in-95">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 shrink-0 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md ring-2 ring-rose-100">
-                      <ThumbsDown className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-black text-rose-900 tracking-tight">
-                          Solicitud RECHAZADA · Motivo visible para el solicitante
-                        </h4>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 text-[10px] font-black uppercase tracking-wider border border-rose-300">
-                          RF-INF-005 AC-02
+                  )}
+                  {detalle && (
+                    <span
+                      className={`inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1 rounded-full border shadow-sm ${clasePrioridad(detalle.prioridad || 'MEDIA')}`}
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      {detalle.prioridad || 'MEDIA'}
+                    </span>
+                  )}
+                  {detalle?.tipoMantenimiento && (
+                    <span className="inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                      {detalle.tipoMantenimiento}
+                    </span>
+                  )}
+                  {detalle?.tipoAtencion && (
+                    <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${detalle.tipoAtencion === 'TECNOLOGICA'
+                      ? 'bg-sky-100 text-sky-800 border-sky-200'
+                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                      }`}>
+                      Atención {detalle.tipoAtencion}
+                    </span>
+                  )}
+                  {detalle?.areaResponsableActual && (
+                    (() => {
+                      const b = badgeAreaResp(detalle.areaResponsableActual);
+                      return (
+                        <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${b.clase}`}>
+                          {b.label}
                         </span>
-                      </div>
-                      <p className="mt-1.5 text-sm text-rose-800 font-semibold whitespace-pre-wrap leading-relaxed bg-white/80 border border-rose-200 rounded-xl px-3.5 py-3">
-                        {detalle.motivoRechazo}
-                      </p>
-                    </div>
-                  </div>
+                      );
+                    })()
+                  )}
+                  {Number.isInteger(detalle?.idCategoria) && (() => {
+                    const cat = mapIdCategoria.get(detalle!.idCategoria as number);
+                    if (!cat) return null;
+                    const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+                    return (
+                      <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
+                        {cat.nombre}
+                      </span>
+                    );
+                  })()}
+                  {Number.isInteger(detalle?.idSubcategoria) && (() => {
+                    const sub = mapIdCategoria.get(detalle!.idSubcategoria as number);
+                    if (!sub) return null;
+                    return (
+                      <span className="inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200" title={sub.codigo || ''}>
+                        Sub: {sub.nombre}
+                      </span>
+                    );
+                  })()}
+                  {detalle && Number(detalle.diasExtendidosPorInsumos || 0) > 0 && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 shadow-sm text-[11px] font-bold">
+                      <AlertTriangle className="w-3 h-3" />
+                      SLA extendida · +{detalle.diasExtendidosPorInsumos} d por materiales
+                    </span>
+                  )}
+                  {detalle && detalle.esperaInsumosFlag && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-300 shadow-sm text-[11px] font-bold">
+                      <PackageX className="w-3 h-3" />
+                      En espera de insumos
+                    </span>
+                  )}
+                  {detalle?.clasificacionMantenimiento && (
+                    <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${
+                      detalle.clasificacionMantenimiento === 'MAYOR'
+                        ? 'bg-purple-100 text-purple-800 border-purple-200'
+                        : 'bg-teal-100 text-teal-800 border-teal-200'
+                    }`}>
+                      Mantenimiento {detalle.clasificacionMantenimiento === 'MAYOR' ? 'Mayor' : 'Menor'}
+                    </span>
+                  )}
+                  {detalle?.requiereContratacion && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                      <ShoppingCart className="w-3 h-3" /> Requiere Contratación
+                    </span>
+                  )}
+                  {detalle?.requiereVoBo && (
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${
+                      detalle.voboAprobado === true
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : detalle.voboAprobado === false
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-blue-100 text-blue-800 border-blue-300'
+                    }`}>
+                      {detalle.voboAprobado === true ? (
+                        <><CheckCircle2 className="w-3 h-3" /> VoBo Aprobado</>
+                      ) : detalle.voboAprobado === false ? (
+                        <><AlertCircle className="w-3 h-3" /> VoBo con Observaciones</>
+                      ) : (
+                        <><Clock className="w-3 h-3" /> VoBo Pendiente</>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                  {cargando ? (
+                    <span className="inline-flex items-center gap-2 text-slate-400">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Cargando detalle...
+                    </span>
+                  ) : detalle?.descripcion ? detalle.descripcion : 'No se pudo cargar la información de esta solicitud'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Cerrar detalle"
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors disabled:opacity-50 flex-shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-7 bg-white min-h-0">
+              {cargando && !detalle && (
+                <div className="py-16 text-center text-slate-400 text-sm bg-white border border-slate-200 rounded-2xl shadow-sm">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+                  Consultando el detalle de la solicitud...
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-14 gap-y-6 px-1 py-0">
-                <div className="space-y-2.5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5" />
-                    Solicitante
-                  </div>
-                  <div className="font-semibold text-slate-800 text-base leading-6">
-                    {detalle.solicitanteNombre || '—'}
-                  </div>
-                  {detalle.solicitanteEmail && (
-                    <div className="text-xs text-slate-500 leading-5">{detalle.solicitanteEmail}</div>
-                  )}
-                  {detalle.nombreAreaSolicitante && (
-                    <div className="text-xs text-slate-500 leading-5">
-                      Área: <strong className="text-slate-700">{detalle.nombreAreaSolicitante}</strong>
+              {!cargando && !detalle && (
+                <div className="py-16 text-center space-y-3 bg-rose-50/50 border border-rose-100 rounded-2xl">
+                  <XCircle className="w-10 h-10 text-rose-500 mx-auto" />
+                  <p className="font-bold text-rose-900">No se pudo cargar la solicitud</p>
+                  <p className="text-xs text-rose-700 max-w-md mx-auto">
+                    Puede que la solicitud haya sido eliminada o no cuentes con permisos para verla. Cierra esta ventana y actualiza el listado.
+                  </p>
+                </div>
+              )}
+
+              {detalle && (
+                <>
+                  {toastModal && (
+                    <div className={`rounded-xl p-3 border shadow-sm text-xs font-bold flex items-start gap-2 animate-in slide-in-from-top fade-in ${toastModal.tipo === 'ok'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : toastModal.tipo === 'warn'
+                        ? 'bg-amber-50 border-amber-300 text-amber-900'
+                        : 'bg-rose-50 border-rose-200 text-rose-700'
+                      }`}>
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span className="leading-5">{toastModal.texto}</span>
                     </div>
                   )}
-                </div>
 
-                <div className="space-y-2.5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5" />
-                    Ubicación
-                  </div>
-                  <div className="font-semibold text-slate-800 text-base leading-6">
-                    {detalle.sede?.nombre || detalle.idSede || '—'}
-                  </div>
-                  {(detalle.piso || detalle.salon || detalle.ubicacionDetalle) && (
-                    <div className="text-xs text-slate-500 inline-flex items-start gap-1.5 leading-5">
-                      <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-400" />
-                      {[detalle.piso && `Piso ${detalle.piso}`, detalle.salon, detalle.ubicacionDetalle].filter(Boolean).join(' · ')}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    Fechas
-                  </div>
-                  <ul className="text-xs text-slate-600 space-y-1 leading-5">
-                    <li>
-                      <span className="text-slate-400">Radicación:</span>{' '}
-                      <strong className="text-slate-700">
-                        {formatearFecha(detalle.fechaRadicacion || detalle.createdAt)}
-                      </strong>
-                    </li>
-                    {detalle.fechaProgramada && (
-                      <li>
-                        <span className="text-slate-400">Programada:</span>{' '}
-                        <strong className="text-slate-700">{formatearFecha(detalle.fechaProgramada)}</strong>
-                      </li>
-                    )}
-                    {detalle.fechaEjecucion && (
-                      <li>
-                        <span className="text-slate-400">Ejecución:</span>{' '}
-                        <strong className="text-slate-700">{formatearFecha(detalle.fechaEjecucion)}</strong>
-                      </li>
-                    )}
-                  </ul>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                    Resumen económico
-                  </div>
-                  <div className="font-semibold text-slate-800 text-base">
-                    {formatearDinero(detalle.costoEstimado)}
-                  </div>
-                  {detalle.responsableAsignado && (
-                    <div className="flex items-start gap-1.5 mt-2">
-                      <ShieldCheck className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-400" />
-                      <div className="text-xs text-slate-500">
-                        Responsable: <strong className="text-slate-700">{detalle.responsableAsignado}</strong>
+                  {esMantenimientoMayor && (
+                    <div className="rounded-2xl border-2 border-purple-300 bg-purple-50/50 p-4 space-y-2 shadow-sm">
+                      <div className="flex items-start gap-3.5">
+                        <div
+                          className="w-10 h-10 shrink-0 rounded-xl text-white flex items-center justify-center shadow-md border border-purple-800"
+                          style={{ backgroundColor: '#7e22ce' }}
+                        >
+                          <Building2 className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-black text-purple-900 tracking-tight text-sm">
+                              Subflujo Mantenimiento Mayor / Trámite Precontractual (EFDS-2353 · RF-INF-012)
+                            </h4>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-black uppercase tracking-wider border border-purple-300">
+                              Obras / Contratación
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-xs text-slate-700 leading-relaxed bg-white/95 border border-purple-200 rounded-xl px-3.5 py-2.5 shadow-sm">
+                            Esta solicitud supera la capacidad operativa de la cuadrilla UMI y requiere contratación externa. El responsable asignado debe registrar el <strong>Diagnóstico Técnico</strong> correspondiente. Posteriormente, la Coordinación GIM emite el <strong>Visto Bueno (VoBo)</strong> formal para dar curso al proceso contractual de la ESAP.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
 
-              <div className="space-y-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-                  <Wand2 className="w-3.5 h-3.5" />
-                  Asignación y SLA (EFDS-1733)
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                      Tiempo de respuesta (SLA)
+                  {String((detalle.estado || '')).toUpperCase() === 'RECHAZADA' && detalle.motivoRechazo && (
+                    <div className="rounded-2xl border-2 border-rose-300 bg-gradient-to-br from-rose-50 via-rose-50/60 to-white p-4 space-y-2 shadow-sm animate-in fade-in zoom-in-95">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md ring-2 ring-rose-100">
+                          <ThumbsDown className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-black text-rose-900 tracking-tight">
+                              Solicitud RECHAZADA · Motivo visible para el solicitante
+                            </h4>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 text-[10px] font-black uppercase tracking-wider border border-rose-300">
+                              RF-INF-005 AC-02
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-sm text-rose-800 font-semibold whitespace-pre-wrap leading-relaxed bg-white/80 border border-rose-200 rounded-xl px-3.5 py-3">
+                            {detalle.motivoRechazo}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    {(() => {
-                      const sla = clasificarSLA(detalle.fechaLimiteAtencion);
-                      const colores: Record<string, string> = {
-                        vencido: 'bg-rose-100 text-rose-800 border-rose-200',
-                        alerta: 'bg-amber-100 text-amber-800 border-amber-200',
-                        ok: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                        sin: 'bg-slate-100 text-slate-600 border-slate-200',
-                      };
-                      const color = colores[sla.clase] || colores.sin;
-                      return (
-                        <div className="space-y-2">
-                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider border shadow-sm ${color}`}>
-                            <Clock className="w-3.5 h-3.5" />
-                            {sla.texto}
-                          </span>
-                          <div className="text-xs text-slate-500 leading-5">
-                            <div>
-                              <span className="text-slate-400">Fecha límite:</span>{' '}
-                              <strong className="text-slate-700">{formatearFecha(detalle.fechaLimiteAtencion)}</strong>
-                            </div>
-                            {sla.horasRestantes !== null && (
-                              <div>
-                                <span className="text-slate-400">Horas restantes:</span>{' '}
-                                <strong className={sla.clase === 'vencido' ? 'text-rose-700' : sla.clase === 'alerta' ? 'text-amber-700' : 'text-emerald-700'}>
-                                  {sla.horasRestantes.toFixed(1)} h
-                                </strong>
-                              </div>
-                            )}
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-14 gap-y-6 px-1 py-0">
+                    <div className="space-y-2.5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5" />
+                        Solicitante
+                      </div>
+                      <div className="font-semibold text-slate-800 text-base leading-6">
+                        {detalle.solicitanteNombre || '—'}
+                      </div>
+                      {detalle.solicitanteEmail && (
+                        <div className="text-xs text-slate-500 leading-5">{detalle.solicitanteEmail}</div>
+                      )}
+                      {detalle.nombreAreaSolicitante && (
+                        <div className="text-xs text-slate-500 leading-5">
+                          Área: <strong className="text-slate-700">{detalle.nombreAreaSolicitante}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5" />
+                        Ubicación
+                      </div>
+                      <div className="font-semibold text-slate-800 text-base leading-6">
+                        {detalle.sede?.nombre || detalle.idSede || '—'}
+                      </div>
+                      {(detalle.piso || detalle.salon || detalle.ubicacionDetalle) && (
+                        <div className="text-xs text-slate-500 inline-flex items-start gap-1.5 leading-5">
+                          <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-400" />
+                          {[detalle.piso && `Piso ${detalle.piso}`, detalle.salon, detalle.ubicacionDetalle].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Fechas
+                      </div>
+                      <ul className="text-xs text-slate-600 space-y-1 leading-5">
+                        <li>
+                          <span className="text-slate-400">Radicación:</span>{' '}
+                          <strong className="text-slate-700">
+                            {formatearFecha(detalle.fechaRadicacion || detalle.createdAt)}
+                          </strong>
+                        </li>
+                        {detalle.fechaProgramada && (
+                          <li>
+                            <span className="text-slate-400">Programada:</span>{' '}
+                            <strong className="text-slate-700">{formatearFecha(detalle.fechaProgramada)}</strong>
+                          </li>
+                        )}
+                        {detalle.fechaEjecucion && (
+                          <li>
+                            <span className="text-slate-400">Ejecución:</span>{' '}
+                            <strong className="text-slate-700">{formatearFecha(detalle.fechaEjecucion)}</strong>
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                        Resumen económico
+                      </div>
+                      <div className="font-semibold text-slate-800 text-base">
+                        {resumenEconomico.valor}
+                      </div>
+                      {resumenEconomico.nota && (
+                        <div className="text-[11px] text-slate-500 -mt-1">
+                          {resumenEconomico.nota}
+                        </div>
+                      )}
+                      {detalle.responsableAsignado && (
+                        <div className="flex items-start gap-1.5 mt-2">
+                          <ShieldCheck className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-400" />
+                          <div className="text-xs text-slate-500">
+                            Responsable: <strong className="text-slate-700">{detalle.responsableAsignado}</strong>
                           </div>
                         </div>
-                      );
-                    })()}
+                      )}
+                    </div>
                   </div>
-                  {(() => {
-                    const areaTI = (detalle?.areaResponsableActual || '').toUpperCase() === 'TI';
-                    if (areaTI) {
-                      return (
-                        <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 space-y-2.5">
-                          <div className="flex items-start gap-3">
-                            <div className="h-10 w-10 shrink-0 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
-                              <Monitor className="w-5 h-5" strokeWidth={2} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-sky-100 border border-sky-200 text-[11px] font-black uppercase tracking-wider text-sky-800">
-                                  Atención Oficina TI · TECNOLÓGICA
-                                </span>
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-600">
-                                  EFDS-1733 · Reglas UMI NO aplican
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-700 mt-2 leading-relaxed">
-                                Las solicitudes clasificadas como <strong className="text-sky-800">TECNOLÓGICA</strong> o con área responsable <strong>Oficina TI</strong> NO siguen el motor de asignación de técnico UMI ni las reglas EFDS-1733. La atención se gestiona directamente por el equipo de Tecnologías con su propio flujo interno; la trazabilidad de la remisión se registra en la sección superior <strong>Trazabilidad de Remisiones</strong>.
-                              </p>
-                              <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">
-                                Como gestor UMI puedes <strong>aprobar la confirmación de recepción</strong> de la remisión enviada a TI o <strong>rechazar la remisión</strong> (con motivo) si la solicitud debe volver a la unidad UMI para correcciones.
-                              </p>
-                            </div>
-                          </div>
+
+                  {detalle.esBienAsignadoFuncionario && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 space-y-2.5 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-amber-200 text-amber-800 flex items-center justify-center shrink-0">
+                          <UserCheck className="w-4 h-4" />
                         </div>
-                      );
-                    }
-                    if (!puedeVerMotorAsignacion) {
-                      return null;
-                    }
-                    return (
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                            Motor de sugerencia
-                          </div>
-                          <button
-                            type="button"
-                            onClick={sugerirAsignacionHandler}
-                            disabled={cargandoSugerir}
-                            title="Calcular sugerencia de asignación por reglas UMI (especialidad + equidad menor carga vigente)"
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-[11px] font-bold shadow-sm shadow-blue-500/15 transition-all active:scale-[0.98]"
-                          >
-                            {cargandoSugerir ? (
-                              <>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                Calculando…
-                              </>
-                            ) : (
-                              <>
-                                <Wand2 className="w-3.5 h-3.5" />
-                                Sugerir técnico
-                              </>
-                            )}
-                          </button>
+                        <div>
+                          <span className="text-xs font-black uppercase tracking-wider text-amber-900">
+                            Bien Asignado a Funcionario / Custodio
+                          </span>
+                          <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                            Responsabilidad Individual
+                          </span>
                         </div>
-                        {errorSugerir && (
-                          <div className="flex items-start gap-2 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800">
-                            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                            <div className="text-[11px] font-medium leading-5">{errorSugerir}</div>
-                          </div>
-                        )}
-                        {sugerencia?.advertencia && !errorSugerir && (
-                          <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
-                            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                            <div className="text-[11px] font-medium leading-5">{sugerencia.advertencia}</div>
-                          </div>
-                        )}
-                        {sugerencia && (
-                          <div className="space-y-2.5">
-                            {sugerencia.obligatorio && sugerencia.regla === 'ESPECIALIZACION' ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-violet-100 text-violet-800 border border-violet-200">
-                                <Zap className="w-2.5 h-2.5" />
-                                OBLIGATORIO · Especialista ({sugerencia.nombreCategoria || 'Eléctricas'})
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1 text-xs">
+                        <div className="bg-white/80 border border-amber-200/80 rounded-xl p-2.5">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider mb-0.5">Funcionario Custodio</span>
+                          <strong className="text-slate-800 text-xs font-semibold">{detalle.nombreFuncionarioBienAsignado || '—'}</strong>
+                        </div>
+                        <div className="bg-white/80 border border-amber-200/80 rounded-xl p-2.5">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider mb-0.5">Placa de Inventario / Serial</span>
+                          <strong className="text-slate-800 text-xs font-semibold">{detalle.placaInventarioBien || '—'}</strong>
+                        </div>
+                        <div className="bg-white/80 border border-amber-200/80 rounded-xl p-2.5">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider mb-0.5">Soporte / Acta de Entrega</span>
+                          {detalle.soporteBienAsignadoUrl ? (
+                            <a
+                              href={detalle.soporteBienAsignadoUrl}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline text-xs"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" /> Ver soporte de asignación
+                            </a>
+                          ) : (
+                            <span className="text-slate-400 text-xs">Sin enlace registrado</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                      <Wand2 className="w-3.5 h-3.5" />
+                      Asignación y SLA
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                          Tiempo de respuesta (SLA)
+                        </div>
+                        {(() => {
+                          const sla = clasificarSLA(detalle.fechaLimiteAtencion);
+                          const colores: Record<string, string> = {
+                            vencido: 'bg-rose-100 text-rose-800 border-rose-200',
+                            alerta: 'bg-amber-100 text-amber-800 border-amber-200',
+                            ok: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                            sin: 'bg-slate-100 text-slate-600 border-slate-200',
+                          };
+                          const color = colores[sla.clase] || colores.sin;
+                          return (
+                            <div className="space-y-2">
+                              <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider border shadow-sm ${color}`}>
+                                <Clock className="w-3.5 h-3.5" />
+                                {sla.texto}
                               </span>
-                            ) : sugerencia.regla === 'EQUIDAD' ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-200">
-                                <Users className="w-2.5 h-2.5" />
-                                Sugerencia · Equidad menor carga vigente
-                              </span>
-                            ) : null}
-                            {sugerencia.sugerido && (
-                              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
-                                    <User className="w-4 h-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="text-xs font-black text-slate-800 truncate">
-                                      {sugerencia.sugerido.nombreDisplay || sugerencia.sugerido.nombre}
-                                    </div>
-                                    <div className="text-[10px] text-slate-500 font-mono">
-                                      {sugerencia.sugerido.codigo}
-                                      {sugerencia.sugerido.cargaVigente !== undefined && ` · Carga: ${sugerencia.sugerido.cargaVigente}`}
-                                    </div>
-                                  </div>
+                              <div className="text-xs text-slate-500 leading-5">
+                                <div>
+                                  <span className="text-slate-400">Fecha límite:</span>{' '}
+                                  <strong className="text-slate-700">{formatearFecha(detalle.fechaLimiteAtencion)}</strong>
                                 </div>
-                                {Array.isArray(sugerencia.sugerido.especialidades) && sugerencia.sugerido.especialidades.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 pt-1">
-                                    {sugerencia.sugerido.especialidades.slice(0, 4).map((esp: string, i: number) => (
-                                      <span key={i} className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
-                                        {esp}
-                                      </span>
-                                    ))}
+                                {sla.horasRestantes !== null && (
+                                  <div>
+                                    <span className="text-slate-400">Horas restantes:</span>{' '}
+                                    <strong className={sla.clase === 'vencido' ? 'text-rose-700' : sla.clase === 'alerta' ? 'text-amber-700' : 'text-emerald-700'}>
+                                      {sla.horasRestantes.toFixed(1)} h
+                                    </strong>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {(() => {
+                        const areaTI = (detalle?.areaResponsableActual || '').toUpperCase() === 'TI';
+                        if (areaTI) {
+                          return (
+                            <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 space-y-2.5">
+                              <div className="flex items-start gap-3">
+                                <div className="h-10 w-10 shrink-0 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+                                  <Monitor className="w-5 h-5" strokeWidth={2} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-sky-100 border border-sky-200 text-[11px] font-black uppercase tracking-wider text-sky-800">
+                                      Atención Oficina TI · TECNOLÓGICA
+                                    </span>
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-600">
+                                      EFDS-1733 · Reglas UMI NO aplican
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-700 mt-2 leading-relaxed">
+                                    Las solicitudes clasificadas como <strong className="text-sky-800">TECNOLÓGICA</strong> o con área responsable <strong>Oficina TI</strong> NO siguen el motor de asignación de técnico UMI ni las reglas EFDS-1733. La atención se gestiona directamente por el equipo de Tecnologías con su propio flujo interno; la trazabilidad de la remisión se registra en la sección superior <strong>Trazabilidad de Remisiones</strong>.
+                                  </p>
+                                  <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">
+                                    Como gestor UMI puedes <strong>aprobar la confirmación de recepción</strong> de la remisión enviada a TI o <strong>rechazar la remisión</strong> (con motivo) si la solicitud debe volver a la unidad UMI para correcciones.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (!puedeVerMotorAsignacion) {
+                          return null;
+                        }
+                        return (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                Sugerir técnico para asignación
+                              </div>
+                              <button
+                                type="button"
+                                onClick={sugerirAsignacionHandler}
+                                disabled={cargandoSugerir}
+                                title="Calcular sugerencia de asignación por reglas UMI (especialidad + equidad menor carga vigente)"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-[11px] font-bold shadow-sm shadow-blue-500/15 transition-all active:scale-[0.98]"
+                              >
+                                {cargandoSugerir ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    Calculando…
+                                  </>
+                                ) : (
+                                  <>
+                                    <Wand2 className="w-3.5 h-3.5" />
+                                    Sugerir técnico
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            {errorSugerir && (
+                              <div className="flex items-start gap-2 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800">
+                                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <div className="text-[11px] font-medium leading-5">{errorSugerir}</div>
+                              </div>
+                            )}
+                            {sugerencia?.advertencia && !errorSugerir && (
+                              <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
+                                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <div className="text-[11px] font-medium leading-5">{sugerencia.advertencia}</div>
+                              </div>
+                            )}
+                            {sugerencia && (
+                              <div className="space-y-2.5">
+                                {sugerencia.obligatorio && sugerencia.regla === 'ESPECIALIZACION' ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-violet-100 text-violet-800 border border-violet-200">
+                                    <Zap className="w-2.5 h-2.5" />
+                                    OBLIGATORIO · Especialista ({sugerencia.nombreCategoria || 'Eléctricas'})
+                                  </span>
+                                ) : sugerencia.regla === 'EQUIDAD' ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-200">
+                                    <Users className="w-2.5 h-2.5" />
+                                    Sugerencia · Equidad menor carga vigente
+                                  </span>
+                                ) : null}
+                                {sugerencia.sugerido && (
+                                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
+                                        <User className="w-4 h-4" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-black text-slate-800 truncate">
+                                          {sugerencia.sugerido.nombreDisplay || sugerencia.sugerido.nombre}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 font-mono">
+                                          {sugerencia.sugerido.codigo}
+                                          {sugerencia.sugerido.cargaVigente !== undefined && ` · Carga: ${sugerencia.sugerido.cargaVigente}`}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {Array.isArray(sugerencia.sugerido.especialidades) && sugerencia.sugerido.especialidades.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 pt-1">
+                                        {sugerencia.sugerido.especialidades.slice(0, 4).map((esp: string, i: number) => (
+                                          <span key={i} className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                                            {esp}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
                             )}
-                            <div className="pt-1.5 space-y-1.5">
+                            {/* Clasificación Mantenimiento Menor vs Mayor (EFDS-2353) */}
+                            <div className="pt-2 border-t border-slate-200/80 space-y-2">
                               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                Reasignación manual (opcional)
+                                Clasificación del Mantenimiento (EFDS-2353)
+                              </label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setClasificacionMantenimiento('MENOR');
+                                    setRequiereContratacion(false);
+                                  }}
+                                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
+                                    clasificacionMantenimiento === 'MENOR'
+                                      ? 'bg-teal-50 border-teal-500 text-teal-800 ring-2 ring-teal-200 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="font-bold">Mantenimiento Menor</div>
+                                    <div className="text-[10px] opacity-75 font-normal">Cuadrilla / Técnicos UMI</div>
+                                  </div>
+                                  {clasificacionMantenimiento === 'MENOR' && <CheckCircle2 className="w-4 h-4 text-teal-600 flex-shrink-0" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setClasificacionMantenimiento('MAYOR');
+                                    setRequiereContratacion(true);
+                                  }}
+                                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
+                                    clasificacionMantenimiento === 'MAYOR'
+                                      ? 'bg-purple-50 border-purple-500 text-purple-800 ring-2 ring-purple-200 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="font-bold">Mantenimiento Mayor</div>
+                                    <div className="text-[10px] opacity-75 font-normal">Coordinador Iván / Camilo Barrios</div>
+                                  </div>
+                                  {clasificacionMantenimiento === 'MAYOR' && <CheckCircle2 className="w-4 h-4 text-purple-600 flex-shrink-0" />}
+                                </button>
+                              </div>
+
+                              {/* Banner reactivo EFDS-2353 */}
+                              {clasificacionMantenimiento === 'MAYOR' ? (
+                                <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-[11px] text-purple-900 flex items-start gap-2">
+                                  <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                                  <div className="leading-snug">
+                                    <span className="font-bold">Subflujo Mantenimiento Mayor (EFDS-2353 / RF-INF-012):</span> Redirección al Coordinador GIM (Iván) o al Grupo Técnico liderado por Camilo Barrios para realizar diagnóstico técnico y medición de demanda precontractual.
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-2.5 text-[11px] text-teal-900 flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-teal-600 flex-shrink-0" />
+                                  <span>Flujo Mantenimiento Menor: asignación directa a técnico operativo UMI en sede.</span>
+                                </div>
+                              )}
+
+                              <label className="flex items-center gap-2.5 pt-1 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={requiereContratacion}
+                                  onChange={(e) => setRequiereContratacion(e.target.checked)}
+                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                                />
+                                <span className="text-xs font-semibold text-slate-700">
+                                  ¿Requiere Contratación / Trámite Precontractual?
+                                </span>
+                              </label>
+                            </div>
+
+                            {/* Selección de Técnico / Responsable de Diagnóstico */}
+                            <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                {clasificacionMantenimiento === 'MAYOR'
+                                  ? 'Responsable Diagnóstico Mayor (Coordinación GIM / Grupo Obras)'
+                                  : sugerencia
+                                  ? 'Reasignación manual (opcional)'
+                                  : 'Técnico asignado (requerido para aprobar)'}
                               </label>
                               <div className="relative">
                                 <select
@@ -1551,10 +2204,14 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                                   className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-xs font-semibold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
                                   disabled={cargandoTecnicos}
                                 >
-                                  <option value="">— Seleccione técnico (sobrescribe sugerencia) —</option>
-                                  {tecnicosCatalogo.map((t) => (
+                                  <option value="">
+                                    {clasificacionMantenimiento === 'MAYOR'
+                                      ? '— Seleccione responsable para diagnóstico (P5/P3) —'
+                                      : `— Seleccione técnico ${sugerencia ? '(sobrescribe sugerencia)' : ''} —`}
+                                  </option>
+                                  {tecnicosFiltrados.map((t) => (
                                     <option key={t.codigo} value={t.codigo}>
-                                      [{t.codigo}] {t.nombreDisplay || t.nombre} · Carga {t.cargaVigente ?? 0}
+                                      [{t.codigo}] {t.nombreDisplay || t.nombre} {t.metadata?.roleCod ? `(Perfil ${t.metadata.roleCod})` : ''} · Carga {t.cargaVigente ?? 0}
                                     </option>
                                   ))}
                                 </select>
@@ -1572,1261 +2229,2405 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                               })()}
                             </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-                  <FileText className="w-3.5 h-3.5" />
-                  Descripción de la novedad
-                </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5">
-                  <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                    {detalle.descripcion || 'Sin descripción registrada'}
-                  </p>
-                </div>
-              </div>
-
-              {(detalle.evidenciaInicialUrl || detalle.observaciones) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {detalle.evidenciaInicialUrl && (
-                    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 sm:p-5">
-                      <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">
-                        Evidencia inicial (enlace legacy)
-                      </div>
-                      <a
-                        href={detalle.evidenciaInicialUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-semibold text-amber-800 underline underline-offset-2 break-all inline-flex items-center gap-1.5"
-                      >
-                        <Eye className="w-3 h-3" />
-                        {detalle.evidenciaInicialUrl}
-                      </a>
+                        );
+                      })()}
                     </div>
-                  )}
-                  {detalle.observaciones && (
-                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 sm:p-5">
-                      <div className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-2">
-                        Observaciones de gestión
-                      </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      Descripción de la novedad
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5">
                       <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                        {detalle.observaciones}
+                        {detalle.descripcion || 'Sin descripción registrada'}
                       </p>
                     </div>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-                  <Paperclip className="w-3.5 h-3.5" />
-                  Evidencias adjuntas
-                  <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-slate-100 text-slate-600 border border-slate-200 tracking-normal">
-                    {evidenciasFinales.length}
-                  </span>
-                </div>
-                {renderEvidencias()}
-              </div>
-
-              <div className="space-y-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-                  <GitBranch className="w-3.5 h-3.5" />
-                  Trazabilidad de remisiones
-                  <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-slate-100 text-slate-600 border border-slate-200 tracking-normal">
-                    {remisiones.length}
-                  </span>
-                </div>
-                {remisiones.length === 0 ? (
-                  <div className="text-xs text-slate-500 py-6 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                    Esta solicitud no tiene remisiones registradas a la Oficina de Tecnologías.
                   </div>
-                ) : (
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <table className="min-w-full divide-y divide-slate-200 text-left">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Fecha / Hora</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Origen → Destino</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Usuario</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Motivo</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Consec. TI</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs">
-                        {remisiones.map((r, idx) => (
-                          <tr key={r.idRemision || idx} className="hover:bg-slate-50/50">
-                            <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-[11px]">
-                              {r.fechaRemision ? formatearFecha(r.fechaRemision) : '—'}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span className="inline-flex items-center gap-1.5">
-                                <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase tracking-wide">
-                                  {r.origenArea || 'UMI'}
-                                </span>
-                                <span className="text-slate-400">→</span>
-                                <span className="inline-block px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase tracking-wide">
-                                  {r.destinoArea || 'TI'}
-                                </span>
-                              </span>
-                            </td>
-                            <td className="px-4 py-2.5 text-slate-700">
-                              <div className="font-semibold">{r.usuarioEmail || r.usuarioQueRemiteEmail || 'Sistema'}</div>
-                              {r.usuarioId && <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">{r.usuarioId}</div>}
-                            </td>
-                            <td className="px-4 py-2.5 text-slate-600 max-w-[260px]">
-                              <div className="leading-snug line-clamp-2">{r.motivo || '—'}</div>
-                              {r.canalRemision && (
-                                <div className="text-[10px] text-slate-400 mt-1">Canal: {r.canalRemision}</div>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-slate-700 font-mono text-[11px] whitespace-nowrap">
-                              {r.consecutivoCruzadoTi || '—'}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${
-                                (r.estadoRemision || '').toUpperCase().includes('PENDIENTE')
-                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                  : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                              }`}>
-                                {r.estadoRemision || 'PENDIENTE'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
 
-              {/* ------------------------------------------------------------------- */}
-              {/* EFDS-1735 RF-INF-006: Acordeón Valoraciones e insumos             */}
-              {/* ------------------------------------------------------------------- */}
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setValoracionesAbierto(!valoracionesAbierto)}
-                  className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
-                >
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
-                    <ClipboarCheckIcon className="w-3.5 h-3.5" />
-                    Valoraciones e insumos
-                    <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
-                      {valoraciones.length}
-                    </span>
-                    {idValoracionAbierta && (
-                      <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300 tracking-normal">
-                        1 abierta
-                      </span>
-                    )}
-                  </div>
-                  {valoracionesAbierto ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-                  )}
-                </button>
-                {valoracionesAbierto && (
-                  <div className="space-y-2">
-                    {valoracionesCargando && valoraciones.length === 0 && (
-                      <div className="rounded-lg border border-slate-200 px-3 py-2.5 text-xs text-slate-500 bg-slate-50 flex items-center gap-2">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Cargando valoraciones...
-                      </div>
-                    )}
-                    {!valoracionesCargando && valoraciones.length === 0 && (
-                      <div className="rounded-lg border border-slate-200 px-3 py-4 text-xs text-slate-500 bg-slate-50 text-center">
-                        <ClipboarCheckIcon className="w-4.5 h-4.5 mx-auto mb-1.5 text-slate-400" />
-                        No hay valoraciones. Si la solicitud está <strong>ASIGNADA</strong>, el técnico puede Iniciar Ejecución Directa o Registrar una Valoración Previa desde los botones del pie de página.
-                      </div>
-                    )}
-                    {valoraciones.map((v) => {
-                      const totalInsumos = (v.insumos || []).reduce(
-                        (acc, i) => acc + ((Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0),
-                        0,
-                      );
-                      const abierta = !v.estadoAlFinalizar;
-                      return (
-                        <div
-                          key={v.idValoracion}
-                          className={[
-                            'rounded-lg border p-3 space-y-2 transition',
-                            abierta
-                              ? 'bg-indigo-50/50 border-indigo-200'
-                              : 'bg-white border-slate-200',
-                          ].join(' ')}
-                        >
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="min-w-0 space-y-0.5">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={[
-                                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
-                                  abierta
-                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
-                                    : v.estadoAlFinalizar === 'EN_ESPERA_DE_INSUMOS'
-                                      ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                      : 'bg-emerald-100 text-emerald-800 border-emerald-300',
-                                ].join(' ')}>
-                                  {abierta ? 'Borrador' : v.estadoAlFinalizar}
-                                </span>
-                                <span className="text-[10px] text-slate-500 font-mono">
-                                  {formatearFecha(v.createdAt)}
-                                </span>
-                                {v.esVersionCorregidaPorEncargado && (
-                                  <span className="text-[10px] font-bold text-indigo-700 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded-full">
-                                    Corregida por Encargado
-                                  </span>
-                                )}
-                                {esCategoriaElectricas48 && (
-                                  <span className={[
-                                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
-                                    v.requiereApagadoElectrico
-                                      ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                      : 'bg-slate-100 text-slate-700 border-slate-200',
-                                  ].join(' ')}>
-                                    <Zap className="w-2.5 h-2.5" />
-                                    {v.requiereApagadoElectrico ? 'Requiere apagado' : 'Sin apagado'}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-slate-500">
-                                <span className="font-semibold text-slate-700">{v.tecnicoNombreValorador || v.tecnicoCodigoValorador || 'Valorador'}</span>
-                                {' · '}Riesgo {v.nivelRiesgo || '—'} · Tiempo {v.tiempoEstimadoHoras || 0} h
-                                {totalInsumos > 0 && <> · Insumos estimados <span className="font-semibold text-slate-700">${totalInsumos.toLocaleString('es-CO')} COP</span></>}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => handleAbrirValoracionExistente(v)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold transition"
-                              >
-                                <Eye className="w-3 h-3" />
-                                {abierta ? 'Continuar edición' : 'Ver detalle'}
-                              </button>
-                              {idValoracionAbierta === v.idValoracion && (
-                                <span className="text-[10px] font-bold text-indigo-600 px-1">Abierta</span>
-                              )}
-                            </div>
+                  {(detalle.evidenciaInicialUrl || detalle.observaciones) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {detalle.evidenciaInicialUrl && (
+                        <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 sm:p-5">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">
+                            Evidencia inicial (enlace legacy)
                           </div>
-                          {(v.diagnostico || v.alcanceIdentificado) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
-                              <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Diagnóstico</p>
-                                <p className="text-slate-700 leading-5">{v.diagnostico || '—'}</p>
-                              </div>
-                              <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Alcance</p>
-                                <p className="text-slate-700 leading-5">{v.alcanceIdentificado || '—'}</p>
-                              </div>
-                            </div>
-                          )}
-                          {Array.isArray(v.insumos) && v.insumos.length > 0 && (
-                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                              <table className="min-w-full text-[11px]">
-                                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                                  <tr>
-                                    <th className="px-2 py-1.5 text-left font-bold w-8">#</th>
-                                    <th className="px-2 py-1.5 text-left font-bold min-w-[160px]">Insumo</th>
-                                    <th className="px-2 py-1.5 text-right font-bold w-16">Cant</th>
-                                    <th className="px-2 py-1.5 text-left font-bold w-16">Unidad</th>
-                                    <th className="px-2 py-1.5 text-right font-bold w-24">$ Unit</th>
-                                    <th className="px-2 py-1.5 text-right font-bold w-24">Subtotal</th>
-                                    <th className="px-2 py-1.5 text-left font-bold w-44">Disponibilidad</th>
-                                    <th className="px-2 py-1.5 text-right font-bold w-14">Días</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {v.insumos!.map((i, idx) => {
-                                    const sub = (Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0;
-                                    return (
-                                      <tr key={i.idInsumo || (v.idValoracion + idx)} className="border-b border-slate-100 last:border-b-0">
-                                        <td className="px-2 py-1.5 text-slate-500 font-semibold">{idx + 1}</td>
-                                        <td className="px-2 py-1.5 font-semibold text-slate-800">{i.nombre}</td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums">{i.cantidad}</td>
-                                        <td className="px-2 py-1.5 text-slate-600">{i.unidadMedida}</td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums">${(Number(i.costoUnitarioCop || 0)).toLocaleString('es-CO')}</td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-slate-800">${sub.toLocaleString('es-CO')}</td>
-                                        <td className="px-2 py-1.5">
-                                          <span className={[
-                                            'inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border',
-                                            i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
-                                              ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                              : 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                                          ].join(' ')}>
-                                            {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Solicitar' : 'En bodega'}
-                                          </span>
-                                        </td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
-                                          {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? (i.tiempoAdquisicionDias ?? '-') : '—'}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                                <tfoot className="bg-slate-50 border-t border-slate-200">
-                                  <tr>
-                                    <td className="px-2 py-1.5" colSpan={5}></td>
-                                    <td className="px-2 py-1.5 text-right tabular-nums text-xs font-black text-slate-900">
-                                      ${totalInsumos.toLocaleString('es-CO')}
-                                    </td>
-                                    <td className="px-2 py-1.5" colSpan={2}></td>
-                                  </tr>
-                                </tfoot>
-                              </table>
-                            </div>
-                          )}
-                          {v.observaciones && (
-                            <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
-                              <span className="font-bold text-slate-500">Notas:</span> {v.observaciones}
-                            </div>
-                          )}
-                          {Array.isArray(v.evidencias) && v.evidencias.length > 0 && (
+                          <a
+                            href={detalle.evidenciaInicialUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-semibold text-amber-800 underline underline-offset-2 break-all inline-flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3 h-3" />
+                            {detalle.evidenciaInicialUrl}
+                          </a>
+                        </div>
+                      )}
+                      {detalle.observaciones && (
+                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 sm:p-5">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-2">
+                            Observaciones de gestión
+                          </div>
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                            {detalle.observaciones}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      Evidencias adjuntas
+                      <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-slate-100 text-slate-600 border border-slate-200 tracking-normal">
+                        {evidenciasFinales.length}
+                      </span>
+                    </div>
+                    {puedeAdjuntarEvidenciaAdicional && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-slate-800">Cargar evidencia adicional</p>
+                            <p className="text-xs text-slate-600">
+                              Disponible para el solicitante original y el analista asignador. Estos archivos se agrupan en <strong>Otras evidencias</strong>.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-bold cursor-pointer transition-all">
+                              <Paperclip className="w-3.5 h-3.5" />
+                              Seleccionar archivos
+                              <input
+                                ref={inputEvidenciaExtraRef}
+                                type="file"
+                                multiple
+                                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/heic,image/heif,application/pdf,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo,video/mpeg"
+                                className="hidden"
+                                onChange={handleSeleccionarEvidenciaExtra}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleSubirEvidenciaExtra}
+                              disabled={subiendoEvidenciaExtra || archivosEvidenciaExtra.length === 0}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all"
+                            >
+                              {subiendoEvidenciaExtra ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                              {subiendoEvidenciaExtra ? 'Subiendo...' : 'Cargar a la solicitud'}
+                            </button>
+                          </div>
+                        </div>
+                        {archivosEvidenciaExtra.length > 0 && (
+                          <div className="rounded-xl border border-amber-200 bg-white px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">
+                              {archivosEvidenciaExtra.length} archivo(s) listo(s) para cargar
+                            </p>
                             <div className="flex flex-wrap gap-1.5">
-                              {v.evidencias.map((e, i) => (
-                                <a
-                                  key={e.idEvidencia || ('evv-' + v.idValoracion + '-' + i)}
-                                  href={e.urlPresigned || e.urlPublica || '#'}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold hover:bg-slate-200 transition"
+                              {archivosEvidenciaExtra.map((archivo) => (
+                                <span
+                                  key={`${archivo.name}-${archivo.size}-${archivo.lastModified}`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-700"
                                 >
                                   <Paperclip className="w-2.5 h-2.5" />
-                                  {(e.nombreOriginal || 'evidencia').slice(0, 28)}
-                                  {(e.nombreOriginal || '').length > 28 ? '…' : ''}
-                                </a>
+                                  {archivo.name}
+                                </span>
                               ))}
                             </div>
+                          </div>
+                        )}
+                        {errorEvidenciaExtra && (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                            {errorEvidenciaExtra}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {renderEvidencias()}
+                  </div>
+
+                  {mostrarSeccionRemisiones && (
+                    <div className="space-y-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                        <GitBranch className="w-3.5 h-3.5" />
+                        Trazabilidad de remisiones
+                        <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-slate-100 text-slate-600 border border-slate-200 tracking-normal">
+                          {remisiones.length}
+                        </span>
+                      </div>
+                      {remisiones.length === 0 ? (
+                        <div className="text-xs text-slate-500 py-6 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                          Esta solicitud no tiene remisiones registradas a la Oficina de Tecnologías.
+                        </div>
+                      ) : (
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                          <table className="min-w-full divide-y divide-slate-200 text-left">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Fecha / Hora</th>
+                                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Origen → Destino</th>
+                                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Usuario</th>
+                                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Motivo</th>
+                                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Consec. TI</th>
+                                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-xs">
+                              {remisiones.map((r, idx) => (
+                                <tr key={r.idRemision || idx} className="hover:bg-slate-50/50">
+                                  <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-[11px]">
+                                    {r.fechaRemision ? formatearFecha(r.fechaRemision) : '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase tracking-wide">
+                                        {r.origenArea || 'UMI'}
+                                      </span>
+                                      <span className="text-slate-400">→</span>
+                                      <span className="inline-block px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase tracking-wide">
+                                        {r.destinoArea || 'TI'}
+                                      </span>
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-slate-700">
+                                    <div className="font-semibold">{r.usuarioEmail || r.usuarioQueRemiteEmail || 'Sistema'}</div>
+                                    {r.usuarioId && <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">{r.usuarioId}</div>}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-slate-600 max-w-[260px]">
+                                    <div className="leading-snug line-clamp-2">{r.motivo || '—'}</div>
+                                    {r.canalRemision && (
+                                      <div className="text-[10px] text-slate-400 mt-1">Canal: {r.canalRemision}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-slate-700 font-mono text-[11px] whitespace-nowrap">
+                                    {r.consecutivoCruzadoTi || '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${(r.estadoRemision || '').toUpperCase().includes('PENDIENTE')
+                                      ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                      }`}>
+                                      {r.estadoRemision || 'PENDIENTE'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ------------------------------------------------------------------- */}
+                  {/* EFDS-1735 RF-INF-006: Acordeón Valoraciones e insumos             */}
+                  {/* ------------------------------------------------------------------- */}
+                  {mostrarSeccionValoraciones && (
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setValoracionesAbierto(!valoracionesAbierto)}
+                        className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
+                      >
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+                          <ClipboarCheckIcon className="w-3.5 h-3.5" />
+                          Valoraciones e insumos
+                          <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
+                            {valoraciones.length}
+                          </span>
+                          {valoracionesAbiertasCount > 0 && (
+                            <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300 tracking-normal">
+                              {valoracionesAbiertasCount} abierta
+                            </span>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setHistoricoAbierto(!historicoAbierto)}
-                  className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
-                >
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
-                    <ScrollText className="w-3.5 h-3.5" />
-                    Histórico Asignaciones
-                    <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
-                      {Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones.length : 0}
-                    </span>
-                    <span className="font-black text-slate-400 tracking-normal normal-case text-[11px]"></span>
-                  </div>
-                  {historicoAbierto ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                        {valoracionesAbierto ? (
+                          <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                        )}
+                      </button>
+                      {valoracionesAbierto && (
+                        <div className="space-y-2">
+                          {valoracionesCargando && valoraciones.length === 0 && (
+                            <div className="rounded-lg border border-slate-200 px-3 py-2.5 text-xs text-slate-500 bg-slate-50 flex items-center gap-2">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Cargando valoraciones...
+                            </div>
+                          )}
+                          {!valoracionesCargando && valoraciones.length === 0 && (
+                            <div className="rounded-lg border border-slate-200 px-3 py-4 text-xs text-slate-500 bg-slate-50 text-center">
+                              <ClipboarCheckIcon className="w-4.5 h-4.5 mx-auto mb-1.5 text-slate-400" />
+                              No hay valoraciones. Si la solicitud está <strong>ASIGNADA</strong>, el técnico puede Iniciar Ejecución Directa o Registrar una Valoración Previa desde los botones del pie de página.
+                            </div>
+                          )}
+                          {valoraciones.map((v) => {
+                            const totalInsumos = (v.insumos || []).reduce(
+                              (acc, i) => acc + ((Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0),
+                              0,
+                            );
+                            const abierta = puedeEditarValoracion && !v.estadoAlFinalizar && !v.fechaFinValoracion;
+                            return (
+                              <div
+                                key={v.idValoracion}
+                                className={[
+                                  'rounded-lg border p-3 space-y-2 transition',
+                                  abierta
+                                    ? 'bg-indigo-50/50 border-indigo-200'
+                                    : 'bg-white border-slate-200',
+                                ].join(' ')}
+                              >
+                                <div className="flex items-start justify-between gap-2 flex-wrap">
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={[
+                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                        abierta
+                                          ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                                          : v.estadoAlFinalizar === 'EN_ESPERA_DE_INSUMOS'
+                                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                            : 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                                      ].join(' ')}>
+                                        {abierta ? 'Borrador' : v.estadoAlFinalizar}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 font-mono">
+                                        {formatearFecha(v.createdAt)}
+                                      </span>
+                                      {v.esVersionCorregidaPorEncargado && (
+                                        <span className="text-[10px] font-bold text-indigo-700 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                          Corregida por Encargado
+                                        </span>
+                                      )}
+                                      {esCategoriaElectricas48 && (
+                                        <span className={[
+                                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                          v.requiereApagadoElectrico
+                                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                            : 'bg-slate-100 text-slate-700 border-slate-200',
+                                        ].join(' ')}>
+                                          <Zap className="w-2.5 h-2.5" />
+                                          {v.requiereApagadoElectrico ? 'Requiere apagado' : 'Sin apagado'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-500">
+                                      <span className="font-semibold text-slate-700">{v.tecnicoNombreValorador || v.tecnicoCodigoValorador || 'Valorador'}</span>
+                                      {' · '}Riesgo {v.nivelRiesgo || '—'} · Tiempo {v.tiempoEstimadoHoras || 0} h
+                                      {totalInsumos > 0 && <> · Insumos estimados <span className="font-semibold text-slate-700">${totalInsumos.toLocaleString('es-CO')} COP</span></>}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAbrirValoracionExistente(v)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold transition"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      {abierta ? 'Continuar edición' : 'Ver detalle'}
+                                    </button>
+                                    {abierta && idValoracionAbierta === v.idValoracion && (
+                                      <span className="text-[10px] font-bold text-indigo-600 px-1">Abierta</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {(v.diagnostico || v.alcanceIdentificado) && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                                    <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Diagnóstico</p>
+                                      <p className="text-slate-700 leading-5">{v.diagnostico || '—'}</p>
+                                    </div>
+                                    <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Alcance</p>
+                                      <p className="text-slate-700 leading-5">{v.alcanceIdentificado || '—'}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {Array.isArray(v.insumos) && v.insumos.length > 0 && (
+                                  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                                    <table className="min-w-full text-[11px]">
+                                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                        <tr>
+                                          <th className="px-2 py-1.5 text-left font-bold w-8">#</th>
+                                          <th className="px-2 py-1.5 text-left font-bold min-w-[160px]">Insumo</th>
+                                          <th className="px-2 py-1.5 text-right font-bold w-16">Cant</th>
+                                          <th className="px-2 py-1.5 text-left font-bold w-16">Unidad</th>
+                                          <th className="px-2 py-1.5 text-right font-bold w-24">$ Unit</th>
+                                          <th className="px-2 py-1.5 text-right font-bold w-24">Subtotal</th>
+                                          <th className="px-2 py-1.5 text-left font-bold w-44">Disponibilidad</th>
+                                          <th className="px-2 py-1.5 text-right font-bold w-14">Días</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {v.insumos!.map((i, idx) => {
+                                          const sub = (Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0;
+                                          return (
+                                            <tr key={i.idInsumo || (v.idValoracion + idx)} className="border-b border-slate-100 last:border-b-0">
+                                              <td className="px-2 py-1.5 text-slate-500 font-semibold">{idx + 1}</td>
+                                              <td className="px-2 py-1.5 font-semibold text-slate-800">{i.nombre}</td>
+                                              <td className="px-2 py-1.5 text-right tabular-nums">{i.cantidad != null ? Number(i.cantidad).toString() : '-'}</td>
+                                              <td className="px-2 py-1.5 text-slate-600">{i.unidadMedida}</td>
+                                              <td className="px-2 py-1.5 text-right tabular-nums">${(Number(i.costoUnitarioCop || 0)).toLocaleString('es-CO')}</td>
+                                              <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-slate-800">${sub.toLocaleString('es-CO')}</td>
+                                              <td className="px-2 py-1.5">
+                                                <span className={[
+                                                  'inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                                  i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
+                                                    ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                                    : 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                                                ].join(' ')}>
+                                                  {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Solicitar' : 'En bodega'}
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
+                                                {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? (i.tiempoAdquisicionDias ?? '-') : '—'}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                      <tfoot className="bg-slate-50 border-t border-slate-200">
+                                        <tr>
+                                          <td className="px-2 py-1.5" colSpan={5}></td>
+                                          <td className="px-2 py-1.5 text-right tabular-nums text-xs font-black text-slate-900">
+                                            ${totalInsumos.toLocaleString('es-CO')}
+                                          </td>
+                                          <td className="px-2 py-1.5" colSpan={2}></td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                )}
+                                {v.observaciones && (
+                                  <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
+                                    <span className="font-bold text-slate-500">Notas:</span> {v.observaciones}
+                                  </div>
+                                )}
+                                {Array.isArray(v.evidencias) && v.evidencias.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {v.evidencias.map((e, i) => (
+                                      <a
+                                        key={e.idEvidencia || ('evv-' + v.idValoracion + '-' + i)}
+                                        href={e.urlPresigned || e.urlPublica || '#'}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold hover:bg-slate-200 transition"
+                                      >
+                                        <Paperclip className="w-2.5 h-2.5" />
+                                        {(e.nombreOriginal || 'evidencia').slice(0, 28)}
+                                        {(e.nombreOriginal || '').length > 28 ? '…' : ''}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )}
-                </button>
-                {historicoAbierto && (() => {
-                  const arr: any[] = Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones : [];
-                  if (arr.length === 0) {
-                    return (
-                      <div className="text-xs text-slate-500 py-5 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                        No hay historial de asignaciones. Ejecuta Aprobar, Rechazar o Redistribuir para registrar la primera entrada con trazabilidad completa.
+
+                  {/* ===== Fase 3: Visto Bueno (VoBo) Técnico / Coordinación ===== */}
+                  <div className="rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50/60 via-white to-violet-50/30 p-4 space-y-3 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center border border-violet-200 shadow-sm shrink-0">
+                          <BadgeCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                              Visto Bueno (VoBo) Técnico / Coordinación
+                            </span>
+                            {detalle.requiereVoBo || esMantenimientoMayor ? (
+                              <span className={`px-2 py-0.5 text-[10px] font-black rounded-full border ${
+                                detalle.voboAprobado === true
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : detalle.voboAprobado === false
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-purple-100 text-purple-800 border-purple-300'
+                              }`}>
+                                {detalle.voboAprobado === true ? 'VoBo Aprobado · Trámite Contractual' : detalle.voboAprobado === false ? 'VoBo Observado' : 'VoBo Requerido (Mantenimiento Mayor)'}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                Opcional / No requerido
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            {detalle.voboFecha
+                              ? `Emitido el ${formatearFecha(detalle.voboFecha)}${detalle.voboObservaciones ? `: "${detalle.voboObservaciones}"` : ''}`
+                              : 'Revisión y aval formal de la valoración técnica por Encargado UMI o Coordinador.'}
+                          </p>
+                        </div>
                       </div>
+                      {puedeEmitirVoBo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVoboDecision(true);
+                            setVoboObservacionesInput(detalle.voboObservaciones || '');
+                            setErrorVoBo('');
+                            setMostrarModalVoBo(true);
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm shadow-violet-500/20 transition-all shrink-0"
+                        >
+                          <BadgeCheck className="w-3.5 h-3.5" />
+                          {detalle.voboFecha ? 'Actualizar VoBo' : (esMantenimientoMayor ? 'Emitir VoBo Coordinación' : 'Emitir Visto Bueno')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  
+                  {/* ===== Fase 4: Gestión de Trámite Contractual (EFDS-2353) ===== */}
+                  {esMantenimientoMayor && (detalle.voboAprobado === true || detalle.requiereContratacion) && (
+                    <div className="rounded-2xl border-2 border-purple-200 bg-gradient-to-r from-purple-50/70 via-white to-purple-50/30 p-4 space-y-3 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="w-10 h-10 rounded-xl text-white flex items-center justify-center shrink-0 shadow-md border border-purple-800 mt-0.5"
+                            style={{ backgroundColor: '#7e22ce' }}
+                          >
+                            <FileText className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-black uppercase tracking-wider text-purple-950">
+                                Gestión Contractual · Obra Mayor (EFDS-2353)
+                              </span>
+                              {ultimoTramiteContractual ? (
+                                <span className="px-2.5 py-0.5 text-[10px] font-black rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  En Trámite SECOP II
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 text-[10px] font-black rounded-full bg-purple-100 text-purple-800 border border-purple-300">
+                                  Avalado para Contratación
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-600">
+                              {ultimoTramiteContractual
+                                ? `Proceso: ${ultimoTramiteContractual.parsed?.procesoContractual || ultimoTramiteContractual.motivo}`
+                                : 'Diagnóstico técnico y VoBo aprobados. Listo para radicar proceso ante el Grupo de Contratación de la ESAP.'}
+                            </p>
+                            {ultimoTramiteContractual?.parsed && (
+                              <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-slate-700 font-medium">
+                                {ultimoTramiteContractual.parsed.radicadoOrfeo && (
+                                  <span className="bg-white border border-purple-200 px-2 py-0.5 rounded-md">
+                                    Radicado Orfeo: <strong>{ultimoTramiteContractual.parsed.radicadoOrfeo}</strong>
+                                  </span>
+                                )}
+                                {ultimoTramiteContractual.parsed.presupuestoEstimadoCop && (
+                                  <span className="bg-white border border-purple-200 px-2 py-0.5 rounded-md">
+                                    Presupuesto: <strong>${Number(ultimoTramiteContractual.parsed.presupuestoEstimadoCop).toLocaleString('es-CO')} COP</strong>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProcesoContractualInput(ultimoTramiteContractual?.parsed?.procesoContractual || '');
+                            setRadicadoOrfeoInput(ultimoTramiteContractual?.parsed?.radicadoOrfeo || '');
+                            setPresupuestoContratoInput(ultimoTramiteContractual?.parsed?.presupuestoEstimadoCop ? String(ultimoTramiteContractual.parsed.presupuestoEstimadoCop) : '');
+                            setObservacionesContratoInput(ultimoTramiteContractual?.parsed?.observaciones || '');
+                            setErrorTramiteContractual('');
+                            setMostrarModalTramiteContractual(true);
+                          }}
+                          style={{ backgroundColor: '#7e22ce', borderColor: '#6b21a8' }}
+                          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-bold shadow-sm shadow-purple-500/20 hover:opacity-95 transition-all shrink-0"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-white" />
+                          {ultimoTramiteContractual ? 'Actualizar Proceso Contractual' : 'Vincular Trámite Contractual'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+{mostrarSeccionHistorico && (
+                    <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/60 via-white to-indigo-50/30 p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center border border-indigo-200 shadow-sm shrink-0">
+                            <ScrollText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                                Histórico de Asignaciones y Traza
+                              </span>
+                              <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                {Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones.length : 0}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Trazabilidad inmutable de asignaciones, valoraciones, prórrogas y cierres.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMostrarModalHistorico(true)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold shadow-sm transition-all hover:border-indigo-300 shrink-0"
+                        >
+                          <ScrollText className="w-3.5 h-3.5" />
+                          Ver historial completo ({Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones.length : 0})
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {detalle && esAreaTI && (
+              <div className="px-5 pb-4 -mt-3 bg-white">
+                <label className="block text-xs font-bold text-slate-700 tracking-tight mb-1.5">
+                  Observaciones de confirmación de recepción (opcional)
+                </label>
+                <textarea
+                  value={aprobacionObservaciones}
+                  onChange={(e) => setAprobacionObservaciones(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: Recepción confirmada. Derivado a mesa de servicios TIC, ticket consecutivo TIC-2026-..."
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all resize-none placeholder:text-slate-400"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-t border-slate-200 bg-white shrink-0">
+              <div className="flex flex-wrap items-center gap-3">
+                {detalle && (() => {
+                  const areaTI = esAreaTI;
+                  if (areaTI) {
+                    return (
+                      <>
+                        {puedeAprobarRemisionTI && (
+                          <button
+                            type="button"
+                            onClick={aprobarYAsignarHandler}
+                            disabled={ejecutandoAprobar}
+                            title="Aprobar la remisión a Oficina TI (confirmar recepción formal). No requiere asignación de técnico UMI."
+                            className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                          >
+                            {ejecutandoAprobar ? (
+                              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                            ) : (
+                              <><ShieldCheck className="w-3.5 h-3.5" /> Aprobar remisión a TI</>
+                            )}
+                          </button>
+                        )}
+                        {puedeRechazarRemisionTI && (
+                          <button
+                            type="button"
+                            onClick={abrirModalRechazo}
+                            disabled={ejecutandoRechazo}
+                            title="Rechazar la remisión a TI con motivo (solicitud retorna a unidad UMI para correcciones)"
+                            className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                            Rechazar remisión
+                          </button>
+                        )}
+                      </>
                     );
                   }
                   return (
-                    <ol className="relative border-l border-slate-200 ml-3.5 space-y-5 py-1.5">
-                      {arr.slice()
-                        .sort((a, b) => {
-                          const da = new Date(a.fecha || 0).getTime();
-                          const db = new Date(b.fecha || 0).getTime();
-                          return isFinite(db) && isFinite(da) ? db - da : String(b.fecha || '').localeCompare(String(a.fecha || ''));
-                        })
-                        .map((entry, i) => {
-                          const acc = String(entry.accion || 'DESCONOCIDA');
-                          const style = HISTORICO_ACCION_STYLE[acc] || {
-                            badge: 'bg-slate-100 text-slate-700 border-slate-200',
-                            dot: 'bg-slate-500',
-                            icon: ClipboardList,
-                          };
-                          const IconoAccion = style.icon;
-                          const obsJson = parseJsonSeguro(entry.observaciones);
-                          const resumenSLA = (acc === 'EXTENSION_SLA_POR_INSUMOS' && obsJson) ? resumirExtensionSLA(obsJson) : null;
-                          return (
-                            <li key={entry.id || `hist-${i}`} className="ml-6 relative">
-                              <span
-                                className={`absolute -left-[17px] -top-0.5 flex items-center justify-center w-7 h-7 rounded-full border-[3px] border-white shadow-md ring-1 ring-slate-200 ${style.dot}`}
-                                title={acc}
-                              >
-                                <IconoAccion className="w-3.5 h-3.5 text-white" />
-                              </span>
-                              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-[0.08em] border shadow-[0_1px_0_rgba(0,0,0,0.04)] ${style.badge}`}>
-                                      <IconoAccion className="w-3 h-3" />
-                                      {acc.replace(/_/g, ' · ')}
-                                    </span>
-                                    {entry.tecnico_codigo && (
-                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-50 text-slate-700 border border-slate-200">
-                                        <User className="w-3 h-3 text-slate-500" />
-                                        <span className="font-mono text-slate-700">{entry.tecnico_codigo}</span>
-                                        {entry.tecnico_nombre_display && (
-                                          <span className="text-slate-600">· {String(entry.tecnico_nombre_display).split(' · ').pop() || entry.tecnico_nombre_display}</span>
-                                        )}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
-                                    <Calendar className="w-3 h-3 text-slate-400" />
-                                    {formatearFecha(entry.fecha)}
-                                  </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                  {entry.motivo && (
-                                    <div className="flex items-start gap-2">
-                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-slate-100">
-                                        Motivo
-                                      </span>
-                                      <span className="text-slate-700 leading-relaxed whitespace-pre-wrap font-medium bg-slate-50/70 px-3 py-2 rounded-xl border border-slate-200 flex-1 text-[12px]">
-                                        {String(entry.motivo)}
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {(resumenSLA || (!obsJson && entry.observaciones)) && (
-                                    <div className="flex items-start gap-2">
-                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-100">
-                                        {resumenSLA ? 'Ajuste SLA' : 'Observaciones'}
-                                      </span>
-                                      <span className="text-slate-600 leading-relaxed whitespace-pre-wrap flex-1 text-[12px]">
-                                        {resumenSLA || String(entry.observaciones)}
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {obsJson && (acc === 'EXTENSION_SLA_POR_INSUMOS') && (
-                                    <div className="grid grid-cols-3 gap-2 text-[11px] ml-10 border-l-2 border-orange-200 pl-3">
-                                      {obsJson.diasAdicionales != null && (
-                                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-2 text-center">
-                                          <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">Días extra</div>
-                                          <div className="text-orange-800 font-black text-base leading-none mt-1">+{Number(obsJson.diasAdicionales)}</div>
-                                        </div>
-                                      )}
-                                      {obsJson.fechaOriginal && (
-                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-center">
-                                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tope original</div>
-                                          <div className="text-slate-800 font-bold text-[11px] leading-snug mt-1">
-                                            {new Date(obsJson.fechaOriginal).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}
-                                          </div>
-                                        </div>
-                                      )}
-                                      {obsJson.fechaNueva && (
-                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
-                                          <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Nuevo tope</div>
-                                          <div className="text-emerald-900 font-bold text-[11px] leading-snug mt-1">
-                                            {new Date(obsJson.fechaNueva).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 mt-2 border-t border-dashed border-slate-200">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px]">
-                                      <User className="w-3 h-3 text-slate-400" />
-                                      <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
-                                      <span className="font-semibold text-slate-700">
-                                        {entry.usuario_email || 'Sistema'}
-                                      </span>
-                                      {entry.usuario_id && (
-                                        <span className="text-slate-400 font-mono text-[10px]" title={String(entry.usuario_id)}>
-                                          id·{String(entry.usuario_id).slice(0, 8)}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                  {entry.usuario_roles && (
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      <span className="text-[10px] font-bold text-slate-500">Rol activo:</span>
-                                      {(String(entry.usuario_roles).split(',').filter(Boolean) || []).map((rol, j) => {
-                                        const rolClean = rol.trim();
-                                        const rolColor =
-                                          rolClean === 'SUPER_ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                                          rolClean === 'USER'        ? 'bg-slate-50 text-slate-700 border-slate-200' :
-                                          rolClean === 'ADMIN'       ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                          'bg-slate-50 text-slate-700 border-slate-200';
-                                        return (
-                                          <span key={j} className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl border ${rolColor}`}>
-                                            {rolClean}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </li>
-                          );
-                        })}
-                    </ol>
+                    <>
+                      {puedeAprobarAsignarUMI && (
+                        <button
+                          type="button"
+                          onClick={aprobarYAsignarHandler}
+                          disabled={ejecutandoAprobar}
+                          title="Aprobar solicitud y asignar técnico seleccionado (sugerido o manual)"
+                          className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                        >
+                          {ejecutandoAprobar ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                          ) : (
+                            <><ThumbsUp className="w-3.5 h-3.5" /> Aprobar y Asignar</>
+                          )}
+                        </button>
+                      )}
+                      {puedeRechazarUMI && (
+                        <button
+                          type="button"
+                          onClick={abrirModalRechazo}
+                          disabled={ejecutandoRechazo}
+                          title="Rechazar solicitud con motivo obligatorio. El motivo es visible para el solicitante."
+                          className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Rechazar
+                        </button>
+                      )}
+                      {puedeRedistribuir && (
+                        <button
+                          type="button"
+                          onClick={abrirModalRedistribucion}
+                          disabled={ejecutandoRedist}
+                          title="Redistribuir / reasignar técnico responsable (cambia responsable manteniendo o pasando a ASIGNADA)"
+                          className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                        >
+                          <RedistribuirIcon className="w-3.5 h-3.5" />
+                          Redistribuir
+                        </button>
+                      )}
+                    </>
                   );
                 })()}
-              </div>
-            </>
-          )}
-        </div>
 
-        {detalle && esAreaTI && (
-          <div className="px-5 pb-4 -mt-3 bg-white">
-            <label className="block text-xs font-bold text-slate-700 tracking-tight mb-1.5">
-              Observaciones de confirmación de recepción (opcional)
-            </label>
-            <textarea
-              value={aprobacionObservaciones}
-              onChange={(e) => setAprobacionObservaciones(e.target.value)}
-              rows={2}
-              placeholder="Ej: Recepción confirmada. Derivado a mesa de servicios TIC, ticket consecutivo TIC-2026-..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all resize-none placeholder:text-slate-400"
-            />
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-t border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center gap-3">
-            {detalle && (() => {
-              const areaTI = esAreaTI;
-              if (areaTI) {
-                return (
+                {/* EFDS-1735 RF-INF-006: Botones flujo ejecución / valoración  */}
+                {puedeConfirmarRecepcionMaterialesFinal && (
+                  <button
+                    type="button"
+                    onClick={abrirConfirmarRecepcion}
+                    disabled={bloqueado}
+                    title={
+                      tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all')
+                        ? 'Encargado UMI / Admin Funcional: confirma recepción física de materiales comprados/solicitados. Estado pasa a En ejecución.'
+                        : 'Técnico asignado: confirma recepción de materiales directamente desde bodega y pasa a ejecución.'
+                    }
+                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                  >
+                    <Truck className="w-3.5 h-3.5" />
+                    Confirmar recepción materiales
+                  </button>
+                )}
+                {puedeIniciarEjecOValoracion && (
                   <>
-                    {puedeAprobarRemisionTI && (
+                    {!esMantenimientoMayor && (
                       <button
                         type="button"
-                        onClick={aprobarYAsignarHandler}
-                        disabled={ejecutandoAprobar}
-                        title="Aprobar la remisión a Oficina TI (confirmar recepción formal). No requiere asignación de técnico UMI."
-                        className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                        onClick={handleIniciarEjecucionDirecta}
+                        disabled={bloqueado || !!idValoracionAbierta}
+                        title="El alcance es evidente y no requiere inspección previa. Pasa ASIGNADA → EN_PROGRESO inmediatamente."
+                        className={[
+                          'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
+                          idValoracionAbierta
+                            ? 'bg-slate-400 border-slate-500 cursor-not-allowed'
+                            : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 disabled:cursor-not-allowed border-emerald-700',
+                        ].join(' ')}
                       >
-                        {ejecutandoAprobar ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                        {ejecutandoInicioDirecto ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Iniciando...
+                          </>
                         ) : (
-                          <><ShieldCheck className="w-3.5 h-3.5" /> Aprobar remisión a TI</>
+                          <>
+                            <PlayIcon className="w-3.5 h-3.5" />
+                            Iniciar Ejecución Directa
+                          </>
                         )}
                       </button>
                     )}
-                    {puedeRechazarRemisionTI && (
-                      <button
-                        type="button"
-                        onClick={abrirModalRechazo}
-                        disabled={ejecutandoRechazo}
-                        title="Rechazar la remisión a TI con motivo (solicitud retorna a unidad UMI para correcciones)"
-                        className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                      >
-                        <Ban className="w-3.5 h-3.5" />
-                        Rechazar remisión
-                      </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIdValoracionSeleccionada(idValoracionAbierta);
+                        setMostrarDetalleValoracion(true);
+                      }}
+                      disabled={bloqueado}
+                      title={
+                        esMantenimientoMayor
+                          ? "Registro de diagnóstico técnico especializado y evaluación de demanda para trámite precontractual (EFDS-2353)."
+                          : "Registro de valoración previa en campo: diagnóstico, alcance, tiempos, materiales y evidencia. Si insumos no disponibles → EN_ESPERA_DE_INSUMOS."
+                      }
+                      style={
+                        esMantenimientoMayor
+                          ? { backgroundColor: '#7e22ce', borderColor: '#6b21a8', color: '#ffffff' }
+                          : undefined
+                      }
+                      className={[
+                        'inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-md border',
+                        esMantenimientoMayor
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700 ring-2 ring-purple-300/60'
+                          : idValoracionAbierta
+                          ? 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed border-indigo-700'
+                          : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
+                      ].join(' ')}
+                    >
+                      <ClipboarCheckIcon className="w-4 h-4 text-white shrink-0" />
+                      <span className="text-white font-bold tracking-wide">
+                        {esMantenimientoMayor
+                          ? (idValoracionAbierta ? 'Continuar Diagnóstico Técnico Mayor' : 'Registrar Diagnóstico Técnico (Mayor)')
+                          : (idValoracionAbierta ? 'Continuar Valoración' : 'Registrar Valoración Previa')}
+                      </span>
+                    </button>
+                    {esCategoriaElectricas48 && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold whitespace-nowrap">
+                        <Zap className="w-3.5 h-3.5" />
+                        CS_002 Eléctricas · sólo Técnico Especializado
+                      </span>
                     )}
                   </>
-                );
-              }
-              return (
-                <>
-                  {puedeAprobarAsignarUMI && (
+                )}
+                {puedeRegistrarRecepcionInsumosTecnico && (
+                  ultimaRecepcionInsumosTecnico ? (
                     <button
                       type="button"
-                      onClick={aprobarYAsignarHandler}
-                      disabled={ejecutandoAprobar}
-                      title="Aprobar solicitud y asignar técnico seleccionado (sugerido o manual)"
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                      onClick={abrirModalVerificarInsumos}
+                      title="Verificación técnica de insumos ya registrada. Clic para consultar."
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
                     >
-                      {ejecutandoAprobar ? (
-                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                      <PackageCheck className="w-3.5 h-3.5 text-blue-600" />
+                      Insumos: {ultimaRecepcionInsumosTecnico.resultado}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={abrirModalVerificarInsumos}
+                      disabled={bloqueado}
+                      title="Registrar verificación u observaciones técnicas de los insumos y materiales recibidos."
+                      className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border border-blue-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                    >
+                      <PackageCheck className="w-3.5 h-3.5" />
+                      Verificar Insumos
+                    </button>
+                  )
+                )}
+                {puedeCerrarTecnicamente && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForzarEdicionReaperturaCierre(!!conformidadRechazadaReabierta);
+                      setOpenCierre(true);
+                    }}
+                    disabled={bloqueado}
+                    title={
+                      esMantenimientoMayor
+                        ? 'Registrar Recibo a Satisfacción de Obra y Cierre Técnico: registrar trabajo realizado por contratista, costo final y acta/evidencias. Estado pasa a COMPLETADA.'
+                        : 'Cerrar técnicamente la ejecución: registrar trabajo realizado, costo final y evidencias fotográficas mínimas (1). Estado pasa a COMPLETADA.'
+                    }
+                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm hover:opacity-95"
+                    style={{ backgroundColor: '#059669', color: '#ffffff' }}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    {esMantenimientoMayor ? 'Cierre / Recibo a Satisfacción de Obra' : 'Cierre Técnico'}
+                  </button>
+                )}
+                {puedeVerCierreTecnico && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForzarEdicionReaperturaCierre(false);
+                      setOpenCierre(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                    title="Ver el resumen de cierre técnico ya ejecutado (modo lectura)."
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    {esMantenimientoMayor ? 'Ver Recibo a Satisfacción de Obra' : 'Ver cierre técnico'}
+                  </button>
+                )}
+                {puedeConfirmarConformidad && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => abrirConformidad('confirmar')}
+                      disabled={bloqueado}
+                      title="Como solicitante o responsable UMI confirma la conformidad del servicio y cierra la solicitud definitivamente (estado CERRADA)."
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                    >
+                      <ThumbsUp className="w-3.5 h-3.5" />
+                      Confirmar conformidad
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => abrirConformidad('rechazar')}
+                      disabled={bloqueado}
+                      title="Devolver la solicitud al técnico por inconsistencias. Debe detallar las observaciones (mínimo 20 caracteres). Estado retorna a EN_PROGRESO con nuevo SLA 24h."
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5" />
+                      Devolver por observaciones
+                    </button>
+                  </>
+                )}
+                {mostrarBannerPendienteConformidad && countdownConformidad && (
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${countdownConformidad.vencido
+                    ? 'bg-rose-50 text-rose-800 ring-rose-200'
+                    : countdownConformidad.dias === 0 && countdownConformidad.horas <= 24
+                      ? 'bg-amber-50 text-amber-800 ring-amber-200'
+                      : 'bg-sky-50 text-sky-800 ring-sky-200'}`}>
+                    <Clock className="w-3.5 h-3.5" />
+                    Pendiente conformidad usuario solicitante · {countdownConformidad.texto}
+                  </div>
+                )}
+                {resumenConformidadBadge && (
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${resumenConformidadBadge.cls}`}>
+                    {(React.createElement(resumenConformidadBadge.icon, { className: 'w-3.5 h-3.5' }))}
+                    {resumenConformidadBadge.label}
+                  </div>
+                )}
+                {/* EFDS-1738 RF-INF-009 Vista readonly calificación servicio 1-5 */}
+                {detalle?.resultadoConformidad === 'CONFIRMADA' &&
+                  detalle?.calificacionServicio &&
+                  detalle.calificacionServicio >= 1 &&
+                  detalle.calificacionServicio <= 5 && (
+                    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-amber-200 bg-amber-50/70 text-[11px] font-bold whitespace-nowrap">
+                      <div className="inline-flex items-center gap-0.5" aria-label={`Calificación ${detalle.calificacionServicio} de 5`}>
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <Star
+                            key={i}
+                            className={`w-3.5 h-3.5 ${i <= (detalle.calificacionServicio as 1 | 2 | 3 | 4 | 5)
+                              ? 'text-amber-500 fill-amber-400'
+                              : 'text-slate-300'
+                              }`}
+                            strokeWidth={1.8}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-amber-800">
+                        Calificación {detalle.calificacionServicio}/5
+                        {detalle.responsableCalificacionDisplay && (
+                          <> · {detalle.responsableCalificacionDisplay}</>
+                        )}
+                        {detalle.fechaCalificacion && (
+                          <> · {formatearFecha(detalle.fechaCalificacion)}</>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                {detalle && idSolicitud && (
+                  <button
+                    type="button"
+                    onClick={handleDescargarZipEvidencias}
+                    disabled={descargandoZip}
+                    title="Descargar todas las evidencias de la solicitud empaquetadas en un archivo ZIP (radicación, valoración, cierre técnico y conformidad)."
+                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-indigo-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                  >
+                    {descargandoZip ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generando ZIP…</>
+                    ) : (
+                      <><Package className="w-3.5 h-3.5" /> Descargar ZIP evidencias</>
+                    )}
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 ml-auto">
+                {puedeReenviarTI && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
+                  <button
+                    type="button"
+                    onClick={abrirRemitir}
+                    title="Remitir formalmente la solicitud a la Oficina de Tecnologías (nueva remisión con trazabilidad)"
+                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-300 text-blue-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Reenviar a TI
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cerrar detalle
+                </button>
+              </div>
+            </div>
+
+            {mostrarRemitir && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => { if (e.target === e.currentTarget && !remitirEnviando) { setMostrarRemitir(false); setRemitirError(''); } }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 512,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-sky-50/60 rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <Send className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                          Remitir solicitud a Oficina TI
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                          Esta acción genera una nueva remisión formal con trazabilidad de Gestión de Calidad, cambia el área responsable actual a Oficina de Tecnologías y marca el tipo de atención como TECNOLÓGICA si no lo estaba.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarRemitir(false); setRemitirError(''); }}
+                      disabled={remitirEnviando}
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar remisión"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {remitirError && (
+                      <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs font-medium">{remitirError}</div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Motivo de la remisión <span className="text-rose-500">*</span>
+                      </label>
+                      <textarea
+                        value={remitirMotivo}
+                        onChange={(e) => setRemitirMotivo(e.target.value)}
+                        rows={4}
+                        placeholder="Explique por qué se remite esta solicitud a la Oficina de Tecnologías de la Información. Mínimo 10 caracteres."
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-sky-200 focus:border-sky-500 border-slate-200 resize-none"
+                      />
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Mínimo 10 caracteres</span>
+                        <span className={remitirMotivo.trim().length >= 10 ? 'text-emerald-600 font-semibold' : ''}>{remitirMotivo.trim().length} caracteres</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Consecutivo cruzado TI
+                        <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={remitirConsecutivo}
+                        onChange={(e) => setRemitirConsecutivo(e.target.value)}
+                        placeholder="Ej: INC-2024-9821 o número de ticket mesa de ayuda SI"
+                        maxLength={100}
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-sky-200 focus:border-sky-500 border-slate-200"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+                        Número de ticket, incidente o solicitud asignado por la Oficina de TI para dar continuidad cruzada entre sistemas.
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarRemitir(false); setRemitirError(''); }}
+                      disabled={remitirEnviando}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmarRemitir}
+                      disabled={remitirEnviando}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold shadow-sm shadow-sky-500/20 transition-all disabled:opacity-60 active:scale-[0.98]"
+                    >
+                      {remitirEnviando ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Remitiendo...
+                        </>
                       ) : (
-                        <><ThumbsUp className="w-3.5 h-3.5" /> Aprobar y Asignar</>
+                        <>
+                          <Send className="w-4 h-4" />
+                          Confirmar remisión
+                        </>
                       )}
                     </button>
-                  )}
-                  {puedeRechazarUMI && (
-                    <button
-                      type="button"
-                      onClick={abrirModalRechazo}
-                      disabled={ejecutandoRechazo}
-                      title="Rechazar solicitud con motivo obligatorio. El motivo es visible para el solicitante."
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                    >
-                      <Ban className="w-3.5 h-3.5" />
-                      Rechazar
-                    </button>
-                  )}
-                  {puedeRedistribuir && (
-                    <button
-                      type="button"
-                      onClick={abrirModalRedistribucion}
-                      disabled={ejecutandoRedist}
-                      title="Redistribuir / reasignar técnico responsable (cambia responsable manteniendo o pasando a ASIGNADA)"
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                    >
-                      <RedistribuirIcon className="w-3.5 h-3.5" />
-                      Redistribuir
-                    </button>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* EFDS-1735 RF-INF-006: Botones flujo ejecución / valoración  */}
-            {puedeConfirmarRecepcionMaterialesFinal && (
-              <button
-                type="button"
-                onClick={abrirConfirmarRecepcion}
-                disabled={bloqueado}
-                title={
-                  tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all')
-                    ? 'Encargado UMI / Admin Funcional: confirma recepción física de materiales comprados/solicitados. Estado pasa a En ejecución.'
-                    : 'Técnico asignado: confirma recepción de materiales directamente desde bodega y pasa a ejecución.'
-                }
-                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
-              >
-                <Truck className="w-3.5 h-3.5" />
-                Confirmar recepción materiales
-              </button>
-            )}
-            {puedeIniciarEjecOValoracion && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleIniciarEjecucionDirecta}
-                  disabled={bloqueado || !!idValoracionAbierta}
-                  title="El alcance es evidente y no requiere inspección previa. Pasa ASIGNADA → EN_PROGRESO inmediatamente."
-                  className={[
-                    'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
-                    idValoracionAbierta
-                      ? 'bg-slate-400 border-slate-500 cursor-not-allowed'
-                      : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border-emerald-700',
-                  ].join(' ')}
-                >
-                  {ejecutandoInicioDirecto ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Iniciando...
-                    </>
-                  ) : (
-                    <>
-                      <PlayIcon className="w-3.5 h-3.5" />
-                      Iniciar Ejecución Directa
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (idValoracionAbierta) {
-                      setMostrarDetalleValoracion(true);
-                    } else {
-                      handleIniciarValoracion();
-                    }
-                  }}
-                  disabled={bloqueado}
-                  title="Registro de valoración previa en campo: diagnóstico, alcance, tiempos, materiales y evidencia. Si insumos no disponibles → EN_ESPERA_DE_INSUMOS."
-                  className={[
-                    'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
-                    idValoracionAbierta
-                      ? 'bg-indigo-700 hover:bg-indigo-800 disabled:bg-indigo-400 disabled:cursor-not-allowed border-indigo-800'
-                      : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
-                  ].join(' ')}
-                >
-                  {ejecutandoInicioValoracion ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Iniciando valoración...
-                    </>
-                  ) : (
-                    <>
-                      <ClipboarCheckIcon className="w-3.5 h-3.5" />
-                      {idValoracionAbierta ? 'Continuar Valoración' : 'Registrar Valoración Previa'}
-                    </>
-                  )}
-                </button>
-                {esCategoriaElectricas48 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold whitespace-nowrap">
-                    <Zap className="w-3.5 h-3.5" />
-                    CS_002 Eléctricas · sólo Técnico Especializado
-                  </span>
-                )}
-              </>
-            )}
-            {puedeCerrarTecnicamente && (
-              <button
-                type="button"
-                onClick={() => {
-                  setForzarEdicionReaperturaCierre(!!conformidadRechazadaReabierta);
-                  setOpenCierre(true);
-                }}
-                disabled={bloqueado}
-                title="Cerrar técnicamente la ejecución: registrar trabajo realizado, costo final y evidencias fotográficas mínimas (1). Estado pasa a COMPLETADA."
-                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Cierre Técnico
-              </button>
-            )}
-            {puedeVerCierreTecnico && (
-              <button
-                type="button"
-                onClick={() => {
-                  setForzarEdicionReaperturaCierre(false);
-                  setOpenCierre(true);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                title="Ver el resumen de cierre técnico ya ejecutado (modo lectura)."
-              >
-                <Eye className="w-3.5 h-3.5" />
-                Ver cierre técnico
-              </button>
-            )}
-            {puedeConfirmarConformidad && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => abrirConformidad('confirmar')}
-                  disabled={bloqueado}
-                  title="Como solicitante o responsable UMI confirma la conformidad del servicio y cierra la solicitud definitivamente (estado CERRADA)."
-                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
-                >
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                  Confirmar conformidad
-                </button>
-                <button
-                  type="button"
-                  onClick={() => abrirConformidad('rechazar')}
-                  disabled={bloqueado}
-                  title="Devolver la solicitud al técnico por inconsistencias. Debe detallar las observaciones (mínimo 20 caracteres). Estado retorna a EN_PROGRESO con nuevo SLA 24h."
-                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
-                >
-                  <ThumbsDown className="w-3.5 h-3.5" />
-                  Devolver por observaciones
-                </button>
-              </>
-            )}
-            {mostrarBannerPendienteConformidad && countdownConformidad && (
-              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${countdownConformidad.vencido
-                ? 'bg-rose-50 text-rose-800 ring-rose-200'
-                : countdownConformidad.dias === 0 && countdownConformidad.horas <= 24
-                  ? 'bg-amber-50 text-amber-800 ring-amber-200'
-                  : 'bg-sky-50 text-sky-800 ring-sky-200'}`}>
-                <Clock className="w-3.5 h-3.5" />
-                Pendiente conformidad usuario solicitante · {countdownConformidad.texto}
-              </div>
-            )}
-            {resumenConformidadBadge && (
-              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${resumenConformidadBadge.cls}`}>
-                {(React.createElement(resumenConformidadBadge.icon, { className: 'w-3.5 h-3.5' }))}
-                {resumenConformidadBadge.label}
-              </div>
-            )}
-            {/* EFDS-1738 RF-INF-009 Vista readonly calificación servicio 1-5 */}
-            {detalle?.resultadoConformidad === 'CONFIRMADA' &&
-              detalle?.calificacionServicio &&
-              detalle.calificacionServicio >= 1 &&
-              detalle.calificacionServicio <= 5 && (
-                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-amber-200 bg-amber-50/70 text-[11px] font-bold whitespace-nowrap">
-                  <div className="inline-flex items-center gap-0.5" aria-label={`Calificación ${detalle.calificacionServicio} de 5`}>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <Star
-                        key={i}
-                        className={`w-3.5 h-3.5 ${
-                          i <= (detalle.calificacionServicio as 1 | 2 | 3 | 4 | 5)
-                            ? 'text-amber-500 fill-amber-400'
-                            : 'text-slate-300'
-                        }`}
-                        strokeWidth={1.8}
-                      />
-                    ))}
                   </div>
-                  <span className="text-amber-800">
-                    Calificación {detalle.calificacionServicio}/5
-                    {detalle.responsableCalificacionDisplay && (
-                      <> · {detalle.responsableCalificacionDisplay}</>
-                    )}
-                    {detalle.fechaCalificacion && (
-                      <> · {formatearFecha(detalle.fechaCalificacion)}</>
-                    )}
-                  </span>
                 </div>
-              )}
-            {detalle && idSolicitud && (
-              <button
-                type="button"
-                onClick={handleDescargarZipEvidencias}
-                disabled={descargandoZip}
-                title="Descargar todas las evidencias de la solicitud empaquetadas en un archivo ZIP (radicación, valoración, cierre técnico y conformidad)."
-                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-indigo-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-              >
-                {descargandoZip ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generando ZIP…</>
-                ) : (
-                  <><Package className="w-3.5 h-3.5" /> Descargar ZIP evidencias</>
-                )}
-              </button>
+              </div>
             )}
-          </div>
-          <div className="flex flex-wrap items-center gap-3 ml-auto">
-            {puedeReenviarTI && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
-              <button
-                type="button"
-                onClick={abrirRemitir}
-                title="Remitir formalmente la solicitud a la Oficina de Tecnologías (nueva remisión con trazabilidad)"
-                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-300 text-blue-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+
+            {mostrarModalHistorico && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => { if (e.target === e.currentTarget) setMostrarModalHistorico(false); }}
               >
-                <Send className="w-3.5 h-3.5" />
-                Reenviar a TI
-              </button>
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 768,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '2px solid #c7d2fe',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-center justify-between gap-4 p-4 sm:p-5 border-b border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-white"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl text-white flex items-center justify-center flex-shrink-0 shadow-md border border-indigo-700"
+                        style={{ backgroundColor: '#4f46e5' }}
+                      >
+                        <ScrollText className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-black text-slate-900 tracking-tight">
+                            Histórico de Asignaciones y Trazabilidad
+                          </h3>
+                          <span className="px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                            {Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones.length : 0} evento(s)
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Registro auditable inmutable de cambios de responsable, asignaciones y transiciones operativas.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarModalHistorico(false)}
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors"
+                      aria-label="Cerrar histórico"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-4 sm:p-6 space-y-4"
+                  >
+                    {(() => {
+                      const arr: any[] = Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones : [];
+                      if (arr.length === 0) {
+                        return (
+                          <div className="text-xs text-slate-500 py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                            No hay historial de asignaciones registrado para esta solicitud.
+                          </div>
+                        );
+                      }
+                      return (
+                        <ol className="relative border-l border-slate-200 ml-3.5 space-y-5 py-1.5">
+                          {arr.slice()
+                            .sort((a, b) => {
+                              const da = new Date(a.fecha || 0).getTime();
+                              const db = new Date(b.fecha || 0).getTime();
+                              return isFinite(db) && isFinite(da) ? db - da : String(b.fecha || '').localeCompare(String(a.fecha || ''));
+                            })
+                            .map((entry, i) => {
+                              const acc = String(entry.accion || 'DESCONOCIDA');
+                              const esMayorSolicitud = esMantenimientoMayor || detalle?.clasificacionMantenimiento === 'MAYOR';
+                              const esCierreMayor = acc === 'CIERRE_TECNICO' && (
+                                esMayorSolicitud ||
+                                String(entry.usuario_roles || '').includes('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+                                String(entry.tecnico_codigo || '').includes('P5') ||
+                                String(entry.usuario_email || '').includes('coordinador')
+                              );
+
+                              const style = esCierreMayor
+                                ? {
+                                    badge: 'bg-purple-100 text-purple-900 border-purple-300',
+                                    dot: 'bg-purple-700',
+                                    colorHex: '#7e22ce',
+                                    icon: Building2,
+                                  }
+                                : HISTORICO_ACCION_STYLE[acc] || {
+                                    badge: 'bg-slate-100 text-slate-700 border-slate-200',
+                                    dot: 'bg-slate-500',
+                                    colorHex: '#64748b',
+                                    icon: ClipboardList,
+                                  };
+
+                              const labelAccion = esCierreMayor
+                                ? 'RECIBO A SATISFACCIÓN · OBRA MAYOR'
+                                : acc.replace(/_/g, ' · ');
+
+                              const motivoDisplay = esCierreMayor
+                                ? String(entry.motivo || '').replace(/Cierre técnico registrado/i, 'Recibo a satisfacción de obra y supervisión técnica registrada')
+                                : String(entry.motivo || '');
+
+                              const IconoAccion = style.icon;
+                              const obsJson = parseJsonSeguro(entry.observaciones);
+                              const resumenSLA = (acc === 'EXTENSION_SLA_POR_INSUMOS' && obsJson) ? resumirExtensionSLA(obsJson) : null;
+                              return (
+                                <li key={entry.id || `hist-${i}`} className="ml-6 relative">
+                                  <span
+                                    className={`absolute -left-[17px] -top-0.5 flex items-center justify-center w-7 h-7 rounded-full border-[3px] border-white shadow-md ring-1 ring-slate-200`}
+                                    style={{ backgroundColor: style.colorHex || '#64748b' }}
+                                    title={acc}
+                                  >
+                                    <IconoAccion className="w-3.5 h-3.5 text-white" />
+                                  </span>
+                                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-[0.08em] border shadow-[0_1px_0_rgba(0,0,0,0.04)] ${style.badge}`}>
+                                          <IconoAccion className="w-3 h-3" />
+                                          {labelAccion}
+                                        </span>
+                                        {entry.tecnico_codigo && (
+                                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-50 text-slate-700 border border-slate-200">
+                                            <User className="w-3 h-3 text-slate-500" />
+                                            <span className="font-mono text-slate-700">{entry.tecnico_codigo}</span>
+                                            {entry.tecnico_nombre_display && (
+                                              <span className="text-slate-600">· {String(entry.tecnico_nombre_display).split(' · ').pop() || entry.tecnico_nombre_display}</span>
+                                            )}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                                        <Calendar className="w-3 h-3 text-slate-400" />
+                                        {formatearFecha(entry.fecha)}
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      {entry.motivo && (
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-slate-100">
+                                            Motivo
+                                          </span>
+                                          <span className="text-slate-700 leading-relaxed whitespace-pre-wrap font-medium bg-slate-50/70 px-3 py-2 rounded-xl border border-slate-200 flex-1 text-[12px]">
+                                            {motivoDisplay}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {(resumenSLA || (!obsJson && entry.observaciones)) && (
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-100">
+                                            {resumenSLA ? 'Ajuste SLA' : 'Observaciones'}
+                                          </span>
+                                          <span className="text-slate-600 leading-relaxed whitespace-pre-wrap flex-1 text-[12px]">
+                                            {resumenSLA || String(entry.observaciones)}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {obsJson && (acc === 'EXTENSION_SLA_POR_INSUMOS') && (
+                                        <div className="grid grid-cols-3 gap-2 text-[11px] ml-10 border-l-2 border-orange-200 pl-3">
+                                          {obsJson.diasAdicionales != null && (
+                                            <div className="bg-orange-50 border border-orange-200 rounded-xl p-2 text-center">
+                                              <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">Días extra</div>
+                                              <div className="text-orange-800 font-black text-base leading-none mt-1">+{Number(obsJson.diasAdicionales)}</div>
+                                            </div>
+                                          )}
+                                          {obsJson.fechaOriginal && (
+                                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-center">
+                                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tope original</div>
+                                              <div className="text-slate-800 font-bold text-[11px] leading-snug mt-1">
+                                                {new Date(obsJson.fechaOriginal).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {obsJson.fechaNueva && (
+                                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+                                              <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Nuevo tope</div>
+                                              <div className="text-emerald-900 font-bold text-[11px] leading-snug mt-1">
+                                                {new Date(obsJson.fechaNueva).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {obsJson && (acc === 'RECEPCION_INSUMOS_TECNICO') && (
+                                        <div className="space-y-1.5 ml-10 border-l-2 border-teal-200 pl-3">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 border border-teal-200">
+                                              Resultado: {obsJson.resultado || entry.motivo || 'COMPLETA'}
+                                            </span>
+                                          </div>
+                                          {obsJson.observaciones && (
+                                            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                              {obsJson.observaciones}
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 mt-2 border-t border-dashed border-slate-200">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px]">
+                                          <User className="w-3 h-3 text-slate-400" />
+                                          <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
+                                          <span className="font-semibold text-slate-700">
+                                            {entry.usuario_email || 'Sistema'}
+                                          </span>
+                                          {entry.usuario_id && (
+                                            <span className="text-slate-400 font-mono text-[10px]" title={String(entry.usuario_id)}>
+                                              id·{String(entry.usuario_id).slice(0, 8)}
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                      {entry.usuario_roles && (
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="text-[10px] font-bold text-slate-500">Rol activo:</span>
+                                          {(String(entry.usuario_roles).split(',').filter(Boolean) || []).map((rol, j) => {
+                                            const rolClean = rol.trim();
+                                            const rolColor =
+                                              rolClean === 'SUPER_ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                                rolClean === 'USER' ? 'bg-slate-50 text-slate-700 border-slate-200' :
+                                                  rolClean === 'ADMIN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                    'bg-slate-50 text-slate-700 border-slate-200';
+                                            return (
+                                              <span key={j} className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl border ${rolColor}`}>
+                                                {rolClean}
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                        </ol>
+                      );
+                    })()}
+                  </div>
+
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="p-3 sm:p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setMostrarModalHistorico(false)}
+                      className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition-all"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-            >
-              <X className="w-3.5 h-3.5" />
-              Cerrar detalle
-            </button>
+
+            {mostrarModalRechazar && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => { if (e.target === e.currentTarget && !ejecutandoRechazo) { setMostrarModalRechazar(false); setErrorRechazo(''); } }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 512,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '2px solid #fecdd3',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-rose-100 bg-gradient-to-br from-rose-50 via-white to-white rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-rose-100">
+                        <IconRechazar className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                          Rechazar solicitud de mantenimiento
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                          <span className="font-bold text-rose-700">RF-INF-005 AC-02:</span> El motivo es <span className="font-black underline">OBLIGATORIO</span> (mínimo 10 caracteres) y será <span className="font-black">VISIBLE para el solicitante</span> en el detalle de la solicitud.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarModalRechazar(false); setErrorRechazo(''); }}
+                      disabled={ejecutandoRechazo}
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar rechazo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {errorRechazo && (
+                      <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs font-medium leading-5">{errorRechazo}</div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-black text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Motivo de rechazo <span className="text-rose-600">*</span>
+                        <span className="font-normal text-slate-400 normal-case">(mínimo 10 caracteres)</span>
+                      </label>
+                      <textarea
+                        value={rechazoMotivo}
+                        onChange={(e) => setRechazoMotivo(e.target.value)}
+                        rows={5}
+                        placeholder="Explique detalladamente por qué se rechaza esta solicitud (ej: falta de información, novedad no corresponde al alcance UMI, solicitud duplicada, etc.). Este texto se mostrará al ciudadano/solicitante."
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-rose-200 focus:border-rose-500 border-rose-200 resize-none"
+                      />
+                      <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400 font-semibold">Mínimo 10 caracteres · máximo 500</span>
+                        <span className={`font-bold ${rechazoMotivo.trim().length === 0
+                          ? 'text-slate-400'
+                          : rechazoMotivo.trim().length < 10
+                            ? 'text-rose-600'
+                            : 'text-emerald-600'
+                          }`}>
+                          {rechazoMotivo.trim().length} caracteres
+                          {rechazoMotivo.trim().length < 10 ? ` · faltan ${10 - rechazoMotivo.trim().length}` : ' · OK'}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Observaciones internas
+                        <span className="font-normal text-slate-400 normal-case">(opcional, NO visible solicitante)</span>
+                      </label>
+                      <textarea
+                        value={rechazoObservaciones}
+                        onChange={(e) => setRechazoObservaciones(e.target.value)}
+                        rows={2}
+                        placeholder="Notas internas de gestión para trazabilidad UMI (no se mostrarán al solicitante)."
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-slate-200 focus:border-slate-500 border-slate-200 resize-none"
+                      />
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-5 font-semibold">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        Al confirmar: el estado pasará a <strong>RECHAZADA</strong>, se limpiará el responsable asignado y se creará una entrada en <strong>Histórico Asignaciones</strong> con trazabilidad completa de usuario, fecha y roles. Esta acción se puede revertir usando Redistribuir (que vuelve a ASIGNADA).
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarModalRechazar(false); setErrorRechazo(''); }}
+                      disabled={ejecutandoRechazo}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmarRechazoHandler}
+                      disabled={ejecutandoRechazo || rechazoMotivo.trim().length < 10}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm shadow-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                    >
+                      {ejecutandoRechazo ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                      ) : (
+                        <><ThumbsDown className="w-4 h-4" /> Confirmar rechazo</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {mostrarModalRedistribuir && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => { if (e.target === e.currentTarget && !ejecutandoRedist) { setMostrarModalRedistribuir(false); setErrorRedist(''); } }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 512,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '2px solid #c7d2fe',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-indigo-100">
+                        <RedistribuirIcon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                          Redistribuir / Reasignar técnico
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                          <span className="font-bold text-indigo-700">RF-INF-005 AC-01 / D10:</span> Cambia el técnico asignado. Si el estado actual es RECIBIDA o RECHAZADA → automáticamente pasa a <strong>ASIGNADA</strong>. Si ya está ASIGNADA, EN_ANÁLISIS o EN_PROGRESO → mantiene el estado y solo cambia el responsable.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarModalRedistribuir(false); setErrorRedist(''); }}
+                      disabled={ejecutandoRedist}
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar redistribución"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {errorRedist && (
+                      <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs font-medium leading-5">{errorRedist}</div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-black text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Técnico de destino <span className="text-rose-600">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={redistTecnicoCodigo}
+                          onChange={(e) => setRedistTecnicoCodigo(e.target.value)}
+                          className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500"
+                          disabled={cargandoTecnicos}
+                        >
+                          <option value="">— Seleccione el técnico a asignar —</option>
+                          {(tecnicosCatalogo.length > 0 ? tecnicosCatalogo : []).map((t, i) => (
+                            <option key={`${t.codigo || i}`} value={t.codigo}>
+                              [{t.codigo}] {t.nombreDisplay || t.nombre} · Carga vigente {t.cargaVigente ?? 0}
+                              {Array.isArray(t.metadata?.especialidades) && t.metadata.especialidades.length > 0
+                                ? ` (${(t.metadata.especialidades as string[]).join('/')})`
+                                : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      </div>
+                      {cargandoTecnicos && (
+                        <div className="mt-1.5 text-[11px] text-indigo-600 font-semibold flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Cargando catálogo de técnicos…
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Motivo de la redistribución
+                        <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                      </label>
+                      <textarea
+                        value={redistMotivo}
+                        onChange={(e) => setRedistMotivo(e.target.value)}
+                        rows={3}
+                        placeholder="Explique por qué se reasigna (ej: disponibilidad, cambio de turno, capacidad del técnico, especialidad más adecuada, corrección de asignación inicial, etc.)."
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 border-slate-200 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Observaciones internas
+                        <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                      </label>
+                      <textarea
+                        value={redistObservaciones}
+                        onChange={(e) => setRedistObservaciones(e.target.value)}
+                        rows={2}
+                        placeholder="Notas internas para auditoría / trazabilidad."
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-slate-200 focus:border-slate-500 border-slate-200 resize-none"
+                      />
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200 text-indigo-900 text-[11px] leading-5 font-semibold">
+                      <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        Se crea una nueva entrada en el Histórico Asignaciones con el cambio de responsable y trazabilidad completa. Si el estado era RECHAZADA → se limpia el motivoRechazo y pasa a ASIGNADA.
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarModalRedistribuir(false); setErrorRedist(''); }}
+                      disabled={ejecutandoRedist}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmarRedistribucionHandler}
+                      disabled={ejecutandoRedist || !redistTecnicoCodigo.trim() || cargandoTecnicos}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                    >
+                      {ejecutandoRedist ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                      ) : (
+                        <><RedistribuirIcon className="w-4 h-4" /> Confirmar redistribución</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ------------------------------------------------------------------- */}
+            {/* EFDS-1735 RF-INF-006: Modal confirmación recepción materiales       */}
+            {/* ------------------------------------------------------------------- */}
+            {mostrarModalConfirmarRecepcion && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => { if (e.target === e.currentTarget && !ejecutandoRecepcion) { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); } }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 512,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-amber-50/60 rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <Truck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                          Confirmar recepción de materiales
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                          <strong>Encargado UMI</strong> confirma la recepción física de todos los materiales y repuestos solicitados en la valoración. El estado pasará automáticamente a <strong>EN_PROGRESO</strong> y el técnico asignado podrá iniciar la ejecución.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
+                      disabled={ejecutandoRecepcion}
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar confirmación recepción"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {errorRecepcion && (
+                      <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs font-medium">{errorRecepcion}</div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200 text-indigo-900 text-[11px] leading-5 font-semibold">
+                      <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        Se creará una nueva entrada en el Histórico Asignaciones con la acción <strong>RECEPCION_MATERIALES_Y_PASO_A_EJECUCION</strong> para trazabilidad de Gestión de Calidad.
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                        Observaciones de recepción
+                        <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                      </label>
+                      <textarea
+                        value={recepcionObservaciones}
+                        onChange={(e) => setRecepcionObservaciones(e.target.value)}
+                        rows={3}
+                        placeholder="Entrega de materiales 4 tubos PVC 1/2, 1 rollo teflón, 1 tubo silicona neutra 280ml. Proveedor Ferretería La 38, remisión #F-02045."
+                        className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-amber-200 focus:border-amber-500 border-slate-200 resize-none"
+                      />
+                    </div>
+                  </div>
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
+                      disabled={ejecutandoRecepcion}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmarRecepcion}
+                      disabled={ejecutandoRecepcion}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                    >
+                      {ejecutandoRecepcion ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                      ) : (
+                        <><Truck className="w-4 h-4" /> Confirmar recepción</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {mostrarModalVerificarInsumos && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget && !enviandoVerifInsumos) {
+                    setMostrarModalVerificarInsumos(false);
+                    setErrorVerifInsumos('');
+                  }
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 520,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '1px solid #cbd5e1',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-teal-50/70 rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl text-white flex items-center justify-center flex-shrink-0 shadow-md border border-teal-700"
+                        style={{ backgroundColor: '#0d9488' }}
+                      >
+                        <PackageCheck className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-slate-900 tracking-tight">
+                            Recepción Técnica de Insumos
+                          </h3>
+                          <span className="font-mono text-xs font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200">
+                            {detalle?.consecutivo}
+                          </span>
+                          {ultimaRecepcionInsumosTecnico && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-lg border border-emerald-300">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                              Registrada
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1">
+                          {ultimaRecepcionInsumosTecnico
+                            ? 'Verificación registrada por el personal técnico en campo. Registro único asentado en el historial.'
+                            : 'Verificación en campo por el técnico asignado. Registra la conformidad de los insumos una sola vez.'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarModalVerificarInsumos(false);
+                        setErrorVerifInsumos('');
+                      }}
+                      disabled={enviandoVerifInsumos}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar verificación"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {errorVerifInsumos && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600 mt-0.5" />
+                        <span>{errorVerifInsumos}</span>
+                      </div>
+                    )}
+
+                    {ultimaRecepcionInsumosTecnico ? (
+                      <div className="space-y-4">
+                        <div
+                          className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
+                            ultimaRecepcionInsumosTecnico.resultado === 'COMPLETA'
+                              ? 'border-emerald-200 bg-emerald-50/80 text-emerald-950'
+                              : ultimaRecepcionInsumosTecnico.resultado === 'PARCIAL'
+                                ? 'border-amber-200 bg-amber-50/80 text-amber-950'
+                                : 'border-rose-200 bg-rose-50/80 text-rose-950'
+                          }`}
+                        >
+                          <div
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${
+                              ultimaRecepcionInsumosTecnico.resultado === 'COMPLETA'
+                                ? 'bg-emerald-600 text-white'
+                                : ultimaRecepcionInsumosTecnico.resultado === 'PARCIAL'
+                                  ? 'bg-amber-600 text-white'
+                                  : 'bg-rose-600 text-white'
+                            }`}
+                          >
+                            {ultimaRecepcionInsumosTecnico.resultado === 'COMPLETA' && (
+                              <CheckCircle2 className="w-5 h-5" />
+                            )}
+                            {ultimaRecepcionInsumosTecnico.resultado === 'PARCIAL' && (
+                              <Clock className="w-5 h-5" />
+                            )}
+                            {ultimaRecepcionInsumosTecnico.resultado === 'OBSERVADA' && (
+                              <AlertTriangle className="w-5 h-5" />
+                            )}
+                          </div>
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-black uppercase tracking-wider">
+                                Estado:{' '}
+                                {ultimaRecepcionInsumosTecnico.resultado === 'COMPLETA'
+                                  ? 'Completa (Insumos conformes)'
+                                  : ultimaRecepcionInsumosTecnico.resultado === 'PARCIAL'
+                                    ? 'Parcial (Faltan ítems)'
+                                    : 'Observada (Novedades o averías)'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] opacity-80 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                              {ultimaRecepcionInsumosTecnico.tecnico && (
+                                <span>
+                                  <strong>Técnico:</strong> {ultimaRecepcionInsumosTecnico.tecnico}
+                                </span>
+                              )}
+                              {ultimaRecepcionInsumosTecnico.fecha && (
+                                <span>
+                                  <strong>Fecha:</strong> {formatearFecha(ultimaRecepcionInsumosTecnico.fecha)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Observaciones técnicas registradas
+                          </label>
+                          {ultimaRecepcionInsumosTecnico.observaciones ? (
+                            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 whitespace-pre-wrap leading-relaxed font-medium">
+                              {ultimaRecepcionInsumosTecnico.observaciones}
+                            </div>
+                          ) : (
+                            <div className="p-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400 italic">
+                              Sin observaciones técnicas adicionales reportadas.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px]">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>
+                            Esta verificación es definitiva y quedó asentada en el histórico de asignaciones y traza de la solicitud.
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Estado de los Insumos Recibidos *
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setVerifResultado('COMPLETA')}
+                              className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                verifResultado === 'COMPLETA'
+                                  ? 'border-emerald-500 bg-emerald-50/80 ring-2 ring-emerald-500/20 shadow-sm'
+                                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className="text-xs font-bold text-emerald-800">COMPLETA</span>
+                                <CheckCircle2 className={`w-4 h-4 ${verifResultado === 'COMPLETA' ? 'text-emerald-600' : 'text-slate-300'}`} />
+                              </div>
+                              <span className="text-[11px] text-slate-500 leading-tight">
+                                Insumos completos y conformes.
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setVerifResultado('PARCIAL')}
+                              className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                verifResultado === 'PARCIAL'
+                                  ? 'border-amber-500 bg-amber-50/80 ring-2 ring-amber-500/20 shadow-sm'
+                                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className="text-xs font-bold text-amber-800">PARCIAL</span>
+                                <Clock className={`w-4 h-4 ${verifResultado === 'PARCIAL' ? 'text-amber-600' : 'text-slate-300'}`} />
+                              </div>
+                              <span className="text-[11px] text-slate-500 leading-tight">
+                                Faltan ítems secundarios.
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setVerifResultado('OBSERVADA')}
+                              className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                verifResultado === 'OBSERVADA'
+                                  ? 'border-rose-500 bg-rose-50/80 ring-2 ring-rose-500/20 shadow-sm'
+                                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className="text-xs font-bold text-rose-800">OBSERVADA</span>
+                                <AlertTriangle className={`w-4 h-4 ${verifResultado === 'OBSERVADA' ? 'text-rose-600' : 'text-slate-300'}`} />
+                              </div>
+                              <span className="text-[11px] text-slate-500 leading-tight">
+                                Novedades o averías.
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Observaciones técnicas de los insumos (opcional)
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={verifObservaciones}
+                            onChange={(e) => setVerifObservaciones(e.target.value)}
+                            placeholder="Ej: Materiales recibidos conformes en bodega. Referencias y cantidades coinciden con la solicitud..."
+                            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all resize-none"
+                          />
+                          <p className="text-[11px] text-slate-400">
+                            Quedará grabado de forma inmutable en el historial de asignaciones de la solicitud (registro único).
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-center justify-end gap-2.5 p-4 border-t border-slate-100 bg-slate-50/70 rounded-b-2xl"
+                  >
+                    {ultimaRecepcionInsumosTecnico ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMostrarModalVerificarInsumos(false);
+                          setErrorVerifInsumos('');
+                        }}
+                        className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all shadow-sm"
+                      >
+                        Cerrar
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMostrarModalVerificarInsumos(false);
+                            setErrorVerifInsumos('');
+                          }}
+                          disabled={enviandoVerifInsumos}
+                          className="px-4 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleGuardarVerifInsumos}
+                          disabled={enviandoVerifInsumos}
+                          className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {enviandoVerifInsumos ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Guardando...
+                            </>
+                          ) : (
+                            <>
+                              <PackageCheck className="w-3.5 h-3.5" />
+                              Guardar Verificación
+                            </>
+                          )}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal de Registro de Visto Bueno (VoBo) */}
+            {mostrarModalVoBo && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 35,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget && !ejecutandoVoBo) {
+                    setMostrarModalVoBo(false);
+                    setErrorVoBo('');
+                  }
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 500,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '1px solid #cbd5e1',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-violet-50/70 rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-violet-100">
+                        <BadgeCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-slate-900 tracking-tight">
+                            Emitir Visto Bueno (VoBo)
+                          </h3>
+                          <span className="font-mono text-xs font-bold text-violet-800 bg-violet-100 px-2 py-0.5 rounded-lg border border-violet-200">
+                            {detalle?.consecutivo}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1">
+                          Decisión formal sobre la valoración técnica y el alcance de los trabajos.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarModalVoBo(false);
+                        setErrorVoBo('');
+                      }}
+                      disabled={ejecutandoVoBo}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar modal de VoBo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {errorVoBo && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600 mt-0.5" />
+                        <span>{errorVoBo}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                        Decisión de Visto Bueno
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setVoboDecision(true)}
+                          className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                            voboDecision
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-200'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black">Aprobar VoBo</span>
+                            {voboDecision && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                          </div>
+                          <span className="text-[10px] text-slate-500">
+                            Avalar la valoración técnica para continuar el flujo.
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVoboDecision(false)}
+                          className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                            !voboDecision
+                              ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-200'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black">Con Observaciones</span>
+                            {!voboDecision && <AlertCircle className="w-4 h-4 text-amber-600" />}
+                          </div>
+                          <span className="text-[10px] text-slate-500">
+                            Requiere ajustes o aclaraciones del técnico.
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                        Observaciones y Justificación {voboDecision ? '(opcional)' : '(obligatorio)'}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={voboObservacionesInput}
+                        onChange={(e) => setVoboObservacionesInput(e.target.value)}
+                        placeholder={
+                          voboDecision
+                            ? 'Detalles de aprobación, recomendaciones o notas para el técnico...'
+                            : 'Especifique qué insumos o diagnósticos requieren ajuste...'
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-500 resize-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2.5 rounded-b-2xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarModalVoBo(false);
+                        setErrorVoBo('');
+                      }}
+                      disabled={ejecutandoVoBo}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-white transition-all disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={registrarVoBoHandler}
+                      disabled={ejecutandoVoBo}
+                      className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm shadow-violet-500/20 transition-all disabled:opacity-60"
+                    >
+                      {ejecutandoVoBo ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
+                        </>
+                      ) : (
+                        <>
+                          <BadgeCheck className="w-3.5 h-3.5" /> Confirmar VoBo
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
+
         </div>
 
-        {mostrarRemitir && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
-            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
-              <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-sky-50/60 rounded-t-2xl">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <Send className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                      Remitir solicitud a Oficina TI
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
-                      Esta acción genera una nueva remisión formal con trazabilidad de Gestión de Calidad, cambia el área responsable actual a Oficina de Tecnologías y marca el tipo de atención como TECNOLÓGICA si no lo estaba.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setMostrarRemitir(false); setRemitirError(''); }}
-                  disabled={remitirEnviando}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
-                  aria-label="Cerrar remisión"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                {remitirError && (
-                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs font-medium">{remitirError}</div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Motivo de la remisión <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    value={remitirMotivo}
-                    onChange={(e) => setRemitirMotivo(e.target.value)}
-                    rows={4}
-                    placeholder="Explique por qué se remite esta solicitud a la Oficina de Tecnologías de la Información. Mínimo 10 caracteres."
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-sky-200 focus:border-sky-500 border-slate-200 resize-none"
-                  />
-                  <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Mínimo 10 caracteres</span>
-                    <span className={remitirMotivo.trim().length >= 10 ? 'text-emerald-600 font-semibold' : ''}>{remitirMotivo.trim().length} caracteres</span>
-                  </div>
+  
+      {/* Modal Vincular / Actualizar Trámite Contractual (EFDS-2353) */}
+      {mostrarModalTramiteContractual && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full border border-purple-200 shadow-2xl overflow-hidden space-y-4">
+            <div
+              className="p-4 sm:p-5 text-white flex items-center justify-between border-b border-purple-800"
+              style={{ backgroundColor: '#7e22ce' }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Consecutivo cruzado TI
-                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={remitirConsecutivo}
-                    onChange={(e) => setRemitirConsecutivo(e.target.value)}
-                    placeholder="Ej: INC-2024-9821 o número de ticket mesa de ayuda SI"
-                    maxLength={100}
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-sky-200 focus:border-sky-500 border-slate-200"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                    Número de ticket, incidente o solicitud asignado por la Oficina de TI para dar continuidad cruzada entre sistemas.
+                  <h3 className="font-black text-sm tracking-tight text-white">
+                    Vincular Trámite Contractual (EFDS-2353)
+                  </h3>
+                  <p className="text-[11px] text-purple-100">
+                    Solicitud #{detalle?.consecutivo} · Mantenimiento Mayor
                   </p>
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => { setMostrarRemitir(false); setRemitirError(''); }}
-                  disabled={remitirEnviando}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmarRemitir}
-                  disabled={remitirEnviando}
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold shadow-sm shadow-sky-500/20 transition-all disabled:opacity-60 active:scale-[0.98]"
-                >
-                  {remitirEnviando ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Remitiendo...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Confirmar remisión
-                    </>
-                  )}
-                </button>
+              <button
+                type="button"
+                onClick={() => setMostrarModalTramiteContractual(false)}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3.5 text-xs">
+              {errorTramiteContractual && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{errorTramiteContractual}</span>
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  Código de Proceso Contractual / SECOP II *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. ESAP-SAMC-014-2026 o LP-001-2026"
+                  value={procesoContractualInput}
+                  onChange={(e) => setProcesoContractualInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold text-slate-900"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                    Radicado Orfeo de Remisión
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. 2026-ER-009845"
+                    value={radicadoOrfeoInput}
+                    onChange={(e) => setRadicadoOrfeoInput(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                    Presupuesto Oficial (COP)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Ej. 45000000"
+                    value={presupuestoContratoInput}
+                    onChange={(e) => setPresupuestoContratoInput(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800 font-mono"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  Observaciones / Alcance Derivado a Compras
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Notas sobre el proceso de contratación, estudios previos o contratista..."
+                  value={observacionesContratoInput}
+                  onChange={(e) => setObservacionesContratoInput(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800"
+                />
               </div>
             </div>
-          </div>
-        )}
-
-        {mostrarModalRechazar && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/45 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
-            <div className="w-full max-w-lg rounded-2xl border-2 border-rose-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
-              <div className="flex items-start justify-between gap-4 p-5 border-b border-rose-100 bg-gradient-to-br from-rose-50 via-white to-white rounded-t-2xl">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-rose-100">
-                    <IconRechazar className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                      Rechazar solicitud de mantenimiento
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
-                      <span className="font-bold text-rose-700">RF-INF-005 AC-02:</span> El motivo es <span className="font-black underline">OBLIGATORIO</span> (mínimo 10 caracteres) y será <span className="font-black">VISIBLE para el solicitante</span> en el detalle de la solicitud.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setMostrarModalRechazar(false); setErrorRechazo(''); }}
-                  disabled={ejecutandoRechazo}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
-                  aria-label="Cerrar rechazo"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                {errorRechazo && (
-                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs font-medium leading-5">{errorRechazo}</div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Motivo de rechazo <span className="text-rose-600">*</span>
-                    <span className="font-normal text-slate-400 normal-case">(mínimo 10 caracteres)</span>
-                  </label>
-                  <textarea
-                    value={rechazoMotivo}
-                    onChange={(e) => setRechazoMotivo(e.target.value)}
-                    rows={5}
-                    placeholder="Explique detalladamente por qué se rechaza esta solicitud (ej: falta de información, novedad no corresponde al alcance UMI, solicitud duplicada, etc.). Este texto se mostrará al ciudadano/solicitante."
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-rose-200 focus:border-rose-500 border-rose-200 resize-none"
-                  />
-                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400 font-semibold">Mínimo 10 caracteres · máximo 500</span>
-                    <span className={`font-bold ${
-                      rechazoMotivo.trim().length === 0
-                        ? 'text-slate-400'
-                        : rechazoMotivo.trim().length < 10
-                        ? 'text-rose-600'
-                        : 'text-emerald-600'
-                    }`}>
-                      {rechazoMotivo.trim().length} caracteres
-                      {rechazoMotivo.trim().length < 10 ? ` · faltan ${10 - rechazoMotivo.trim().length}` : ' · OK'}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Observaciones internas
-                    <span className="font-normal text-slate-400 normal-case">(opcional, NO visible solicitante)</span>
-                  </label>
-                  <textarea
-                    value={rechazoObservaciones}
-                    onChange={(e) => setRechazoObservaciones(e.target.value)}
-                    rows={2}
-                    placeholder="Notas internas de gestión para trazabilidad UMI (no se mostrarán al solicitante)."
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-slate-200 focus:border-slate-500 border-slate-200 resize-none"
-                  />
-                </div>
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-5 font-semibold">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    Al confirmar: el estado pasará a <strong>RECHAZADA</strong>, se limpiará el responsable asignado y se creará una entrada en <strong>Histórico Asignaciones</strong> con trazabilidad completa de usuario, fecha y roles. Esta acción se puede revertir usando Redistribuir (que vuelve a ASIGNADA).
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => { setMostrarModalRechazar(false); setErrorRechazo(''); }}
-                  disabled={ejecutandoRechazo}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmarRechazoHandler}
-                  disabled={ejecutandoRechazo || rechazoMotivo.trim().length < 10}
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm shadow-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
-                >
-                  {ejecutandoRechazo ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
-                  ) : (
-                    <><ThumbsDown className="w-4 h-4" /> Confirmar rechazo</>
-                  )}
-                </button>
-              </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => setMostrarModalTramiteContractual(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-white transition-all text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={enviandoTramiteContractual}
+                onClick={handleGuardarTramiteContractual}
+                style={{ backgroundColor: '#7e22ce' }}
+                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-white font-bold text-xs shadow-md shadow-purple-500/20 hover:opacity-95 transition-all disabled:opacity-60"
+              >
+                {enviandoTramiteContractual ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                Guardar Trámite Contractual
+              </button>
             </div>
           </div>
-        )}
-
-        {mostrarModalRedistribuir && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/45 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
-            <div className="w-full max-w-lg rounded-2xl border-2 border-indigo-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
-              <div className="flex items-start justify-between gap-4 p-5 border-b border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white rounded-t-2xl">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-indigo-100">
-                    <RedistribuirIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                      Redistribuir / Reasignar técnico
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
-                      <span className="font-bold text-indigo-700">RF-INF-005 AC-01 / D10:</span> Cambia el técnico asignado. Si el estado actual es RECIBIDA o RECHAZADA → automáticamente pasa a <strong>ASIGNADA</strong>. Si ya está ASIGNADA, EN_ANÁLISIS o EN_PROGRESO → mantiene el estado y solo cambia el responsable.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setMostrarModalRedistribuir(false); setErrorRedist(''); }}
-                  disabled={ejecutandoRedist}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
-                  aria-label="Cerrar redistribución"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                {errorRedist && (
-                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs font-medium leading-5">{errorRedist}</div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Técnico de destino <span className="text-rose-600">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={redistTecnicoCodigo}
-                      onChange={(e) => setRedistTecnicoCodigo(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500"
-                      disabled={cargandoTecnicos}
-                    >
-                      <option value="">— Seleccione el técnico a asignar —</option>
-                      {(tecnicosCatalogo.length > 0 ? tecnicosCatalogo : []).map((t, i) => (
-                        <option key={`${t.codigo || i}`} value={t.codigo}>
-                          [{t.codigo}] {t.nombreDisplay || t.nombre} · Carga vigente {t.cargaVigente ?? 0}
-                          {Array.isArray(t.metadata?.especialidades) && t.metadata.especialidades.length > 0
-                            ? ` (${(t.metadata.especialidades as string[]).join('/')})`
-                            : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  </div>
-                  {cargandoTecnicos && (
-                    <div className="mt-1.5 text-[11px] text-indigo-600 font-semibold flex items-center gap-1.5">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Cargando catálogo de técnicos…
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Motivo de la redistribución
-                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
-                  </label>
-                  <textarea
-                    value={redistMotivo}
-                    onChange={(e) => setRedistMotivo(e.target.value)}
-                    rows={3}
-                    placeholder="Explique por qué se reasigna (ej: disponibilidad, cambio de turno, capacidad del técnico, especialidad más adecuada, corrección de asignación inicial, etc.)."
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 border-slate-200 resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Observaciones internas
-                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
-                  </label>
-                  <textarea
-                    value={redistObservaciones}
-                    onChange={(e) => setRedistObservaciones(e.target.value)}
-                    rows={2}
-                    placeholder="Notas internas para auditoría / trazabilidad."
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-slate-200 focus:border-slate-500 border-slate-200 resize-none"
-                  />
-                </div>
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200 text-indigo-900 text-[11px] leading-5 font-semibold">
-                  <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    Se crea una nueva entrada en el Histórico Asignaciones con el cambio de responsable y trazabilidad completa. Si el estado era RECHAZADA → se limpia el motivoRechazo y pasa a ASIGNADA.
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => { setMostrarModalRedistribuir(false); setErrorRedist(''); }}
-                  disabled={ejecutandoRedist}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmarRedistribucionHandler}
-                  disabled={ejecutandoRedist || !redistTecnicoCodigo.trim() || cargandoTecnicos}
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
-                >
-                  {ejecutandoRedist ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
-                  ) : (
-                    <><RedistribuirIcon className="w-4 h-4" /> Confirmar redistribución</>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ------------------------------------------------------------------- */}
-        {/* EFDS-1735 RF-INF-006: Modal confirmación recepción materiales       */}
-        {/* ------------------------------------------------------------------- */}
-        {mostrarModalConfirmarRecepcion && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
-            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
-              <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-amber-50/60 rounded-t-2xl">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <Truck className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                      Confirmar recepción de materiales
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
-                      <strong>Encargado UMI</strong> confirma la recepción física de todos los materiales y repuestos solicitados en la valoración. El estado pasará automáticamente a <strong>EN_PROGRESO</strong> y el técnico asignado podrá iniciar la ejecución.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
-                  disabled={ejecutandoRecepcion}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
-                  aria-label="Cerrar confirmación recepción"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                {errorRecepcion && (
-                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs font-medium">{errorRecepcion}</div>
-                  </div>
-                )}
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200 text-indigo-900 text-[11px] leading-5 font-semibold">
-                  <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    Se creará una nueva entrada en el Histórico Asignaciones con la acción <strong>RECEPCION_MATERIALES_Y_PASO_A_EJECUCION</strong> para trazabilidad de Gestión de Calidad.
-                  </span>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
-                    Observaciones de recepción
-                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
-                  </label>
-                  <textarea
-                    value={recepcionObservaciones}
-                    onChange={(e) => setRecepcionObservaciones(e.target.value)}
-                    rows={3}
-                    placeholder="Entrega de materiales 4 tubos PVC 1/2, 1 rollo teflón, 1 tubo silicona neutra 280ml. Proveedor Ferretería La 38, remisión #F-02045."
-                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-amber-200 focus:border-amber-500 border-slate-200 resize-none"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
-                  disabled={ejecutandoRecepcion}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmarRecepcion}
-                  disabled={ejecutandoRecepcion}
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
-                >
-                  {ejecutandoRecepcion ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
-                  ) : (
-                    <><Truck className="w-4 h-4" /> Confirmar recepción</>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         </div>
-
-      </div>
+      )}
 
     </div>
 
       {mostrarDetalleValoracion && detalle && (
         <DetalleValoracionForm
           open={mostrarDetalleValoracion}
-          onClose={() => setMostrarDetalleValoracion(false)}
+          onClose={() => {
+            setMostrarDetalleValoracion(false);
+            setIdValoracionSeleccionada(null);
+          }}
           idSolicitud={idSolicitud || ''}
-          idValoracion={idValoracionAbierta || undefined}
+          idValoracion={idValoracionSeleccionada || idValoracionAbierta || undefined}
           idCategoria={Number.isInteger(detalle.idCategoria) ? (detalle.idCategoria as number) : null}
+          readOnly={
+            !puedeEditarValoracion ||
+            (idValoracionSeleccionada
+              ? !valoraciones.find(
+                  (x) =>
+                    x.idValoracion === idValoracionSeleccionada &&
+                    !x.estadoAlFinalizar &&
+                    !x.fechaFinValoracion
+                )
+              : false)
+          }
           onSaved={handleValoracionSaved}
         />
       )}

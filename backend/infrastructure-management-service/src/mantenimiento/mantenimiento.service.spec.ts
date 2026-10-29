@@ -65,6 +65,7 @@ const dtoBase = {
   piso: 'Piso 7',
   salon: 'Salon 404',
   tipoMantenimiento: 'CORRECTIVO',
+  idCategoria: 47,
   descripcion: 'Lorem ipsum dolor sit amet consectetur adipiscing elit 1219',
   prioridad: 'ALTA',
   uploadedEvidenciaIds: [] as string[],
@@ -86,6 +87,119 @@ describe('create requiere usuario autenticado', () => {
     await expect(s.create(dtoBase as any, {} as any)).rejects.toThrow(
       /Usuario autenticado requerido/,
     );
+  });
+});
+
+describe('subirEvidencia con solicitud existente', () => {
+  it('permite al solicitante original adjuntar evidencia adicional aunque llegue sin roles', async () => {
+    const mantenimientoRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        idSolicitud: 'sol-1',
+        usuarioSolicitanteId: 'usr-sol-1',
+        usuarioSolicitanteEmail: 'solicitante@esap.edu.co',
+        solicitanteEmail: 'solicitante@esap.edu.co',
+      }),
+    } as any;
+    const evidenciaRepo = {
+      create: jest.fn((d) => d),
+      save: jest.fn(async (rows) => rows),
+    } as any;
+    const storage = {
+      subirArchivo: jest.fn().mockResolvedValue({
+        rutaObjeto: 'mantenimiento/2026/10/test.pdf',
+        bucket: 'local',
+        urlPublica: '/services/infraestructura/uploads/mantenimiento/2026/10/test.pdf',
+        urlPresigned: '/services/infraestructura/uploads/mantenimiento/2026/10/test.pdf',
+        vencimientoPresigned: null,
+      }),
+    } as any;
+    const s = servicio({ mantenimientoRepo, evidenciaRepo, storage });
+
+    const out = await s.subirEvidencia({
+      nombreOriginal: 'test.pdf',
+      buffer: Buffer.from('pdf'),
+      mimeType: 'application/pdf',
+      tamanoBytes: 3,
+      idSolicitud: 'sol-1',
+      notas: 'evidencia_adicional_actor',
+      user: {
+        userId: '',
+        email: 'solicitante@esap.edu.co',
+        roles: [],
+      } as any,
+    });
+
+    expect(out).toBeTruthy();
+    expect(storage.subirArchivo).toHaveBeenCalled();
+    expect(evidenciaRepo.save).toHaveBeenCalled();
+  });
+
+  it('permite al tecnico asignado adjuntar evidencia de valoracion o cierre', async () => {
+    const mantenimientoRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        idSolicitud: 'sol-tec-1',
+        usuarioSolicitanteId: 'usr-sol-x',
+        usuarioSolicitanteEmail: 'solicitante@esap.edu.co',
+        solicitanteEmail: 'solicitante@esap.edu.co',
+        idTecnicoAsignado: '75d2d892-b54f-4d64-b57d-2a1cfc2b2f1c',
+        responsableAsignado: 'TEC-ELEC-001 · Tecnico Electricista',
+      }),
+    } as any;
+    const evidenciaRepo = {
+      create: jest.fn((d) => d),
+      save: jest.fn(async (rows) => rows),
+    } as any;
+    const storage = {
+      subirArchivo: jest.fn().mockResolvedValue({
+        rutaObjeto: 'mantenimiento/2026/10/test-tec.jpg',
+        bucket: 'local',
+        urlPublica: '/services/infraestructura/uploads/mantenimiento/2026/10/test-tec.jpg',
+        urlPresigned: '/services/infraestructura/uploads/mantenimiento/2026/10/test-tec.jpg',
+        vencimientoPresigned: null,
+      }),
+    } as any;
+    const s = servicio({ mantenimientoRepo, evidenciaRepo, storage });
+
+    const out = await s.subirEvidencia({
+      nombreOriginal: 'test-tec.jpg',
+      buffer: Buffer.from('jpg'),
+      mimeType: 'image/jpeg',
+      tamanoBytes: 3,
+      idSolicitud: 'sol-tec-1',
+      notas: 'valoracion_campo',
+      user: {
+        userId: '75d2d892-b54f-4d64-b57d-2a1cfc2b2f1c',
+        email: 'tecnico.electricista@esap.edu.co',
+        roles: ['TECNICO_ELECTRICO_ESPECIALIZADO'],
+      } as any,
+    });
+
+    expect(out).toBeTruthy();
+    expect(storage.subirArchivo).toHaveBeenCalled();
+    expect(evidenciaRepo.save).toHaveBeenCalled();
+  });
+
+  it('rechaza cuando intentan ligar evidencia sin identidad autenticada', async () => {
+    const mantenimientoRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        idSolicitud: 'sol-2',
+        usuarioSolicitanteId: 'usr-sol-2',
+        usuarioSolicitanteEmail: 'sol2@esap.edu.co',
+        solicitanteEmail: 'sol2@esap.edu.co',
+      }),
+    } as any;
+    const s = servicio({ mantenimientoRepo });
+
+    await expect(
+      s.subirEvidencia({
+        nombreOriginal: 'test.pdf',
+        buffer: Buffer.from('pdf'),
+        mimeType: 'application/pdf',
+        tamanoBytes: 3,
+        idSolicitud: 'sol-2',
+        user: undefined,
+      }),
+    ).rejects.toThrow(/Usuario autenticado requerido/);
   });
 });
 
@@ -432,7 +546,10 @@ describe('[EFDS-1731] AC-02 Bandeja findAll filtro areaResponsableActual por rol
       mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
     });
     await s.findAll(undefined, undefined, false, undefined, userUMI);
-    expect(andWhere).toHaveBeenCalledWith(expect.stringMatching(/UMI|PENDIENTE/));
+    expect(andWhere).toHaveBeenCalledWith(
+      expect.stringMatching(/areaResponsableActual IN/),
+      expect.objectContaining({ areasUMI: expect.arrayContaining(['UMI', 'PENDIENTE']) }),
+    );
   });
 
   it('findAll usuario UMI incluirTI=true → NO agrega filtro areaResp (muestra todas incluidas TI)', async () => {
@@ -556,6 +673,19 @@ describe('[EFDS-1732] AC-01 Seed 8 categorías oficiales CATEGORIA_SERVICIO idCa
 });
 
 describe('[EFDS-1732] AC-03 create guarda idCategoria + idSubcategoria en solicitud', () => {
+  it('create FISICA sin idCategoria → BadRequest porque la categoría es obligatoria', async () => {
+    const s = servicio({
+      sedeRepo: { findOne: jest.fn().mockResolvedValue(sedeValida) },
+      mantenimientoRepo: {
+        count: jest.fn().mockResolvedValue(3),
+        save: jest.fn(),
+      },
+    });
+    await expect(
+      s.create({ ...dtoBase, tipoAtencion: 'FISICA', idCategoria: undefined } as any, userValido),
+    ).rejects.toThrow('La categoría de servicio es obligatoria para radicar solicitudes de atención física.');
+  });
+
   it('create dto idCategoria=50 (CS_004 Plomería) + idSubcategoria=1001 → save incluye ambos integers', async () => {
     const save = jest.fn().mockImplementation((d) => ({ idSolicitud: 's-1732', evidencias: [], ...d }));
     const s = servicio({
@@ -1084,17 +1214,23 @@ describe('[EFDS-1733] AC-02 EQUIDAD: orden ASC por cargaVigente, luego alfabetic
     const tecC = { idCatalogo: 92, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-C', nombre: 'Carla', isActivo: true };
     const cargaPorCodigo: Record<string, number> = { 'TEC-A': 1, 'TEC-B': 2, 'TEC-C': 0 };
     let ultimoPatCapturado = '';
+    const capturar = (_cond: string, params?: any) => {
+      if (params && typeof params.pat === 'string') ultimoPatCapturado = params.pat;
+    };
     const s = servicio({
       mantenimientoRepo: {
         findOne: jest.fn().mockResolvedValue({
           idSolicitud: 'SOL-EQ-1', idCategoria: 47, areaResponsableActual: 'UMI',
         }),
         createQueryBuilder: jest.fn(() => ({
-          where: jest.fn(function (_cond: string, params?: any) {
-            if (params && typeof params.pat === 'string') ultimoPatCapturado = params.pat;
+          where: jest.fn(function (c: string, params?: any) {
+            capturar(c, params);
             return this;
           }),
-          andWhere: jest.fn().mockReturnThis(),
+          andWhere: jest.fn(function (c: string, params?: any) {
+            capturar(c, params);
+            return this;
+          }),
           getCount: jest.fn(async function () {
             for (const [cod, c] of Object.entries(cargaPorCodigo)) {
               if (ultimoPatCapturado.includes(cod)) return c;
@@ -1753,7 +1889,7 @@ describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entrie
     const entry = r.asignaciones[0];
     const keys = Object.keys(entry).sort();
     expect(keys).toEqual([
-      'accion', 'fecha', 'id', 'motivo',
+      'accion', 'fecha', 'id', 'id_tecnico_asignado', 'motivo',
       'observaciones', 'tecnico_codigo', 'tecnico_nombre_display',
       'usuario_email', 'usuario_id', 'usuario_roles',
     ]);
@@ -2736,5 +2872,98 @@ describe('[EFDS-1737-ST09] Notificaciones conformidad automáticas (campanita IN
       'UMI_CONFORMIDAD_SIN_RESPUESTA_SOLICITANTE',
     ];
     esperados.forEach((t) => expect(tipos.has(t)).toBe(true));
+  });
+
+  describe('Fase 2 / Req #4: registrarRecepcionInsumosTecnico', () => {
+    const montarInsumos = (sol: any) => {
+      const saved: any = { ...sol, asignaciones: [...(sol.asignaciones || [])] };
+      const repo = {
+        findOne: jest.fn().mockImplementation(() => Promise.resolve(saved)),
+        save: jest.fn().mockImplementation((d: any) => {
+          Object.assign(saved, d);
+          return Promise.resolve(saved);
+        }),
+      } as any;
+      const catRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+      } as any;
+      return {
+        saved,
+        servicio: servicio({ mantenimientoRepo: repo, catalogoRepo: catRepo } as any),
+        repo,
+      };
+    };
+
+    it('lanza ForbiddenException si no hay usuario', async () => {
+      const s = servicio();
+      await expect(
+        s.registrarRecepcionInsumosTecnico('SOL-1', { resultado: 'COMPLETA' }, null),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('lanza ForbiddenException si el usuario no es el técnico asignado ni gestor', async () => {
+      const { servicio: s } = montarInsumos({
+        idSolicitud: 'SOL-INS-1',
+        estado: 'EN_PROGRESO',
+        responsableAsignado: 'TEC-01 · Pedro Técnico',
+        idTecnicoAsignado: 'd2e4f6a8-0000-0000-0000-000000000001',
+      });
+      const userOtro = {
+        userId: '99999999-9999-9999-9999-999999999999',
+        email: 'otro@esap.edu.co',
+        roles: ['USER'],
+      };
+      await expect(
+        s.registrarRecepcionInsumosTecnico('SOL-INS-1', { resultado: 'PARCIAL' }, userOtro),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('registra exitosamente verificación técnica COMPLETA/PARCIAL/OBSERVADA con trazabilidad', async () => {
+      const userTec = {
+        userId: '75d2d892-b54f-4d64-b57d-2a1cfc2b2f1c',
+        email: 'tecnico.multiproposito@esap.edu.co',
+        roles: ['USER'],
+      };
+      const { servicio: s, saved } = montarInsumos({
+        idSolicitud: 'SOL-INS-2',
+        estado: 'EN_PROGRESO',
+        responsableAsignado: 'TEC-01 · Pedro Técnico',
+        idTecnicoAsignado: userTec.userId,
+        asignaciones: [],
+      });
+
+      const res = await s.registrarRecepcionInsumosTecnico(
+        'SOL-INS-2',
+        { resultado: 'PARCIAL', observaciones: 'Faltan 2 codos PVC, se inicia con tubería recibida.' },
+        userTec,
+      );
+
+      expect(res).toBeDefined();
+      const ultimaAsig = saved.asignaciones[saved.asignaciones.length - 1];
+      expect(ultimaAsig.accion).toBe('RECEPCION_INSUMOS_TECNICO');
+      expect(ultimaAsig.motivo).toContain('PARCIAL');
+      expect(ultimaAsig.observaciones).toContain('Faltan 2 codos PVC');
+    });
+
+    it('lanza ConflictException si la recepción técnica ya fue registrada previamente', async () => {
+      const userTec = {
+        userId: '75d2d892-b54f-4d64-b57d-2a1cfc2b2f1c',
+        email: 'tecnico.multiproposito@esap.edu.co',
+        roles: ['USER'],
+      };
+      const { servicio: s } = montarInsumos({
+        idSolicitud: 'SOL-INS-3',
+        estado: 'EN_PROGRESO',
+        responsableAsignado: 'TEC-01 · Pedro Técnico',
+        idTecnicoAsignado: userTec.userId,
+        asignaciones: [
+          { accion: 'RECEPCION_INSUMOS_TECNICO', motivo: 'Previo', fecha: new Date() },
+        ],
+      });
+
+      await expect(
+        s.registrarRecepcionInsumosTecnico('SOL-INS-3', { resultado: 'COMPLETA' }, userTec),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
   });
 });

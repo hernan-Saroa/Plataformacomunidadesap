@@ -41,6 +41,7 @@ import { PTADecisionLoading } from '../../pta/PTADecisionLoading';
 import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { DocenciaCrucesAlert } from '../../pta/shared/DocenciaCrucesAlert';
 import { getPtaResearchData } from '../../../utils/ptaResearch';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import type { PTAComponentKey } from '../../pta/shared/ptaComponentPermissions';
@@ -57,12 +58,16 @@ import {
   normalizeConfiguredHourRow,
 } from '../../pta/shared/configuredHours';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { getDocenciaAprobada, getRegimenDocencia, type RegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
+import { DocenciaConcertada } from './DocenciaConcertada';
 import {
+  catalogProgramId,
   filterAssignmentsByPensum,
   formatPtaAssignmentName,
   inferLegacyPensum,
   listPensumsForProgram,
   mergeAssignmentCatalog,
+  replaceProgramAssignmentCatalog,
   reconcileLegacyAssignment,
   SIN_PENSUM_KEY,
 } from '../../../utils/ptaPensumCompatibility';
@@ -155,6 +160,10 @@ interface PTAFormProps {
 
 interface AsignaturaItem {
   id: number;
+  origen?: string;
+  editable?: boolean;
+  nivel_concertacion?: 'pregrado' | 'posgrado';
+  id_concertacion?: string;
   territorial_id: string;
   cetap_id: string;
   programa_id: string;
@@ -305,11 +314,11 @@ interface ComplementariaItem {
   seleccion_jerarquica?: HierarchySelectionSnapshot[];
   fecha_inicio: string;
   fecha_fin: string;
-  // Anotado por el backend en getPTAById (clasificarComplementarias): a qué
-  // componente de aprobación pertenece esta actividad (complementarias /
-  // complementarias_pregrado / complementarias_posgrado, según el nivel_programa
-  // configurado para su TIPO en el catálogo). Ausente en filas nuevas sin guardar.
+  // El backend anota el responsable final y todas las etapas de la actividad.
+  // Las filas nuevas todavía no tienen esta clasificación.
   componente_complementaria?: string;
+  componentes_complementaria?: string[];
+  componentes_edicion_complementaria?: string[];
 }
 
 function ResolutionFilePreviewButton({
@@ -734,10 +743,8 @@ function normalizeDocenciaModality(value: unknown): string {
 }
 
 /**
- * Los cruces solo son bloqueantes cuando ambas asignaturas tienen un
- * componente presencial. Las modalidades enteramente remotas generan una
- * advertencia informativa. "Por definir" se conserva como dato del catálogo
- * sin bloquear al docente ni inferir una modalidad que la institución no definió.
+ * Clasifica los avisos de cruce sin impedir el envío ni descontar horas.
+ * "Por definir" no permite inferir una modalidad que la institución no definió.
  */
 function getDocenciaModalityKind(value: unknown): DocenciaModalityKind {
   const modality = normalizeDocenciaModality(value);
@@ -754,8 +761,7 @@ function getDocenciaModalityKind(value: unknown): DocenciaModalityKind {
   ) {
     return 'non-presential';
   }
-  // Compatibilidad con PTAs históricos que no persistían modalidad: se
-  // consideran presenciales para no relajar silenciosamente el bloqueo.
+  // Compatibilidad con PTAs históricos que no persistían modalidad.
   return 'presential';
 }
 
@@ -1941,6 +1947,9 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   complementarias: 'complementarias',
   complementarias_pregrado: 'complementarias',
   complementarias_posgrado: 'complementarias',
+  complementarias_decanatura: 'complementarias',
+  complementarias_territorial: 'complementarias',
+  complementarias_gestion_profesoral: 'complementarias',
 };
 const ALL_COMPONENT_KEYS = Object.keys(COMPONENT_TO_FORM_SECTION) as PTAComponentKey[];
 
@@ -1958,6 +1967,9 @@ const COMPONENT_LABEL: Record<string, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_decanatura: 'Complementarias (Decanatura)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   // Legacy
   academicas_admin: 'Actividades Académico-Administrativas',
   academico_admin: 'Actividades Académico-Administrativas',
@@ -2061,6 +2073,20 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
 
   // ID interno que se actualiza tras el primer guardado (evita duplicados al guardar múltiples veces)
   const [currentPtaId, setCurrentPtaId] = useState<string | undefined>(ptaId || undefined);
+  const [periodoListo, setPeriodoListo] = useState(Boolean(ptaId));
+  const [periodoNoDisponible, setPeriodoNoDisponible] = useState(false);
+  const [consultaRegimen, setConsultaRegimen] = useState<{ clave: string; valor: RegimenDocencia | 'error' } | null>(null);
+  const claveRegimen = currentPtaId ? `pta:${currentPtaId}` : periodoListo ? `periodo:${periodo}` : '';
+  const regimenDocencia = periodoNoDisponible ? 'error' : consultaRegimen?.clave === claveRegimen ? consultaRegimen.valor : 'loading';
+  useEffect(() => {
+    if (!claveRegimen) return;
+    let vigente = true;
+    const consulta = currentPtaId ? { ptaId: currentPtaId } : { periodo };
+    getRegimenDocencia(consulta)
+      .then(valor => { if (vigente) setConsultaRegimen({ clave: claveRegimen, valor }); })
+      .catch(() => { if (vigente) setConsultaRegimen({ clave: claveRegimen, valor: 'error' }); });
+    return () => { vigente = false; };
+  }, [claveRegimen, currentPtaId, periodo]);
   // En modo admin, preserva el docente_id real del PTA (no el del admin logueado)
   const [docenteIdFromPta, setDocenteIdFromPta] = useState<string>('');
   // Ficha completa usada por el panel dinámico de identificación. Se conserva
@@ -2078,7 +2104,8 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
   const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
   // Resumen visual previo a la firma y al envío.
   const [showConfirmResumen, setShowConfirmResumen] = useState(false);
-  const [confirmResumenData, setConfirmResumenData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+  const [confirmResumenData, setConfirmResumenData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number;
+    cruces: string[]; accion: 'via_save' | 'avanzar_sin_cambios' } | null>(null);
   const [isClosingConfirmResumen, setIsClosingConfirmResumen] = useState(false);
   const confirmResumenCloseTimerRef = useRef<number | null>(null);
   const confirmResumenClosingRef = useRef(false);
@@ -2114,6 +2141,25 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
 
   // Componentes
   const [asignaturas, setAsignaturas] = useState<AsignaturaItem[]>([]);
+
+  // PTA NUEVO en el régimen de concertación: la docencia ya aprobada se aplica al guardar (servidor,
+  // aplicarPendientesAlCrear), pero el docente debe verla desde el principio. Antes el formulario vacío
+  // decía «llegará cuando se apruebe» aunque ya estuviera aprobada. Si ya hay un PTA del periodo, se avisa
+  // para que lo continúe en vez de crear otro.
+  const [ptaVigenteDelPeriodo, setPtaVigenteDelPeriodo] = useState<{ id: string; estado: string } | null>(null);
+  useEffect(() => {
+    if (currentPtaId || isAdminEdit || regimenDocencia !== 'programacion' || !periodo) { setPtaVigenteDelPeriodo(null); return; }
+    let vigente = true;
+    getDocenciaAprobada(periodo).then((r) => {
+      if (!vigente) return;
+      setPtaVigenteDelPeriodo(r.ptaVigente);
+      if (r.asignaturas.length) {
+        // Reemplaza solo la de programación (en este régimen no hay docencia manual): no se edita aquí.
+        setAsignaturas((prev) => [...prev.filter((a) => a.origen !== 'programacion'), ...r.asignaturas]);
+      }
+    });
+    return () => { vigente = false; };
+  }, [currentPtaId, isAdminEdit, regimenDocencia, periodo]);
   const [invProyecto, setInvProyecto] = useState<InvestigacionProyecto>({
     territorial_id: '',
     nombre: '', codigo: '', grupo: '', linea: '', rol: '',
@@ -2134,6 +2180,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
 
   // Aprobaciones por componente — para detectar devoluciones y mostrar sus comentarios.
   const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>([]);
+  const [aprobacionesCargadas, setAprobacionesCargadas] = useState(false);
   const componentesDevueltos = useMemo(
     () => (componentesAprobacion || []).filter(c => String(c?.estado || '').toLowerCase() === 'devuelto'),
     [componentesAprobacion],
@@ -2248,13 +2295,15 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     if (!isComponentRestricted || !asig.componente_docencia) return true;
     return allowedComponentKeySet.has(asig.componente_docencia as PTAComponentKey);
   }, [allowedComponentKeySet, isComponentRestricted]);
-  // Mismo patrón que canEditDocenciaAsignatura: Complementarias comparte una sola
-  // pestaña entre 3 componentes de aprobación (sin programa/pregrado/posgrado, ver
-  // COMPONENT_TO_FORM_SECTION). `componente_complementaria` lo anota el backend en
-  // getPTAById a partir de clasificarComplementarias.
-  const canEditComplementariaItem = useCallback((item: { componente_complementaria?: string }) => {
-    if (!isComponentRestricted || !item.componente_complementaria) return true;
-    return allowedComponentKeySet.has(item.componente_complementaria as PTAComponentKey);
+  // Una devolución de Programa o del responsable final habilita corregir la
+  // misma actividad; las demás filas conservan su bloqueo.
+  const canEditComplementariaItem = useCallback((item: { componente_complementaria?: string; componentes_complementaria?: string[]; componentes_edicion_complementaria?: string[] }) => {
+    if (!isComponentRestricted) return true;
+    const etapas = item.componentes_complementaria?.length
+      ? item.componentes_complementaria
+      : item.componente_complementaria ? [item.componente_complementaria] : [];
+    return etapas.length === 0 || [...etapas, ...(item.componentes_edicion_complementaria || [])]
+      .some(etapa => allowedComponentKeySet.has(etapa as PTAComponentKey));
   }, [allowedComponentKeySet, isComponentRestricted]);
 
   useEffect(() => {
@@ -2290,7 +2339,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     ]).then(([progs, asigs, actInv, actExt, actComp, actAcad, roles, config, secciones, periodos]) => {
       if (progs.success) setProgramas(progs.data);
       if (asigs.success) {
-        setAsignaturasCat(current => mergeAssignmentCatalog(current, asigs.data));
+        setAsignaturasCat(current => mergeAssignmentCatalog(current, asigs.data.filter(
+          item => !loadedAsignaturasProgramasRef.current.has(catalogProgramId(item)),
+        )));
       }
       if (actInv.success) setActInvestigacion(actInv.data);
       if (actExt.success && actExt.data) {
@@ -2406,6 +2457,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     setAsignaturas(previous => {
       let changed = false;
       const next = previous.map(item => {
+        if (item.origen === 'programacion') return item;
         const reconciled = reconcileLegacyAssignment(item, asignaturasCat);
         const inferredPensum = inferLegacyPensum(reconciled, asignaturasCat);
         const normalized = inferredPensum && inferredPensum !== reconciled.pensum
@@ -2732,7 +2784,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     try {
       const result = await getCatalogoAsignaturas(programKey);
       if (result.success) {
-        setAsignaturasCat(current => mergeAssignmentCatalog(current, result.data, programKey));
+        setAsignaturasCat(current => replaceProgramAssignmentCatalog(current, result.data, programKey));
         loadedAsignaturasProgramasRef.current.add(programKey);
       }
     } finally {
@@ -2870,14 +2922,16 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
 
   // Cargar aprobaciones por componente (para detectar devoluciones + comentarios del revisor).
   useEffect(() => {
-    if (!ptaId) { setComponentesAprobacion([]); return; }
+    if (!ptaId) { setComponentesAprobacion([]); setAprobacionesCargadas(false); return; }
     if (saving) return;
     let cancelado = false;
+    setAprobacionesCargadas(false);
     getComponentesAprobacion(ptaId)
       .then((res: any) => {
         if (!cancelado && res?.success) setComponentesAprobacion(Array.isArray(res.data) ? res.data : []);
+        if (!cancelado) setAprobacionesCargadas(true);
       })
-      .catch((err: any) => console.warn('[PTAForm] No se pudieron cargar aprobaciones por componente:', err?.message || err));
+      .catch((err: any) => { if (!cancelado) setAprobacionesCargadas(true); console.warn('[PTAForm] No se pudieron cargar aprobaciones por componente:', err?.message || err); });
     return () => { cancelado = true; };
   }, [ptaId, syncVersion, saving]);
 
@@ -2889,8 +2943,12 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
         const activePer = await getActivePeriodoAcademico();
         if (activePer && activePer.codigo) {
           setPeriodo(activePer.codigo);
+          setPeriodoListo(true);
+        } else {
+          setPeriodoNoDisponible(true);
         }
       } catch (err) {
+        setPeriodoNoDisponible(true);
         console.warn('[PTAForm] No se pudo obtener el período activo (codigo):', err?.message || err);
       }
     })();
@@ -2922,7 +2980,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
         const lista = Array.isArray(res?.data) ? res.data : [];
         const match = codigoPeriodo
           ? lista.find((p: any) => String(p.codigo) === codigoPeriodo)
-          : lista.find((p: any) => p.estado === 'en_curso');
+          : lista.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
         const fi = match?.fecha_inicio || match?.fechaInicio;
         const ff = match?.fecha_fin || match?.fechaFin;
         if (!cancelado && fi && ff) {
@@ -3047,11 +3105,10 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     const candidates = asignaturas.filter(a =>
       a.asignatura_id && a.fecha_inicio && a.fecha_fin
     );
-    const blockingWarnings: string[] = [];
+    const presentialWarnings: string[] = [];
     const advisoryWarnings: string[] = [];
-    const blockingIds = new Set<number>();
+    const presentialIds = new Set<number>();
     const advisoryIds = new Set<number>();
-    const excludedFromHoursIds = new Set<number>();
 
     for (let i = 0; i < candidates.length; i++) {
       for (let j = i + 1; j < candidates.length; j++) {
@@ -3076,12 +3133,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
           `coinciden entre ${a.fecha_inicio}–${a.fecha_fin} y ${b.fecha_inicio}–${b.fecha_fin}.`;
 
         if (aKind === 'presential' && bKind === 'presential') {
-          blockingIds.add(a.id);
-          blockingIds.add(b.id);
-          // Se conserva la primera asignatura y se omiten únicamente las horas
-          // de la posterior, igual que en el comportamiento histórico.
-          excludedFromHoursIds.add(b.id);
-          blockingWarnings.push(detail);
+          presentialIds.add(a.id);
+          presentialIds.add(b.id);
+          presentialWarnings.push(detail);
         } else {
           advisoryIds.add(a.id);
           advisoryIds.add(b.id);
@@ -3090,13 +3144,12 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       }
     }
 
-    return { blockingWarnings, advisoryWarnings, blockingIds, advisoryIds, excludedFromHoursIds };
+    return { presentialWarnings, advisoryWarnings, presentialIds, advisoryIds };
   }, [asignaturas]);
-  const docenciaBlockingOverlapWarnings = docenciaOverlapInfo.blockingWarnings;
+  const docenciaPresentialOverlapWarnings = docenciaOverlapInfo.presentialWarnings;
   const docenciaAdvisoryOverlapWarnings = docenciaOverlapInfo.advisoryWarnings;
-  const docenciaConflictIds = docenciaOverlapInfo.blockingIds;
+  const docenciaConflictIds = docenciaOverlapInfo.presentialIds;
   const docenciaAdvisoryIds = docenciaOverlapInfo.advisoryIds;
-  const docenciaExcludedFromHoursIds = docenciaOverlapInfo.excludedFromHoursIds;
 
   // Recargar programas filtrados si el periodo cambia y ya hay un CETAP por defecto
   useEffect(() => {
@@ -3111,12 +3164,12 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
 
   // ═══ CÁLCULOS (réplica fórmulas Excel) ═══════════════════════════
 
-  const hDocencia = useMemo(() =>
-    // Solo los cruces presencial-presencial excluyen la asignatura posterior.
-    // Virtual/Distancia conserva sus horas porque el cruce es informativo.
-    asignaturas.reduce((t, a) => docenciaExcludedFromHoursIds.has(a.id) ? t : t + (a.total_horas || 0), 0),
+  const hDocencia = useMemo(() => regimenDocencia === 'programacion'
+    ? asignaturas.filter(a => a.origen === 'programacion').reduce((t, a) => t + Number(a.total_horas || 0), 0)
+    :
+    asignaturas.reduce((t, a) => t + (a.total_horas || 0), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [asignaturas, docenciaExcludedFromHoursIds]
+    [asignaturas, regimenDocencia]
   );
 
   const hInvestigacion_raw = useMemo(() =>
@@ -4445,7 +4498,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       }
     };
 
-    if (!hasFullPTAActivity && canEditFormSection('docencia')) {
+    if (regimenDocencia !== 'programacion' && !hasFullPTAActivity && canEditFormSection('docencia')) {
       asignaturas.forEach((asig, index) => {
         const itemLabel = `la asignatura ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.docencia(asig.id, field);
@@ -4619,6 +4672,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     extActividades,
     extSecciones,
     hasFullPTAActivity,
+    regimenDocencia,
     hasDocencia,
     hInvestigacion,
     hInvestigacionProyecto,
@@ -4745,7 +4799,11 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     // Validación mínima docencia: al menos 1 asignatura con catálogo seleccionado
     const _tieneTotalidad = hasFullPTAActivity;
     const _asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
-    if (enviar && !_tieneTotalidad && _asignaturasValidas.length === 0) {
+    if (enviar && regimenDocencia === 'programacion' && !asignaturas.some(a => a.origen === 'programacion')) {
+      toast.error('La Docencia llegará al PTA cuando se apruebe la concertación en Programación Académica.');
+      return finishSaving(false);
+    }
+    if (enviar && regimenDocencia !== 'programacion' && !_tieneTotalidad && _asignaturasValidas.length === 0) {
       toast.error(asignaturas.length > 0
         ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
         : 'Debe incluir al menos una asignatura de docencia.');
@@ -4753,16 +4811,8 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     }
 
     // Validación: al menos una asignatura con mínimo 3 créditos
-    if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
+    if (enviar && regimenDocencia !== 'programacion' && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
-      return finishSaving(false);
-    }
-
-    // Solo el cruce entre dos asignaturas presenciales bloquea el envío.
-    // Los cruces Virtual/Distancia se muestran como aviso y se pueden guardar/enviar.
-    if (enviar && (!isComponentRestricted || canEditFormSection('docencia')) && docenciaBlockingOverlapWarnings.length > 0) {
-      toast.error(docenciaBlockingOverlapWarnings[0]);
-      setActiveSection('docencia');
       return finishSaving(false);
     }
 
@@ -4846,7 +4896,11 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     // Persistir una instantánea legible del programa, además de su id. El backend
     // vuelve a resolver el catálogo al consultar el PTA, pero esta copia mantiene
     // completos también los snapshots y borradores recién guardados.
-    const asignaturasPayload = asignaturas
+    const asignaturasPayload = regimenDocencia === 'programacion'
+      // Al CREAR, lo concertado que se ve es una vista previa: el servidor lo aplica él mismo al guardar
+      // (aplicarPendientesAlCrear) y rechaza asignaturas «de programación» que no tenga guardadas.
+      ? (currentPtaId ? asignaturas.filter(a => a.origen === 'programacion') : [])
+      : asignaturas
       .filter(a => a.asignatura_id && a.asignatura_id !== '')
       .map(a => {
         const programasDelCetap = a.cetap_id ? (programasPorCetap[a.cetap_id] || []) : [];
@@ -4935,13 +4989,34 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     let res: any;
     try {
       res = await savePTA(payload);
-    } catch (err) {
-      toast.error('Error de conexión al guardar. Intenta de nuevo.');
+    } catch (err: any) {
+      if (regimenDocencia !== 'actual' && (err?.status ?? err?.response?.status ?? err?.statusCode) === 503) {
+        toast.error('El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde.');
+      } else {
+        toast.error('Error de conexión al guardar. Intenta de nuevo.');
+      }
       return finishSaving(false);
     }
     if (res.success) {
       const savedId = res.data?.id || res.id || currentPtaId;
       if (savedId) setCurrentPtaId(savedId);
+      if (savedId && regimenDocencia === 'programacion') {
+        try {
+          const [ptaActualizado, aprobacionesActualizadas] = await Promise.all([
+            getPTAById(savedId), getComponentesAprobacion(savedId),
+          ]);
+          if (ptaActualizado?.success && ptaActualizado.data) {
+            setAsignaturas(ptaActualizado.data.asignaturas || []);
+            setPtaDataIdentificacion(ptaActualizado.data);
+          }
+          if (aprobacionesActualizadas?.success) {
+            setComponentesAprobacion(Array.isArray(aprobacionesActualizadas.data) ? aprobacionesActualizadas.data : []);
+            setAprobacionesCargadas(true);
+          }
+        } catch (err) {
+          console.warn('[PTAForm] No se pudo actualizar la Docencia concertada tras guardar:', err);
+        }
+      }
 
       // Modo admin: solo guardar y volver al panel
       if (isAdminEdit) {
@@ -4994,7 +5069,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
         return finishSaving(true);
       }
     } else {
-      toast.error(res.message || 'Error al guardar el PTA');
+      toast.error(regimenDocencia !== 'actual' && res.status === 503
+        ? 'El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde.'
+        : res.message || 'Error al guardar el PTA');
       return finishSaving(false);
     }
   };
@@ -5049,6 +5126,18 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
   const isEnRevisionDocente = ESTADOS_REVISION_DOCENTE.includes(estado) || ESTADOS_REVISION_DOCENTE.includes(originalEstado);
   const isEditable = isAdminEdit || estado === 'Borrador' || originalEstado === 'Devuelto' || isEnRevisionDocente;
 
+  const openConfirmResumen = useCallback((accion: 'via_save' | 'avanzar_sin_cambios' = 'via_save') => {
+    if (confirmResumenCloseTimerRef.current !== null) {
+      window.clearTimeout(confirmResumenCloseTimerRef.current);
+      confirmResumenCloseTimerRef.current = null;
+    }
+    confirmResumenClosingRef.current = false;
+    setIsClosingConfirmResumen(false);
+    setConfirmResumenData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje,
+      cruces: docenciaPresentialOverlapWarnings, accion });
+    setShowConfirmResumen(true);
+  }, [totalHoras, horasAProgramar, porcentaje, docenciaPresentialOverlapWarnings]);
+
   const validateEnvioDocente = useCallback(() => {
     const tieneTotalidad = hasFullPTAActivity;
     const shouldValidateDocencia = !isComponentRestricted || canEditFormSection('docencia');
@@ -5060,31 +5149,30 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     }
 
     const asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
-    if (!tieneTotalidad && asignaturasValidas.length === 0) {
+    if (regimenDocencia === 'programacion' && !asignaturas.some(a => a.origen === 'programacion')) {
+      toast.error('La Docencia llegará al PTA cuando se apruebe la concertación en Programación Académica.');
+      return false;
+    }
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && asignaturasValidas.length === 0) {
       toast.error(asignaturas.length > 0
         ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
         : 'Debe incluir al menos una asignatura de docencia.');
       return false;
     }
-    if (!tieneTotalidad && !asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && !asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
       return false;
     }
-    if (!tieneTotalidad && shouldValidateDocencia && !validarAsignaturasParaEnvio(asignaturasValidas)) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && !validarAsignaturasParaEnvio(asignaturasValidas)) {
       return false;
     }
-    if (!tieneTotalidad && shouldValidateDocencia && docenciaBlockingOverlapWarnings.length > 0) {
-      toast.error(docenciaBlockingOverlapWarnings[0]);
-      setActiveSection('docencia');
-      return false;
-    }
-    if (!tieneTotalidad && shouldValidateDocencia && docenciaAdvisoryOverlapWarnings.length > 0) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && docenciaAdvisoryOverlapWarnings.length > 0) {
       toast.warning(
         `Se detectaron ${docenciaAdvisoryOverlapWarnings.length} cruce(s) con asignaturas Virtual/Distancia. ` +
         'Es una advertencia informativa y puede continuar con el envío.',
       );
     }
-    if (!tieneTotalidad && shouldValidateDocencia && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
       const hDocenciaTotal = asignaturasValidas.reduce((t, a) => t + (a.total_horas || 0), 0);
       if (hDocenciaTotal < horasAProgramar * 0.5) {
         toast.error('Los profesores Ocasionales, Visitantes y Especiales deben dedicar al menos el 50% de su PTA a docencia.');
@@ -5132,16 +5220,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       return false;
     }
 
-    if (confirmResumenCloseTimerRef.current !== null) {
-      window.clearTimeout(confirmResumenCloseTimerRef.current);
-      confirmResumenCloseTimerRef.current = null;
-    }
-    confirmResumenClosingRef.current = false;
-    setIsClosingConfirmResumen(false);
-    setConfirmResumenData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
-    setShowConfirmResumen(true);
+    openConfirmResumen();
     return false; // El resumen se muestra siempre antes de solicitar la firma del docente.
-  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
+  }, [hasFullPTAActivity, asignaturas, regimenDocencia, tipoVinculacion, horasAProgramar, hasBlockingHourLimits, componentLimitViolations, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas, openConfirmResumen]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -5162,6 +5243,10 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
   ) => {
     if (requestingFirmaCodeRef.current) return false;
     if (accion === 'via_save' && !validationAlreadyConfirmed && !validateEnvioDocente()) return false;
+    if (accion === 'avanzar_sin_cambios' && !validationAlreadyConfirmed && docenciaPresentialOverlapWarnings.length) {
+      openConfirmResumen(accion);
+      return false;
+    }
     if (hasBlockingHourLimits) {
       toast.error(componentLimitViolations[0]?.message || 'El PTA excede el tope permitido de horas.');
       return false;
@@ -5210,7 +5295,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       requestingFirmaCodeRef.current = false;
       setRequestingFirmaCode(false);
     }
-  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, isEnRevisionDocente, periodo, userPersonId, validateEnvioDocente]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, isEnRevisionDocente, periodo, userPersonId, validateEnvioDocente, docenciaPresentialOverlapWarnings, openConfirmResumen]);
 
   const closeConfirmResumen = useCallback((afterClose?: () => void) => {
     if (confirmResumenClosingRef.current) return;
@@ -5614,6 +5699,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                 </div>
               </div>
 
+              <DocenciaCrucesAlert warnings={confirmResumenData.cruces} />
               <div className="pta-submit-summary-info flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
                 <p className="m-0 text-[11px] font-medium leading-relaxed text-blue-900">
@@ -5628,12 +5714,12 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                 disabled={isClosingConfirmResumen || requestingFirmaCode}
                 className="pta-submit-summary-button pta-submit-summary-button-secondary inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:opacity-60"
               >
-                {requestingFirmaCode ? 'Espera un momento' : 'Revisar antes'}
+                {requestingFirmaCode ? 'Espera un momento' : confirmResumenData.cruces.length ? 'Cancelar envío' : 'Revisar antes'}
               </button>
               <button
                 onClick={() => {
                   void (async () => {
-                    const firmaSolicitada = await solicitarFirmaDocente('via_save', true);
+                    const firmaSolicitada = await solicitarFirmaDocente(confirmResumenData.accion, true);
                     if (firmaSolicitada) {
                       closeConfirmResumen();
                     }
@@ -5652,7 +5738,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                 ) : (
                   <>
                     <Send className="h-3.5 w-3.5" />
-                    Enviar PTA
+                    {confirmResumenData.cruces.length ? 'Continuar con alerta' : 'Enviar PTA'}
                   </>
                 )}
               </button>
@@ -6125,47 +6211,29 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
             )}
 
             {/* ─── DOCENCIA ─── */}
+            {activeVisibleSection === 'docencia' && regimenDocencia === 'programacion' && (
+              <div className="m-4"><DocenciaCrucesAlert warnings={docenciaPresentialOverlapWarnings} /></div>
+            )}
             {activeVisibleSection === 'docencia' && (
+              regimenDocencia === 'programacion' ? (
+                <DocenciaConcertada asignaturas={asignaturas} aprobaciones={componentesAprobacion} aprobacionesCargadas={aprobacionesCargadas}
+                  crucesIds={docenciaConflictIds}
+                  vistaPrevia={!currentPtaId} ptaVigente={currentPtaId ? null : ptaVigenteDelPeriodo} onIrAMisPtas={onBack} />
+              ) : (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {regimenDocencia === 'error' && (
+                  <p role="status" className="mx-4 mb-3 text-xs text-slate-500">
+                    No se pudo confirmar el régimen de Docencia. Si aparece un error al guardar, inténtalo más tarde.
+                  </p>
+                )}
                 <SectionHeader title="Docencia Directa" subtitle={`${hDocencia}h programadas (máx 10 asignaturas)`}
                   color={PTA_COLORS.DOCENCIA} icon={BookOpen}
                   action={isEditable && asignaturas.length < 10 ? { label: 'Agregar Asignatura', onClick: handleAddAsignatura } : undefined} />
 
-                {/* Cruce presencial: bloqueante sin depender de la territorial. */}
-                {docenciaBlockingOverlapWarnings.length > 0 && (
-                  <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {docenciaBlockingOverlapWarnings.length > 2 ? (
-                      <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-800 text-sm font-semibold shadow-sm">
-                        <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                        <div className="w-full">
-                          <div className="font-bold text-red-700 mb-1.5">
-                            Conflictos de fechas presenciales ({docenciaBlockingOverlapWarnings.length})
-                          </div>
-                          <ul className="space-y-1.5 list-disc list-inside text-sm font-normal text-red-700 pl-1">
-                            {docenciaBlockingOverlapWarnings.map((w, i) => (
-                              <li key={i} className="leading-relaxed">{w}</li>
-                            ))}
-                          </ul>
-                          <div className="mt-2.5 text-xs font-medium text-red-500">
-                            Las asignaturas posteriores no se suman al total y el PTA no se puede enviar hasta corregir los cruces.
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      docenciaBlockingOverlapWarnings.map((w, i) => (
-                        <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-800 text-sm font-semibold shadow-sm">
-                          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                          <div>
-                            <div className="font-bold text-red-700 mb-0.5">Conflicto de fechas presenciales</div>
-                            <span className="font-normal text-red-700">{w}</span>
-                            <div className="mt-1 text-xs font-medium text-red-500">La asignatura posterior no se suma al total y el PTA no se puede enviar hasta corregir el cruce.</div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
+                {/* Los cruces presenciales informan, sin bloquear ni descontar horas. */}
+                <div className="mx-4 md:mx-6 mt-3">
+                  <DocenciaCrucesAlert warnings={docenciaPresentialOverlapWarnings} />
+                </div>
                 {/* Virtual/Distancia: aviso visible, pero nunca bloquea ni descuenta horas. */}
                 {docenciaAdvisoryOverlapWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
@@ -6252,14 +6320,14 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                         const asignaturasOptionsKey = asignaturasDisponibles
                           .map(item => String(item.id))
                           .join('|');
-                        const cargandoAsignaturas = programasCargandoAsignaturas.has(String(asig.programa_id))
-                          && asignaturasDisponibles.length === 0;
+                        const cargandoPensums = programasCargandoAsignaturas.has(String(asig.programa_id));
+                        const cargandoAsignaturas = cargandoPensums && asignaturasDisponibles.length === 0;
 
                         return (
                           <div key={asig.id}
                             className={`p-4 md:p-5 rounded-2xl border relative transition-all duration-300 group ${
                               tieneConflicto
-                                ? 'border-red-200 bg-red-50/30 shadow-sm border-l-4 border-l-red-500 hover:shadow-md'
+                                ? 'border-amber-200 bg-amber-50/30 shadow-sm border-l-4 border-l-amber-500 hover:shadow-md'
                                 : tieneAdvertencia
                                   ? 'border-amber-200 bg-amber-50/30 shadow-sm border-l-4 border-l-amber-500 hover:shadow-md'
                                 : (bloqueadaPorTerritorial || bloqueadaPorComponente)
@@ -6273,7 +6341,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                             <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100/80">
                               <div className="flex items-center gap-2.5 flex-wrap">
                                 {tieneConflicto ? (
-                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 shadow-sm">
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-700 shadow-sm">
                                     <AlertTriangle className="w-3.5 h-3.5" />
                                   </div>
                                 ) : tieneAdvertencia ? (
@@ -6289,11 +6357,11 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                                     <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                                   </div>
                                 )}
-                                <span className={`text-[15px] font-extrabold tracking-tight ${tieneConflicto ? 'text-red-700' : tieneAdvertencia ? 'text-amber-800' : isComplete ? 'text-slate-800' : 'text-blue-700'}`}>
+                                <span className={`text-[15px] font-extrabold tracking-tight ${tieneConflicto ? 'text-amber-800' : tieneAdvertencia ? 'text-amber-800' : isComplete ? 'text-slate-800' : 'text-blue-700'}`}>
                                   Asignatura {idx + 1}
                                 </span>
                                 {tieneConflicto && (
-                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-red-100 text-red-700 rounded-md ml-1 flex items-center gap-1 shadow-sm">
+                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md ml-1 flex items-center gap-1 shadow-sm">
                                     ⚠ Cruce de fechas
                                   </span>
                                 )}
@@ -6386,13 +6454,13 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                                   return lista.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }));
                                 })()}
                                 placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />
-                              <FormSelect label="Pensum" value={asig.pensum} disabled={!rowEditable || !asig.programa_id}
+                              <FormSelect label="Pensum" value={asig.pensum} disabled={!rowEditable || cargandoPensums || !asig.programa_id}
                                 required
                                 fieldKey={ptaFieldKey.docencia(asig.id, 'pensum')}
                                 error={requiredFieldErrors[ptaFieldKey.docencia(asig.id, 'pensum')]}
                                 onChange={v => handleAsigChange(asig.id, 'pensum', v)}
                                 options={getPensumsFiltrados(asig.programa_id)}
-                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
+                                placeholder={cargandoPensums ? 'Cargando pensums...' : asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
                               <FormSelect key={`asignatura-${asig.id}-${asig.programa_id}-${asig.pensum}-${asignaturasOptionsKey}`}
                                 label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || cargandoAsignaturas || !asig.programa_id || (!asig.pensum && !asig.asignatura_id)}
                                 required
@@ -6447,10 +6515,10 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                                     </span>
                                     <span className={`text-[13px] font-extrabold rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center border shadow-sm ${
                                       tieneConflicto 
-                                        ? 'bg-red-50 border-red-200 text-red-600 line-through' 
+                                        ? 'bg-amber-50 border-amber-200 text-amber-800'
                                         : 'bg-blue-50/80 border-blue-200 text-blue-700'
                                     }`}>
-                                      {asig.total_horas}h{tieneConflicto ? '*' : ''}
+                                      {asig.total_horas}h
                                     </span>
                                   </div>
                                 </div>
@@ -6546,6 +6614,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                   )}
                 </div>
               </div>
+              )
             )}
 
             {/* ─── INVESTIGACIÓN ─── */}

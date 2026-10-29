@@ -59,11 +59,60 @@ export class ExpedirRpDto {
   codigoRp?: string;
 
   @ApiPropertyOptional({
-    description: 'Observaciones o notas adicionales de la expedición en SIIF Nación.',
-    example: 'Compromiso presupuestal expedido en firme conforme a CDP vigente.',
+    description: 'Ruta o nombre del archivo soporte PDF del RP.',
+    example: '20260916_RP_24567.pdf',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  soporteRpPath?: string;
+
+  @ApiPropertyOptional({
+    description: 'Alias alternativo para rubro presupuestal.',
+  })
+  @IsOptional()
+  @IsString()
+  rubroPresupuestal?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código OTP para validación de firma digital.',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de verificación OTP.',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador del certificado digital institucional.',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash SHA-256 de la transacción/firma.',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Observaciones o notas adicionales de la expedición.',
+  })
+  @IsOptional()
+  @IsString()
   observaciones?: string;
+
+  @ApiPropertyOptional({
+    description: 'Estampa visual o imagen de firma en base64.',
+  })
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
 }

@@ -15,8 +15,15 @@ async function bootstrap() {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
+  // Prefix 1: acceso directo al microservicio (local/swagger/desa)
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
+  });
+  // Prefix 2: acceso por Shell Gateway /services/infraestructura/uploads/...
+  // (misma carpeta, ruta routeada por NGINX location /services/ -> api-gateway)
+  // Mantiene mismo origin => img-src 'self' valido (sin CSP blocked ni Mixed Content)
+  app.useStaticAssets(uploadsDir, {
+    prefix: '/services/infraestructura/uploads/',
   });
 
   app.enableCors({

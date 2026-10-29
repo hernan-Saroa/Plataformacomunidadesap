@@ -6,8 +6,110 @@ import {
   construirRutaGeneral,
   validarSecuenciaItinerario,
   mapearARequestCreacion,
+  evaluarVoBoDuracion,
 } from './viaticosUtils';
 import { RutaItinerario } from '../types/viaticos';
+
+describe('evaluarVoBoDuracion — Regla > 3 días calendario (3.5 días valor)', () => {
+  it('aplica para funcionario en Sede Central con más de 3 días calendario (requiere Dirección Nacional)', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'FUNCIONARIO',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-04', // 4 días calendario, 3.5 días de valor
+      dependencia: 'Subdirección de Gestión Corporativa',
+      esInternacional: false,
+    });
+    expect(res.aplica).toBe(true);
+    expect(res.diasCalendario).toBe(4);
+    expect(res.diasValor).toBe(3.5);
+    expect(res.instanciaVoBo).toBe('DIRECCION_NACIONAL');
+    expect(res.tituloInstancia).toBe('Dirección Nacional');
+    expect(res.esEximidoDocente).toBe(false);
+  });
+
+  it('aplica para contratista en Dirección Territorial (requiere Director Territorial)', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'CONTRATISTA',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-05', // 5 días calendario, 4.5 días de valor
+      dependencia: 'Dirección Territorial Santander',
+      esInternacional: false,
+    });
+    expect(res.aplica).toBe(true);
+    expect(res.instanciaVoBo).toBe('DIRECTOR_TERRITORIAL');
+    expect(res.tituloInstancia).toBe('Director Territorial');
+  });
+
+  it('aplica para auxilios económicos a estudiantes con más de 3 días calendario', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'ESTUDIANTE',
+      diasComision: 4,
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-04',
+      dependencia: 'Sede Central',
+    });
+    expect(res.aplica).toBe(true);
+    expect(res.instanciaVoBo).toBe('DIRECCION_NACIONAL');
+  });
+
+  it('no aplica si la duración es menor o igual a 3 días calendario (ej. 2 días / 1.5 días de valor)', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'FUNCIONARIO',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-02', // 2 días calendario, 1.5 días de valor
+      dependencia: 'Sede Central',
+    });
+    expect(res.aplica).toBe(false);
+  });
+
+  it('no aplica a comisiones internacionales', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'FUNCIONARIO',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-10',
+      esInternacional: true,
+      tipoComision: 'INTERNACIONAL',
+    });
+    expect(res.aplica).toBe(false);
+  });
+
+  it('exime a docentes y docentes capacitadores cuando su actividad es dictar clase', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'DOCENTE',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-06',
+      objetoComision: 'Dictar clase del módulo de Finanzas Públicas en CETAP',
+      dependencia: 'Dirección Territorial Boyacá',
+    });
+    expect(res.aplica).toBe(false);
+    expect(res.esEximidoDocente).toBe(true);
+  });
+
+  it('exime a docentes cuando se presenta la justificación en agenda', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'DOCENTE',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-06',
+      objetoComision: 'Acompañamiento institucional',
+      agenda: 'Jornadas de capacitación y asesoría curricular programada',
+      dependencia: 'Sede Central',
+    });
+    expect(res.aplica).toBe(false);
+    expect(res.esEximidoDocente).toBe(true);
+  });
+
+  it('NO exime al docente si su actividad no es dictar clase y no presenta justificación en agenda', () => {
+    const res = evaluarVoBoDuracion({
+      tipoComisionado: 'DOCENTE',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-10-06',
+      objetoComision: 'Reunión administrativa general',
+      dependencia: 'Sede Central',
+    });
+    expect(res.aplica).toBe(true);
+    expect(res.esEximidoDocente).toBe(false);
+  });
+});
 
 describe('calcularDiasComision', () => {
   it('debe retornar 0.5 si es el mismo día (sin pernocta según formato GF-FO-023)', () => {
@@ -106,6 +208,43 @@ describe('sincronizarItinerarioFormulario', () => {
     const sync = sincronizarItinerarioFormulario(itinerario);
     expect(sync.horaEstimadaGeneral).toBe('06:45 h');
     expect(sync.rutaGeneral).toBe('Bogotá D.C. → Cartagena');
+  });
+
+  it('detecta viaje de ida y vuelta cuando el origen es Bogotá, D.C. y el retorno es Bogotá', () => {
+    const itinerario: RutaItinerario[] = [
+      {
+        id: 'r-1',
+        origenCiudad: 'Bogotá, D.C.',
+        origenDepartamento: 'Cundinamarca',
+        destinoCiudad: 'Pereira',
+        destinoDepartamento: 'Risaralda',
+        tipoTransporte: 'AEREO',
+        tipoTrayecto: 'SOLO_IDA',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '08:00',
+        fechaSalida: '2026-10-01',
+        fechaLlegada: '2026-10-02',
+        guardada: true,
+      },
+      {
+        id: 'r-2',
+        origenCiudad: 'Pereira',
+        origenDepartamento: 'Risaralda',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        tipoTransporte: 'AEREO',
+        tipoTrayecto: 'SOLO_IDA',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '14:00',
+        fechaSalida: '2026-10-03',
+        fechaLlegada: '2026-10-03',
+        guardada: true,
+      },
+    ];
+    const sync = sincronizarItinerarioFormulario(itinerario);
+    expect(sync.origenCiudad).toBe('Bogotá, D.C.');
+    expect(sync.destinoCiudad).toBe('Pereira');
+    expect(sync.destinoDepartamento).toBe('Risaralda');
   });
 });
 

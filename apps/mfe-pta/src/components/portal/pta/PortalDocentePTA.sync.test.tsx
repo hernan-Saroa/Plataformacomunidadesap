@@ -1,9 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortalDocentePTA } from './PortalDocentePTA';
-import { getPTAsByDocente, getPTAById, getComponentesAprobacion, getAprobacionTerritorial } from '../../../services/api/ptaApi';
+import { getPTAsByDocente, getPTAById, getComponentesAprobacion, getAprobacionTerritorial, getMisSolicitudesPTA } from '../../../services/api/ptaApi';
 
-const sync = vi.hoisted(() => ({ options: null as any }));
+const sync = vi.hoisted(() => ({ options: null as any, solicitudModal: null as any }));
+vi.mock('./SolicitudPTAModal', () => ({
+  SolicitudPTAModal: (props: any) => {
+    sync.solicitudModal = props;
+    return <div role="dialog" aria-label="Solicitudes PTA" />;
+  },
+}));
 vi.mock('../../../hooks/usePTARealtimeSync', () => ({
   usePTARealtimeSync: (options: any) => { sync.options = options; return { lastSyncTime: 'sync', unreadEvents: [] }; },
 }));
@@ -38,6 +44,7 @@ beforeEach(() => {
   vi.mocked(getPTAById).mockResolvedValue({ success: true, data: pta });
   vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [{ componente: 'academica_pregrado', estado: 'pendiente' }] });
   vi.mocked(getAprobacionTerritorial).mockResolvedValue({ success: true, data: [{ estado: 'pendiente' }] });
+  vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: true, data: [] });
 });
 afterEach(cleanup);
 const mount = () => render(<PortalDocentePTA onBack={() => {}} userPersonId="docente-1" userName="Docente de prueba" userEmail="docente@example.test" />);
@@ -50,6 +57,51 @@ async function approveRemotely() {
 }
 
 describe('portal docente sin recarga manual', () => {
+  it('conserva la solicitud de edición conocida ante un fallo y aplica su autorización sin recargar', async () => {
+    const solicitud = { id: 'sol-edicion', ptaId: pta.id, tipoSolicitud: 'edicion_componentes',
+      estado: 'pendiente', componentes: ['investigacion'], notificacionLeida: false };
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [{ ...pta, estado: 'Aprobado' }] });
+    vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: true, data: [solicitud] });
+    mount();
+    await screen.findByTitle('Tienes una solicitud PTA en revisión.');
+    vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: false, data: [] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(screen.getByTitle('Tienes una solicitud PTA en revisión.')).toBeTruthy();
+    vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: true, data: [{ ...solicitud, estado: 'aprobado' }] });
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [{ ...pta, estado: 'REVISION_DOCENTE_N2' }] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(await screen.findByText('Solicitud aprobada')).toBeTruthy();
+    expect(screen.getByText('Los componentes seleccionados ya están habilitados para edición en el mismo PTA.')).toBeTruthy();
+    expect(screen.queryByTitle('Tienes una solicitud PTA en revisión.')).toBeNull();
+    vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: true, data: [{ ...solicitud, estado: 'gestionada' }] });
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [{ ...pta, estado: 'Aprobado' }] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(await screen.findByText('Solicitud completada')).toBeTruthy();
+  });
+
+  it('al cambiar de docente descarta las solicitudes conocidas aunque falle la nueva consulta', async () => {
+    vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: true, data: [{ id: 'sol-docente-1',
+      ptaId: pta.id, tipoSolicitud: 'edicion_componentes', estado: 'pendiente', componentes: ['investigacion'] }] });
+    const { rerender } = mount();
+    await screen.findByTitle('Tienes una solicitud PTA en revisión.');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir solicitudes de Plan de Trabajo Académico' }));
+    expect(screen.getByRole('dialog', { name: 'Solicitudes PTA' })).toBeTruthy();
+    const formularioAnterior = sync.solicitudModal;
+    vi.mocked(getMisSolicitudesPTA).mockResolvedValue({ success: false, data: [] });
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [] });
+    rerender(<PortalDocentePTA onBack={() => {}} userPersonId="docente-2" userName="Otro docente" userEmail="otro@example.test" />);
+    await waitFor(() => expect(getMisSolicitudesPTA).toHaveBeenCalledWith('docente-2'));
+    expect(screen.queryByTitle('Tienes una solicitud PTA en revisión.')).toBeNull();
+    expect(screen.queryByText('Solicitud aprobada')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Solicitudes PTA' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir solicitudes de Plan de Trabajo Académico' }));
+    expect(sync.solicitudModal.docenteId).toBe('docente-2');
+    const consultas = vi.mocked(getMisSolicitudesPTA).mock.calls.length;
+    await act(async () => { formularioAnterior.onSuccess(); formularioAnterior.onClose(); });
+    expect(getMisSolicitudesPTA).toHaveBeenCalledTimes(consultas);
+    expect(screen.getByRole('dialog', { name: 'Solicitudes PTA' })).toBeTruthy();
+  });
+
   it('actualiza Investigación al revisar y aprobar sin recarga manual, y conserva ambos estados al volver a abrir', async () => {
     const research = { ...pta, horas_investigacion: 232, investigacion_proyecto: { nombre: 'Proyecto', horas_solicitadas: 200 },
       investigacion_actividades: [{ nombre: 'Actividad', horas_total: 32 }],

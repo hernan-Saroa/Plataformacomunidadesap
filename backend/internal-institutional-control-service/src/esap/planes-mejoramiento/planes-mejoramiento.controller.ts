@@ -637,8 +637,15 @@ export class PlanesMejoramientoController {
       cerradoPorNombre?: string;
       observacionesCierre?: string;
     },
+    @Req() req?: any,
   ) {
-    return this.planesMejoramientoService.cerrarPlan(planId, body);
+    // Quien cierra es el usuario de la sesión, no lo que mande el navegador
+    const usuario = req?.user;
+    return this.planesMejoramientoService.cerrarPlan(planId, {
+      ...body,
+      cerradoPorId: usuario?.userId ? String(usuario.userId) : body.cerradoPorId,
+      cerradoPorNombre: body.cerradoPorNombre || usuario?.username || usuario?.email,
+    });
   }
 
   /**
@@ -699,7 +706,14 @@ export class PlanesMejoramientoController {
       resumen?: string;
       informeRef?: string;
     },
+    @Req() req?: any,
   ) {
-    return this.planesMejoramientoService.registrarSeguimientoPeriodico(planId, body);
+    // El responsable es el usuario de la sesión (EFDS-2352)
+    const usuario = req?.user;
+    return this.planesMejoramientoService.registrarSeguimientoPeriodico(planId, {
+      ...body,
+      responsableId: usuario?.userId ? String(usuario.userId) : body.responsableId,
+      responsableNombre: body.responsableNombre || usuario?.username || usuario?.email,
+    });
   }
 }

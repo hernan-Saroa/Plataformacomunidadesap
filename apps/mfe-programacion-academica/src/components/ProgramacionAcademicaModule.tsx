@@ -26,17 +26,25 @@ import {
 } from 'lucide-react';
 
 import {
-  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura, getOfertas,
-  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
-  type FranjaConContexto, type ValidacionHistorico, type Oferta, type EstadoPublicacion,
+  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura,
+  publicarProgramacion, retirarProgramacion,
+  type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
-import { AsignacionDocente } from './AsignacionDocente';
+import { useEstadoPublicacion } from './useEstadoPublicacion';
+import { ArbolProgramacion } from './ArbolProgramacion';
+import { DisponibilidadDocente } from './DisponibilidadDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
 import { AprobacionJefatura } from './AprobacionJefatura';
+import { getMisPermisos, type MisPermisos } from '../services/api/vistaApi';
+import { ConcertacionBandeja } from './ConcertacionBandeja';
+import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
+import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
+import { getCrucesVivos, type ConteoCrucesVivos } from '../services/api/crucesVivosApi';
+import { getPeriodos, type PeriodoVista } from '../services/api/periodosApi';
 
 interface FranjaHoraria {
   id: string;
@@ -64,7 +72,7 @@ interface FranjaHoraria {
   periodoCodigo: string | null;
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion' | 'concertacion';
 
 /** Los cinco estados del ciclo de la franja, con su etiqueta y color (§1.2). */
 const BADGE_ESTADO: Record<string, { etiqueta: string; clase: string }> = {
@@ -104,10 +112,20 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
   };
 }
 
-export function ProgramacionAcademicaModule() {
+interface ProgramacionAcademicaModuleProps {
+  puedeAbrirProgramasAcademicos?: boolean;
+  abrirProgramasAcademicos?: () => void;
+}
+
+export function ProgramacionAcademicaModule({
+  puedeAbrirProgramasAcademicos = false,
+  abrirProgramasAcademicos,
+}: ProgramacionAcademicaModuleProps) {
+  const revisionProgramacion = useRevisionProgramacion('programacion');
+  const revisionPeriodos = useRevisionProgramacion('periodos');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
+  const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
+  const [jornada, setJornada] = useState('TODAS');
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -120,27 +138,66 @@ export function ProgramacionAcademicaModule() {
   // EFDS-1939 — el item de aprobación solo aparece si el usuario ES jefatura. Se
   // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
   const [esJefatura, setEsJefatura] = useState(false);
-  useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
+  // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
+  // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
+  const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
+  // EFDS-2342 — quién asigna docentes y no programa (PROGRAMADOR_DOCENTE_<NIVEL>) solo ve la
+  // programación y la asignación: el resto le respondería 403. El servidor decide; esto solo ordena el menú.
+  const [misPermisos, setMisPermisos] = useState<MisPermisos | null>(null);
+  useEffect(() => { getMisPermisos().then(setMisPermisos).catch(() => setMisPermisos(null)); }, []);
+  useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
+  // Con la concertación encendida el endpoint de jefatura responde 409 a propósito: no se consulta. Se espera la
+  // configuración; si falla, no se consulta un régimen desconocido.
+  useEffect(() => {
+    let vigente = true;
+    setEsJefatura(false);
+    if (concertacion && !concertacion.habilitada) {
+      getPendientesJefatura().then(() => { if (vigente) setEsJefatura(true); }).catch(() => {});
+    }
+    return () => { vigente = false; };
+  }, [concertacion]);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
   // periodo seleccionado en la cabecera; se persiste entre recargas.
-  const [periodos, setPeriodos] = useState<Oferta[]>([]);
+  const [periodos, setPeriodos] = useState<PeriodoVista[]>([]);
+  const [periodoError, setPeriodoError] = useState('');
   const [periodoSel, setPeriodoSel] = useState<string>(() => {
     try { return localStorage.getItem('prog-periodo-sel') || ''; } catch { return ''; }
   });
   const periodoActual = periodos.find((p) => p.idPeriodo === periodoSel) || null;
+  const periodoProgramable = periodoActual?.modelo === 'plataforma'
+    ? periodoActual.programable
+    : periodoActual?.estado !== 'cerrado';
 
   useEffect(() => {
-    getOfertas().then((lista) => {
+    let vigente = true;
+    getPeriodos().then((respuesta) => {
+      if (!vigente) return;
+      const lista: PeriodoVista[] = [...respuesta.periodos, ...respuesta.legado];
+      setPeriodoError('');
       setPeriodos(lista);
       setPeriodoSel((actual) => {
         if (actual && lista.some((p) => p.idPeriodo === actual)) return actual;
-        // Por defecto, el primer periodo activo; si no hay, el primero.
-        const def = lista.find((p) => p.estado === 'activo') || lista[0];
+        const def = respuesta.periodos.find((p) => p.esActivo) || respuesta.periodos[0] || respuesta.legado[0];
         return def ? def.idPeriodo : '';
       });
-    }).catch(() => {});
-  }, []);
+    }).catch((e) => {
+      if (!vigente) return;
+      // 403 = el perfil no programa ningún nivel (p. ej. la jefatura, que solo revisa y aprueba).
+      if (e?.status === 403) { setSoloRevision(true); return; }
+      setPeriodoError(e?.message || 'No se pudieron consultar los periodos.');
+    });
+    return () => { vigente = false; };
+  }, [revisionPeriodos]);
+
+  // Perfil de REVISIÓN (jefatura): no programa, así que no ve la cabecera de periodo, los indicadores ni las
+  // secciones de programación —todas piden permisos que no tiene y solo mostraban errores—. Ve lo suyo:
+  // la concertación y, si es jefatura territorial, la aprobación. Antes veía «Sin periodos» y «No tiene permisos».
+  const [soloRevision, setSoloRevision] = useState(false);
+  useEffect(() => {
+    if (!soloRevision) return;
+    setSeccion((s) => (s === 'concertacion' || s === 'aprobacion') ? s : (concertacion?.habilitada ? 'concertacion' : 'aprobacion'));
+  }, [soloRevision, concertacion]);
 
   const elegirPeriodo = (id: string) => {
     setPeriodoSel(id);
@@ -150,11 +207,10 @@ export function ProgramacionAcademicaModule() {
   // §1.2 — Publicar/retirar el periodo activo DESDE la vista de programación, sin
   // ir a buscarlo a otra sección. El backend valida sin cruces al publicar y
   // rechaza retirar si alguien tomó franjas; el mensaje se muestra tal cual.
-  const [estadoPub, setEstadoPub] = useState<EstadoPublicacion | null>(null);
+  // Se relee tras cada escritura confirmada (crear una franja cambia los conteos), no solo al cambiar de periodo.
+  const [estadoPub, setEstadoPub] = useEstadoPublicacion(periodoSel);
   const [avisoPub, setAvisoPub] = useState('');
   const [pubOcupado, setPubOcupado] = useState(false);
-  const cargarEstadoPub = (id: string) => getEstadoPublicacion(id).then(setEstadoPub).catch(() => setEstadoPub(null));
-  useEffect(() => { if (periodoSel) cargarEstadoPub(periodoSel); }, [periodoSel]);
 
   const publicar = async () => {
     setAvisoPub(''); setPubOcupado(true);
@@ -191,20 +247,38 @@ export function ProgramacionAcademicaModule() {
       .catch(() => { if (vivo) setTotalAulas(null); })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
-  }, [periodoSel, periodos]);
+  }, [periodoSel, periodos, revisionProgramacion]);
+
+  // EFDS-2307 — Cruces REALES de la programación viva, contados por el servidor
+  // con la misma regla que rechaza los cruces al guardar. Debe dar 0; si no, el
+  // panel avisa. `null` mientras carga o si falla: no se muestra un 0 inventado.
+  const [crucesVivos, setCrucesVivos] = useState<ConteoCrucesVivos | null>(null);
+  const [errorCrucesVivos, setErrorCrucesVivos] = useState('');
+  useEffect(() => {
+    if (!periodoSel) return;
+    let vivo = true;
+    setCrucesVivos(null); setErrorCrucesVivos('');
+    getCrucesVivos(periodoSel)
+      .then((c) => { if (vivo) setCrucesVivos(c); })
+      .catch((e) => { if (vivo) setErrorCrucesVivos(e?.message || 'No se pudieron contar los cruces.'); });
+    return () => { vivo = false; };
+  }, [periodoSel, revisionProgramacion]);
 
   // Form state
 
   const totalFranjas = scheduleList.length;
   // Confirmadas = aprobadas por la jefatura (estado real, no el inventado 'CONFIRMADO').
   const totalConfirmados = scheduleList.filter(s => s.estado === 'APROBADA').length;
-  // Alertas de cruce = las de validación del periodo (0 en un periodo nuevo).
-  const totalConflictos = historico?.resumen?.total ?? 0;
+  // El histórico (hallazgos del Excel) es otro contador: va en el badge de Validación.
+  const totalConflictosHistoricos = historico?.resumen?.total ?? 0;
 
+  // Un solo elemento para las dos entradas de aprobación (jefatura y concertación).
+  const iconoAprobacion = <ClipboardCheck className="w-5 h-5" />;
   const gruposNav: MenuGroup[] = [
     {
       title: 'GESTIÓN PRINCIPAL',
       items: [
+        ...(soloRevision ? [] : ([
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -249,30 +323,28 @@ export function ProgramacionAcademicaModule() {
           subtitle: 'Alertas y traslapes de horario',
           icon: <AlertTriangle className="w-5 h-5" />,
           color: '#D97706',
-          badge: totalConflictos > 0 ? totalConflictos : undefined,
+          badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
+        ] as MenuGroup['items']).filter((i) => !!misPermisos && (i.id === 'horarios' ? misPermisos.ver.length > 0 : i.id === 'docentes' ? misPermisos.disponibilidad : misPermisos.programar.length > 0))),
         // EFDS-1939 — solo para jefaturas territoriales.
         ...(esJefatura ? [{
           id: 'aprobacion',
           label: 'Aprobación territorial',
           subtitle: 'Aprobar o devolver franjas de tus docentes',
-          icon: <ClipboardCheck className="w-5 h-5" />,
+          icon: iconoAprobacion,
           color: '#059669',
+        }] : []),
+        ...(concertacion?.habilitada ? [{
+          id: 'concertacion',
+          label: 'Concertación de la docencia',
+          subtitle: 'Revisar y aprobar la docencia de los docentes',
+          icon: iconoAprobacion,
+          color: '#003DA5',
         }] : []),
       ],
     },
   ];
 
-  const filteredSchedule = scheduleList.filter((item) => {
-    const matchesSearch =
-      item.programa.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.asignatura.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.docente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.aula.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesJornada = selectedJornada === 'TODAS' || item.jornada === selectedJornada;
-    return matchesSearch && matchesJornada;
-  });
 
   return (
     <ModuleLayout
@@ -284,7 +356,8 @@ export function ProgramacionAcademicaModule() {
       activeSection={seccion}
       onSectionChange={(s) => setSeccion(s as Seccion)}
     >
-      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo ── */}
+      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo. El perfil de revisión no lo usa. ── */}
+      {!soloRevision && (<>
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div className="flex items-center gap-3">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Periodo</span>
@@ -293,21 +366,33 @@ export function ProgramacionAcademicaModule() {
             onChange={(e) => elegirPeriodo(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-[#003DA5] focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
           >
-            {periodos.length === 0 && <option value="">Cargando…</option>}
-            {periodos.map((p) => (
+            {periodos.length === 0 && <option value="">Sin periodos</option>}
+            <optgroup label="Periodos de la plataforma">
+            {periodos.filter((p) => p.modelo === 'plataforma').map((p) => (
               <option key={p.idPeriodo} value={p.idPeriodo}>
-                {p.codigo} — {p.estado === 'activo' ? 'Activo' : p.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
+                {p.codigo} — {p.esActivo ? 'Activo' : p.estadoPlataforma.replace('_', ' ')}{p.programacion.estado === 'cerrada' ? ' · programación cerrada' : ''}
               </option>
             ))}
+            </optgroup>
+            {periodos.some((p) => p.modelo === 'legado') && (
+              <optgroup label="Periodos anteriores al modelo único">
+                {periodos.filter((p) => p.modelo === 'legado').map((p) => (
+                  <option key={p.idPeriodo} value={p.idPeriodo}>{p.codigo} — {p.nombre}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
           {periodoActual && (
-            <span className="text-xs text-slate-500 hidden sm:inline">{periodoActual.nombre}</span>
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              {periodoActual.modelo === 'plataforma' ? (periodoActual.programable ? 'Programación abierta' : 'Solo consulta') : periodoActual.motivo}
+            </span>
           )}
         </div>
         <p className="text-[11px] text-slate-400">
           Todo lo que ves —franjas, validación, disponibilidad— pertenece a este periodo.
         </p>
       </div>
+      {periodoError && <p role="alert" className="mb-4 text-sm text-red-700">{periodoError}</p>}
 
       {/* ── KPI HEADER ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -336,8 +421,21 @@ export function ProgramacionAcademicaModule() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alertas de Cruce</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">{totalConflictos}</h3>
-            <p className="text-xs text-amber-600 font-medium mt-1">Requieren resolución</p>
+            <h3 className={`text-2xl font-black mt-1 ${crucesVivos && crucesVivos.total > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+              {crucesVivos ? crucesVivos.total : '—'}
+            </h3>
+            {errorCrucesVivos ? (
+              <p className="text-xs text-red-600 font-medium mt-1">{errorCrucesVivos}</p>
+            ) : !crucesVivos ? (
+              <p className="text-xs text-slate-400 font-medium mt-1">Contando cruces…</p>
+            ) : crucesVivos.total === 0 ? (
+              <p className="text-xs text-emerald-600 font-medium mt-1">Programación viva · sin cruces</p>
+            ) : (
+              <p className="text-xs text-red-600 font-medium mt-1">
+                Cruces reales en la programación ({crucesVivos.aula} de aula, {crucesVivos.docente} de docente,
+                {' '}{crucesVivos.grupo} de grupo): el sistema debió impedirlos. Repórtelo.
+              </p>
+            )}
           </div>
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
             <AlertTriangle className="w-6 h-6" />
@@ -355,9 +453,10 @@ export function ProgramacionAcademicaModule() {
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
-      {seccion === 'horarios' && estadoPub && periodoActual && periodoActual.estado !== 'cerrado' && (
+      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && !!misPermisos?.programar.length && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -390,159 +489,41 @@ export function ProgramacionAcademicaModule() {
         </div>
       )}
 
-      {/* ── ACCIONES Y BÚSQUEDA ──
-          Solo en Programación General: el buscador, el filtro de jornada y el
-          botón de nueva franja no aplican al catálogo, a las aulas ni a las
-          ofertas. Antes se repetía en todas las secciones. */}
-      {seccion === 'horarios' && (
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por asignatura, docente, aula o programa..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span>Jornada:</span>
-            <select
-              value={selectedJornada}
-              onChange={(e) => setSelectedJornada(e.target.value)}
-              className="bg-transparent font-semibold text-slate-800 focus:outline-none"
-            >
-              {/* §2.1 — Los valores deben ser los del dato del backend
-                  (DIURNA/NOCTURNA/FIN_DE_SEMANA), no 'Diurna': la comparacion es
-                  exacta y con la etiqueta bonita nunca casaba. */}
-              <option value="TODAS">Todas las jornadas</option>
-              <option value="DIURNA">Diurna</option>
-              <option value="NOCTURNA">Nocturna</option>
-              <option value="FIN_DE_SEMANA">Fin de semana</option>
-            </select>
-          </div>
-
-          {/* §2.2 — Una franja se crea siempre desde un grupo (asignatura →
-              grupo → calendario). No hay atajo directo, así que el botón lleva al
-              inicio real de ese flujo, el catálogo, y el texto lo dice sin
-              prometer una creación que no puede cumplir aquí. */}
-          <button
-            onClick={() => setSeccion('catalogo')}
-            className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 font-semibold text-xs rounded-xl shadow-md transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Programar franja (elegir asignatura)</span>
-          </button>
-
-        </div>
-      </div>
-      )}
-
-      {/* ── VISTAS POR SECCIÓN ── */}
-
-      {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
-          que el endpoint de horarios devuelva programa, asignatura y docente:
-          hoy solo trae la sesión, así que esas columnas van vacías. */}
-      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} />}
-
-      {seccion === 'horarios' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="font-bold text-slate-800 text-sm">Franjas Académicas Programadas</h3>
-            <span className="text-xs text-slate-400 font-medium">Mostrando {filteredSchedule.length} registros</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-4">Código / Programa</th>
-                  <th className="px-6 py-4">Asignatura & Grupo</th>
-                  <th className="px-6 py-4">Docente</th>
-                  <th className="px-6 py-4">Horario & Aula</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredSchedule.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                      <Calendar className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                      <p className="font-semibold text-slate-700">No se encontraron franjas académicas</p>
-                      <p className="text-xs text-slate-400">Intenta ajustando los filtros de búsqueda</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSchedule.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-800">{item.programa}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          <span>Periodo {item.periodoCodigo || '—'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-slate-700">{item.asignatura}</div>
-                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold mt-1">
-                          Grupo {item.grupo}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-slate-700 font-medium">{item.docente}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-[#003DA5] flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>{item.dia} {item.horaInicio} - {item.horaFin}</span>
-                        </div>
-                        <div className="text-xs text-slate-500 mt-0.5">{item.aula}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {(() => {
-                          const b = BADGE_ESTADO[item.estado] || BADGE_ESTADO.PROGRAMADO;
-                          return (
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${b.clase}`}>
-                              {b.etiqueta}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => item.idGrupo && setDetalle(item)}
-                          disabled={!item.idGrupo}
-                          title={item.idGrupo ? 'Ver detalle del grupo' : 'La franja no tiene grupo asociado'}
-                          aria-label="Ver detalle del grupo"
-                          className="text-slate-400 hover:text-[#003DA5] font-medium text-xs p-1.5 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {seccion === 'catalogo' && misPermisos?.programar.length ? <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} /> : null}
+      {seccion === 'horarios' && !!misPermisos?.ver.length && <label className="block mb-4">Jornada (se muestra el grupo completo)
+        <select aria-label="Filtrar jornada" className="border rounded-lg p-2 ml-2" value={jornada} onChange={e => setJornada(e.target.value)}>
+          <option value="TODAS">Todas las jornadas</option>
+          <option value="DIURNA">Diurna</option>
+          <option value="NOCTURNA">Nocturna</option>
+          <option value="FIN_DE_SEMANA">Fin de semana</option>
+          <option value="DISTANCIA">Distancia</option>
+        </select>
+      </label>}
+      {seccion === 'horarios' && (misPermisos
+        ? <ArbolProgramacion periodo={periodoSel} permisos={misPermisos} jornada={jornada} programable={!!periodoProgramable} abrirGrupo={periodoProgramable ? (g, asignatura) => setDetalle({
+            id: g.idGrupo, idGrupo: g.idGrupo, grupo: String(g.numeroGrupo), asignatura,
+            fechaInicioGrupo: g.cicloInicio, fechaFinGrupo: g.cicloFin,
+            codigo: '', programa: '', docente: '', sede: '', aula: '', dia: '', horaInicio: '', horaFin: '', jornada: '', cupos: g.cupoMaximo, estado: g.estado, periodoCodigo: periodoActual?.codigo ?? null,
+          }) : undefined} />
+        : <p role="status">No se han podido confirmar los permisos de programación.</p>)}
 
       {/* EFDS-1374: disponibilidad de aulas, sin revelar qué las ocupa (RN-07). */}
-      {seccion === 'aulas' && <DisponibilidadAulas />}
+      {seccion === 'aulas' && <DisponibilidadAulas idPeriodo={periodoSel} />}
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
-      {seccion === 'docentes' && <AsignacionDocente />}
+      {seccion === 'docentes' && misPermisos?.disponibilidad && <DisponibilidadDocente periodo={periodoSel} nivelesAsignables={misPermisos.asignar} concertacionHabilitada={!!concertacion?.habilitada} programable={!!periodoProgramable} />}
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
-      {seccion === 'ofertas' && <GestionOfertas />}
+      {seccion === 'ofertas' && <GestionOfertas
+        periodoParaCarga={cargaSolicitada}
+        puedeAbrirProgramasAcademicos={puedeAbrirProgramasAcademicos}
+        abrirProgramasAcademicos={abrirProgramasAcademicos}
+      />}
 
       {seccion === 'aprobacion' && <AprobacionJefatura />}
+      {seccion === 'concertacion' && concertacion?.habilitada && (
+        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
+      )}
 
       {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
           Antes esta sección mostraba alertas inventadas en el propio front.

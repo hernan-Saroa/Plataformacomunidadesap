@@ -1,7 +1,14 @@
+import { RESUMEN_OFERTAS_VACIO, type ResumenOfertas } from '../ofertas-clasificacion';
+
 export class ImportCountDto {
   creados: number = 0;
   actualizados: number = 0;
+  /** Ya existen idénticos: la carga no los toca. NO significa que se hayan rechazado. */
   omitidos: number = 0;
+  /** Alias explícito de `omitidos`: filas que ya estaban y no cambian. */
+  sin_cambios: number = 0;
+  /** Filas que la carga no puede ingresar (algo falta por corregir). Distinto de `sin_cambios`. */
+  rechazadas: number = 0;
 }
 
 export class ImportCargaDto {
@@ -44,6 +51,8 @@ export class ImportResultDto {
   periodo: string;
   tiempo_ms: number;
   carga: ImportCargaDto = new ImportCargaDto();
+  /** Ofertas CETAP del Excel en este periodo: por crear, ya existentes y rechazadas, con detalle. */
+  ofertas: ResumenOfertas = RESUMEN_OFERTAS_VACIO();
   indicadores_pta: IndicadoresPtaDto = new IndicadoresPtaDto();
   advertencias: string[] = [];
   errores: string[] = [];

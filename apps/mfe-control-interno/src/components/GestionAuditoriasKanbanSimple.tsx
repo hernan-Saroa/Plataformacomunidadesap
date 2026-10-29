@@ -1127,6 +1127,8 @@ export function GestionAuditoriasKanbanSimple() {
         planAnualVigencia: (aud as any).planAnualVigencia,
         planAnualId: (aud as any).planAnualId,
         semanasExcluidas: (aud as any).semanasExcluidas || [],
+        unidadesAuditables: (aud as any).unidadesAuditables || [],
+        dependenciasAuditadas: (aud as any).dependenciasAuditadas || [],
         progreso: aud.progreso,
         hallazgos: aud.hallazgos,
         diasRestantes: aud.diasRestantes,
@@ -1569,6 +1571,8 @@ export function GestionAuditoriasKanbanSimple() {
         fechaFin: data.fechaFin || data.fechaFinComunicacion,
         areaObjetivo: data.areaObjetivo || 'Control Interno',
         procesoAuditado: data.procesoAuditado || 'General',
+        unidadesAuditables: data.unidadesAuditables ?? [],
+        dependenciasAuditadas: data.dependenciasAuditadas ?? [],
         calificacionRiesgo: data.nivelRiesgo || 'Medio',
         nivelRiesgo: data.nivelRiesgo || 'Medio',
         alcance: data.alcance || data.descripcion || '',
@@ -3294,6 +3298,8 @@ export function GestionAuditoriasKanbanSimple() {
                 tipo: data.tipoAuditoria,
                 areaObjetivo: data.areaObjetivo || data.procesoAuditado,
                 procesoAuditado: data.procesoAuditado,
+                unidadesAuditables: data.unidadesAuditables ?? [],
+                dependenciasAuditadas: data.dependenciasAuditadas ?? [],
                 alcance: data.alcance || data.descripcion,
                 calificacionRiesgo: data.nivelRiesgo,
                 // Cronograma 3 etapas
@@ -3399,6 +3405,10 @@ export function GestionAuditoriasKanbanSimple() {
                 planAnualId: (auditoriaParaEditar as any).planAnualId || '',
                 // Semanas que no se trabajan: sin ellas, guardar la edición las borraba (EFDS-2132)
                 semanasExcluidas: (auditoriaParaEditar as any).semanasExcluidas || [],
+                // Unidades auditables que cubre (EFDS-2316)
+                unidadesAuditables: (auditoriaParaEditar as any).unidadesAuditables || [],
+                // Dependencias que se auditan (EFDS-2367)
+                dependenciasAuditadas: (auditoriaParaEditar as any).dependenciasAuditadas || [],
               };
             })()}
           />

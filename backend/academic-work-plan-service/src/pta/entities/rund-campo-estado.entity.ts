@@ -30,14 +30,14 @@ export class RundCampoEstadoEntity {
   estado: string;
 
   /**
-   * BR-043 — Segregación maker-checker: quién cargó los datos de este bloque.
+   * Trazabilidad de quién cargó o editó los datos de este bloque.
    */
   @Column({ name: 'cargado_por', type: 'text', nullable: true })
   cargadoPor: string | null;
 
   /**
-   * BR-043 — Segregación maker-checker: quién revisó/aprobó este bloque.
-   * Debe ser distinto de cargadoPor.
+   * Trazabilidad de quién revisó/aprobó este bloque.
+   * Puede coincidir con cargadoPor si cuenta con permisos de revisión.
    */
   @Column({ name: 'revisado_por', type: 'text', nullable: true })
   revisadoPor: string | null;

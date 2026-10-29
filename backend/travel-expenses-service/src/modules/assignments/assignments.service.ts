@@ -129,8 +129,10 @@ export class AssignmentsService {
         where: { id: solicitudId },
         relations: ['comisionado'],
       });
-      if (solicitud?.comisionado?.idDependencia) {
-        dependenciaFiltro = solicitud.comisionado.idDependencia;
+      if (solicitud?.idDependencia != null) {
+        dependenciaFiltro = Number(solicitud.idDependencia);
+      } else if (solicitud?.comisionado?.idDependencia != null) {
+        dependenciaFiltro = Number(solicitud.comisionado.idDependencia);
       }
     }
 
@@ -138,14 +140,15 @@ export class AssignmentsService {
       order: { nombreCompleto: 'ASC' },
     });
 
-    let analistasFiltrados = dependenciaFiltro
-      ? analistas.filter((a) => a.dependenciaId === dependenciaFiltro)
-      : analistas;
-
-    // Si la dependencia no tiene analistas asignados específicamente, ofrecer todos los analistas activos
-    if (analistasFiltrados.length === 0) {
-      analistasFiltrados = analistas;
-    }
+    const analistasFiltrados =
+      dependenciaFiltro != null
+        ? analistas.filter(
+            (a) =>
+              a.dependenciaId != null &&
+              Number(a.dependenciaId) === dependenciaFiltro &&
+              a.activo !== false,
+          )
+        : analistas.filter((a) => a.activo !== false);
 
     const solicitudesActivas = await this.dataSource.query(
       `
@@ -241,10 +244,16 @@ export class AssignmentsService {
 
     const result = await this.dataSource.transaction(async (manager) => {
       // 1. Bloquear la fila de la solicitud (pessimistic lock)
-      const solicitud = await manager
+      const qb = manager
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
-        .setLock('pessimistic_write')
+        .setLock('pessimistic_write', undefined, ['s']);
+
+      if (typeof qb.leftJoinAndSelect === 'function') {
+        qb.leftJoinAndSelect('s.comisionado', 'c');
+      }
+
+      const solicitud = await qb
         .where('s.id = :id', { id: solicitudId })
         .getOne();
 
@@ -263,17 +272,36 @@ export class AssignmentsService {
         );
       }
 
-      // 3. Validar que el analista exista en el módulo
+      // 3. Validar que el analista exista en el módulo y esté activo
       const analista = await manager
         .getRepository(AnalistaEntity)
         .createQueryBuilder('a')
         .where('a.usuario_id = :id', { id: analistaId })
         .getOne();
 
-      if (!analista) {
+      if (!analista || !analista.activo) {
         throw new BadRequestException(
-          `El analista ${analistaId} no existe en el módulo de viáticos.`,
+          `El analista ${analistaId} no existe en el módulo de viáticos o no se encuentra activo.`,
         );
+      }
+
+      // 4. Validar que el analista pertenezca a la misma dependencia de la solicitud
+      const depSolicitud =
+        solicitud.idDependencia != null
+          ? Number(solicitud.idDependencia)
+          : solicitud.comisionado?.idDependencia != null
+            ? Number(solicitud.comisionado.idDependencia)
+            : null;
+
+      if (depSolicitud != null) {
+        const depAnalista =
+          analista.dependenciaId != null ? Number(analista.dependenciaId) : null;
+
+        if (depAnalista == null || depAnalista !== depSolicitud) {
+          throw new BadRequestException(
+            `No es posible asignar la solicitud: el analista ${analista.nombreCompleto} pertenece a una dependencia distinta a la de la solicitud (Dependencia del analista: ${depAnalista ?? 'Sin asignar'} vs Dependencia de la solicitud: ${depSolicitud}). Solo se pueden asignar analistas de la misma dependencia.`,
+          );
+        }
       }
 
       const estadoAnterior = solicitud.estadoSolicitud;

@@ -59,13 +59,19 @@ const CATALOGO_IATAS: Record<string, string> = {
 
 function autocompletarIata(ciudad: string): string {
   if (!ciudad) return '';
-  const norm = ciudad
-    .toUpperCase()
+  const limpio = ciudad.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(limpio) && Object.values(CATALOGO_IATAS).includes(limpio)) {
+    return limpio;
+  }
+  const norm = limpio
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\.,\-_/]/g, ' ')
+    .replace(/\b(D\s*C|DISTRITO\s*CAPITAL|CIUDAD|MUNICIPIO)\b/g, ' ')
+    .replace(/[^A-Z]/g, '')
     .trim();
   for (const [k, iata] of Object.entries(CATALOGO_IATAS)) {
-    if (norm.includes(k) || k.includes(norm)) return iata;
+    if (norm === k || norm.includes(k) || k.includes(norm)) return iata;
   }
   return '';
 }
@@ -294,13 +300,33 @@ export default function TarifasReferenciaAdmin() {
       const origenIata = (t.origenIata || '').toLowerCase();
       const destinoIata = (t.destinoIata || '').toLowerCase();
       const fuente = (t.fuente || '').toLowerCase();
+      const notas = (t.notas || '').toLowerCase();
+
+      const rutaDirecta = `${origenIata}-${destinoIata}`;
+      const rutaInversa = `${destinoIata}-${origenIata}`;
+      const rutaEspaciada = `${origenIata} - ${destinoIata}`;
+      const rutaEspaciadaInv = `${destinoIata} - ${origenIata}`;
+      const rutaCiudades = `${origen} - ${destino}`;
+      const rutaCiudadesInv = `${destino} - ${origen}`;
+      const qSinEspacios = q.replace(/[\s\-_/]+/g, '');
+      const rutaIataSinEspacios = `${origenIata}${destinoIata}`;
+      const rutaIataSinEspaciosInv = `${destinoIata}${origenIata}`;
 
       return (
         origen.includes(q) ||
         destino.includes(q) ||
         origenIata.includes(q) ||
         destinoIata.includes(q) ||
-        fuente.includes(q)
+        fuente.includes(q) ||
+        notas.includes(q) ||
+        rutaDirecta.includes(q) ||
+        rutaInversa.includes(q) ||
+        rutaEspaciada.includes(q) ||
+        rutaEspaciadaInv.includes(q) ||
+        rutaCiudades.includes(q) ||
+        rutaCiudadesInv.includes(q) ||
+        rutaIataSinEspacios.includes(qSinEspacios) ||
+        rutaIataSinEspaciosInv.includes(qSinEspacios)
       );
     });
   }, [tarifas, busqueda, filtroEstado]);
@@ -528,7 +554,7 @@ export default function TarifasReferenciaAdmin() {
                 <tr>
                   <th className="text-left py-3 px-4">Ruta Aérea</th>
                   <th className="text-center py-3 px-3">Códigos IATA</th>
-                  <th className="text-right py-3 px-4">Tarifa Estimada</th>
+                  <th className="text-right py-3 px-4">Tarifa por Trayecto (Solo Ida)</th>
                   <th className="text-right py-3 px-4">Rango (Mín – Máx)</th>
                   <th className="text-center py-3 px-3">Fuente</th>
                   <th className="text-center py-3 px-3">Última Actualización</th>
@@ -739,7 +765,7 @@ export default function TarifasReferenciaAdmin() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                    Tarifa Estimada ($ COP) *
+                    Tarifa por Trayecto (Solo Ida) ($ COP) *
                   </label>
                   <input
                     type="text"
@@ -751,7 +777,7 @@ export default function TarifasReferenciaAdmin() {
                         tarifaEstimada: soloNumeros(e.target.value),
                       })
                     }
-                    placeholder="380000"
+                    placeholder="190000"
                     className="w-full px-3 py-2 text-xs font-bold border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

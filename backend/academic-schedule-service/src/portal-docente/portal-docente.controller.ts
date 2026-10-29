@@ -1,9 +1,13 @@
-import { Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PORTAL_TOMAR, PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
+import { tokenDe } from '../acceso/token.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
+import { tomaDeFranjasHabilitada } from './flujo-docente.js';
+import { VistaService } from '../vista/vista.service.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -17,6 +21,7 @@ export class PortalDocenteController {
   constructor(
     private readonly portal: PortalDocenteService,
     private readonly permisos: ProgramacionPermissionsService,
+    private readonly vista: VistaService,
   ) {}
 
   private roles(req: Request): string[] {
@@ -39,6 +44,16 @@ export class PortalDocenteController {
     }
   }
 
+  /**
+   * GET /portal-docente/configuracion — qué flujo rige (EFDS-2348). Con
+   * `tomaFranjas: false` el docente recibe su programación asignada y no toma ni suelta.
+   */
+  @Get('configuracion')
+  async configuracion(@Req() req: Request) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    return { success: true, data: { tomaFranjas: tomaDeFranjasHabilitada() } };
+  }
+
   /** GET /portal-docente/disponibles — franjas publicadas que puede tomar. */
   @Get('disponibles')
   async disponibles(@Req() req: Request) {
@@ -55,25 +70,41 @@ export class PortalDocenteController {
     return { success: true, data: await this.portal.misFranjas(docente.idPerson) };
   }
 
+  /**
+   * GET /portal-docente/mi-calendario?periodo= — su programación asignada, de lunes a
+   * domingo, con asignatura, grupo, aula y horas (EFDS-2343/2348). Sin periodo, el en curso.
+   * La identidad sale del token: un docente no ve el calendario de otro.
+   */
+  @Get('mi-calendario')
+  async miCalendario(@Req() req: Request, @Query('periodo') periodo?: string) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    const yo = await this.portal.resolverDocente(this.idUser(req));
+    const docente = await this.vista.docentePor({ idDocente: yo.idPerson });
+    const idPeriodo = periodo || (await this.vista.periodoEnCurso());
+    return { success: true, data: await this.vista.calendario(docente, idPeriodo, 'todos', tokenDe(req)) };
+  }
+
   /** GET /portal-docente/acumulado — consumo del docente vs tope (RN-04, solo lectura). */
   @Get('acumulado')
   async acumulado(@Req() req: Request) {
     await this.exigir(req, PERMISO_PORTAL_VER);
     const docente = await this.portal.resolverDocente(this.idUser(req));
-    return { success: true, data: await this.portal.acumulado(docente.documento) };
+    return { success: true, data: await this.portal.acumulado(docente.documento, tokenDe(req)) };
   }
 
   /** POST /portal-docente/tomar/:idFranja — toma una franja (transacción + lock). */
   @Post('tomar/:idFranja')
-  async tomar(@Req() req: Request, @Param('idFranja') idFranja: string) {
+  @EscrituraEn({ franja: { param: 'idFranja' } })
+  async tomar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));
-    return { success: true, data: await this.portal.tomar(docente.idPerson, idFranja) };
+    return { success: true, data: await this.portal.tomar(docente.idPerson, idFranja, tokenDe(req)) };
   }
 
   /** POST /portal-docente/soltar/:idFranja — suelta una franja tomada no aprobada. */
   @Post('soltar/:idFranja')
-  async soltar(@Req() req: Request, @Param('idFranja') idFranja: string) {
+  @EscrituraEn({ franja: { param: 'idFranja' } })
+  async soltar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));
     return { success: true, data: await this.portal.soltar(docente.idPerson, idFranja) };

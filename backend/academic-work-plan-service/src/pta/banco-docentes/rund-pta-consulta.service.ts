@@ -52,6 +52,7 @@ export class RundPtaConsultaService {
       LEFT JOIN auth.seccionales sec
         ON sec.id_seccional::text = COALESCE(NULLIF(d."territorialId", ''), p.id_seccional::text)
       WHERE regexp_replace(BTRIM(p.num_identificacion), '\\.', '', 'g') = $1
+        AND COALESCE(d."eliminadoRund", false)=false
       ORDER BY CASE WHEN d."periodoCarga" = $2::text THEN 0 ELSE 1 END,
         CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
         CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END,

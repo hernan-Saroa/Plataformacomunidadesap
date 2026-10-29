@@ -37,6 +37,14 @@ function transaction(queryImplementation: (sql: string, params?: any[]) => any) 
 }
 
 describe('RundDocumentosService - ciclo CRUD documental', () => {
+  it.each(['contrato', 'acto_administrativo_vinculacion', 'resolucion_escalafon', 'documento_identidad'])('comprueba el alcance de incorporación sobre el documento real: %s', async tipo_soporte => {
+    const db = { query: jest.fn().mockResolvedValueOnce([docente]).mockResolvedValueOnce([{
+      id: 'documento', docente_id: docente.id, estado: 'ACTIVO', bloque: tipo_soporte === 'documento_identidad' ? 'IDENTIDAD' : 'VINCULACION', tipo_soporte,
+    }]) };
+    const operation = new RundDocumentosService(db as any, {} as any).assertIncorporationDocument(docente.id, 'documento');
+    if (['contrato', 'acto_administrativo_vinculacion'].includes(tipo_soporte)) await expect(operation).resolves.toBeUndefined();
+    else await expect(operation).rejects.toThrow('solo gestiona contratos');
+  });
   afterEach(() => delete process.env.RUND_DOCUMENT_MAX_SIZE_BYTES);
 
   it('conserva el archivo si se pierde la respuesta de COMMIT, evitando borrar una carga posiblemente confirmada', async () => {

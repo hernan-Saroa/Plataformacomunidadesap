@@ -49,6 +49,7 @@ import { PERMISSION_MODULES } from '../../data/permissions-config-updated';
 import type { Permission, PermissionModule } from '../../data/permissions-config-updated';
 import { modulesService } from '../../services/api/modules.service';
 import { rolesService } from '../../services/api';
+import { isLegacyRundPermission, isRundProfilePermission, retainLegacyRundPermissions, simplifyRundPermissionModules } from '../../../../shared/rund-permission-catalog';
 
 interface SystemRole {
   id: string;
@@ -666,12 +667,15 @@ export function RolePermissionsEditor({
   onSaved
 }: RolePermissionsEditorProps) {
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
+  const [legacyRundIds, setLegacyRundIds] = useState<Set<string>>(new Set());
+  const [initialRundProfiles, setInitialRundProfiles] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [permissionModules, setPermissionModules] = useState<PermissionModuleWithCodes[]>(
     () => getFallbackPermissionModules(),
   );
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [permissionsReady, setPermissionsReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set());
   const [activeAcademicProfileId, setActiveAcademicProfileId] = useState<AcademicProfileId | null>(null);
@@ -744,6 +748,7 @@ export function RolePermissionsEditor({
     let cancelled = false;
     const loadPermissions = async () => {
       setPermissionsLoading(true);
+      setPermissionsReady(false);
       try {
         const [modules, rolePermissions] = await Promise.all([
           modulesService.getModulesWithPermissions({
@@ -754,11 +759,15 @@ export function RolePermissionsEditor({
         ]);
 
         if (cancelled) return;
-        const mappedModules = keepVisiblePermissionModules(
+        const mappedModules = simplifyRundPermissionModules(keepVisiblePermissionModules(
           normalizePermissionModulesText(
             modulesService.mapToPermissionModules(modules) as PermissionModuleWithCodes[],
           ),
-        );
+        ));
+
+        setLegacyRundIds(new Set(rolePermissions.filter(isLegacyRundPermission).map(permission => permission.id)));
+        setInitialRundProfiles(new Set(rolePermissions.filter(isRundProfilePermission).map(permission => permission.id)));
+        setPermissionsReady(true);
 
         if (isSuperAdmin) {
           // Super Admin: marcar todos los permisos con perfil Jefe para Verificación de títulos
@@ -1016,6 +1025,7 @@ export function RolePermissionsEditor({
 
   // Save permissions
   const handleSave = async () => {
+    if (permissionsLoading || !permissionsReady) return;
     const editablePermissionIds = new Set(
       permissionModules.flatMap((module) =>
         module.permissions
@@ -1023,9 +1033,9 @@ export function RolePermissionsEditor({
           .map((permission) => permission.id),
       ),
     );
-    const permissionsToSave = Array.from(selectedPermissions).filter((permissionId) =>
-      editablePermissionIds.has(permissionId),
-    );
+    const editableSelected = new Set(Array.from(selectedPermissions).filter(permissionId => editablePermissionIds.has(permissionId)));
+    const profileIds = new Set(permissionModules.flatMap(module => module.permissions.filter(isRundProfilePermission).map(permission => permission.id)));
+    const permissionsToSave = retainLegacyRundPermissions(editableSelected, initialRundProfiles, profileIds, legacyRundIds);
 
     if (permissionsToSave.length === 0) {
       toast.warning('Sin permisos asignados', {
@@ -1059,6 +1069,7 @@ export function RolePermissionsEditor({
   // Reset permissions
   const handleReset = () => {
     setSelectedPermissions(new Set());
+    setLegacyRundIds(new Set());
     setActiveAcademicProfileId(null);
     setHasChanges(selectedPermissions.size > 0);
     toast.info('Permisos limpiados', {
@@ -1193,6 +1204,9 @@ export function RolePermissionsEditor({
         </div>
 
         {/* Permissions List */}
+        {legacyRundIds.size > 0 && <p className="px-6 text-xs text-slate-600">
+          Este rol conserva sus accesos anteriores de RUND. Al elegir un perfil RUND, se sustituirán por las facultades de ese perfil.
+        </p>}
         <div className="flex-1 overflow-y-auto px-6 space-y-4">
           {permissionsLoading ? (
             <div className="flex items-center justify-center py-12 text-sm text-gray-500">
@@ -1493,7 +1507,7 @@ export function RolePermissionsEditor({
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={!hasChanges || isSaving}
+                disabled={!hasChanges || isSaving || permissionsLoading || !permissionsReady}
                 className="flex-1 sm:flex-none bg-gradient-to-r from-[#1e5da8] to-blue-600 hover:from-[#1a4d8a] hover:to-blue-700 text-white font-bold shadow-lg disabled:opacity-50"
               >
                 {isSaving ? (

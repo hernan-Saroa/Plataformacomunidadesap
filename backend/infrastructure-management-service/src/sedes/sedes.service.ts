@@ -343,4 +343,50 @@ export class SedesService implements OnModuleInit {
     await this.bloqueRepo.delete(b.idBloque);
     return { idBloque: b.idBloque, eliminado: true };
   }
+
+  async obtenerJerarquiaCompleta(): Promise<{
+    sedesActuales: any[];
+    territorialesNacionales: any[];
+  }> {
+    const sedesActuales = await this.sedeRepo.find({
+      relations: ['bloques', 'bloques.espacios'],
+      order: { nombre: 'ASC' },
+    });
+
+    let territorialesNacionales: any[] = [];
+    try {
+      const terrs = await this.sedeRepo.query(`
+        SELECT t.id, t.nombre, t.codigo, COUNT(s.id)::int as num_cetaps 
+        FROM "academic_work_plan"."Territorial" t 
+        LEFT JOIN "academic_work_plan"."Sede" s ON s."territorialId" = t.id 
+        GROUP BY t.id, t.nombre, t.codigo 
+        ORDER BY t.nombre
+      `);
+
+      const cetaps = await this.sedeRepo.query(`
+        SELECT s.id, s."territorialId" as territorial_id, s.nombre, s.municipio 
+        FROM "academic_work_plan"."Sede" s 
+        ORDER BY s.nombre
+      `);
+
+      const cetapMap = new Map<string, any[]>();
+      for (const c of cetaps) {
+        const tid = c.territorial_id;
+        if (!cetapMap.has(tid)) cetapMap.set(tid, []);
+        cetapMap.get(tid)!.push(c);
+      }
+
+      territorialesNacionales = terrs.map((t: any) => ({
+        ...t,
+        cetaps: cetapMap.get(t.id) || [],
+      }));
+    } catch (err: any) {
+      console.warn('[SedesService] No se pudo consultar academic_work_plan:', err?.message);
+    }
+
+    return {
+      sedesActuales,
+      territorialesNacionales,
+    };
+  }
 }

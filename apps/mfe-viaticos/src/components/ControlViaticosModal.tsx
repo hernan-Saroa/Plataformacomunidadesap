@@ -16,11 +16,18 @@ import {
   Route,
   Plane,
   Car,
+  Sparkles,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import authService from '../services/api/authService';
 import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
-import { SolicitudControlViaticosResponse, LiquidacionResponse, RutaItinerario } from '../types/viaticos';
+import {
+  SolicitudControlViaticosResponse,
+  LiquidacionResponse,
+  RutaItinerario,
+  TarifaEstimadaResult,
+  TicketValidationResult,
+} from '../types/viaticos';
 import {
   esPdfMime,
   formatearDiasComision,
@@ -146,12 +153,19 @@ function CopiableField({
 function LiquidacionSection({
   liquidacion,
   solicitud,
+  costoReferenciaTiquete,
 }: {
   liquidacion?: LiquidacionResponse['data'] | undefined;
   solicitud?: SolicitudControlViaticosResponse | null;
+  costoReferenciaTiquete?: number;
 }) {
   const montoViaticos = Number(solicitud?.montoViaticos || liquidacion?.valorTotalViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
+  const costoEstimadoTiquete = Number(solicitud?.costoEstimadoTiquete || 0);
+  const costoTiquetesAplicado =
+    costoReferenciaTiquete !== undefined && costoReferenciaTiquete >= 0
+      ? costoReferenciaTiquete
+      : costoEstimadoTiquete;
   const dias = Number(solicitud?.diasComision || liquidacion?.numeroDiasNoches || 1);
   const salarioBase = Number(solicitud?.salarioBasico || liquidacion?.salarioBaseAplicado || 0);
   const tarifaDiaria =
@@ -171,7 +185,7 @@ function LiquidacionSection({
   const factorComisionado = liquidacion?.factorComisionado ?? 1;
   const factorPernocta = liquidacion?.factorPernocta ?? 1;
   const totalViaticos = liquidacion?.valorTotalViaticos ?? montoViaticos;
-  const valorTotalNeto = totalViaticos + montoGastosViaje;
+  const valorTotalNeto = totalViaticos + montoGastosViaje + costoTiquetesAplicado;
 
   return (
     <div className="space-y-2 text-xs">
@@ -218,9 +232,19 @@ function LiquidacionSection({
           <span className="font-semibold text-slate-800">{formatearMoneda(montoGastosViaje)}</span>
         </div>
       )}
-      {montoGastosViaje > 0 && (
+      {costoTiquetesAplicado > 0 && (
+        <div className="flex justify-between">
+          <span className="text-slate-500">
+            {costoEstimadoTiquete > 0
+              ? 'Costo Tiquetes Aéreos (Pasajes)'
+              : 'Estimado Tiquetes (Tarifa Referencia)'}
+          </span>
+          <span className="font-semibold text-sky-800">{formatearMoneda(costoTiquetesAplicado)}</span>
+        </div>
+      )}
+      {(montoGastosViaje > 0 || costoTiquetesAplicado > 0) && (
         <div className="flex justify-between border-t border-slate-200 pt-2 font-bold bg-slate-100/70 p-2 rounded-lg">
-          <span className="text-slate-900">Total a Girar (Viáticos + Gastos)</span>
+          <span className="text-slate-900">Total Consolidado (Viáticos + Gastos + Tiquetes)</span>
           <span className="text-emerald-800 text-sm">{formatearMoneda(valorTotalNeto)}</span>
         </div>
       )}
@@ -542,6 +566,12 @@ export default function ControlViaticosModal({
     devCode?: string;
   } | null>(null);
 
+  // Estados para consulta de tarifa estimada de referencia y validación de saldo tiquetes
+  const [tarifaEstimadaReferencia, setTarifaEstimadaReferencia] = useState<TarifaEstimadaResult | null>(null);
+  const [cargandoTarifa, setCargandoTarifa] = useState<boolean>(false);
+  const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
+  const [costoTiqueteInput, setCostoTiqueteInput] = useState<string>('');
+
   useEffect(() => {
     if (abierta && typeof viaticosService.obtenerTiposDocumentoSoporte === 'function') {
       viaticosService
@@ -571,10 +601,107 @@ export default function ControlViaticosModal({
       setSolicitandoOtp(false);
       setModalFirmaOtpAbierta(false);
       setOtpData(null);
+      setTarifaEstimadaReferencia(solicitud?.tarifaEstimada || null);
+      setValidacionTiquete(solicitud?.validacionTiquete || null);
+      setCargandoTarifa(false);
       cerrarTodosVisores();
       void cargarCatalogoDependencias();
+
+      if (solicitud?.costoEstimadoTiquete != null && Number(solicitud.costoEstimadoTiquete) > 0) {
+        setCostoTiqueteInput(String(solicitud.costoEstimadoTiquete));
+      } else {
+        setCostoTiqueteInput('');
+      }
+
+      if (solicitud?.requiereTiquetes) {
+        const sync = sincronizarItinerarioFormulario(solicitud.itinerario || []);
+        const origen = sync.origenCiudad || (solicitud as any).origenCiudad || 'Bogotá';
+        const destino = sync.destinoCiudad || solicitud.destinoCiudad || '';
+
+        // Si la solicitud no traía precargada la tarifa o validación, consultarla
+        if (!solicitud.tarifaEstimada && origen && destino && typeof viaticosService.consultarTarifaEstimada === 'function') {
+          setCargandoTarifa(true);
+          viaticosService
+            .consultarTarifaEstimada(origen, destino)
+            .then((res) => {
+              setTarifaEstimadaReferencia(res);
+              const tramosAereos = (solicitud.itinerario || []).filter(
+                (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete,
+              );
+              const numTramos = tramosAereos.length > 0
+                ? tramosAereos.length
+                : (sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1)) ? 2 : 1;
+              const montoEstimado = (res?.tarifaEstimada || 0) * numTramos;
+              const depId = solicitud.comisionado?.idDependencia ?? (solicitud as any).idDependencia;
+
+              // Prellenar recomendación para optimizar usabilidad si no se ha digitado un valor
+              if (montoEstimado > 0) {
+                setCostoTiqueteInput((prev) => (prev.trim() === '' ? String(montoEstimado) : prev));
+              }
+
+              if (!solicitud.validacionTiquete && depId != null && typeof viaticosService.validarTiquete === 'function') {
+                return viaticosService
+                  .validarTiquete({
+                    dependenciaId: String(depId),
+                    montoEstimadoTiquete: montoEstimado || Number(solicitud.costoEstimadoTiquete || 0),
+                    origenCiudad: origen,
+                    destinoCiudad: destino,
+                    tipoTransporte: 'AEREO',
+                  })
+                  .then((valRes) => setValidacionTiquete(valRes))
+                  .catch(() => {});
+              }
+            })
+            .catch(() => {})
+            .finally(() => setCargandoTarifa(false));
+        } else if (solicitud.tarifaEstimada) {
+          const tramosAereos = (solicitud.itinerario || []).filter(
+            (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete,
+          );
+          const numTramos = tramosAereos.length > 0
+            ? tramosAereos.length
+            : (sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1)) ? 2 : 1;
+          const montoEstimado = (solicitud.tarifaEstimada.tarifaEstimada || 0) * numTramos;
+          if (montoEstimado > 0 && (!solicitud.costoEstimadoTiquete || Number(solicitud.costoEstimadoTiquete) === 0)) {
+            setCostoTiqueteInput(String(montoEstimado));
+          }
+        } else if (!solicitud.validacionTiquete && Number(solicitud.costoEstimadoTiquete || 0) > 0) {
+          const depId = solicitud.comisionado?.idDependencia ?? (solicitud as any).idDependencia;
+          if (depId != null && typeof viaticosService.validarTiquete === 'function') {
+            viaticosService
+              .validarTiquete({
+                dependenciaId: String(depId),
+                montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+                origenCiudad: origen,
+                destinoCiudad: destino,
+                tipoTransporte: 'AEREO',
+              })
+              .then((valRes) => setValidacionTiquete(valRes))
+              .catch(() => {});
+          }
+        }
+      }
     }
-  }, [abierta]);
+  }, [abierta, solicitud]);
+
+  const revalidarPresupuestoTiquete = (nuevoMonto: number) => {
+    const depId = solicitud?.comisionado?.idDependencia ?? (solicitud as any)?.idDependencia;
+    if (depId != null && typeof viaticosService.validarTiquete === 'function') {
+      const sync = sincronizarItinerarioFormulario(solicitud?.itinerario || []);
+      const origen = sync.origenCiudad || (solicitud as any)?.origenCiudad || 'Bogotá';
+      const destino = sync.destinoCiudad || solicitud?.destinoCiudad || '';
+      viaticosService
+        .validarTiquete({
+          dependenciaId: String(depId),
+          montoEstimadoTiquete: nuevoMonto,
+          origenCiudad: origen,
+          destinoCiudad: destino,
+          tipoTransporte: 'AEREO',
+        })
+        .then((valRes) => setValidacionTiquete(valRes))
+        .catch(() => {});
+    }
+  };
 
   if (!abierta) return null;
 
@@ -582,7 +709,6 @@ export default function ControlViaticosModal({
   const nombreCompleto = comisionado ? formatearNombreComisionado(comisionado as any) : '';
   const montoViaticos = Number(solicitud?.montoViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
-  const valorNeto = montoViaticos + montoGastosViaje;
 
   // Desglose de transporte terminal aérea guardado
   const montoTerminalAereo = Number(
@@ -597,6 +723,32 @@ export default function ControlViaticosModal({
         : 0),
   );
   const costoEstimadoTiquete = Number(solicitud?.costoEstimadoTiquete || 0);
+
+  // Cálculo y sincronización de itinerario para tiquetes y desplazamientos
+  const syncItin = sincronizarItinerarioFormulario(solicitud?.itinerario || []);
+  const tramosAereos = (solicitud?.itinerario || []).filter(
+    (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete,
+  );
+  const numTramosAereos = tramosAereos.length > 0
+    ? tramosAereos.length
+    : (syncItin.esViajeIdaVuelta ?? ((solicitud?.itinerario?.length || 0) > 1)) ? 2 : 1;
+  const multiplicadorTramos = numTramosAereos;
+  const tarifaUnit = Number(tarifaEstimadaReferencia?.tarifaEstimada || 0);
+  const totalTiquetesReferencia = tarifaUnit * multiplicadorTramos;
+
+  // Valor ingresado por el usuario o sugerido automáticamente (modo recomendación y usabilidad)
+  const valorIngresadoNum = costoTiqueteInput.trim() !== '' ? Number(costoTiqueteInput) : NaN;
+  const costoTiqueteEfectivo =
+    !isNaN(valorIngresadoNum) && valorIngresadoNum >= 0
+      ? valorIngresadoNum
+      : costoEstimadoTiquete > 0
+      ? costoEstimadoTiquete
+      : totalTiquetesReferencia;
+
+  const gastoDesplazamientoTerminal = montoTerminalAereo > 0 ? montoTerminalAereo : montoGastosViaje;
+  const totalDesplazamientoInstitucional = gastoDesplazamientoTerminal + costoTiqueteEfectivo;
+  const totalConsolidadoGlobal = montoViaticos + montoGastosViaje + costoTiqueteEfectivo;
+  const valorNeto = montoViaticos + montoGastosViaje;
 
   const resumenPresupuestal = (solicitud as any)?.resumenPresupuestal as
     | {
@@ -726,6 +878,7 @@ export default function ControlViaticosModal({
         nombreRevisor: nombreUsuarioActual,
         cargoRevisor: cargoUsuarioActual,
         documentoIdentidad: documentoIdentidadUsuarioActual,
+        costoEstimadoTiquete: costoTiqueteEfectivo,
       });
       setVerificacionExitosa(true);
       if (solicitud) {
@@ -931,7 +1084,11 @@ export default function ControlViaticosModal({
                   Liquidación Calculada
                 </h3>
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                  <LiquidacionSection liquidacion={solicitud.liquidacion} solicitud={solicitud} />
+                  <LiquidacionSection
+                    liquidacion={solicitud.liquidacion}
+                    solicitud={solicitud}
+                    costoReferenciaTiquete={costoTiqueteEfectivo}
+                  />
                 </div>
               </section>
 
@@ -950,7 +1107,7 @@ export default function ControlViaticosModal({
 
                   <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
                     {/* Tarjeta de Transporte a Terminal Aérea Guardado */}
-                    {montoTerminalAereo > 0 || montoGastosViaje > 0 ? (
+                    {gastoDesplazamientoTerminal > 0 ? (
                       <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -958,7 +1115,7 @@ export default function ControlViaticosModal({
                             Transporte a Terminal Aérea (Aeropuerto)
                           </span>
                           <span className="text-xs font-extrabold text-emerald-700 font-mono">
-                            {formatearMoneda(montoTerminalAereo > 0 ? montoTerminalAereo : montoGastosViaje)}
+                            {formatearMoneda(gastoDesplazamientoTerminal)}
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 leading-relaxed">
@@ -980,28 +1137,202 @@ export default function ControlViaticosModal({
                       </div>
                     )}
 
-                    {/* Estado del Costo Estimado del Tiquete */}
-                    <div className="p-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-700">Costo Estimado Tiquete Aéreo</span>
-                        <p className="text-[11px] text-slate-500">
-                          {costoEstimadoTiquete > 0
-                            ? 'Valor de referencia registrado en la solicitud'
-                            : 'Pendiente de cotización formal / emisión por la Agencia de Viajes (Tiquetería)'}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        {costoEstimadoTiquete > 0 ? (
-                          <span className="text-xs font-extrabold text-slate-800 font-mono">
-                            {formatearMoneda(costoEstimadoTiquete)}
+                    {/* Tarjeta de Tarifa Estimada de Referencia para Tiquetes Aéreos */}
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Plane className="w-4 h-4 text-sky-600" />
+                          <span className="text-xs font-bold text-slate-800">
+                            Tarifa Estimada de Referencia (Vuelos)
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                            Por cotizar
+                          {tarifaEstimadaReferencia?.origenIata && tarifaEstimadaReferencia?.destinoIata && (
+                            <span className="inline-flex items-center gap-1 font-mono font-black text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-300">
+                              {tarifaEstimadaReferencia.origenIata} ⇄ {tarifaEstimadaReferencia.destinoIata}
+                            </span>
+                          )}
+                        </div>
+                        {tarifaEstimadaReferencia?.fuente && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            Fuente: {tarifaEstimadaReferencia.fuente}
                           </span>
                         )}
                       </div>
+
+                      {cargandoTarifa ? (
+                        <p className="text-[11px] text-slate-500 italic">
+                          Consultando tarifa de referencia y benchmark de mercado...
+                        </p>
+                      ) : tarifaEstimadaReferencia?.encontrado ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] font-bold uppercase">Ruta / Trayecto</span>
+                            <span className="font-semibold text-slate-800">
+                              {tarifaEstimadaReferencia.origen} ⇄ {tarifaEstimadaReferencia.destino}
+                            </span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5">
+                              {multiplicadorTramos === 2
+                                ? '2 tramos (Ida y Vuelta)'
+                                : `${multiplicadorTramos} tramo${multiplicadorTramos === 1 ? ' (Solo Ida)' : 's'}`}
+                            </span>
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] font-bold uppercase">Tarifa por Trayecto</span>
+                            <span className="font-mono font-bold text-slate-800">
+                              {formatearMoneda(tarifaUnit)} / trayecto
+                            </span>
+                            {tarifaEstimadaReferencia.tarifaMinima != null && tarifaEstimadaReferencia.tarifaMaxima != null && (
+                              <span className="text-[10px] text-slate-500 block mt-0.5">
+                                Rango: {formatearMoneda(tarifaEstimadaReferencia.tarifaMinima)} – {formatearMoneda(tarifaEstimadaReferencia.tarifaMaxima)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2 bg-sky-50 rounded-lg border border-sky-100">
+                            <span className="text-sky-700 block text-[10px] font-bold uppercase">Total Estimado Pasajes</span>
+                            <span className="font-mono font-black text-sky-900 text-xs">
+                              {formatearMoneda(totalTiquetesReferencia)}
+                            </span>
+                            <span className="text-[10px] text-sky-700 block mt-0.5">
+                              {multiplicadorTramos} × {formatearMoneda(tarifaUnit)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          {tarifaEstimadaReferencia?.mensaje || 'No se encontró tarifa parametrizada específica para este trayecto. Se requerirá cotización formal.'}
+                        </p>
+                      )}
                     </div>
+
+                    {/* Tarjeta de Registro y Edición del Gasto de Tiquete Aéreo (Recomendación + Entrada Manual) */}
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <Plane className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Gasto de Tiquete Aéreo (Valor a Registrar / Cotizar)
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            El cálculo automático de la ruta opera a modo de recomendación para mejor usabilidad. Puede conservar la recomendación o ingresar el valor cotizado formal.
+                          </p>
+                        </div>
+                        {totalTiquetesReferencia > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const valorStr = String(totalTiquetesReferencia);
+                              setCostoTiqueteInput(valorStr);
+                              revalidarPresupuestoTiquete(totalTiquetesReferencia);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-[#003DA5] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors cursor-pointer"
+                            title="Aplicar tarifa calculada automáticamente como recomendación"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Usar tarifa sugerida ({formatearMoneda(totalTiquetesReferencia)})</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center pt-1 border-t border-slate-100">
+                        <div>
+                          <label
+                            htmlFor="input-costo-tiquete"
+                            className="block text-[10px] font-bold text-slate-500 uppercase mb-1"
+                          >
+                            Valor del Pasaje Aéreo (COP)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">
+                              $
+                            </span>
+                            <input
+                              id="input-costo-tiquete"
+                              type="number"
+                              min="0"
+                              step="1000"
+                              placeholder={
+                                totalTiquetesReferencia > 0
+                                  ? String(totalTiquetesReferencia)
+                                  : 'Ingrese valor del tiquete'
+                              }
+                              value={costoTiqueteInput}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCostoTiqueteInput(val);
+                                const num = val.trim() !== '' ? Number(val) : totalTiquetesReferencia;
+                                if (!isNaN(num)) {
+                                  revalidarPresupuestoTiquete(num);
+                                }
+                              }}
+                              className="w-full pl-7 pr-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:border-transparent text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="sm:text-right flex flex-col justify-end">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                            Costo Aplicado en Control Cruzado
+                          </span>
+                          <span className="text-sm font-black text-slate-900 font-mono">
+                            {costoTiqueteEfectivo > 0
+                              ? formatearMoneda(costoTiqueteEfectivo)
+                              : 'Por cotizar'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 mt-0.5">
+                            {costoTiqueteInput.trim() !== '' && Number(costoTiqueteInput) === totalTiquetesReferencia && totalTiquetesReferencia > 0
+                              ? 'Tarifa recomendada sugerida aplicada'
+                              : costoTiqueteInput.trim() !== ''
+                              ? 'Valor de gasto registrado manualmente'
+                              : totalTiquetesReferencia > 0
+                              ? 'Tarifa sugerida por defecto'
+                              : 'Pendiente de registrar cotización'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Comparativa de Gastos de Desplazamiento vs Tiquetes */}
+                    <div className="p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 rounded-lg border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800">
+                          Comparativa de Desplazamiento Institucional
+                        </span>
+                        <span className="text-xs font-black text-indigo-900 font-mono">
+                          {formatearMoneda(totalDesplazamientoInstitucional)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-200/60">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Traslados Terrestres (Terminal):</span>
+                          <span className="font-semibold text-slate-700 font-mono">{formatearMoneda(gastoDesplazamientoTerminal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Pasajes Aéreos (Tiquetes):</span>
+                          <span className="font-semibold text-sky-800 font-mono">{formatearMoneda(costoTiqueteEfectivo)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Widget Semáforo de Presupuesto y Restricciones de Tiquetes */}
+                    <TicketBudgetWidget
+                      validacion={validacionTiquete}
+                      cargando={cargandoTarifa}
+                      montoEstimadoDisplay={formatearMoneda(costoTiqueteEfectivo)}
+                    />
+
+                    {/* Total Consolidado Proyectado */}
+                    {totalConsolidadoGlobal > 0 && (
+                      <div className="p-3 bg-blue-50/80 rounded-lg border border-blue-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-[#003DA5]">Total Consolidado Proyectado</span>
+                          <p className="text-[11px] text-blue-700/80">
+                            Viáticos ({formatearMoneda(montoViaticos)}) + Desplazamiento ({formatearMoneda(montoGastosViaje)}) + Tiquetes ({formatearMoneda(costoTiqueteEfectivo)})
+                          </p>
+                        </div>
+                        <span className="text-sm font-black text-[#003DA5] font-mono">
+                          {formatearMoneda(totalConsolidadoGlobal)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </section>
               )}

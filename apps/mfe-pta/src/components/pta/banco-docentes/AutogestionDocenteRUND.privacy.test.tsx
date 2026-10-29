@@ -19,7 +19,7 @@ beforeEach(() => {
     : url.endsWith('/otp/validate') ? { success: true, sessionToken: 'sesion', politicaTratamiento: policy }
     : { docenteId: 'docente' });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 async function enter() {
   const view = render(<AutogestionDocenteRUND />);
@@ -31,6 +31,17 @@ async function enter() {
 }
 
 describe('Aceptación del aviso presentado por el backend', () => {
+  it('completa el código de prueba sin abrir avisos del navegador', async () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.mocked(apiClient.post).mockResolvedValue({ success: true, devOtp: '123456' });
+    const view = render(<AutogestionDocenteRUND />);
+    fireEvent.change(screen.getByPlaceholderText('ejemplo@esap.edu.co'), { target: { value: 'docente@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar Código OTP' }));
+    await screen.findByRole('button', { name: 'Confirmar Código' });
+    expect(Array.from(view.container.querySelectorAll<HTMLInputElement>('input[maxlength="1"]')).map(input => input.value).join('')).toBe('123456');
+    expect(alert).not.toHaveBeenCalled();
+  });
+
   it('muestra el aviso, exige nueva aceptación al cargar borrador y envía su huella', async () => {
     await enter();
     await screen.findByText(policy.texto, { exact: false });

@@ -17,6 +17,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { getPtaSignatureStatus } from '../../pta/shared/ptaSignatureStatus';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 import { getPtaResearchData } from '../../../utils/ptaResearch';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
@@ -57,6 +58,7 @@ const SUBCOMP_LABELS: Record<string, string> = {
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
   complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_decanatura: 'Complementarias (Decanatura)',
   complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
 };
 
@@ -271,6 +273,7 @@ export function PTAResumenPrint({ pta, onClose, userDocumento, userName, compone
 
   const hayInv = proyectos.length > 0 || actInv.length > 0;
   const estadoCfg = estadoDocCfg(pta?.estado);
+  const firmas = getPtaSignatureStatus(pta);
 
   // Numeración dinámica de secciones (solo las que existen en este PTA).
   const secciones: string[] = ['info', 'docencia', ...(hayInv ? ['investigacion'] : []), ...(extActs.length ? ['extension'] : []), ...(compActs.length ? ['complementarias'] : []), 'resumen'];
@@ -754,12 +757,18 @@ export function PTAResumenPrint({ pta, onClose, userDocumento, userName, compone
             <div className="resumen-pta-firmas" style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid #E5E7EB' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 32 }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ borderBottom: '1px solid #9CA3AF', width: 200, margin: '0 auto 8px' }} />
+                  {firmas.docente && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#047857', marginBottom: 4 }}>
+                      <ShieldCheck size={18} />
+                      <span style={{ fontWeight: 800, fontSize: '0.78rem' }}>Aprobado Electrónicamente</span>
+                    </div>
+                  )}
+                  <div style={{ borderBottom: `1px solid ${firmas.docente ? '#059669' : '#9CA3AF'}`, width: 200, margin: '0 auto 8px', opacity: firmas.docente ? 0.5 : 1 }} />
                   <p style={{ margin: 0, fontWeight: 700, fontSize: '0.78rem' }}>Firma del Docente</p>
                   <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>{nombreDocente}{identificacionDocente ? ` · C.C. ${identificacionDocente}` : ''}</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  {['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado) ? (
+                  {firmas.aprobador ? (
                     <div>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#047857', marginBottom: 4 }}>
                         <ShieldCheck size={18} />

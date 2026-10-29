@@ -13,7 +13,7 @@ const suggestion={id:'11111111-1111-4111-8111-111111111111',campo:'pregrado',lab
 const job={id:'job',documento_id:'documento',nombre_archivo:'diploma-ficticio.pdf',version:1,estado:'COMPLETADO',documento_estado:'ACTIVO',sugerencias:[suggestion]};
 const progressJob={id:'job-progress',documento_id:'documento-progress',nombre_archivo:'documento-en-analisis.pdf',version:1,estado:'PROCESANDO',etapa:'MODELO',iniciado_en:new Date(Date.now()-65000).toISOString(),documento_estado:'ACTIVO',sugerencias:[]};
 window.fixtureCalls=[];
-export const apiClient={get:async()=>({enabled:true,documents:[],jobs:[structuredClone(progressJob),structuredClone(job)]}),post:async(url,body)=>{window.fixtureCalls.push({url,body});suggestion.estado='DESCARTADA';return {discarded:true};}};
+export const apiClient={get:async()=>({enabled:true,documents:[],jobs:[structuredClone(progressJob),structuredClone(job)]}),post:async(url,body)=>{window.fixtureCalls.push({url,body});suggestion.estado='CORREGIDA';suggestion.valor_confirmado=body.valorCorregido;return {confirmed:true,changed:true};}};
 export const createBancoDocente=async()=>{throw new Error('No se permite crear docentes en esta prueba');};
 export const updateBancoDocente=async(id,body)=>{window.fixtureCalls.push({url:'update',body});suggestion.estado='CORREGIDA';suggestion.valor_confirmado=body.pregrado;return {success:true};};
 export const vincularRundSoporte=async()=>({success:true,data:{id:'soporte-ficticio'}});
@@ -21,10 +21,9 @@ export const vincularRundSoporte=async()=>({success:true,data:{id:'soporte-ficti
 const entry = `
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
 import {RundExtractionPanel} from '/apps/mfe-pta/src/components/pta/banco-docentes/RundExtractionPanel.tsx';
-import {BancoDocenteEditModal} from '/apps/mfe-pta/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx';
-const docente={id:'docente-ficticio',nombre_completo:'DOCENTE DE PRUEBA',documento_identidad:'1020304050',tipo_documento:'CC',periodoCarga:'2026-2',territorial:'Sede Central',vinculacion_codigo:'OCASIONAL',dedicacion_codigo:'TC',horas_programables:800,categoria:'Asistente',origen_vinculacion:'Convocatoria docente',acto_administrativo_vinculacion:'Resolución de prueba',puntaje_salarial:145.5,situacion_administrativa:'Servicio activo',situacion_categoria:'Servicio Activo',estado:'ACTIVO',inicio_vinculacion:'2026-01-15',fin_vinculacion:'2026-12-15',nivel_formacion:'Pregrado',perfil_academico:'Perfil de prueba',nucleo_tematico:'Administración Pública',pregrado:'Título anterior',correo_institucional:'prueba@esap.edu.co',correo_personal:'prueba@example.com',telefono:'3001234567',genero:'Femenino',sexo_biologico:'Mujer',nacimiento:'1985-06-15'};
-function Fixture(){const [suggestion,setSuggestion]=useState(null),[revision,setRevision]=useState(0);return React.createElement(React.Fragment,null,React.createElement(RundExtractionPanel,{docenteId:docente.id,revision,onUse:setSuggestion,onView:()=>{window.sourceOpened=true;}}),suggestion&&React.createElement(BancoDocenteEditModal,{docente,suggestion,onClose:()=>setSuggestion(null),onSaved:()=>{setSuggestion(null);setRevision(n=>n+1);}}));}
+function Fixture(){const [canEdit,setCanEdit]=useState(true),[revision,setRevision]=useState(0);window.setFixtureRole=setCanEdit;return React.createElement(RundExtractionPanel,{docenteId:'docente-ficticio',canEdit,revision,onConfirmed:()=>setRevision(n=>n+1),onView:()=>{window.sourceOpened=true;}});}
 createRoot(document.getElementById('root')).render(React.createElement(Fixture));`;
+
 const server = await createServer({root,configFile:false,logLevel:'error',server:{host:'127.0.0.1',port:0},plugins:[{
   name:'rund-extraction-fixture',enforce:'pre',
   resolveId(source){
@@ -52,7 +51,9 @@ try{
   const origin=`http://127.0.0.1:${server.httpServer.address().port}`;
   await page.setRequestInterception(true);
   page.on('request',request=>request.url().startsWith(origin)||request.url().startsWith('data:')?request.continue():request.abort());
-  await page.setViewport({width:1400,height:950});await page.goto(origin+'/extraction-fixture');
+  await page.setViewport({width:1400,height:950});await page.goto(origin+'/extraction-fixture',{waitUntil:'domcontentloaded',timeout:60000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Revisar sugerencias'));
+  await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Revisar sugerencias').click());
   await page.waitForSelector('.rund-extraction-suggestion');
   assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuetext')),'Extraer datos');
   const artifacts=path.join(root,'.local/rund-extraction-preview');await fs.mkdir(artifacts,{recursive:true});
@@ -62,23 +63,29 @@ try{
   await page.screenshot({path:path.join(artifacts,'mobile.png'),fullPage:true});
   await page.setViewport({width:1400,height:950});
   const click=label=>page.evaluate(text=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);if(!b||b.disabled)throw new Error('Botón no disponible: '+text);b.click();},label);
-  await click('Revisar y aplicar');await page.waitForSelector('input[placeholder="Título de pregrado"]');
-  assert.equal(await page.$eval('input[placeholder="Título de pregrado"]',el=>el.value),'Administración Pública');
-  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),0,'Abrir la revisión no debe guardar');
-  await page.$eval('input[placeholder="Título de pregrado"]',el=>{const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(el,'Administración Pública corregida');el.dispatchEvent(new Event('input',{bubbles:true}));});
-  await click('Siguiente');await page.waitForSelector('input[placeholder="nombre@esap.edu.co"]');
-  await click('Siguiente');await page.waitForSelector('input[type=file]');
-  await click('Guardar Docente');
-  await page.waitForFunction(()=>document.body.textContent.includes('No se puede guardar'));
-  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),0,'El soporte de edición sigue siendo obligatorio');
-  const pdf=path.join(artifacts,'soporte-ficticio.pdf');await fs.writeFile(pdf,'%PDF-1.7\nDocumento ficticio\n%%EOF');
-  await (await page.$('input[type=file]')).uploadFile(pdf);
-  await click('Guardar Docente');
-  await page.waitForFunction(()=>window.fixtureCalls.some(c=>c.url==='update'));
-  const saved=await page.evaluate(()=>window.fixtureCalls.find(c=>c.url==='update').body);
-  assert.deepEqual(saved.rundSuggestionIds,['11111111-1111-4111-8111-111111111111']);
-  assert.equal(saved.pregrado,'Administración Pública corregida');assert.equal(saved.soporteEdicionId,'soporte-ficticio');
-  await page.waitForFunction(()=>document.body.textContent.includes('Corregido y confirmado por una persona'));
+  await page.evaluate(()=>window.setFixtureRole(false));
+  await page.waitForFunction(()=>![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Corregir dato'));
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('button')].some(b=>['Aplicar al perfil','Rechazar sugerencia','Reintentar'].includes(b.textContent.trim()))),false);
+  await page.evaluate(()=>window.setFixtureRole(true));
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Corregir dato'));
+  await click('Corregir dato');
+  const value='#correct-11111111-1111-4111-8111-111111111111';
+  const reason='#correct-reason-11111111-1111-4111-8111-111111111111';
+  await page.waitForSelector(value);
+  assert(await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Guardar correcci\u00f3n').disabled));
+  await page.click(value);await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');
+  await page.type(value,'Administracion Publica corregida');
+  await page.type(reason,'El PDF contiene una palabra que el OCR omitio.');
+  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),0);
+  await click('Guardar correcci\u00f3n');
+  await page.waitForFunction(()=>window.fixtureCalls.length===1);
+  const saved=await page.evaluate(()=>window.fixtureCalls[0]);
+  assert(saved.url.endsWith('/sugerencias/11111111-1111-4111-8111-111111111111/confirmar'));
+  assert.equal(saved.body.valorCorregido,'Administracion Publica corregida');
+  assert.equal(saved.body.motivo,'El PDF contiene una palabra que el OCR omitio.');
+  assert(!saved.url.includes('/aprobar')&&!saved.url.includes('/revision'));
+  await page.waitForFunction(()=>document.body.textContent.includes('Corregido y confirmado'));
+  await page.screenshot({path:path.join(artifacts,'correccion-registrada.png'),fullPage:true});
   assert.deepEqual(errors,[]);
-  console.log('F014 navegador: escritorio/móvil, prellenado, corrección humana, soporte obligatorio y actualización de estado verificados (API simulada).');
+  console.log('F014 navegador: escritorio/móvil, permisos separados, corrección humana con motivo, sin aprobación de soportes y actualización de estado verificados (API simulada).');
 }finally{if(browser)await browser.close();await server.close();}

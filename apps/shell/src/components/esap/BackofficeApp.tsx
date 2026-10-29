@@ -13,6 +13,7 @@ import { ProfileModal } from './ProfileModal';
 import { NotificationsProvider } from './NotificationsContext';
 import { TourProvider } from './gestion-legal/design-system/TourContext';
 import { modulesService, type ActiveModuleInfo } from '../../services/api/modules.service';
+import { config } from '../../config/environment';
 
 function isReactComponentCandidate(value: unknown): boolean {
   if (typeof value === 'function') {
@@ -109,8 +110,10 @@ const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestru
 const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const AjustesGeneralesPage = lazy(() => import('./AjustesGeneralesPage'));
+const CentroAyudaAdminPage = lazy(() => import('./CentroAyudaAdminPage'));
+const TrdPage = lazy(() => import('./TrdPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
-import { ChatbotFloatingButton } from './ChatbotFloatingButton';
+import { ChatbotFullPageScope } from '../chatbot/GlobalChatbotProvider';
 
 // ✅ Loading Spinner Component
 function ModuleLoader() {
@@ -169,7 +172,9 @@ type ModuleView =
   | 'chatbot'
   | 'modules'
   | 'dependencias'
-  | 'ajustes-generales';
+  | 'ajustes-generales'
+  | 'trd'
+  | 'centro-ayuda';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -256,7 +261,9 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'registro-academico': 'graduates',
   'modules': 'modules',
   'dependencias': 'dependencias',
-  'ajustes-generales': 'ajustes-generales'
+  'ajustes-generales': 'ajustes-generales',
+  'trd': 'trd',
+  'centro-ayuda': 'centro-ayuda'
 };
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
@@ -874,7 +881,16 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'programacion-academica':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <ProgramacionAcademicaModule />
+            <ProgramacionAcademicaModule
+              puedeAbrirProgramasAcademicos={
+                (hasAllAssignedModules || accessibleViews.has('programas-academicos')) &&
+                (activeModules.length === 0 || activeModules.some((module) => module.code === 'programas-academicos'))
+              }
+              abrirProgramasAcademicos={() => {
+                setCurrentSidebarModule('programas-academicos');
+                setCurrentModule('programas-academicos');
+              }}
+            />
           </Suspense>
         );
 
@@ -887,20 +903,26 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
       case 'chatbot':
         return (
+          <ChatbotFullPageScope>
           <Suspense fallback={<ModuleLoader />}>
             <ChatbotModule
+              apiBaseUrl={config.API_BASE_URL}
               userEmail={currentUser.email}
               userId={currentUser.personId}
               userName={currentUser.name}
             />
           </Suspense>
+          </ChatbotFullPageScope>
         );
 
       case 'modules':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <ModulesManagementModulePremium
-              onModuleUpdated={loadActiveModules}
+              onModuleUpdated={() => {
+                void loadActiveModules();
+                window.dispatchEvent(new Event('esap:chatbot-config-changed'));
+              }}
               userRoles={(userData?.roles || (usuario?.rol ? [usuario.rol] : [])) as string[]}
             />
           </Suspense>
@@ -917,6 +939,20 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <AjustesGeneralesPage />
+          </Suspense>
+        );
+
+      case 'centro-ayuda':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CentroAyudaAdminPage />
+          </Suspense>
+        );
+
+      case 'trd':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <TrdPage />
           </Suspense>
         );
 
@@ -1006,6 +1042,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 hasBothSystemsAccess={userData?.hasBothSystemsAccess}
                 onSystemChange={onSystemChange}
                 currentSystem="backoffice"
+                centroAyudaActivo={activeModules.length === 0 || activeModules.some((module) => module.code === 'centro-ayuda')}
               />
             )}
 
@@ -1034,18 +1071,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             />
           )}
 
-          {/* Botón Flotante ChatBot Asistente Virtual */}
-          <ChatbotFloatingButton
-            isActive={activeModules.length === 0 || activeModules.some((m) => m.code === 'chatbot')}
-            userEmail={currentUser.email}
-            userId={currentUser.personId}
-            userName={currentUser.name}
-            currentModule={currentModule}
-            onOpenFullModule={() => {
-              setCurrentSidebarModule('chatbot');
-              setCurrentModule('chatbot');
-            }}
-          />
         </div>
       </TourProvider>
     </NotificationsProvider>

@@ -146,10 +146,12 @@ export class CascadaController {
   async getPensums(@Query('programa_id') programaId: string) {
     const rows = await this.asignaturaRepo
       .createQueryBuilder('asignatura')
+      .innerJoin('asignatura.programaRel', 'programa')
       .select('asignatura.pensum', 'pensum')
       .addSelect('COUNT(asignatura.id)', 'total')
       .where('asignatura.id_programa = :programaId', { programaId })
       .andWhere('asignatura.activa = true')
+      .andWhere('programa.activo = true')
       .groupBy('asignatura.pensum')
       .orderBy('asignatura.pensum', 'ASC', 'NULLS LAST')
       .getRawMany();
@@ -178,7 +180,8 @@ export class CascadaController {
       .leftJoinAndSelect('asignatura.ubicacionSemestralRel', 'ubicacionSemestralRel')
       .leftJoinAndSelect('asignatura.nucleoTematicoRel', 'nucleoTematicoRel')
       .where('asignatura.id_programa = :programaId', { programaId })
-      .andWhere('asignatura.activa = true');
+      .andWhere('asignatura.activa = true')
+      .andWhere('programaRel.activo = true');
 
     if (pensum === CascadaController.SIN_PENSUM) {
       query.andWhere("(asignatura.pensum IS NULL OR TRIM(asignatura.pensum) = '')");

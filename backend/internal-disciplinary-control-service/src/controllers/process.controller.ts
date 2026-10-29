@@ -16,6 +16,7 @@ import {
   HttpException,
   UseGuards,
   ParseUUIDPipe,
+  Optional,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -27,6 +28,7 @@ import {
 import { ProcessService } from '../services/process.service';
 import { NewsService } from '../services/news.service';
 import { AutoService } from '../services/auto.service';
+import { DocumentConversionService } from '../services/document-conversion.service';
 import { ProcessExportService } from '../services/process-export.service';
 import {
   IndiceElectronicoExportService,
@@ -34,6 +36,11 @@ import {
   IndiceElectronicoExpedienteDto,
   limpiarNombreArchivo,
 } from '../services/indice-electronico-export.service';
+import {
+  FuidExportService,
+  FuidItemDto,
+  FuidHeaderDto,
+} from '../services/fuid-export.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
@@ -63,7 +70,6 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 import { PermissionsService } from '../auth/services/permissions.service';
-import JSZip from 'jszip';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -120,6 +126,8 @@ export class ProcessController {
     private permissionsService: PermissionsService,
     private processExportService: ProcessExportService,
     private indiceElectronicoExportService: IndiceElectronicoExportService,
+    private fuidExportService: FuidExportService,
+    @Optional() private documentConversionService?: DocumentConversionService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -1130,10 +1138,75 @@ export class ProcessController {
     @Body() body: { expediente: IndiceElectronicoExpedienteDto; documentos: IndiceElectronicoDocumentoDto[] },
     @Res() res: Response,
   ): Promise<void> {
+    let expediente = body?.expediente;
+    if (!expediente?.radicado || !expediente?.numeroExpediente) {
+      try {
+        const proceso = await this.processService.findById(id);
+        if (proceso) {
+          expediente = {
+            ...expediente,
+            radicado: expediente?.radicado || proceso.radicadoProceso || id,
+            numeroExpediente: expediente?.numeroExpediente || proceso.radicadoProceso || id,
+            asunto: expediente?.asunto || (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
+            responsable: expediente?.responsable || (proceso.abogadoAsignado as any)?.nombre || 'Sin asignar',
+            codigoDependencia: expediente?.codigoDependencia || (proceso as any)?.codigoDependencia,
+            nombreDependencia: expediente?.nombreDependencia || (proceso as any)?.nombreDependencia,
+            codigoSerie: expediente?.codigoSerie || (proceso as any)?.codigoSerie,
+            nombreSerie: expediente?.nombreSerie || (proceso as any)?.nombreSerie,
+            codigoSubserie: expediente?.codigoSubserie || (proceso as any)?.codigoSubserie,
+            nombreSubserie: expediente?.nombreSubserie || (proceso as any)?.nombreSubserie,
+            codigoIdentificacionExpediente: expediente?.codigoIdentificacionExpediente || (proceso as any)?.codigoIdentificacionExpediente,
+            trdVersion: expediente?.trdVersion || (proceso as any)?.trdVersion,
+            fechaHechos: expediente?.fechaHechos || (proceso.news as any)?.fechaHechos || (proceso as any)?.fechaHechos,
+            fechaRadicacion: expediente?.fechaRadicacion || (proceso as any)?.createdAt,
+          };
+        }
+      } catch (err) {
+        // Fallback seguro si falla la consulta
+      }
+    }
+
     const workbook = await this.indiceElectronicoExportService.generar(
-      body.expediente,
+      expediente,
       body.documentos || [],
     );
+
+    const radicadoFinal = expediente?.numeroExpediente || expediente?.radicado || id;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="IndiceElectronico_${radicadoFinal}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
+   * Descargar FUID en lote (múltiples expedientes o filtro activo) en plantilla oficial EI-FO-003
+   */
+  @Post('fuid/batch')
+  @ApiOperation({
+    summary: 'Descargar FUID en lote (EI-FO-003)',
+    description: 'Genera el FUID en formato oficial EI-FO-003 con una fila por expediente para los expedientes seleccionados o filtrados',
+  })
+  async descargarFuidLote(
+    @Body() body: { items: FuidItemDto[]; header?: FuidHeaderDto },
+    @Res() res: Response,
+  ): Promise<void> {
+    const workbook = await this.fuidExportService.generar(
+      body.items || [],
+      body.header,
+    );
+
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const fechaPrefix = `${yyyy}${mm}${dd}`;
 
     res.setHeader(
       'Content-Type',
@@ -1141,7 +1214,165 @@ export class ProcessController {
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="IndiceElectronico_${body.expediente?.radicado || id}.xlsx"`,
+      `attachment; filename="${fechaPrefix}_FUID.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
+   * Compartir el FUID (EI-FO-003) por correo electrónico como archivo adjunto (.xlsx).
+   * A diferencia de "Compartir expediente", este envío NO comparte el Índice Electrónico
+   * ni un enlace al expediente: remite únicamente el formato FUID generado.
+   */
+  @Post('fuid/share')
+  @ApiOperation({
+    summary: 'Compartir FUID por correo (EI-FO-003)',
+    description: 'Genera el FUID en formato oficial EI-FO-003 y lo envía como adjunto al correo indicado',
+  })
+  async compartirFuid(
+    @Body() body: {
+      items: FuidItemDto[];
+      header?: FuidHeaderDto;
+      emailDestinatario: string;
+      mensaje?: string;
+      filename?: string;
+    },
+  ): Promise<{ success: boolean; message: string; filename: string }> {
+    const email = (body?.emailDestinatario || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new HttpException('Debe indicar un correo electrónico válido', HttpStatus.BAD_REQUEST);
+    }
+    const items = Array.isArray(body?.items) ? body.items : [];
+    if (items.length === 0) {
+      throw new HttpException('No hay expedientes para incluir en el FUID', HttpStatus.BAD_REQUEST);
+    }
+
+    const workbook = await this.fuidExportService.generar(items, body.header);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    const hoy = new Date();
+    const fechaPrefix = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`;
+    const defaultName = items.length === 1
+      ? `${fechaPrefix}_FUID_${items[0].radicado}.xlsx`
+      : `${fechaPrefix}_FUID.xlsx`;
+    const filename = (body.filename || defaultName).replace(/[\\/:*?"<>|]/g, '_');
+
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const radicados = items.map(i => i.radicado).filter(Boolean);
+    const listaRadicados = radicados.length <= 10
+      ? radicados.join(', ')
+      : `${radicados.slice(0, 10).join(', ')} y ${radicados.length - 10} más`;
+    const mensaje = (body.mensaje || '').trim();
+    const remitente = body.header?.elaboradoPor?.trim();
+
+    const subject = items.length === 1
+      ? `FUID - Expediente ${radicados[0]} - Control Interno Disciplinario ESAP`
+      : `FUID - ${items.length} expedientes - Control Interno Disciplinario ESAP`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #1e293b;">
+        <h2 style="color: #003DA5;">Formato Único de Inventario Documental (FUID)</h2>
+        <p>Se remite adjunto el FUID (EI-FO-003) de la Oficina de Control Interno Disciplinario
+        correspondiente a ${items.length === 1 ? 'el expediente' : 'los expedientes'}: <strong>${escapeHtml(listaRadicados)}</strong>.</p>
+        ${mensaje ? `<p><strong>Mensaje:</strong><br/>${escapeHtml(mensaje).replace(/\n/g, '<br/>')}</p>` : ''}
+        ${remitente ? `<p><strong>Elaborado por:</strong> ${escapeHtml(remitente)}</p>` : ''}
+        <hr />
+        <p style="font-size: 12px; color: #64748b;">Escuela Superior de Administración Pública - ESAP</p>
+      </div>
+    `;
+
+    const baseNotifUrl = process.env.NOTIFICATION_SERVICE_URL || process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const uniqueBases = Array.from(new Set([
+      baseNotifUrl,
+      baseNotifUrl.replace('notifications-service', 'localhost'),
+      'http://localhost:3009',
+      'http://127.0.0.1:3009',
+    ].map(u => (u || '').replace(/\/+$/, ''))));
+
+    const emailPayload = {
+      to: email,
+      subject,
+      text: `Se remite adjunto el FUID (EI-FO-003) de: ${listaRadicados}.${mensaje ? ` Mensaje: ${mensaje}` : ''}`,
+      html,
+      attachments: [{
+        filename,
+        contentBase64: buffer.toString('base64'),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }],
+    };
+
+    let lastError = '';
+    for (const base of uniqueBases) {
+      try {
+        await firstValueFrom(
+          this.httpService.post(`${base}/api/v1/emails/send`, emailPayload, { timeout: 15000 }),
+        );
+        return { success: true, message: `FUID enviado a ${email}`, filename };
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+        console.warn(`⚠️ [CompartirFUID] Intento vía ${base} no completado: ${lastError}`);
+      }
+    }
+
+    throw new HttpException(
+      `No fue posible enviar el FUID por correo: ${lastError}`,
+      HttpStatus.BAD_GATEWAY,
+    );
+  }
+
+  /**
+   * Descargar FUID individual de un expediente en plantilla oficial EI-FO-003
+   */
+  @Post(':id/fuid')
+  @ApiOperation({
+    summary: 'Descargar FUID individual (EI-FO-003)',
+    description: 'Genera el FUID del expediente en formato oficial EI-FO-003 con una sola fila para el expediente',
+  })
+  async descargarFuidIndividual(
+    @Param('id') id: string,
+    @Body() body: { item: FuidItemDto; header?: FuidHeaderDto },
+    @Res() res: Response,
+  ): Promise<void> {
+    let item = body?.item;
+    if (!item?.radicado) {
+      try {
+        const proceso = await this.processService.findById(id);
+        if (proceso) {
+          item = {
+            ...item,
+            radicado: proceso.radicadoProceso || id,
+            nombreDisciplinado: (proceso.news as any)?.disciplinable?.nombre || 'Sin nombre',
+            asunto: (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
+            notas: proceso.etapaActual || proceso.estado || 'En Proceso',
+          };
+        }
+      } catch (err) {
+        // Fallback
+      }
+    }
+
+    const items = item ? [item] : [];
+    const workbook = await this.fuidExportService.generar(
+      items,
+      body.header,
+    );
+
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const fechaPrefix = `${yyyy}${mm}${dd}`;
+    const radicadoClean = item?.radicado || id;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fechaPrefix}_FUID_${radicadoClean}.xlsx"`,
     );
 
     await workbook.xlsx.write(res);
@@ -1479,96 +1710,391 @@ export class ProcessController {
       console.log('📧 [RemitirCompetencia] Iniciando remisión por competencia...');
       console.log('📧 [RemitirCompetencia] Datos recibidos:', JSON.stringify(dto, null, 2));
 
-      // 1. Obtener la noticia
-      const noticia = await this.newsService.findById(dto.newsId);
-      console.log('📧 [RemitirCompetencia] Noticia encontrada:', noticia.radicado);
+      // 1. Obtener proceso y/o noticia
+      let noticia: any = null;
+      let proceso: any = null;
 
-      // 2. Usar la descripción proporcionada o construir desde la noticia
-      const descripcionRemision = dto.descripcion || {
-        numeroRadicado: noticia.radicado,
-        origen: noticia.origen,
-        fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
-        territorial: noticia.territorial,
-        dependenciaDenunciado: noticia.dependenciaDenunciado,
-        denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
-        disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
-        hechos: noticia.hechos,
-        conductas: noticia.conductas,
-        fechaHechos: noticia.fechaHechos || null,
-        fechaCaducidad: noticia.fechaCaducidad || null,
-      };
-
-      // 3. Construir el contenido HTML del correo
-      const emailHtml = this.newsService.buildRemisionEmailContent(
-        noticia,
-        dto.entidadDestino,
-        dto.justificacion,
-        descripcionRemision,
-      );
-      console.log('📧 [RemitirCompetencia] HTML del correo construido');
-
-      // 4. Enviar el correo usando el servicio de notificaciones
-      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
-      console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
-
-      const subject = `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`;
-
-      let subjectFinal = subject;
-      let attachmentName: string | undefined;
-      let attachmentBase64: string | undefined;
-      let attachmentContentType = 'application/zip';
-
-      const adjuntos = (noticia as any).adjuntos as string[] | undefined;
-      if (adjuntos && Array.isArray(adjuntos) && adjuntos.length > 0) {
+      if (dto.processId) {
         try {
-          const zip = new JSZip();
-          for (const adjunto of adjuntos) {
-            try {
-              const filename = adjunto.includes('/') ? adjunto.split('/').pop()! : adjunto;
-              const filePath = path.join(getProcessUploadDir(noticia.radicado), filename);
-              const fileBuffer = await fsPromises.readFile(filePath);
-              zip.file(filename, fileBuffer);
-            } catch (adjuntoError) {
-              console.error(`⚠️ [RemitirCompetencia] Error leyendo adjunto ${adjunto}:`, adjuntoError);
-            }
+          proceso = await this.processService.findById(dto.processId, true);
+        } catch (e) {
+          console.warn('Proceso no encontrado por ID:', dto.processId);
+        }
+        if (proceso?.newsId) {
+          try {
+            noticia = await this.newsService.findById(proceso.newsId);
+          } catch (e) {
+            console.warn('Noticia no encontrada para proceso:', proceso.newsId);
           }
-          const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-          attachmentName = `adjuntos_${dto.radicado || noticia.radicado}.zip`;
-          attachmentBase64 = zipBuffer.toString('base64');
-          subjectFinal = `${subject} (${adjuntos.length} archivo(s) adjunto(s))`;
-          console.log(`📎 [RemitirCompetencia] ZIP creado con ${adjuntos.length} archivo(s)`);
-        } catch (zipError) {
-          console.error(`⚠️ [RemitirCompetencia] Error creando ZIP:`, zipError);
         }
       }
 
-      const remindersBaseUrl = (notificationsServiceUrl || '').replace(/\/+$/, '');
+      if (!noticia && dto.newsId) {
+        try {
+          noticia = await this.newsService.findById(dto.newsId);
+        } catch (e) {
+          console.warn('Noticia no encontrada por ID:', dto.newsId);
+        }
+        if (!proceso && dto.newsId) {
+          try {
+            const procesos = await this.processService.findByNewsId(dto.newsId);
+            if (procesos && procesos.length > 0) {
+              proceso = procesos[0];
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
 
-      if (attachmentBase64 && attachmentName) {
-        const emailPayload: any = {
-          to: dto.emailDestinatario,
-          subject: subjectFinal,
-          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-          html: emailHtml,
-          attachmentName,
-          attachmentBase64,
-          attachmentContentType,
+      if (!noticia && !proceso) {
+        throw new HttpException('No se encontró la noticia ni el proceso para remitir', HttpStatus.NOT_FOUND);
+      }
+
+      const radicadoIdentificador = dto.radicado || proceso?.radicadoProceso || noticia?.radicado || 'SIN_RADICADO';
+
+      // 2. Usar la descripción proporcionada o construir desde la noticia o proceso
+      const descripcionRemision = dto.descripcion || {
+        numeroRadicado: radicadoIdentificador,
+        origen: noticia?.origen || 'REMISION',
+        fechaRecepcion: noticia?.fechaRecepcion ? new Date(noticia.fechaRecepcion).toISOString() : new Date().toISOString(),
+        territorial: noticia?.territorial || 'Sede Central',
+        dependenciaDenunciado: noticia?.dependenciaDenunciado || 'N/A',
+        denunciante: noticia ? (typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante) : 'N/A',
+        disciplinable: noticia ? (typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable) : 'N/A',
+        hechos: noticia?.hechos || proceso?.observaciones || 'Sin hechos registrados',
+        conductas: noticia?.conductas || [],
+        fechaHechos: noticia?.fechaHechos || null,
+        fechaCaducidad: noticia?.fechaCaducidad || null,
+      };
+
+      // 3. Construir el contenido HTML del correo
+      const emailHtml = noticia
+        ? this.newsService.buildRemisionEmailContent(
+            noticia,
+            dto.entidadDestino,
+            dto.justificacion,
+            descripcionRemision,
+          )
+        : `
+          <div style="font-family: Arial, sans-serif; color: #1e293b;">
+            <h2>Remisión por Competencia - Control Interno Disciplinario ESAP</h2>
+            <p>Se remite el expediente correspondiente al proceso disciplinario <strong>${radicadoIdentificador}</strong> por falta de competencia a la entidad <strong>${dto.entidadDestino}</strong>.</p>
+            <p><strong>Justificación:</strong> ${dto.justificacion}</p>
+            <hr />
+            <p style="font-size: 12px; color: #64748b;">Escuela Superior de Administración Pública - ESAP</p>
+          </div>
+        `;
+      console.log('📧 [RemitirCompetencia] HTML del correo construido');
+
+      // 4. Enviar el correo usando el servicio de notificaciones
+      const baseNotifUrl = process.env.NOTIFICATION_SERVICE_URL || process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+      // Candidatos para resolver tanto en Docker como en localhost
+      const candidateBases = [
+        baseNotifUrl,
+        baseNotifUrl.replace('notifications-service', 'localhost'),
+        'http://localhost:3009',
+        'http://127.0.0.1:3009',
+      ];
+      const uniqueBases = Array.from(new Set(candidateBases.map(u => (u || '').replace(/\/+$/, ''))));
+      console.log('📧 [RemitirCompetencia] URLs candidatas del servicio de notificaciones:', uniqueBases);
+
+      const subject = `Remisión por Competencia - Proceso/Noticia Disciplinaria ${radicadoIdentificador}`;
+
+      let subjectFinal = subject;
+      // 4. Recopilar todos los archivos del expediente como adjuntos individuales:
+      // - Auto(s) aprobado(s) de remisión: obligatoriamente en formato PDF.
+      // - El resto de archivos (queja inicial/noticia, actas, evidencias, pruebas): en su formato original.
+      // - Sin empaquetar en ZIP, ya que las entidades de control devuelven el trámite si viene en ZIP.
+      const uploadFolderRadicado = noticia?.radicado || proceso?.radicadoProceso || radicadoIdentificador;
+      const resolverRuta = (referencia?: string | null): string | null => {
+        if (!referencia) return null;
+        try {
+          const limpia = referencia.replace(/^\/files\//, '').replace(/^\/+/, '');
+          const directa = this.storageService.getFullPath(limpia);
+          if (fs.existsSync(directa)) return directa;
+          const uploadsRoot = path.resolve(getUploadRootDir());
+          const cwdUploads = path.resolve(process.cwd(), 'uploads');
+          const base = path.basename(limpia);
+          const candidatos = [
+            path.join(getProcessUploadDir(uploadFolderRadicado), base),
+            path.join(uploadsRoot, base),
+            path.join(cwdUploads, base),
+            path.join(uploadsRoot, limpia),
+            path.join(cwdUploads, limpia),
+          ];
+          for (const c of candidatos) {
+            if (fs.existsSync(c)) return c;
+          }
+        } catch (_) {}
+        return null;
+      };
+
+      const getMimeType = (filename: string): string => {
+        const ext = path.extname(filename).toLowerCase().replace(/^\./, '');
+        const map: Record<string, string> = {
+          pdf: 'application/pdf',
+          doc: 'application/msword',
+          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          xls: 'application/vnd.ms-excel',
+          xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          ppt: 'application/vnd.ms-powerpoint',
+          pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          png: 'image/png',
+          gif: 'image/gif',
+          bmp: 'image/bmp',
+          webp: 'image/webp',
+          txt: 'text/plain',
+          csv: 'text/csv',
+          rtf: 'application/rtf',
+          mp3: 'audio/mpeg',
+          wav: 'audio/wav',
+          mp4: 'video/mp4',
+          avi: 'video/x-msvideo',
+          zip: 'application/zip',
         };
-        const responseWithAttachment = await firstValueFrom(
-          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send-with-attachment`, emailPayload),
-        );
-        console.log('📧 [RemitirCompetencia] Correo con ZIP enviado:', responseWithAttachment.data);
-      } else {
-        const emailPayload = {
-          to: dto.emailDestinatario,
-          subject: subjectFinal,
-          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-          html: emailHtml,
-        };
-        const response = await firstValueFrom(
-          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload),
-        );
-        console.log('📧 [RemitirCompetencia] Correo enviado:', response.data);
+        return map[ext] || 'application/octet-stream';
+      };
+
+      const sanitizeFilename = (name: string): string => {
+        return path.basename(name).replace(/[\/\\?%*:|"<>]/g, '_').trim();
+      };
+
+      const usedFilenames = new Set<string>();
+      const getUniqueFilename = (proposed: string): string => {
+        let clean = sanitizeFilename(proposed);
+        if (!clean) clean = 'documento';
+
+        if (!usedFilenames.has(clean.toLowerCase())) {
+          usedFilenames.add(clean.toLowerCase());
+          return clean;
+        }
+
+        const ext = path.extname(clean);
+        const base = path.basename(clean, ext);
+        let counter = 1;
+        let candidate = `${base}_(${counter})${ext}`;
+        while (usedFilenames.has(candidate.toLowerCase())) {
+          counter++;
+          candidate = `${base}_(${counter})${ext}`;
+        }
+        usedFilenames.add(candidate.toLowerCase());
+        return candidate;
+      };
+
+      const autosProceso = proceso?.id ? await this.autoService.findByProcessId(proceso.id) : [];
+      let evidenciasProceso: any[] = [];
+      try {
+        if (proceso?.evidence && Array.isArray(proceso.evidence) && proceso.evidence.length > 0) {
+          evidenciasProceso = proceso.evidence;
+        } else if (proceso?.id) {
+          evidenciasProceso = await this.processService.getEvidenceByProcessId(proceso.id);
+        }
+      } catch (_) {}
+
+      const adjuntosNoticia = Array.isArray(noticia?.adjuntos) ? noticia.adjuntos : [];
+      const pruebasProceso = Array.isArray(proceso?.pruebas) ? proceso.pruebas : [];
+
+      const emailAttachments: Array<{ filename: string; contentBase64: string; contentType: string }> = [];
+      const attachedRutas = new Set<string>();
+
+      // A. Autos del proceso (incluyendo el Auto de Remisión por Competencia aprobado)
+      // Requisito normativo: El auto aprobado debe llegar estrictamente en formato PDF.
+      for (const auto of autosProceso) {
+        let agregado = false;
+        const ref = auto.firmaUrl || auto.documentUrl;
+        if (ref) {
+          const ruta = resolverRuta(ref);
+          if (ruta && !attachedRutas.has(ruta)) {
+            try {
+              const ext = path.extname(ruta).toLowerCase();
+              if (ext === '.pdf') {
+                const buf = await fsPromises.readFile(ruta);
+                const nombreSugerido = auto.documentName?.toLowerCase().endsWith('.pdf')
+                  ? auto.documentName
+                  : (auto.numero ? `${auto.numero}.pdf` : `Auto_${auto.tipo || 'Auto'}_${auto.id}.pdf`);
+                emailAttachments.push({
+                  filename: getUniqueFilename(nombreSugerido),
+                  contentBase64: buf.toString('base64'),
+                  contentType: 'application/pdf',
+                });
+                attachedRutas.add(ruta);
+                agregado = true;
+              } else if ((ext === '.docx' || ext === '.doc') && this.documentConversionService) {
+                try {
+                  const nombrePdf = auto.numero ? `${auto.numero}.pdf` : `Auto_${auto.tipo || 'Auto'}_${auto.id}.pdf`;
+                  const converted = await this.documentConversionService.convertWordToPdf(ref, nombrePdf);
+                  const rutaConverted = this.storageService.getFullPath(converted.documentUrl);
+                  if (fs.existsSync(rutaConverted)) {
+                    const buf = await fsPromises.readFile(rutaConverted);
+                    emailAttachments.push({
+                      filename: getUniqueFilename(nombrePdf),
+                      contentBase64: buf.toString('base64'),
+                      contentType: 'application/pdf',
+                    });
+                    attachedRutas.add(ruta);
+                    attachedRutas.add(rutaConverted);
+                    agregado = true;
+                  }
+                } catch (convErr) {
+                  console.warn('[RemitirCompetencia] No se pudo convertir auto Word a PDF:', convErr);
+                }
+              }
+            } catch (err) {
+              console.warn('[RemitirCompetencia] Error leyendo archivo de auto:', ref, err);
+            }
+          }
+        }
+
+        // Si no se encontró archivo en disco pero hay contenido HTML del auto,
+        // generar PDF a partir del contenido para cumplir la exigencia de que el auto sea PDF
+        if (!agregado && auto.contenido && auto.contenido.trim().length > 0) {
+          const nombrePdf = auto.numero ? `${auto.numero}.pdf` : `Auto_${auto.tipo || 'Auto'}_${auto.id}.pdf`;
+          let pdfBuffer: Buffer | null = null;
+          try {
+            const autoHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${auto.tipo || 'Auto'}</title><style>body{font-family:Arial,sans-serif;margin:40px;line-height:1.6;color:#1e293b;}</style></head><body>${auto.contenido}</body></html>`;
+            const puppeteer = await import('puppeteer');
+            const browser = await puppeteer.default.launch({
+              headless: 'new' as any,
+              args: ['--no-sandbox', '--disable-setuid-sandbox'],
+              executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            });
+            const page = await browser.newPage();
+            await page.setContent(autoHtml, { waitUntil: 'networkidle0' });
+            pdfBuffer = Buffer.from(await page.pdf({ format: 'A4', printBackground: true }));
+            await browser.close();
+          } catch (pupErr) {
+            console.warn('[RemitirCompetencia] Falló conversión con Puppeteer, intentando PDFDocument:', pupErr);
+            try {
+              const PDFDocument = require('pdfkit');
+              const doc = new PDFDocument({ margin: 50 });
+              const chunks: Buffer[] = [];
+              doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+              doc.fontSize(16).text(auto.tipo || 'Auto', { align: 'center' });
+              doc.moveDown();
+              const plainText = auto.contenido.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              doc.fontSize(11).text(plainText, { align: 'justify' });
+              doc.end();
+              pdfBuffer = await new Promise<Buffer>((resolve) => {
+                doc.on('end', () => resolve(Buffer.concat(chunks)));
+              });
+            } catch (pdfKitErr) {
+              console.error('[RemitirCompetencia] Falló fallback PDFKit:', pdfKitErr);
+            }
+          }
+
+          if (pdfBuffer) {
+            emailAttachments.push({
+              filename: getUniqueFilename(nombrePdf),
+              contentBase64: pdfBuffer.toString('base64'),
+              contentType: 'application/pdf',
+            });
+            agregado = true;
+          }
+        }
+      }
+
+      // B. Soportes iniciales de la queja / noticia (en su formato original)
+      for (const adj of adjuntosNoticia) {
+        const ref = typeof adj === 'string' ? adj : (adj?.url || adj?.path || adj?.filename || null);
+        if (!ref) continue;
+        const ruta = resolverRuta(ref);
+        if (ruta && !attachedRutas.has(ruta)) {
+          try {
+            const buf = await fsPromises.readFile(ruta);
+            const nombreOriginal = typeof adj === 'object' && adj?.nombre
+              ? adj.nombre
+              : path.basename(ruta);
+            const mime = (typeof adj === 'object' && (adj?.tipo || adj?.contentType)) || getMimeType(nombreOriginal);
+            emailAttachments.push({
+              filename: getUniqueFilename(nombreOriginal),
+              contentBase64: buf.toString('base64'),
+              contentType: mime,
+            });
+            attachedRutas.add(ruta);
+          } catch (err) {
+            console.warn('[RemitirCompetencia] Error leyendo soporte queja:', adj, err);
+          }
+        }
+      }
+
+      // C. Actas y Evidencias del proceso (en su formato original)
+      for (const ev of evidenciasProceso) {
+        const ref = ev.archivoUrl || ev.url || ev.filename;
+        if (!ref) continue;
+        const ruta = resolverRuta(ref);
+        if (ruta && !attachedRutas.has(ruta)) {
+          try {
+            const buf = await fsPromises.readFile(ruta);
+            const nombreOriginal = ev.nombreArchivo || ev.nombreDocumento || path.basename(ruta);
+            const mime = ev.fileType || getMimeType(nombreOriginal);
+            emailAttachments.push({
+              filename: getUniqueFilename(nombreOriginal),
+              contentBase64: buf.toString('base64'),
+              contentType: mime,
+            });
+            attachedRutas.add(ruta);
+          } catch (err) {
+            console.warn('[RemitirCompetencia] Error leyendo evidencia:', ref, err);
+          }
+        }
+      }
+
+      // D. Pruebas del proceso (en su formato original)
+      for (const p of pruebasProceso) {
+        const ref = typeof p === 'string' ? p : (p?.url || p?.archivoUrl || p?.filename || null);
+        if (!ref) continue;
+        const ruta = resolverRuta(ref);
+        if (ruta && !attachedRutas.has(ruta)) {
+          try {
+            const buf = await fsPromises.readFile(ruta);
+            const nombreOriginal = typeof p === 'object' && p?.nombre
+              ? p.nombre
+              : path.basename(ruta);
+            const mime = (typeof p === 'object' && (p?.tipo || p?.contentType)) || getMimeType(nombreOriginal);
+            emailAttachments.push({
+              filename: getUniqueFilename(nombreOriginal),
+              contentBase64: buf.toString('base64'),
+              contentType: mime,
+            });
+            attachedRutas.add(ruta);
+          } catch (_) {}
+        }
+      }
+
+      if (emailAttachments.length > 0) {
+        subjectFinal = `${subject} (${emailAttachments.length} archivos adjuntos)`;
+        console.log(`📎 [RemitirCompetencia] Preparados ${emailAttachments.length} archivo(s) adjunto(s) directo(s) (Auto en PDF, demás en formato original):`, emailAttachments.map(a => a.filename));
+      }
+
+      let emailEnviado = false;
+      let emailErrorMsg = '';
+
+      for (const remindersBaseUrl of uniqueBases) {
+        try {
+          const emailPayload: any = {
+            to: dto.emailDestinatario,
+            subject: subjectFinal,
+            text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+            html: emailHtml,
+            attachments: emailAttachments,
+          };
+          const response = await firstValueFrom(
+            this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload, { timeout: 15000 }),
+          );
+          console.log(`📧 [RemitirCompetencia] Correo con ${emailAttachments.length} adjunto(s) enviado vía ${remindersBaseUrl}:`, response?.data);
+          emailEnviado = true;
+          break;
+        } catch (postErr: any) {
+          emailErrorMsg = postErr?.message || String(postErr);
+          console.warn(`⚠️ [RemitirCompetencia] Intento vía ${remindersBaseUrl} no completado: ${emailErrorMsg}`);
+        }
+      }
+
+      if (!emailEnviado) {
+        console.warn(`⚠️ [RemitirCompetencia] Advertencia al contactar el servicio de notificaciones: ${emailErrorMsg}. El proceso de remisión continúa.`);
       }
 
       // 5. Generar número RC
@@ -1576,43 +2102,90 @@ export class ProcessController {
       const consecutivo = String(Math.floor(Math.random() * 9000) + 1000);
       const numeroRC = `RC-${anio}-${consecutivo}`;
 
-      // 6. Actualizar la noticia con el estado de REMITIDA y los datos de remisión
-      // Incluir la descripción detallada en la misma llamada
-      console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
-      await this.newsService.remitirNoticia(
-        dto.newsId,
-        {
+      // 6. Actualizar la noticia si existe
+      if (noticia?.id) {
+        console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
+        const descConArchivos = {
+          ...descripcionRemision,
+          totalArchivos: emailAttachments.length,
+          archivosRemitidos: emailAttachments.map(a => a.filename),
+          autos: autosProceso.map(a => ({
+            id: a.id,
+            tipo: a.tipo,
+            numero: a.numero,
+            nombre: a.documentName || (a.numero ? `${a.numero}.pdf` : `Auto_${a.tipo}_${a.id}.pdf`),
+            url: a.firmaUrl || a.documentUrl || (a.numero ? `/files/${a.numero}.pdf` : undefined),
+            documentUrl: a.documentUrl,
+            firmaUrl: a.firmaUrl,
+            documentName: a.documentName,
+            contenido: a.contenido,
+            estado: a.estado,
+            fecha: a.createdAt,
+          })),
+          actasYEvidencias: evidenciasProceso.map(e => ({
+            id: e.id,
+            nombre: e.nombreArchivo || e.nombreDocumento || 'Documento',
+            url: e.archivoUrl || e.url,
+            tipo: e.tipoDocumento || e.tipo,
+            fecha: e.createdAt,
+          })),
+        };
+
+        const todosLosAdjuntos = Array.from(new Set([
+          ...(noticia.adjuntos || []),
+          ...autosProceso.map(a => a.firmaUrl || a.documentUrl).filter(Boolean),
+          ...evidenciasProceso.map(e => e.archivoUrl || e.url).filter(Boolean),
+          ...pruebasProceso,
+        ]));
+
+        await this.newsService.remitirNoticia(
+          noticia.id,
+          {
+            numeroRC,
+            entidadRemision: dto.entidadDestino,
+            correoEntidadRemision: dto.emailDestinatario,
+            fechaRemision: new Date(),
+            tipoRemision: dto.tipoRemision || 'sin-competencia',
+            justificacionRemision: dto.justificacion,
+          },
+          descConArchivos,
+        );
+
+        try {
+          await this.newsService.update(noticia.id, { adjuntos: todosLosAdjuntos } as any);
+        } catch (_) {}
+
+        const historyEntry = {
+          id: Date.now().toString(),
+          tipo: 'remision_competencia',
+          usuario: dto.usuarioRemision || 'Sistema',
+          fecha: new Date().toISOString(),
+          observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Archivos adjuntos en expediente: ${emailAttachments.length}. Justificación: ${dto.justificacion}`,
+          resultado: 'enviado',
+          descripcion: descConArchivos,
+        };
+        await this.newsService.updateHistory(noticia.id, historyEntry);
+      }
+
+      // 7. Actualizar el proceso si existe
+      if (proceso?.id) {
+        console.log('📧 [RemitirCompetencia] Actualizando proceso con remisión...');
+        await this.processService.remitirProceso(proceso.id, {
           numeroRC,
           entidadRemision: dto.entidadDestino,
           correoEntidadRemision: dto.emailDestinatario,
           fechaRemision: new Date(),
           tipoRemision: dto.tipoRemision || 'sin-competencia',
           justificacionRemision: dto.justificacion,
-        },
-        descripcionRemision,
-      );
-
-      // 8. Registrar la remisión en el historial de la noticia
-      const historyEntry = {
-        id: Date.now().toString(),
-        tipo: 'remision_competencia',
-        usuario: dto.usuarioRemision || 'Sistema',
-        fecha: new Date().toISOString(),
-        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Justificación: ${dto.justificacion}`,
-        resultado: 'enviado',
-        descripcion: descripcionRemision,
-      };
-
-      // Actualizar el historial de la noticia
-      await this.newsService.updateHistory(dto.newsId, historyEntry);
-
-      // Actualizar el historial de la noticia
-      await this.newsService.updateHistory(dto.newsId, historyEntry);
+          descripcionRemision,
+        });
+      }
 
       return {
         success: true,
         message: 'Correo enviado exitosamente',
-        newsId: dto.newsId,
+        newsId: noticia?.id || dto.newsId,
+        processId: proceso?.id || dto.processId,
         emailEnviado: dto.emailDestinatario,
         fechaRemision: new Date(),
       };
@@ -1630,7 +2203,9 @@ export class ProcessController {
           observaciones: `Intento de remisión a ${dto.entidadDestino} fallido. Error: ${error.message}`,
           resultado: 'error',
         };
-        await this.newsService.updateHistory(dto.newsId, historyEntry);
+        if (dto.newsId) {
+          await this.newsService.updateHistory(dto.newsId, historyEntry);
+        }
       } catch (historyError) {
         console.error('❌ [RemitirCompetencia] Error al registrar historial:', historyError);
       }

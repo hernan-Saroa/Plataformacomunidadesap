@@ -36,6 +36,7 @@ import {
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
   PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
   PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION,
+  PTA_MANAGE_CONFIGURATION_PERMISSION,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 
@@ -139,7 +140,7 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.notificaciones_config': 'preferencias_notificaciones',
   'pta.backoffice.pre_aprobacion_sni_snpi': 'pre_aprobacion_sni_snpi',
   'pta.backoffice.banco_docentes': 'banco_docentes', // ✅ Nuevo permiso
-  'pta.backoffice.config_reglas': 'config_reglas',
+  [PTA_MANAGE_CONFIGURATION_PERMISSION]: 'configuracion',
   'pta.approve.academica': 'gestion', // legacy, deprecado por la migración 388 — se conserva por compatibilidad de sesiones cacheadas.
   'pta.approve.academica.pregrado': 'gestion',
   'pta.approve.academica.posgrado': 'gestion',
@@ -211,6 +212,10 @@ export function deriveFromGranular(
   if (hasWildcard) {
     Object.values(PERMISO_TO_VISTA).forEach(v => vistasSet.add(v));
   }
+  // Configuración requiere su permiso explícito; aprobar/revisar todo no lo concede.
+  if (!normalizedPerms.has(PTA_MANAGE_CONFIGURATION_PERMISSION)) {
+    vistasSet.delete('configuracion');
+  }
   // Los permisos pta.approve.* determinan el alcance por componente, pero no
   // abren por sí solos la pestaña de Seguimiento. Esa entrada se concede de forma
   // independiente con PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION (mapeado arriba).
@@ -219,7 +224,7 @@ export function deriveFromGranular(
   }
   // Un revisor puro también necesita Gestión para ejecutar la preaprobación del
   // PTA. La pestaña Solicitudes PTA, en cambio, se concede exclusivamente por
-  // pta.requests.edit.manage (mapeado arriba); los permisos pta.review.* solo
+  // pta.requests.edit.manage (mapeado arriba); los permisos de revisión o aprobación
   // determinan qué componentes verá y podrá resolver una vez dentro.
   if (puedeRevisar) {
     vistasSet.add('gestion');
@@ -608,6 +613,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
     const hardcoded = PERMISOS_POR_ROL[perfil.rol](perfil);
     return {
       ...hardcoded,
+      vistasPerm: hardcoded.vistasPerm.filter(vista => vista !== 'configuracion' && vista !== 'config_reglas'),
       puedeAprobar: false,
       puedeRevisar: false,
       nivelAprobacion: 0,
@@ -618,7 +624,10 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
     };
   }, [auth.session?.permisos, perfil, isSuperUserEffective]);
 
-  const tieneVista = useCallback((vista: string) => permisos.vistasPerm.includes(vista), [permisos]);
+  const tieneVista = useCallback((vista: string) => {
+    if (vista === 'configuracion') return auth.hasPermission(PTA_MANAGE_CONFIGURATION_PERMISSION);
+    return permisos.vistasPerm.includes(vista);
+  }, [permisos, auth.hasPermission]);
 
   // Delegado a AuthContext para verificar permisos granulares
   const tienePermiso = useCallback((permisoId: string) => {

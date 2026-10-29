@@ -1,4 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
+import { RUND_PROFILE_PERMISSIONS } from './rund-permission-policy';
 
 export const RUND_PERMISSIONS_KEY = 'rundPermissions';
 
@@ -7,6 +8,8 @@ export const RUND_PERMISSIONS_KEY = 'rundPermissions';
  * Los códigos deben coincidir con auth.permission (migración 423).
  */
 export const RUND_PERMISSIONS = {
+  ...RUND_PROFILE_PERMISSIONS,
+  CREATE: 'banco-docentes.rund.create',
   MANAGE: 'banco-docentes.rund.manage',
   VIEW: 'banco-docentes.rund.view',
   EDIT: 'banco-docentes.rund.edit',
@@ -15,6 +18,7 @@ export const RUND_PERMISSIONS = {
   EXPORT: 'banco-docentes.rund.export',
   INVITE: 'banco-docentes.rund.invite',
   DOCUMENTS_MANAGE: 'banco-docentes.rund.documents.manage',
+  SENSITIVE_VIEW: 'banco-docentes.rund.sensitive.view',
 } as const;
 
 export const RequireRundPermissions = (...permissions: string[]) =>

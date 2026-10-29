@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { ModalCompartirExpediente } from './ModalCompartirExpediente';
+import { ModalCompartirFuid } from './ModalCompartirFuid';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { apiClient } from '../../../services/api/apiClient';
@@ -468,6 +469,7 @@ export function ExpedientesElectronicosWorldClass({
   // ✅ NUEVO: Estado para modal de compartir expediente
   const [showModalCompartir, setShowModalCompartir] = useState(false);
   const [expedienteParaCompartir, setExpedienteParaCompartir] = useState<ExpedienteElectronico | null>(null);
+  const [fuidParaCompartir, setFuidParaCompartir] = useState<{ items: any[]; header: any; filename: string } | null>(null);
 
   // ✅ NUEVO: Expediente destino al subir un documento adicional desde la vista cronológica
   const [expedienteParaSubir, setExpedienteParaSubir] = useState<ExpedienteElectronico | null>(null);
@@ -478,6 +480,13 @@ export function ExpedientesElectronicosWorldClass({
   const [documentoUrl, setDocumentoUrl] = useState<string | null>(null);
   const [cargandoDocumento, setCargandoDocumento] = useState(false);
   const [esDocumentoConvertido, setEsDocumentoConvertido] = useState(false);
+
+  // ✅ NUEVO: Estados para Selección múltiple y Filtros FUID (EI-FO-003)
+  const [expedientesSeleccionados, setExpedientesSeleccionados] = useState<Set<string>>(new Set());
+  const [filtroEstadoFuid, setFiltroEstadoFuid] = useState<'todos' | 'finalizados'>('todos');
+  const [fechaInicioFuid, setFechaInicioFuid] = useState<string>('2026-08-01');
+  const [fechaFinFuid, setFechaFinFuid] = useState<string>('2026-10-14');
+  const [exportandoFuid, setExportandoFuid] = useState<boolean>(false);
   const [documentoParaEliminar, setDocumentoParaEliminar] = useState<Documento | null>(null);
   const [eliminandoDocumento, setEliminandoDocumento] = useState(false);
 
@@ -534,6 +543,15 @@ export function ExpedientesElectronicosWorldClass({
            tipoProceso: proceso.news?.conductas?.[0] || proceso.news?.conducta || 'Proceso Disciplinario',
            responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
            fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+           codigoDependencia: proceso.codigoDependencia,
+           nombreDependencia: proceso.nombreDependencia,
+           codigoSerie: proceso.codigoSerie,
+           nombreSerie: proceso.nombreSerie,
+           codigoSubserie: proceso.codigoSubserie,
+           nombreSubserie: proceso.nombreSubserie,
+           trdVersion: proceso.trdVersion,
+           codigoIdentificacionExpediente: proceso.codigoIdentificacionExpediente,
+           fechaHechos: proceso.news?.fechaHechos || proceso.fechaHechos,
            totalDocumentos: 0, // Se actualizará al cargar documentos
            documentosPorTipo: {}
          };
@@ -801,7 +819,28 @@ export function ExpedientesElectronicosWorldClass({
     return cumpleFiltro && cumpleBusqueda;
   });
 
-  // ✅ Agrupar documentos por expediente/proceso
+  // ✅ Conteo de expedientes para filtros FUID según periodo
+  const { totalFuidTodos, totalFuidFinalizados } = React.useMemo(() => {
+    let todos = 0;
+    let finalizados = 0;
+    expedientes.forEach(exp => {
+      let cumplePeriodo = true;
+      if (exp.fechaInicio) {
+        const f = exp.fechaInicio.split('T')[0];
+        if (fechaInicioFuid && f < fechaInicioFuid) cumplePeriodo = false;
+        if (fechaFinFuid && f > fechaFinFuid) cumplePeriodo = false;
+      }
+      if (cumplePeriodo) {
+        todos++;
+        if (exp.estado === 'finalizado') {
+          finalizados++;
+        }
+      }
+    });
+    return { totalFuidTodos: todos, totalFuidFinalizados: finalizados };
+  }, [expedientes, fechaInicioFuid, fechaFinFuid]);
+
+  // ✅ Agrupar documentos por expediente/proceso con filtros FUID
   const documentosPorExpediente = React.useMemo(() => {
     // Filtrar documentos
     const docsFiltrados = documentos.filter(doc => {
@@ -812,8 +851,16 @@ export function ExpedientesElectronicosWorldClass({
         doc.archivoAcceso.toLowerCase().includes(busqueda.toLowerCase());
       const cumpleTipoDoc = filtroTipoDoc === 'todos' || doc.tipo === filtroTipoDoc;
       const expediente = expedientes.find(e => e.id === doc.expedienteId);
-      const cumpleFiltroExpediente = filtroEstado === 'todos' || expediente?.estado === filtroEstado;
-      return cumpleBusqueda && cumpleTipoDoc && cumpleFiltroExpediente;
+      
+      const cumpleEstadoFuid = filtroEstadoFuid === 'todos' || expediente?.estado === 'finalizado';
+      let cumplePeriodo = true;
+      if (expediente?.fechaInicio) {
+        const f = expediente.fechaInicio.split('T')[0];
+        if (fechaInicioFuid && f < fechaInicioFuid) cumplePeriodo = false;
+        if (fechaFinFuid && f > fechaFinFuid) cumplePeriodo = false;
+      }
+
+      return cumpleBusqueda && cumpleTipoDoc && cumpleEstadoFuid && cumplePeriodo;
     });
 
     // Agrupar por expediente
@@ -851,20 +898,26 @@ export function ExpedientesElectronicosWorldClass({
       documentos: grupos[expId]
     }));
 
-    // Incluir expedientes sin documentos que pasen el filtro de estado y búsqueda
+    // Incluir expedientes sin documentos que pasen los filtros
     expedientes.forEach(exp => {
       if (grupos[exp.id]) return; // ya está incluido
-      const cumpleFiltro = filtroEstado === 'todos' || exp.estado === filtroEstado;
+      const cumpleEstadoFuid = filtroEstadoFuid === 'todos' || exp.estado === 'finalizado';
+      let cumplePeriodo = true;
+      if (exp.fechaInicio) {
+        const f = exp.fechaInicio.split('T')[0];
+        if (fechaInicioFuid && f < fechaInicioFuid) cumplePeriodo = false;
+        if (fechaFinFuid && f > fechaFinFuid) cumplePeriodo = false;
+      }
       const cumpleBusqueda = busqueda === '' ||
         exp.radicado?.toLowerCase().includes(busqueda.toLowerCase()) ||
         exp.nombreDisciplinado?.toLowerCase().includes(busqueda.toLowerCase());
-      if (cumpleFiltro && cumpleBusqueda) {
+      if (cumpleEstadoFuid && cumplePeriodo && cumpleBusqueda) {
         resultado.push({ expedienteId: exp.id, expediente: exp, documentos: [] });
       }
     });
 
     return resultado;
-  }, [documentos, busqueda, filtroTipoDoc, filtroEstado, ordenCronologico, expedientes]);
+  }, [documentos, busqueda, filtroTipoDoc, filtroEstadoFuid, fechaInicioFuid, fechaFinFuid, ordenCronologico, expedientes]);
 
   const getEstadoConfig = (estado: string) => {
     const configs: Record<string, { label: string; color: string; bg: string }> = {
@@ -894,6 +947,238 @@ export function ExpedientesElectronicosWorldClass({
     const month = fechaYYYYMMDD.substring(4, 6);
     const day = fechaYYYYMMDD.substring(6, 8);
     return `${day}/${month}/${year}`;
+  };
+
+  const formatearFechaApertura = (fechaISO?: string) => {
+    if (!fechaISO) return '';
+    const clean = fechaISO.split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return fechaISO;
+  };
+
+  // ✅ Selección múltiple de expedientes
+  const toggleSeleccionExpediente = (expedienteId: string) => {
+    setExpedientesSeleccionados(prev => {
+      const next = new Set(prev);
+      if (next.has(expedienteId)) {
+        next.delete(expedienteId);
+      } else {
+        next.add(expedienteId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSeleccionarTodos = () => {
+    const idsVisibles = documentosPorExpediente.map(g => g.expedienteId);
+    if (idsVisibles.length === 0) return;
+    const todosSeleccionados = idsVisibles.every(id => expedientesSeleccionados.has(id));
+    if (todosSeleccionados) {
+      setExpedientesSeleccionados(prev => {
+        const next = new Set(prev);
+        idsVisibles.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setExpedientesSeleccionados(prev => {
+        const next = new Set(prev);
+        idsVisibles.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  // ✅ Construir objeto DTO de FUID para un expediente
+  const construirFuidItem = (exp: ExpedienteElectronico) => {
+    const docs = documentos.filter(d => d.expedienteId === exp.id);
+    let fechaInicial = exp.fechaInicio || '';
+    let fechaFinal = exp.fechaInicio || '';
+    const fechasDocs: string[] = [];
+    let totalKB = 0;
+
+    docs.forEach(d => {
+      if (d.fechaCreacion && d.fechaCreacion.length === 8) {
+        const y = d.fechaCreacion.substring(0, 4);
+        const m = d.fechaCreacion.substring(4, 6);
+        const dia = d.fechaCreacion.substring(6, 8);
+        fechasDocs.push(`${y}/${m}/${dia}`);
+      } else if (d.fechaSubida) {
+        fechasDocs.push(d.fechaSubida.split('T')[0].replace(/-/g, '/'));
+      }
+
+      // Sumar tamaño en KB para que coincida exactamente con la suma manual de los documentos en la tabla
+      if (d.tamanoKB && d.tamanoKB !== 'N/A' && d.tamanoKB !== '0 KB') {
+        const match = String(d.tamanoKB).trim().match(/^([0-9]+(?:\.[0-9]+)?)\s*(GB|MB|KB|BYTES|B)?/i);
+        if (match) {
+          const val = parseFloat(match[1]);
+          const unit = (match[2] || 'KB').toUpperCase();
+          if (unit === 'GB') totalKB += Math.round(val * 1024 * 1024);
+          else if (unit === 'MB') totalKB += Math.round(val * 1024);
+          else if (unit === 'KB') totalKB += Math.round(val);
+          else totalKB += Math.round(val / 1024);
+        }
+      } else if (d.fileSize && typeof d.fileSize === 'number' && d.fileSize > 0) {
+        totalKB += Math.round(d.fileSize / 1024);
+      }
+    });
+
+    if (fechasDocs.length > 0) {
+      fechasDocs.sort();
+      fechaInicial = fechasDocs[0];
+      fechaFinal = fechasDocs[fechasDocs.length - 1];
+    } else if (fechaInicial) {
+      fechaInicial = fechaInicial.split('T')[0].replace(/-/g, '/');
+      fechaFinal = fechaInicial;
+    }
+
+    let tamanoStr = '0 KB';
+    if (totalKB >= 1024) {
+      tamanoStr = `${totalKB} KB (${(totalKB / 1024).toFixed(2)} MB)`;
+    } else if (totalKB > 0) {
+      tamanoStr = `${totalKB} KB`;
+    }
+
+    const estadoLabel = getEstadoConfig(exp.estado).label;
+    // Solo los procesos cerrados (finalizados/archivados) tienen fecha final y descriptor;
+    // si el proceso sigue activo, esas casillas del FUID deben ir vacías.
+    const cerrado = exp.estado === 'finalizado';
+
+    const codSerie = String((exp as any).codigoSerie || (exp as any).codigoCCDU || (exp as any).codigoSerieTVD || '250').trim();
+    const nomSerie = String((exp as any).nombreSerie || (exp as any).serie || 'PROCESOS JURÍDICOS').trim();
+    const codSubserie = String((exp as any).codigoSubserie || (codSerie === '1330' ? '60' : codSerie === '68' ? '22' : codSerie === '75' ? '01' : '05')).trim();
+    const nomSubserie = String((exp as any).nombreSubserie || (exp as any).subserie || 'PROCESOS DISCIPLINARIOS').trim();
+
+    const serieConNumero = !new RegExp(`^${codSerie.replace('.', '\\.')}\\s*[-–]`, 'i').test(nomSerie)
+      ? `${codSerie} – ${nomSerie}`
+      : nomSerie;
+
+    const subserieConNumero = nomSubserie.toUpperCase() === 'N/A'
+      ? 'N/A'
+      : (!new RegExp(`^${codSubserie.replace('.', '\\.')}\\s*[-–]`, 'i').test(nomSubserie)
+          ? `${codSubserie} – ${nomSubserie}`
+          : nomSubserie);
+
+    return {
+      radicado: exp.radicado,
+      nombreDisciplinado: exp.nombreDisciplinado,
+      asunto: exp.tipoProceso,
+      descriptorIdentificacion: cerrado ? `NED: ${exp.nombreDisciplinado}` : '',
+      fechaExtremaInicial: fechaInicial,
+      fechaExtremaFinal: cerrado ? fechaFinal : '',
+      cerrado,
+      codigoCCDU: codSerie,
+      codigoSerieTVD: codSerie,
+      codigoSerie: codSerie,
+      nombreSerie: nomSerie,
+      serie: serieConNumero,
+      codigoSubserie: codSubserie,
+      nombreSubserie: nomSubserie,
+      subserie: subserieConNumero,
+      cantidadDocumentos: docs.length,
+      tamanoDocumentos: tamanoStr,
+      notas: estadoLabel,
+      ubicacion: typeof window !== 'undefined'
+        ? `${window.location.origin}/control-disciplinario/expedientes?radicado=${encodeURIComponent(exp.radicado)}`
+        : '',
+    };
+  };
+
+  // ✅ Exportar FUID individual
+  const handleExportarFuidIndividual = async (exp: ExpedienteElectronico) => {
+    try {
+      toast.info(`Generando FUID para ${exp.radicado}...`, { id: 'fuid-export' });
+      const item = construirFuidItem(exp);
+      const currentUser = authService.getCurrentUser();
+      const hoy = new Date();
+      const yyyy = hoy.getFullYear();
+      const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+      const dd = String(hoy.getDate()).padStart(2, '0');
+      const filename = `${yyyy}${mm}${dd}_FUID_${exp.radicado}.xlsx`;
+
+      await disciplinaryService.descargarFuidIndividual(
+        exp.id,
+        item,
+        {
+          elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
+          cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
+        },
+        filename,
+      );
+      toast.success('FUID exportado exitosamente', { id: 'fuid-export', description: filename });
+    } catch (error: any) {
+      console.error('Error exportando FUID individual:', error);
+      toast.error('Error al exportar FUID', { id: 'fuid-export', description: error.message });
+    }
+  };
+
+  // ✅ Exportar todos los FUID según filtro
+  const handleExportarTodosFuid = async () => {
+    if (documentosPorExpediente.length === 0) {
+      toast.warning('No hay expedientes para exportar con el filtro actual');
+      return;
+    }
+    try {
+      toast.info(`Generando FUID con ${documentosPorExpediente.length} expediente(s)...`, { id: 'fuid-batch' });
+      const items = documentosPorExpediente.map(g => construirFuidItem(g.expediente));
+      const currentUser = authService.getCurrentUser();
+      const hoy = new Date();
+      const yyyy = hoy.getFullYear();
+      const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+      const dd = String(hoy.getDate()).padStart(2, '0');
+      const filename = `${yyyy}${mm}${dd}_FUID.xlsx`;
+
+      await disciplinaryService.descargarFuidLote(
+        items,
+        {
+          elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
+          cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
+        },
+        filename,
+      );
+      toast.success(`FUID de ${items.length} expediente(s) exportado`, { id: 'fuid-batch', description: filename });
+    } catch (error: any) {
+      console.error('Error exportando todos los FUID:', error);
+      toast.error('Error al exportar todos los FUID', { id: 'fuid-batch', description: error.message });
+    }
+  };
+
+  const construirFuidHeader = () => {
+    const currentUser = authService.getCurrentUser();
+    return {
+      elaboradoPor: (currentUser as any)?.nombre || (currentUser as any)?.fullName || (currentUser as any)?.name || 'FUNCIONARIO OCID',
+      cargoElaboradoPor: (currentUser as any)?.cargo || 'PROFESIONAL UNIVERSITARIO',
+    };
+  };
+
+  const fechaPrefijoFuid = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`;
+  };
+
+  // ✅ Compartir FUID individual (envía el archivo FUID, no el Índice Electrónico)
+  const handleCompartirFuidIndividual = (exp: ExpedienteElectronico) => {
+    setFuidParaCompartir({
+      items: [construirFuidItem(exp)],
+      header: construirFuidHeader(),
+      filename: `${fechaPrefijoFuid()}_FUID_${exp.radicado}.xlsx`,
+    });
+  };
+
+  // ✅ Compartir FUID de los expedientes seleccionados
+  const handleCompartirSeleccionados = () => {
+    const seleccionados = documentosPorExpediente.filter(g => expedientesSeleccionados.has(g.expedienteId));
+    if (seleccionados.length === 0) {
+      toast.warning('Seleccione al menos un expediente');
+      return;
+    }
+    setFuidParaCompartir({
+      items: seleccionados.map(g => construirFuidItem(g.expediente)),
+      header: construirFuidHeader(),
+      filename: `${fechaPrefijoFuid()}_FUID.xlsx`,
+    });
   };
 
   const handleSubirDocumento = (tipoId: string) => {
@@ -1315,6 +1600,20 @@ export function ExpedientesElectronicosWorldClass({
         expedienteId,
         {
           radicado: expediente.radicado,
+          numeroExpediente: expediente.radicado,
+          codigoIdentificacionExpediente: (expediente as any).codigoIdentificacionExpediente,
+          codigoDependencia: (expediente as any).codigoDependencia,
+          nombreDependencia: (expediente as any).nombreDependencia,
+          codigoSerie: (expediente as any).codigoSerie,
+          nombreSerie: (expediente as any).nombreSerie,
+          serie: (expediente as any).serie,
+          codigoSubserie: (expediente as any).codigoSubserie,
+          nombreSubserie: (expediente as any).nombreSubserie,
+          subserie: (expediente as any).subserie,
+          tieneSubserie: (expediente as any).tieneSubserie,
+          trdVersion: (expediente as any).trdVersion,
+          fechaHechos: (expediente as any).fechaHechos,
+          fechaRadicacion: (expediente as any).fechaInicio,
           asunto: expediente.tipoProceso,
           responsable: expediente.responsable,
         },
@@ -1696,38 +1995,102 @@ export function ExpedientesElectronicosWorldClass({
                     <p className="text-sm font-bold text-gray-700">No se encontraron documentos</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
+                  <div className="space-y-3">
+                    {/* ✅ FILA DE FILTROS FUID */}
+                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 shadow-xs flex items-center justify-between flex-wrap gap-4">
+                      {/* Estado FUID: Todos / Finalizados */}
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                          <Info className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-blue-900 leading-tight">Vista Cronológica Organizada por Proceso</p>
-                          <p className="text-xs text-blue-700 leading-tight">{documentosPorExpediente.reduce((acc, exp) => acc + exp.documentos.length, 0)} documento(s) en {documentosPorExpediente.length} expediente(s)</p>
+                        <span className="text-xs font-bold text-gray-800">Estado FUID:</span>
+                        <div className="flex items-center gap-1.5 bg-gray-100 p-0.5 rounded-lg">
+                          <button
+                            onClick={() => setFiltroEstadoFuid('todos')}
+                            className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                              filtroEstadoFuid === 'todos'
+                                ? 'text-white shadow-xs'
+                                : 'text-gray-700 hover:text-gray-900'
+                            }`}
+                            style={filtroEstadoFuid === 'todos' ? { background: '#003DA5' } : {}}
+                          >
+                            Todos ({totalFuidTodos})
+                          </button>
+                          <button
+                            onClick={() => setFiltroEstadoFuid('finalizados')}
+                            className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                              filtroEstadoFuid === 'finalizados'
+                                ? 'text-white shadow-xs'
+                                : 'text-gray-700 hover:text-gray-900'
+                            }`}
+                            style={filtroEstadoFuid === 'finalizados' ? { background: '#003DA5' } : {}}
+                          >
+                            Finalizados ({totalFuidFinalizados})
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={expandirTodos}
-                          className="px-2.5 py-1.5 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold transition flex items-center gap-1"
-                          title="Expandir todos los expedientes"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                          Expandir Todos
-                        </button>
-                        <button
-                          onClick={colapsarTodos}
-                          className="px-2.5 py-1.5 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold transition flex items-center gap-1"
-                          title="Colapsar todos los expedientes"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                          Colapsar Todos
-                        </button>
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pl-2 border-l border-blue-300">
-                          <Clock className="w-3.5 h-3.5" />
-                          {ordenCronologico === 'desc' ? 'Más reciente' : 'Más antiguo'}
+
+                      {/* Periodo: Fecha inicio y Fecha final */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-xs font-bold text-gray-800">Periodo:</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-600 font-medium">Fecha inicio</span>
+                          <input
+                            type="date"
+                            value={fechaInicioFuid}
+                            onChange={(e) => setFechaInicioFuid(e.target.value)}
+                            className="border border-gray-300 rounded-md px-2.5 py-1 text-xs text-gray-800 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                          />
                         </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-600 font-medium">Fecha final</span>
+                          <input
+                            type="date"
+                            value={fechaFinFuid}
+                            onChange={(e) => setFechaFinFuid(e.target.value)}
+                            className="border border-gray-300 rounded-md px-2.5 py-1 text-xs text-gray-800 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ✅ BARRA DE SELECCIÓN Y ACCIONES MASIVAS */}
+                    <div className="bg-[#f0f6ff] border border-blue-200 rounded-xl px-4 py-2 flex items-center justify-between flex-wrap gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={
+                              documentosPorExpediente.length > 0 &&
+                              documentosPorExpediente.every(g => expedientesSeleccionados.has(g.expedienteId))
+                            }
+                            onChange={toggleSeleccionarTodos}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className="text-xs font-bold text-gray-900">Seleccionar todos</span>
+                        </label>
+                        <span className="text-xs text-gray-500 font-medium">
+                          {expedientesSeleccionados.size} expediente(s) seleccionado(s)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {expedientesSeleccionados.size > 0 && (
+                          <button
+                            onClick={handleCompartirSeleccionados}
+                            className="px-3.5 py-1.5 rounded-lg text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs hover:opacity-90"
+                            style={{ backgroundColor: '#0f2f8a' }}
+                            title="Compartir FUID de expedientes seleccionados"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            Compartir seleccionados ({expedientesSeleccionados.size})
+                          </button>
+                        )}
+                        <button
+                          onClick={handleExportarTodosFuid}
+                          className="px-3.5 py-1.5 rounded-lg border border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+                          title="Exportar todos los FUID según el filtro activo"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                          Exportar todos los FUID ({documentosPorExpediente.length})
+                        </button>
                       </div>
                     </div>
                     
@@ -1736,68 +2099,88 @@ export function ExpedientesElectronicosWorldClass({
                       <div key={grupo.expedienteId} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                         {/* Header del Expediente - Clickeable para expandir/colapsar */}
                         <div 
-                          className="px-3 py-2.5 border-b border-gray-200 cursor-pointer hover:bg-blue-100/50 transition"
+                          className="px-3 py-2.5 border-b border-gray-200 transition"
                           style={{ background: 'linear-gradient(135deg, #F0F7FF 0%, #E0EDFF 100%)' }}
                         >
-                          <div className="flex items-center justify-between">
-                            <div 
-                              className="flex items-center gap-2.5 flex-1"
-                              onClick={() => toggleExpediente(grupo.expedienteId)}
-                            >
-                              {/* Icono de expandir/colapsar */}
-                              <motion.div
-                                animate={{ rotate: expedientesExpandidos.has(grupo.expedienteId) ? 0 : -90 }}
-                                transition={{ duration: 0.2 }}
-                                className="flex-shrink-0"
+                          <div className="flex items-center justify-between gap-3">
+                            {/* Checkbox de selección a la izquierda + Datos del expediente */}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={expedientesSeleccionados.has(grupo.expedienteId)}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  toggleSeleccionExpediente(grupo.expedienteId);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                                title={`Seleccionar expediente ${grupo.expediente.radicado}`}
+                              />
+
+                              <div 
+                                className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer select-none"
+                                onClick={() => toggleExpediente(grupo.expedienteId)}
                               >
-                                <ChevronDown className="w-5 h-5 text-blue-700" />
-                              </motion.div>
-                              <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
-                                {grupo.expediente.radicado.split('-')[2]}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <h3 className="text-sm font-bold" style={{ color: '#003DA5' }}>{grupo.expediente.radicado}</h3>
-                                  <span className="px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ color: getEstadoConfig(grupo.expediente.estado).color, backgroundColor: getEstadoConfig(grupo.expediente.estado).bg }}>
-                                    {getEstadoConfig(grupo.expediente.estado).label}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
-                                    {grupo.documentos.length} doc(s)
-                                  </span>
+                                {/* Icono de expandir/colapsar */}
+                                <motion.div
+                                  animate={{ rotate: expedientesExpandidos.has(grupo.expedienteId) ? 0 : -90 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="flex-shrink-0"
+                                >
+                                  <ChevronDown className="w-5 h-5 text-blue-700" />
+                                </motion.div>
+                                <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
+                                  {grupo.expediente.radicado.split('-')[2] || '2026'}
                                 </div>
-                                <p className="text-xs font-bold text-gray-700">NED: {grupo.expediente.nombreDisciplinado}</p>
-                                {grupo.expediente.radicadoNoticia && (
-                                  <p className="text-xs text-gray-500 mt-0.5">Noticia: {grupo.expediente.radicadoNoticia}</p>
-                                )}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                    <h3 className="text-sm font-bold" style={{ color: '#003DA5' }}>{grupo.expediente.radicado}</h3>
+                                    <span className="px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ color: getEstadoConfig(grupo.expediente.estado).color, backgroundColor: getEstadoConfig(grupo.expediente.estado).bg }}>
+                                      {getEstadoConfig(grupo.expediente.estado).label}
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                                      {grupo.documentos.length} doc(s)
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold text-gray-700 truncate">NED: {grupo.expediente.nombreDisciplinado}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    Noticia: {grupo.expediente.radicadoNoticia || 'Sin registrar'}
+                                    {grupo.expediente.fechaInicio && (
+                                      <> - Apertura: {formatearFechaApertura(grupo.expediente.fechaInicio)}</>
+                                    )}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
+
+                            {/* Botones de acción del expediente */}
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
                               {grupo.expediente.estado !== 'radicada' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAbrirSubirDocumento(grupo.expediente);
-                                }}
-                                className="px-2.5 py-1.5 rounded-md border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition text-xs font-bold flex items-center gap-1.5"
-                                title="Subir Documento al Expediente"
-                              >
-                                <Upload className="w-3.5 h-3.5" />
-                                Subir Documento
-                              </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAbrirSubirDocumento(grupo.expediente);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-md border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition text-xs font-bold flex items-center gap-1.5"
+                                  title="Subir Documento al Expediente"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                  Subir Documento
+                                </button>
                               )}
                               {grupo.expediente.estado !== 'radicada' && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpedienteParaCompartir(grupo.expediente);
-                                  setShowModalCompartir(true);
-                                }}
-                                className="px-2.5 py-1.5 rounded-md border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 transition text-xs font-bold flex items-center gap-1.5"
-                                title="Compartir Expediente"
-                              >
-                                <Share2 className="w-3.5 h-3.5" />
-                                Compartir
-                              </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpedienteParaCompartir(grupo.expediente);
+                                    setShowModalCompartir(true);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-md border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 transition text-xs font-bold flex items-center gap-1.5"
+                                  title="Compartir Expediente"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                  Compartir
+                                </button>
                               )}
                               <button
                                 onClick={(e) => {
@@ -1810,6 +2193,41 @@ export function ExpedientesElectronicosWorldClass({
                               >
                                 <FileSpreadsheet className="w-3.5 h-3.5" />
                                 Exportar Índice
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* ✅ FRANJA INFERIOR: ANEXO FUID_P-###-2026 */}
+                          <div className="mt-2.5 pt-2 border-t border-dashed border-blue-200 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2 pl-7">
+                              <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <span className="text-xs font-bold text-gray-800 tracking-wide">
+                                ANEXO FUID_{grupo.expediente.radicado}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCompartirFuidIndividual(grupo.expediente);
+                                }}
+                                className="px-3 py-1 rounded-md border text-xs font-bold transition flex items-center gap-1.5 shadow-2xs hover:bg-blue-50"
+                                style={{ borderColor: '#0f2f8a', color: '#0f2f8a' }}
+                                title={`Compartir FUID de ${grupo.expediente.radicado}`}
+                              >
+                                <Share2 className="w-3.5 h-3.5" style={{ color: '#0f2f8a' }} />
+                                Compartir FUID
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleExportarFuidIndividual(grupo.expediente);
+                                }}
+                                className="px-3 py-1 rounded-md border border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+                                title={`Exportar FUID de ${grupo.expediente.radicado}`}
+                              >
+                                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                                Exportar FUID
                               </button>
                             </div>
                           </div>
@@ -2355,6 +2773,16 @@ export function ExpedientesElectronicosWorldClass({
             setShowModalCompartir(false);
             setExpedienteParaCompartir(null);
           }}
+        />
+      )}
+
+      {/* ✅ MODAL: COMPARTIR FUID (EI-FO-003) */}
+      {fuidParaCompartir && (
+        <ModalCompartirFuid
+          items={fuidParaCompartir.items}
+          header={fuidParaCompartir.header}
+          filename={fuidParaCompartir.filename}
+          onClose={() => setFuidParaCompartir(null)}
         />
       )}
     </div>

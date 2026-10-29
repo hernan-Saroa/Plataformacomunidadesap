@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Logger,
   Param,
@@ -27,6 +28,7 @@ import * as fs from 'node:fs';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
 import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaConfigurationGuard } from './auth/pta-configuration.guard';
 import { PtaRundSensitiveInterceptor } from './banco-docentes/pta-rund-sensitive.interceptor';
 
 const ensureDir = (dir: string) => {
@@ -203,12 +205,14 @@ export class PtaController {
   // PTA CRUD / workflow
   // ─────────────────────────────
   @Get('todos')
+  @Header('Cache-Control', 'private, no-store')
   async getAll(@Query() query: any) {
     const data = await this.ptaService.getAllPTAs(query);
     return { success: true, data };
   }
 
   @Get('mis-ptas/:docenteId')
+  @Header('Cache-Control', 'private, no-store')
   async getMis(@Param('docenteId') docenteId: string, @Query('periodo') periodo?: string) {
     try {
       const data = await this.ptaService.getPTAsByDocente(docenteId, periodo);
@@ -220,6 +224,7 @@ export class PtaController {
   }
 
   @Get('id/:id')
+  @Header('Cache-Control', 'private, no-store')
   async getById(@Param('id') id: string) {
     const data = await this.ptaService.getPTAById(id);
     return { success: true, data };
@@ -298,6 +303,7 @@ export class PtaController {
   }
 
   @Get('gestion')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(PtaAuthGuard)
   async getGestion(@Query() query: any, @Req() req: Request) {
     return { success: true, data: await this.ptaService.getAllPTAs(query, req.ptaAuth!) };
@@ -312,6 +318,7 @@ export class PtaController {
   }
 
   @Get(':ptaId/aprobaciones-jefatura')
+  @Header('Cache-Control', 'private, no-store')
   async getAprobacionesJefatura(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getAprobacionesJefatura(ptaId);
     return { success: true, data };
@@ -332,16 +339,28 @@ export class PtaController {
   }
 
   @Get('configuracion')
+  @UseGuards(PtaAuthGuard, PtaConfigurationGuard)
   async getConfiguracion() {
     const data = await this.ptaService.getConfiguracionPTAGlobal();
     return { success: true, data };
   }
 
   @Post('configuracion')
+  @UseGuards(PtaAuthGuard, PtaConfigurationGuard)
   async saveConfiguracion(@Body() body: any, @Req() req: Request) {
     const rules = body?.rules ?? body;
-    const userId = (req.headers['x-user-id'] as string) || 'admin';
+    const userId = req.ptaAuth!.userId!;
     const data = await this.ptaService.saveConfiguracionPTAGlobal(rules, userId);
+    return { success: true, data };
+  }
+
+  // Reglas operativas consumidas por formularios y cálculos. No habilitan edición
+  // ni exponen el historial administrativo; /configuracion exige permiso propio.
+  @Get('reglas')
+  async getReglas() {
+    const rules = await this.ptaService.getConfiguracionPTAGlobal();
+    if (!rules) return { success: true, data: null };
+    const { config_changelog, config_snapshots, config_bloqueada, config_bloqueada_motivo, ...data } = rules;
     return { success: true, data };
   }
 
@@ -693,6 +712,7 @@ export class PtaController {
   }
 
   @Get('sync/status')
+  @Header('Cache-Control', 'private, no-store')
   async getSyncStatus() {
     const data = await this.ptaService.getSyncStatus();
     return { success: true, data };
@@ -817,6 +837,7 @@ export class PtaController {
   }
 
   @Get('events/recent')
+  @Header('Cache-Control', 'private, no-store')
   async getRecentEvents(@Query() query: any) {
     const data = await this.ptaService.getRecentEvents(query);
     return { success: true, data };
@@ -898,6 +919,7 @@ export class PtaController {
   }
 
   @Get(':ptaId/componentes-aprobacion')
+  @Header('Cache-Control', 'private, no-store')
   async getComponentesAprobacion(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesAprobacion(ptaId);
     return { success: true, data };
@@ -911,12 +933,14 @@ export class PtaController {
   }
 
   @Get(':ptaId/permisos-decision')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(PtaAuthGuard)
   async getDecisionPermissions(@Param('ptaId') ptaId: string, @Req() req: Request) {
     return { success: true, data: await this.ptaService.getDecisionPermissions(ptaId, req.ptaAuth!) };
   }
 
   @Get('permisos-alcance')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(PtaAuthGuard)
   async getDecisionListScope(@Req() req: Request) {
     return { success: true, data: await this.ptaService.getDecisionListScope(req.ptaAuth!) };
@@ -927,6 +951,7 @@ export class PtaController {
   // y Bolívar), cada una se aprueba/devuelve por separado. Devuelve [] cuando el PTA
   // no tiene asignaturas territoriales.
   @Get(':ptaId/aprobacion-territorial')
+  @Header('Cache-Control', 'private, no-store')
   async getAprobacionTerritorial(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getTerritorialApprovalStatus(ptaId);
     return { success: true, data };
@@ -961,6 +986,7 @@ export class PtaController {
   }
 
   @Get(':ptaId/componentes-revision')
+  @Header('Cache-Control', 'private, no-store')
   async getComponentesRevision(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesRevision(ptaId);
     return { success: true, data };
@@ -971,6 +997,7 @@ export class PtaController {
   // para la revisión (preaprobación). Devuelve [] cuando el PTA no tiene
   // asignaturas territoriales.
   @Get(':ptaId/revision-territorial')
+  @Header('Cache-Control', 'private, no-store')
   async getRevisionTerritorial(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getTerritorialReviewStatus(ptaId);
     return { success: true, data };

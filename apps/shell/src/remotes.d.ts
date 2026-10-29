@@ -118,7 +118,10 @@ declare module 'viaticos/Module' {
 }
 
 declare module 'programacion_academica/Module' {
-  const Module: React.ComponentType;
+  const Module: React.ComponentType<{
+    puedeAbrirProgramasAcademicos?: boolean;
+    abrirProgramasAcademicos?: () => void;
+  }>;
   export { Module as ProgramacionAcademicaModule };
   export default Module;
 }
@@ -130,7 +133,17 @@ declare module 'gestion_infraestructura/Module' {
 }
 
 declare module 'chatbot/Module' {
-  const Module: React.ComponentType;
+  const Module: React.ComponentType<{
+    mode?: 'authenticated' | 'public';
+    onLogin?: () => void;
+    apiBaseUrl?: string;
+    userEmail?: string;
+    userId?: string;
+    userName?: string;
+    initialConversationId?: string;
+    onClose?: () => void;
+    isWidget?: boolean;
+  }>;
   export { Module as ChatbotModule };
   export default Module;
 }

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
+import { ModalVisorPlantilla } from './ModalVisorPlantilla';
 
 // ============ TIPOS DE ACTAS ============
 
@@ -103,6 +104,8 @@ export interface TipoActa {
   nombre: string;
   descripcion: string;
   tipo: TipoActaId;
+  tipoBackend?: string;
+  codigo?: string;
   plantilla?: PlantillaArchivo | null;
   plantillas: PlantillaArchivo[];
   activo: boolean;
@@ -148,15 +151,22 @@ export function SeccionPlantillasActasUnificada({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
-    const link = document.createElement('a');
-    link.href = disciplinaryService.getAbsoluteFileUrl(plantilla.url);
-    link.download = plantilla.nombreArchivo;
-    link.click();
+  const handleDescargarPlantilla = async (plantilla: PlantillaArchivo | null) => {
+    if (!plantilla || !plantilla.url) {
+      toast.error('No hay archivo para descargar');
+      return;
+    }
 
-    toast.success('Plantilla descargada', {
-      description: plantilla.nombreArchivo
-    });
+    try {
+      const nombreDescarga = plantilla.nombreArchivo || `${plantilla.nombre || 'plantilla'}.docx`;
+      await disciplinaryService.downloadFileFromUrl(plantilla.url, nombreDescarga);
+      toast.success('Plantilla descargada', {
+        description: nombreDescarga
+      });
+    } catch (error) {
+      console.error('Error descargando plantilla de acta:', error);
+      toast.error('Error al descargar la plantilla');
+    }
   };
 
   const toggleExpandirTipo = (tipoId: string) => {
@@ -475,14 +485,24 @@ export function SeccionPlantillasActasUnificada({
                                               <span>{formatBytes(plantilla.tamano)}</span>
                                             </div>
                                           </div>
-                                          <button
-                                            onClick={() => handleDescargarPlantilla(plantilla)}
-                                            className="flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg font-semibold text-xs text-white transition-all hover:shadow-lg flex-shrink-0"
-                                            style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-                                          >
-                                            <Download className="w-3.5 h-3.5" />
-                                            <span className="hidden lg:inline">Descargar</span>
-                                          </button>
+                                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            <button
+                                              onClick={() => setVistaDetalles(acta)}
+                                              className="flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg font-semibold text-xs text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-all flex-shrink-0"
+                                              title="Previsualizar plantilla"
+                                            >
+                                              <Eye className="w-3.5 h-3.5" />
+                                              <span className="hidden lg:inline">Ver</span>
+                                            </button>
+                                            <button
+                                              onClick={() => handleDescargarPlantilla(plantilla)}
+                                              className="flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg font-semibold text-xs text-white transition-all hover:shadow-lg flex-shrink-0"
+                                              style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
+                                            >
+                                              <Download className="w-3.5 h-3.5" />
+                                              <span className="hidden lg:inline">Descargar</span>
+                                            </button>
+                                          </div>
                                         </div>
                                       </div>
                                     ))}
@@ -500,32 +520,26 @@ export function SeccionPlantillasActasUnificada({
         </div>
       </div>
 
-      {/* Modales simplificados */}
+      {/* Modal Visor de Plantillas */}
       {vistaDetalles && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 1000 }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden"
-          >
-            <div className="border-b px-5 py-4 flex items-center justify-between">
-              <h3 className="text-lg font-bold">{vistaDetalles.nombre}</h3>
-              <button onClick={() => setVistaDetalles(null)} className="p-1.5 rounded-lg hover:bg-gray-100">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5">
-              <p className="text-sm text-gray-700 mb-4">{vistaDetalles.descripcion}</p>
-              <h4 className="text-xs font-bold mb-2">PLANTILLAS ({vistaDetalles.plantillas.filter(p => p.activo).length})</h4>
-              {vistaDetalles.plantillas.filter(p => p.activo).map(p => (
-                <div key={p.id} className="bg-gray-50 border p-3 rounded-lg mb-2">
-                  <p className="font-semibold text-sm">{p.nombre}</p>
-                  <p className="text-xs text-gray-600">{p.nombreArchivo}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
+        <ModalVisorPlantilla
+          isOpen={!!vistaDetalles}
+          onClose={() => setVistaDetalles(null)}
+          titulo={vistaDetalles.nombre}
+          subtitulo={TIPOS_ACTAS[vistaDetalles.tipo]?.nombre}
+          descripcion={vistaDetalles.descripcion}
+          tipoPlantilla="acta"
+          plantillas={
+            vistaDetalles.plantillas && vistaDetalles.plantillas.length > 0
+              ? vistaDetalles.plantillas
+              : (vistaDetalles.plantilla ? [vistaDetalles.plantilla] : [])
+          }
+          categoriaBadge={{
+            label: TIPOS_ACTAS[vistaDetalles.tipo]?.nombre.replace('Acta de ', '') || vistaDetalles.tipo,
+            color: TIPOS_ACTAS[vistaDetalles.tipo]?.color || '#F59E0B'
+          }}
+          colorTema={TIPOS_ACTAS[vistaDetalles.tipo]?.color || '#F59E0B'}
+        />
       )}
 
       {mostrarGuia && (

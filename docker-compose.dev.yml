@@ -37,6 +37,8 @@ services:
       - "9000:80"
     environment:
       - JWT_ENABLED=false
+      - ALLOW_PRIVATE_IP_ADDRESS=true
+      - ALLOW_META_IP_ADDRESS=true
     volumes:
       - onlyoffice-data:/var/www/onlyoffice/Data
       - onlyoffice-logs:/var/log/onlyoffice
@@ -138,6 +140,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      # Archivos del Centro de Ayuda (EFDS-2399): fuera del contenedor para que no se pierdan al desplegar
+      - ./backend/auth-service/uploads/centro-ayuda:/app/uploads/centro-ayuda
     networks:
       - superapp-net
     restart: unless-stopped
@@ -251,7 +256,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3004
-      CERTIFICATION_EMAIL_SAFE_MODE: 'true'
+      CERTIFICATION_EMAIL_SAFE_MODE: "true"
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
 
       DB_HOST: db
@@ -314,6 +319,8 @@ services:
       AUTH_SERVICE_URL: http://auth-service:3001
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:3009
+      # Traslado directo (Enviar a Jurídica) al Centro de Comunicaciones; sin esto cae a localhost:3008 y falla en silencio
+      LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service:3008
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://4.156.71.181}}
       FRONTEND_URL: ${FRONTEND_URL:-http://4.156.71.181}
       DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
@@ -426,6 +433,8 @@ services:
       LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT}
       LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL}
       LEGAL_EMAIL_ACCOUNT_CORREOS: ${LEGAL_EMAIL_ACCOUNT_CORREOS}
+      NOTIFICATIONS_EMAIL_ACCOUNT: ${NOTIFICATIONS_EMAIL_ACCOUNT:-}
+      LEGAL_SYNC_EXCLUDED_SENDERS: ${LEGAL_SYNC_EXCLUDED_SENDERS:-}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
@@ -572,6 +581,7 @@ services:
 
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+      HIRING_STORAGE_PATH: /app/uploads
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
@@ -584,6 +594,10 @@ services:
         condition: service_started
     networks:
       - superapp-net
+    # Fuera del contenedor: sin esto, cada despliegue borraba los archivos
+    # subidos en Contratación y quedaban filas apuntando a nada.
+    volumes:
+      - ./backend/hiring-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ ACADEMIC SCHEDULE SERVICE ============
@@ -639,6 +653,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
     ports:
       - "3014:3014"
     depends_on:

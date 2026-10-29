@@ -148,6 +148,14 @@ export class Auditoria {
   @Column({ type: 'jsonb', name: 'semanas_excluidas', default: () => "'[]'::jsonb" })
   semanasExcluidas: string[];
 
+  // Unidades auditables del proceso que cubre la auditoría (EFDS-2316)
+  @Column({ type: 'jsonb', name: 'unidades_auditables', default: () => "'[]'::jsonb" })
+  unidadesAuditables: string[];
+
+  // Dependencias del proceso que se auditan; salen en la columna A del Programa Anual (EFDS-2367)
+  @Column({ type: 'jsonb', name: 'dependencias_auditadas', default: () => "'[]'::jsonb" })
+  dependenciasAuditadas: string[];
+
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
 

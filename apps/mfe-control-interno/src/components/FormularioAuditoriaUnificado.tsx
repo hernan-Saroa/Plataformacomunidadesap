@@ -48,6 +48,7 @@ import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
 import { evaluacionProgramable } from '../utils/auditableEvaluacion';
+import { dependenciasDeLaEvaluacion, tituloConUnidades, unidadesDeLaEvaluacion, unidadesParaExportar } from './utils/unidadesAuditables';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -115,6 +116,10 @@ export interface AuditoriaUnificadaFormData {
   territorial: string;
   areaObjetivo: string;
   procesoAuditado: string;
+  // Unidades auditables del proceso que cubre la auditoría (EFDS-2316)
+  unidadesAuditables?: string[];
+  // Dependencias del proceso que se auditan (EFDS-2367)
+  dependenciasAuditadas?: string[];
   alcance: string;
   focos?: string[]; // Focos de la auditoría (opcional, multi-select)
   // Responsable del área auditada (persona del catálogo auth.personas).
@@ -428,6 +433,8 @@ export function FormularioAuditoriaUnificado({
       territorial: data?.territorial || '',
       areaObjetivo: data?.areaObjetivo || '',
       procesoAuditado: data?.procesoAuditado || '',
+      unidadesAuditables: Array.isArray(data?.unidadesAuditables) ? data!.unidadesAuditables : [],
+      dependenciasAuditadas: Array.isArray(data?.dependenciasAuditadas) ? data!.dependenciasAuditadas : [],
       alcance: data?.alcance || '',
       responsableArea: data?.responsableArea,
       auditorLider: data?.auditorLider || '',
@@ -536,6 +543,8 @@ export function FormularioAuditoriaUnificado({
   
   // Estado para evaluaciones completas (incluye datos de riesgo)
   const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
+  // Procesos del catálogo de Especial y Territorial, que no tienen evaluación: de ahí salen sus dependencias (EFDS-2367)
+  const [procesosCatalogo, setProcesosCatalogo] = useState<ProcesoAuditable[]>([]);
 
   // Estado para seccionales/territoriales cargadas desde Estructura Organizacional
   const [seccionalesDisponibles, setSeccionalesDisponibles] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
@@ -714,17 +723,19 @@ export function FormularioAuditoriaUnificado({
           const esTipoTerritorial = (p: ProcesoAuditable) =>
             (p.tipoProceso?.codigo || p.tipo || '').trim().toLowerCase() === 'territorial';
 
-          const filtrados = (procesos || [])
-            .filter((p) => (esAuditoriaTerritorial ? esTipoTerritorial(p) : p.esEspecial && !esTipoTerritorial(p)))
-            .map((p) => p.nombre)
-            .sort();
+          const delTipo = (procesos || []).filter((p) =>
+            esAuditoriaTerritorial ? esTipoTerritorial(p) : p.esEspecial && !esTipoTerritorial(p),
+          );
+          const filtrados = delTipo.map((p) => p.nombre).sort();
 
+          setProcesosCatalogo(delTipo);
           setEvaluacionesDisponibles([]);
           setProcesosAuditables(filtrados);
           return;
         }
 
         // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
+        setProcesosCatalogo([]);
         const todas = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
         // Solo los procesos que se pueden programar: switch "Aud." en SÍ, o en
         // automático los de criticidad Extremo o que se auditan el primer año. Al
@@ -1102,6 +1113,12 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
+    if ((mode === 'create' || puedeEditarPaso(1)) && faltanUnidadesAuditables()) {
+      toast.error('Seleccione al menos una unidad auditable del proceso');
+      setPasoActual(1);
+      return;
+    }
+
     // Equipo Auditor (Paso 2 en creación): la auditoría no puede quedar sin
     // responsables, requisito para la trazabilidad del ciclo OCI (EFDS-1921).
     if (mode === 'create') {
@@ -1319,7 +1336,28 @@ export function FormularioAuditoriaUnificado({
     }
   };
 
+  // Auditorías programadas antes de EFDS-2316: al editarlas quedan marcadas las
+  // unidades que su título trae entre paréntesis, que es donde se guardaban.
+  useEffect(() => {
+    if (mode !== 'edit' || evaluacionesDisponibles.length === 0) return;
+    setFormData((prev) => {
+      if ((prev.unidadesAuditables || []).length > 0) return prev;
+      const disponibles = unidadesDelProceso(evaluacionesDisponibles, prev.procesoAuditado);
+      const delTitulo = unidadesParaExportar(prev.titulo).filter((u) => disponibles.includes(u));
+      return delTitulo.length > 0 ? { ...prev, unidadesAuditables: delTitulo } : prev;
+    });
+  }, [mode, open, evaluacionesDisponibles]);
+
+  /** El proceso tiene unidades auditables y no se marcó ninguna (EFDS-2316). */
+  const faltanUnidadesAuditables = () =>
+    unidadesDelProceso(evaluacionesDisponibles, formData.procesoAuditado, formData.unidadesAuditables).length > 0 &&
+    (formData.unidadesAuditables || []).length === 0;
+
   const handleSiguiente = () => {
+    if (pasoActual === 1 && faltanUnidadesAuditables()) {
+      toast.error('Seleccione al menos una unidad auditable del proceso');
+      return;
+    }
     // El cruce de auditores ya no detiene el avance: queda el aviso en el paso del equipo (EFDS-2257)
     if (pasoActual < TOTAL_PASOS) {
       setPasoActual(pasoActual + 1);
@@ -1338,6 +1376,7 @@ export function FormularioAuditoriaUnificado({
         case 1:
           return (
             <Paso1InformacionBasica 
+              procesosCatalogo={procesosCatalogo}
               formData={formData} 
               onChange={handleChange} 
               procesos={procesosAuditables} 
@@ -1385,6 +1424,7 @@ export function FormularioAuditoriaUnificado({
       case 1:
         return (
           <Paso1InformacionBasica 
+            procesosCatalogo={procesosCatalogo}
             formData={formData} 
             onChange={handleChange} 
             procesos={procesosAuditables} 
@@ -1720,7 +1760,50 @@ interface PasoProps {
   onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
 }
 
+/**
+ * Unidades auditables del proceso (EFDS-2316): las de Configuración, juntando
+ * las filas del Universo que tenga el proceso, más las que ya tenga marcadas la
+ * auditoría para no perderlas si después cambian en Configuración.
+ */
+function unidadesDelProceso(
+  evaluaciones: EvaluacionProceso[],
+  procesoNombre: string | undefined,
+  marcadas: string[] = [],
+): string[] {
+  const nombre = String(procesoNombre || '').trim().toLowerCase();
+  if (!nombre) return [];
+  const delUniverso = evaluaciones
+    .filter((ev) => String(ev.proceso?.nombre || '').trim().toLowerCase() === nombre)
+    .flatMap((ev) => unidadesDeLaEvaluacion(ev));
+  return Array.from(new Set([...delUniverso, ...marcadas]));
+}
+
+/**
+ * Dependencias del proceso (EFDS-2367): las de Configuración → Procesos, más las
+ * que ya tenga marcadas la auditoría para no perderlas si después cambian allá.
+ */
+function dependenciasDelProceso(
+  evaluaciones: EvaluacionProceso[],
+  procesoNombre: string | undefined,
+  marcadas: string[] = [],
+  catalogo: ProcesoAuditable[] = [],
+): string[] {
+  const nombre = String(procesoNombre || '').trim().toLowerCase();
+  if (!nombre) return [];
+  const esDelProceso = (n?: string) => String(n || '').trim().toLowerCase() === nombre;
+  const delUniverso = evaluaciones
+    .filter((ev) => esDelProceso(ev.proceso?.nombre))
+    .flatMap((ev) => dependenciasDeLaEvaluacion(ev));
+  // Especial y Territorial no tienen evaluación: se leen del catálogo de procesos
+  const delCatalogo = catalogo
+    .filter((p) => esDelProceso(p.nombre))
+    .flatMap((p) => dependenciasDeLaEvaluacion({ proceso: p }));
+  return Array.from(new Set([...delUniverso, ...delCatalogo, ...marcadas]));
+}
+
 interface Paso1Props extends PasoProps {
+  /** Procesos del catálogo cuando el tipo de auditoría no usa el Universo (EFDS-2367) */
+  procesosCatalogo?: ProcesoAuditable[];
   procesos: string[];
   cargandoProcesos: boolean;
   busquedaProceso: string;
@@ -1746,6 +1829,7 @@ function Paso1InformacionBasica({
   mostrarSugerenciasProcesos,
   setMostrarSugerenciasProcesos,
   evaluaciones,
+  procesosCatalogo = [],
   tiposAuditoria,
   cargandoTipos,
   esAuditoriaEspecial,
@@ -1785,6 +1869,13 @@ function Paso1InformacionBasica({
       const unidad = mac || dep;
       tituloStr = unidad ? `${procesoNombreStr} (${unidad})` : procesoNombreStr;
     }
+
+    // Al elegir el proceso quedan marcadas todas sus unidades auditables; se pueden desmarcar (EFDS-2316)
+    const unidades = unidadesDelProceso(evaluaciones, procesoNombreStr);
+    if (unidades.length > 0) tituloStr = tituloConUnidades(procesoNombreStr, unidades);
+    onChange('unidadesAuditables', unidades);
+    // Igual con sus dependencias: quedan todas marcadas y se pueden desmarcar (EFDS-2367)
+    onChange('dependenciasAuditadas', dependenciasDelProceso(evaluaciones, procesoNombreStr, [], procesosCatalogo));
 
     // Guardar en ambos campos: titulo (para BD) y procesoAuditado
     onChange('titulo', tituloStr);
@@ -1833,8 +1924,51 @@ function Paso1InformacionBasica({
     // Actualizar ambos campos mientras se escribe
     onChange('titulo', value);
     onChange('procesoAuditado', value);
+    onChange('unidadesAuditables', []);
+    onChange('dependenciasAuditadas', []);
     setMostrarSugerenciasProcesos(true);
   };
+
+  // Unidades auditables del proceso elegido y las que cubre la auditoría (EFDS-2316)
+  const unidadesDisponibles = unidadesDelProceso(evaluaciones, formData.procesoAuditado, formData.unidadesAuditables);
+  const unidadesMarcadas = formData.unidadesAuditables || [];
+  const todasMarcadas = unidadesDisponibles.length > 0 && unidadesDisponibles.every((u) => unidadesMarcadas.includes(u));
+
+  const marcarUnidades = (marcadas: string[]) => {
+    // Mismo orden que en Configuración
+    const ordenadas = unidadesDisponibles.filter((u) => marcadas.includes(u));
+    const titulo = tituloConUnidades(formData.procesoAuditado, ordenadas);
+    onChange('unidadesAuditables', ordenadas);
+    onChange('titulo', titulo);
+    setBusquedaProceso(titulo);
+  };
+
+  const alternarUnidad = (unidad: string) =>
+    marcarUnidades(
+      unidadesMarcadas.includes(unidad) ? unidadesMarcadas.filter((u) => u !== unidad) : [...unidadesMarcadas, unidad],
+    );
+
+  // Dependencias del proceso elegido y las que se auditan (EFDS-2367)
+  const dependenciasDisponibles = dependenciasDelProceso(
+    evaluaciones,
+    formData.procesoAuditado,
+    formData.dependenciasAuditadas,
+    procesosCatalogo,
+  );
+  const dependenciasMarcadas = formData.dependenciasAuditadas || [];
+  const todasDependencias =
+    dependenciasDisponibles.length > 0 && dependenciasDisponibles.every((d) => dependenciasMarcadas.includes(d));
+
+  // Mismo orden que en Configuración
+  const marcarDependencias = (marcadas: string[]) =>
+    onChange('dependenciasAuditadas', dependenciasDisponibles.filter((d) => marcadas.includes(d)));
+
+  const alternarDependencia = (dependencia: string) =>
+    marcarDependencias(
+      dependenciasMarcadas.includes(dependencia)
+        ? dependenciasMarcadas.filter((d) => d !== dependencia)
+        : [...dependenciasMarcadas, dependencia],
+    );
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -2069,6 +2203,106 @@ function Paso1InformacionBasica({
             </div>
           
           </FieldWrapper>
+
+          {/* Unidades auditables del proceso que cubre la auditoría (EFDS-2316) */}
+          {unidadesDisponibles.length > 0 && (
+            <FieldWrapper
+              label="Unidades Auditables"
+              required
+              error={unidadesMarcadas.length === 0 ? 'Seleccione al menos una unidad auditable' : undefined}
+              helpText="Marque las unidades del proceso que cubre esta auditoría; salen en la columna Unidad Auditable del Programa Anual"
+            >
+              <div className="rounded-lg border-2 border-gray-200 bg-gray-50 p-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-gray-600">
+                    {unidadesMarcadas.length} de {unidadesDisponibles.length} seleccionada{unidadesDisponibles.length === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => marcarUnidades(todasMarcadas ? [] : unidadesDisponibles)}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800"
+                  >
+                    {todasMarcadas ? 'Quitar todas' : 'Seleccionar todas'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {unidadesDisponibles.map((unidad) => {
+                    const marcada = unidadesMarcadas.includes(unidad);
+                    return (
+                      <button
+                        key={unidad}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={marcada}
+                        onClick={() => alternarUnidad(unidad)}
+                        className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-left text-sm font-medium transition-all duration-200 ${
+                          marcada
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                        }`}
+                      >
+                        {marcada ? (
+                          <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <span className="w-4 h-4 flex-shrink-0 rounded-full border-2 border-gray-300" />
+                        )}
+                        <span>{unidad}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </FieldWrapper>
+          )}
+
+          {/* Dependencias del proceso que se auditan (EFDS-2367) */}
+          {dependenciasDisponibles.length > 0 && (
+            <FieldWrapper
+              label="Dependencias Auditadas"
+              helpText="Marque las dependencias que se auditan; salen debajo del nombre de la auditoría en el Programa Anual"
+            >
+              <div className="rounded-lg border-2 border-gray-200 bg-gray-50 p-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-gray-600">
+                    {dependenciasMarcadas.length} de {dependenciasDisponibles.length} seleccionada{dependenciasDisponibles.length === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => marcarDependencias(todasDependencias ? [] : dependenciasDisponibles)}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800"
+                  >
+                    {todasDependencias ? 'Quitar todas' : 'Seleccionar todas'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {dependenciasDisponibles.map((dependencia) => {
+                    const marcada = dependenciasMarcadas.includes(dependencia);
+                    return (
+                      <button
+                        key={dependencia}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={marcada}
+                        onClick={() => alternarDependencia(dependencia)}
+                        className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-left text-sm font-medium transition-all duration-200 ${
+                          marcada
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                        }`}
+                      >
+                        {marcada ? (
+                          <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <span className="w-4 h-4 flex-shrink-0 rounded-full border-2 border-gray-300" />
+                        )}
+                        <span>{dependencia}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </FieldWrapper>
+          )}
 
           {/* Descripción */}
           <FieldWrapper

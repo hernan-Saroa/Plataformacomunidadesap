@@ -2,10 +2,13 @@
  * Fecha de seguimiento de una tarea del Plan Anual (EFDS-1542).
  *
  * El Excel y el PDF deben mostrar la misma fecha, así que el orden es único:
- * 1. la fecha real de seguimiento o evaluación de la tarea, si ya se hizo;
- * 2. la fecha de entrega o límite con la que se programó la tarea;
- * 3. la del corte (punto de control) al que está vinculada la tarea;
- * 4. la fecha de corte de la actividad.
+ * 1. la fecha de seguimiento o de entrega con la que se programó la tarea;
+ * 2. la del corte (punto de control) al que está vinculada la tarea;
+ * 3. la fecha de corte de la actividad.
+ *
+ * La fecha en que el auditor completó la tarea no entra aquí: es otro dato y no debe
+ * reemplazar la fecha configurada en Roles y Actividades (EFDS-2324). Esa se lee con
+ * `fechaCompletadaDeTarea`.
  *
  * Las tareas del Rol 4 que genera el Programa Anual van una por corte y su fecha de
  * entrega es la de seguimiento de ese corte (el último día del mes siguiente, o la que
@@ -21,12 +24,8 @@ export function fechaSeguimientoTarea(actividad: any, tarea?: any): string {
   return (
     tarea?.fechaSeguimiento ||
     tarea?.fecha_seguimiento ||
-    tarea?.fechaEvaluacion ||
-    tarea?.fecha_evaluacion ||
-    tarea?.fechaCompletado ||
-    tarea?.fechaCompletada ||
-    tarea?.fecha_completada ||
     tarea?.fechaEntrega ||
+    tarea?.fecha_entrega ||
     tarea?.fechaLimite ||
     tarea?.fecha_limite ||
     punto?.fechaSeguimiento ||
@@ -35,4 +34,16 @@ export function fechaSeguimientoTarea(actividad: any, tarea?: any): string {
     actividad?.fecha_corte ||
     ''
   );
+}
+
+/** Día (AAAA-MM-DD) en que se marcó la tarea como completada, si ya lo está (EFDS-2324). */
+export function fechaCompletadaDeTarea(tarea?: any): string {
+  if (!tarea?.completada) return '';
+  return String(tarea.fechaCompletado || tarea.fechaCompletada || tarea.fecha_completada || '').slice(0, 10);
+}
+
+/** La fecha de completada como el resto de fechas del plan: `2026-10-08` → `8/10/2026`. */
+export function fechaCompletadaLegible(tarea?: any): string {
+  const f = fechaCompletadaDeTarea(tarea);
+  return /^\d{4}-\d{2}-\d{2}$/.test(f) ? new Date(`${f}T12:00:00`).toLocaleDateString('es-CO') : '';
 }

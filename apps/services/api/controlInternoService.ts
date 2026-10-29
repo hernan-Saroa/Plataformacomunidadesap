@@ -620,10 +620,28 @@ class ControlInternoService {
   }
 
   /**
-   * Elimina una evaluación de proceso
+   * Elimina una evaluación de proceso. Si el proceso tiene auditorías programadas en
+   * Programa Anual, el servidor solo la elimina con archivarAuditorias y las archiva (EFDS-2281).
    */
-  async deleteEvaluacion(id: string): Promise<void> {
-    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
+  async deleteEvaluacion(
+    id: string,
+    opciones: { archivarAuditorias?: boolean } = {},
+  ): Promise<{ archivadas?: Array<{ id: string; codigo: string | null; nombre: string | null; fase: string | null }> } | void> {
+    const query = opciones.archivarAuditorias ? '?archivarAuditorias=true' : '';
+    return client.delete(`/universo-auditorias/evaluaciones/${id}${query}`);
+  }
+
+  /**
+   * Auditorías programadas con el proceso de la evaluación: las que se archivarían al
+   * eliminarla y las que ya empezaron e impiden eliminarla (EFDS-2281).
+   */
+  async getImpactoEliminacionEvaluacion(id: string): Promise<{
+    proceso: string | null;
+    vigencia: number;
+    porArchivar: Array<{ id: string; codigo: string | null; nombre: string | null; fase: string | null }>;
+    iniciadas: Array<{ id: string; codigo: string | null; nombre: string | null; fase: string | null }>;
+  }> {
+    return client.get(`/universo-auditorias/evaluaciones/${id}/impacto-eliminacion`);
   }
 
   /**
@@ -817,8 +835,16 @@ class ControlInternoService {
   /**
    * Genera informe preliminar y notifica al área (actualiza hallazgos a NOTIFICADO)
    */
-  async generarInformePreliminar(auditoriaId: string): Promise<{ generado: boolean; hallazgosNotificados: number; mensaje: string }> {
-    return client.post<any>(`/auditorias/${auditoriaId}/informe-preliminar/generar`, {});
+  async generarInformePreliminar(
+    auditoriaId: string,
+    /** PDF del informe: el backend lo guarda en los documentos y lo adjunta al correo del área auditada (EFDS-2350) */
+    informe?: File,
+  ): Promise<{ generado: boolean; hallazgosNotificados: number; informeAdjunto?: boolean; areaNotificada?: boolean; motivoNoNotificada?: string; mensaje: string }> {
+    const url = `/auditorias/${auditoriaId}/informe-preliminar/generar`;
+    if (!informe) return client.post<any>(url, {});
+    const formData = new FormData();
+    formData.append('informe', informe);
+    return client.upload<any>(url, formData);
   }
 
   /**

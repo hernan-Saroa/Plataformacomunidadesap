@@ -385,6 +385,7 @@ export enum Permissions {
   CONTROL_INTERNO_PLAN_ANUAL_EXPORT = 'control-interno.plan-anual.export',
   CONTROL_INTERNO_PLAN_ANUAL_ASSIGN = 'control-interno.plan-anual.assign',
   CONTROL_INTERNO_PLAN_ANUAL_FOLLOW_UP = 'control-interno.plan-anual.follow-up',
+  CONTROL_INTERNO_PLAN_ANUAL_FOLLOW_UP_ALL = 'control-interno.plan-anual.follow-up.all',
 
   // Planes de Mejoramiento
   CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE = 'control-interno.planes-mejoramiento.manage',
@@ -464,6 +465,11 @@ export enum Permissions {
   VIATICOS_LEGALIZACIONES_VIEW = 'travel_expenses:legalizations.view',
   VIATICOS_RESOLUCIONES_VIEW = 'travel_expenses:resolutions.view',
   VIATICOS_CONFIG_MANAGE = 'travel_expenses:manage_config',
+  VIATICOS_FIRMAR_APROBACION = 'travel_expenses:sign_approval',
+  VIATICOS_BANDEJA_FIRMAS_VIEW = 'travel_expenses:read_approvals',
+  VIATICOS_PROCESAR_PAGO = 'travel_expenses:process_payment',
+  VIATICOS_PAGOS_VIEW = 'travel_expenses:read_payments',
+  VIATICOS_OBLIGACIONES_VIEW = 'travel_expenses:read_obligations',
 
   // Viáticos y Gastos de Viaje - Permisos Generales Inmutables por Rol (Migración 441)
   VIATICOS_GENERAL_ES_ENLACE = 'travel_expenses.general.es_enlace_dependencia',
@@ -476,4 +482,11 @@ export enum Permissions {
   VIATICOS_GENERAL_ES_TESORERIA = 'travel_expenses.general.es_tesoreria',
   VIATICOS_GENERAL_ES_SST = 'travel_expenses.general.es_sst',
   VIATICOS_GENERAL_ES_TIQUETES = 'travel_expenses.general.es_responsable_tiquetes',
+
+  // Dashboard Ejecutivo / Centro de Comando (Migración 006)
+  DASHBOARD_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view',
+  DASHBOARD_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit',
+  DASHBOARD_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view',
+  DASHBOARD_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit',
 }
+

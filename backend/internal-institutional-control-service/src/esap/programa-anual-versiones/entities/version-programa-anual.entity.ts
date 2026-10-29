@@ -22,6 +22,10 @@ export interface FilaProgramaAnual {
   fechaFin: string | null;
   /** Lunes de las semanas sacadas del cronograma; el Excel no las pinta (EFDS-2132) */
   semanasExcluidas?: string[];
+  /** Columna "Unidad Auditable" (EFDS-2316). Las versiones viejas no la traen. */
+  unidadesAuditables?: string[];
+  /** Dependencias auditadas, debajo del nombre en la columna A (EFDS-2367). Las versiones viejas no la traen. */
+  dependenciasAuditadas?: string[];
 }
 
 export interface CambioCampo {

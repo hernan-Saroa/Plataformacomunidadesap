@@ -1,10 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Plus,
-  Pencil,
   Trash2,
-  ToggleLeft,
-  ToggleRight,
   RefreshCw,
   X,
   Save,
@@ -15,6 +11,11 @@ import {
   Users,
   Wand2,
   Zap,
+  BadgeCheck,
+  CheckCircle2,
+  DollarSign,
+  Layers,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -23,7 +24,7 @@ import {
   clasificarSLA,
 } from '../services/infraestructuraService';
 
-type TabActiva = 'tiempo' | 'reglas' | 'tecnicos';
+type TabActiva = 'tiempo' | 'reglas' | 'tecnicos' | 'vobo';
 
 type ModalModoTecnico = 'crear' | 'editar' | null;
 
@@ -54,7 +55,9 @@ const cssBadgeSLA = (clase: string): string => {
   return 'bg-slate-100 text-slate-600 border border-slate-200';
 };
 
-export const AdminParametrosUMI: React.FC = () => {
+export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
+  readOnly = false,
+}) => {
   const [tab, setTab] = useState<TabActiva>('tiempo');
   const [toast, setToast] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
 
@@ -85,6 +88,25 @@ export const AdminParametrosUMI: React.FC = () => {
 
   const [confirmElimTec, setConfirmElimTec] = useState<CatalogoItem | null>(null);
   const [eliminandoTec, setEliminandoTec] = useState(false);
+
+  // Tab VoBo
+  const [cargandoVoBo, setCargandoVoBo] = useState(false);
+  const [guardandoVoBo, setGuardandoVoBo] = useState(false);
+  const [voboConfig, setVoboConfig] = useState<{
+    requiereVoBoGlobal: boolean;
+    requiereVoBoMantenimientoMayor: boolean;
+    requiereVoBoInsumos: boolean;
+    montoMinimoInsumosVoBoCop: number;
+    categoriasVoBoObligatorio: number[];
+    requiereVoBoContratacion: boolean;
+  }>({
+    requiereVoBoGlobal: false,
+    requiereVoBoMantenimientoMayor: true,
+    requiereVoBoInsumos: true,
+    montoMinimoInsumosVoBoCop: 500000,
+    categoriasVoBoObligatorio: [48, 54],
+    requiereVoBoContratacion: true,
+  });
 
   const inputBase =
     'w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ';
@@ -157,6 +179,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const guardarTiempoPorCategoria = async (idCategoria: number) => {
+    if (readOnly) return;
     if (guardandoTiempoIds.has(idCategoria)) return;
     const dias = Math.max(1, Math.min(3, Math.trunc(diasPorCategoria[idCategoria] ?? 2)));
     const nextSet = new Set(guardandoTiempoIds);
@@ -207,6 +230,7 @@ export const AdminParametrosUMI: React.FC = () => {
   useEffect(() => { if (tab === 'reglas') cargarReglas(); }, [tab]);
 
   const patchRegla = async (r: CatalogoItem, tecnicoCodigo: string | null) => {
+    if (readOnly) return;
     setGuardandoRegla(r.idCatalogo);
     try {
       await infraestructuraService.actualizarReglaEscalamiento(r.idCatalogo, { tecnicoCodigo });
@@ -250,6 +274,7 @@ export const AdminParametrosUMI: React.FC = () => {
   useEffect(() => { if (tab === 'tecnicos') cargarTecnicos({ incluirInactivos: true }); }, [tab]);
 
   const abrirCrearTec = () => {
+    if (readOnly) return;
     setModoTec('crear');
     setIdTecEdit(null);
     setFormTec({ ...TEC_VACIO, orden: String(((tecnicos.at(-1)?.orden) ?? 0) + 1) });
@@ -258,6 +283,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const abrirEditarTec = (t: CatalogoItem) => {
+    if (readOnly) return;
     const esp = Array.isArray(t.metadata?.especialidades)
       ? (t.metadata.especialidades as string[]).join(', ')
       : '';
@@ -310,6 +336,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const guardarTec = async () => {
+    if (readOnly) return;
     if (!validarTec()) return;
     setGuardandoTec(true);
     setErrFormTec(null);
@@ -333,6 +360,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const toggleTec = async (t: CatalogoItem) => {
+    if (readOnly) return;
     try {
       await infraestructuraService.toggleTecnico(t.idCatalogo);
       setToast({ tipo: 'ok', texto: t.isActivo ? 'Técnico desactivado.' : 'Técnico activado.' });
@@ -343,6 +371,7 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   const confirmEliminarTec = async () => {
+    if (readOnly) return;
     if (!confirmElimTec || eliminandoTec) return;
     setEliminandoTec(true);
     try {
@@ -356,6 +385,59 @@ export const AdminParametrosUMI: React.FC = () => {
       setEliminandoTec(false);
     }
   };
+
+  // ---------------- Tab VoBo cargar y guardar (Fase 3 Req. #3) ----------------
+  const cargarVoBo = async () => {
+    setCargandoVoBo(true);
+    try {
+      const cfg = await infraestructuraService.getVoBoConfig();
+      if (cfg) {
+        setVoboConfig({
+          requiereVoBoGlobal: Boolean(cfg.requiereVoBoGlobal),
+          requiereVoBoMantenimientoMayor: Boolean(cfg.requiereVoBoMantenimientoMayor),
+          requiereVoBoInsumos: Boolean(cfg.requiereVoBoInsumos),
+          montoMinimoInsumosVoBoCop: Number(cfg.montoMinimoInsumosVoBoCop ?? 500000),
+          categoriasVoBoObligatorio: Array.isArray(cfg.categoriasVoBoObligatorio)
+            ? cfg.categoriasVoBoObligatorio
+            : [48, 54],
+          requiereVoBoContratacion: Boolean(cfg.requiereVoBoContratacion),
+        });
+      }
+    } catch {
+      setToast({ tipo: 'err', texto: 'No se pudo cargar la configuración de VoBo.' });
+    } finally {
+      setCargandoVoBo(false);
+    }
+  };
+
+  const guardarVoBo = async () => {
+    if (readOnly) return;
+    setGuardandoVoBo(true);
+    try {
+      const resp = await infraestructuraService.actualizarVoBoConfig(voboConfig);
+      if (resp) {
+        setVoboConfig({
+          requiereVoBoGlobal: Boolean(resp.requiereVoBoGlobal),
+          requiereVoBoMantenimientoMayor: Boolean(resp.requiereVoBoMantenimientoMayor),
+          requiereVoBoInsumos: Boolean(resp.requiereVoBoInsumos),
+          montoMinimoInsumosVoBoCop: Number(resp.montoMinimoInsumosVoBoCop ?? 500000),
+          categoriasVoBoObligatorio: Array.isArray(resp.categoriasVoBoObligatorio)
+            ? resp.categoriasVoBoObligatorio
+            : [48, 54],
+          requiereVoBoContratacion: Boolean(resp.requiereVoBoContratacion),
+        });
+      }
+      setToast({ tipo: 'ok', texto: 'Parámetros de VoBo actualizados exitosamente.' });
+    } catch (err: any) {
+      setToast({ tipo: 'err', texto: err?.message || 'Error guardando parámetros de VoBo.' });
+    } finally {
+      setGuardandoVoBo(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'vobo') cargarVoBo();
+  }, [tab]);
 
   // ---------------- Derivados ----------------
   const slaPreviewPorDias = (dias: number) => {
@@ -375,6 +457,7 @@ export const AdminParametrosUMI: React.FC = () => {
     { k: 'tiempo', label: 'Tiempo respuesta', icono: Clock, desc: 'Configurar parametros por categoría' },
     { k: 'reglas', label: 'Reglas escalamiento', icono: Wand2, desc: 'Configurar reglas de escalamiento' },
     { k: 'tecnicos', label: 'Técnicos', icono: Users, desc: 'Configurar tecnicos' },
+    { k: 'vobo', label: 'Visto Bueno (VoBo)', icono: BadgeCheck, desc: 'Configuración y reglas de obligatoriedad del VoBo' },
   ];
 
   return (
@@ -395,6 +478,15 @@ export const AdminParametrosUMI: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {readOnly && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Modo consulta. Este perfil puede revisar la parametrización para aprobación funcional, pero no hacer cambios.
+          </span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
@@ -432,9 +524,7 @@ export const AdminParametrosUMI: React.FC = () => {
                 <h3 className="font-black text-slate-900 tracking-tight">
                   Tiempo máximo de atención SLA
                 </h3>
-                <p className="text-[13px] mt-1 text-slate-600 leading-relaxed">
-                  <span className="font-bold text-indigo-700">RF-INF-004 L104 · EFDS-1733-bis (HUECO1):</span> Define días naturales independientes POR CATEGORÍA (47..54 · CS_001..CS_008) para el SLA de atención UMI desde radicación. Rango permitido por categoría: <span className="font-mono font-bold">1, 2 ó 3 días</span> (24, 48 ó 72 h).
-                </p>
+                
               </div>
             </div>
 
@@ -449,7 +539,7 @@ export const AdminParametrosUMI: React.FC = () => {
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs font-bold flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  No se cargaron parámetros de tiempo por categoría. Asegúrate de ejecutar la migración 010_02 (EFDS-1733-bis) en la base de datos.
+                  No se cargaron parámetros de tiempo por categoría.
                 </span>
               </div>
             )}
@@ -502,9 +592,7 @@ export const AdminParametrosUMI: React.FC = () => {
                               <div className="font-black text-slate-900 mt-1 text-sm md:text-base">
                                 {nombreCS}
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 font-semibold">
-                                Default seed: <span className="font-mono">{String(meta.default ?? 2)} día(s)</span> · Rango permitido: <span className="font-mono">{String(meta.min ?? 1)}..{String(meta.max ?? 3)}</span> · Unidad: <span className="font-mono">{String(meta.unidad ?? 'DIAS_NATURALES')}</span>
-                              </div>
+                             
                             </div>
                           </div>
 
@@ -532,14 +620,8 @@ export const AdminParametrosUMI: React.FC = () => {
                                 setDiasPorCategoria({ ...diasPorCategoria, [idCat]: v });
                               }}
                               className={`w-full ${esElectrica ? 'accent-purple-600' : 'accent-indigo-600'}`}
-                              disabled={guardando}
+                              disabled={readOnly || guardando}
                             />
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
-                              <span>Valor actual en BD: <span className="font-mono font-bold text-slate-800">{String(meta.actual ?? '—')} día(s)</span></span>
-                              <span className="font-mono font-bold">
-                                {dias} día{dias === 1 ? '' : 's'} · {dias * 24} h
-                              </span>
-                            </div>
                           </div>
 
                           <div className="flex items-center gap-2 justify-end md:flex-col md:items-stretch">
@@ -557,7 +639,7 @@ export const AdminParametrosUMI: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => guardarTiempoPorCategoria(idCat)}
-                              disabled={guardando}
+                              disabled={readOnly || guardando}
                               className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm transition-all disabled:opacity-60 ${
                                 esElectrica
                                   ? 'bg-purple-600 hover:bg-purple-700 text-white ring-1 ring-purple-500'
@@ -687,7 +769,7 @@ export const AdminParametrosUMI: React.FC = () => {
                               <select
                                 className={inputBase + 'border-slate-200'}
                                 value={valorSel}
-                                disabled={guardandoRegla === r.idCatalogo}
+                                disabled={readOnly || guardandoRegla === r.idCatalogo}
                                 onChange={(e) => setEditandoRegla({ ...editandoRegla, [r.idCatalogo]: e.target.value })}
                               >
                                 <option value="">— Sin técnico especialista asignado —</option>
@@ -728,7 +810,7 @@ export const AdminParametrosUMI: React.FC = () => {
                           {reglaTipo === 'ESPECIALIZACION' && (
                             <button
                               type="button"
-                              disabled={guardandoRegla === r.idCatalogo}
+                              disabled={readOnly || guardandoRegla === r.idCatalogo}
                               onClick={() => {
                                 const fin = valorSel === '' ? null : valorSel;
                                 patchRegla(r, fin);
@@ -758,38 +840,7 @@ export const AdminParametrosUMI: React.FC = () => {
                 <div className="w-9 h-9 shrink-0 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-sm ring-1 ring-indigo-500">
                   <Users className="w-4 h-4" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-black text-sm text-slate-900 tracking-tight">
-                    Source of Truth: auth-service · Roles P3 / P4
-                  </h4>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Los técnicos UMI ya no se crean ni editan en este módulo. Para <span className="font-bold text-indigo-800">designar un técnico</span>,
-                    ir a <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-[11px]">MFE Gestión Personas</span> y
-                    asignar rol <span className="font-bold text-purple-800">P3 (Técnico Eléctrico Especializado · CS_002)</span> o
-                    <span className="font-bold text-blue-800 ml-1">P4 (Técnico Multipropósito · resto categorías)</span> sobre la persona.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-2 text-xs font-bold">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                    P3/P4 activos: {tecnicos.filter((x) => x.isActivo).length}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />
-                    Inactivos auth: {tecnicos.filter((x) => !x.isActivo).length}
-                  </span>
-                </div>
-                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-colors select-none">
-                  <input
-                    type="checkbox"
-                    className="w-3.5 h-3.5 rounded border-slate-400 text-blue-600 focus:ring-blue-500"
-                    checked={mostrarInactivos}
-                    onChange={(e) => setMostrarInactivos(e.target.checked)}
-                  />
-                  Mostrar inactivos
-                </label>
+                
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -802,15 +853,17 @@ export const AdminParametrosUMI: React.FC = () => {
                 <RefreshCw className={`w-4 h-4 ${cargandoTecnicos ? 'animate-spin' : ''}`} />
                 Recargar
               </button>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { tab: 'usuarios' } }))}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white text-sm font-bold shadow-md ring-1 ring-indigo-500"
-                title="Abrir Gestión Personas para designar roles P3/P4 UMI"
-              >
-                <Users className="w-4 h-4" />
-                Abrir Gestión Personas
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { tab: 'usuarios' } }))}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white text-sm font-bold shadow-md ring-1 ring-indigo-500"
+                  title="Abrir Gestión Personas para designar roles P3/P4 UMI"
+                >
+                  <Users className="w-4 h-4" />
+                  Abrir Gestión Personas
+                </button>
+              )}
             </div>
           </div>
 
@@ -1000,15 +1053,6 @@ export const AdminParametrosUMI: React.FC = () => {
                               ⚠  catálogo legacy
                             </span>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { idPerson: md.idPersonAuth, idUser: md.idUserAuth, tab: 'usuarios' } }))}
-                            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 transition-colors"
-                            title="Abrir esta persona en Gestión Personas para ver roles/editar"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            Gestionar en Personas
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1017,6 +1061,312 @@ export const AdminParametrosUMI: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* TAB VOBO (Fase 3 Req. #3) */}
+      {tab === 'vobo' && (
+        <div className="space-y-6 pt-2">
+          {/* Header Card VoBo */}
+          <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 via-white to-blue-50/40 p-5 md:p-6 shadow-sm space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 shrink-0 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md ring-4 ring-indigo-100">
+                  <BadgeCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-slate-900 text-base md:text-lg tracking-tight">
+                      Visto Bueno (VoBo) Configurable sobre Valoración Técnica
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-700 border border-indigo-200 uppercase tracking-wider">
+                      Fase 3 · Req. #3
+                    </span>
+                  </div>
+                  <p className="text-xs md:text-sm text-slate-600 font-medium mt-1 leading-relaxed">
+                    Define las políticas y reglas institucionales que determinan si una solicitud requiere el visto bueno obligatorio de la Coordinación o Jefatura UMI (sobre diagnóstico, alcance, materiales y tiempos) antes de que el técnico inicie los trabajos de ejecución.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={cargarVoBo}
+                  disabled={cargandoVoBo}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-sm"
+                  title="Recargar configuración desde servidor"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${cargandoVoBo ? 'animate-spin text-indigo-600' : ''}`} />
+                  Recargar
+                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={guardarVoBo}
+                    disabled={guardandoVoBo || cargandoVoBo}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md transition-all disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {guardandoVoBo ? 'Guardando…' : 'Guardar Cambios'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {cargandoVoBo ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-slate-400 text-xs font-semibold">
+              <RefreshCw className="w-7 h-7 animate-spin mx-auto mb-3 text-indigo-500" />
+              Cargando reglas y configuración de Visto Bueno institucional…
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Bloque 1: Modo Global */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${voboConfig.requiereVoBoGlobal ? 'bg-amber-500 text-white shadow-md ring-2 ring-amber-100' : 'bg-slate-100 text-slate-500'}`}>
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-slate-900 text-sm md:text-base">
+                          Modo VoBo Global Obligatorio (100% de solicitudes)
+                        </span>
+                        {voboConfig.requiereVoBoGlobal && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                            ACTIVO GLOBAL
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Al activar este modo, <strong>absolutamente todas</strong> las valoraciones finalizadas requerirán VoBo de Coordinación antes de avanzar a ejecución, ignorando filtros individuales.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      disabled={readOnly}
+                      checked={voboConfig.requiereVoBoGlobal}
+                      onChange={(e) => setVoboConfig({ ...voboConfig, requiereVoBoGlobal: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Bloque 2: Regla Mantenimiento Mayor */}
+              <div className={`rounded-2xl border bg-white p-5 shadow-sm space-y-3 transition-all ${voboConfig.requiereVoBoMantenimientoMayor ? 'border-blue-200 ring-1 ring-blue-100' : 'border-slate-200'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${voboConfig.requiereVoBoMantenimientoMayor ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-900 text-sm block">
+                        Exigir VoBo en Mantenimiento Mayor (Req. #1)
+                      </span>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Aplica cuando la solicitud es clasificada como <strong>Mantenimiento Mayor</strong> (obras complejas, intervenciones estructurales o diagnósticos especializados de mayor envergadura).
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      disabled={readOnly || voboConfig.requiereVoBoGlobal}
+                      checked={voboConfig.requiereVoBoMantenimientoMayor}
+                      onChange={(e) => setVoboConfig({ ...voboConfig, requiereVoBoMantenimientoMayor: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Requiere visto bueno formal de Coordinación antes de iniciar ejecución.</span>
+                </div>
+              </div>
+
+              {/* Bloque 3: Regla Requiere Contratación */}
+              <div className={`rounded-2xl border bg-white p-5 shadow-sm space-y-3 transition-all ${voboConfig.requiereVoBoContratacion ? 'border-purple-200 ring-1 ring-purple-100' : 'border-slate-200'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${voboConfig.requiereVoBoContratacion ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <BadgeCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-900 text-sm block">
+                        Exigir VoBo si Requiere Contratación (Req. #2)
+                      </span>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Aplica cuando el técnico o asignador marca la bandera <strong>&ldquo;Requiere Contratación&rdquo;</strong> por exceder la capacidad técnica interna o stock disponible.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      disabled={readOnly || voboConfig.requiereVoBoGlobal}
+                      checked={voboConfig.requiereVoBoContratacion}
+                      onChange={(e) => setVoboConfig({ ...voboConfig, requiereVoBoContratacion: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span>Permite validar los Términos de Referencia o cotización antes de proceder.</span>
+                </div>
+              </div>
+
+              {/* Bloque 4: Regla Insumos y Monto Mínimo */}
+              <div className={`rounded-2xl border bg-white p-5 shadow-sm space-y-4 transition-all ${voboConfig.requiereVoBoInsumos ? 'border-emerald-200 ring-1 ring-emerald-100' : 'border-slate-200'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${voboConfig.requiereVoBoInsumos ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <DollarSign className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-900 text-sm block">
+                        Exigir VoBo por Compra de Insumos / Monto Mínimo
+                      </span>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Aplica cuando la valoración requiere comprar insumos no disponibles en bodega o supera el costo umbral establecido.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      disabled={readOnly || voboConfig.requiereVoBoGlobal}
+                      checked={voboConfig.requiereVoBoInsumos}
+                      onChange={(e) => setVoboConfig({ ...voboConfig, requiereVoBoInsumos: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {voboConfig.requiereVoBoInsumos && (
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Monto mínimo estimado de insumos (COP) para activar VoBo:
+                    </label>
+                    <div className="relative max-w-xs">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={50000}
+                        disabled={readOnly || voboConfig.requiereVoBoGlobal}
+                        value={voboConfig.montoMinimoInsumosVoBoCop}
+                        onChange={(e) => setVoboConfig({ ...voboConfig, montoMinimoInsumosVoBoCop: Math.max(0, Number(e.target.value) || 0) })}
+                        className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Valor actual: <strong className="text-emerald-700">${Number(voboConfig.montoMinimoInsumosVoBoCop).toLocaleString('es-CO')} COP</strong>. Toda valoración que estime un gasto igual o superior requerirá visto bueno.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloque 5: Categorías de Servicio con VoBo Obligatorio */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shrink-0">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-900 text-sm block">
+                      Categorías de Servicio con VoBo Obligatorio
+                    </span>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                      Selecciona las categorías críticas que siempre requerirán visto bueno de Coordinación tras la valoración técnica (por ejemplo intervenciones eléctricas de alta seguridad o equipos críticos).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-2">
+                  {[
+                    { id: 47, cod: 'CS_001', nombre: 'Cerrajería y Carpintería' },
+                    { id: 48, cod: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
+                    { id: 49, cod: 'CS_003', nombre: 'Adecuación de Espacios' },
+                    { id: 50, cod: 'CS_004', nombre: 'Plomería y Fontanería' },
+                    { id: 51, cod: 'CS_005', nombre: 'Obras Menores e Infraestructura' },
+                    { id: 52, cod: 'CS_006', nombre: 'Zonas Exteriores y Jardinería' },
+                    { id: 53, cod: 'CS_007', nombre: 'Traslados de Mobiliario' },
+                    { id: 54, cod: 'CS_008', nombre: 'Equipos Críticos (Preventivo)' },
+                  ].map((cat) => {
+                    const seleccionada = Array.isArray(voboConfig.categoriasVoBoObligatorio) && voboConfig.categoriasVoBoObligatorio.includes(cat.id);
+                    return (
+                      <label
+                        key={cat.id}
+                        className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer select-none transition-all ${
+                          seleccionada
+                            ? 'bg-indigo-50/60 border-indigo-300 ring-1 ring-indigo-200 text-indigo-900'
+                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        } ${readOnly || voboConfig.requiereVoBoGlobal ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={readOnly || voboConfig.requiereVoBoGlobal}
+                          checked={seleccionada}
+                          onChange={(e) => {
+                            const cur = Array.isArray(voboConfig.categoriasVoBoObligatorio) ? [...voboConfig.categoriasVoBoObligatorio] : [];
+                            let next: number[];
+                            if (e.target.checked) {
+                              next = Array.from(new Set([...cur, cat.id]));
+                            } else {
+                              next = cur.filter((id) => id !== cat.id);
+                            }
+                            setVoboConfig({ ...voboConfig, categoriasVoBoObligatorio: next });
+                          }}
+                          className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="min-w-0">
+                          <span className="block font-mono text-[10px] font-black text-indigo-600 uppercase">
+                            {cat.cod}
+                          </span>
+                          <span className="text-xs font-bold leading-tight block">
+                            {cat.nombre}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Botón Guardar Inferior */}
+              {!readOnly && (
+                <div className="lg:col-span-2 flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={cargarVoBo}
+                    disabled={cargandoVoBo}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-all"
+                  >
+                    Descartar Cambios
+                  </button>
+                  <button
+                    type="button"
+                    onClick={guardarVoBo}
+                    disabled={guardandoVoBo || cargandoVoBo}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black shadow-md transition-all disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {guardandoVoBo ? 'Guardando Parámetros…' : 'Guardar Parámetros de VoBo'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

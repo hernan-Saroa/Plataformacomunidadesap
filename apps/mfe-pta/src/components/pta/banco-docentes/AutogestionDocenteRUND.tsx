@@ -155,11 +155,9 @@ export function AutogestionDocenteRUND() {
       if (isSuccess) {
         setStep('OTP');
         
-        // --- MODO DEV: Autocompletar / Mostrar en Consola ---
+        // En desarrollo, el código de prueba se completa directamente en el formulario.
         const devOtp = res.devOtp || res.data?.devOtp;
         if (devOtp) {
-          console.warn(`[MODO DEV] Tu código OTP es: ${devOtp}`);
-          alert(`[MODO DEV] Tu código OTP es: ${devOtp}`);
           setOtp(devOtp);
         }
       } else {

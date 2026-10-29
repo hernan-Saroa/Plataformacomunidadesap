@@ -138,6 +138,8 @@ export class AuditoriasService {
       fechaInicioComunicacion: fecha(a.fechaInicioComunicacion),
       fechaFin: fecha(a.fechaFin),
       semanasExcluidas: [...(a.semanasExcluidas || [])].sort().join(','),
+      unidadesAuditables: (a.unidadesAuditables || []).join('; ') || null,
+      dependenciasAuditadas: (a.dependenciasAuditadas || []).join('; ') || null,
     };
   }
 
@@ -1503,6 +1505,8 @@ export class AuditoriasService {
       fechaFinEjecucion: fechaFinEjecucion,
       fechaInicioComunicacion: fechaInicioComunicacion,
       semanasExcluidas: createDto.semanasExcluidas ?? [],
+      unidadesAuditables: createDto.unidadesAuditables ?? [],
+      dependenciasAuditadas: createDto.dependenciasAuditadas ?? [],
       fase: faseInicial,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
@@ -1871,6 +1875,12 @@ export class AuditoriasService {
     if (updateDto.semanasExcluidas !== undefined) {
       auditoria.semanasExcluidas = updateDto.semanasExcluidas;
     }
+    if (updateDto.unidadesAuditables !== undefined) {
+      auditoria.unidadesAuditables = updateDto.unidadesAuditables;
+    }
+    if (updateDto.dependenciasAuditadas !== undefined) {
+      auditoria.dependenciasAuditadas = updateDto.dependenciasAuditadas;
+    }
     if (updateDto.periodoInicio !== undefined) {
       auditoria.periodoInicio = updateDto.periodoInicio
         ? this.parseDateOnly(updateDto.periodoInicio)
@@ -2061,6 +2071,8 @@ export class AuditoriasService {
       fechaFinEjecucion: 'Fin de ejecución',
       fechaInicioComunicacion: 'Inicio de comunicación',
       fechaFin: 'Fin de comunicación',
+      unidadesAuditables: 'Unidades auditables',
+      dependenciasAuditadas: 'Dependencias auditadas',
     };
     for (const campo of camposImpresosCambiados) {
       if (campo === 'enPrograma') {
@@ -3008,6 +3020,8 @@ export class AuditoriasService {
               actividadesCompletas: auditoria.actividadesCompletas ?? false,
               actividadesPendientes: auditoria.actividadesPendientes ?? 0,
               alcance: auditoria.alcance || '',
+              unidadesAuditables: auditoria.unidadesAuditables || [],
+              dependenciasAuditadas: auditoria.dependenciasAuditadas || [],
               observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO
               programaAnualMetadata: auditoria.programaAnualMetadata || undefined, // Incluir metadata del programa anual
               // ✅ RESPONSABLE DEL ÁREA AUDITADA — campos reales de la BD

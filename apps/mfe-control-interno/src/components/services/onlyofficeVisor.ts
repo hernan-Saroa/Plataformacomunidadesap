@@ -13,7 +13,8 @@ const API_BASE_URL = API_MODE === 'gateway'
   ? `${BASE_URL}/control-institucional/api/v1`
   : BASE_URL;
 
-export type OrigenArchivo = 'evidencias' | 'documentos';
+// 'vista-previa': documentos generados en pantalla que aún no se guardan (EFDS-2320)
+export type OrigenArchivo = 'evidencias' | 'documentos' | 'vista-previa';
 
 /** Formatos que OnlyOffice abre; las imágenes se muestran sin él. */
 export function onlyOfficePuedeAbrir(nombreArchivo: string): boolean {
@@ -39,6 +40,68 @@ export async function obtenerConfigOnlyOffice(origen: OrigenArchivo, id: string)
   }
   const datos = await res.json();
   return datos?.data || datos;
+}
+
+/**
+ * Sube un documento generado en el navegador (Plan Anual en PDF, Programa Anual
+ * en Excel) para verlo en OnlyOffice antes de descargarlo o firmarlo (EFDS-2320).
+ * Devuelve el id que se le pasa a `VisorOnlyOffice` con origen 'vista-previa'.
+ */
+export async function subirVistaPrevia(archivo: Blob, nombreArchivo: string): Promise<string> {
+  const formulario = new FormData();
+  formulario.append('file', archivo, nombreArchivo);
+  // Sin Content-Type: el navegador pone el del formulario con su separador
+  const { 'Content-Type': _tipo, ...cabeceras } = getDefaultHeaders() as Record<string, string>;
+  const res = await fetch(`${API_BASE_URL}/vista-previa`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: cabeceras,
+    body: formulario,
+  });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) throw new Error('No tiene permisos para ver este documento');
+    throw new Error(`No se pudo preparar la vista previa (error ${res.status})`);
+  }
+  const datos = await res.json();
+  const id = (datos?.data || datos)?.id;
+  if (!id) throw new Error('No se pudo preparar la vista previa');
+  return id;
+}
+
+/**
+ * Pasa a PDF, con OnlyOffice en el servidor, un documento ya subido como vista
+ * previa (el Programa Anual en Excel). Devuelve el id de vista previa del PDF.
+ */
+export async function convertirVistaPreviaAPdf(id: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/vista-previa/${id}/pdf`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) throw new Error('No tiene permisos para ver este documento');
+    let detalle = '';
+    try {
+      detalle = (await res.json())?.message || '';
+    } catch {
+      // sin cuerpo
+    }
+    throw new Error(detalle || `No se pudo convertir a PDF (error ${res.status})`);
+  }
+  const datos = await res.json();
+  const idPdf = (datos?.data || datos)?.id;
+  if (!idPdf) throw new Error('No se pudo convertir a PDF');
+  return idPdf;
+}
+
+/** El archivo de una vista previa, para descargarlo tal cual. */
+export async function descargarVistaPrevia(id: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE_URL}/vista-previa/${id}/archivo`, {
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) throw new Error(`No se pudo descargar el documento (error ${res.status})`);
+  return res.blob();
 }
 
 let promesaScript: Promise<void> | null = null;

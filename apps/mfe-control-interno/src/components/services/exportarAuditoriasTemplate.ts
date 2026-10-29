@@ -6,9 +6,12 @@ import {
   type SemanaVigencia,
 } from './calendarioVigencia';
 
-// A: unidad auditada, B: responsable (Auditor Líder), C: equipo auditor (EFDS-2257)
-const COL_EQUIPO = 3;
-const COL_PRIMERA_SEMANA = 4;
+// A: unidad auditada (proceso), B: unidad auditable (EFDS-2316),
+// C: responsable (Auditor Líder), D: equipo auditor (EFDS-2257)
+const COL_UNIDAD_AUDITABLE = 2;
+const COL_RESPONSABLE = 3;
+const COL_EQUIPO = 4;
+const COL_PRIMERA_SEMANA = 5;
 
 export async function exportarAuditoriasTemplate(
   auditorias: any[],
@@ -17,8 +20,9 @@ export async function exportarAuditoriasTemplate(
   // encabezado, que es la del formato EM-FO-001.
   // `borrador`: sin versión porque el Plan Anual no está aprobado; `borradorDe`:
   // cambios sin versionar, es el borrador de esa versión.
-  opciones: { version?: number; fechaVersion?: string; borrador?: boolean; borradorDe?: number } = {}
-): Promise<{ exito: boolean; nombreArchivo: string; mensaje?: string; error?: string }> {
+  // `soloArchivo`: devuelve el archivo sin descargarlo, para la vista previa (EFDS-2320)
+  opciones: { version?: number; fechaVersion?: string; borrador?: boolean; borradorDe?: number; soloArchivo?: boolean } = {}
+): Promise<{ exito: boolean; nombreArchivo: string; archivo?: Blob; mensaje?: string; error?: string }> {
   try {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ESAP';
@@ -65,8 +69,9 @@ export async function exportarAuditoriasTemplate(
 
     // Anchos de columnas
     worksheet.getColumn(1).width = 78.29; // A
-    worksheet.getColumn(2).width = 40.71; // B
-    worksheet.getColumn(COL_EQUIPO).width = 40.71; // C
+    worksheet.getColumn(COL_UNIDAD_AUDITABLE).width = 40.71; // B
+    worksheet.getColumn(COL_RESPONSABLE).width = 40.71; // C
+    worksheet.getColumn(COL_EQUIPO).width = 40.71; // D
     for (let i = COL_PRIMERA_SEMANA; i <= colUltimaSemana; i++) {
       worksheet.getColumn(i).width = 8.71; // una por semana
     }
@@ -132,9 +137,13 @@ export async function exportarAuditoriasTemplate(
     worksheet.getCell('A6').value = 'UNIDAD AUDITADA';
     worksheet.getCell('A6').font = { name: 'Arial', size: 16, bold: true };
 
-    worksheet.mergeCells('B6:B7');
-    worksheet.getCell('B6').value = 'RESPONSABLE';
-    worksheet.getCell('B6').font = { name: 'Arial', size: 16, bold: true };
+    worksheet.mergeCells(6, COL_UNIDAD_AUDITABLE, 7, COL_UNIDAD_AUDITABLE);
+    worksheet.getCell(6, COL_UNIDAD_AUDITABLE).value = 'UNIDAD AUDITABLE';
+    worksheet.getCell(6, COL_UNIDAD_AUDITABLE).font = { name: 'Arial', size: 16, bold: true };
+
+    worksheet.mergeCells(6, COL_RESPONSABLE, 7, COL_RESPONSABLE);
+    worksheet.getCell(6, COL_RESPONSABLE).value = 'RESPONSABLE';
+    worksheet.getCell(6, COL_RESPONSABLE).font = { name: 'Arial', size: 16, bold: true };
 
     worksheet.mergeCells(6, COL_EQUIPO, 7, COL_EQUIPO);
     worksheet.getCell(6, COL_EQUIPO).value = 'EQUIPO AUDITOR';
@@ -294,11 +303,29 @@ export async function exportarAuditoriasTemplate(
           : String(equipoRaw || '');
 
         const cA = row.getCell(1);
-        cA.value = nameClean;
-        cA.font = { name: 'Arial', size: esInformeOOtros ? 10 : 12, bold: false };
+        const fuenteA = { name: 'Arial', size: esInformeOOtros ? 10 : 12, bold: false };
+        // Debajo del nombre, las dependencias que se auditan, una por línea (EFDS-2367)
+        const dependencias = (Array.isArray(a.dependenciasAuditadas) ? a.dependenciasAuditadas : [])
+          .map((d: unknown) => String(d ?? '').trim())
+          .filter(Boolean);
+        cA.value = dependencias.length > 0
+          ? {
+              richText: [
+                { text: nameClean, font: fuenteA },
+                { text: `\n${dependencias.join('\n')}`, font: { ...fuenteA, size: fuenteA.size - 1, italic: true } },
+              ],
+            }
+          : nameClean;
+        cA.font = fuenteA;
         cA.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
 
-        const cB = row.getCell(2);
+        // Unidades auditables que cubre la auditoría, una por línea (EFDS-2316)
+        const cUnidad = row.getCell(COL_UNIDAD_AUDITABLE);
+        cUnidad.value = (Array.isArray(a.unidadesAuditables) ? a.unidadesAuditables : []).join('\n');
+        cUnidad.font = { name: 'Arial', size: 12, bold: false };
+        cUnidad.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+
+        const cB = row.getCell(COL_RESPONSABLE);
         cB.value = resps;
         cB.font = { name: 'Arial', size: 12, bold: false };
         cB.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
@@ -455,7 +482,7 @@ export async function exportarAuditoriasTemplate(
 
     // Filas Convenciones
     const renderConvencion = (texto: string, letra: string, color?: string) => {
-       worksheet.mergeCells(currentRow, COL_EQUIPO, currentRow, totalCols);
+       worksheet.mergeCells(currentRow, COL_RESPONSABLE, currentRow, totalCols);
        const cA = worksheet.getCell(`A${currentRow}`);
        cA.value = texto;
        cA.font = { name: 'Arial', size: 14, bold: false };
@@ -484,9 +511,6 @@ export async function exportarAuditoriasTemplate(
     // Descargar
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
     const nombreArchivo = opciones.borradorDe
       ? `PAI_${vigenciaActiva}_V${opciones.borradorDe}_Borrador.xlsx`
       : opciones.borrador
@@ -494,6 +518,10 @@ export async function exportarAuditoriasTemplate(
         : opciones.version
           ? `PAI_${vigenciaActiva}_V${opciones.version}.xlsx`
           : `PAI_${vigenciaActiva}_Exportado.xlsx`;
+    if (opciones.soloArchivo) return { exito: true, nombreArchivo, archivo: blob };
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
     link.href = url;
     link.download = nombreArchivo;
     document.body.appendChild(link);

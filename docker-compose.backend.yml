@@ -368,6 +368,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
       UPLOADS_DIR: /app/uploads
       APP_PUBLIC_URL: http://localhost:3014
     volumes:

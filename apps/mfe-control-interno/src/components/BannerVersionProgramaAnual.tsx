@@ -33,6 +33,8 @@ const ETIQUETAS_CAMPO_PROGRAMA: Record<string, string> = {
   fechaFinEjecucion: 'Fin de ejecución',
   fechaInicioComunicacion: 'Inicio de comunicación',
   fechaFin: 'Fin de comunicación',
+  unidadesAuditables: 'Unidad auditable',
+  dependenciasAuditadas: 'Dependencias auditadas',
 };
 
 const ETIQUETAS_LOG: Record<EntradaLogProgramaAnual['tipo'], string> = {

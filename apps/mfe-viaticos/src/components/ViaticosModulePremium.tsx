@@ -39,6 +39,8 @@ import {
   ArrowRight,
   Wallet,
   Building2,
+  User,
+  ShieldAlert,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -47,12 +49,15 @@ import ControlViaticosModal from './ControlViaticosModal';
 import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
+import RevocatoriaModal from './RevocatoriaModal';
 import PresupuestoInbox from './PresupuestoInbox';
 import ReintegrosInbox from './ReintegrosInbox';
+import TrazabilidadExpediente from './TrazabilidadExpediente';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
 import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
-import ConfigSoportesLegalizacion from './ConfigSoportesLegalizacion';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
+import ComisionadoInbox from './ComisionadoInbox';
+import VistaComisionadoViaticos from './VistaComisionadoViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
@@ -101,6 +106,7 @@ const Permissions = {
 type Seccion =
   | 'paz-y-salvo'
   | 'solicitudes'
+  | 'mis-comisiones'
   | 'tiquetes'
   | 'legalizaciones'
   | 'resoluciones'
@@ -124,17 +130,70 @@ const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   EN_PRESUPUESTO: 2,
   COMPROMETIDA: 3,
   EN_AUTORIZACION: 4,
+  AUTORIZACION_DIRECCION: 4.5,
   SOLICITADA_SIIF: 5,
+  EN_VERIFICACION: 5.5,
   VERIFICADA: 6,
+  APROBADO_JEFE: 6.5,
+  APROBADO_TALENTO_HUMANO: 6.8,
+  RESOLUCION_EMITIDA: 6.9,
   AUTORIZADA: 7,
+  TIQUETES_COMPRADOS: 7.2,
   PENDIENTE_FIRMAS: 7.5,
   DEVUELTA: 8,
   RADICADA: 8,
   EXTEMPORANEA: 9,
   SOLICITADO: 10,
   PENDIENTE: 11,
+  BORRADOR: 11,
+  EN_COMISION: 11.5,
   PAGADA: 12,
+  PENDIENTE_LEGALIZACION: 13,
+  LEGALIZADO: 14,
+  CANCELADA: 15,
+  EN_REVOCATORIA: 15.2,
+  REVOCADA: 15.5,
+  RECHAZADO: 16,
 };
+
+const OPCIONES_FILTRO_ESTADOS_SOLICITUD: { value: string; label: string }[] = [
+  { value: 'TODOS', label: 'Todos los Estados' },
+  { value: 'PENDIENTE_FIRMAS', label: 'Pendiente de Firmas' },
+  { value: 'RADICADA', label: 'Radicada' },
+  { value: 'SOLICITADO', label: 'Solicitado' },
+  { value: 'EN_VERIFICACION', label: 'En Verificación' },
+  { value: 'VERIFICADA', label: 'Verificada' },
+  { value: 'DEVUELTA', label: 'Devuelta' },
+  { value: 'EXTEMPORANEA', label: 'Extemporánea' },
+  { value: 'AUTORIZACION_DIRECCION', label: 'Pendiente Dirección Nacional' },
+  { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+  { value: 'AUTORIZADA', label: 'Autorizada' },
+  { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
+  { value: 'EN_PRESUPUESTO', label: 'En Presupuesto' },
+  { value: 'COMPROMETIDA', label: 'Comprometida (RP)' },
+  { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
+  { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
+  { value: 'EN_COMISION', label: 'En Comisión' },
+  { value: 'PENDIENTE_LEGALIZACION', label: 'Por Legalizar' },
+  { value: 'LEGALIZADO', label: 'Legalizado' },
+  { value: 'APROBADO_JEFE', label: 'Aprobado Jefe' },
+  { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
+  { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
+  { value: 'TIQUETES_COMPRADOS', label: 'Tiquetes Comprados' },
+  { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
+  { value: 'EN_REVOCATORIA', label: 'En Revocatoria (SIIF)' },
+  { value: 'REVOCADA', label: 'Revocada' },
+  { value: 'CANCELADA', label: 'Cancelada' },
+  { value: 'RECHAZADO', label: 'Rechazada' },
+];
+
+const OPCIONES_FILTRO_ESTADOS_TESORERIA_SST: { value: string; label: string }[] = [
+  { value: 'TODOS', label: 'Todos los Estados' },
+  { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
+  { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
+  { value: 'PENDIENTE_LEGALIZACION', label: 'Por Legalizar' },
+  { value: 'LEGALIZADO', label: 'Legalizado' },
+];
 
 function prioridadEstadoTabla(estado: string): number {
   return ORDEN_ESTADOS_TABLA[estado] ?? 9;
@@ -168,6 +227,8 @@ export default function ViaticosModulePremium() {
   const [esSst, setEsSst] = useState(false);
   const [esJefeDependencia, setEsJefeDependencia] = useState(false);
   const [esGerenteProyecto, setEsGerenteProyecto] = useState(false);
+  const [esComisionado, setEsComisionado] = useState(false);
+  const [esCoordinadorComisiones, setEsCoordinadorComisiones] = useState(false);
   const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const {
@@ -193,6 +254,9 @@ export default function ViaticosModulePremium() {
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
   const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
+  const [solicitudParaRevocatoria, setSolicitudParaRevocatoria] = useState<SolicitudViatico | null>(null);
+  const [modalRevocatoriaAbierto, setModalRevocatoriaAbierto] = useState(false);
+  const [esOrdenadorGasto, setEsOrdenadorGasto] = useState(false);
   const [solicitudParaFirmas, setSolicitudParaFirmas] = useState<SolicitudViatico | null>(null);
 
   // Estados Notificación SST (RF-PAG-002)
@@ -219,7 +283,7 @@ export default function ViaticosModulePremium() {
 
   const grupos: MenuGroup[] = [
     {
-      title: 'GESTIÓN PRINCIPAL',
+      title: 'GESTIÓN DE COMISIONES',
       items: [
         {
           id: 'solicitudes',
@@ -229,11 +293,11 @@ export default function ViaticosModulePremium() {
           color: '#003DA5',
         },
         {
-          id: 'mis-solicitudes',
-          label: 'Mis Solicitudes Asignadas',
-          subtitle: 'Solicitudes pendientes de revisión',
-          icon: <UserCheck className="w-5 h-5" />,
-          color: '#10B981',
+          id: 'mis-comisiones',
+          label: 'Mis Comisiones',
+          subtitle: 'Comisiones a mi nombre como comisionado',
+          icon: <User className="w-5 h-5" />,
+          color: '#003DA5',
         },
         {
           id: 'firmas-aprobacion',
@@ -243,30 +307,24 @@ export default function ViaticosModulePremium() {
           color: '#0284C7',
         },
         {
+          id: 'mis-solicitudes',
+          label: 'Mis Solicitudes Asignadas',
+          subtitle: 'Solicitudes pendientes de revisión',
+          icon: <UserCheck className="w-5 h-5" />,
+          color: '#10B981',
+        },
+        {
           id: 'tiquetes',
           label: 'Pasajes y Alojamiento',
           subtitle: 'Reservas aéreas y terrestres',
           icon: <CreditCard className="w-5 h-5" />,
           color: '#059669',
         },
-        {
-          id: 'legalizaciones',
-          label: 'Legalización de Gastos',
-          subtitle: 'Carga de facturas y cumplidos',
-          icon: <Receipt className="w-5 h-5" />,
-          color: '#D97706',
-        },
-        {
-          id: 'paz-y-salvo', label: 'Paz y salvo', subtitle: 'Certificación y firma de Viáticos',
-          icon: <FileCheck className="w-5 h-5" />, color: '#003DA5',
-        },
-        {
-          id: 'resoluciones',
-          label: 'Resoluciones Institucionales',
-          subtitle: 'Actos administrativos de comisión',
-          icon: <FileCheck className="w-5 h-5" />,
-          color: '#7C3AED',
-        },
+      ],
+    },
+    {
+      title: 'AUTORIZACIONES Y TRÁMITE',
+      items: [
         {
           id: 'autorizaciones',
           label: 'Autorización Corporativa',
@@ -296,6 +354,25 @@ export default function ViaticosModulePremium() {
           color: '#059669',
         },
         {
+          id: 'sst',
+          label: 'Seguridad y Salud (SST)',
+          subtitle: 'Monitoreo de comisiones obligadas y pagadas',
+          icon: <HeartPulse className="w-5 h-5" />,
+          color: '#10B981',
+        },
+      ],
+    },
+    {
+      title: 'LEGALIZACIÓN Y CIERRE',
+      items: [
+        {
+          id: 'legalizaciones',
+          label: 'Legalización de Gastos',
+          subtitle: 'Carga de facturas y cumplidos',
+          icon: <Receipt className="w-5 h-5" />,
+          color: '#D97706',
+        },
+        {
           id: 'reintegros',
           label: 'Reintegros',
           subtitle: 'Comisiones no realizadas o por menos días (Etapa 8)',
@@ -303,12 +380,17 @@ export default function ViaticosModulePremium() {
           color: '#059669',
         },
         {
-          id: 'sst',
-          label: 'Seguridad y Salud (SST)',
-          subtitle: 'Monitoreo de comisiones obligadas y pagadas',
-          icon: <HeartPulse className="w-5 h-5" />,
-          color: '#10B981',
+          id: 'paz-y-salvo',
+          label: 'Paz y Salvo',
+          subtitle: 'Certificación y firma de Viáticos',
+          icon: <FileCheck className="w-5 h-5" />,
+          color: '#003DA5',
         },
+      ],
+    },
+    {
+      title: 'SISTEMA',
+      items: [
         {
           id: 'configuracion',
           label: 'Configuración',
@@ -382,6 +464,7 @@ export default function ViaticosModulePremium() {
         setEsControlViaticos(authService.isControlViaticos());
         setEsSubdireccion(subdir);
         setEsDireccionNacional(dirNac);
+        setEsOrdenadorGasto(authService.isOrdenadorGasto());
         const presupuesto = authService.isPresupuesto();
         setEsPresupuesto(presupuesto);
         const tesoreria = authService.isTesoreria();
@@ -390,9 +473,15 @@ export default function ViaticosModulePremium() {
         setEsSst(sst);
         const jefeDep = authService.isJefeDependencia();
         const gerenteProy = authService.isGerenteProyecto();
+        const comisionado = authService.isComisionado();
+        const coordComisiones = authService.isCoordinadorComisiones();
         setEsJefeDependencia(jefeDep);
         setEsGerenteProyecto(gerenteProy);
-        if (dirNac && !superAdmin) {
+        setEsComisionado(comisionado);
+        setEsCoordinadorComisiones(coordComisiones);
+        if (coordComisiones && !superAdmin) {
+          setSeccion('solicitudes');
+        } else if (dirNac && !superAdmin) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
@@ -410,6 +499,8 @@ export default function ViaticosModulePremium() {
           setSeccion('solicitudes');
         } else if ((jefeDep || gerenteProy) && !superAdmin) {
           setSeccion('firmas-aprobacion');
+        } else if (comisionado && !superAdmin) {
+          setSeccion('mis-comisiones');
         }
         setCargandoRol(false);
       }
@@ -419,27 +510,51 @@ export default function ViaticosModulePremium() {
   }, []);
 
   useEffect(() => {
-    if (!cargandoRol && (!esAnalista || esSuperAdmin)) {
+    if (!cargandoRol && (!esAnalista || esSuperAdmin || esCoordinadorComisiones)) {
       cargarDatos();
     }
-  }, [cargandoRol, esAnalista, esSuperAdmin]);
+  }, [cargandoRol, esAnalista, esSuperAdmin, esCoordinadorComisiones]);
 
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
-      const termino = busqueda.toLowerCase();
+      const termino = busqueda.toLowerCase().trim();
       const esExt = Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA');
       const cumpleBusqueda =
         !termino ||
-        sol.nombreComisionado.toLowerCase().includes(termino) ||
-        sol.codigo.toLowerCase().includes(termino) ||
-        sol.ciudadDestino.toLowerCase().includes(termino) ||
-        (sol.ciudadOrigen && sol.ciudadOrigen.toLowerCase().includes(termino)) ||
-        (sol.sedeOrigen && sol.sedeOrigen.toLowerCase().includes(termino)) ||
-        sol.dependencia.toLowerCase().includes(termino) ||
+        (sol.nombreComisionado?.toLowerCase().includes(termino) ?? false) ||
+        (sol.codigo?.toLowerCase().includes(termino) ?? false) ||
+        (sol.cedulaComisionado?.toLowerCase().includes(termino) ?? false) ||
+        (sol.ciudadDestino?.toLowerCase().includes(termino) ?? false) ||
+        (sol.departamentoDestino?.toLowerCase().includes(termino) ?? false) ||
+        (sol.ciudadOrigen?.toLowerCase().includes(termino) ?? false) ||
+        (sol.sedeOrigen?.toLowerCase().includes(termino) ?? false) ||
+        (sol.dependencia?.toLowerCase().includes(termino) ?? false) ||
+        (sol.justificacion?.toLowerCase().includes(termino) ?? false) ||
+        (sol.estado?.toLowerCase().includes(termino) ?? false) ||
+        (getConfigEstado(sol.estado)?.label?.toLowerCase().includes(termino) ?? false) ||
+        (sol.numeroResolucion?.toLowerCase().includes(termino) ?? false) ||
+        (sol.numeroRp?.toLowerCase().includes(termino) ?? false) ||
+        (sol.numeroObligacion?.toLowerCase().includes(termino) ?? false) ||
         (esExt && ('extemporanea'.includes(termino) || 'extemporánea'.includes(termino)));
-      const cumpleEstado =
-        filtroEstado === 'TODOS' ||
-        (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
+
+      const estadoNorm = (sol.estado || '').toString().trim().toUpperCase();
+      const filtroNorm = (filtroEstado || '').trim().toUpperCase();
+
+      let cumpleEstado = false;
+      if (!filtroNorm || filtroNorm === 'TODOS') {
+        cumpleEstado = true;
+      } else if (filtroNorm === 'EXTEMPORANEA') {
+        cumpleEstado = esExt;
+      } else if (filtroNorm === 'PENDIENTE' || filtroNorm === 'BORRADOR') {
+        cumpleEstado = estadoNorm === 'PENDIENTE' || estadoNorm === 'BORRADOR';
+      } else if (filtroNorm === 'EN_AUTORIZACION') {
+        cumpleEstado = estadoNorm === 'EN_AUTORIZACION' || estadoNorm === 'AUTORIZACION_DIRECCION';
+      } else if (filtroNorm === 'PAGADA') {
+        cumpleEstado = estadoNorm === 'PAGADA' || (Boolean(sol.fechaPago) && ESTADOS_PAGADA.includes(estadoNorm));
+      } else {
+        cumpleEstado = estadoNorm === filtroNorm;
+      }
+
       const cumpleSeccion =
         seccion === 'tesoreria' || seccion === 'sst'
           ? ESTADOS_TESORERIA_SST.includes(sol.estado)
@@ -633,9 +748,10 @@ export default function ViaticosModulePremium() {
       setAnalistaSeleccionadoId(null);
       cargarDatos();
       setSolicitudSeleccionada(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error asignando analista:', error);
-      setMensajeExito('No fue posible asignar la comisión al analista.');
+      const serverMsg = error?.response?.data?.message || error?.message;
+      setMensajeExito(serverMsg || 'No fue posible asignar la comisión al analista.');
     } finally {
       setAsignando(false);
     }
@@ -664,9 +780,14 @@ export default function ViaticosModulePremium() {
       (currentUser.roles?.length || currentUser.permissions?.length),
   );
 
+  const esAdminViaticos =
+    esSuperAdmin ||
+    esCoordinadorComisiones ||
+    authService.isAdministradorViaticos();
+
   const puedeVerSolicitudes =
     !tieneContextoAuth ||
-    esSuperAdmin ||
+    esAdminViaticos ||
     authService.isSecretario() ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_SOLICITUDES_READ_OWN,
@@ -678,6 +799,17 @@ export default function ViaticosModulePremium() {
       'travel_expenses:double_check_request',
     ]) ||
     authService.isControlViaticos();
+
+  const puedeVerMisComisiones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esComisionado ||
+    authService.isComisionado() ||
+    authService.hasAnyPermission([
+      'travel_expenses.general.es_comisionado',
+      'es_comisionado',
+      'travel_expenses:read_own_requests',
+    ]);
   const puedeCrearSolicitud =
     (!tieneContextoAuth ||
       esSuperAdmin ||
@@ -711,12 +843,12 @@ export default function ViaticosModulePremium() {
     ]);
   const puedeVerConfiguracion =
     !tieneContextoAuth ||
-    esSuperAdmin ||
+    esAdminViaticos ||
+    authService.canManageConfig() ||
     authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
   const puedeVerSolicitudesAsignadas =
     !tieneContextoAuth ||
-    esSuperAdmin ||
-    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
+    (!esSuperAdmin && authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED));
   const puedeVerControlViaticos =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -805,12 +937,13 @@ export default function ViaticosModulePremium() {
           if ((esTesoreria || esSst) && !esSuperAdmin) return false;
           return puedeVerSolicitudes;
         }
-        if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
+        if (item.id === 'mis-comisiones') return puedeVerMisComisiones;
+        if (item.id === 'mis-solicitudes') return !esSuperAdmin && puedeVerSolicitudesAsignadas;
         if (item.id === 'firmas-aprobacion') return puedeVerFirmasAprobacion;
-        if (item.id === 'tiquetes') return puedeVerTiquetes;
+        if (item.id === 'tiquetes') return !esSuperAdmin && puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'paz-y-salvo') return puedeEmitirPazYSalvo;
-        if (item.id === 'resoluciones') return puedeVerResoluciones;
+        if (item.id === 'resoluciones') return !esSuperAdmin && puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
         if (item.id === 'presupuesto') return puedeVerPresupuesto;
@@ -859,6 +992,12 @@ export default function ViaticosModulePremium() {
           if (b.id === 'firmas-aprobacion') return 1;
           return 0;
         });
+      } else if (esComisionado && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'mis-comisiones') return -1;
+          if (b.id === 'mis-comisiones') return 1;
+          return 0;
+        });
       }
 
       return {
@@ -878,6 +1017,25 @@ export default function ViaticosModulePremium() {
 
   if (esAnalista && !esSuperAdmin) {
     return <VistaAnalistaViaticos />;
+  }
+
+  const esPuroComisionado =
+    esComisionado &&
+    !esSuperAdmin &&
+    !esSecretario &&
+    !esAnalista &&
+    !esControlViaticos &&
+    !esSubdireccion &&
+    !esDireccionNacional &&
+    !esPresupuesto &&
+    !esTesoreria &&
+    !esSst &&
+    !esJefeDependencia &&
+    !esGerenteProyecto &&
+    !authService.isEnlaceDependencia();
+
+  if (esPuroComisionado) {
+    return <VistaComisionadoViaticos />;
   }
 
   return (
@@ -1305,32 +1463,33 @@ export default function ViaticosModulePremium() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-slate-400" />
+                  <Filter className="w-4 h-4 text-slate-400 shrink-0" />
                   <SearchableSelect
                     id="filtroEstado"
-                    options={[
-                      { value: 'TODOS', label: 'Todos los Estados' },
-                      { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
-                      { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
-                      { value: 'COMPROMETIDA', label: 'Comprometida (RP)' },
-                      { value: 'EN_PRESUPUESTO', label: 'En Presupuesto' },
-                      { value: 'EN_AUTORIZACION', label: 'En Autorización' },
-                      { value: 'EXTEMPORANEA', label: 'Extemporánea' },
-                      { value: 'AUTORIZADA', label: 'Autorizada' },
-                      { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
-                      { value: 'VERIFICADA', label: 'Verificada' },
-                      { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
-                      { value: 'SOLICITADO', label: 'Solicitado' },
-                      { value: 'DEVUELTA', label: 'Devuelta' },
-                      { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
-                      { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
-                      { value: 'EN_COMISION', label: 'En Comisión' },
-                      { value: 'LEGALIZADO', label: 'Legalizado' },
-                    ]}
+                    options={
+                      seccion === 'tesoreria' || seccion === 'sst'
+                        ? OPCIONES_FILTRO_ESTADOS_TESORERIA_SST
+                        : OPCIONES_FILTRO_ESTADOS_SOLICITUD
+                    }
                     value={filtroEstado}
-                    onChange={(valor) => setFiltroEstado(valor)}
+                    onChange={(valor) => setFiltroEstado(valor || 'TODOS')}
                     placeholder="Filtrar por estado"
+                    allowClear={true}
                   />
+                  {(Boolean(busqueda.trim()) || (filtroEstado && filtroEstado !== 'TODOS')) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBusqueda('');
+                        setFiltroEstado('TODOS');
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
+                      title="Limpiar filtros"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Limpiar filtros</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1356,8 +1515,22 @@ export default function ViaticosModulePremium() {
                        {solicitudesFiltradas.length === 0 ? (
                          <tr>
                             <td colSpan={(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
-                             No se encontraron solicitudes de viáticos registradas.
-                           </td>
+                             <div className="flex flex-col items-center justify-center gap-2">
+                               <span>No se encontraron solicitudes de viáticos registradas.</span>
+                               {(Boolean(busqueda.trim()) || (filtroEstado && filtroEstado !== 'TODOS')) && (
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     setBusqueda('');
+                                     setFiltroEstado('TODOS');
+                                   }}
+                                   className="text-xs font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                                 >
+                                   Limpiar filtros para ver todas las solicitudes
+                                 </button>
+                               )}
+                             </div>
+                            </td>
                          </tr>
                       ) : (
                         solicitudesFiltradas.map((sol) => (
@@ -1649,7 +1822,21 @@ export default function ViaticosModulePremium() {
                                     )}
                                   </button>
                                 )}
-                                {puedeCancelarComision && sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && (
+                                {sol.estado === 'EN_REVOCATORIA' && (esOrdenadorGasto || esSuperAdmin) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSolicitudParaRevocatoria(sol);
+                                      setModalRevocatoriaAbierto(true);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition-colors shadow-xs"
+                                    title="Registrar Revocatoria en SIIF Nación"
+                                    aria-label="Registrar Revocatoria SIIF"
+                                  >
+                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-800" />
+                                  </button>
+                                )}
+                                {puedeCancelarComision && sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && sol.estado !== 'REVOCADA' && sol.estado !== 'EN_REVOCATORIA' && (
                                   <button
                                     type="button"
                                     onClick={() => setSolicitudParaCancelar(sol)}
@@ -1726,6 +1913,15 @@ export default function ViaticosModulePremium() {
              </div>
            )}
 
+             {/* ── MIS COMISIONES (ROL COMISIONADO) ── */}
+             {seccion === 'mis-comisiones' && puedeVerMisComisiones && (
+               <ComisionadoInbox
+                 onIrALegalizacion={() => {
+                   setSeccion('legalizaciones');
+                 }}
+               />
+             )}
+
              {/* ── MIS SOLICITUDES ASIGNADAS ── */}
 {seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
                 <SolicitudesAsignadasAnalista />
@@ -1774,9 +1970,6 @@ export default function ViaticosModulePremium() {
                </div>
                <div className="mt-4">
                  <ParametrizacionManager />
-               </div>
-               <div className="mt-6 pt-5 border-t border-slate-100">
-                 <ConfigSoportesLegalizacion />
                </div>
              </div>
            )}
@@ -1862,21 +2055,78 @@ export default function ViaticosModulePremium() {
                     </div>
                   </div>
 
-                  {/* Resumen Financiero Compacto */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-600">Monto Viáticos:</span>
-                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoViaticos || 0)}</span>
-                    </div>
-                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-600">Gastos de Viaje:</span>
-                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoGastosViaje || 0)}</span>
-                    </div>
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-900">Total Estimado:</span>
-                      <span className="font-mono font-black text-blue-900">{formatearMoneda(solicitudSeleccionada.montoTotalEstimado || 0)}</span>
-                    </div>
-                  </div>
+                  {/* Resumen Financiero Completo y Desglosado */}
+                  {(() => {
+                    const montoViaticos = Number(
+                      (solicitudCompletaDetalle as any)?.montoViaticos ??
+                      solicitudSeleccionada.montoSolicitadoViaticos ??
+                      solicitudSeleccionada.montoViaticos ??
+                      0,
+                    );
+                    const montoGastosViaje = Number(
+                      (solicitudCompletaDetalle as any)?.montoGastosViaje ??
+                      solicitudSeleccionada.montoSolicitadoGastosViaje ??
+                      solicitudSeleccionada.montoGastosViaje ??
+                      0,
+                    );
+                    const costoTiquetes = Number(
+                      (solicitudCompletaDetalle as any)?.costoEstimadoTiquete ??
+                      solicitudSeleccionada.costoEstimadoTiquete ??
+                      0,
+                    );
+                    const montoTotal = Number(
+                      (solicitudCompletaDetalle as any)?.montoTotal ??
+                      solicitudSeleccionada.montoTotalEstimado ??
+                      solicitudSeleccionada.montoTotal ??
+                      (montoViaticos + montoGastosViaje + costoTiquetes),
+                    );
+
+                    return (
+                      <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <span className="text-[11px] uppercase tracking-wider font-extrabold text-slate-700 flex items-center gap-1.5">
+                            <DollarSign className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Desglose de Liquidación Económica
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Cálculo consolidado de viáticos, desplazamientos y tiquetes
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Viáticos</span>
+                            <span className="font-mono font-bold text-slate-900 text-xs sm:text-sm block">
+                              {formatearMoneda(montoViaticos)}
+                            </span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 block truncate">Alojamiento y manutención</span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Gastos de Viaje</span>
+                            <span className="font-mono font-bold text-slate-900 text-xs sm:text-sm block">
+                              {formatearMoneda(montoGastosViaje)}
+                            </span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 block truncate">Terminales y traslados</span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tiquetes Aéreos</span>
+                            <span className="font-mono font-bold text-sky-800 text-xs sm:text-sm block">
+                              {formatearMoneda(costoTiquetes)}
+                            </span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 block truncate">
+                              {costoTiquetes > 0 ? 'Tarifa pasajes de comisión' : 'Por cotizar / No aplica'}
+                            </span>
+                          </div>
+                          <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-[#003DA5] block mb-0.5">Total Consolidado</span>
+                            <span className="font-mono font-black text-[#003DA5] text-xs sm:text-sm block">
+                              {formatearMoneda(montoTotal)}
+                            </span>
+                            <span className="text-[9px] text-blue-700 mt-0.5 block font-semibold truncate">Viáticos + Gastos + Tiquetes</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
                       <div className="flex items-start gap-2.5">
@@ -2055,26 +2305,71 @@ export default function ViaticosModulePremium() {
                      </div>
                    )}
 
-                    {puedeCancelarComision && solicitudSeleccionada.estado !== 'LEGALIZADO' && solicitudSeleccionada.estado !== 'CANCELADA' && (
-                      <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
-                            Novedades de Comisión (Etapa 6)
+                    {solicitudSeleccionada.estado === 'EN_REVOCATORIA' && (
+                      <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                            <ShieldAlert className="w-4 h-4 text-amber-700" />
+                            Proceso de Revocatoria en Curso (SIIF Nación)
                           </span>
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            Cancelar comisión con trazabilidad completa y registro de responsable.
-                          </p>
+                          {(esOrdenadorGasto || esSuperAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSolicitudParaRevocatoria(solicitudSeleccionada);
+                                setModalRevocatoriaAbierto(true);
+                              }}
+                              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ShieldAlert className="w-3.5 h-3.5" />
+                              Gestionar Revocatoria en SIIF
+                            </button>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setSolicitudParaCancelar(solicitudSeleccionada)}
-                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          Cancelar Comisión
-                        </button>
+                        <p className="text-xs text-amber-800">
+                          {solicitudSeleccionada.procesoRevocatoria?.fase === 'PENDIENTE_REDUCCION_PRESUPUESTO'
+                            ? 'El Ordenador del Gasto ya radicó el reporte en SIIF Nación. Se encuentra en Presupuesto para aplicar la reducción del RP.'
+                            : 'La comisión fue cancelada tras su autorización. Se requiere que el Ordenador del Gasto radique el acto en SIIF Nación y adjunte el reporte en PDF.'}
+                        </p>
                       </div>
                     )}
+
+                    {solicitudSeleccionada.estado === 'REVOCADA' && (
+                      <div className="mt-4 p-4 bg-rose-50/70 rounded-xl border border-rose-200 space-y-2">
+                        <div className="flex items-center gap-1.5 text-rose-900 font-bold text-xs">
+                          <CheckCircle2 className="w-4 h-4 text-rose-600" />
+                          Comisión Formalmente REVOCADA
+                        </div>
+                        <p className="text-xs text-slate-700">
+                          La comisión fue revocada en SIIF Nación y los compromisos presupuestales asociados han sido liberados.
+                        </p>
+                      </div>
+                    )}
+
+                    {puedeCancelarComision &&
+                      solicitudSeleccionada.estado !== 'LEGALIZADO' &&
+                      solicitudSeleccionada.estado !== 'CANCELADA' &&
+                      solicitudSeleccionada.estado !== 'REVOCADA' &&
+                      solicitudSeleccionada.estado !== 'EN_REVOCATORIA' && (
+                        <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
+                              Novedades de Comisión (Etapa 6)
+                            </span>
+                            <p className="text-xs text-slate-600 mt-0.5">
+                              Cancelar comisión con trazabilidad completa y registro de responsable.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSolicitudParaCancelar(solicitudSeleccionada)}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Cancelar Comisión
+                          </button>
+                        </div>
+                      )}
 
                     {solicitudSeleccionada.estado === 'CANCELADA' && (
                       <div className="mt-4 p-3.5 bg-rose-50/50 rounded-xl border border-rose-200">
@@ -2443,6 +2738,12 @@ export default function ViaticosModulePremium() {
                     )}
 
                     {/* ========================================================================= */}
+                    {/* TRAZABILIDAD DEL EXPEDIENTE Y DESCARGA (RF-SIS-001) */}
+                    <TrazabilidadExpediente
+                      solicitudId={solicitudSeleccionada.id}
+                      codigo={solicitudSeleccionada.codigo}
+                    />
+
                     {/* GESTIÓN DE FIRMAS INSTITUCIONALES — APROBACIÓN POR COMPONENTE (FORMATO 023) */}
                     {/* ========================================================================= */}
                     <div className="mt-4 pt-4 border-t border-slate-200">
@@ -2544,6 +2845,23 @@ export default function ViaticosModulePremium() {
           if (solicitudSeleccionada) {
             setSolicitudSeleccionada(null);
           }
+          cargarDatos();
+        }}
+      />
+
+      <RevocatoriaModal
+        solicitud={solicitudParaRevocatoria}
+        abierto={modalRevocatoriaAbierto}
+        onCerrar={() => {
+          setModalRevocatoriaAbierto(false);
+          setSolicitudParaRevocatoria(null);
+        }}
+        onExito={(actualizada) => {
+          setMensajeExito(
+            `Proceso de revocatoria actualizado exitosamente para ${actualizada?.consecutivoUnico || actualizada?.codigo || 'la comisión'}.`,
+          );
+          setModalRevocatoriaAbierto(false);
+          setSolicitudParaRevocatoria(null);
           cargarDatos();
         }}
       />

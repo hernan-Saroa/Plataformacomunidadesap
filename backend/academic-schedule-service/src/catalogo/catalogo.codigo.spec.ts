@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { Client } from 'pg';
 
 import { CatalogoService } from './catalogo.service.js';
 import { ProgramaCatalogoEntity } from './entities/programa.readonly.entity.js';
@@ -6,12 +7,19 @@ import { AsignaturaCatalogoEntity } from './entities/asignatura.readonly.entity.
 import { UbicacionSemestralCatalogoEntity } from './entities/ubicacion-semestral.readonly.entity.js';
 import { PERMISO_CATALOGO_POR_NIVEL } from '../auth/programacion-permissions.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura, retirarPrograma } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-1369 — Seleccionar asignatura por código único (SNIES).
  *
  * Contra BASE REAL, no mockeada: el AC-01 es un mapeo de columnas y los mocks no
  * ven la frontera. Tres defectos de este módulo se escaparon justamente ahí.
  * Se omite solo si no hay base disponible.
+ *
+ * Las asignaturas que se consultan son de la prueba: se SIEMBRAN y se retiran (códigos `QA-*`).
+ * Lee por otra conexión que la del sembrado, así que sí se confirma; no depende de que alguien
+ * haya cargado el Excel (la base local puede estar en cero).
  */
 const CONFIG = {
   type: 'postgres' as const,
@@ -29,6 +37,9 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
   let ds: DataSource | null = null;
   let service: CatalogoService;
   let hayBase = false;
+  let pg: Client | null = null;
+  const sembrados: Array<{ idPrograma: string; idNucleo: string }> = [];
+  let tres: any; let seminario: any; let maestria: any;
 
   const PREGRADO = new Set([PERMISO_CATALOGO_POR_NIVEL.pregrado]);
   const POSGRADO = new Set([PERMISO_CATALOGO_POR_NIVEL.posgrado]);
@@ -36,6 +47,16 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
   beforeAll(async () => {
     try {
       ds = await new DataSource(CONFIG).initialize();
+      pg = new Client({
+        host: CONFIG.host, port: Number(process.env.DB_PORT || 55432), user: CONFIG.username,
+        password: CONFIG.password, database: CONFIG.database,
+      });
+      await pg.connect();
+      // Pregrado central: 64 h con 3 créditos; excepción de la Circular 003: 384 h con 10 créditos; una maestría.
+      tres = await crearAsignatura(pg, { tipo: 'pregrado', creditos: 3, horasClase: 64 });
+      seminario = await crearAsignatura(pg, { tipo: 'pregrado', creditos: 10, horasClase: 384, horasPta: 384, tipoExcepcion: 'seminario_enfasis', horasFijas: 384 });
+      maestria = await crearAsignatura(pg, { tipo: 'maestria', creditos: 3, horasClase: 48 });
+      sembrados.push(tres, seminario, maestria);
       hayBase = true;
       service = new CatalogoService(
         ds.getRepository(ProgramaCatalogoEntity),
@@ -48,6 +69,10 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
   }, 30000);
 
   afterAll(async () => {
+    if (pg) {
+      for (const f of sembrados) await retirarPrograma(pg, f).catch(() => {});
+      await pg.end().catch(() => {});
+    }
     if (ds?.isInitialized) await ds.destroy();
   });
 
@@ -58,7 +83,7 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
     }, 30000);
 
   siHayBase('EFDS-1369 :: AC-01 :: el código autocompleta los siete campos maestros', async () => {
-    const a: any = await service.buscarPorCodigo(PREGRADO, 'ASIG-00001');
+    const a: any = await service.buscarPorCodigo(PREGRADO, tres.codigoAsignatura);
 
     // Los siete del SNIES
     expect(a.nombre).toBeTruthy();
@@ -70,7 +95,7 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
     expect(a.modalidad).toBeTruthy();
     expect(a.metodologia).toBeTruthy();
 
-    expect(a.codigo).toBe('ASIG-00001');
+    expect(a.codigo).toBe(tres.codigoAsignatura);
     expect(a.soloLectura).toBe(true);
   });
 
@@ -89,25 +114,25 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
   // Las horas vienen del catálogo. Si alguien introduce créditos x 16, este caso
   // lo detecta contra los datos reales de la ESAP.
   siHayBase('EFDS-1369 :: AC-01 :: las horas se exponen tal cual, no como créditos x 16', async () => {
-    const tres: any = await service.buscarPorCodigo(PREGRADO, 'ASIG-00001'); // 3 créditos
-    const seminario: any = await service.buscarPorCodigo(PREGRADO, 'ASIG-00132'); // excepción
+    const t: any = await service.buscarPorCodigo(PREGRADO, tres.codigoAsignatura); // 3 créditos
+    const sem: any = await service.buscarPorCodigo(PREGRADO, seminario.codigoAsignatura); // excepción
 
     // Pregrado central: 64 h fijas, independientes de los créditos.
-    expect(tres.horasClase).toBe(64);
-    expect(tres.horasClase).not.toBe(tres.creditos * 16);
+    expect(t.horasClase).toBe(64);
+    expect(t.horasClase).not.toBe(t.creditos * 16);
 
     // Excepción de la Circular 003: 384 h, no 10 x 16.
-    expect(seminario.tipoExcepcion).toBe('seminario_enfasis');
-    expect(seminario.horasPta).toBe(384);
-    expect(seminario.horasPta).not.toBe(seminario.creditos * 16);
+    expect(sem.tipoExcepcion).toBe('seminario_enfasis');
+    expect(sem.horasPta).toBe(384);
+    expect(sem.horasPta).not.toBe(sem.creditos * 16);
   });
 
   siHayBase('EFDS-1369 :: RN-08 :: un perfil de pregrado no puede leer un código de posgrado', async () => {
     // Conocer el código no alcanza: el nivel se valida contra el programa real.
-    await expect(service.buscarPorCodigo(PREGRADO, 'ASIG-00267'))
+    await expect(service.buscarPorCodigo(PREGRADO, maestria.codigoAsignatura))
       .rejects.toThrow(/no tiene permiso/i);
 
-    const deMaestria: any = await service.buscarPorCodigo(POSGRADO, 'ASIG-00267');
+    const deMaestria: any = await service.buscarPorCodigo(POSGRADO, maestria.codigoAsignatura);
     expect(deMaestria.nivel).toBe('posgrado');
   });
 
@@ -138,7 +163,7 @@ describe('EFDS-1369 :: asignatura por código, contra base real', () => {
           (codigo, nombre, creditos, id_ubicacion_semestral, id_programa, id_nucleo_tematico, id_facultad, modalidad)
         SELECT a.codigo, 'Duplicada de prueba', a.creditos, a.id_ubicacion_semestral,
                a.id_programa, a.id_nucleo_tematico, a.id_facultad, a.modalidad
-        FROM academic_work_plan.asignatura a WHERE a.codigo = 'ASIG-00001'`),
+        FROM academic_work_plan.asignatura a WHERE a.codigo = $1`, [tres.codigoAsignatura]),
     ).rejects.toThrow();
   });
 });

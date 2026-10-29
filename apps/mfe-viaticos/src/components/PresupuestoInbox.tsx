@@ -7,34 +7,41 @@ import {
   FileCheck2,
   CheckCircle2,
   DollarSign,
-  Calendar,
   AlertCircle,
   Tag,
   Clock,
   Sparkles,
+  Eye,
+  ShieldAlert,
 } from 'lucide-react';
 import { SolicitudViatico } from '../types/viaticos';
 import { viaticosService } from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import RegistrarRPModal from './RegistrarRPModal';
 import CargaMasivaRPModal from './CargaMasivaRpModal';
+import RevocatoriaModal from './RevocatoriaModal';
 
 export default function PresupuestoInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudViatico[]>([]);
   const [kpis, setKpis] = useState({
     pendientesRp: 0,
     comprometidas: 0,
+    pendientesReduccion: 0,
     totalComprometido: 0,
   });
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<'AUTORIZADA' | 'COMPROMETIDA' | 'TODOS'>('AUTORIZADA');
+  const [filtroEstado, setFiltroEstado] = useState<'AUTORIZADA' | 'COMPROMETIDA' | 'REDUCCION_RP' | 'TODOS'>('AUTORIZADA');
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
   // Modales
   const [solicitudParaRp, setSolicitudParaRp] = useState<SolicitudViatico | null>(null);
   const [modalRpAbierto, setModalRpAbierto] = useState(false);
   const [modalCargaMasivaAbierto, setModalCargaMasivaAbierto] = useState(false);
+
+  // Modal Revocatoria / Reducción Presupuestal
+  const [solicitudParaRevocatoria, setSolicitudParaRevocatoria] = useState<SolicitudViatico | null>(null);
+  const [modalRevocatoriaAbierto, setModalRevocatoriaAbierto] = useState(false);
 
   const puedeExpedirRp = useMemo(() => authService.canExpedirRp(), []);
 
@@ -52,7 +59,12 @@ export default function PresupuestoInbox() {
       setSolicitudes(itemsMapeados);
 
       if (resp?.kpis) {
-        setKpis(resp.kpis);
+        setKpis({
+          pendientesRp: resp.kpis.pendientesRp || 0,
+          comprometidas: resp.kpis.comprometidas || 0,
+          pendientesReduccion: resp.kpis.pendientesReduccion || 0,
+          totalComprometido: resp.kpis.totalComprometido || 0,
+        });
       }
     } catch (err) {
       console.error('Error al cargar bandeja de presupuesto:', err);
@@ -70,6 +82,11 @@ export default function PresupuestoInbox() {
     setModalRpAbierto(true);
   };
 
+  const abrirModalReduccionRp = (sol: SolicitudViatico) => {
+    setSolicitudParaRevocatoria(sol);
+    setModalRevocatoriaAbierto(true);
+  };
+
   const handleExitoRp = (solActualizada: any) => {
     setMensajeExito(`Registro Presupuestal expedido exitosamente para ${solActualizada.consecutivoUnico || 'la comisión'}. Recursos comprometidos.`);
     setTimeout(() => setMensajeExito(null), 5000);
@@ -78,6 +95,14 @@ export default function PresupuestoInbox() {
 
   const handleExitoCargaMasiva = () => {
     setMensajeExito('Carga masiva procesada exitosamente. Comisiones actualizadas a estado COMPROMETIDA.');
+    setTimeout(() => setMensajeExito(null), 5000);
+    cargarDatos();
+  };
+
+  const handleExitoReduccion = (solActualizada: any) => {
+    setMensajeExito(
+      `Reducción presupuestal de RP aplicada exitosamente para ${solActualizada?.consecutivoUnico || solActualizada?.codigo || 'la comisión'}. Recursos liberados y revocatoria formalizada.`,
+    );
     setTimeout(() => setMensajeExito(null), 5000);
     cargarDatos();
   };
@@ -98,7 +123,7 @@ export default function PresupuestoInbox() {
             <span>Bandeja del Grupo de Presupuesto</span>
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Recepción de comisiones autorizadas y expedición de Registro Presupuestal (RP) bajo la nomenclatura <code>Fecha_RP_Número</code>.
+            Recepción de comisiones autorizadas, expedición de Registro Presupuestal (RP) y gestión de reducciones por revocatoria.
           </p>
         </div>
 
@@ -143,7 +168,7 @@ export default function PresupuestoInbox() {
       )}
 
       {/* KPIs de la Etapa 7 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Pendientes de RP */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
@@ -186,7 +211,28 @@ export default function PresupuestoInbox() {
           </div>
         </div>
 
-        {/* KPI 3: Monto Total Comprometido */}
+        {/* KPI 3: Pendientes Reducción (Revocatorias) */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Reducción por Revocatoria
+              </p>
+              <h3 className="text-2xl font-black text-amber-700 mt-1">
+                {cargando ? '—' : kpis.pendientesReduccion}
+              </h3>
+              <p className="text-[11px] text-amber-700 mt-1 flex items-center space-x-1">
+                <AlertCircle className="w-3 h-3 inline" />
+                <span>Liberación de RP solicitada</span>
+              </p>
+            </div>
+            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-100">
+              <ShieldAlert className="w-6 h-6 text-amber-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 4: Monto Total Comprometido */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
             <div>
@@ -211,11 +257,11 @@ export default function PresupuestoInbox() {
       {/* Barra de Filtros y Búsqueda */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Pestañas de Estado */}
-        <div className="flex items-center p-1 bg-slate-100 rounded-xl space-x-1 w-full md:w-auto">
+        <div className="flex items-center p-1 bg-slate-100 rounded-xl space-x-1 w-full md:w-auto overflow-x-auto">
           <button
             type="button"
             onClick={() => setFiltroEstado('AUTORIZADA')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 ${
               filtroEstado === 'AUTORIZADA'
                 ? 'bg-white text-emerald-800 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
@@ -226,7 +272,7 @@ export default function PresupuestoInbox() {
           <button
             type="button"
             onClick={() => setFiltroEstado('COMPROMETIDA')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 ${
               filtroEstado === 'COMPROMETIDA'
                 ? 'bg-white text-emerald-800 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
@@ -236,8 +282,28 @@ export default function PresupuestoInbox() {
           </button>
           <button
             type="button"
+            onClick={() => setFiltroEstado('REDUCCION_RP')}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${
+              filtroEstado === 'REDUCCION_RP'
+                ? 'bg-white text-amber-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>Reducciones por Revocatoria</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                (kpis.pendientesReduccion || 0) > 0
+                  ? 'bg-amber-100 text-amber-800 font-black'
+                  : 'bg-slate-200 text-slate-600'
+              }`}
+            >
+              {kpis.pendientesReduccion || 0}
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={() => setFiltroEstado('TODOS')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 ${
               filtroEstado === 'TODOS'
                 ? 'bg-white text-emerald-800 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
@@ -272,7 +338,7 @@ export default function PresupuestoInbox() {
             <Receipt className="w-10 h-10 text-slate-300 mx-auto" />
             <p className="text-sm font-bold text-slate-700">No hay comisiones en este criterio</p>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Cuando los analistas remitan paquetes de comisiones autorizadas, aparecerán aquí para expedir su Registro Presupuestal.
+              Cuando las comisiones sean autorizadas o entren en proceso de revocatoria, aparecerán aquí para su gestión presupuestal.
             </p>
           </div>
         ) : (
@@ -294,6 +360,9 @@ export default function PresupuestoInbox() {
               <tbody className="divide-y divide-slate-200/80">
                 {solicitudes.map((sol) => {
                   const estaComprometida = sol.estado === 'COMPROMETIDA';
+                  const esRevocatoria = sol.estado === 'EN_REVOCATORIA';
+                  const esRevocada = sol.estado === 'REVOCADA';
+
                   const valorMostrar =
                     sol.valorComprometido != null && Number(sol.valorComprometido) > 0
                       ? Number(sol.valorComprometido)
@@ -340,7 +409,17 @@ export default function PresupuestoInbox() {
 
                       {/* Estado */}
                       <td className="px-4 py-3">
-                        {estaComprometida ? (
+                        {esRevocatoria ? (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center space-x-1 w-fit">
+                            <ShieldAlert className="w-3 h-3 text-amber-600" />
+                            <span>EN REVOCATORIA</span>
+                          </span>
+                        ) : esRevocada ? (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center space-x-1 w-fit">
+                            <CheckCircle2 className="w-3 h-3 text-rose-600" />
+                            <span>REVOCADA</span>
+                          </span>
+                        ) : estaComprometida ? (
                           <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center space-x-1 w-fit">
                             <CheckCircle2 className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
                             <span>COMPROMETIDA</span>
@@ -402,7 +481,17 @@ export default function PresupuestoInbox() {
 
                       {/* Acciones */}
                       <td className="px-4 py-3 text-right">
-                        {!estaComprometida && puedeExpedirRp ? (
+                        {esRevocatoria && puedeExpedirRp ? (
+                          <button
+                            type="button"
+                            onClick={() => abrirModalReduccionRp(sol)}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 transition-all shadow-xs flex items-center space-x-1.5 ml-auto cursor-pointer"
+                            title="Aplicar reducción de RP por revocatoria en SIIF"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5 text-amber-200" />
+                            <span>Aplicar Reducción</span>
+                          </button>
+                        ) : !estaComprometida && !esRevocada && puedeExpedirRp ? (
                           <button
                             type="button"
                             onClick={() => abrirModalExpedirRp(sol)}
@@ -410,15 +499,28 @@ export default function PresupuestoInbox() {
                             className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs hover:opacity-90 active:scale-95 flex items-center space-x-1.5 ml-auto cursor-pointer"
                           >
                             <FileCheck2 className="w-3.5 h-3.5 text-white" />
-                            <span className="text-white">Registrar RP</span>
+                            <span>Registrar RP</span>
                           </button>
                         ) : estaComprometida ? (
-                          <span className="text-[11px] text-indigo-700 font-semibold flex items-center justify-end space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => abrirModalExpedirRp(sol)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-all flex items-center space-x-1.5 ml-auto cursor-pointer"
+                            title="Ver detalles del RP expedido, Formato 023 y firmas digitales"
+                          >
                             <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Comprometida</span>
-                          </span>
+                            <span>Ver RP / Firmas</span>
+                          </button>
                         ) : (
-                          <span className="text-[11px] text-slate-400">Solo lectura</span>
+                          <button
+                            type="button"
+                            onClick={() => abrirModalExpedirRp(sol)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center space-x-1.5 ml-auto cursor-pointer"
+                            title="Ver detalles de la comisión"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Ver Detalles</span>
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -442,6 +544,14 @@ export default function PresupuestoInbox() {
         abierto={modalCargaMasivaAbierto}
         onCerrar={() => setModalCargaMasivaAbierto(false)}
         onExito={handleExitoCargaMasiva}
+      />
+
+      <RevocatoriaModal
+        solicitud={solicitudParaRevocatoria}
+        abierto={modalRevocatoriaAbierto}
+        modo="PRESUPUESTO"
+        onCerrar={() => setModalRevocatoriaAbierto(false)}
+        onExito={handleExitoReduccion}
       />
     </div>
   );

@@ -199,6 +199,18 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   procesoAuditado?: string;
 
+  // Unidades auditables del proceso que cubre la auditoría (EFDS-2316)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  unidadesAuditables?: string[];
+
+  // Dependencias del proceso que se auditan (EFDS-2367)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  dependenciasAuditadas?: string[];
+
   @IsString()
   @IsOptional()
   responsableAreaNombre?: string;

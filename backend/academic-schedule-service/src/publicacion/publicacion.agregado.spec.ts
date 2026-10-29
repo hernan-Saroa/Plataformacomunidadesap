@@ -2,6 +2,9 @@ import { Client } from 'pg';
 
 import { PublicacionService } from './publicacion.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * NUEVA-1 / EFDS-1937 :: publicación de la programación.
  *
@@ -45,7 +48,11 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
     try {
       client = new Client(conexion);
       await client.connect();
-      // Fixture: periodo QA + grupo (asignatura 2 existe) bajo ese periodo.
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
+      // Fixture: periodo QA + grupo (con una asignatura propia de la transacción) bajo ese periodo.
+      const asig = await crearAsignatura(client);
       const cod = `QA-PUB-${Date.now().toString().slice(-7)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo, nombre, tipo, fecha_inicio, fecha_fin, estado)
@@ -54,7 +61,7 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
       idPeriodo = p.rows[0].id_periodo;
       const g = await client.query(
         `INSERT INTO "${S}".grupo (id_asignatura, id_periodo, numero_grupo, estado)
-         VALUES (2, $1, 999, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+         VALUES ($2::bigint, $1, 999, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo, asig.idAsignatura]);
       idGrupo = g.rows[0].id_grupo;
       hayBase = true;
     } catch {
@@ -64,18 +71,18 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
   });
 
   afterAll(async () => {
-    if (client && idPeriodo) {
-      // El grupo cascada sus franjas (ON DELETE CASCADE); luego el periodo.
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo = $1`, [idPeriodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end();
   });
 
   const siHayBase = (nombre: string, fn: () => Promise<void>) =>
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
-      await fn();
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
     });
 
   siHayBase('publicar sin cruces mueve todo PROGRAMADO a PUBLICADA y conserva el total', async () => {
@@ -134,7 +141,9 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
   const servicioConFranjas = (franjas: any[]) => {
     const dataSource = {
       query: (sql: string) => {
-        if (/FROM "academic-schedule"\.franja_horaria f/.test(sql) && /JOIN "academic-schedule"\.grupo g/.test(sql)) {
+        // Las franjas del periodo se piden por `f.id_grupo IN (<grupos del alcance>)` (EFDS-2302),
+        // con el cargador compartido de `horarios/choque.ts` (une grupo y periodos para el ciclo).
+        if (/FROM "academic-schedule"\.franja_horaria f[\s\S]*WHERE f\.id_grupo IN/.test(sql) && /SELECT f\.id_franja/.test(sql)) {
           return Promise.resolve(franjas);
         }
         return Promise.resolve([{ '1': 1 }]); // exigirPeriodo, etc.
@@ -149,9 +158,27 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
       { idFranja: 'b', aulaCodigo: '101', idDocente: null, diaSemana: 'MARTES', horaInicio: '09:00', horaFin: '11:00' },
     ];
     const servicio = servicioConFranjas(franjas);
-    const cruces = await servicio.validarCruces('periodo-stub');
+    const cruces = await servicio.validarCruces('00000000-0000-4000-8000-0000000000a1');
     expect(cruces.some((c) => c.tipo === 'aula' && c.recurso === '101')).toBe(true);
-    await expect(servicio.publicar('periodo-stub')).rejects.toThrow(/cruce/i);
+    await expect(servicio.publicar('00000000-0000-4000-8000-0000000000a1')).rejects.toThrow(/cruce/i);
+  });
+
+  it('el mismo salon a la misma hora en ciclos que NO se tocan no es cruce; con ciclos que se tocan, sí', async () => {
+    const regular = { cicloInicio: '2098-02-01', cicloFin: '2098-06-15' };
+    const siguiente = { cicloInicio: '2098-07-01', cicloFin: '2098-11-30' };
+    const traslapado = { cicloInicio: '2098-06-01', cicloFin: '2098-07-15' };
+    const base = { aulaCodigo: '101', idDocente: null, diaSemana: 'MARTES', horaInicio: '08:00', horaFin: '10:00' };
+    const periodo = '00000000-0000-4000-8000-0000000000a1';
+
+    const sinToque = servicioConFranjas([
+      { ...base, idFranja: 'a', ...regular }, { ...base, idFranja: 'b', ...siguiente },
+    ]);
+    expect(await sinToque.validarCruces(periodo)).toEqual([]);
+
+    const conToque = servicioConFranjas([
+      { ...base, idFranja: 'a', ...regular }, { ...base, idFranja: 'b', ...traslapado },
+    ]);
+    expect((await conToque.validarCruces(periodo)).some((c) => c.tipo === 'aula')).toBe(true);
   });
 
   it('un docente cruza consigo mismo aunque una sesion sea virtual (sin aula)', async () => {
@@ -162,7 +189,7 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
       { idFranja: 'b', aulaCodigo: null, idDocente: doc, diaSemana: 'MIERCOLES', horaInicio: '09:00', horaFin: '11:00' },
     ];
     const servicio = servicioConFranjas(franjas);
-    const cruces = await servicio.validarCruces('periodo-stub');
+    const cruces = await servicio.validarCruces('00000000-0000-4000-8000-0000000000a1');
     expect(cruces.some((c) => c.tipo === 'docente')).toBe(true);
     expect(cruces.some((c) => c.tipo === 'aula')).toBe(false); // la virtual no aporta cruce de aula
   });
