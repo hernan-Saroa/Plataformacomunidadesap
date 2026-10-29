@@ -247,6 +247,17 @@ describe('F014: cola independiente del flujo documental',()=>{
     service.onModuleInit();await service.tick();service.onModuleDestroy();
     expect(db.query).not.toHaveBeenCalled();expect(storage.read).not.toHaveBeenCalled();
   });
+  it('las cargas nuevas no inician OCR sin una selección explícita por defecto',async()=>{
+    process.env.RUND_OCR_ENABLED='true';
+    const previousAuto=process.env.RUND_EXTRACCION_AUTOMATICA;
+    delete process.env.RUND_EXTRACCION_AUTOMATICA;
+    const db={query:jest.fn(async(_sql:string)=>[])};
+    try{
+      await new RundExtraccionService(db as any,{} as any).tick();
+      expect(db.query.mock.calls.some(([sql])=>String(sql).includes('INSERT INTO academic_work_plan."RundExtraccionTrabajo"'))).toBe(false);
+      expect(db.query.mock.calls.some(([sql])=>String(sql).includes('SELECT * FROM reservado'))).toBe(true);
+    }finally{if(previousAuto===undefined)delete process.env.RUND_EXTRACCION_AUTOMATICA;else process.env.RUND_EXTRACCION_AUTOMATICA=previousAuto;}
+  });
   it('un fallo del OCR no propaga errores al flujo principal ni escribe el perfil',async()=>{
     process.env.RUND_OCR_ENABLED='true';
     const db={query:jest.fn().mockRejectedValue(new Error('BD caída'))};

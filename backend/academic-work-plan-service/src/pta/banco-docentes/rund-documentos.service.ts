@@ -1,6 +1,6 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
-import { lockEvidenceProfile, resetEvidenceBlock, validateEvidenceType } from './rund-evidence-workflow';
+import { evidenceGroup, isReviewableEvidence, lockEvidenceProfile, requiredEvidence, resetEvidenceBlock, RUND_MAX_EVIDENCES_PER_TYPE, validateEvidenceType } from './rund-evidence-workflow';
 import {
   BadRequestException,
   ConflictException,
@@ -26,6 +26,10 @@ type DocumentUploadData = {
   tipoSoporte?: string;
   campo?: string;
   descripcion?: string;
+  /** Checkpoint upload: add another evidence instead of reusing an earlier review row. */
+  nuevaEvidencia?: boolean;
+  /** Checkpoint upload: legacy evidence (folder file without document version) being replaced. */
+  soporteHistoricoId?: string;
 };
 
 @Injectable()
@@ -147,7 +151,7 @@ export class RundDocumentosService {
               c.nombre AS categoria_nombre, d.bloque, d.tipo_soporte, d.descripcion,
               d.version, d.nombre_archivo, d.mime_type, d.tamano_bytes,
               d.estado, d.creado_por, d.eliminado_por, d.eliminado_en, d."createdAt",
-              d.rund_soporte_id, s.estado AS estado_revision, s.observacion AS observacion_revision,
+              d.rund_soporte_id, s.estado AS estado_revision, s.observacion AS observacion_revision, s."createdAt" AS soporte_creado_en,
               (SELECT l.actor_id FROM academic_work_plan."RundAprobacionLog" l
                WHERE l.soporte_id = s.id::text AND l.accion IN ('APROBAR_SOPORTE','DEVOLVER_SOPORTE')
                AND l.metadata->>'documentoVersionId' = d.id::text ORDER BY l."createdAt" DESC LIMIT 1) AS revisado_por,
@@ -182,17 +186,7 @@ export class RundDocumentosService {
       validateEvidenceType(data.bloque!, data.tipoSoporte!);
     }
 
-    if (data.tipoSoporte && !technical) {
-      const existing = await this.dataSource.query(
-        `SELECT id FROM academic_work_plan."RundDocumentoPerfil"
-         WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'
-         LIMIT 1`,
-        [docente.id, data.tipoSoporte],
-      );
-      if (existing[0]) {
-        throw new ConflictException('Ya existe un documento vigente para este tipo de soporte. Use la opción Reemplazar.');
-      }
-    }
+    if (data.tipoSoporte && !technical) await this.assertEvidenceCapacity(this.dataSource, docente.id, data.tipoSoporte);
 
     await assertRundEvidenceData(this.dataSource, docente.id, data.tipoSoporte, data.campo);
     const id = randomUUID();
@@ -207,11 +201,9 @@ export class RundDocumentosService {
       await runner.startTransaction();
       await lockEvidenceProfile(runner, docente.id);
       await assertRundEvidenceData(runner, docente.id, data.tipoSoporte, data.campo);
-      if (data.tipoSoporte && !technical) {
-        const duplicates = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil"
-          WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'`, [docente.id, data.tipoSoporte]);
-        if (duplicates.length) throw new ConflictException('Ya existe un soporte vigente. Actualice y use Reemplazar.');
-      }
+      // Rechecked under the profile lock so simultaneous uploads cannot exceed the limit.
+      const previousEvidences = data.tipoSoporte && !technical
+        ? await this.assertEvidenceCapacity(runner, docente.id, data.tipoSoporte) : 0;
       stored = await this.storage.store({
         content: file!.buffer, expedienteId: docente.persona_id || docente.id, documentNumber: docente.document_number,
         category: category.codigo, supportType: data.tipoSoporte,
@@ -225,6 +217,8 @@ export class RundDocumentosService {
             documentId: id,
             fileName: file!.originalname,
             actorId,
+            adding: data.nuevaEvidencia === true,
+            legacySupportId: typeof data.soporteHistoricoId === 'string' && data.soporteHistoricoId ? data.soporteHistoricoId : undefined,
           })
         : null;
       const [created] = await runner.query(
@@ -250,7 +244,10 @@ export class RundDocumentosService {
         actorId,
         soporteId: id,
         ip,
-        metadata: { categoria: category.codigo, version: 1, nombreArchivo: file!.originalname, proveedor: stored.provider, trd },
+        metadata: { categoria: category.codigo, version: 1, nombreArchivo: file!.originalname, proveedor: stored.provider, trd,
+          ...(data.tipoSoporte && !technical ? { tipoSoporte: data.tipoSoporte, campo: data.campo || null,
+            evidencia: previousEvidences + 1, evidenciasVigentes: previousEvidences + 1, evidenciaAdicional: previousEvidences > 0,
+            ...(data.soporteHistoricoId ? { reemplazaSoporteHistorico: data.soporteHistoricoId } : {}) } : {}) },
       });
       commitAttempted = true;
       await runner.commitTransaction();
@@ -347,6 +344,7 @@ export class RundDocumentosService {
           nombreArchivo: file!.originalname,
           proveedor: stored.provider,
           trd,
+          ...(current.tipo_soporte ? { tipoSoporte: current.tipo_soporte } : {}),
         },
       });
       commitAttempted = true;
@@ -370,7 +368,7 @@ export class RundDocumentosService {
     await runner.connect();
     await runner.startTransaction();
     try {
-      await lockEvidenceProfile(runner, docente.id);
+      const profile = await lockEvidenceProfile(runner, docente.id);
       const [active] = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil" WHERE id = $1 AND estado = 'ACTIVO'`, [current.id]);
       if (!active) throw new ConflictException('El documento ya cambió. Actualice el listado.');
 
@@ -380,9 +378,17 @@ export class RundDocumentosService {
          WHERE id = $2 AND estado = 'ACTIVO'`,
         [actorId, current.id],
       );
+      let remainingEvidences: number | undefined;
       if (current.rund_soporte_id) {
         await runner.query(`DELETE FROM academic_work_plan."RundSoporteCampo" WHERE id = $1 AND documento_perfil_id = $2`, [current.rund_soporte_id, current.id]);
-        await resetEvidenceBlock(runner, docente.id, current.bloque, actorId, true);
+        // Withdrawing one of several evidences does not leave the checkpoint without support.
+        const remaining = (await runner.query(`SELECT tipo_soporte, documento_carpeta_id FROM academic_work_plan."RundSoporteCampo"
+          WHERE docente_id = $1 AND bloque = $2`, [docente.id, current.bloque]))
+          .filter((s: any) => isReviewableEvidence(s.tipo_soporte) && s.documento_carpeta_id);
+        remainingEvidences = remaining.filter((s: any) => evidenceGroup(current.tipo_soporte || '').includes(s.tipo_soporte)).length;
+        const missing = !remaining.length || requiredEvidence(current.bloque, profile || {})
+          .some(group => !remaining.some((s: any) => group.includes(s.tipo_soporte)));
+        await resetEvidenceBlock(runner, docente.id, current.bloque, actorId, missing);
       }
       await this.insertAudit(runner, {
         docenteId: docente.id,
@@ -391,7 +397,9 @@ export class RundDocumentosService {
         actorId,
         soporteId: current.id,
         ip,
-        metadata: { categoria: current.categoria_codigo, version: current.version, nombreArchivo: current.nombre_archivo },
+        metadata: { categoria: current.categoria_codigo, version: current.version, nombreArchivo: current.nombre_archivo,
+          ...(current.tipo_soporte ? { tipoSoporte: current.tipo_soporte } : {}),
+          ...(remainingEvidences !== undefined ? { evidenciasVigentes: remainingEvidences } : {}) },
       });
       await runner.commitTransaction();
       return { id: current.id, eliminado: true };
@@ -504,6 +512,17 @@ export class RundDocumentosService {
     }
   }
 
+  /** Returns the current evidences of the checkpoint and rejects a new one above the limit. */
+  private async assertEvidenceCapacity(queryable: Pick<DataSource, 'query'>, docenteId: string, type: string): Promise<number> {
+    const [row] = await queryable.query(`SELECT COUNT(*)::int AS total FROM academic_work_plan."RundDocumentoPerfil"
+      WHERE docente_id = $1 AND tipo_soporte = ANY($2::text[]) AND estado = 'ACTIVO'`, [docenteId, evidenceGroup(type)]);
+    const total = Number(row?.total || 0);
+    if (total >= RUND_MAX_EVIDENCES_PER_TYPE) {
+      throw new ConflictException(`Este punto de control ya tiene ${RUND_MAX_EVIDENCES_PER_TYPE} evidencias vigentes. Reemplace o retire una antes de agregar otra.`);
+    }
+    return total;
+  }
+
   private async upsertRundSupport(runner: QueryRunner, input: {
     docenteId: string;
     bloque: string;
@@ -511,20 +530,42 @@ export class RundDocumentosService {
     documentId: string;
     fileName: string;
     actorId: string;
+    adding?: boolean;
+    legacySupportId?: string;
   }): Promise<string> {
-    const existing = await runner.query(
-      `SELECT id FROM academic_work_plan."RundSoporteCampo"
-       WHERE docente_id = $1 AND tipo_soporte = $2 ORDER BY "createdAt" DESC LIMIT 1`,
-      [input.docenteId, input.tipoSoporte],
-    );
+    // A review row with a current document version is never reused: each evidence keeps its own.
+    // Legacy callers still overwrite an earlier row without a current version, as before; adding
+    // only reuses an empty placeholder; a legacy evidence is replaced only when named explicitly.
+    const technical = isTechnicalRundSupport(input.tipoSoporte);
+    let existing: any[] = [];
+    if (!technical && input.legacySupportId) {
+      existing = await runner.query(
+        `SELECT s.id FROM academic_work_plan."RundSoporteCampo" s
+         LEFT JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = s.documento_perfil_id AND d.estado = 'ACTIVO'
+         WHERE s.id::text = $1 AND s.docente_id = $2 AND s.tipo_soporte = ANY($3::text[]) AND d.id IS NULL`,
+        [input.legacySupportId, input.docenteId, evidenceGroup(input.tipoSoporte)],
+      );
+      if (!existing[0]) throw new ConflictException('La evidencia histórica ya cambió. Actualice el expediente.');
+    } else if (!technical) {
+      existing = await runner.query(
+        `SELECT s.id FROM academic_work_plan."RundSoporteCampo" s
+         LEFT JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = s.documento_perfil_id AND d.estado = 'ACTIVO'
+         WHERE s.docente_id = $1 AND s.tipo_soporte = $2 AND d.id IS NULL
+           ${input.adding ? `AND (s.documento_perfil_id IS NOT NULL OR COALESCE(TRIM(s.documento_carpeta_id), '') = '')` : ''}
+         ORDER BY s."createdAt" DESC LIMIT 1`,
+        [input.docenteId, input.tipoSoporte],
+      );
+    }
     const contentUrl = this.contentUrl(input.docenteId, input.documentId);
-    if (existing[0] && !isTechnicalRundSupport(input.tipoSoporte)) {
+    if (existing[0]) {
+      // A reused placeholder becomes a new evidence: its position follows the upload order.
       await runner.query(
         `UPDATE academic_work_plan."RundSoporteCampo"
          SET bloque = $1, documento_perfil_id = $2, documento_carpeta_id = $3,
-             nombre_archivo = $4, estado = 'Pendiente', observacion = NULL, cargado_por = $5
+             nombre_archivo = $4, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, cargado_por = $5,
+             "createdAt" = CASE WHEN $7::boolean THEN NOW() ELSE "createdAt" END, tipo_soporte = $8
          WHERE id = $6`,
-        [input.bloque, input.documentId, contentUrl, input.fileName, input.actorId, existing[0].id],
+        [input.bloque, input.documentId, contentUrl, input.fileName, input.actorId, existing[0].id, input.adding === true, input.tipoSoporte],
       );
       return existing[0].id;
     }
@@ -573,6 +614,8 @@ export class RundDocumentosService {
       eliminadoEn: row.eliminado_en,
       contenidoUrl: this.contentUrl(row.docente_id, row.id),
       rundSoporteId: row.rund_soporte_id,
+      // Stable across replacements: numbers the evidences of a checkpoint.
+      soporteCreadoEn: row.soporte_creado_en || null,
       estadoRevision: row.estado_revision || null,
       observacionRevision: row.observacion_revision || null,
       revisadoPor: row.revisado_por || null,

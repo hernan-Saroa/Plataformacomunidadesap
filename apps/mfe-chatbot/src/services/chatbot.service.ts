@@ -22,7 +22,7 @@ export interface ConversacionChat {
 
 export class ChatbotHttpError extends Error {
   constructor(public readonly status: number) {
-    super(status === 401 ? 'Tu sesión ha expirado. Inicia sesión nuevamente.'
+    super(status === 401 ? 'No se pudo validar tu sesión. Reconecta el asistente o inicia sesión nuevamente.'
       : status === 403 ? 'No tienes permiso para consultar este historial.'
       : status === 404 ? 'La conversación no está disponible para tu cuenta.'
       : status === 429 ? 'Hay demasiadas consultas. Espera un momento antes de reintentar.'
@@ -41,6 +41,43 @@ export class ChatbotServiceError extends Error {
 }
 
 export const CHATBOT_REQUEST_TIMEOUT_MS = 20_000;
+
+const sessionRefreshes = new Map<string, Promise<void>>();
+
+async function renewSession(gateway: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHATBOT_REQUEST_TIMEOUT_MS);
+  try {
+    // El servidor renueva la cookie HttpOnly; nunca leer ni almacenar el JWT.
+    const response = await fetch(`${gateway}/auth/api/v1/refresh`, {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: '{}', signal: controller.signal,
+    });
+    if (!response.ok) throw new ChatbotHttpError(response.status === 403 ? 401 : response.status);
+  } catch (error) {
+    if (error instanceof ChatbotHttpError) throw error;
+    throw new ChatbotServiceError(controller.signal.aborted ? 'timeout' : 'network');
+  } finally { clearTimeout(timeout); }
+}
+
+function refreshSession(gateway: string, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new ChatbotServiceError('timeout'));
+  let pending = sessionRefreshes.get(gateway);
+  if (!pending) {
+    pending = renewSession(gateway);
+    sessionRefreshes.set(gateway, pending);
+    const release = () => { if (sessionRefreshes.get(gateway) === pending) sessionRefreshes.delete(gateway); };
+    void pending.then(release, release);
+  }
+  // Cada consulta conserva su tiempo límite, incluso si comparte una renovación.
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new ChatbotServiceError('timeout'));
+    signal.addEventListener('abort', abort, { once: true });
+    void pending.then(() => { signal.removeEventListener('abort', abort); resolve(); },
+      error => { signal.removeEventListener('abort', abort); reject(error); });
+  });
+}
 
 export function resolveChatbotGatewayBaseUrl(apiBaseUrl?: string): string {
   // El shell entrega la misma base que utiliza su cliente autenticado.
@@ -85,19 +122,28 @@ const isConversacion = (value: unknown): value is ConversacionChat => isRecord(v
     && value.mensajes.every((message) => isMensaje(message) && message.conversacionId === value.id)));
 
 // Una llamada fallida nunca representa un historial vacío ni un mensaje guardado.
-// No reintentar POST automáticamente: el servidor pudo guardar antes de cortarse la conexión.
+// Solo repetir una vez tras un 401 y una renovación correcta: el guard rechazó
+// la consulta antes de ejecutarla. Nunca repetir escrituras tras timeout/red/5xx.
 async function request<T>(apiBaseUrl: string | undefined, path: string, validate: (value: unknown) => value is T, init: RequestInit = {}): Promise<T> {
-  const baseUrl = `${resolveChatbotGatewayBaseUrl(apiBaseUrl)}/chatbot/api/v1`;
+  const gateway = resolveChatbotGatewayBaseUrl(apiBaseUrl);
+  const baseUrl = `${gateway}/chatbot/api/v1`;
+  const isPublic = path.startsWith('/public/');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CHATBOT_REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${baseUrl}${path}`, {
+    const send = () => fetch(`${baseUrl}${path}`, {
       ...init,
-      credentials: path.startsWith('/public/') ? 'omit' : 'include',
+      credentials: isPublic ? 'omit' : 'include',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       signal: controller.signal,
     });
+    let res = await send();
+    if (res.status === 401 && !isPublic) {
+      await refreshSession(gateway, controller.signal);
+      if (controller.signal.aborted) throw new ChatbotServiceError('timeout');
+      res = await send();
+    }
     if (!res.ok) throw new ChatbotHttpError(res.status);
     let data: unknown;
     try {

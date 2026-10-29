@@ -630,3 +630,40 @@ describe('Biblioteca compacta de documentos RUND', () => {
     expect(row('Identificación.pdf').getByTitle('Descargar')).toBeTruthy();
   });
 });
+
+describe('Varias evidencias por punto de control', () => {
+  const evidence = (id: string, name: string, soporteCreadoEn: string) => ({ ...docs[0], id, nombreArchivo: name, soporteCreadoEn, estadoRevision: 'Pendiente', version: 1, totalVersiones: 1 });
+  const setDocuments = (files: any[]) => {
+    const previous = vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async url => url.includes('/documentos?') ? files : previous(url));
+  };
+
+  it('numera las evidencias vigentes de un punto por orden de incorporación', async () => {
+    setDocuments([evidence('second', 'Cédula reverso.pdf', '2026-10-02T10:00:00Z'), evidence('first', 'Cédula anverso.pdf', '2026-10-01T10:00:00Z')]);
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad" />);
+    await screen.findByText('Cédula anverso.pdf');
+    expect(row('Cédula anverso.pdf').getByText(/Evidencia 1 de 2/)).toBeTruthy();
+    expect(row('Cédula reverso.pdf').getByText(/Evidencia 2 de 2/)).toBeTruthy();
+  });
+
+  it('agrega un soporte existente como evidencia adicional y lo informa antes de cargar', async () => {
+    setDocuments([evidence('first', 'Cédula anverso.pdf', '2026-10-01T10:00:00Z')]);
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad" />);
+    await screen.findByText('Cédula anverso.pdf');
+    fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
+    expect(screen.getByText(/Este punto ya tiene 1 evidencia vigente\. El archivo se agregará como evidencia adicional/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Cargar PDF'), { target: { files: [new File(['%PDF-1.7'], 'reverso.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(apiClient.upload).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/docente-1/documentos', expect.any(FormData)));
+    const form = vi.mocked(apiClient.upload).mock.calls[0][1] as FormData;
+    expect(form.get('tipoSoporte')).toBe('documento_identidad');
+  });
+
+  it('impide agregar más evidencias al llegar al máximo', async () => {
+    setDocuments(Array.from({ length: 10 }, (_, index) => evidence(`e-${index}`, `Evidencia ${index}.pdf`, `2026-10-${String(index + 1).padStart(2, '0')}T10:00:00Z`)));
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad" />);
+    await screen.findByText('Evidencia 0.pdf');
+    fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
+    expect(screen.getByText(/Este punto ya tiene 10 evidencias vigentes\. Reemplaza o elimina una/)).toBeTruthy();
+    expect((screen.getByLabelText('Cargar PDF') as HTMLInputElement).disabled).toBe(true);
+  });
+});

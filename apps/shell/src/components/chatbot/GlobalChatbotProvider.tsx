@@ -21,7 +21,7 @@ function AvailabilityMessage({ error, retry }: { error: boolean; retry: () => vo
   </div>;
 }
 
-export function GlobalChatbotProvider({ children, apiBaseUrl, user, onLogin }: React.PropsWithChildren<{
+export function GlobalChatbotProvider({ children, apiBaseUrl }: React.PropsWithChildren<{
   apiBaseUrl: string;
   user?: { id: string; email: string; name: string };
   onLogin?: () => void;
@@ -67,11 +67,10 @@ export function GlobalChatbotProvider({ children, apiBaseUrl, user, onLogin }: R
   const active = availability.base === apiBaseUrl ? availability.active : undefined;
   const error = availability.base === apiBaseUrl && availability.error;
   const context = useMemo(() => ({ active, error, retry, registerFullView }), [active, error, retry, registerFullView]);
-  const sessionKey = JSON.stringify([apiBaseUrl, user?.id, user?.email]);
   return <ChatbotContext.Provider value={context}>
     {children}
-    {active === true && <ChatbotBoundary key={sessionKey} hidden={fullViews > 0 || error}>
-      <ChatbotFloatingButton isActive apiBaseUrl={apiBaseUrl} mode={user ? 'authenticated' : 'public'} userId={user?.id} userEmail={user?.email} userName={user?.name} onLogin={onLogin} hidden={fullViews > 0 || error} />
+    {active === true && <ChatbotBoundary key={apiBaseUrl} hidden={fullViews > 0 || error}>
+      <ChatbotFloatingButton isActive apiBaseUrl={apiBaseUrl} mode="public" hidden={fullViews > 0 || error} />
     </ChatbotBoundary>}
     {error && fullViews === 0 && <div className="fixed bottom-6 right-6 z-50 max-w-[calc(100vw-3rem)]"><AvailabilityMessage error retry={retry} /></div>}
   </ChatbotContext.Provider>;

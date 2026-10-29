@@ -1,9 +1,10 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RundValidationPanel } from './RundValidationPanel';
 import { RundDocumentManager } from './RundDocumentManager';
 import { apiClient } from '../../../../../shell/src/services/api';
+import { RUND_DATA_FIELDS } from '../../../../../../backend/academic-work-plan-service/src/pta/banco-docentes/rund-data-review';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn() } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => authContext }));
@@ -13,24 +14,39 @@ vi.mock('./RundDocumentManager', () => ({ RundDocumentManager: vi.fn(({ onChange
 let blocks: any[];
 let authContext: any;
 let profileBlocks: Record<string, any>;
+let fixtureDataReviews:Record<string,any>;
+const fixtureBlocks=()=>JSON.parse(JSON.stringify(blocks.map(block=>({...block,revisionDatos:Object.fromEntries(RUND_DATA_FIELDS[block.bloque].map(field=>{
+  const admitted=block.soportes.filter((support:any)=>field.types.includes(support.tipo_soporte)&&support.estado==='Aprobado');
+  const huella=JSON.stringify({campo:field.id,refs:admitted.map((support:any)=>support.documento_perfil_id||support.documento_carpeta_id)});
+  const saved=fixtureDataReviews[block.bloque+':'+field.id];
+  const supplied=(profileBlocks[block.bloque]?.campos||[]).some((item:any)=>item.campo===field.id&&item.valor);
+  return [field.id,{campo:field.id,huella,puedeValidar:true,requiereRevision:field.required||supplied||block.soportes.some((support:any)=>field.types.includes(support.tipo_soporte)),
+    estado:saved?.huella===huella?saved.estado:block.estado==='Aprobado'?'Aprobado':'Pendiente',observacion:saved?.huella===huella?saved.observacion:null}];
+}))}))));
 beforeEach(() => {
   authContext = { userRole: 'SUPER_ADMIN', isSuperUser: true, hasAnyPermission: () => true };
   vi.clearAllMocks();
   profileBlocks = {};
+  fixtureDataReviews={};
   blocks = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'].map(bloque => ({ bloque, version: 1, estado: 'Soporte faltante', soportes: [] }));
   blocks[0] = { bloque: 'IDENTIDAD', version: 1, estado: 'En revisión', soportes: [{ id: 'soporte-1', tipo_soporte: 'documento_identidad', documento_perfil_id: 'version-1', documento_carpeta_id: '/pta/documento-1', nombre_archivo: 'identidad.pdf', estado: 'Pendiente' }] };
   vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
-    if (url.includes('/bloques')) return JSON.parse(JSON.stringify(blocks));
+    if (url.includes('/bloques')) return fixtureBlocks();
     if (url.includes('/auditoria')) return [{ id: 'log-1', accion: 'CARGAR_DOCUMENTO', bloque: 'IDENTIDAD', actorId: '770e8400-e29b-41d4-a716-446655440001', actorNombre: 'Gestor Documental', createdAt: '2026-09-08T12:00:00Z', metadata: { version: 1, nombreArchivo: 'identidad.pdf' } }];
     return { docenteId: 'docente-1', idRund: 'RUND-PRUEBA', proteccion_datos: { acceso_completo: true }, bloques: profileBlocks };
   });
   vi.mocked(apiClient.post).mockImplementation(async (url: string, body: any) => {
     const block = blocks.find(b => url.includes(`/bloques/${b.bloque}/`));
-    if (url.endsWith('/revision')) {
+    if (url.includes('/datos/')&&url.endsWith('/revision')) {
+      const campo=url.split('/datos/')[1].split('/')[0];
+      fixtureDataReviews[block.bloque+':'+campo]={...body};
+      block.estado=body.estado==='Rechazado'?'Devuelto':'En revisión';block.version++;
+    } else if (url.endsWith('/revision')) {
       const support = block.soportes.find((s: any) => url.includes(`/soportes/${s.id}/`));
-      support.revisiones_campos = { ...support.revisiones_campos, [body.campo]: { estado: body.estado, observacion: body.observacion, documentoVersionId: body.documentoVersionId } };
+      const fields = body.alcance === 'documento' ? (block.bloque === 'IDENTIDAD' ? ['DOCUMENTO_IDENTIDAD','NOMBRE_COMPLETO','GENERO','SEXO_BIOLOGICO','FECHA_NACIMIENTO'] : support.tipo_soporte === 'contrato' ? ['ACTO_ADMINISTRATIVO','FECHAS_VINCULACION'] : support.tipo_soporte === 'acto_administrativo_dedicacion' ? ['DEDICACION','HORAS_PTA'] : [support.tipo_soporte]) : [body.campo];
+      support.revisiones_campos = { ...support.revisiones_campos, ...Object.fromEntries(fields.map(campo => [campo, { estado: body.estado, observacion: body.observacion, documentoVersionId: body.documentoVersionId }])) };
       const decisions = Object.values(support.revisiones_campos) as any[];
-      support.estado = decisions.some(d => d.estado === 'Rechazado') ? 'Rechazado' : decisions.length === (block.bloque === 'IDENTIDAD' ? 5 : 2) ? 'Aprobado' : 'Pendiente';
+      support.estado = decisions.some(d => d.estado === 'Rechazado') ? 'Rechazado' : decisions.length === fields.length ? 'Aprobado' : 'Pendiente';
       block.estado = body.estado === 'Rechazado' ? 'Devuelto' : 'En revisión';
       block.version++;
     } else if (url.endsWith('/aprobar')) {
@@ -75,17 +91,64 @@ it.each([
 });
 
 async function approveRemainingRows() {
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(4));
-  for (let remaining = 4; remaining > 0; remaining--) {
-    const button = screen.getAllByRole('button', { name: 'Validar soporte', exact: true })[0];
-    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(0));
+  await approveDataRows();
+}
+async function approveDataRows(){
+  for(let count=0;count<20;count++){
+    const button=screen.queryAllByRole('button',{name:'Validar dato',exact:true}).find(item=>!(item as HTMLButtonElement).disabled);
+    if(!button)return;
+    const before=screen.queryAllByRole('button',{name:'Validar dato',exact:true}).length;
     fireEvent.click(button);
-    await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(remaining - 1));
+    await waitFor(()=>expect(screen.queryAllByRole('button',{name:'Validar dato',exact:true}).length).toBeLessThan(before));
   }
 }
 
 
 describe('Revisión documental persistida en el panel RUND', () => {
+  it.each([['IDENTIDAD','Identidad'],['CONTACTO','Contacto'],['FORMACION','Formación Académica'],['VINCULACION','Vinculación'],['ACADEMICO','Académico'],['TRANSVERSAL','Transversal']])('permite revisar datos y aprobar %s sin adjuntar archivos',async(code,label)=>{
+    for(const block of blocks){block.soportes=[];block.estado='Soporte faltante';}
+    render(<RundValidationPanel docenteId="docente-1"/>);
+    await screen.findByText('RUND-PRUEBA');
+    if(code!=='IDENTIDAD')fireEvent.click(screen.getByRole('tab',{name:new RegExp(label)}));
+    await approveDataRows();
+    await waitFor(()=>expect((screen.getByRole('button',{name:'Aprobar bloque'}) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button',{name:'Aprobar bloque'}));
+    await screen.findByText('Espacio aprobado');
+    expect(blocks.find(block=>block.bloque===code).soportes).toEqual([]);
+    expect(vi.mocked(apiClient.post).mock.calls.some(([url])=>url.includes('/soportes/'))).toBe(false);
+    expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/bloques/'+code+'/aprobar'),expect.any(Object));
+  });
+  it('admitir la cédula no valida datos: cada fila se decide por separado antes del bloque',async()=>{
+    profileBlocks={IDENTIDAD:{campos:[{campo:'NOMBRE_COMPLETO',valor:'DOCENTE DE PRUEBA'}]}};
+    render(<RundValidationPanel docenteId="docente-1"/>);
+    fireEvent.click((await screen.findAllByRole('button',{name:'Validar soporte',exact:true}))[0]);
+    await waitFor(()=>expect(screen.queryByRole('button',{name:'Validar soporte',exact:true})).toBeNull());
+    expect((screen.getByRole('button',{name:'Aprobar bloque'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByRole('button',{name:'Validar dato',exact:true})).toHaveLength(5);
+    fireEvent.click(screen.getAllByRole('button',{name:'Validar dato',exact:true})[0]);
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/datos/DOCUMENTO_IDENTIDAD/revision'),expect.objectContaining({estado:'Aprobado',huella:expect.any(String)})));
+    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Validar dato',exact:true})).toHaveLength(4));
+    expect((screen.getByRole('button',{name:'Aprobar bloque'}) as HTMLButtonElement).disabled).toBe(true);
+    await approveDataRows();
+    expect((screen.getByRole('button',{name:'Aprobar bloque'}) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('devuelve un dato con motivo sin rechazar el documento admitido y conserva la decisión al consultar de nuevo',async()=>{
+    const support=blocks[0].soportes[0];support.estado='Aprobado';
+    support.revisiones_campos=Object.fromEntries(['DOCUMENTO_IDENTIDAD','NOMBRE_COMPLETO','GENERO','SEXO_BIOLOGICO','FECHA_NACIMIENTO'].map(id=>[id,{estado:'Aprobado',documentoVersionId:'version-1'}]));
+    const view=render(<RundValidationPanel docenteId="docente-1"/>);
+    const returns=await screen.findAllByRole('button',{name:'Devolver dato',exact:true});fireEvent.click(returns[1]);
+    expect((screen.getByRole('button',{name:'Confirmar devolución del dato'}) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Motivo y corrección del dato'),{target:{value:'El apellido registrado no coincide con la cédula.'}});
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar devolución del dato'}));
+    await screen.findByText('Dato devuelto');
+    expect(support.estado).toBe('Aprobado');
+    expect((screen.getByRole('button',{name:'Aprobar bloque'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(vi.mocked(apiClient.post).mock.calls.every(([url])=>url.includes('/datos/'))).toBe(true);
+    view.unmount();render(<RundValidationPanel docenteId="docente-1"/>);
+    await screen.findByText('Dato devuelto');
+    expect(screen.getAllByText('El apellido registrado no coincide con la cédula.').length).toBeGreaterThan(0);
+  });
   it.each(['carga', 'revision', 'incorporacion'])('autoriza el perfil %s con un solo permiso funcional', async profile => {
     authContext = { userRole: 'PERSONALIZADO', isSuperUser: false, hasAnyPermission: (codes: string[]) => codes.includes(`banco-docentes.rund.${profile}`) };
     render(<RundValidationPanel docenteId="docente-1" />);
@@ -96,6 +159,16 @@ describe('Revisión documental persistida en el panel RUND', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Vinculación/ }));
     expect(Boolean(screen.queryByRole('form', { name: 'Datos de contratación' }))).toBe(profile === 'incorporacion');
     expect(vi.mocked(RundDocumentManager).mock.calls.at(-1)![0].canManage).toBe(profile !== 'revision');
+    for (const tab of screen.getAllByRole('tab')) {
+      fireEvent.click(tab);
+      const vinculation = tab.textContent!.includes('Vinculaci');
+      expect(Boolean(screen.queryByRole('button', { name: 'Aprobar bloque' }))).toBe(profile === 'revision');
+      expect(Boolean(screen.queryByRole('button', { name: 'Devolver bloque' }))).toBe(profile === 'revision');
+      expect(Boolean(screen.queryByRole('form', { name: 'Datos de contratación' }))).toBe(profile === 'incorporacion' && vinculation);
+      const documentProps = vi.mocked(RundDocumentManager).mock.calls.at(-1)![0];
+      expect(documentProps.canManage).toBe(profile === 'carga' || profile === 'incorporacion' && vinculation);
+      if (profile === 'incorporacion') expect(documentProps.allowedSupportTypes).toEqual(['contrato','acto_administrativo_vinculacion']);
+    }
     expect(vi.mocked(apiClient.get).mock.calls.some(([url]) => url.includes('/auditoria'))).toBe(profile === 'revision');
   });
   it.each([
@@ -143,15 +216,16 @@ describe('Revisión documental persistida en el panel RUND', () => {
     expect(Boolean(screen.queryByRole('button', { name: 'Devolver bloque' }))).toBe(capability === 'APROBADOR');
     expect(vi.mocked(RundDocumentManager).mock.calls.at(-1)![0].canManage).toBe(capability === 'CARGADOR');
   });
-  it('mantiene deshabilitada la aprobación si un soporte revisado está vencido', async () => {
+  it('permite aprobar por decisión del revisor aunque el soporte esté vencido', async () => {
     const support = blocks[0].soportes[0];
     support.estado = 'Aprobado';
     support.fecha_vencimiento = '2000-01-01';
     support.revisiones_campos = Object.fromEntries(['DOCUMENTO_IDENTIDAD', 'NOMBRE_COMPLETO', 'GENERO', 'SEXO_BIOLOGICO', 'FECHA_NACIMIENTO'].map(campo => [campo, { estado: 'Aprobado', documentoVersionId: 'version-1' }]));
     render(<RundValidationPanel docenteId="docente-1" />);
-    await screen.findByText('Hay soportes vencidos. Cargue una versión vigente antes de aprobar.');
-    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(apiClient.post).not.toHaveBeenCalled();
+    await screen.findByText('RUND-PRUEBA');
+    await approveDataRows();
+    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(support.fecha_vencimiento).toBe('2000-01-01');
   });
 
   it('excluye Contacto del contador y resalta el perfil con las cinco secciones aprobadas', async () => {
@@ -262,7 +336,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
     const approve = (await screen.findAllByRole('button', { name: 'Validar soporte', exact: true }))[0];
     expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(approve);
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/soportes/soporte-1/revision'), expect.objectContaining({ estado: 'Aprobado', campo: 'DOCUMENTO_IDENTIDAD', documentoVersionId: 'version-1' })));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/soportes/soporte-1/revision'), expect.objectContaining({ estado: 'Aprobado', alcance: 'documento', documentoVersionId: 'version-1' })));
     await approveRemainingRows();
     await waitFor(() => expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
@@ -300,9 +374,11 @@ describe('Revisión documental persistida en el panel RUND', () => {
   it('expone archivo, actor y versión en la trazabilidad', async () => {
     render(<RundValidationPanel docenteId="docente-1" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Ver trazabilidad de revisiones y documentos' }));
-    expect(screen.getByText('identidad.pdf')).toBeTruthy();
-    expect(screen.getByText('Versión 1')).toBeTruthy();
-    expect(screen.getByText(/Gestor Documental/)).toBeTruthy();
+    // The checkpoint also lists the evidence file name; the audit trail is checked on its own region.
+    const audit = within(screen.getByRole('region', { name: 'Trazabilidad de revisiones y documentos' }));
+    expect(audit.getByText('identidad.pdf')).toBeTruthy();
+    expect(audit.getByText('Versión 1')).toBeTruthy();
+    expect(audit.getByText(/Gestor Documental/)).toBeTruthy();
     expect(document.body.textContent).not.toContain('770e8400-e29b-41d4-a716-446655440001');
   });
   it('recupera las aprobaciones del servidor al montar una pantalla nueva', async () => {
@@ -328,7 +404,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
           valor_previo: 'PERSONA ANTERIOR', pagina: 1, evidencia: 'NOMBRES PERSONA CORRECTA', estado: 'PENDIENTE', baja_confianza: false,
         }],
       }] };
-      if (url.includes('/bloques')) return JSON.parse(JSON.stringify(blocks));
+      if (url.includes('/bloques')) return fixtureBlocks();
       if (url.includes('/auditoria')) return [];
       return { docenteId: 'docente-1', idRund: 'RUND-PRUEBA', proteccion_datos: { acceso_completo: true }, bloques: profileBlocks };
     });
@@ -355,6 +431,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
       : originalGet(url, ...args));
     render(<RundValidationPanel docenteId="docente-1" />);
     await screen.findByText('RUND-PRUEBA');
+    await approveDataRows();
     await waitFor(() => expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
     await screen.findByText('Espacio aprobado');
@@ -373,6 +450,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
     });
     render(<RundValidationPanel docenteId="docente-1" />);
     await screen.findByText('No fue posible actualizar el análisis');
+    await approveDataRows();
     expect((screen.getByRole('button',{name:'Aprobar bloque'}) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole('button',{name:'Aprobar bloque'}));
     await screen.findByText('Espacio aprobado');
@@ -390,6 +468,40 @@ describe('Revisión documental persistida en el panel RUND', () => {
     spy.mockRestore();
   });
 
+  it.each(['Validar dato','Validar soporte'])('un guardado tardío de %s no sustituye el expediente del docente actual',async action=>{
+    const originalGet=vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async(url:string)=>{
+      if(url.includes('/tarjeta-rund')){
+        const old=url.includes('/docente-1/');
+        return {docenteId:old?'docente-1':'docente-2',idRund:old?'RUND-ANTERIOR':'RUND-ACTUAL',bloques:profileBlocks,proteccion_datos:{acceso_completo:true}};
+      }
+      return originalGet(url);
+    });
+    let complete!:(value:any)=>void;
+    vi.mocked(apiClient.post).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+    const view=render(<RundValidationPanel docenteId="docente-1"/>);
+    await screen.findByText('RUND-ANTERIOR');
+    fireEvent.click(screen.getAllByRole('button',{name:action,exact:true})[0]);
+    expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/docente-1/'),expect.any(Object));
+    view.rerender(<RundValidationPanel docenteId="docente-2"/>);
+    await screen.findByText('RUND-ACTUAL');
+    const previousReads=vi.mocked(apiClient.get).mock.calls.filter(([url])=>url.includes('/docente-1/')).length;
+    await act(async()=>{complete({success:true});});
+    expect(screen.queryByText('RUND-ANTERIOR')).toBeNull();
+    expect(screen.getByText('RUND-ACTUAL')).toBeTruthy();
+    expect(vi.mocked(apiClient.get).mock.calls.filter(([url])=>url.includes('/docente-1/')).length).toBe(previousReads);
+  });
+  it('no vuelve a consultar un expediente cerrado cuando termina un guardado pendiente',async()=>{
+    let complete!:(value:any)=>void;
+    vi.mocked(apiClient.post).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+    const view=render(<RundValidationPanel docenteId="docente-1"/>);
+    await screen.findByText('RUND-PRUEBA');
+    fireEvent.click(screen.getAllByRole('button',{name:'Validar dato',exact:true})[0]);
+    view.unmount();
+    vi.mocked(apiClient.get).mockClear();
+    await act(async()=>{complete({success:true});});
+    expect(apiClient.get).not.toHaveBeenCalled();
+  });
   it('descarta respuestas tardías de otro docente al cambiar de expediente', async () => {
     const pending: Array<() => void> = [];
     vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
@@ -410,36 +522,148 @@ describe('Revisión documental persistida en el panel RUND', () => {
 });
 
 
-describe('Independencia de filas que comparten un documento', () => {
-  it.each([
-    ['IDENTIDAD', 'documento_identidad', 'NOMBRE_COMPLETO', 5],
-    ['VINCULACION', 'contrato', 'FECHAS_VINCULACION', 2],
-    ['VINCULACION', 'acto_administrativo_dedicacion', 'HORAS_PTA', 2],
-  ])('aprobar y devolver solo afecta la fila elegida: %s / %s', async (blockName, type, secondField, count) => {
-    const block = blocks.find(b => b.bloque === blockName);
-    block.soportes = [{ id: 'shared', tipo_soporte: type, estado: 'Pendiente', documento_perfil_id: 'v1', documento_carpeta_id: '/file' }];
-    const view = render(<RundValidationPanel docenteId="docente-1" />);
-    await screen.findByText('RUND-PRUEBA');
-    if (blockName !== 'IDENTIDAD') fireEvent.click(screen.getByText('Vinculaci\u00f3n'));
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Validar soporte', exact: true }))[1]);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(Number(count) - 1));
-    expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/shared/revision'), expect.objectContaining({ campo: secondField }));
-    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Devolver soporte', exact: true })[0]);
-    fireEvent.change(screen.getByLabelText('Motivo y correcci\u00f3n requerida'), { target: { value: 'Corregir solo esta fila.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar devoluci\u00f3n' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(await screen.findAllByText('Corregir solo esta fila.')).toHaveLength(1);
-    expect(Object.values(block.soportes[0].revisiones_campos).map((d: any) => d.estado).sort()).toEqual(['Aprobado', 'Rechazado']);
-    view.unmount();
-    render(<RundValidationPanel docenteId="docente-1" />);
-    await screen.findByText('RUND-PRUEBA');
-    if (blockName !== 'IDENTIDAD') fireEvent.click(screen.getByText('Vinculaci\u00f3n'));
-    expect(await screen.findByText('Corregir solo esta fila.')).toBeTruthy();
-    expect(screen.queryAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(Number(count) - 2);
+describe('Revisión centralizada de documentos compartidos', () => {
+  it.each([['IDENTIDAD','Identidad','documento_identidad',5],['VINCULACION','Vinculación','contrato',2],['VINCULACION','Vinculación','acto_administrativo_dedicacion',2]])('una decisión revisa todos los datos acreditados por %s / %s', async (code,label,type,count) => {
+    const block=blocks.find(b=>b.bloque===code);
+    block.soportes=[{id:'shared',tipo_soporte:type,estado:'Pendiente',documento_perfil_id:'v1',documento_carpeta_id:'/file'}];
+    render(<RundValidationPanel docenteId="docente-1"/>);await screen.findByText('RUND-PRUEBA');
+    if(code!=='IDENTIDAD')fireEvent.click(screen.getByRole('tab',{name:new RegExp(String(label))}));
+    const review=screen.getAllByRole('button',{name:'Validar soporte',exact:true});expect(review).toHaveLength(1);
+    fireEvent.click(review[0]);
+    await waitFor(()=>expect(screen.queryAllByRole('button',{name:'Validar soporte',exact:true})).toHaveLength(0));
+    expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/shared/revision'),expect.objectContaining({alcance:'documento',documentoVersionId:'v1',blockVersion:1}));
+    expect(Object.values(block.soportes[0].revisiones_campos)).toHaveLength(Number(count));
+    expect(Object.values(block.soportes[0].revisiones_campos).every((decision:any)=>decision.estado==='Aprobado')).toBe(true);
+    expect(screen.getByRole('region',{name:'Selección y revisión de soportes'})).toBeTruthy();
   });
 });
 
+describe('Varias evidencias por punto de control', () => {
+  const evidence = (id: string, version: string, createdAt: string, extra: any = {}) => ({
+    id, tipo_soporte: 'autorizacion_habeas_data', bloque: 'TRANSVERSAL', documento_perfil_id: version, documento_carpeta_id: `/pta/${version}`,
+    estado_documento: 'ACTIVO', nombre_archivo: `${id}.pdf`, estado: 'Pendiente', createdAt, ...extra,
+  });
+  const openTransversal = async () => {
+    render(<RundValidationPanel docenteId="docente-1" />);
+    await screen.findByText('RUND-PRUEBA');
+    fireEvent.click(screen.getByRole('tab', { name: /Transversal/ }));
+  };
+  beforeEach(() => {
+    const block = blocks.find(b => b.bloque === 'TRANSVERSAL');
+    block.estado = 'En revisión';
+    // Listed newest first by the server; the panel numbers them by upload order.
+    block.soportes = [evidence('segunda', 'v2', '2026-10-02T10:00:00Z'), evidence('primera', 'v1', '2026-10-01T10:00:00Z')];
+  });
+
+  it('numera las evidencias por orden de carga y revisa cada una por separado', async () => {
+    await openTransversal();
+    const list = within(screen.getByRole('list', { name: 'Evidencias de Autorización de tratamiento de datos' }));
+    const items = list.getAllByRole('listitem');
+    expect(items.map(item => item.textContent)).toEqual([expect.stringContaining('Evidencia 1'), expect.stringContaining('Evidencia 2')]);
+    expect(items[0].textContent).toContain('primera.pdf');
+    expect(screen.getByText('2 soportes vigentes · una decisión por archivo')).toBeTruthy();
+    expect(screen.getByText('Pendiente de validar el dato')).toBeTruthy();
+    fireEvent.click(within(items[1]).getByRole('button', { name: 'Validar soporte' }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/TRANSVERSAL/soportes/segunda/revision'),
+      expect.objectContaining({ estado: 'Aprobado', alcance: 'documento', documentoVersionId: 'v2' })));
+  });
+
+  it('aprueba el bloque con la evidencia admitida aunque otra del mismo punto haya sido devuelta', async () => {
+    await openTransversal();
+    const approve = screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    let items = within(screen.getByRole('list', { name: /Evidencias de/ })).getAllByRole('listitem');
+    fireEvent.click(within(items[0]).getByRole('button', { name: 'Devolver soporte' }));
+    expect(screen.getByRole('dialog', { name: 'Devolver soporte' }).textContent).toContain('Evidencia 1 de 2');
+    fireEvent.change(screen.getByLabelText('Motivo y corrección requerida'), { target: { value: 'El formato no está firmado.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(await screen.findByText('El formato no está firmado.')).toBeTruthy();
+    items = within(screen.getByRole('list', { name: /Evidencias de/ })).getAllByRole('listitem');
+    fireEvent.click(within(items[1]).getByRole('button', { name: 'Validar soporte' }));
+    await waitFor(()=>expect(screen.queryAllByRole('button',{name:'Validar soporte',exact:true})).toHaveLength(0));
+    await approveDataRows();
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.getByText(/1 admitido de 2 soportes/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/TRANSVERSAL/aprobar'), expect.any(Object)));
+  });
+
+  it('permite aprobar los datos por criterio del revisor aunque todas sus evidencias estén devueltas', async () => {
+    const block = blocks.find(b => b.bloque === 'TRANSVERSAL');
+    block.soportes = block.soportes.map((support: any) => ({ ...support, estado: 'Rechazado', revisiones_campos: {
+      autorizacion_habeas_data: { estado: 'Rechazado', observacion: 'No corresponde.', documentoVersionId: support.documento_perfil_id } } }));
+    await openTransversal();
+    await approveDataRows();
+    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(block.soportes.every((support:any)=>support.estado==='Rechazado')).toBe(true);
+  });
+
+  it('agrega otra evidencia o reemplaza exactamente la elegida', async () => {
+    vi.mocked(apiClient.upload).mockResolvedValue({ id: 'nuevo' });
+    await openTransversal();
+    const pdf = () => new File(['%PDF-1.7'], 'nueva.pdf', { type: 'application/pdf' });
+    // Real buttons (keyboard operable) open the hidden picker.
+    const addButton = screen.getByRole('button', { name: 'Agregar otra evidencia' });
+    const addInput = screen.getByLabelText('Archivo de otra evidencia para Autorización de tratamiento de datos') as HTMLInputElement;
+    const picker = vi.spyOn(addInput, 'click').mockImplementation(() => {});
+    fireEvent.click(addButton);
+    expect(picker).toHaveBeenCalledTimes(1);
+    fireEvent.change(addInput, { target: { files: [pdf()] } });
+    await waitFor(() => expect(apiClient.upload).toHaveBeenCalledTimes(1));
+    const added = vi.mocked(apiClient.upload).mock.calls[0][1] as FormData;
+    expect(added.get('modo')).toBe('agregar');
+    expect(added.get('documentoId')).toBeNull();
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Reemplazar evidencia 2' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText('Archivo para reemplazar la evidencia 2'), { target: { files: [pdf()] } });
+    await waitFor(() => expect(apiClient.upload).toHaveBeenCalledTimes(2));
+    const replaced = vi.mocked(apiClient.upload).mock.calls[1][1] as FormData;
+    expect(replaced.get('documentoId')).toBe('v2');
+    expect(replaced.get('modo')).toBeNull();
+  });
+});
+
+describe('Evidencias de identidad y soportes históricos', () => {
+  it('reemplaza una evidencia de pasaporte del punto de identidad enviando su documento', async () => {
+    vi.mocked(apiClient.upload).mockResolvedValue({ id: 'nuevo' });
+    profileBlocks = { IDENTIDAD: { campos: [{ campo: 'NOMBRE_COMPLETO', valor: 'PERSONA DE PRUEBA' }] } };
+    blocks[0].soportes = [{ id: 'pasaporte-1', tipo_soporte: 'pasaporte', documento_perfil_id: 'v-pa', documento_carpeta_id: '/pa', estado_documento: 'ACTIVO', estado: 'Pendiente', nombre_archivo: 'pasaporte.pdf' }];
+    render(<RundValidationPanel docenteId="docente-1" />);
+    await screen.findAllByText('pasaporte.pdf');
+    fireEvent.change(screen.getByLabelText('Archivo para reemplazar el documento'), { target: { files: [new File(['%PDF-1.7'], 'nuevo.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(apiClient.upload).toHaveBeenCalled());
+    const form = vi.mocked(apiClient.upload).mock.calls[0][1] as FormData;
+    expect(form.get('documentoId')).toBe('v-pa');
+    expect(form.get('tipoSoporte')).toBe('documento_identidad');
+  });
+
+  it('reemplaza un soporte histórico sin versión documental indicando su fila de revisión', async () => {
+    vi.mocked(apiClient.upload).mockResolvedValue({ id: 'nuevo' });
+    profileBlocks = { IDENTIDAD: { campos: [{ campo: 'NOMBRE_COMPLETO', valor: 'PERSONA DE PRUEBA' }] } };
+    blocks[0].soportes = [{ id: 'historico-1', tipo_soporte: 'documento_identidad', documento_perfil_id: null, documento_carpeta_id: '/pta/uploads/cedula.pdf', estado: 'Pendiente', nombre_archivo: 'cedula.pdf' }];
+    render(<RundValidationPanel docenteId="docente-1" />);
+    await screen.findAllByText('cedula.pdf');
+    fireEvent.change(screen.getByLabelText('Archivo para reemplazar el documento'), { target: { files: [new File(['%PDF-1.7'], 'nuevo.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(apiClient.upload).toHaveBeenCalled());
+    const form = vi.mocked(apiClient.upload).mock.calls[0][1] as FormData;
+    expect(form.get('soporteHistoricoId')).toBe('historico-1');
+    expect(form.get('modo')).toBeNull();
+    expect(form.get('documentoId')).toBeNull();
+  });
+
+  it('el botón Subir de un punto vacío se puede usar con teclado', async () => {
+    blocks[0].soportes = [];
+    profileBlocks = { IDENTIDAD: { campos: [{ campo: 'NOMBRE_COMPLETO', valor: 'PERSONA DE PRUEBA' }] } };
+    render(<RundValidationPanel docenteId="docente-1" />);
+    const upload = await screen.findByRole('button', { name: 'Adjuntar soporte' });
+    const input = screen.getByLabelText('Archivo de soporte para Nombre completo') as HTMLInputElement;
+    const picker = vi.spyOn(input, 'click').mockImplementation(() => {});
+    upload.focus();
+    expect(document.activeElement).toBe(upload);
+    fireEvent.click(upload);
+    expect(picker).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('Carga por fila con datos', () => {
   it('no ofrece carga ni reemplazo sin datos, pero conserva la consulta del soporte', async () => {

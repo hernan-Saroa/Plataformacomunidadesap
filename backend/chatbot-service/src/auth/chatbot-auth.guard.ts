@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Request } from 'express';
@@ -35,10 +35,12 @@ export class ChatbotAuthGuard implements CanActivate {
 
     if (!token) throw new UnauthorizedException('Inicia sesión para consultar tus conversaciones.');
 
+    const secret = process.env.JWT_SECRET;
+    // La configuración ausente es un fallo del servicio, no una sesión vencida.
+    if (!secret?.trim()) throw new ServiceUnavailableException('El servicio del chatbot no está disponible temporalmente.');
+
     let userId: string;
     try {
-      const secret = process.env.JWT_SECRET;
-      if (!secret) throw new Error('Missing JWT configuration');
       const payload = await this.jwt.verifyAsync<{ sub: string }>(token, {
         secret,
         algorithms: ['HS256'],

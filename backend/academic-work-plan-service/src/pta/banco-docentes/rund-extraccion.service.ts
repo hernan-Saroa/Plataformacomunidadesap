@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, OnModuleDes
 import { DataSource } from 'typeorm';
 import { createHash, randomUUID } from 'crypto';
 import { RundDocumentStorageService } from './rund-document-storage.service';
-import { comparable, confirmExtractionSuggestions, extractionComparisonValue, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
+import { comparable, confirmExtractionSuggestions, extractionComparisonValue, extractionFieldInScope, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { postLocalJson } from './rund-local-http';
 import { invalidateEditedEvidence, lockEvidenceProfile } from './rund-evidence-workflow';
@@ -85,13 +85,135 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
         FROM academic_work_plan."RundExtraccionSugerencia" s WHERE s.trabajo_id = j.id), '[]'::jsonb) AS sugerencias
       FROM academic_work_plan."RundExtraccionTrabajo" j JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
       WHERE j.docente_id::text = $1 ORDER BY j.creado_en DESC LIMIT 100`, [docenteId]);
-    const documents = await this.db.query(`SELECT d.id, d.nombre_archivo, d.bloque, d.tipo_soporte, d.categoria_codigo FROM academic_work_plan."RundDocumentoPerfil" d
+    const documents = await this.db.query(`SELECT d.id, d.nombre_archivo, d.bloque, d.tipo_soporte, d.categoria_codigo, d.version, d."createdAt" AS creado_en,
+      EXISTS (SELECT 1 FROM academic_work_plan."RundExtraccionTrabajo" previous WHERE previous.documento_id=d.id) AS analizado_previamente
+      FROM academic_work_plan."RundDocumentoPerfil" d
       WHERE d.docente_id::text = $1 AND d.estado = 'ACTIVO' AND NOT EXISTS
       (SELECT 1 FROM academic_work_plan."RundExtraccionTrabajo" j WHERE j.documento_id = d.id AND
-        (j.estado IN ('PENDIENTE','PROCESANDO','ERROR') OR EXISTS (SELECT 1 FROM academic_work_plan."RundExtraccionSugerencia" s WHERE s.trabajo_id=j.id AND s.estado='PENDIENTE')))
+        j.estado IN ('PENDIENTE','PROCESANDO'))
       ORDER BY d."createdAt" DESC`, [docenteId]);
-    return { enabled: true, jobs: jobs.map((j: any) => ({ ...j, sugerencias: j.sugerencias.map((s: any) => ({ ...s, label: EXTRACTION_FIELDS[s.campo]?.label || s.campo })) })),
+    // With several evidences, another document (or an edit) may already have changed the row.
+    const hasPending = jobs.some((j: any) => j.sugerencias.some((s: any) => s.estado === 'PENDIENTE'));
+    const profile = hasPending ? await extractionProfile(this.db, docenteId) : {};
+    const queue = jobs.filter((j: any) => j.estado === 'PENDIENTE')
+      .sort((a: any, b: any) => new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime() || String(a.id).localeCompare(String(b.id)));
+    return { enabled: true, automatico: process.env.RUND_EXTRACCION_AUTOMATICA === 'true', jobs: jobs.map((j: any) => ({ ...j,
+      posicion_cola: j.estado === 'PENDIENTE' ? queue.indexOf(j) + 1 : null,
+      sugerencias: j.sugerencias.map((s: any) => ({ ...s, label: EXTRACTION_FIELDS[s.campo]?.label || s.campo,
+        desactualizada: s.estado === 'PENDIENTE' && comparable((profile as any)[s.campo]) !== comparable(s.valor_previo),
+        // The source document does not accredit this row (older analyses of general attachments).
+        fuera_de_alcance: s.estado === 'PENDIENTE' && !extractionFieldInScope(j, s.campo) })) })),
       documents: documents.filter((d: any) => extractionFieldsForDocument(d).length) };
+  }
+
+  /** Queues the selected current evidences in the order chosen by the reviewer. */
+  async enqueueBatch(docenteId: string, documentIds: unknown, actor: RundAccessActor) {
+    if (!this.enabled) throw new ServiceUnavailableException('La extracción experimental no está habilitada.');
+    const ids = this.orderedIds(documentIds, 'documentos');
+    await recordRundAccess(this.db, { ...actor, endpoint: 'RUND_EXTRACCION_SOLICITAR_LOTE', resourceId: ids[0], docenteIds: [docenteId], fields: ['DOCUMENTO_IDENTIDAD'] });
+    return this.db.transaction(async manager => {
+      await lockEvidenceProfile(manager, docenteId);
+      const rows = await manager.query(`SELECT * FROM academic_work_plan."RundDocumentoPerfil"
+        WHERE id::text = ANY($1::text[]) AND docente_id::text = $2 FOR UPDATE`, [ids, docenteId]);
+      const documents = ids.map(id => rows.find((d: any) => String(d.id) === id));
+      if (documents.some((d: any) => !d || d.estado !== 'ACTIVO' || !extractionFieldsForDocument(d).length)) {
+        throw new ConflictException('Uno de los documentos fue reemplazado, retirado o no admite extracción. Actualice el expediente.');
+      }
+      const [busy] = await manager.query(`SELECT d.nombre_archivo FROM academic_work_plan."RundExtraccionTrabajo" j
+        JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
+        WHERE j.documento_id::text = ANY($1::text[]) AND (j.estado IN ('PENDIENTE','PROCESANDO')
+          OR EXISTS (SELECT 1 FROM academic_work_plan."RundExtraccionSugerencia" s WHERE s.trabajo_id = j.id AND s.estado = 'PENDIENTE')) LIMIT 1`, [ids]);
+      if (busy) throw new ConflictException(`"${busy.nombre_archivo}" ya está en análisis o tiene sugerencias por revisar. Actualice la selección.`);
+      // Same transaction timestamp plus the selected position keeps the requested order in the shared queue.
+      await manager.query(`INSERT INTO academic_work_plan."RundExtraccionTrabajo" (documento_id, docente_id, creado_por, creado_en)
+        SELECT o.id::uuid, $2::uuid, $3, now() + make_interval(secs => (o.posicion - 1)::double precision / 1000)
+        FROM unnest($1::text[]) WITH ORDINALITY AS o(id, posicion) ON CONFLICT DO NOTHING`, [ids, docenteId, actor.actorId]);
+      await this.extractionAudit(manager, docenteId, 'SOLICITAR_EXTRACCION_OCR', actor,
+        { orden: documents.map((d: any, index: number) => ({ posicion: index + 1, documentoId: d.id, nombreArchivo: d.nombre_archivo, tipoSoporte: d.tipo_soporte })) });
+      return { queued: ids.length };
+    });
+  }
+
+  /** Explicit new analysis: archive pending proposals, preserve confirmed data and document approvals. */
+  async reprocess(docenteId: string, documentIds: unknown, actor: RundAccessActor) {
+    if (!this.enabled) throw new ServiceUnavailableException('La extracción experimental no está habilitada.');
+    const ids = this.orderedIds(documentIds, 'documentos');
+    return this.db.transaction(async manager => {
+      await lockEvidenceProfile(manager, docenteId);
+      const rows = await manager.query(`SELECT * FROM academic_work_plan."RundDocumentoPerfil"
+        WHERE id::text = ANY($1::text[]) AND docente_id::text = $2 FOR UPDATE`, [ids, docenteId]);
+      const documents = ids.map(id => rows.find((document: any) => String(document.id) === id));
+      if (documents.some((document: any) => !document || document.estado !== 'ACTIVO' || !extractionFieldsForDocument(document).length)) {
+        throw new ConflictException('Uno de los documentos fue reemplazado, retirado o no admite extracción. Actualice el expediente.');
+      }
+      const jobs = await manager.query(`SELECT id, estado, documento_id FROM academic_work_plan."RundExtraccionTrabajo"
+        WHERE documento_id::text = ANY($1::text[]) AND docente_id::text = $2 FOR UPDATE`, [ids, docenteId]);
+      if (jobs.some((job: any) => ['PENDIENTE','PROCESANDO'].includes(job.estado))) {
+        throw new ConflictException('Uno de los documentos ya está en cola o en procesamiento. Espere a que termine antes de volver a procesarlo.');
+      }
+      const archived = await manager.query(`WITH sustituidas AS (
+        UPDATE academic_work_plan."RundExtraccionSugerencia" s
+        SET estado='DESCARTADA', revisado_por=$3, revisado_en=now(), motivo='Sustituida por una nueva solicitud de análisis OCR.'
+        FROM academic_work_plan."RundExtraccionTrabajo" j
+        WHERE s.trabajo_id=j.id AND j.documento_id::text = ANY($1::text[]) AND j.docente_id::text=$2 AND s.estado='PENDIENTE'
+        RETURNING s.id) SELECT * FROM sustituidas`, [ids, docenteId, actor.actorId]);
+      const queued = await manager.query(`INSERT INTO academic_work_plan."RundExtraccionTrabajo" (documento_id, docente_id, creado_por, creado_en)
+        SELECT o.id::uuid, $2::uuid, $3, now() + make_interval(secs => (o.posicion - 1)::double precision / 1000)
+        FROM unnest($1::text[]) WITH ORDINALITY AS o(id, posicion) ON CONFLICT DO NOTHING RETURNING id`, [ids, docenteId, actor.actorId]);
+      if (queued.length !== ids.length) throw new ConflictException('La cola cambió mientras solicitabas el análisis. Actualice el expediente.');
+      await recordRundAccess(manager, { ...actor, endpoint:'RUND_EXTRACCION_REPROCESAR', resourceId:ids[0], docenteIds:[docenteId], fields:['DOCUMENTO_IDENTIDAD'] });
+      await this.extractionAudit(manager, docenteId, 'REPROCESAR_EXTRACCION_OCR', actor, {
+        orden: documents.map((document: any,index: number) => ({posicion:index+1,documentoId:document.id,nombreArchivo:document.nombre_archivo,tipoSoporte:document.tipo_soporte})),
+        trabajosAnteriores:jobs.map((job: any) => job.id), sugerenciasSustituidas:archived.map((suggestion: any) => suggestion.id),
+      });
+      return {queued:ids.length,reprocessed:true};
+    });
+  }
+
+  /** Reorders this profile's waiting jobs, keeping the slots they already had in the shared queue. */
+  async reorderQueue(docenteId: string, jobIds: unknown, actor: RundAccessActor) {
+    if (!this.enabled) throw new ServiceUnavailableException('La extracción experimental no está habilitada.');
+    const ids = this.orderedIds(jobIds, 'trabajos', 100);
+    return this.db.transaction(async manager => {
+      await lockEvidenceProfile(manager, docenteId);
+      const rows = await manager.query(`SELECT j.id, j.estado, j.creado_en, d.nombre_archivo FROM academic_work_plan."RundExtraccionTrabajo" j
+        JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
+        WHERE j.id::text = ANY($1::text[]) AND j.docente_id::text = $2 FOR UPDATE OF j`, [ids, docenteId]);
+      const jobs = ids.map(id => rows.find((j: any) => String(j.id) === id));
+      if (jobs.some((j: any) => !j || j.estado !== 'PENDIENTE')) {
+        throw new ConflictException('Uno de los análisis ya comenzó o terminó. Actualice la cola antes de ordenarla.');
+      }
+      // The jobs swap the queue slots they already held, so other profiles keep their turn.
+      // One microsecond per position only breaks ties between slots created in the same instant.
+      await manager.query(`WITH turnos AS (
+          SELECT creado_en, row_number() OVER (ORDER BY creado_en, id) AS posicion
+          FROM academic_work_plan."RundExtraccionTrabajo" WHERE id::text = ANY($1::text[])
+        ), orden AS (SELECT o.id, o.posicion FROM unnest($1::text[]) WITH ORDINALITY AS o(id, posicion))
+        UPDATE academic_work_plan."RundExtraccionTrabajo" j
+        SET creado_en = turnos.creado_en + make_interval(secs => (turnos.posicion - 1)::double precision / 1000000), actualizado_en = now()
+        FROM orden JOIN turnos ON turnos.posicion = orden.posicion
+        WHERE j.id::text = orden.id AND j.docente_id::text = $2 AND j.estado = 'PENDIENTE'`, [ids, docenteId]);
+      await recordRundAccess(manager, { ...actor, endpoint: 'RUND_EXTRACCION_REORDENAR', resourceId: ids[0], docenteIds: [docenteId], fields: ['DOCUMENTO_IDENTIDAD'] });
+      await this.extractionAudit(manager, docenteId, 'REORDENAR_EXTRACCION_OCR', actor,
+        { orden: jobs.map((j: any, index: number) => ({ posicion: index + 1, trabajoId: j.id, nombreArchivo: j.nombre_archivo })) });
+      return { reordered: ids.length };
+    });
+  }
+
+  private orderedIds(value: unknown, label: string, maximum = 20): string[] {
+    const ids = Array.isArray(value) ? value.map(item => String(item || '').trim()) : [];
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!ids.length || ids.length > maximum || new Set(ids).size !== ids.length || ids.some(id => !uuid.test(id))) {
+      throw new BadRequestException(`Seleccione entre 1 y ${maximum} ${label} distintos, en el orden deseado.`);
+    }
+    return ids;
+  }
+
+  private async extractionAudit(manager: any, docenteId: string, action: string, actor: RundAccessActor, metadata: any) {
+    await manager.query(`INSERT INTO academic_work_plan."RundAprobacionLog"
+      (id,docente_id,bloque,accion,actor_id,canal_origen,ip,metadata,"createdAt")
+      VALUES($1,$2,'DOCUMENTAL',$3,$4,'OCR_LOCAL',$5,$6::jsonb,NOW())`,
+    [randomUUID(), docenteId, action, actor.actorId, actor.ip || null, JSON.stringify(metadata)]);
   }
 
   async enqueue(docenteId: string, documentId: string, actor: RundAccessActor) {
@@ -250,10 +372,10 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     this.busy = true;
     let job: any;
     try {
-      // Marca persistente: reiniciar el servicio no pierde las cargas pendientes.
-      // Los documentos anteriores requieren solicitud explícita desde la interfaz.
+      // La marca se conserva para el modo automático optativo. Por defecto las
+      // nuevas cargas requieren selección explícita; los trabajos existentes continúan.
       await this.db.query(`INSERT INTO academic_work_plan."RundExtraccionInicio" (id) VALUES(TRUE) ON CONFLICT DO NOTHING`);
-      await this.db.query(`INSERT INTO academic_work_plan."RundExtraccionTrabajo" (documento_id,docente_id,creado_por)
+      if (process.env.RUND_EXTRACCION_AUTOMATICA === 'true') await this.db.query(`INSERT INTO academic_work_plan."RundExtraccionTrabajo" (documento_id,docente_id,creado_por)
         SELECT d.id,d.docente_id,d.creado_por FROM academic_work_plan."RundDocumentoPerfil" d
         WHERE d.estado='ACTIVO' AND d.categoria_codigo<>'AUTORIZACIONES'
           AND d."createdAt">=(SELECT desde FROM academic_work_plan."RundExtraccionInicio" WHERE id=TRUE)

@@ -20,8 +20,7 @@ import { RundExtractionNotificationDetail } from './RundExtractionNotificationDe
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { hasRundPermission } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
-import { RundPhotoBulkUpload, RundPhotoInbox } from './RundPhotoPanel';
-import { PHOTO_MANAGE, PHOTO_VALIDATE, PublishedAvatar } from '../../../../../shared/profile-photos';
+import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import './BancoDocentesStatistics.css';
 import { RundDeleteModal } from './RundDeleteModal';
 import type { RundDeletionSelection } from '../../../services/api/ptaApi';
@@ -130,7 +129,7 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones' | 'trazabilidad' | 'fotos';
+type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones' | 'trazabilidad';
 
 export function BancoDocentesPTA() {
   const auth = useAuth();
@@ -557,7 +556,6 @@ export function BancoDocentesPTA() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', overflowY: 'hidden' }}>
-          {(hasPermission(PHOTO_VALIDATE) || hasPermission(PHOTO_MANAGE)) && <button style={TAB_STYLES(tab === 'fotos')} onClick={() => setTab('fotos')}><Users size={14} /> Fotos de perfil</button>}
           <button style={TAB_STYLES(tab === 'listado')} onClick={() => setTab('listado')}>
             <Users size={14} /> Listado de Docentes
           </button>
@@ -1440,11 +1438,6 @@ export function BancoDocentesPTA() {
         <RundRegistrationHistory key={filterPeriodo || 'todos'} periodoCarga={filterPeriodo || undefined}
           canDownloadOriginal={hasPermission('banco-docentes.rund.import') || hasPermission('banco-docentes.rund.manage')} />
       )}
-
-      {tab === 'fotos' && <div style={{ padding: '20px 24px', minWidth: 0 }}>
-        {hasPermission(PHOTO_VALIDATE) && <RundPhotoInbox />}
-        {hasPermission(PHOTO_MANAGE) && <RundPhotoBulkUpload />}
-      </div>}
 
       {tab === 'invitaciones' && (
         <div style={{ padding: '20px 24px' }}>

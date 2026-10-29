@@ -531,7 +531,8 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: chatbot
 
-      JWT_SECRET: esap_jwt_secret_dev_2024
+      # JWT_SECRET proviene de env_file, igual que en auth-service y api-gateway.
+      # Los tres archivos deben configurar el mismo valor.
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
       - "3015:3015"

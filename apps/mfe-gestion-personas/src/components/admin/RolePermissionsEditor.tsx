@@ -1078,13 +1078,26 @@ export function RolePermissionsEditor({
   };
 
   // Filter modules
-  const filteredModules = permissionModules.filter(module =>
+  const matchingModules = permissionModules.filter(module =>
     module.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     module.permissions.some(p => 
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.description.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
+
+  // Keep the related modules together for display, without changing the catalog or selections.
+  const academicModuleOrder = (module: PermissionModuleWithCodes) => {
+    if (module.permissions.some(permission => GRADUATES_PERMISSION_CODES.includes(getPermissionCode(permission)))) return 0;
+    if (module.permissions.some(permission => TITLE_VERIFICATION_PERMISSION_CODES.includes(getPermissionCode(permission)))) return 1;
+    return 2;
+  };
+  const firstAcademicIndex = matchingModules.findIndex(module => academicModuleOrder(module) < 2);
+  const academicModules = matchingModules
+    .filter(module => academicModuleOrder(module) < 2)
+    .sort((a, b) => academicModuleOrder(a) - academicModuleOrder(b));
+  const filteredModules = matchingModules.filter(module => academicModuleOrder(module) === 2);
+  if (firstAcademicIndex >= 0) filteredModules.splice(firstAcademicIndex, 0, ...academicModules);
 
   const totalPermissions = permissionModules.reduce((acc, m) => acc + m.permissions.length, 0);
   const selectedCount = selectedPermissions.size;

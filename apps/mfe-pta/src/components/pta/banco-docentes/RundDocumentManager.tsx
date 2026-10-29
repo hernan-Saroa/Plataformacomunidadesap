@@ -22,6 +22,7 @@ import { apiClient } from '../../../../../shell/src/services/api';
 import type { RundEvidenceOption } from '../../../utils/rundEvidenceData';
 import { rundActorName } from '../../../utils/rundActorName';
 import { RUND_BLOCK_LABELS, rundDocumentBlock } from '../../../utils/rundDocumentScope';
+import { RUND_MAX_EVIDENCES_PER_TYPE, rundEvidenceGroup } from '../../../utils/rundEvidenceRules';
 
 type Category = {
   codigo: string;
@@ -47,6 +48,8 @@ export type RundProfileDocument = {
   creadoPor?: string;
   creadoPorNombre?: string;
   creadoEn?: string;
+  /** When the evidence joined its checkpoint; kept across replacements. */
+  soporteCreadoEn?: string | null;
   contenidoUrl: string | null;
   contenidoRestringido?: boolean;
   soporteGestion?: boolean;
@@ -138,7 +141,13 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
   const uploadCategory = uploadMode === 'support' && selectedEvidence
     ? evidenceCategory(selectedEvidence.block, selectedEvidence.type) : category;
   const selectedCategory = categories.find(item => item.codigo === uploadCategory);
-  const uploadReady = canManage && !!selectedCategory && (uploadMode === 'attachment' ? !allowedSupportTypes : !!selectedEvidence);
+  // A checkpoint can hold several current evidences; numbering follows the order they were added.
+  const checkpointEvidences = (type?: string) => documents
+    .filter(document => document.estado === 'ACTIVO' && !!document.tipoSoporte && rundEvidenceGroup(type).includes(document.tipoSoporte))
+    .sort((a, b) => new Date(a.soporteCreadoEn || a.creadoEn || 0).getTime() - new Date(b.soporteCreadoEn || b.creadoEn || 0).getTime() || a.id.localeCompare(b.id));
+  const selectedEvidenceCount = uploadMode === 'support' && selectedEvidence ? checkpointEvidences(selectedEvidence.type).length : 0;
+  const evidenceLimitReached = selectedEvidenceCount >= RUND_MAX_EVIDENCES_PER_TYPE;
+  const uploadReady = canManage && !!selectedCategory && (uploadMode === 'attachment' ? !allowedSupportTypes : !!selectedEvidence && !evidenceLimitReached);
   const canManageDocument = (document: RundProfileDocument) => canManage && (!allowedSupportTypes
     || allowedSupportTypes.includes(document.tipoSoporte || ''));
   const defaultCategory = categories.find(item => item.codigo === 'OTROS')?.codigo || categories[0]?.codigo || '';
@@ -274,6 +283,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
       if (evidence) {
         formData.append('bloque', evidence.block);
         formData.append('tipoSoporte', evidence.type);
+        formData.append('modo', 'agregar');
       }
       formData.append('descripcion', description.trim());
       await apiClient.upload(`/pta/api/v1/pta/banco-docentes/${docenteId}/documentos`, formData);
@@ -453,6 +463,11 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
                   {selectedEvidence.fields.length > 1 && <p className="rund-documents__shared-hint">Un solo archivo se vincula a estos datos. Cada punto se revisa por separado.</p>}
                 </> : selectedEvidence.dataSummary && <p>Dato del perfil: {selectedEvidence.dataSummary}</p>}
                 {selectedEvidence.hint && <p>{selectedEvidence.hint}</p>}
+                {selectedEvidenceCount > 0 && <p className="rund-documents__evidence-note" role="status">
+                  {evidenceLimitReached
+                    ? `Este punto ya tiene ${RUND_MAX_EVIDENCES_PER_TYPE} evidencias vigentes. Reemplaza o elimina una para agregar otra.`
+                    : `Este punto ya tiene ${selectedEvidenceCount} ${selectedEvidenceCount === 1 ? 'evidencia vigente' : 'evidencias vigentes'}. El archivo se agregará como evidencia adicional y se revisará por separado. Para corregir una existente, usa Reemplazar.`}
+                </p>}
               </div><small>{selectedCategory?.nombre || 'Categoría no disponible'}</small>
             </div> : <p className="rund-documents__upload-hint">Elige el documento que respalda los datos registrados en esta sección. La categoría se asigna automáticamente.</p>}
           </div> : <div className="rund-documents__upload-empty" role="status">
@@ -523,6 +538,11 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
                 <div style={{ minWidth: 0 }}>
                   <div title={document.nombreArchivo} className="rund-documents__filename">{document.nombreArchivo}</div>
                   <div style={{ marginTop: 2, fontSize: 10, color: '#64748B' }}>
+                    {(() => {
+                      if (document.estado !== 'ACTIVO' || !document.tipoSoporte || document.soporteGestion) return null;
+                      const siblings = checkpointEvidences(document.tipoSoporte);
+                      return siblings.length > 1 ? <strong className="rund-documents__evidence-number">Evidencia {siblings.findIndex(item => item.id === document.id) + 1} de {siblings.length} · </strong> : null;
+                    })()}
                     {activeBlock && (RUND_BLOCK_LABELS[rundDocumentBlock(document) || ''] || 'Anexo general') !== document.categoriaNombre ? `${RUND_BLOCK_LABELS[rundDocumentBlock(document) || ''] || 'Anexo general'} · ` : ''}{document.categoriaNombre} · v{document.version} · {fileSize(document.tamanoBytes)}
                     {document.estado !== 'ACTIVO' ? ` · ${document.estado.toLowerCase()}` : ''}
                     {document.creadoEn ? ` · ${new Date(document.creadoEn).toLocaleDateString('es-CO')}` : ''}
