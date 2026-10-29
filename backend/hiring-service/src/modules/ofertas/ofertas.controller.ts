@@ -24,7 +24,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
-import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { MIME_DOCUMENTOS, MIME_ZIP, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
  * Recepción de ofertas — actividad 6.1 (EFDS-1155).
@@ -33,7 +33,7 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
  * y corre hasta una hora concreta; mientras no venza, el gestor va registrando
  * lo que llega a ventanilla.
  */
-@ApiTags('Etapa 6 · Recepción de ofertas')
+@ApiTags('Etapa 6 · Cierre del proceso y recepción de ofertas')
 @Controller('procesos/:id/ofertas')
 export class OfertasController {
   constructor(private readonly service: OfertasService) {}
@@ -69,8 +69,11 @@ export class OfertasController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      // Solo ofimáticos: el soporte de una oferta es el documento radicado.
-      opcionesDeCarga(MIME_DOCUMENTOS, 'El soporte de la oferta se carga en PDF, Word o Excel'),
+      // Ofimáticos o un .zip con todos los documentos de la oferta (EFDS-1155).
+      opcionesDeCarga(
+        [...MIME_DOCUMENTOS, ...MIME_ZIP],
+        'El soporte de la oferta se carga en PDF, Word, Excel o un .zip con todos sus documentos',
+      ),
     ),
   )
   @ApiConsumes('multipart/form-data')

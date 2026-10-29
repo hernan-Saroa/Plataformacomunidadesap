@@ -140,6 +140,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      # Archivos del Centro de Ayuda (EFDS-2399): fuera del contenedor para que no se pierdan al desplegar
+      - ./backend/auth-service/uploads/centro-ayuda:/app/uploads/centro-ayuda
     networks:
       - superapp-net
     restart: unless-stopped
@@ -650,6 +653,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
     ports:
       - "3014:3014"
     depends_on:

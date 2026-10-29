@@ -31,7 +31,7 @@ import {
 } from '../archivos';
 
 /**
- * Acto de adjudicación — actividad 7.4 (EFDS-1159).
+ * Acto de adjudicación — actividad 7.3 (EFDS-1159).
  *
  * Escribe el **Ordenador del Gasto**, no el gestor: el gestor lleva el trámite,
  * pero comprometer a la entidad con un tercero es de quien ordena el gasto. Lo
@@ -43,7 +43,7 @@ export class ActoAdjudicacionController {
   constructor(private readonly service: ActoAdjudicacionService) {}
 
   @Get()
-  @Puede('ver', '7.4')
+  @Puede('ver', '7.3')
   @ApiOperation({
     summary: 'Estado de la adjudicación',
     description:
@@ -54,7 +54,7 @@ export class ActoAdjudicacionController {
   }
 
   @Post()
-  @Puede('decidir', '7.4')
+  @Puede('decidir', '7.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -64,7 +64,7 @@ export class ActoAdjudicacionController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 7.4 · Adjudicar el proceso',
+    summary: 'Actividad 7.3 · Adjudicar el proceso',
     description:
       'La resolución del Ordenador del Gasto con su adjudicatario y su valor. Va después del informe definitivo publicado.',
   })
@@ -93,7 +93,7 @@ export class ActoAdjudicacionController {
   }
 
   @Post('publicar')
-  @Puede('decidir', '7.4')
+  @Puede('decidir', '7.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -133,7 +133,7 @@ export class ActoAdjudicacionController {
   }
 
   @Post('revocar')
-  @Puede('decidir', '7.4')
+  @Puede('decidir', '7.3')
   @ApiOperation({
     summary: 'Revocar el acto de adjudicación',
     description:

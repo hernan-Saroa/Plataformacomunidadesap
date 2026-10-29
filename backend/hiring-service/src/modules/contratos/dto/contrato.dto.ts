@@ -15,7 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Los números llegan como texto dentro del multipart: la petición lleva también
@@ -141,6 +141,17 @@ export class FirmarContratoDto {
   @ApiProperty({ description: 'Fecha de la firma (YYYY-MM-DD)' })
   @IsDateString({}, { message: 'La fecha de la firma debe tener el formato YYYY-MM-DD' })
   fechaFirma: string;
+
+  /**
+   * Solo si la 8.1 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). La 8.1
+   * cierra con la segunda firma, así que es la que lo lleva.
+   */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @FirmaDelMultipart()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class RechazarContratoDto {

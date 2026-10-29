@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { CierreActividadService } from './cierre-actividad.service';
 
 /**
@@ -11,7 +12,14 @@ import { CierreActividadService } from './cierre-actividad.service';
  * regla que todos ellos comparten.
  */
 describe('CierreActividadService', () => {
-  const servicio = new CierreActividadService();
+  /**
+   * La cadena de verdad para leer la regla —es la misma consulta que usa el
+   * servicio—, pero sin abrir rondas: eso se prueba aparte, con su lógica.
+   */
+  const cadenas = new CadenaAprobacionService({} as never);
+  cadenas.iniciar = jest.fn(async () => ({}) as never);
+  cadenas.cancelarRonda = jest.fn(async () => undefined);
+  const servicio = new CierreActividadService(cadenas);
   const acceso = { userName: 'Adrián Castro', userId: 'u-1' } as never;
 
   describe('exigirFirmaValida', () => {
@@ -45,11 +53,18 @@ describe('CierreActividadService', () => {
         ProcesoActividad: {
           findOne: async () => actividadExistente,
         },
-        ReglaActividad: {
-          find: async () => (aprobadores ? [{ modalidad: null, config: aprobadores }] : []),
-        },
       };
       const em: any = {
+        // La versión del flujo del proceso y su aprobación (111).
+        query: async (sql: string) => {
+          if (sql.includes('flujo_version_id')) return [{ id: 'v-1' }];
+          if (sql.includes('FROM hiring.flujo_asignaciones')) {
+            return aprobadores
+              ? [{ numeral: '4.3', modalidad: null, la_hace: null, aprobacion: { tipo: 'ESCALON', personas: [], puestos: [], ...(aprobadores as object) } }]
+              : [];
+          }
+          return [];
+        },
         getRepository: (entidad: any) => repos[entidad.name] ?? repos.ProcesoActividad,
         create: (_e: unknown, x: unknown) => x,
         save: async (_e: unknown, x: unknown) => {
@@ -93,6 +108,13 @@ describe('CierreActividadService', () => {
       expect(estado).toBe('EN_REVISION');
       expect(cierra).toBe(false);
       expect(actividad.revisadoPor).toBeUndefined();
+      // Y abre la ronda en el primer escalón de la cadena.
+      expect(cadenas.iniciar).toHaveBeenCalledWith(
+        em,
+        actividad,
+        expect.objectContaining({ escalones: [expect.objectContaining({ roles: ['DIRECTOR_CONTRATACION'] })] }),
+        acceso,
+      );
     });
 
     it('guarda la evidencia de la firma junto a los datos que ya hubiera', async () => {

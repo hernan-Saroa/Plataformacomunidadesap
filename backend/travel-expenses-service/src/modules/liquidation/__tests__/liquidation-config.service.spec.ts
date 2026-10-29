@@ -228,7 +228,7 @@ describe('LiquidationConfigService', () => {
   describe('obtenerTarifasTransporteTerminal', () => {
     it('debe retornar tarifas de terminales activas', async () => {
       const mockTarifas = [
-        { id: 1, departamento: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximoTrayecto: 162634, activo: true },
+        { id: 1, departamento: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximo: 162634, valorMaximoTrayecto: 162634, activo: true },
       ];
       mockTerminalRepo.find.mockResolvedValue(mockTarifas);
 

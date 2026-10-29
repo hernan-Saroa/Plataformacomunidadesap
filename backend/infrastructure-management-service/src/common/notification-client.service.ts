@@ -3,7 +3,6 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import * as http from 'http';
 import * as https from 'https';
-import * as url from 'url';
 
 export interface SendNotificationDto {
   id_usuario_destinatario: string;
@@ -24,10 +23,24 @@ export interface SendNotificationDto {
 @Injectable()
 export class NotificationClientService {
   private readonly logger = new Logger(NotificationClientService.name);
-  private readonly baseUrl: string;
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
-    this.baseUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3009';
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  /**
+   * Resuelve endpoints base ordenados por preferencia:
+   * 1. Variable de entorno NOTIFICATION_SERVICE_URL (ej. http://notifications-service:3009)
+   * 2. Host de red interna Docker/Podman 'http://notifications-service:3009'
+   * 3. Host local 'http://localhost:3009' (para ejecución directa en host)
+   */
+  private getCandidateBaseUrls(): string[] {
+    const list = [
+      process.env.NOTIFICATION_SERVICE_URL,
+      'http://notifications-service:3009',
+      'http://localhost:3009',
+    ]
+      .filter((u): u is string => Boolean(u && u.trim()))
+      .map((u) => u.trim().replace(/\/$/, ''));
+    return Array.from(new Set(list));
   }
 
   async getUserDetailsById(userId: string): Promise<{ id_user: string; email: string } | null> {
@@ -68,7 +81,11 @@ export class NotificationClientService {
     }
   }
 
-  private async httpPostJson(targetUrl: string, payload: unknown, timeoutMs = 5000): Promise<{ ok: boolean; status: number | null; errMessage?: string }> {
+  private async httpPostJson(
+    targetUrl: string,
+    payload: unknown,
+    timeoutMs = 5000,
+  ): Promise<{ ok: boolean; status: number | null; errMessage?: string }> {
     return new Promise((resolve) => {
       try {
         const parsed = new URL(targetUrl);
@@ -86,10 +103,19 @@ export class NotificationClientService {
           timeout: timeoutMs,
         };
         const req = lib.request(opts, (res) => {
-          res.resume();
-          res.on('end', () => resolve({ ok: (res.statusCode ?? 500) >= 200 && (res.statusCode ?? 500) < 300, status: res.statusCode ?? null }));
+          let body = '';
+          res.on('data', (chunk) => {
+            body += chunk;
+          });
+          res.on('end', () => {
+            const status = res.statusCode ?? 500;
+            const ok = status >= 200 && status < 300;
+            resolve({ ok, status, errMessage: ok ? undefined : body });
+          });
         });
-        req.on('timeout', () => { req.destroy(new Error('timeout')); });
+        req.on('timeout', () => {
+          req.destroy(new Error('timeout'));
+        });
         req.on('error', (e: any) => resolve({ ok: false, status: null, errMessage: e?.message }));
         req.write(postData);
         req.end();
@@ -100,46 +126,57 @@ export class NotificationClientService {
   }
 
   async send(dto: SendNotificationDto): Promise<void> {
-    const r = await this.httpPostJson(`${this.baseUrl}/notifications`, dto, 3000);
-    if (!r.ok) this.logger.warn(`No se pudo enviar notificación a ${dto.id_usuario_destinatario}: ${r.errMessage ?? `status=${r.status}`}`);
+    await this.sendMany([dto]);
   }
 
   async sendMany(dtos: SendNotificationDto[]): Promise<void> {
     if (!dtos.length) return;
-    const bulkUrl = `${this.baseUrl}/notifications/bulk`;
-    const res = await this.httpPostJson(bulkUrl, { notifications: dtos }, 3000);
-    if (res.ok) {
-      this.logger.log(`[notify] Enviadas ${dtos.length} notificaciones vía HTTP (${this.baseUrl})`);
-      return;
-    }
-    this.logger.warn(`[notify] FALLÓ POST ${bulkUrl} (status=${res.status ?? 'n/a'}): ${res.errMessage ?? 'n/a'}. Insertando directo en BD.`);
-    try {
-      for (const dto of dtos) {
-        await this.dataSource.query(
-          `INSERT INTO notifications.notificacion
-            (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
-             icono, color, prioridad, categoria, tiene_accion, texto_boton_accion, url_accion, datos_adicionales)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-          [
-            dto.id_usuario_destinatario,
-            dto.tipo_notificacion,
-            dto.titulo,
-            dto.mensaje,
-            dto.descripcion_corta ?? null,
-            dto.icono ?? null,
-            dto.color ?? null,
-            dto.prioridad ?? 'Media',
-            dto.categoria ?? null,
-            dto.tiene_accion ?? false,
-            dto.texto_boton_accion ?? null,
-            dto.url_accion ?? null,
-            dto.datos_adicionales ? JSON.stringify(dto.datos_adicionales) : null,
-          ],
-        );
+
+    let sentHttp = false;
+    const baseUrls = this.getCandidateBaseUrls();
+
+    for (const base of baseUrls) {
+      const bulkUrl = `${base}/notifications/bulk`;
+      const res = await this.httpPostJson(bulkUrl, { notifications: dtos }, 4000);
+      if (res.ok) {
+        this.logger.log(`[notify] Enviadas ${dtos.length} notificaciones vía HTTP (${bulkUrl})`);
+        sentHttp = true;
+        break;
       }
-      this.logger.log(`[notify][DB] Insertadas ${dtos.length} notificaciones directamente en BD`);
-    } catch (err: any) {
-      this.logger.error(`[notify][DB] Falló insert directo en BD: ${err?.message}`);
+    }
+
+    if (!sentHttp) {
+      this.logger.warn(
+        `[notify] POST a notifications-service falló en todos los endpoints candidatos. Insertando directo en BD.`,
+      );
+      try {
+        for (const dto of dtos) {
+          await this.dataSource.query(
+            `INSERT INTO notifications.notificacion
+              (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
+               icono, color, prioridad, categoria, tiene_accion, texto_boton_accion, url_accion, datos_adicionales)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            [
+              dto.id_usuario_destinatario,
+              dto.tipo_notificacion,
+              dto.titulo,
+              dto.mensaje,
+              dto.descripcion_corta ?? null,
+              dto.icono ?? null,
+              dto.color ?? null,
+              dto.prioridad ?? 'Media',
+              dto.categoria ?? null,
+              dto.tiene_accion ?? false,
+              dto.texto_boton_accion ?? null,
+              dto.url_accion ?? null,
+              dto.datos_adicionales ? JSON.stringify(dto.datos_adicionales) : null,
+            ],
+          );
+        }
+        this.logger.log(`[notify][DB] Insertadas ${dtos.length} notificaciones directamente en BD`);
+      } catch (err: any) {
+        this.logger.error(`[notify][DB] Falló insert directo en BD: ${err?.message}`);
+      }
     }
   }
 
@@ -163,38 +200,79 @@ export class NotificationClientService {
     }
   }
 
-  async sendEmail(to: string, subject: string, html: string, enviarCopiaPrueba = true): Promise<void> {
-    const CORREO_PRUEBA = 'desarrollo.ccd@esap.edu.co';
-    this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] Preparando envío | Para: ${to} | Asunto: "${subject}" | Target: ${this.baseUrl}/api/v1/emails/send`);
-    const res = await this.httpPostJson(`${this.baseUrl}/api/v1/emails/send`, { to, subject, html }, 5000);
-    if (res.ok) {
-      this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] ✓ Correo enviado exitosamente a ${to}`);
-    } else {
-      this.logger.warn(
-        `[NOTIFICACION_DEBUG][EMAIL] ⚠ No se pudo enviar correo a ${to} (esperado en ambiente local si Azure/SMTP no está en ejecución): ${res.errMessage ?? `status=${res.status}`}`,
-      );
+  /**
+   * Envía correo institucional a través de notifications-service (/api/v1/emails/send).
+   * Log agresivo para trazabilidad de errores y resolución multi-entorno.
+   * Por defecto enviarCopiaPrueba es FALSE para evitar correos duplicados innecesarios.
+   */
+  async sendEmail(to: string, subject: string, html: string, enviarCopiaPrueba = false): Promise<boolean> {
+    if (!to || !to.includes('@')) {
+      this.logger.warn(`[EMAIL_DISPATCH][SKIP] Destinatario "${to}" no es un correo electrónico válido.`);
+      return false;
     }
 
-    if (enviarCopiaPrueba && to.toLowerCase() !== CORREO_PRUEBA) {
+    const candidateUrls: string[] = [];
+    for (const b of this.getCandidateBaseUrls()) {
+      candidateUrls.push(`${b}/api/v1/emails/send`);
+      candidateUrls.push(`${b}/notificaciones/api/v1/emails/send`);
+      candidateUrls.push(`${b}/emails/send`);
+    }
+
+    this.logger.log(
+      `[EMAIL_DISPATCH][START] Para: ${to} | Asunto: "${subject}" | Intentando ${candidateUrls.length} endpoint(s)...`,
+    );
+
+    let sent = false;
+    let lastError: string | undefined;
+
+    for (const targetUrl of candidateUrls) {
       try {
-        const copiaSubject = `[COPIA PRUEBA][Para: ${to}] ${subject}`;
-        this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] Enviando copia de prueba a ${CORREO_PRUEBA}`);
-        const resCopia = await this.httpPostJson(
-          `${this.baseUrl}/api/v1/emails/send`,
-          { to: CORREO_PRUEBA, subject: copiaSubject, html },
-          5000,
-        );
-        if (resCopia.ok) {
-          this.logger.log(`[NOTIFICACION_DEBUG][EMAIL] ✓ Copia de prueba entregada a ${CORREO_PRUEBA}`);
-        } else {
-          this.logger.warn(
-            `[NOTIFICACION_DEBUG][EMAIL] ⚠ Copia de prueba a ${CORREO_PRUEBA} falló (esperado en local): ${resCopia.errMessage ?? `status=${resCopia.status}`}`,
+        this.logger.log(`[EMAIL_DISPATCH][TRY] Enviando POST a ${targetUrl}...`);
+        const res = await this.httpPostJson(targetUrl, { to, subject, html }, 5000);
+        if (res.ok) {
+          this.logger.log(
+            `[EMAIL_DISPATCH][SUCCESS] Correo entregado exitosamente a ${to} vía ${targetUrl} (Status: ${res.status})`,
           );
+          sent = true;
+          break;
+        } else {
+          lastError = `Status ${res.status}: ${res.errMessage || 'Respuesta no exitosa'}`;
+          this.logger.warn(`[EMAIL_DISPATCH][FAIL] Endpoint ${targetUrl} respondió: ${lastError}`);
         }
-      } catch (_err) {
-        // Silencioso para no interrumpir
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+        this.logger.warn(`[EMAIL_DISPATCH][ERROR] Excepción de conexión hacia ${targetUrl}: ${lastError}`);
       }
     }
+
+    if (!sent) {
+      this.logger.error(`[EMAIL_DISPATCH][FAILED_ALL] No se pudo entregar correo a ${to}. Último error: ${lastError}`);
+    }
+
+    // Copia opcional de prueba sólo si está explícitamente activada por variable de entorno o argumento
+    const enableTestCopy = process.env.ENABLE_EMAIL_TEST_COPY === 'true';
+    const CORREO_PRUEBA = process.env.EMAIL_TEST_COPY_TARGET || 'desarrollo.ccd@esap.edu.co';
+
+    if ((enviarCopiaPrueba || enableTestCopy) && to.toLowerCase() !== CORREO_PRUEBA.toLowerCase()) {
+      try {
+        const copiaSubject = `[COPIA PRUEBA][Para: ${to}] ${subject}`;
+        this.logger.log(`[EMAIL_DISPATCH][COPIA_PRUEBA] Enviando copia opcional a ${CORREO_PRUEBA}...`);
+        for (const targetUrl of candidateUrls) {
+          const resCopia = await this.httpPostJson(
+            targetUrl,
+            { to: CORREO_PRUEBA, subject: copiaSubject, html },
+            5000,
+          );
+          if (resCopia.ok) {
+            this.logger.log(`[EMAIL_DISPATCH][COPIA_PRUEBA_SUCCESS] Copia entregada a ${CORREO_PRUEBA}`);
+            break;
+          }
+        }
+      } catch (copyErr: any) {
+        this.logger.warn(`[EMAIL_DISPATCH][COPIA_PRUEBA_ERROR] ${copyErr?.message}`);
+      }
+    }
+
+    return sent;
   }
 }
-

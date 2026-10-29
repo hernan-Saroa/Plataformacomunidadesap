@@ -83,7 +83,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
     montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision');
 
     expect(await screen.findByRole('button', { name: /^Aprobar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Devolver con observaciones/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Devolver a quien la envió/ })).toBeInTheDocument();
   });
 
   it('no pone los botones arriba, donde se decidiría sin ver nada', async () => {
@@ -107,7 +107,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
   it('no deja devolver sin decir qué corregir', async () => {
     montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision');
 
-    await userEvent.click(await screen.findByRole('button', { name: /Devolver con observaciones/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Devolver a quien la envió/ }));
 
     // Devolver en blanco deja al gestor adivinando qué cambiar.
     expect(screen.getByRole('button', { name: /^Devolver/ })).toBeDisabled();
@@ -166,7 +166,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     // Devolver por falta de soporte es exactamente para lo que sirve devolver.
     expect(
-      await screen.findByRole('button', { name: /Devolver con observaciones/ }),
+      await screen.findByRole('button', { name: /Devolver a quien la envió/ }),
     ).toBeEnabled();
     expect(screen.getByText(/Faltan 2 formatos por cargar/)).toBeInTheDocument();
   });
@@ -363,9 +363,8 @@ describe('AprobacionDeLaActividad · relee cuando el panel cambia el trámite', 
 /**
  * Aprobar lo que uno mismo trabajó (EFDS-1183).
  *
- * Estaba prohibido, copiando la regla de las garantías: allí quien carga la
- * póliza y quien la revisa son papeles distintos y nunca coinciden. En las
- * actividades sí coinciden —la 3.3 y la 3.4 las ejecuta la Dirección de
+ * Estaba prohibido, copiando la regla que entonces tenían las garantías
+ * (después también se quitó allí). En las actividades los papeles coinciden —la 3.3 y la 3.4 las ejecuta la Dirección de
  * Contratación y las aprueba su director—, y el bloqueo lo dejaba esperándose
  * a sí mismo con la actividad sin salida. El control que queda es el rol.
  */
@@ -382,7 +381,7 @@ describe('AprobacionDeLaActividad · quien la trabajó también decide', () => {
     montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: true }), 'decision');
 
     expect(await screen.findByRole('button', { name: /^Aprobar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Devolver con observaciones/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Devolver a quien la envió/ })).toBeInTheDocument();
   });
 
   it('sigue pudiendo retirarla en vez de decidir', async () => {
@@ -397,5 +396,146 @@ describe('AprobacionDeLaActividad · quien la trabajó también decide', () => {
     montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: false }));
 
     expect(await screen.findByText(/Espera a Director de Contratación/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Con una cadena de escalones (migración 101): el servidor dice qué puede
+ * hacer quien mira en el escalón que espera, y la pantalla no ofrece más.
+ */
+describe('AprobacionDeLaActividad · cadena de escalones', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const escalon = (orden: number, nombre: string, estadoEscalon: string) => ({
+    orden,
+    nombre,
+    estado: estadoEscalon,
+    reglaDecision: 'UNO',
+    acciones: ['APROBAR', 'DEVOLVER'],
+    responsables: [nombre],
+    activadoAt: estadoEscalon === 'BLOQUEADO' ? null : '2026-10-10T10:00:00Z',
+    resueltoAt: null,
+    decisiones: [],
+  });
+
+  const ronda = (acciones: string[], actual = 2) => ({
+    id: 'r-1',
+    ronda: 1,
+    nombre: 'Técnico, coordinador y director',
+    estado: 'EN_CURSO',
+    escalonActual: actual,
+    iniciadaPor: 'laura',
+    iniciadaAt: '2026-10-09T10:00:00Z',
+    cerradaAt: null,
+    acciones,
+    motivo: null,
+    escalones: [
+      escalon(1, 'Técnico', actual > 1 ? 'APROBADO' : 'PENDIENTE'),
+      escalon(2, 'Coordinador', actual === 2 ? 'PENDIENTE' : actual > 2 ? 'APROBADO' : 'BLOQUEADO'),
+      escalon(3, 'Director', actual === 3 ? 'PENDIENTE' : 'BLOQUEADO'),
+    ],
+  });
+
+  it('en un escalón intermedio aprobar pasa al siguiente, y lo dice', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
+      'decision',
+    );
+
+    expect(await screen.findByRole('button', { name: /Aprobar y pasar al siguiente/ })).toBeInTheDocument();
+    expect(screen.getByText(/sigue el escalón 3/)).toBeInTheDocument();
+    expect(screen.getByText(/escalón 2 de 3: Coordinador/)).toBeInTheDocument();
+  });
+
+  it('en el último, aprobar es aprobar', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER'], 3) }),
+      'decision',
+    );
+
+    expect(await screen.findByRole('button', { name: /^Aprobar$/ })).toBeInTheDocument();
+  });
+
+  it('al aprobar deja escribir observaciones y adjuntar soportes (113)', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
+      'decision',
+    );
+    const aprobar = vi.spyOn(contratacionService, 'aprobarActividad').mockResolvedValue({} as never);
+    const subir = vi.spyOn(contratacionService, 'subirSoporteDevolucion').mockResolvedValue({} as never);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Aprobar y pasar al siguiente/ }));
+    await userEvent.type(screen.getByLabelText(/Observaciones de la aprobación/), 'Revisado el pliego, sin reparos');
+    const archivo = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, archivo);
+    await userEvent.click(screen.getByRole('button', { name: /Confirmar y pasar al siguiente/ }));
+
+    await waitFor(() =>
+      expect(aprobar).toHaveBeenCalledWith(PROCESO, '5.9', 'Revisado el pliego, sin reparos', undefined),
+    );
+    expect(subir).toHaveBeenCalledWith(PROCESO, '5.9', archivo);
+  });
+
+  it('solo ofrece negar donde el escalón lo tiene permitido', async () => {
+    const { unmount } = montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
+      'decision',
+    );
+    await screen.findByRole('button', { name: /Aprobar/ });
+    expect(screen.queryByRole('button', { name: /^Negar/ })).toBeNull();
+    unmount();
+
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'NEGAR'], ronda: ronda(['APROBAR', 'NEGAR']) }),
+      'decision',
+    );
+    expect(await screen.findByRole('button', { name: /^Negar/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Devolver/ })).toBeNull();
+  });
+
+  it('al negar pide el motivo y deja adjuntar varios soportes', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'NEGAR'], ronda: ronda(['APROBAR', 'NEGAR']) }),
+      'decision',
+    );
+    const negar = vi.spyOn(contratacionService, 'negarActividad').mockResolvedValue({} as never);
+    const subir = vi.spyOn(contratacionService, 'subirSoporteDevolucion').mockResolvedValue({} as never);
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Negar/ }));
+    expect(screen.getByRole('button', { name: 'Negar la actividad' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Motivo de la negativa'), 'No hay apropiación');
+    const concepto = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
+    const oficio = new File(['y'], 'oficio.pdf', { type: 'application/pdf' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, [concepto, oficio]);
+    await userEvent.click(screen.getByRole('button', { name: 'Negar la actividad' }));
+
+    await waitFor(() => expect(negar).toHaveBeenCalledWith(PROCESO, '5.9', 'No hay apropiación'));
+    await waitFor(() => expect(subir).toHaveBeenCalledTimes(2));
+    expect(subir).toHaveBeenNthCalledWith(1, PROCESO, '5.9', concepto);
+    expect(subir).toHaveBeenNthCalledWith(2, PROCESO, '5.9', oficio);
+  });
+
+  it('a quien no le toca le muestra los escalones y a quién espera', async () => {
+    montar(estado({ estado: 'EN_REVISION', aprobadores: { roles: ['Coordinador'], personas: [] }, acciones: [], ronda: ronda([]) }));
+
+    expect(await screen.findByText(/escalón 2 de 3/)).toBeInTheDocument();
+    expect(screen.getByText('1. Técnico')).toBeInTheDocument();
+    expect(screen.getByText('3. Director')).toBeInTheDocument();
+    expect(screen.getByText(/Espera a Coordinador/)).toBeInTheDocument();
+  });
+
+  it('a quien ya aprobó otro escalón le dice por qué no puede este', async () => {
+    montar(
+      estado({
+        estado: 'EN_REVISION',
+        acciones: [],
+        motivo: 'Ya aprobaste otro escalón de esta ronda: este lo tiene que decidir otra persona',
+        ronda: ronda([]),
+      }),
+    );
+
+    expect(await screen.findByText(/Ya aprobaste otro escalón/)).toBeInTheDocument();
   });
 });

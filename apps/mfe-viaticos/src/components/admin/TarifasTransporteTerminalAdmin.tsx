@@ -29,7 +29,12 @@ export default function TarifasTransporteTerminalAdmin() {
         viaticosService.obtenerTarifasTransporteTerminal(),
         viaticosService.obtenerDepartamentos(),
       ]);
-      setTarifas(data);
+      const normalizadas = (data || []).map((t) => ({
+        ...t,
+        valorMaximoTrayecto: Number(t.valorMaximoTrayecto ?? t.valorMaximo ?? 0),
+        valorMaximo: Number(t.valorMaximo ?? t.valorMaximoTrayecto ?? 0),
+      }));
+      setTarifas(normalizadas);
       setDepartamentos(deptos);
     } catch {
       setError('Error cargando tarifas de transporte terminal');
@@ -58,12 +63,13 @@ export default function TarifasTransporteTerminalAdmin() {
   const abrirEditar = (tarifa: TarifaTransporteTerminal) => {
     setEditando(tarifa);
     const deptoNombre = tarifa.departamento || tarifa.ciudad || '';
+    const valor = Number(tarifa.valorMaximoTrayecto ?? tarifa.valorMaximo ?? 0);
     setForm({
       departamento: deptoNombre,
       departamentoId: tarifa.departamentoId ?? null,
       ciudad: tarifa.ciudad || deptoNombre,
       ciudadAeropuerto: tarifa.ciudadAeropuerto,
-      valorMaximoTrayecto: Number(tarifa.valorMaximoTrayecto),
+      valorMaximoTrayecto: valor,
       activo: tarifa.activo ?? true,
     });
     setModalAbierto(true);
@@ -130,6 +136,7 @@ export default function TarifasTransporteTerminalAdmin() {
         ciudad: form.ciudad || form.departamento,
         ciudadAeropuerto: form.ciudadAeropuerto.trim(),
         valorMaximo: form.valorMaximoTrayecto,
+        valorMaximoTrayecto: form.valorMaximoTrayecto,
         activo: form.activo,
       };
 
@@ -228,7 +235,7 @@ export default function TarifasTransporteTerminalAdmin() {
                     </td>
                     <td className="px-4 py-3 text-slate-700">{t.ciudadAeropuerto}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">
-                      {formatearMoneda(Number(t.valorMaximoTrayecto))}
+                      {formatearMoneda(Number(t.valorMaximoTrayecto ?? t.valorMaximo ?? 0))}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span

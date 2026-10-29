@@ -32,6 +32,9 @@ import { FestivoColombia } from './settings/festivo-colombia.entity';
 import { TrdModule } from './trd/trd.module';
 import { TrdConfiguracion } from './trd/trd-configuracion.entity';
 import { TrdSerieSubserie } from './trd/trd-serie-subserie.entity';
+import { CentroAyudaModule } from './centro-ayuda/centro-ayuda.module';
+import { CentroAyudaRecurso } from './centro-ayuda/centro-ayuda-recurso.entity';
+import { CentroAyudaSeccion } from './centro-ayuda/centro-ayuda-seccion.entity';
 
 @NestModule({
   imports: [
@@ -66,6 +69,8 @@ import { TrdSerieSubserie } from './trd/trd-serie-subserie.entity';
         FestivoColombia,
         TrdConfiguracion,
         TrdSerieSubserie,
+        CentroAyudaRecurso,
+        CentroAyudaSeccion,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
       logging: true,
@@ -79,6 +84,7 @@ import { TrdSerieSubserie } from './trd/trd-serie-subserie.entity';
     EstructuraImportModule,
     LoginSettingsModule,
     TrdModule,
+    CentroAyudaModule,
   ],
   providers: [
     {

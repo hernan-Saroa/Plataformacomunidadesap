@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import {
   alMenos,
@@ -13,6 +13,11 @@ import {
   EstadoContrato,
 } from '../../entities/contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
+import { FirmaContrato } from '../../entities/firma-contrato.entity';
+import { RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
+
+/** El RP del contrato (8.3): requisito de ejecución donde la modalidad lo tiene. */
+const NUMERAL_RP_DEL_CONTRATO = '8.3';
 import { SuscripcionActaInicio } from '../../entities/suscripcion-acta-inicio.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
@@ -61,6 +66,24 @@ export function admiteInicio(estado: EstadoContrato): boolean {
   return alMenos(estado, 'LEGALIZADO');
 }
 
+/**
+ * Por qué una fecha de inicio es anterior al perfeccionamiento, o nulo si no.
+ *
+ * Cuenta la fecha de las firmas (la del documento), no cuándo se registraron:
+ * una firma del lunes anotada el miércoles perfeccionó el contrato el lunes.
+ */
+export function anteriorAlPerfeccionamiento(
+  fecha: string,
+  fechasDeFirma: readonly string[],
+): string | null {
+  if (fechasDeFirma.length === 0) return null;
+  // Se perfecciona con la última de las dos firmas.
+  const dia = [...fechasDeFirma].sort().at(-1) as string;
+  return fecha < dia
+    ? `no puede ser anterior a la firma del contrato por las dos partes (${dia})`
+    : null;
+}
+
 interface ArchivoCargado {
   filename: string;
   originalname: string;
@@ -101,6 +124,7 @@ export class ActaInicioService {
 
     const legalizado = admiteInicio(contrato.estado);
     const supervisor = await this.supervisorVigente(contrato.id);
+    const tieneRp = await this.rpExpedido(this.dataSource.manager, contrato.id);
     const acta = await this.dataSource
       .getRepository(ActaInicio)
       .findOne({ where: { contratoId: contrato.id } });
@@ -119,9 +143,10 @@ export class ActaInicioService {
       // falta, no solo que no se puede.
       legalizado,
       tieneSupervisor: !!supervisor,
-      puedeIniciar: legalizado && !!supervisor && !acta && !faltaActa,
+      tieneRp,
+      puedeIniciar: legalizado && !!supervisor && tieneRp && !acta && !faltaActa,
       motivoNoPuede:
-        this.motivoNoPuede(contrato.estado, !!supervisor, !!acta) ??
+        this.motivoNoPuede(contrato.estado, !!supervisor, tieneRp, !!acta) ??
         (faltaActa ? 'falta registrar el acta de inicio suscrita' : null),
       actaAplica,
       suscripcion: suscripcion ? await this.vistaSuscripcion(suscripcion) : null,
@@ -185,6 +210,8 @@ export class ActaInicioService {
       }
 
       this.validarFecha(dto.fechaInicio);
+      await this.exigirRpExpedido(em, contrato, 'La reunión de inicio');
+      await this.exigirDespuesDelPerfeccionamiento(em, dto.fechaInicio, contrato, 'La reunión de inicio');
 
       if (await this.cierre.exigeFirma(em, NUMERAL_ACTA_INICIO)) {
         this.cierre.exigirFirmaValida(dto.firma);
@@ -247,11 +274,14 @@ export class ActaInicioService {
         } as Partial<ActaInicio>),
       );
 
-      // El estado no lo declara nadie: se deriva de que la reunión existe, como
-      // el perfeccionamiento se deriva de las firmas.
-      contrato.estado = 'EJECUCION';
-      contrato.ejecucionDesde = dto.fechaInicio;
-      await em.save(contrato);
+      // El estado no lo declara nadie: se deriva de que el acta (8.7) o la
+      // reunión existen, como el perfeccionamiento se deriva de las firmas. Si
+      // el acta de la 8.7 ya lo puso en ejecución, la fecha es la de su firma.
+      if (contrato.estado !== 'EJECUCION') {
+        contrato.estado = 'EJECUCION';
+        contrato.ejecucionDesde = dto.fechaInicio;
+        await em.save(contrato);
+      }
 
       // Con el acta suscrita en la 8.7, esa casilla ya se cerró allá: la
       // reunión solo cierra la suya. Por el camino de antes cierra las dos.
@@ -296,7 +326,8 @@ export class ActaInicioService {
     // Con la reunión registrada sin acta ya no hay nada que suscribir aquí.
     const reunion = await em.getRepository(ActaInicio).findOne({ where: { contratoId: contrato.id } });
     const supervisor = await this.supervisorVigente(contrato.id);
-    const motivo = this.motivoNoPuede(contrato.estado, !!supervisor, false);
+    const tieneRp = await this.rpExpedido(em, contrato.id);
+    const motivo = this.motivoNoPuede(contrato.estado, !!supervisor, tieneRp, false);
 
     return {
       aplica,
@@ -313,7 +344,10 @@ export class ActaInicioService {
    *
    * Pide lo mismo que la reunión —contrato legalizado y con supervisor—, porque
    * el acta la firman el contratista y quien va a vigilar la ejecución. Cierra
-   * la 8.7 y nada más: el contrato entra en ejecución con la reunión (9.1).
+   * la 8.7 y con ella arranca la ejecución, desde la fecha de suscripción
+   * (revisión de QA de EFDS-1176 y EFDS-1167): la reunión de inicio (9.1) es
+   * opcional, y si fuera ella la que pone el contrato en ejecución, saltarla
+   * dejaría sin pagos ni modificaciones a un contrato que ya empezó.
    */
   async registrarActa(
     procesoId: string,
@@ -348,6 +382,8 @@ export class ActaInicioService {
       }
 
       this.validarFecha(dto.fechaSuscripcion, 'La fecha de suscripción no puede ser posterior a hoy');
+      await this.exigirRpExpedido(em, contrato, 'El acta de inicio');
+      await this.exigirDespuesDelPerfeccionamiento(em, dto.fechaSuscripcion, contrato, 'El acta de inicio');
 
       if (await this.cierre.exigeFirma(em, NUMERAL_ACTA_INICIO_LEGALIZACION)) {
         this.cierre.exigirFirmaValida(dto.firma);
@@ -374,6 +410,10 @@ export class ActaInicioService {
           registradoPor: acceso.userName ?? null,
         }),
       );
+
+      contrato.estado = 'EJECUCION';
+      contrato.ejecucionDesde = dto.fechaSuscripcion;
+      await em.save(contrato);
 
       await this.cierre.resolverCierre(
         em,
@@ -438,6 +478,7 @@ export class ActaInicioService {
   private motivoNoPuede(
     estado: EstadoContrato,
     tieneSupervisor: boolean,
+    tieneRp: boolean,
     yaIniciado: boolean,
   ): string | null {
     if (yaIniciado) return null;
@@ -447,7 +488,62 @@ export class ActaInicioService {
         : 'el contrato todavía no lo han firmado las dos partes';
     }
     if (!tieneSupervisor) return 'el contrato todavía no tiene supervisor designado';
+    if (!tieneRp) return 'el contrato todavía no tiene registro presupuestal expedido';
     return null;
+  }
+
+  /**
+   * Si el contrato tiene su RP expedido (8.3).
+   *
+   * El RP es requisito de ejecución junto con la garantía aprobada (Ley 80,
+   * art. 41): sin él no hay recursos comprometidos para pagar lo que se
+   * empieza a ejecutar. Antes el inicio solo miraba garantías, ARL y
+   * supervisor. El del contrato, no el de una adición.
+   */
+  private async rpExpedido(em: EntityManager, contratoId: string): Promise<boolean> {
+    // Donde la matriz excluye el RP (enajenación: la entidad recibe, no paga),
+    // no hay registro que exigir.
+    const contrato = await em.getRepository(Contrato).findOne({ where: { id: contratoId } });
+    const proceso = contrato
+      ? await em.getRepository(Proceso).findOne({ where: { id: contrato.procesoId } })
+      : null;
+    const sinRp = await em.getRepository(ActividadExcluida).findOne({
+      where: { numeral: NUMERAL_RP_DEL_CONTRATO, modalidad: proceso?.modalidad ?? '' },
+    });
+    if (sinRp) return true;
+
+    const rp = await em.getRepository(RegistroPresupuestal).findOne({
+      where: { contratoId, estado: 'EXPEDIDO', modificacionId: IsNull() },
+    });
+    return !!rp;
+  }
+
+  private async exigirRpExpedido(em: EntityManager, contrato: Contrato, que: string) {
+    if (!(await this.rpExpedido(em, contrato.id))) {
+      throw new ConflictException(
+        `${que} exige el registro presupuestal expedido (8.3): sin él no hay recursos comprometidos`,
+      );
+    }
+  }
+
+  /**
+   * El inicio no puede ser anterior al contrato firmado por las dos partes.
+   *
+   * Antes se aceptaba cualquier fecha pasada, y quedó un acta de inicio veinte
+   * días anterior a la firma del contrato: una ejecución sin contrato.
+   */
+  private async exigirDespuesDelPerfeccionamiento(
+    em: EntityManager,
+    fecha: string,
+    contrato: Contrato,
+    que: string,
+  ) {
+    const firmas = await em.getRepository(FirmaContrato).find({ where: { contratoId: contrato.id } });
+    const motivo = anteriorAlPerfeccionamiento(
+      fecha,
+      firmas.map((f) => String(f.fechaFirma).slice(0, 10)),
+    );
+    if (motivo) throw new BadRequestException(`${que} ${motivo}`);
   }
 
   /** La reunión ya ocurrió; no se arranca la ejecución hacia el futuro. */

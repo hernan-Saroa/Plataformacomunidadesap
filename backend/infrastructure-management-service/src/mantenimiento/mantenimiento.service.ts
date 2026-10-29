@@ -1488,9 +1488,10 @@ export class MantenimientoService implements OnModuleInit {
           p.nom_largo AS "nomLargo",
           p.tel_celular AS "telCelular",
           MAX(CASE WHEN r.code = 'TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
-                   WHEN r.code = 'TECNICO_UMI_MULTIPROPOSITO'   THEN 'P4' END) AS "roleCod",
+                   WHEN r.code = 'TECNICO_UMI_MULTIPROPOSITO'   THEN 'P4'
+                   WHEN r.code = 'ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5' END) AS "roleCod",
           u.is_active AS "isActive",
-          ARRAY_AGG(DISTINCT r.code) FILTER (WHERE r.code LIKE 'TECNICO_%') AS "rolesTec"
+          ARRAY_AGG(DISTINCT r.code) FILTER (WHERE r.code LIKE 'TECNICO_%' OR r.code LIKE '%INFRA%') AS "rolesTec"
         FROM auth."user" u
         INNER JOIN auth.personas p
                 ON p.id_person = u.id_person
@@ -1498,7 +1499,7 @@ export class MantenimientoService implements OnModuleInit {
                 ON ur.id_user = u.id_user
         INNER JOIN auth.role r
                 ON r.id = ur.id_rol
-       WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO')
+       WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO', 'ADMINISTRADOR_FUNCIONAL_INFRA')
          AND ($1::boolean = TRUE OR u.is_active = TRUE)
        GROUP BY u.id_user, p.id_person, p.nom_largo, u.username, u.is_active, p.tel_celular
        ORDER BY "nomLargo" ASC;
@@ -1510,10 +1511,13 @@ export class MantenimientoService implements OnModuleInit {
       let ordenSeed = 1;
       for (const r of rows) {
         const isP3 = r.roleCod === 'P3';
+        const isP5 = r.roleCod === 'P5';
         const cod = isP3
           ? `TEC-AUTH-P3-${r.idUser.substring(0, 8).toUpperCase()}`
+          : isP5
+          ? `TEC-AUTH-P5-${r.idUser.substring(0, 8).toUpperCase()}`
           : `TEC-AUTH-P4-${r.idUser.substring(0, 8).toUpperCase()}`;
-        const esp = isP3 ? ['CS_002'] : [];
+        const esp = isP3 ? ['CS_002', 'OBRAS_MAYORES'] : isP5 ? ['COORDINACION_GIM', 'DIAGNOSTICO_MAYOR'] : [];
         const meta: Record<string, any> = {
           email: r.email,
           telefono: r.telCelular ?? null,
@@ -1529,7 +1533,11 @@ export class MantenimientoService implements OnModuleInit {
           catalogo: TECNICO_MANTENIMIENTO,
           codigo: cod,
           nombre: r.nomLargo,
-          descripcion: isP3 ? 'Técnico Eléctrico Especializado (Auth P3)' : 'Técnico UMI Multipropósito (Auth P4)',
+          descripcion: isP5
+            ? 'Coordinador Infraestructura GIM (Auth P5 - Diagnóstico Obras Mayores)'
+            : isP3
+            ? 'Técnico Especializado (Auth P3 - Grupo Obras / Eléctrico)'
+            : 'Técnico UMI Multipropósito (Auth P4)',
           orden: ordenSeed++,
           isActivo: !!r.isActive,
           metadata: meta,
@@ -1865,7 +1873,8 @@ export class MantenimientoService implements OnModuleInit {
         | 'CONFORMIDAD_SIN_RESPUESTA'
         | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
         | 'VOBO_VALORACION_APROBADO'
-        | 'VOBO_VALORACION_OBSERVADO';
+        | 'VOBO_VALORACION_OBSERVADO'
+        | 'VINCULACION_TRAMITE_CONTRACTUAL';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       idTecnicoAsignado?: string | null;
@@ -1904,7 +1913,7 @@ export class MantenimientoService implements OnModuleInit {
   }
 
   private readonly UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-  private readonly TEC_AUTH_VIRTUAL_RE = /^TEC-AUTH-(P3|P4)-([0-9A-F]{8})$/i;
+  private readonly TEC_AUTH_VIRTUAL_RE = /^TEC-AUTH-(P3|P4|P5)-([0-9A-F]{8})$/i;
 
   private async resolverTecnicoActivo(
     identificador: string,
@@ -1921,7 +1930,7 @@ export class MantenimientoService implements OnModuleInit {
     const virtualMatch = this.TEC_AUTH_VIRTUAL_RE.exec(id);
     if (virtualMatch && !esUuid) {
       try {
-        const esperadoRole = virtualMatch[1].toUpperCase(); // P3 o P4
+        const esperadoRole = virtualMatch[1].toUpperCase(); // P3, P4 o P5
         const prefijoHex = virtualMatch[2].toLowerCase();   // 8 hex de uuid
         const sqlAuth = `
           SELECT u.id_user  AS "idUser",
@@ -1931,22 +1940,24 @@ export class MantenimientoService implements OnModuleInit {
                  p.nom_largo AS "nomLargo",
                  MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
                           WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                          WHEN r.code='ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5'
                           ELSE NULL END) AS "roleCod"
             FROM auth."user" u
             JOIN auth.personas p ON p.id_person = u.id_person
             JOIN auth.user_roles ur ON ur.id_user = u.id_user
             JOIN auth.role r ON r.id = ur.id_rol
            WHERE LOWER(substring(u.id_user::text from 1 for 8)) = $1
-             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO','ADMINISTRADOR_FUNCIONAL_INFRA')
            GROUP BY u.id_user, u.is_active, u.username, p.id_person, p.nom_largo
            ORDER BY (CASE WHEN MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
-                                        WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4' END) = $2 THEN 0 ELSE 1 END)
+                                        WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                                        WHEN r.code='ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5' END) = $2 THEN 0 ELSE 1 END)
            LIMIT 2;
         `;
         const rows = await this.dataSource.query(sqlAuth, [prefijoHex, esperadoRole]);
         if (!Array.isArray(rows) || rows.length === 0) {
           throw new BadRequestException(
-            `Código virtual ${id} no coincide con ningún usuario auth-service con roles P3/P4. Prefijo UUID ${prefijoHex} sin match.`
+            `Código virtual ${id} no coincide con ningún usuario auth-service con roles P3/P4/P5. Prefijo UUID ${prefijoHex} sin match.`
           );
         }
         const r = rows.find((x: any) => String(x.roleCod).toUpperCase() === esperadoRole) || rows[0];
@@ -1995,20 +2006,21 @@ export class MantenimientoService implements OnModuleInit {
                  p.nom_largo AS "nomLargo",
                  MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
                           WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                          WHEN r.code='ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5'
                           ELSE NULL END) AS "roleCod"
             FROM auth."user" u
             JOIN auth.personas p ON p.id_person = u.id_person
             JOIN auth.user_roles ur ON ur.id_user = u.id_user
             JOIN auth.role r ON r.id = ur.id_rol
            WHERE u.id_user = $1::uuid
-             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO','ADMINISTRADOR_FUNCIONAL_INFRA')
            GROUP BY u.id_user, u.is_active, u.username, p.id_person, p.nom_largo
            LIMIT 1;
         `;
         const rows = await this.dataSource.query(sqlAuth, [id]);
         if (!rows || rows.length !== 1 || !rows[0].roleCod) {
           throw new BadRequestException(
-            `Usuario UUID ${id} no existe o no tiene roles P3/P4 UMI válidos para ser técnico asignable.`,
+            `Usuario UUID ${id} no existe o no tiene roles P3/P4/P5 UMI válidos para ser técnico o responsable asignable.`,
           );
         }
         const r = rows[0];
@@ -2018,7 +2030,7 @@ export class MantenimientoService implements OnModuleInit {
           );
         }
         const roleCod = String(r.roleCod);
-        const codigoVirtual = roleCod === 'P3' ? 'P3-ELECTRICO' : 'P4-MULTIPROPOSITO';
+        const codigoVirtual = roleCod === 'P3' ? 'P3-ELECTRICO' : roleCod === 'P5' ? 'P5-COORDINADOR' : 'P4-MULTIPROPOSITO';
         const nombreDisplay = String(r.nomLargo || r.email || 'Sin nombre');
         const virtual: any = {
           idCatalogo: -Math.floor(Math.random() * 999999) - 1,
@@ -2087,6 +2099,9 @@ export class MantenimientoService implements OnModuleInit {
     }
     if (args.requiereContratacion !== undefined) {
       solicitud.requiereContratacion = Boolean(args.requiereContratacion);
+    }
+    if (solicitud.clasificacionMantenimiento === 'MAYOR' || solicitud.requiereContratacion) {
+      solicitud.requiereVoBo = true;
     }
 
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
@@ -2188,20 +2203,27 @@ export class MantenimientoService implements OnModuleInit {
 </div>`,
     });
     if (saved.areaResponsableActual !== 'TI' && saved.responsableAsignado) {
+      const esMayor = saved.clasificacionMantenimiento === 'MAYOR';
       await this.notificarTecnicoAsignado(saved, {
         tipo: 'SOLICITUD_ASIGNADA_TECNICO',
-        titulo: `Nueva solicitud asignada #${saved.consecutivo}`,
-        mensaje: `Se te ha asignado la solicitud de mantenimiento #${saved.consecutivo}. Descripción: ${saved.descripcion}`,
-        icono: 'Wrench',
-        color: '#4338ca',
-        prioridad: 'Media',
-        textoAccion: 'Gestionar solicitud',
-        emailSubject: `[UMI] Tarea asignada: Solicitud #${saved.consecutivo}`,
+        titulo: esMayor
+          ? `Mantenimiento Mayor asignado para Diagnóstico #${saved.consecutivo}`
+          : `Nueva solicitud asignada #${saved.consecutivo}`,
+        mensaje: esMayor
+          ? `Se te ha asignado la solicitud de Mantenimiento Mayor #${saved.consecutivo} para realizar el diagnóstico técnico y trámite precontractual. Descripción: ${saved.descripcion}`
+          : `Se te ha asignado la solicitud de mantenimiento #${saved.consecutivo}. Descripción: ${saved.descripcion}`,
+        icono: esMayor ? 'FileText' : 'Wrench',
+        color: esMayor ? '#7c3aed' : '#4338ca',
+        prioridad: esMayor ? 'Alta' : 'Media',
+        textoAccion: esMayor ? 'Diagnóstico técnico' : 'Gestionar solicitud',
+        emailSubject: esMayor
+          ? `[UMI] Mantenimiento Mayor asignado para Diagnóstico: Solicitud #${saved.consecutivo}`
+          : `[UMI] Tarea asignada: Solicitud #${saved.consecutivo}`,
         emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
-<h3 style="margin:0 0 8px;color:#4338ca">Nueva solicitud asignada</h3>
-<p style="margin:0 0 8px">Has sido asignado a la solicitud <strong>#${saved.consecutivo}</strong>.</p>
+<h3 style="margin:0 0 8px;color:${esMayor ? '#7c3aed' : '#4338ca'}">${esMayor ? 'Mantenimiento Mayor - Diagnóstico Requerido' : 'Nueva solicitud asignada'}</h3>
+<p style="margin:0 0 8px">Has sido asignado a la solicitud <strong>#${saved.consecutivo}</strong>${esMayor ? ' clasificada como <strong>Mantenimiento Mayor</strong> (requiere diagnóstico para proceso de contratación).' : '.'}</p>
 <p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
-<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#4338ca;color:#fff;border-radius:6px;text-decoration:none">Abrir para valoración</a></p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:${esMayor ? '#7c3aed' : '#4338ca'};color:#fff;border-radius:6px;text-decoration:none">${esMayor ? 'Abrir para diagnóstico técnico' : 'Abrir para valoración'}</a></p>
 </div>`,
       });
     }
@@ -2380,7 +2402,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     return (
       roles.includes('SUPER_ADMIN') ||
       roles.includes('GESTOR_MANTENIMIENTO') ||
-      roles.includes('ADMINISTRADOR_FUNCIONAL')
+      roles.includes('ADMINISTRADOR_FUNCIONAL') ||
+      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA')
     );
   }
 
@@ -3061,10 +3084,23 @@ ${args.motivo ? `<p style="margin:0 0 8px"><strong>Motivo:</strong> ${args.motiv
 ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong> ${args.observaciones}</p>` : ''}
 <p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#0369a1;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
 </div>`;
-      await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html);
-      this.notifLogger.log(`[${solicitud.idSolicitud}] Copia enviada a OTIC (${this.CORREO_OTIC_DESTINO}) para evento ${args.evento}`);
+      this.notifLogger.log(
+        `[EMAIL_DISPATCH][OTIC] Despachando notificación a OTIC (${this.CORREO_OTIC_DESTINO}) | Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud} | Evento: ${args.evento}`,
+      );
+      const ok = await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html);
+      if (ok) {
+        this.notifLogger.log(
+          `[EMAIL_DISPATCH][OTIC][OK] Correo entregado exitosamente a OTIC (${this.CORREO_OTIC_DESTINO}) para evento ${args.evento}`,
+        );
+      } else {
+        this.notifLogger.warn(
+          `[EMAIL_DISPATCH][OTIC][WARN] Despacho de correo a OTIC (${this.CORREO_OTIC_DESTINO}) no se completó. Verifique logs [EMAIL_DISPATCH].`,
+        );
+      }
     } catch (err: any) {
-      this.notifLogger.warn(`[${solicitud.idSolicitud}] Notificación OTIC falló: ${err?.message ?? err}`);
+      this.notifLogger.error(
+        `[EMAIL_DISPATCH][OTIC] Error en notificación OTIC para solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud}: ${err?.message ?? err}`,
+      );
     }
   }
 
@@ -3254,7 +3290,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       const descripcion = `Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · ${solicitud.estado ?? 'N/A'}`;
 
       if (encargados.length === 0) {
-        await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, payload.emailSubject, payload.emailHtml);
+        this.notifLogger.warn(`[NOTIFICACION_DEBUG] No hay encargados UMI con rol P2/P5 en auth.user_roles.`);
         return;
       }
 
@@ -5704,6 +5740,76 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     const count = await this.getHistoricoRepo().count();
     await this.dataSource.query(`TRUNCATE TABLE "infrastructure-management".mantenimiento_historico_externo RESTART IDENTITY CASCADE;`);
     return { eliminados: count };
+  }
+
+
+  async vincularTramiteContractual(
+    idSolicitud: string,
+    body: {
+      procesoContractual: string;
+      radicadoOrfeo?: string;
+      presupuestoEstimadoCop?: number;
+      observaciones?: string;
+    },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const solicitud = await this.findById(idSolicitud);
+    const proceso = String(body.procesoContractual || '').trim();
+    if (!proceso) {
+      throw new BadRequestException('El código o identificador del proceso contractual es obligatorio.');
+    }
+
+    const radicado = body.radicadoOrfeo ? String(body.radicadoOrfeo).trim() : null;
+    const presupuesto = body.presupuestoEstimadoCop != null ? Number(body.presupuestoEstimadoCop) : null;
+    const obs = body.observaciones ? String(body.observaciones).trim() : null;
+
+    if (presupuesto != null && !isNaN(presupuesto) && presupuesto > 0) {
+      solicitud.costoEstimado = presupuesto;
+    }
+
+    const payloadAudit = {
+      procesoContractual: proceso,
+      radicadoOrfeo: radicado,
+      presupuestoEstimadoCop: presupuesto,
+      observaciones: obs,
+      registradoPor: (user as any)?.email ?? 'Coordinación GIM',
+      fechaRegistro: new Date().toISOString(),
+    };
+
+    this.pushAsignacion(solicitud, {
+      accion: 'VINCULACION_TRAMITE_CONTRACTUAL' as any,
+      motivo: `Trámite Contractual vinculado: ${proceso}${radicado ? ` · Radicado Orfeo: ${radicado}` : ''}`,
+      observaciones: JSON.stringify(payloadAudit),
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: true,
+      user: user as AuthUser,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    await this.notificarAlSolicitante(saved, {
+      tipo: 'SOLICITUD_TRAMITE_CONTRACTUAL',
+      titulo: `Trámite Contractual #${saved.consecutivo}`,
+      mensaje: `Tu solicitud #${saved.consecutivo} de Mantenimiento Mayor ha sido trasladada a proceso contractual (${proceso}).`,
+      icono: 'FileText',
+      color: '#7e22ce',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${saved.consecutivo} en Trámite Contractual (${proceso})`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:600px">
+<h3>Trámite Contractual Iniciado</h3>
+<p>La solicitud <strong>#${saved.consecutivo}</strong> ha sido radicada formalmente ante el área de Contratación / Compras de la ESAP.</p>
+<p><strong>Proceso:</strong> ${proceso}</p>
+${radicado ? `<p><strong>Radicado Orfeo:</strong> ${radicado}</p>` : ''}
+${presupuesto ? `<p><strong>Presupuesto Oficial Estimado:</strong> $${presupuesto.toLocaleString('es-CO')} COP</p>` : ''}
+${obs ? `<p><strong>Observaciones:</strong> ${obs}</p>` : ''}
+</div>`,
+    });
+
+    return saved;
   }
 }
 

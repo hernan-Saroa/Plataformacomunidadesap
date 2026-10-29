@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, CircleDollarSign, Send, Undo2 } from 'lucide-react';
+import { Check, CircleDollarSign, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -8,7 +8,6 @@ import {
   Aviso,
   Ayuda,
   Boton,
-  BotonSecundario,
   campo,
   Marco,
   Pendiente,
@@ -31,10 +30,11 @@ const pesos = new Intl.NumberFormat('es-CO', {
   maximumFractionDigits: 0,
 });
 
+/** Los trámites de antes de la revisión de QA todavía pueden estar en estos. */
 const ETIQUETA_ESTADO: Record<string, string> = {
-  SOLICITADO: 'Solicitado a la Dirección Financiera',
-  VERIFICADO: 'Disponibilidad verificada',
-  EXPEDIDO: 'Expedido',
+  SOLICITADO: 'Solicitado antes del cambio: complétalo cargando el RP expedido',
+  VERIFICADO: 'Verificado antes del cambio: complétalo cargando el RP expedido',
+  EXPEDIDO: 'Cargado',
   RECHAZADO: 'Rechazado',
   ANULADO: 'Anulado',
 };
@@ -42,25 +42,22 @@ const ETIQUETA_ESTADO: Record<string, string> = {
 /**
  * Actividad 8.3 · Registro presupuestal (EFDS-1163).
  *
- * Mismo ciclo que el CDP porque es el mismo trámite en otro momento: el CDP
- * aparta la partida —«hay presupuesto para esto»— y el RP la compromete —«esta
- * plata es de este contrato»—. Por eso el CDP va antes de abrir el proceso y el
- * RP solo después de firmarlo.
+ * Como el CDP desde la 103: la Dirección Financiera expide el RP por el canal
+ * de siempre y aquí solo se carga el PDF con su número, valor, fecha y rubro
+ * (revisión de QA, 2026-10-16). Ya no hay solicitud ni verificación dentro de
+ * la plataforma.
  */
 export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
-  const firma = useFirma(NUMERAL, 'Expedir el registro presupuestal');
+  const firma = useFirma(NUMERAL, 'Cargar el registro presupuestal');
   const [estado, setEstado] = useState<EstadoRegistroPresupuestal | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
-  const [solicitando, setSolicitando] = useState(false);
-  const [rubro, setRubro] = useState('');
-
-  const [expidiendo, setExpidiendo] = useState(false);
   const [datos, setDatos] = useState({
     numero: '',
     valor: '',
+    rubro: '',
     fechaExpedicion: hoyEnBogota(),
   });
   const [soporte, setSoporte] = useState<File | null>(null);
@@ -71,6 +68,11 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
       .then((respuesta) => {
         setEstado(respuesta);
         setError(null);
+        // El valor del contrato como punto de partida: es lo que se compromete
+        // casi siempre, y corregirlo es más rápido que escribirlo.
+        if (respuesta.contrato) {
+          setDatos((p) => (p.valor ? p : { ...p, valor: String(respuesta.contrato!.valor) }));
+        }
       })
       .catch((err: any) => setError(err.message))
       .finally(() => setCargando(false));
@@ -80,74 +82,25 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
     leer();
   }, [procesoId]);
 
-  const solicitar = async () => {
+  const cargar = async (firmaOtp?: EvidenciaFirmaOtp) => {
+    if (!soporte) return;
     setGuardando(true);
     try {
       setEstado(
-        await contratacionService.solicitarRp(procesoId, {
-          ...(rubro.trim() ? { rubro: rubro.trim() } : {}),
-        }),
-      );
-      setRubro('');
-      setSolicitando(false);
-      toast.success('Solicitud radicada ante la Dirección Financiera');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const verificar = async () => {
-    setGuardando(true);
-    try {
-      setEstado(await contratacionService.verificarRp(procesoId));
-      toast.success('Disponibilidad verificada; ya se puede expedir');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const expedir = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    setGuardando(true);
-    try {
-      setEstado(
-        await contratacionService.expedirRp(
+        await contratacionService.cargarRp(
           procesoId,
           {
             numero: datos.numero.trim(),
             valor: Number(datos.valor),
             fechaExpedicion: datos.fechaExpedicion,
+            rubro: datos.rubro.trim() || undefined,
             firma: firmaOtp,
           },
           soporte,
         ),
       );
-      setExpidiendo(false);
       setSoporte(null);
-      toast.success('Registro presupuestal expedido; el gasto queda comprometido');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const rechazar = async () => {
-    const motivo = window
-      .prompt('¿Por qué no hay disponibilidad para comprometer?')
-      ?.trim();
-    if (!motivo) return;
-
-    setGuardando(true);
-    try {
-      setEstado(await contratacionService.rechazarRp(procesoId, motivo));
-      toast.success('Solicitud rechazada; puede volver a radicarse corregida');
+      toast.success('Registro presupuestal cargado; el gasto queda comprometido');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -175,14 +128,15 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
   }
 
   const rp = estado.rp;
-  const completo = datos.numero.trim() && Number(datos.valor) > 0 && datos.fechaExpedicion;
+  const completo =
+    datos.numero.trim() && Number(datos.valor) > 0 && datos.fechaExpedicion && soporte;
 
   return (
     <Marco>
       <Titulo>Registro presupuestal</Titulo>
       <Ayuda>
-        El RP compromete los recursos del contrato y sustituye al CDP en la etapa contractual: el
-        CDP apartó la partida, el RP la ata a este contrato.
+        El RP lo expide la Dirección Financiera por el canal de siempre. Cuando lo tengas, carga
+        aquí el PDF con sus datos: compromete los recursos del contrato contra el CDP del proceso.
       </Ayuda>
 
       {!estado.suscrito ? (
@@ -195,212 +149,117 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
       ) : null}
 
       {rp ? (
-        <>
-          <div
-            className={`rounded-lg border px-3.5 py-3 ${
-              rp.estado === 'EXPEDIDO'
-                ? 'border-emerald-200 bg-emerald-50'
-                : rp.estado === 'RECHAZADO'
-                  ? 'border-red-200 bg-red-50'
-                  : 'border-gray-200 bg-white'
-            }`}
-          >
-            <div className="flex items-start gap-2.5">
-              <CircleDollarSign
-                className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                  rp.estado === 'EXPEDIDO' ? 'text-emerald-900' : 'text-slate-500'
-                }`}
-              />
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`text-[12.5px] font-bold m-0 break-words ${
-                    rp.estado === 'EXPEDIDO' ? 'text-emerald-900' : 'text-slate-800'
-                  }`}
-                >
-                  {rp.numero ? `RP ${rp.numero}` : 'Solicitud sin número asignado'} ·{' '}
-                  {ETIQUETA_ESTADO[rp.estado]}
-                </p>
-                <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
-                  {rp.valor !== null ? pesos.format(rp.valor) : 'Sin valor registrado'}
-                  {rp.rubro ? ` · ${rp.rubro}` : ''}
-                  {rp.fechaExpedicion ? ` · ${fechaLarga(rp.fechaExpedicion)}` : ''}
-                </p>
-                {rp.observaciones ? (
-                  <p className="text-[11.5px] text-red-900 m-0 mt-1 leading-relaxed break-words">
-                    {rp.observaciones}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* Se advierte, no se bloquea: un contrato puede comprometerse por
-              partes, y esa decisión es de la Dirección Financiera. */}
-          {estado.advertencia ? (
-            <Aviso tono="aviso" titulo="El monto no cubre el contrato">
-              {estado.advertencia}
-              {estado.contrato ? `. El contrato vale ${pesos.format(estado.contrato.valor)}.` : ''}
-            </Aviso>
-          ) : null}
-
-          {rp.estado === 'SOLICITADO' ? (
-            <div className="flex flex-wrap gap-2">
-              <Boton
-                icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                disabled={guardando}
-                onClick={verificar}
-              >
-                Verificar la disponibilidad
-              </Boton>
-              <BotonSecundario
-                icono={<Undo2 className="w-3.5 h-3.5" />}
-                disabled={guardando}
-                onClick={rechazar}
-              >
-                Rechazar con motivo
-              </BotonSecundario>
-            </div>
-          ) : null}
-
-          {rp.estado === 'VERIFICADO' && !expidiendo ? (
-            <div className="flex flex-wrap gap-2">
-              <Boton
-                icono={<CircleDollarSign className="w-3.5 h-3.5" />}
-                onClick={() => {
-                  setDatos((p) => ({ ...p, valor: String(rp.valor ?? '') }));
-                  setExpidiendo(true);
-                }}
-              >
-                Expedir el registro
-              </Boton>
-              <BotonSecundario
-                icono={<Undo2 className="w-3.5 h-3.5" />}
-                disabled={guardando}
-                onClick={rechazar}
-              >
-                Rechazar con motivo
-              </BotonSecundario>
-            </div>
-          ) : null}
-
-          {expidiendo ? (
-            <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-              <p className="text-[12.5px] font-bold text-slate-800 m-0">Expedir el registro</p>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label htmlFor="rp-numero" className="block text-xs font-bold text-gray-600 mb-1.5">
-                    Número del RP <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="rp-numero"
-                    type="text"
-                    value={datos.numero}
-                    onChange={(e) => setDatos((p) => ({ ...p, numero: e.target.value }))}
-                    placeholder="RP-2026-0142"
-                    className={campo}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="rp-valor" className="block text-xs font-bold text-gray-600 mb-1.5">
-                    Valor comprometido <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="rp-valor"
-                    type="number"
-                    min={1}
-                    value={datos.valor}
-                    onChange={(e) => setDatos((p) => ({ ...p, valor: e.target.value }))}
-                    className={campo}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="rp-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
-                  Fecha de expedición <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="rp-fecha"
-                  type="date"
-                  value={datos.fechaExpedicion}
-                  onChange={(e) => setDatos((p) => ({ ...p, fechaExpedicion: e.target.value }))}
-                  className={campo}
-                />
-              </div>
-
-              <SelectorArchivo
-                id="rp-soporte"
-                etiqueta="Soporte del registro"
-                ayuda="Opcional: el número y la fecha son lo que compromete el gasto."
-                obligatorio={false}
-                archivo={soporte}
-                onElegir={setSoporte}
-              />
-
-              <div className="flex flex-wrap gap-2">
-                <Boton
-                  icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                  disabled={guardando || !completo}
-                  onClick={() => firma.conFirma(expedir)}
-                >
-                  Expedir
-                </Boton>
-                <BotonSecundario
-                  icono={<Undo2 className="w-3.5 h-3.5" />}
-                  disabled={guardando}
-                  onClick={() => setExpidiendo(false)}
-                >
-                  Cancelar
-                </BotonSecundario>
-              </div>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {estado.puedeSolicitar && !solicitando ? (
-        <Boton icono={<Send className="w-3.5 h-3.5" />} onClick={() => setSolicitando(true)}>
-          Solicitar el registro
-        </Boton>
-      ) : null}
-
-      {estado.puedeSolicitar && solicitando ? (
-        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Solicitud del registro</p>
-          <Ayuda>
-            Se radica ante la Dirección Financiera, que verifica la disponibilidad y lo expide.
-            {estado.contrato
-              ? ` Se comprometerá el valor del contrato: ${pesos.format(estado.contrato.valor)}.`
-              : ''}
-          </Ayuda>
-
-          <div>
-            <label htmlFor="rp-rubro" className="block text-xs font-bold text-gray-600 mb-1.5">
-              Rubro presupuestal
-            </label>
-            <input
-              id="rp-rubro"
-              type="text"
-              value={rubro}
-              onChange={(e) => setRubro(e.target.value)}
-              placeholder="A-02-02-02-008 · Servicios prestados a las empresas"
-              className={campo}
+        <div
+          className={`rounded-lg border px-3.5 py-3 ${
+            rp.estado === 'EXPEDIDO' ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'
+          }`}
+        >
+          <div className="flex items-start gap-2.5">
+            <CircleDollarSign
+              className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                rp.estado === 'EXPEDIDO' ? 'text-emerald-900' : 'text-slate-500'
+              }`}
             />
+            <div className="min-w-0 flex-1">
+              <p
+                className={`text-[12.5px] font-bold m-0 break-words ${
+                  rp.estado === 'EXPEDIDO' ? 'text-emerald-900' : 'text-slate-800'
+                }`}
+              >
+                {rp.numero ? `RP ${rp.numero}` : 'Registro sin número'} · {ETIQUETA_ESTADO[rp.estado]}
+              </p>
+              <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
+                {rp.valor !== null ? pesos.format(rp.valor) : 'Sin valor registrado'}
+                {rp.rubro ? ` · Rubro ${rp.rubro}` : ''}
+                {rp.fechaExpedicion ? ` · Expedido el ${fechaLarga(rp.fechaExpedicion)}` : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Se advierte, no se bloquea: un contrato puede comprometerse por
+          partes, y esa decisión es de la Dirección Financiera. */}
+      {estado.advertencia ? (
+        <Aviso tono="aviso" titulo="El monto no cubre el contrato">
+          {estado.advertencia}
+          {estado.contrato ? `. El contrato vale ${pesos.format(estado.contrato.valor)}.` : ''}
+        </Aviso>
+      ) : null}
+
+      {estado.puedeCargar ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Cargar el RP expedido</p>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label htmlFor="rp-numero" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Número del RP <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="rp-numero"
+                type="text"
+                value={datos.numero}
+                onChange={(e) => setDatos((p) => ({ ...p, numero: e.target.value }))}
+                placeholder="RP-2026-0142"
+                className={campo}
+              />
+            </div>
+            <div>
+              <label htmlFor="rp-valor" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Valor comprometido <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="rp-valor"
+                type="number"
+                min={1}
+                value={datos.valor}
+                onChange={(e) => setDatos((p) => ({ ...p, valor: e.target.value }))}
+                className={campo}
+              />
+            </div>
+            <div>
+              <label htmlFor="rp-rubro" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Rubro presupuestal
+              </label>
+              <input
+                id="rp-rubro"
+                type="text"
+                value={datos.rubro}
+                onChange={(e) => setDatos((p) => ({ ...p, rubro: e.target.value }))}
+                placeholder="Si se deja vacío, el del CDP"
+                className={campo}
+              />
+            </div>
+            <div>
+              <label htmlFor="rp-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Fecha de expedición <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="rp-fecha"
+                type="date"
+                max={hoyEnBogota()}
+                value={datos.fechaExpedicion}
+                onChange={(e) => setDatos((p) => ({ ...p, fechaExpedicion: e.target.value }))}
+                className={campo}
+              />
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Boton icono={<Send className="w-3.5 h-3.5" />} disabled={guardando} onClick={solicitar}>
-              Radicar la solicitud
-            </Boton>
-            <BotonSecundario
-              icono={<Undo2 className="w-3.5 h-3.5" />}
-              disabled={guardando}
-              onClick={() => setSolicitando(false)}
-            >
-              Cancelar
-            </BotonSecundario>
-          </div>
+          <SelectorArchivo
+            id="rp-soporte"
+            etiqueta="PDF del RP expedido"
+            archivo={soporte}
+            onElegir={setSoporte}
+          />
+
+          <Boton
+            icono={guardando ? <Check className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+            disabled={guardando || !completo}
+            onClick={() => firma.conFirma(cargar)}
+          >
+            Cargar el RP
+          </Boton>
         </div>
       ) : null}
       {firma.modal}

@@ -2,12 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../shell/src/utils/connectivity';
 import { aprobarComponente, revisarComponente, aprobarComponentesLote, revisarComponentesLote, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente, getSolicitudesPTA, getMisSolicitudesPTA, resolverSolicitudPTA, crearSolicitudPTA, getAprobacionTerritorial, getRevisionTerritorial } from './ptaApi';
+import { getPTACurrentRoleAccess, getAllPtasConEvidencias, getEvidenciasSeguimientoPTA } from './ptaApi';
 
 vi.mock('../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock('../../../../shell/src/utils/connectivity', () => ({ getAppOnlineStatus: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getAppOnlineStatus).mockReturnValue(true); });
 
 describe('decisiones PTA confirmadas por el servidor', () => {
+  it('valida los roles vigentes y las evidencias de Seguimiento sin reutilizar caché HTTP', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ userId: 'coordinador', roles: ['REVISOR'],
+      permissions: ['pta.backoffice.seguimiento'], isSuperUser: false });
+    expect((await getPTACurrentRoleAccess()).success).toBe(true);
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+    await getAllPtasConEvidencias('2026-1');
+    await getEvidenciasSeguimientoPTA('pta-1');
+    for (const call of vi.mocked(apiClient.get).mock.calls) expect(call[2]?.cache).toBe('no-store');
+    for (const raw of [null, { success: true }, { userId: 'coordinador', roles: [], permissions: [] }]) {
+      vi.mocked(apiClient.get).mockResolvedValue(raw);
+      expect((await getPTACurrentRoleAccess()).success).toBe(false);
+    }
+  });
   it('no interpreta respuestas incompletas como ausencia de solicitudes de edición', async () => {
     for (const consultar of [() => getMisSolicitudesPTA('docente-1'), () => getSolicitudesPTA()]) {
       for (const response of [{ success: true, data: null }, { success: true }, { success: true, data: {} }]) {

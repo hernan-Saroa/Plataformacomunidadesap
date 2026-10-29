@@ -76,7 +76,7 @@ export function porQueNoAdmiteTipo(
   }
 
   if (estado !== 'EJECUCION' && estado !== 'SUSPENDIDO') {
-    return 'el contrato todavía no está en ejecución: falta el acta de inicio (9.1)';
+    return 'el contrato todavía no está en ejecución: falta el acta de inicio (8.7)';
   }
 
   // De un contrato suspendido solo se sale reanudándolo o terminándolo.

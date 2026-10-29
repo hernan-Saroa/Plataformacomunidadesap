@@ -1,9 +1,17 @@
 import { ForbiddenException } from '@nestjs/common';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { GUARDS_METADATA, HEADERS_METADATA } from '@nestjs/common/constants';
 import { PtaAuthGuard } from './auth/pta-auth.guard';
 import { PtaController } from './pta.controller';
 
 describe('sincronización de decisiones individuales con Gestión', () => {
+  it.each(['getAll', 'getMis', 'getById', 'getGestion', 'getAprobacionesJefatura',
+    'getSyncStatus', 'getRecentEvents', 'getComponentesAprobacion', 'getComponentesRevision',
+    'getAprobacionTerritorial', 'getRevisionTerritorial', 'getDecisionPermissions', 'getDecisionListScope'] as const)(
+    '%s impide reutilizar estados cacheados entre decisiones o usuarios', method => {
+      const headers = Reflect.getMetadata(HEADERS_METADATA, PtaController.prototype[method]);
+      expect(headers).toContainEqual({ name: 'Cache-Control', value: 'private, no-store' });
+    },
+  );
   it.each(['aprobarComponente', 'revisarComponente'] as const)('%s entrega el estado personal del servidor después de guardar la decisión', async method => {
     const auth = { userId: 'aprobador', allowedComponents: ['investigacion'], roles: ['Docente'] } as any;
     const ptaActualizado = { id: 'pta-1', estado: 'Pendiente Jefatura',

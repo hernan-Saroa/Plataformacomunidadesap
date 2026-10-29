@@ -12,9 +12,13 @@ vi.mock('../../services/contratacionService', () => ({
     listarProcesos: vi.fn(),
     modalidades: vi.fn(),
     crearProceso: vi.fn(),
-    // Desde EFDS-1147 el formulario consulta la modalidad que corresponde a la
-    // cuantía mientras se digita el valor.
     sugerenciaModalidad: vi.fn(),
+    // Desde la migración 097 el proceso nace de una línea del PAA.
+    paa: {
+      opcionesDeCreacion: vi.fn(),
+      buscarLineas: vi.fn(),
+      linea: vi.fn(),
+    },
     // Quién responde por cada punto: la fila dice a quién le toca.
     responsables: vi.fn(async () => []),
     // El semáforo de cada fila.
@@ -28,6 +32,11 @@ const servicio = contratacionService as unknown as {
   modalidades: ReturnType<typeof vi.fn>;
   crearProceso: ReturnType<typeof vi.fn>;
   sugerenciaModalidad: ReturnType<typeof vi.fn>;
+  paa: {
+    opcionesDeCreacion: ReturnType<typeof vi.fn>;
+    buscarLineas: ReturnType<typeof vi.fn>;
+    linea: ReturnType<typeof vi.fn>;
+  };
 };
 
 const MODALIDADES = [
@@ -35,86 +44,125 @@ const MODALIDADES = [
   { codigo: 'LICITACION_PUBLICA', nombre: 'Licitación Pública', orden: 10 },
 ];
 
+const VIGENTE = { id: 'v-2026', anio: 2026, versionId: 'ver-31', versionNumero: 31 };
+const SEDE = {
+  id: 'r-sede', documentoId: 'd-sede', codigo: 'SEDE_CENTRAL', nombre: 'Sede Central', prefijoLinea: 'LINEA',
+  unidadContratacion: 'Contratación', activa: true, documento: 'Sede Central y Chocó', vigente: VIGENTE, motivo: null,
+};
+const CHOCO = {
+  id: 'r-choco', documentoId: 'd-sede', codigo: 'CHOCO', nombre: 'Territorial Chocó', prefijoLinea: 'CHOCO',
+  unidadContratacion: 'Territorial Choco', activa: true, documento: 'Sede Central y Chocó', vigente: VIGENTE, motivo: null,
+};
+const META_SIN_PAA = {
+  id: 'r-meta', documentoId: 'd-meta', codigo: 'META', nombre: 'Territorial Meta', prefijoLinea: 'META',
+  unidadContratacion: 'Territorial Meta', activa: true, documento: 'Territorial Meta', vigente: null,
+  motivo: 'Territorial Meta no tiene un PAA vigente con una versión activa.',
+};
+
+const busqueda = (lineas: object[]) => ({
+  vigencia: { id: 'v-2026', anio: 2026 },
+  version: { id: 'ver-31', numero: 31 },
+  total: lineas.length,
+  pagina: 1,
+  porPagina: 50,
+  lineas,
+});
+
+const LINEA_1 = {
+  id: 'l-1',
+  codigo: 'LINEA 1',
+  objeto: 'Soporte técnico en sitio',
+  modalidad: 'Contratación directa',
+  valorTotal: 78852000,
+  enUso: null,
+};
+
+const DETALLE_LINEA_1 = {
+  id: 'l-1',
+  codigo: 'LINEA 1',
+  region: { id: 'r-sede', nombre: 'Sede Central' },
+  vigencia: { id: 'v-2026', anio: 2026, vigente: true },
+  version: { id: 'ver-31', numero: 31, estado: 'ACTIVA' },
+  campos: [
+    { clave: 'objeto', etiqueta: 'Objeto', valor: 'Soporte técnico en sitio' },
+    { clave: 'valor_total', etiqueta: 'Valor total estimado', valor: 78852000 },
+  ],
+  enUso: null,
+};
+
 /**
- * La modalidad decide qué actividades recorre el proceso, así que es
- * obligatoria al crearlo. Eso hace que un fallo al cargar el catálogo deje al
- * usuario sin poder avanzar: la primera versión respondía al error con un
- * `setModalidades([])`, y el desplegable quedaba vacío sin decir por qué.
+ * Crear un proceso desde el Plan Anual de Adquisiciones (migración 097).
+ *
+ * El objeto, la modalidad y el valor ya no se teclean: se elige la región, se
+ * busca la línea y se confirma lo que trae.
  */
-describe('VistaProcesos · selector de modalidad', () => {
+describe('VistaProcesos · crear desde el PAA', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     servicio.listarProcesos.mockResolvedValue([]);
-    servicio.sugerenciaModalidad.mockResolvedValue({ modalidad: null, forzosa: false });
+    servicio.paa.opcionesDeCreacion.mockResolvedValue({
+      regiones: [SEDE, CHOCO, META_SIN_PAA],
+      listo: true,
+      motivo: null,
+    });
+    servicio.paa.buscarLineas.mockResolvedValue(busqueda([LINEA_1]));
+    servicio.paa.linea.mockResolvedValue(DETALLE_LINEA_1);
   });
 
-  const abrirModal = async () => {
-    render(<VistaProcesos onAbrir={vi.fn()} />);
+  const abrir = async (onAbrir = vi.fn()) => {
+    render(<VistaProcesos onAbrir={onAbrir} />);
     await userEvent.click(await screen.findByRole('button', { name: /Nuevo proceso|Nuevo/ }));
+    return onAbrir;
   };
 
-  it('ofrece las modalidades que devuelve el backend', async () => {
-    servicio.modalidades.mockResolvedValue(MODALIDADES);
-    await abrirModal();
+  it('dice por qué no se puede crear si no hay un PAA vigente', async () => {
+    servicio.paa.opcionesDeCreacion.mockResolvedValue({
+      regiones: [{ ...SEDE, vigente: null }],
+      listo: false,
+      motivo: 'No hay un Plan Anual de Adquisiciones vigente con una versión activa.',
+    });
+    await abrir();
 
-    expect(await screen.findByRole('option', { name: 'Mínima Cuantía' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Licitación Pública' })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/No hay un Plan Anual de Adquisiciones vigente/);
   });
 
-  it('explica el fallo en vez de mostrar un desplegable vacío', async () => {
-    // Este era el sintoma del 500 que devolvia el endpoint: sin mensaje, el
-    // usuario no tenia forma de saber por que no podia crear el proceso.
-    servicio.modalidades.mockRejectedValue(new Error('Error 500'));
-    await abrirModal();
+  it('busca solo en la región elegida', async () => {
+    await abrir();
+    await userEvent.click(await screen.findByRole('radio', { name: /Territorial Chocó/ }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Error 500');
+    await waitFor(() => expect(servicio.paa.buscarLineas).toHaveBeenCalledWith('r-choco', ''));
   });
 
-  it('avisa cuando el catálogo llega vacío', async () => {
-    // Un catálogo vacío no es un error de red, pero deja igual de bloqueado.
-    servicio.modalidades.mockResolvedValue([]);
-    await abrirModal();
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/No hay modalidades configuradas/);
+  it('no deja elegir la región cuyo territorio no tiene PAA vigente, y dice por qué', async () => {
+    await abrir();
+    expect(await screen.findByRole('radio', { name: /Territorial Meta/ })).toBeDisabled();
+    expect(screen.getByText('Territorial Meta no tiene un PAA vigente con una versión activa.')).toBeInTheDocument();
   });
 
-  it('deshabilita el selector cuando no hay nada que elegir', async () => {
-    servicio.modalidades.mockResolvedValue([]);
-    await abrirModal();
+  it('muestra lo que trae la línea y crea el proceso con ella', async () => {
+    servicio.crearProceso.mockResolvedValue({ id: 'proc-1', radicado: 'CTO-2026-0100' });
+    const onAbrir = await abrir();
+    await userEvent.click(await screen.findByRole('radio', { name: /Sede Central/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /LINEA 1/ }));
 
-    await waitFor(() => expect(screen.getByLabelText(/Modalidad/)).toBeDisabled());
-  });
-
-  it('no deja crear el proceso sin modalidad', async () => {
-    servicio.modalidades.mockResolvedValue(MODALIDADES);
-    await abrirModal();
-
-    await userEvent.type(screen.getByLabelText(/Objeto a contratar/), 'Adquisición de equipos');
-
-    // Con objeto pero sin modalidad el boton sigue bloqueado: sin ella el
-    // backend no puede instanciar las actividades del proceso.
-    expect(screen.getByRole('button', { name: /Crear y abrir/ })).toBeDisabled();
-  });
-
-  it('envía la modalidad elegida junto al objeto y la cuantía', async () => {
-    servicio.modalidades.mockResolvedValue(MODALIDADES);
-    servicio.crearProceso.mockResolvedValue({ id: 'proc-1' });
-    await abrirModal();
-
-    await userEvent.type(screen.getByLabelText(/Objeto a contratar/), 'Adquisición de equipos');
-    // El valor estimado se pide al crear desde EFDS-1147: de él depende la
-    // modalidad aplicable, así que el proceso no puede nacer sin él.
-    await userEvent.type(screen.getByLabelText(/Valor estimado/), '1000000');
-    await userEvent.selectOptions(screen.getByLabelText(/Modalidad/), 'MINIMA_CUANTIA');
+    expect(await screen.findByText('$ 78.852.000')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Crear y abrir/ }));
 
-    await waitFor(() =>
-      expect(servicio.crearProceso).toHaveBeenCalledWith(
-        'Adquisición de equipos',
-        'MINIMA_CUANTIA',
-        1000000,
-      ),
-    );
+    await waitFor(() => expect(servicio.crearProceso).toHaveBeenCalledWith('l-1'));
+    expect(onAbrir).toHaveBeenCalledWith('proc-1', '3.1');
+  });
+
+  it('no deja crear con una línea que ya tiene proceso', async () => {
+    servicio.paa.linea.mockResolvedValue({
+      ...DETALLE_LINEA_1,
+      enUso: { procesoId: 'p-9', radicado: 'CTO-2026-0009' },
+    });
+    await abrir();
+    await userEvent.click(await screen.findByRole('radio', { name: /Sede Central/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /LINEA 1/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/CTO-2026-0009/);
+    expect(screen.getByRole('button', { name: /Crear y abrir/ })).toBeDisabled();
   });
 });
 
@@ -149,7 +197,7 @@ describe('VistaProcesos · la bandeja', () => {
 
   it('señala los que llegaron y nadie ha recibido', async () => {
     servicio.listarProcesos.mockResolvedValue([
-      proceso({ contratacion: null, abogado: null, enBandeja: true }),
+      proceso({ contratacion: null, enBandeja: true }),
     ]);
 
     render(<VistaProcesos onAbrir={vi.fn()} />);
@@ -157,11 +205,11 @@ describe('VistaProcesos · la bandeja', () => {
     expect(await screen.findByText(/En bandeja · sin recibir/)).toBeInTheDocument();
   });
 
-  it('en los recibidos dice quién los lleva y quién los revisa', async () => {
+  it('en los recibidos dice quién los lleva y quién ocupa cada puesto', async () => {
     servicio.listarProcesos.mockResolvedValue([
       proceso({
         contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: true },
-        abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
+        puestos: [{ puesto: 'Abogado', nombre: 'Andrés Rojas', esMio: false }],
         enBandeja: false,
       }),
     ]);
@@ -169,23 +217,7 @@ describe('VistaProcesos · la bandeja', () => {
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     expect(await screen.findByText(/Laura Pineda \(tú\)/)).toBeInTheDocument();
-    expect(screen.getByText(/revisa Andrés Rojas/)).toBeInTheDocument();
-  });
-
-  it('avisa cuando un proceso recibido se quedó sin abogado', async () => {
-    // Es el estado que nadie pide pero ocurre: quitar sin poner otro. Mientras
-    // dure, la 3.4 no la puede resolver nadie.
-    servicio.listarProcesos.mockResolvedValue([
-      proceso({
-        contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
-        abogado: null,
-        enBandeja: false,
-      }),
-    ]);
-
-    render(<VistaProcesos onAbrir={vi.fn()} />);
-
-    expect(await screen.findByText(/sin abogado/)).toBeInTheDocument();
+    expect(screen.getByText(/Abogado: Andrés Rojas/)).toBeInTheDocument();
   });
 });
 
@@ -258,7 +290,7 @@ describe('VistaProcesos · a quién le toca', () => {
     fechaRadicacion: '2026-09-09T00:00:00.000Z',
     estudioPrevio: null,
     actividades: [],
-    participacion: { contratacion: null, abogado: null, enBandeja: false },
+    participacion: { contratacion: null, enBandeja: false },
     ...cambios,
   });
 
@@ -268,13 +300,13 @@ describe('VistaProcesos · a quién le toca', () => {
     servicio.modalidades.mockResolvedValue(MODALIDADES);
   });
 
-  it('al abogado del proceso le dice que le toca revisar', async () => {
+  it('a quien ocupa un puesto del proceso le dice que le toca revisar', async () => {
     servicio.listarProcesos.mockResolvedValue([
       proceso({
         estudioPrevio: { estado: 'EN_REVISION', version: 1, camposFaltantes: 0, camposObligatorios: 5, actualizadoEn: '2026-09-20' },
         participacion: {
           contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
-          abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: true },
+          puestos: [{ puesto: 'Abogado', nombre: 'Andrés Rojas', esMio: true }],
           enBandeja: false,
         },
       }),
@@ -301,14 +333,18 @@ describe('VistaProcesos · a quién le toca', () => {
           actividad('3.3', 'APROBADO', 'Radicación'),
           {
             ...actividad('4.2', 'BORRADOR', 'Verificar disponibilidad presupuestal'),
-            // Lo que manda el backend: de la 4.2 responde la Financiera que la tomó.
-            responde: { papel: 'FINANCIERA', accion: 'editar', seToma: true, soloEnRevision: false },
+            // Lo que manda el backend (109): la 4.2 la hace quien ocupa el puesto.
+            responde: {
+              puesto: 'Presupuesto',
+              persona: { nombre: 'Marta Presupuesto', esMio: false },
+              accion: 'editar',
+              seToma: false,
+              soloEnRevision: false,
+            },
           },
         ],
         participacion: {
           contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
-          abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
-          financiera: { nombre: 'Marta Presupuesto', usuarioNombre: 'marta@esap', esMio: false },
           enBandeja: false,
         },
       }),
