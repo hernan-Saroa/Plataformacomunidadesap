@@ -70,3 +70,26 @@ de cada operación, entre pestañas del mismo navegador, al recuperar foco y cad
 - `node scripts/verify-rund-photos-browser.mjs`: componentes reales con API de
   prueba, aprobación, carga PTA y tamaños de 320, 375, 768 y 1440 píxeles.
   Capturas en `.local/rund-photos-preview`.
+- `node scripts/verify-rund-photos-concurrency.cjs`: transacciones simultáneas
+  contra PostgreSQL local, en un esquema aislado que se elimina al terminar.
+  Comprueba cargas concurrentes, aprobación/rechazo simultáneos y reemplazo
+  mientras otro revisor intenta aprobar la versión anterior.
+- `node backend/academic-work-plan-service/node_modules/jest/bin/jest.js --config scripts/rund-photos-auth-jest.config.cjs --runInBand`:
+  verifica el adaptador histórico del portal usando la herramienta Jest instalada
+  en RUND. Comprueba identidad autenticada, conservación de errores HTTP y fallos
+  de conexión o respuestas no JSON, sin modificar dependencias de auth-service.
+
+La segunda revisión añade validación de CRC y contenido descomprimido PNG con
+un límite de memoria derivado de las dimensiones, además de la estructura de
+escaneos JPEG. Las imágenes PNG y JPEG de prueba se generaron con Chromium y no
+contienen fotos ni datos personales. También se verifican autenticación JWT real,
+cookies de sesión y tokens vencidos. La interfaz permite reintentar una vista
+previa fallida y descarta respuestas antiguas de la bandeja o de otro docente.
+
+La revisión final comprueba el formulario completo con sus validadores reales:
+registro con y sin foto, ausencia de permiso y recuperación de una carga fallida
+sin duplicar al docente. También verifica los resultados por archivo y límites de
+la carga masiva. Las rutas de fotos y su adaptador histórico reciben la misma
+protección de auditoría del gateway que RUND: se conservan operación y resultado,
+sin copiar fotos, observaciones o documentos personales a la auditoría general.
+La trazabilidad específica de revisión permanece en el historial de fotos.

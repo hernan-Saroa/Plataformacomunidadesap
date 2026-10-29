@@ -8,6 +8,8 @@ export const PHOTO_ACCEPT = 'image/png,image/jpeg,.png,.jpg,.jpeg';
 export const PHOTO_HELP = 'PNG o JPEG (.png, .jpg, .jpeg). Máximo 2 MB. Cada lado debe medir entre 200 y 4096 píxeles. Recomendado: 600 × 600 píxeles, rostro centrado y fondo claro.';
 const changedEvent = 'esap:profile-photo-changed';
 const publishedCache = new Map<string, { at: number; result: Promise<{ id: string | null; url: string | null }> }>();
+const subscribers = new Set<() => void>();
+let stopObserving: (() => void) | undefined;
 
 export function photoChanged() {
   publishedCache.clear();
@@ -16,13 +18,26 @@ export function photoChanged() {
 }
 
 export function onPhotoChanged(callback: () => void) {
-  const handleChanged = () => { publishedCache.clear(); callback(); };
-  const handleStorage = (event: StorageEvent) => { if (event.key === changedEvent) { publishedCache.clear(); callback(); } };
-  window.addEventListener(changedEvent,handleChanged);
-  window.addEventListener('storage',handleStorage);
-  window.addEventListener('focus',callback);
-  const timer = window.setInterval(callback,60_000);
-  return () => { window.removeEventListener(changedEvent,handleChanged); window.removeEventListener('storage',handleStorage); window.removeEventListener('focus',callback); window.clearInterval(timer); };
+  subscribers.add(callback);
+  if (!stopObserving) {
+    const notify = () => {
+      publishedCache.clear();
+      if (document.visibilityState !== 'hidden') for (const listener of subscribers) listener();
+    };
+    const handleStorage = (event: StorageEvent) => { if (event.key === changedEvent) notify(); };
+    const handleVisibility = () => { if (document.visibilityState === 'visible') notify(); };
+    window.addEventListener(changedEvent,notify);
+    window.addEventListener('storage',handleStorage);
+    window.addEventListener('focus',notify);
+    document.addEventListener('visibilitychange',handleVisibility);
+    const timer = window.setInterval(notify,60_000);
+    stopObserving = () => {
+      window.removeEventListener(changedEvent,notify); window.removeEventListener('storage',handleStorage);
+      window.removeEventListener('focus',notify); document.removeEventListener('visibilitychange',handleVisibility);
+      window.clearInterval(timer);
+    };
+  }
+  return () => { subscribers.delete(callback); if (!subscribers.size) { stopObserving?.(); stopObserving = undefined; publishedCache.clear(); } };
 }
 
 export function usePublishedPhoto(personaId?: string, enabled = true) {
@@ -38,7 +53,7 @@ export function usePublishedPhoto(personaId?: string, enabled = true) {
       const cached = publishedCache.get(key);
       const result = cached && Date.now()-cached.at < 15_000 ? cached.result
         : apiClient.get<{ id: string | null; url: string | null }>(`${PHOTO_API}/${personaId ? `personas/${encodeURIComponent(personaId)}` : 'mia'}/publicada`,undefined,{ skipErrorToast: true, cache: 'no-store' });
-      publishedCache.set(key,{ at: Date.now(),result });
+      if (result !== cached?.result) publishedCache.set(key,{ at: Date.now(),result });
       result.then(data => { if (active && current === sequence) setPhoto({ key,url: data.url }); }).catch(() => { publishedCache.delete(key); if (active && current === sequence) setPhoto({ key,url: null }); });
     };
     refresh();

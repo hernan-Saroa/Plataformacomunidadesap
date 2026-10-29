@@ -327,7 +327,9 @@ export class PortalController {
         headers: { ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}), ...(req.headers.cookie ? { cookie: req.headers.cookie } : {}) },
       });
     } catch { throw new ServiceUnavailableException('No se pudo enviar la foto a validación. Intente nuevamente.'); }
-    const data = await response.json();
+    let data: any;
+    try { data = await response.json(); }
+    catch { throw new ServiceUnavailableException('No se pudo confirmar el envío de la foto a validación. Consulte su solicitud antes de reintentar.'); }
     if (!response.ok) throw new HttpException(data, response.status);
     return { success: true, data, message: 'Foto pendiente de validación del grupo RUND.' };
   }

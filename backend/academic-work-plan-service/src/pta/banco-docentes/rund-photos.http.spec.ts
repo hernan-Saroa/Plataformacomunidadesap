@@ -32,7 +32,11 @@ describe('Fotos RUND: permisos HTTP y propiedad', () => {
     await app.init();
   });
   afterAll(()=>app.close());
-  beforeEach(()=>{ jest.clearAllMocks(); role='DOCENTE'; });
+  beforeEach(()=>{
+    jest.clearAllMocks(); role='DOCENTE';
+    service.bulkPerson.mockReset().mockResolvedValue(person);
+    service.upload.mockReset().mockResolvedValue({solicitud:{estado:'PENDIENTE'}});
+  });
 
   it('la carga PTA ignora personaId, estado y actor enviados por el cliente',async()=>{
     await request(app.getHttpServer()).post('/pta/fotos-perfil/mia').field('personaId','OTHER').field('estado','APROBADA').field('actor','IMPOSTOR')
@@ -73,5 +77,33 @@ describe('Fotos RUND: permisos HTTP y propiedad', () => {
     await request(app.getHttpServer()).post('/pta/fotos-perfil/masiva').expect(400);
     await request(app.getHttpServer()).post('/pta/fotos-perfil/mia').attach('file',Buffer.alloc(2097153),'big.png').expect(413);
     expect(service.upload).not.toHaveBeenCalled();
+  });
+  it.each(['DOCENTE','VIEWER','REVIEWER'])('%s no carga lotes sin permiso específico',async current=>{
+    role=current;
+    await request(app.getHttpServer()).post('/pta/fotos-perfil/masiva').attach('files',Buffer.from('synthetic'),'123456.png').expect(403);
+    expect(service.upload).not.toHaveBeenCalled();
+  });
+  it('el lote informa por archivo y evita dos solicitudes para la misma persona',async()=>{
+    role='UPLOADER';
+    const result=await request(app.getHttpServer()).post('/pta/fotos-perfil/masiva')
+      .field('actorId','IMPOSTOR').field('estado','APROBADA')
+      .attach('files',Buffer.from('synthetic'),'123456.png').attach('files',Buffer.from('synthetic'),'123456.jpg').expect(201);
+    expect(result.body.results.map((row:any)=>row.success)).toEqual([true,false]);
+    expect(result.body.results[1].message).toContain('Documento repetido');
+    expect(service.upload).toHaveBeenCalledTimes(1);
+    expect(service.upload).toHaveBeenCalledWith(person,expect.anything(),'AUTHENTICATED','MASIVA');
+  });
+  it('un archivo sin docente registrado no impide procesar otro válido',async()=>{
+    role='UPLOADER';service.bulkPerson.mockRejectedValueOnce(new Error('Docente no encontrado'));
+    const result=await request(app.getHttpServer()).post('/pta/fotos-perfil/masiva')
+      .attach('files',Buffer.from('synthetic'),'missing.png').attach('files',Buffer.from('synthetic'),'123456.png').expect(201);
+    expect(result.body.results.map((row:any)=>row.success)).toEqual([false,true]);
+    expect(service.upload).toHaveBeenCalledTimes(1);
+  });
+  it('rechaza más de 20 fotos antes de ejecutar la carga del lote',async()=>{
+    role='UPLOADER';
+    let pending=request(app.getHttpServer()).post('/pta/fotos-perfil/masiva');
+    for(let index=0;index<21;index++) pending=pending.attach('files',Buffer.from('synthetic'),`${index}.png`);
+    await pending.expect(400);expect(service.upload).not.toHaveBeenCalled();
   });
 });

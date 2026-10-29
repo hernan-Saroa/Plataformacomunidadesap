@@ -3,16 +3,10 @@ const path = require('node:path');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { deflateSync } = require('node:zlib');
 const { root,serviceRoot,clientForLocal,reportError } = require('./rund-documental/local-context.cjs');
 require(path.join(serviceRoot,'node_modules/ts-node')).register({ transpileOnly: true,project: path.join(serviceRoot,'tsconfig.json') });
 const { RundPhotosService } = require(path.join(serviceRoot,'src/pta/banco-docentes/rund-photos.service.ts'));
 
-function png() {
-  const chunk=(name,data)=>{ const b=Buffer.alloc(data.length+12); b.writeUInt32BE(data.length); b.write(name,4); data.copy(b,8); return b; };
-  const header=Buffer.alloc(13); header.writeUInt32BE(200); header.writeUInt32BE(200,4); header[8]=8; header[9]=2;
-  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc(120200))),chunk('IEND',Buffer.alloc(0))]);
-}
 (async()=>{
   const client=clientForLocal();
   try {
@@ -37,7 +31,7 @@ function png() {
       catch(error) { await client.query('ROLLBACK TO SAVEPOINT photo_operation'); await client.query('RELEASE SAVEPOINT photo_operation'); throw error; }
     } };
     const photos=new RundPhotosService(db);
-    const file={ buffer: png(),originalname: 'synthetic.png',mimetype: 'image/png' };
+    const file={ buffer: fs.readFileSync(path.join(serviceRoot,'src/pta/banco-docentes/__fixtures__/profile-photo.png')),originalname: 'synthetic.png',mimetype: 'image/png' };
     assert.equal((await photos.published(person)).url,null);
     let state=await photos.upload(person,file,'SYNTHETIC_TEACHER','PTA');
     const first=state.solicitud.id;

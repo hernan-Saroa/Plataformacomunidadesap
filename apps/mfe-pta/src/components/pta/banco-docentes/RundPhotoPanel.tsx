@@ -21,6 +21,7 @@ export function RundPhotoPanel({ docenteId, canUpload = false, canValidate = fal
   const [preview,setPreview] = useState<{ id: string; url: string } | null>(null);
   const [previewError,setPreviewError] = useState('');
   const [previewReady,setPreviewReady] = useState<string | null>(null);
+  const [previewAttempt,setPreviewAttempt] = useState(0);
   const request = useRef(0);
   const refresh = useCallback(async () => {
     const sequence = ++request.current;
@@ -41,7 +42,9 @@ export function RundPhotoPanel({ docenteId, canUpload = false, canValidate = fal
         .catch(() => { if (active) setPreviewError('No se pudo cargar la imagen. Actualice para revisarla antes de decidir.'); });
     }
     return () => { active=false; };
-  },[base,candidate?.id,data?.publicada?.id]);
+  },[base,candidate?.id,data?.publicada?.id,previewAttempt]);
+
+  const retry = () => { setPreviewAttempt(attempt => attempt + 1); void refresh(); };
 
   const upload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; event.target.value=''; if (!file || busy) return;
@@ -67,7 +70,7 @@ export function RundPhotoPanel({ docenteId, canUpload = false, canValidate = fal
   };
 
   return <section className="rund-photo" aria-label="Foto de perfil" aria-busy={busy}>
-    <div className="rund-photo-heading"><h4><Camera size={19} /> Foto de perfil</h4><button type="button" disabled={busy} onClick={refresh} aria-label="Actualizar foto y solicitud"><RefreshCw size={15} /> Actualizar</button></div>
+    <div className="rund-photo-heading"><h4><Camera size={19} /> Foto de perfil</h4><button type="button" disabled={busy} onClick={retry} aria-label="Actualizar foto y solicitud"><RefreshCw size={15} /> Actualizar</button></div>
     <p>La nueva foto se publica únicamente cuando un usuario con el permiso de validación de fotos RUND la aprueba.</p>
     {error && <p role="alert" className="rund-photo-error">{error}</p>}
     {notice && <p role="status" className="rund-photo-success">{notice}</p>}
@@ -100,13 +103,19 @@ export function RundPhotoInbox() {
   const [selected,setSelected] = useState<any>(null);
   const [error,setError] = useState('');
   const [loading,setLoading] = useState(true);
+  const request = useRef(0);
   const refresh = useCallback(async()=>{
+    const sequence = ++request.current;
     setLoading(true);
-    try { setData(await apiClient.get(`${PHOTO_API}/pendientes`,{ page },{ skipErrorToast: true,cache: 'no-store' })); setError(''); }
-    catch(e: any) { setError(e.message || 'No se pudo consultar la bandeja.'); }
-    finally { setLoading(false); }
+    try {
+      const value = await apiClient.get<{ items: any[]; total: number }>(`${PHOTO_API}/pendientes`,{ page },{ skipErrorToast: true,cache: 'no-store' });
+      if (!Array.isArray(value?.items) || !Number.isFinite(value.total)) throw new Error('No fue posible leer la bandeja de fotos.');
+      if (request.current === sequence) { setData(value); setError(''); }
+    }
+    catch(e: any) { if (request.current === sequence) setError(e.message || 'No se pudo consultar la bandeja.'); }
+    finally { if (request.current === sequence) setLoading(false); }
   },[page]);
-  useEffect(()=>{ refresh(); return onPhotoChanged(refresh); },[refresh]);
+  useEffect(()=>{ refresh(); const off = onPhotoChanged(refresh); return () => { ++request.current; off(); }; },[refresh]);
   return <div className="rund-photo-inbox"><div className="rund-photo-heading"><h3>Fotos pendientes de validación ({data.total})</h3><button type="button" onClick={refresh} disabled={loading}>Actualizar bandeja</button></div>
     <p>Solicitudes de PTA, Identidad RUND y carga masiva. La decisión se aplica a la persona en todos sus periodos.</p>
     {error && <p role="alert">{error}</p>}{loading && <p role="status">Consultando solicitudes…</p>}

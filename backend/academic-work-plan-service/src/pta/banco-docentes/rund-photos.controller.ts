@@ -99,6 +99,6 @@ export class RundPhotosController {
   @Post('docentes/:id/versiones/:photo/decision')
   @RequireRundPermissions(VALIDATE)
   async decide(@Param('id') id: string, @Param('photo', ParseUUIDPipe) photo: string, @Body() body: any, @Req() req: any) {
-    return this.photos.decide(await this.person(id),photo,body.estado,body.observacion,this.actor(req));
+    return this.photos.decide(await this.person(id),photo,body?.estado,body?.observacion,this.actor(req));
   }
 }
