@@ -78,7 +78,7 @@ export class AperturaProcesoController {
   @ApiOperation({
     summary: 'Actividad 5.7 · Registrar la apertura y publicar el pliego definitivo',
     description:
-      'Los tres documentos van en la misma petición que los datos de la resolución: el proceso se abre con ellos o no se abre. La evidencia prueba que el pliego definitivo se publicó, igual que en la actividad 5.2. Requiere el CDP expedido (RF-EST-05).',
+      'Los tres documentos van en la misma petición que los datos de la resolución: el proceso se abre con ellos o no se abre. La evidencia prueba que el pliego definitivo se publicó, igual que en la actividad 5.3. Requiere el CDP expedido (RF-EST-05).',
   })
   async registrar(
     @Param('id', ParseUUIDPipe) procesoId: string,

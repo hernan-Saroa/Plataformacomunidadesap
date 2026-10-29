@@ -97,9 +97,13 @@ export class DocumentosActividadController {
    * Sin lugar en el guard: quien devuelve la 3.1 aprueba en la 3.4, no en la
    * 3.1, y lo que de verdad importa —que sea quien devolvió— lo comprueba el
    * servicio contra la decisión.
+   *
+   * Con `editar` también: un escalón por puesto lo decide quien ocupa el
+   * puesto, aunque su rol solo edite. El servicio exige que sea el autor de la
+   * última decisión, y eso no lo da ningún permiso (113).
    */
   @Post('soporte-devolucion')
-  @Puede(['aprobar', 'decidir'])
+  @Puede(['aprobar', 'decidir', 'editar'])
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -108,9 +112,9 @@ export class DocumentosActividadController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Adjuntar el soporte de una devolución',
+    summary: 'Adjuntar el soporte de una devolución, una aprobación o una negativa',
     description:
-      'Las correcciones marcadas sobre el documento. Solo quien devolvió, sobre su última devolución y antes de que el área la reenvíe.',
+      'Las correcciones marcadas sobre el documento, o lo que sustenta la aprobación. Solo quien decidió, sobre su última decisión; en una devolución, antes de que el área la reenvíe.',
   })
   async soporteDevolucion(
     @Param('id', ParseUUIDPipe) procesoId: string,

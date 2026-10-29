@@ -1,4 +1,4 @@
-import { aplicaAlProceso, obligatoriosPendientes } from './requisitos';
+import { aplicaAlProceso, obligatoriosPendientes, vigentesAlCierre } from './requisitos';
 
 describe('aplicaAlProceso', () => {
   const todos = { modalidades: [], tipologias: [] };
@@ -46,5 +46,23 @@ describe('obligatoriosPendientes', () => {
 
   it('una lista vacía no deja nada pendiente', () => {
     expect(obligatoriosPendientes([], [])).toEqual([]);
+  });
+});
+
+describe('vigentesAlCierre', () => {
+  const catalogo = [
+    { codigo: 'MEMORANDO', obligatorio: true },
+    { codigo: 'ANEXO', obligatorio: false },
+    { codigo: 'AGREGADO_DESPUES', obligatorio: true },
+  ];
+
+  it('deja solo lo entregado, así el catálogo nuevo no reabre la actividad', () => {
+    const cerrada = vigentesAlCierre(catalogo, ['MEMORANDO']);
+    expect(cerrada.map((r) => r.codigo)).toEqual(['MEMORANDO']);
+    expect(obligatoriosPendientes(cerrada, ['MEMORANDO'])).toEqual([]);
+  });
+
+  it('sin entregas una actividad cerrada no pide nada', () => {
+    expect(vigentesAlCierre(catalogo, [])).toEqual([]);
   });
 });

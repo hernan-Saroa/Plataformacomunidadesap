@@ -53,11 +53,13 @@ export class ArchivarExpedienteDto {
    * expedientes que se archivan antes de que el gestor documental devuelva el
    * radicado, y exigirlo dejaria el proceso abierto por un tramite ajeno.
    */
-  @ApiPropertyOptional({ description: 'Radicado del archivo en Active Document' })
-  @IsOptional()
+  // Obligatorio desde la revisión de QA de EFDS-1175: el paso 2 del cierre
+  // es archivar con su número de radicado.
+  @ApiProperty({ description: 'Número de radicado del archivo (Active Document)' })
   @IsString()
+  @IsNotEmpty({ message: 'Registra el número de radicado del archivo del expediente' })
   @MaxLength(120)
-  radicadoActiveDocument?: string;
+  radicadoActiveDocument: string;
 
   @ApiPropertyOptional({ description: 'Observaciones del archivo' })
   @IsOptional()

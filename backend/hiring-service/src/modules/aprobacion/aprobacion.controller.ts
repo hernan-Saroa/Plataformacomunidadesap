@@ -48,7 +48,9 @@ export class AprobacionController {
   }
 
   @Post('retirar-aprobacion')
-  @Puede('editar', { param: 'numeral' })
+  // Con «aprobar» también: la 5.6.1 la hace el abogado con ese permiso (113).
+  // No abre nada a nadie: el servicio exige que sea quien la envió.
+  @Puede(['editar', 'aprobar'], { param: 'numeral' })
   @ApiOperation({
     summary: 'Retirar la actividad de aprobación',
     description: 'Solo quien la envió, para poder corregirla mientras nadie la ha resuelto.',
@@ -100,5 +102,20 @@ export class AprobacionController {
       dto.observaciones ?? '',
       getHiringAccess(req),
     );
+  }
+
+  @Post('negar')
+  @ApiOperation({
+    summary: 'Negar la actividad',
+    description:
+      'Solo en los escalones configurados para negar. Termina el proceso, como la negación del estudio previo; el motivo es obligatorio.',
+  })
+  negar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('numeral') numeral: string,
+    @Body() dto: DecidirAprobacionDto,
+    @Req() req: any,
+  ) {
+    return this.service.negar(procesoId, numeral, dto.observaciones ?? '', getHiringAccess(req));
   }
 }

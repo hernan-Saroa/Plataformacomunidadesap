@@ -12,14 +12,17 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadProceso, EstadoParticipacion, EstudioPrevio } from '../../types';
+import { ActividadProceso, EstadoParticipacion,
+  PuestosDelProceso, EstudioPrevio } from '../../types';
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
+import { cuentaEnElAvance, formaDe } from './formaDeLaActividad';
 import {
   actividadesDisponibles,
+  estaTerminada,
   motivoDelBloqueo,
-  NUNCA_BLOQUEA,
+  noDetiene,
   PasoDelFlujo,
 } from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
@@ -27,7 +30,10 @@ import { PanelDeLaActividad } from './PanelDeLaActividad';
 import {
   ACTIVIDADES_CON_REGISTRO,
   ETAPAS_DE_LA_FINANCIERA,
+  NUMERAL_ADENDAS,
+  NUMERAL_CIERRE_FINANCIERO,
   NUMERAL_MODIFICACIONES,
+  NUMERAL_PUBLICACION_WEB,
   NUMERAL_REVISION,
   NUMERALES_CON_APROBACION_PROPIA,
   NUMERALES_CON_LISTA_PROPIA,
@@ -48,6 +54,7 @@ import { EntradaSituacion, situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
 import { FichaDelProceso } from './FichaDelProceso';
 import { VerEstudioPrevio } from '../revision/VerEstudioPrevio';
+import { BorrarProceso } from './BorrarProceso';
 import { usePlazos } from '../../hooks/usePlazos';
 
 /**
@@ -143,6 +150,7 @@ export const actividadEnCurso = (
     estado: act.numeral === '3.1' ? estadoDelEstudio : act.estado,
     aplica: act.aplica !== false,
     construida: TIENEN_PANEL(act.numeral),
+    secuencia: act.secuencia ?? null,
   }));
   const disponibles = actividadesDisponibles(flujo);
 
@@ -160,7 +168,7 @@ export const actividadEnCurso = (
     // La 9.2 nunca llega a "aprobada" mientras el contrato se ejecuta (dura
     // toda la vigencia): tratarla como pendiente la dejaría fija como "la
     // actividad en curso" para siempre, sin dejar ver qué más falta de verdad.
-    if (NUNCA_BLOQUEA.has(act.numeral)) continue;
+    if (noDetiene(act)) continue;
 
     const aplica = act.aplica !== false;
     if (!aplica || !disponibles.has(act.numeral)) continue;
@@ -277,6 +285,8 @@ export function DetalleProceso({
    * roles, que es menos preciso pero no dice nada falso.
    */
   const [participacion, setParticipacion] = useState<EstadoParticipacion | null>(null);
+  /** Quién ocupa cada puesto del proceso (109), para el equipo de la ficha. */
+  const [puestos, setPuestos] = useState<PuestosDelProceso | null>(null);
   /**
    * Y puede pedir el proceso entero.
    *
@@ -318,7 +328,8 @@ export function DetalleProceso({
     | { tipo: 'revision' }
     | { tipo: 'fin' }
     | { tipo: 'bloqueado'; motivo: string }
-    | { tipo: 'siguiente'; numeral: string; nombre: string }
+    // `ademas`: las otras del mismo grupo en paralelo que ya se pueden trabajar.
+    | { tipo: 'siguiente'; numeral: string; nombre: string; ademas?: string[] }
     | { tipo: 'reabierta'; numeral: string; nombre: string }
     | null
   >(null);
@@ -362,6 +373,15 @@ export function DetalleProceso({
 
     const flujoActual: PasoDelFlujo[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3)
       .filter((act: any) => act.numeral !== NUMERAL_REVISION)
+      // Lo que no está en el riel tampoco se ofrece como siguiente paso: la
+      // 5.4 y la 10.3 se registran dentro de la 5.3 y la 10.2, y las adendas y
+      // las modificaciones tienen su botón en la cabecera.
+      .filter(
+        (act: any) =>
+          ![NUMERAL_PUBLICACION_WEB, NUMERAL_CIERRE_FINANCIERO, NUMERAL_ADENDAS, NUMERAL_MODIFICACIONES].includes(
+            act.numeral,
+          ),
+      )
       .map((act: any) => ({
         numeral: act.numeral,
         // La 3.1 no vive en `proceso_actividades`: su estado es el del estudio
@@ -369,6 +389,7 @@ export function DetalleProceso({
         estado: act.numeral === '3.1' ? (datos?.estado ?? null) : act.estado,
         aplica: act.aplica !== false,
         construida: TIENEN_PANEL(act.numeral),
+        secuencia: act.secuencia ?? null,
       }));
 
     const actual = flujoActual.find((p) => p.numeral === expandida) ?? null;
@@ -411,7 +432,9 @@ export function DetalleProceso({
     const indice = flujoActual.findIndex((p) => p.numeral === actual.numeral);
     const siguiente = flujoActual
       .slice(indice + 1)
-      .find((p) => p.aplica && p.construida && p.estado !== 'APROBADO');
+      // Las permanentes y las eventuales no son «lo que sigue»: están abiertas
+      // aparte, y mandar a ellas escondería el paso que de verdad falta.
+      .find((p) => p.aplica && p.construida && !estaTerminada(p) && cuentaEnElAvance(p.numeral));
 
     if (!siguiente) {
       setAvisoPaso({ tipo: 'fin' });
@@ -421,8 +444,34 @@ export function DetalleProceso({
     const nombreSiguiente =
       catalogo.find((a: any) => a.numeral === siguiente.numeral)?.nombre ?? siguiente.numeral;
 
-    if (actividadesDisponibles(flujoActual).has(siguiente.numeral)) {
-      setAvisoPaso({ tipo: 'siguiente', numeral: siguiente.numeral, nombre: nombreSiguiente });
+    const disponibles = actividadesDisponibles(flujoActual);
+    if (disponibles.has(siguiente.numeral)) {
+      // Si lo que sigue es un grupo en paralelo, se dice que hay varias: no
+      // hay una «siguiente», cualquiera de ellas lo es.
+      const forma = formaDe(siguiente.numeral);
+      const ademas =
+        forma.tipo === 'en_paralelo'
+          ? flujoActual
+              .filter((p) => {
+                const otra = formaDe(p.numeral);
+                return (
+                  p.numeral !== siguiente.numeral &&
+                  otra.tipo === 'en_paralelo' &&
+                  otra.grupo === forma.grupo &&
+                  p.aplica &&
+                  p.construida &&
+                  !estaTerminada(p) &&
+                  disponibles.has(p.numeral)
+                );
+              })
+              .map((p) => catalogo.find((a: any) => a.numeral === p.numeral)?.nombre ?? p.numeral)
+          : [];
+      setAvisoPaso({
+        tipo: 'siguiente',
+        numeral: siguiente.numeral,
+        nombre: nombreSiguiente,
+        ademas,
+      });
     } else {
       setAvisoPaso({
         tipo: 'bloqueado',
@@ -431,13 +480,17 @@ export function DetalleProceso({
     }
   }, [tokenExpediente, expandida, catalogo, datos]);
 
-  // Con el mismo token que el expediente: tomar el proceso o asignar el abogado
+  // Con el mismo token que el expediente: tomar el proceso o asignar un puesto
   // cambia a quién le toca, y la franja tiene que enterarse sin recargar.
   useEffect(() => {
     let vigente = true;
     Promise.resolve()
       .then(() => contratacionService.participacion(procesoId))
       .then((p) => vigente && setParticipacion(p))
+      .catch(() => undefined);
+    contratacionService
+      .puestosDelProceso(procesoId)
+      .then((p) => vigente && setPuestos(p))
       .catch(() => undefined);
     return () => {
       vigente = false;
@@ -555,6 +608,7 @@ export function DetalleProceso({
     estado: act.numeral === '3.1' ? datos.estado : act.estado,
     aplica: act.aplica !== false,
     construida: TIENEN_PANEL(act.numeral),
+    secuencia: act.secuencia ?? null,
   }));
 
   const disponibles = actividadesDisponibles(flujo);
@@ -574,10 +628,20 @@ export function DetalleProceso({
       responsableCargo: act.responsableCargo ?? null,
       responde: act.responde ?? null,
     })),
-    participacion: participacion ?? undefined,
+    participacion: participacion
+      ? {
+          ...participacion,
+          puestos: (puestos?.puestos ?? [])
+            .filter((x) => x.ocupante)
+            .map((x) => ({ puesto: x.nombre, nombre: x.ocupante!.nombre, esMio: x.ocupante!.esMio })),
+          puestosVacios: (puestos?.puestos ?? []).filter((x) => x.obligatorio && !x.ocupante).map((x) => x.nombre),
+        }
+      : undefined,
     radicadoPorMi: datos.proceso.radicadoPorMi,
     responsables,
     puedo: alcanceCargado ? puede : undefined,
+    estadoProceso: datos.proceso.estado,
+    detenidoPorPaa: datos.proceso.paaDetenido,
   };
   const situacion = situacionDelProceso(entradaSituacion);
 
@@ -648,7 +712,24 @@ export function DetalleProceso({
   const modificaciones =
     actividades.find((a) => a.numeral === NUMERAL_MODIFICACIONES && a.estado !== 'no_aplica') ??
     null;
-  const actividadesDelRiel = actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES);
+  // La publicación en la página web (5.4) se registra dentro de la 5.3: es una
+  // sola actividad de publicación con dos evidencias (revisión de QA de
+  // EFDS-1150). Sigue existiendo para guardar su constancia.
+  /**
+   * Las adendas (5.13) tampoco: se generan cuando se necesitan, desde su botón
+   * de la cabecera, sin depender de la etapa en que esté el proceso (revisión
+   * de QA de EFDS-1154).
+   */
+  const adendas =
+    actividades.find((a) => a.numeral === NUMERAL_ADENDAS && a.estado !== 'no_aplica') ?? null;
+  const actividadesDelRiel = actividades.filter(
+    (a) =>
+      a.numeral !== NUMERAL_MODIFICACIONES &&
+      a.numeral !== NUMERAL_ADENDAS &&
+      a.numeral !== NUMERAL_PUBLICACION_WEB &&
+      // El cierre financiero (10.3) se registra dentro de la liquidación (EFDS-1172).
+      a.numeral !== NUMERAL_CIERRE_FINANCIERO,
+  );
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
@@ -716,7 +797,8 @@ export function DetalleProceso({
   for (const act of actividadesDelRiel) {
     const numero = act.etapa ?? 3;
     if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
-    if (act.estado === 'no_aplica') continue;
+    // Las permanentes y las eventuales no tienen un «hecho» que sumar.
+    if (act.estado === 'no_aplica' || !cuentaEnElAvance(act.numeral)) continue;
     avance[numero].aplicables += 1;
     if (act.estado === 'aprobada') avance[numero].completas += 1;
   }
@@ -824,6 +906,13 @@ export function DetalleProceso({
             {/* En la cabecera y no en la 3.1: se consulta desde cualquier
                 actividad sin perder el sitio. */}
             <VerEstudioPrevio estudio={datos} procesoId={procesoId} />
+            {datos.proceso.puedeBorrar && (
+              <BorrarProceso
+                procesoId={procesoId}
+                radicado={datos.proceso.radicado}
+                onBorrado={onVolver}
+              />
+            )}
           </div>
 
           <FranjaSituacion
@@ -897,6 +986,26 @@ export function DetalleProceso({
               </button>
             )}
 
+            {/* Siempre que la modalidad tenga adendas: el panel dice si todavía
+                no se puede (sin pliego publicado o sin apertura) o si ya no. */}
+            {adendas && (
+              <button
+                type="button"
+                onClick={() => trabajarEn(NUMERAL_ADENDAS)}
+                aria-pressed={expandida === NUMERAL_ADENDAS}
+                title="Generar o consultar las adendas del proceso, de fondo o de cronograma"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                  border transition-colors ${
+                    expandida === NUMERAL_ADENDAS
+                      ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                  }`}
+              >
+                <FilePen className="w-3.5 h-3.5" />
+                Adendas
+              </button>
+            )}
+
             {/* Desde que la ejecución arrancó, o mirando la etapa 9 o la 10.
                 No se pregunta por `datos.proceso.etapa`: en la base se queda
                 atrás —hay contratos en ejecución con el proceso en la 5— y el
@@ -966,11 +1075,12 @@ export function DetalleProceso({
         <>
           <FichaDelProceso
             procesoId={procesoId}
-            actividades={actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES)}
+            actividades={actividadesDelRiel}
             entrada={entradaSituacion}
             situacion={situacion}
             etapaActual={etapaActual}
             participacion={participacion}
+            puestos={puestos}
             plazos={plazos.get(procesoId) ?? []}
             onAbrir={trabajarEn}
             onCambio={() => setTokenExpediente((t) => t + 1)}
@@ -1153,6 +1263,14 @@ export function DetalleProceso({
               {avisoPaso.numeral} · {avisoPaso.nombre}
             </strong>
             .
+            {!!avisoPaso.ademas?.length && (
+              <>
+                {' '}
+                También puedes seguir con{' '}
+                <strong className="font-bold">{avisoPaso.ademas.join(', ')}</strong>: van en
+                cualquier orden.
+              </>
+            )}
           </p>
         )}
         {/* Volver atrás no es «el siguiente paso»: es una actividad que ya

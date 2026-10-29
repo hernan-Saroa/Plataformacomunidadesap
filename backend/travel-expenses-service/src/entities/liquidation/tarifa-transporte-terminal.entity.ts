@@ -36,8 +36,16 @@ export class TarifaTransporteTerminalEntity {
     type: 'numeric',
     precision: 12,
     scale: 2,
+    transformer: {
+      to: (v: number) => v,
+      from: (v: string | number) => (v != null ? Number(v) : 0),
+    },
   })
   valorMaximo: number;
+
+  get valorMaximoTrayecto(): number {
+    return Number(this.valorMaximo) || 0;
+  }
 
   @Column({ name: 'activo', type: 'boolean', default: true })
   activo: boolean;

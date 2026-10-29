@@ -27,6 +27,7 @@ describe('NotificadorService · despachar', () => {
       if (sql.includes('dir_email')) return extra.correos ?? [];
       if (sql.includes('FROM hiring.avisos')) return avisos;
       if (sql.includes('FROM hiring.procesos WHERE id')) return [{ modalidad: 'LICITACION', radicado: 'CTO-1' }];
+      if (sql.includes('aprobacion_escalones')) return extra.pendientes ?? [];
       if (sql.includes('FROM hiring.proceso_actividades')) return extra.envio ?? [];
       if (sql.includes("tipo = 'EXIGE_APROBACION'")) return extra.aprobacion ?? [];
       if (sql.includes('perm.code = $1')) return extra.permiso ?? [];
@@ -75,10 +76,12 @@ describe('NotificadorService · despachar', () => {
       expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-ana');
     });
 
-    it('«quien aprueba» sale de lo configurado en la pestaña de Aprobación', async () => {
+    it('«quien aprueba» es quien decide el escalón que está esperando', async () => {
+      // Con escalones (101), no toda la cadena: el director no recibe el aviso
+      // mientras el técnico no haya decidido el suyo.
       const f = fetchOk();
       const { srv } = conBase([], {
-        aprobacion: [{ modalidad: null, config: { roles: ['DIRECTOR_CONTRATACION'], personas: [] } }],
+        pendientes: [{ roles: ['DIRECTOR_CONTRATACION'], personas: [], papeles: [] }],
         roles: [{ id: 'u-director-2' }],
       });
 

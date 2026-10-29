@@ -6,10 +6,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
+  Repeat,
+  Split,
+  Zap,
 } from 'lucide-react';
 
 import { ActividadEtapa, EstadoActividadUI } from './ListaActividades';
 import { ETAPAS } from './Etapas';
+import { cuentaEnElAvance, formaDe, tramosDe } from './formaDeLaActividad';
 
 interface Props {
   /** La etapa que se está mirando; la elige la línea del tiempo de arriba. */
@@ -79,7 +83,11 @@ export function RielActividades({
   const deLaEtapa = actividades.filter((a) => (a.etapa ?? ETAPA_POR_DEFECTO) === etapa);
   const aplicables = deLaEtapa.filter((a) => a.estado !== 'no_aplica');
   const excluidas = deLaEtapa.filter((a) => a.estado === 'no_aplica');
-  const completas = aplicables.filter((a) => a.estado === 'aprobada').length;
+  // El avance se cuenta sobre la fila: las permanentes y las eventuales no
+  // tienen un «hecho» que sumar (`formaDeLaActividad.ts`).
+  const enLaFila = aplicables.filter((a) => cuentaEnElAvance(a.numeral));
+  const completas = enLaFila.filter((a) => a.estado === 'aprobada').length;
+  const { tramos, permanentes, eventuales } = tramosDe(aplicables);
   const esActual = etapa === etapaActual;
 
   /**
@@ -107,9 +115,9 @@ export function RielActividades({
           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
             E{etapa}
           </span>
-          {aplicables.length > 0 && (
+          {enLaFila.length > 0 && (
             <span className="text-[10px] font-bold tabular-nums">
-              {completas}/{aplicables.length}
+              {completas}/{enLaFila.length}
             </span>
           )}
         </button>
@@ -135,12 +143,10 @@ export function RielActividades({
                   >
                     <span
                       className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
-                      style={{ background: color.punto, borderColor: color.borde }}
+                      style={estiloDelPunto(actividad, color)}
                       aria-hidden="true"
                     >
-                      {actividad.estado === 'aprobada' && (
-                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={4} />
-                      )}
+                      <IconoDelPunto actividad={actividad} />
                     </span>
                   </button>
                 </li>
@@ -174,9 +180,9 @@ export function RielActividades({
             {nombreDeEtapa(etapa)}
           </span>
         </span>
-        {aplicables.length > 0 && (
+        {enLaFila.length > 0 && (
           <span className="text-[10px] font-bold text-slate-500 tabular-nums flex-shrink-0 mt-0.5">
-            {completas}/{aplicables.length}
+            {completas}/{enLaFila.length}
           </span>
         )}
         {onAlternarPlegado && (
@@ -202,17 +208,63 @@ export function RielActividades({
             : 'Esta etapa todavía no tiene actividades en la plataforma.'}
         </p>
       ) : (
-        <ul className="list-none m-0 p-1.5 flex flex-col gap-0.5">
-          {aplicables.map((actividad) => (
-            <li key={actividad.numeral}>
-              <Actividad
-                actividad={actividad}
-                activa={seleccionada === actividad.numeral}
-                onSeleccionar={onSeleccionar}
-              />
-            </li>
-          ))}
-        </ul>
+        <>
+          {tramos.length > 0 && (
+            <ul className="list-none m-0 p-1.5 flex flex-col gap-0.5">
+              {tramos.map((tramo) =>
+                tramo.tipo === 'paso' ? (
+                  <li key={tramo.actividad.numeral}>
+                    <Actividad
+                      actividad={tramo.actividad}
+                      activa={seleccionada === tramo.actividad.numeral}
+                      onSeleccionar={onSeleccionar}
+                    />
+                  </li>
+                ) : (
+                  // Un grupo que se abre a la vez: dentro de un mismo marco y sin
+                  // orden entre ellas, para que no se lean como una fila.
+                  <li
+                    key={tramo.actividades[0].numeral}
+                    className="my-1 rounded-lg border border-dashed border-slate-300 bg-slate-50/60"
+                  >
+                    <p className="m-0 px-2.5 pt-2 pb-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                      <Split className="w-3 h-3 flex-shrink-0 rotate-90" aria-hidden="true" />
+                      <span>
+                        {tramo.cuando} · <span className="font-black">en cualquier orden</span>
+                      </span>
+                    </p>
+                    <ul className="list-none m-0 px-1 pb-1 flex flex-col gap-0.5">
+                      {tramo.actividades.map((actividad) => (
+                        <li key={actividad.numeral}>
+                          <Actividad
+                            actividad={actividad}
+                            activa={seleccionada === actividad.numeral}
+                            onSeleccionar={onSeleccionar}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+
+          <Aparte
+            titulo="Abiertas mientras dure"
+            icono={<Repeat className="w-3 h-3" aria-hidden="true" />}
+            actividades={permanentes}
+            seleccionada={seleccionada}
+            onSeleccionar={onSeleccionar}
+          />
+          <Aparte
+            titulo="Solo si ocurre"
+            icono={<Zap className="w-3 h-3" aria-hidden="true" />}
+            actividades={eventuales}
+            seleccionada={seleccionada}
+            onSeleccionar={onSeleccionar}
+          />
+        </>
       )}
 
       {excluidas.length > 0 && (
@@ -294,12 +346,10 @@ function Actividad({
     >
       <span
         className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5"
-        style={{ background: color.punto, borderColor: color.borde }}
+        style={estiloDelPunto(actividad, color)}
         aria-hidden="true"
       >
-        {actividad.estado === 'aprobada' && (
-          <Check className="w-2.5 h-2.5 text-white" strokeWidth={4} />
-        )}
+        <IconoDelPunto actividad={actividad} />
       </span>
 
       <span className="min-w-0 flex-1">
@@ -311,9 +361,9 @@ function Actividad({
           {actividad.nombre}
         </span>
 
-        {actividad.detalle && (
+        {(detalleDeLaForma(actividad) ?? actividad.detalle) && (
           <span className="block text-[10px] text-slate-500 mt-0.5 leading-snug">
-            {actividad.detalle}
+            {detalleDeLaForma(actividad) ?? actividad.detalle}
           </span>
         )}
       </span>
@@ -329,4 +379,84 @@ function Actividad({
       )}
     </button>
   );
+}
+
+/**
+ * Las que no ocupan un lugar en la fila: abiertas todo un tramo, o que solo se
+ * usan si algo pasa. Van aparte y con su rótulo para que no se lean como
+ * pendientes de la etapa.
+ */
+function Aparte({
+  titulo,
+  icono,
+  actividades,
+  seleccionada,
+  onSeleccionar,
+}: {
+  titulo: string;
+  icono: React.ReactNode;
+  actividades: ActividadEtapa[];
+  seleccionada: string | null;
+  onSeleccionar: (numeral: string) => void;
+}) {
+  if (actividades.length === 0) return null;
+  return (
+    <div className="border-t border-gray-100 px-1.5 pt-2 pb-1">
+      <p className="m-0 px-2 pb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+        {icono}
+        {titulo}
+      </p>
+      <ul className="list-none m-0 flex flex-col gap-0.5">
+        {actividades.map((actividad) => (
+          <li key={actividad.numeral}>
+            <Actividad
+              actividad={actividad}
+              activa={seleccionada === actividad.numeral}
+              onSeleccionar={onSeleccionar}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Lo que se dice bajo el nombre de una permanente o una eventual.
+ *
+ * Una permanente no está «hecha» con el primer registro: la 9.4 con una cuenta
+ * tramitada sigue abierta para la siguiente. Una eventual sin uso no está
+ * atrasada: dice cuándo hace falta.
+ */
+function detalleDeLaForma(actividad: ActividadEtapa): string | null {
+  const forma = formaDe(actividad.numeral);
+  if (forma.tipo === 'permanente') return forma.mientras;
+  if (forma.tipo === 'eventual') {
+    return actividad.estado === 'aprobada' ? 'Ya se usó; se puede volver a usar' : forma.cuando;
+  }
+  return null;
+}
+
+/** El punto de una permanente o una eventual nunca se pinta como «hecho». */
+function estiloDelPunto(
+  actividad: ActividadEtapa,
+  color: { punto: string; borde: string },
+): React.CSSProperties {
+  const { tipo } = formaDe(actividad.numeral);
+  if (tipo === 'permanente') return { background: '#E0EDFF', borderColor: '#003DA5' };
+  if (tipo === 'eventual') {
+    return { background: '#FFFFFF', borderColor: '#CBD5E1', borderStyle: 'dashed' };
+  }
+  return { background: color.punto, borderColor: color.borde };
+}
+
+function IconoDelPunto({ actividad }: { actividad: ActividadEtapa }) {
+  const { tipo } = formaDe(actividad.numeral);
+  if (tipo === 'permanente') {
+    return <Repeat className="w-2.5 h-2.5 text-[#003DA5]" strokeWidth={3} />;
+  }
+  if (tipo === 'eventual') return <Zap className="w-2.5 h-2.5 text-slate-400" strokeWidth={3} />;
+  return actividad.estado === 'aprobada' ? (
+    <Check className="w-2.5 h-2.5 text-white" strokeWidth={4} />
+  ) : null;
 }

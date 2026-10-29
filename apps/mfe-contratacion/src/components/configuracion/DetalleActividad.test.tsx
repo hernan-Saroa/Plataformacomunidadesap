@@ -85,10 +85,6 @@ describe('DetalleActividad', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(contratacionService, 'plantillas').mockResolvedValue([]);
-    vi.spyOn(contratacionService, 'aprobacionDeActividad').mockResolvedValue({
-      requiereAprobacion: false,
-      aprobadores: [],
-    });
   });
 
   it('no ofrece campos configurables donde el gestor nunca los vería', async () => {
@@ -111,7 +107,12 @@ describe('DetalleActividad', () => {
   it('muestra las modalidades juntas y se salta la vista previa donde no es cierta', async () => {
     pintar(fila('3.2', ['MC']));
 
-    expect(await screen.findByRole('button', { name: /Licitación Pública/, pressed: true })).toBeInTheDocument();
+    // Plegadas, el resumen dice cuántas y cuál se la salta.
+    const resumen = await screen.findByRole('button', { name: /En 1 de 2 modalidades/ });
+    expect(resumen).toHaveTextContent('se la salta Mínima Cuantía');
+    await userEvent.click(resumen);
+
+    expect(screen.getByRole('button', { name: /Licitación Pública/, pressed: true })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Mínima Cuantía/, pressed: false })).toBeInTheDocument();
     expect(screen.queryByText('Cómo lo verá el gestor')).toBeNull();
   });
@@ -123,7 +124,8 @@ describe('DetalleActividad', () => {
     const onCambioFila = vi.fn();
     pintar(fila('3.2'), onCambioFila);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Licitación Pública/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /En 2 de 2 modalidades/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Licitación Pública/ }));
     await userEvent.type(screen.getByRole('textbox', { name: /por qué/i }), 'No aplica en licitación');
     await userEvent.click(screen.getByRole('button', { name: 'Ya no se exige' }));
 

@@ -22,8 +22,11 @@ export type PTAComponentKey =
 /** Puerta de entrada a la bandeja; pta.review.* define los componentes gestionables. */
 export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
 
-/** Puerta de entrada a Seguimiento; pta.approve.* define los componentes gestionables. */
+/** Puerta de entrada a Seguimiento; revisión y aprobación definen sus componentes. */
 export const PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION = 'pta.backoffice.seguimiento';
+
+/** Permiso único para ver y editar la pestaña Configuración. */
+export const PTA_MANAGE_CONFIGURATION_PERMISSION = 'pta.backoffice.config_reglas';
 
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
@@ -601,6 +604,13 @@ export function splitComplementarias(pta: any): {
   const aadm = tagged.filter((a: any) => a.seccion === COMP_SECCION_AADM);
   const sum = (arr: any[]) => arr.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
   return { docencia, aadm, horasDocencia: sum(docencia), horasAadm: sum(aadm) };
+}
+
+/** Seguimiento documental usa la suma de componentes de los roles activos. */
+export function hasDocumentTrackingComponentPermission(has: (permission: string) => boolean, key: PTAComponentKey): boolean {
+  return has(PTA_APPROVE_ALL_PERMISSION) || has(PTA_REVIEW_ALL_PERMISSION)
+    || hasComponentPermission(has, key)
+    || REVIEW_SUBSECCIONES_BY_COMPONENT[key].some(subsection => hasReviewPermission(has, key, subsection));
 }
 
 export function hasAnyComponentApprovalData(pta: any, keys: PTAComponentKey[]): boolean {

@@ -17,6 +17,7 @@ import { CdpService } from '../src/modules/cdp/cdp.service';
 import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1160 · Declarar desierto el proceso (RF-ADJ-02).
@@ -75,8 +76,10 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  // Sobre la fecha de Bogotá, como los servicios: en UTC, de las 7 p. m. en
+  // adelante «ayer» caía en hoy y los términos no se vencían.
   const enDias = (d: number) => {
-    const f = new Date();
+    const f = new Date(`${hoy()}T12:00:00Z`);
     f.setUTCDate(f.getUTCDate() + d);
     return f.toISOString().slice(0, 10);
   };
@@ -103,27 +106,14 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: 'CDP-2026-160', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-160', valor: 60_000_000, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 
-    // La licitación pública no se abre sin la audiencia de riesgos (5.5).
-    if (modalidad === 'LICITACION_PUBLICA') {
-      await riesgos.registrar(
-        proceso.id,
-        { fechaCelebracion: hoy() },
-        archivo('acta-riesgos.pdf'),
-        'g'.repeat(64),
-        archivo('matriz-riesgos.xlsx'),
-        'h'.repeat(64),
-        gestor,
-      );
-    }
-
+    await aprobarSegundaSesion(dataSource, proceso.id);
     await apertura.registrar(
       proceso.id,
       { resolucionNumero: 'RES-2026-160', resolucionFecha: hoy() },
@@ -135,6 +125,21 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       'e'.repeat(64),
       gestor,
     );
+
+    // En licitación pública la audiencia de asignación de riesgos (5.12) va
+    // después de la apertura y se exige para cerrar las ofertas (112); la
+    // menor cuantía no la exige. Aquí solo hay que satisfacerla para seguir.
+    if (modalidad === 'LICITACION_PUBLICA') {
+      await riesgos.registrar(
+        proceso.id,
+        { fechaCelebracion: hoy() },
+        archivo('acta-riesgos.pdf'),
+        'g'.repeat(64),
+        archivo('matriz-riesgos.xlsx'),
+        'h'.repeat(64),
+        gestor,
+      );
+    }
 
     await ofertas.fijarPlazo(proceso.id, { vencimiento: haceHoras(3) }, gestor);
 
@@ -179,7 +184,12 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
     );
 
   /** Deja registrado el resultado del comité, para el caso de la contradicción. */
-  const conResultadoDelComite = async (procesoId: string, oferenteId: string) => {
+  /**
+   * El informe preliminar del comité. Con `oferenteId`, uno de antes de la 120,
+   * cuando la evaluación todavía nombraba ganadora: la regla de apartarse de
+   * ella sigue valiendo para esos expedientes.
+   */
+  const conResultadoDelComite = async (procesoId: string, oferenteId?: string) => {
     await comite.designar(
       procesoId,
       {
@@ -197,22 +207,23 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
 
     await evaluacion.registrar(
       procesoId,
-      {
-        oferenteId,
-        puntajeObtenido: 92.5,
-        puntajeMaximo: 100,
-        justificacion: 'Cumplió los requisitos habilitantes y obtuvo el mayor puntaje.',
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      {},
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
+    if (oferenteId) {
+      await dataSource.query(
+        `UPDATE hiring.resultados_evaluacion SET oferente_id = $2
+          WHERE proceso_id = $1 AND estado = 'VIGENTE'`,
+        [procesoId, oferenteId],
+      );
+    }
   };
 
   /** Todo el camino hasta el acto de adjudicación vigente. */
   const hastaAdjudicado = async () => {
     const { proceso, oferentes } = await hastaRecepcionCerrada('ABREVIADA_MENOR_CUANTIA', 2);
-    await conResultadoDelComite(proceso.id, oferentes[1].id);
+    await conResultadoDelComite(proceso.id);
 
     await traslado.generar(
       proceso.id,
@@ -235,10 +246,17 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
     );
     await escritos.cerrar(proceso.id, {}, gestor);
 
-    await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
+    await definitivo.generar(
+      proceso.id,
+      archivo('definitivo.pdf'),
+      'd'.repeat(64),
+      gestor,
+      undefined,
+      { oferenteId: oferentes[1].id },
+    );
     await definitivo.publicar(
       proceso.id,
-      { medioPublicacion: MEDIO },
+      { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
       archivo('evidencia-definitivo.png', 'image/png'),
       'w'.repeat(64),
       gestor,
@@ -399,13 +417,27 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       await expect(declarar(proceso.id, {}, false)).rejects.toThrow(/informe del comité/i);
     });
 
+    it('desde la etapa 6, el informe preliminar ya cargado sirve de informe del comité (QA, EFDS-1157)', async () => {
+      const { proceso } = await hastaRecepcionCerrada('ABREVIADA_MENOR_CUANTIA', 2);
+      await conResultadoDelComite(proceso.id);
+
+      expect((await desierta.estado(proceso.id)).informePreliminarCargado).toBe(true);
+
+      // Sin subir otro informe y sin justificar: el preliminar no nombró ganadora.
+      const estado = await declarar(proceso.id, {}, false);
+
+      expect(estado.declaratoria!.causal).toBe('SIN_OFERTAS_HABILITADAS');
+      expect(estado.declaratoria!.informeComite).not.toBeNull();
+      expect(estado.declaratoria!.seApartaDelResultado).toBe(false);
+    });
+
     it('deja las actividades de la etapa 7 en NO_APLICA', async () => {
       const { proceso } = await hastaRecepcionCerrada('ABREVIADA_MENOR_CUANTIA', 2);
       await declarar(proceso.id);
 
       const filas = await dataSource.query(
         `SELECT numeral, estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral IN ('7.1','7.2','7.3','7.4')`,
+          WHERE proceso_id = $1 AND numeral IN ('7.1','7.1.1','7.2','7.3')`,
         [proceso.id],
       );
 
@@ -437,13 +469,13 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
         { objeto: OBJETO, modalidad: 'ABREVIADA_MENOR_CUANTIA', valorEstimado: 1_000_000 },
         gestor,
       );
-      await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-      await cdp.verificar(proceso.id, {}, financiero);
-      await cdp.expedir(
+      await cdp.cargar(
         proceso.id,
-        { numero: 'CDP-2026-162', valor: 1_000_000, fechaExpedicion: hoy() },
+        { rubro: 'A-02-02', numero: 'CDP-2026-162', valor: 1_000_000, fechaExpedicion: hoy() },
+        null,
         financiero,
       );
+      await aprobarSegundaSesion(dataSource, proceso.id);
       await apertura.registrar(
         proceso.id,
         { resolucionNumero: 'RES-2026-162', resolucionFecha: hoy() },

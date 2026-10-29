@@ -111,6 +111,14 @@ export class FuidExportService {
     worksheet.getCell('O6').value = header?.codigoOficina ?? FUID_CODIGO_OFICINA;
     worksheet.getCell('E6').value = header?.objeto || FUID_OBJETO;
 
+    for (const cellId of ['X3', 'E5', 'H5', 'J5', 'J6', 'O6', 'E6']) {
+      const c = worksheet.getCell(cellId);
+      c.font = {
+        ...(c.font || {}),
+        color: { argb: 'FF000000' },
+      };
+    }
+
     // 2. Si son más expedientes que los 99 que la plantilla reserva (filas 13 a 111),
     // duplicamos la fila 111 para desplazar el pie sin sobrescribir las firmas.
     const totalExpedientes = items.length;
@@ -206,7 +214,7 @@ export class FuidExportService {
         worksheet.getCell(`${colLetter}${r}`).value = null;
       }
 
-      // Col U: Ubicación (URL del expediente en la plataforma)
+      // Col U: Ubicación (URL del expediente en la plataforma) - letra negra y sin subrayado
       const expUrl = item.ubicacion || `${baseUrl}/control-disciplinario/expedientes?radicado=${encodeURIComponent(item.radicado)}`;
       const cellU = worksheet.getCell(`U${r}`);
       cellU.value = {
@@ -217,7 +225,7 @@ export class FuidExportService {
       cellU.font = {
         name: 'Arial',
         size: FUID_DATA_FONT_SIZE,
-        color: { argb: 'FF0563C1' },
+        color: { argb: 'FF000000' },
         underline: false,
       };
 
@@ -233,13 +241,14 @@ export class FuidExportService {
       // Col AB: Rótulo (vacío)
       worksheet.getCell(`AB${r}`).value = null;
 
-      // Fuente legible: tamaño 11 y sin subrayado en todas las celdas de detalle
+      // Fuente legible: tamaño 11, color negro y sin subrayado en todas las celdas de detalle
       for (const col of FUID_DATA_COLUMNS) {
-        if (col === 'U') continue; // ya configurada arriba (hipervínculo)
         const cell = worksheet.getCell(`${col}${r}`);
         cell.font = {
           ...(cell.font || {}),
+          name: 'Arial',
           size: FUID_DATA_FONT_SIZE,
+          color: { argb: 'FF000000' },
           underline: false,
         };
       }
@@ -256,19 +265,37 @@ export class FuidExportService {
       });
     }
 
-    // 5. Pie de página y firmas (ELABORADO POR, cargo y fecha)
+    // 5. Pie de página y firmas (ELABORADO POR, cargo y fecha) con letra en negro
     const elaboradoTexto = header?.elaboradoPor
       ? `ELABORADO POR: ${header.elaboradoPor.trim()}`
       : 'ELABORADO POR: ';
-    worksheet.getCell(`B${pieStartRow}`).value = elaboradoTexto;
+    const cellElaborado = worksheet.getCell(`B${pieStartRow}`);
+    cellElaborado.value = elaboradoTexto;
+    cellElaborado.font = { ...(cellElaborado.font || {}), color: { argb: 'FF000000' } };
 
     if (header?.cargoElaboradoPor) {
-      worksheet.getCell(`E${pieStartRow + 1}`).value = header.cargoElaboradoPor;
+      const cellCargo = worksheet.getCell(`E${pieStartRow + 1}`);
+      cellCargo.value = header.cargoElaboradoPor;
+      cellCargo.font = { ...(cellCargo.font || {}), color: { argb: 'FF000000' } };
     }
 
-    worksheet.getCell(`B${pieStartRow + 4}`).value = `FECHA: ${fechaActualFormato}`;
+    const cellFechaPie = worksheet.getCell(`B${pieStartRow + 4}`);
+    cellFechaPie.value = `FECHA: ${fechaActualFormato}`;
+    cellFechaPie.font = { ...(cellFechaPie.font || {}), color: { argb: 'FF000000' } };
 
-    // 6. Eliminar definiciones de tablas de las hojas auxiliares
+    // 6. Asegurar que toda la tipografía de la hoja esté en negro (FF000000) y ninguna celda en azul
+    worksheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (cell.font) {
+          cell.font = {
+            ...cell.font,
+            color: { argb: 'FF000000' },
+          };
+        }
+      });
+    });
+
+    // 7. Eliminar definiciones de tablas de las hojas auxiliares
     // ExcelJS tiene un bug conocido al re-serializar tablas (/xl/tables/table*.xml)
     // omitiendo atributos requeridos y provocando la advertencia de reparación de Excel.
     // Al limpiar ws.tables se conservan intactos todos los datos, fórmulas, estilos y celdas

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EvidenciaFirmaOtp, SoporteDeDevolucion } from '../../types';
+import { AccionEscalon, EvidenciaFirmaOtp, RondaDeAprobacion, SoporteDeDevolucion } from '../../types';
 
 /**
  * Sube, uno tras otro, los archivos que acompañan una devolución.
@@ -11,7 +11,13 @@ import { EvidenciaFirmaOtp, SoporteDeDevolucion } from '../../types';
  * quedan en el orden en que se eligieron. La devolución ya quedó, así que los
  * que fallen se avisan juntos sin deshacer lo decidido.
  */
-export async function adjuntarSoportes(procesoId: string, numeral: string, archivos: File[]) {
+export async function adjuntarSoportes(
+  procesoId: string,
+  numeral: string,
+  archivos: File[],
+  /** Lo que se hizo, para el aviso si un archivo no sube. */
+  hecho: string = 'Se devolvió',
+) {
   const fallidos: string[] = [];
   let motivo: string | undefined;
   for (const archivo of archivos) {
@@ -25,8 +31,8 @@ export async function adjuntarSoportes(procesoId: string, numeral: string, archi
   if (fallidos.length) {
     toast.warning(
       fallidos.length === 1
-        ? `Se devolvió, pero no se pudo adjuntar ${fallidos[0]}`
-        : `Se devolvió, pero no se pudieron adjuntar ${fallidos.length} archivos: ${fallidos.join(', ')}`,
+        ? `${hecho}, pero no se pudo adjuntar ${fallidos[0]}`
+        : `${hecho}, pero no se pudieron adjuntar ${fallidos.length} archivos: ${fallidos.join(', ')}`,
       { description: motivo },
     );
   }
@@ -34,7 +40,7 @@ export async function adjuntarSoportes(procesoId: string, numeral: string, archi
 
 /** Una decisión ya tomada sobre la actividad. */
 export interface RevisionDeActividad {
-  decision: 'APROBADO' | 'DEVUELTO';
+  decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO';
   observaciones: string | null;
   revisadoPor: string;
   /** Sobre qué versión del documento se pronunció. */
@@ -42,6 +48,9 @@ export interface RevisionDeActividad {
   fecha: string;
   /** Las correcciones marcadas que acompañan una devolución, si las hay. */
   soportes?: SoporteDeDevolucion[];
+  /** En qué ronda y en qué escalón se decidió (migración 101); nulos antes. */
+  ronda?: number | null;
+  escalon?: number | null;
 }
 
 /** Lo que un panel necesita saber para pintar el pie de aprobación. */
@@ -49,9 +58,19 @@ export interface Aprobacion {
   cargando: boolean;
   requiereAprobacion: boolean;
   puedoAprobar: boolean;
+  /**
+   * Lo que quien mira puede hacer en el escalón que espera (migración 101):
+   * aprobar, devolver, negar. Lo resuelve el servidor con la configuración de
+   * ese escalón; la pantalla solo pinta los botones que vienen aquí.
+   */
+  acciones: AccionEscalon[];
+  /** Por qué no puede aprobar, cuando es responsable pero algo se lo impide. */
+  motivo: string | null;
+  /** La ronda en curso o la última, con sus escalones. */
+  ronda: RondaDeAprobacion | null;
   /** Nombres legibles de quien aprueba, para decirlo antes de enviar. */
   quienAprueba: string[];
-  estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+  estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO' | 'NEGADO';
   /** Si la envió quien está mirando: solo él puede retirarla. */
   esMia: boolean;
   /** Por qué se devolvió, si se devolvió. */
@@ -68,9 +87,12 @@ export interface Aprobacion {
   guardando: boolean;
   enviar: () => Promise<void>;
   retirar: () => Promise<void>;
-  aprobar: (firma?: EvidenciaFirmaOtp) => Promise<void>;
+  /** Con observaciones y archivos opcionales: la traza de por qué se aprobó. */
+  aprobar: (firma?: EvidenciaFirmaOtp, observaciones?: string, soportes?: File[]) => Promise<void>;
   /** Con archivos, los adjunta como soportes de la devolución. */
   devolver: (observaciones: string, soportes?: File[]) => Promise<void>;
+  /** Solo donde el escalón puede negar: termina el proceso. */
+  negar: (observaciones: string, soportes?: File[]) => Promise<void>;
 }
 
 /**
@@ -104,6 +126,9 @@ export function usarAprobacion(
   const [cargando, setCargando] = useState(true);
   const [requiereAprobacion, setRequiere] = useState(false);
   const [puedoAprobar, setPuedoAprobar] = useState(false);
+  const [acciones, setAcciones] = useState<AccionEscalon[]>([]);
+  const [motivo, setMotivo] = useState<string | null>(null);
+  const [ronda, setRonda] = useState<RondaDeAprobacion | null>(null);
   const [quienAprueba, setQuienAprueba] = useState<string[]>([]);
   const [estado, setEstado] = useState<Aprobacion['estado']>('BORRADOR');
   const [esMia, setEsMia] = useState(false);
@@ -119,6 +144,9 @@ export function usarAprobacion(
       .then((r) => {
         setRequiere(r.requiereAprobacion);
         setPuedoAprobar(r.puedoAprobar);
+        setAcciones(r.acciones ?? (r.puedoAprobar ? ['APROBAR', 'DEVOLVER'] : []));
+        setMotivo(r.motivo ?? null);
+        setRonda(r.ronda ?? null);
         // Roles y personas: designar solo a alguien por su nombre dejaba la
         // lista vacía, y el gestor leía que nadie la aprobaba.
         setQuienAprueba([
@@ -137,6 +165,8 @@ export function usarAprobacion(
         // que quizá ni la exige.
         setRequiere(false);
         setPuedoAprobar(false);
+        setAcciones([]);
+        setRonda(null);
       })
       .finally(() => setCargando(false));
   }, [procesoId, numeral]);
@@ -170,6 +200,9 @@ export function usarAprobacion(
     cargando,
     requiereAprobacion,
     puedoAprobar,
+    acciones,
+    motivo,
+    ronda,
     quienAprueba,
     estado,
     esMia,
@@ -187,15 +220,34 @@ export function usarAprobacion(
         () => contratacionService.retirarAprobacion(procesoId, numeral),
         'Retirada de aprobación: ya puedes corregirla',
       ),
-    aprobar: (firma?: EvidenciaFirmaOtp) =>
-      accion(
-        () => contratacionService.aprobarActividad(procesoId, numeral, undefined, firma),
-        'Actividad aprobada',
-      ),
+    aprobar: (firma?: EvidenciaFirmaOtp, observaciones?: string, soportes: File[] = []) => {
+      // Una aprobación intermedia no aprueba la actividad: la pasa al
+      // siguiente escalón, y decirle «aprobada» a quien la dio confunde.
+      const siguiente = ronda?.escalones.find((e) => e.orden > (ronda.escalonActual ?? 0));
+      return accion(
+        // Lo que dijo y adjuntó quien aprueba queda en su decisión, como en una
+        // devolución: es la traza de por qué aprobó (113).
+        async () => {
+          await contratacionService.aprobarActividad(
+            procesoId,
+            numeral,
+            observaciones?.trim() || undefined,
+            firma,
+          );
+          await adjuntarSoportes(procesoId, numeral, soportes, 'Se aprobó');
+        },
+        siguiente ? `Aprobada en tu escalón: pasa a ${siguiente.nombre}` : 'Actividad aprobada',
+      );
+    },
     devolver: (observaciones: string, soportes: File[] = []) =>
       accion(async () => {
         await contratacionService.devolverActividad(procesoId, numeral, observaciones);
         await adjuntarSoportes(procesoId, numeral, soportes);
       }, 'Devuelta con tus observaciones'),
+    negar: (observaciones: string, soportes: File[] = []) =>
+      accion(async () => {
+        await contratacionService.negarActividad(procesoId, numeral, observaciones);
+        await adjuntarSoportes(procesoId, numeral, soportes, 'Se negó');
+      }, 'Actividad negada: el proceso terminó'),
   };
 }

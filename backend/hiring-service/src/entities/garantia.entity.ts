@@ -44,4 +44,17 @@ export class Garantia {
 
   @Column({ name: 'motivo_rechazo', type: 'text', nullable: true })
   motivoRechazo: string | null;
+
+  /**
+   * La aprobación que se dio en SECOP II (130, revisión de QA de EFDS-1164).
+   *
+   * Las pólizas se aprueban allá; repetirlo aquí con el revisor y la
+   * Directora era aprobar dos veces. Con la fecha y su evidencia, la póliza
+   * entra APROBADA.
+   */
+  @Column({ name: 'fecha_aprobacion_secop', type: 'date', nullable: true })
+  fechaAprobacionSecop: string | null;
+
+  @Column({ name: 'evidencia_aprobacion_documento_id', type: 'uuid', nullable: true })
+  evidenciaAprobacionDocumentoId: string | null;
 }
