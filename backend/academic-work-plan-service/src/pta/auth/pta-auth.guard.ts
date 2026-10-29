@@ -71,7 +71,7 @@ export class PtaAuthGuard implements CanActivate {
     if (!userId) throw new UnauthorizedException('La sesión no identifica una cuenta válida.');
     const [ctx, personalScope] = await Promise.all([
       this.ptaPermissions.resolveForUser(userId),
-      this.ptaPermissions.resolvePersonalScopeForUser(userId),
+      this.resolvePersonalScope(userId),
     ]);
 
     req.ptaAuth = {
@@ -83,6 +83,10 @@ export class PtaAuthGuard implements CanActivate {
     };
 
     return true;
+  }
+
+  protected resolvePersonalScope(userId: string) {
+    return this.ptaPermissions.resolvePersonalScopeForUser(userId);
   }
 
   private extractToken(req: Request): string | null {
@@ -102,5 +106,17 @@ export class PtaAuthGuard implements CanActivate {
     }
 
     return null;
+  }
+}
+
+/** Consulta informativa de roles; las decisiones conservan su guard territorial. */
+@Injectable()
+export class PtaRoleAccessGuard extends PtaAuthGuard {
+  constructor(jwtService: JwtService, ptaPermissions: PtaPermissionsService) {
+    super(jwtService, ptaPermissions);
+  }
+
+  protected async resolvePersonalScope(_userId: string) {
+    return { territorialIds: [] as string[], cetapIds: [] as string[] };
   }
 }

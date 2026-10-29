@@ -41,15 +41,19 @@ export interface ResultadoInforme {
   modalidad: string | null;
   /** El resultado que se congeló, para poder rastrear de cuál salió. */
   resultadoId: string;
+  /**
+   * Nula en el preliminar desde la 120: la evaluación de la 6.3 no nombra
+   * ganadora. El definitivo (7.2) siempre la lleva: es donde se decide.
+   */
   ganadora: {
     oferenteId: string;
     nombre: string;
     identificacion: string | null;
-  };
+  } | null;
   puntajeObtenido: number | null;
   puntajeMaximo: number | null;
   valorEvaluado: number | null;
-  justificacion: string;
+  justificacion: string | null;
   /** El informe del comité, que es lo que se traslada. */
   informeDocumentoId: string;
   evidencias: EvidenciaEnInforme[];

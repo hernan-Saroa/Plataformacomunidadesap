@@ -80,4 +80,35 @@ describe('TarifasTransporteTerminalAdmin', () => {
       expect(screen.getByText('Crear Tarifa')).toBeDefined();
     });
   });
+
+  it('debe mostrar el valor real cuando el backend devuelve valorMaximo en lugar de valorMaximoTrayecto', async () => {
+    const { default: viaticosService } = await import('../../services/api/viaticosService');
+    viaticosService.obtenerTarifasTransporteTerminal.mockResolvedValue([
+      {
+        id: 2,
+        departamento: 'Atlántico',
+        departamentoId: 8,
+        ciudadAeropuerto: 'ATLANTICO (Soledad)',
+        valorMaximo: 130704,
+        activo: true,
+      } as any,
+      {
+        id: 3,
+        departamento: 'Córdoba',
+        departamentoId: 23,
+        ciudadAeropuerto: 'CORDOBA (Los Garzones)',
+        valorMaximo: '118731.00',
+        activo: true,
+      } as any,
+    ]);
+    viaticosService.obtenerDepartamentos.mockResolvedValue([]);
+
+    render(<TarifasTransporteTerminalAdmin />);
+    await waitFor(() => {
+      expect(screen.getByText('Atlántico')).toBeDefined();
+      expect(screen.getByText('$130.704')).toBeDefined();
+      expect(screen.getByText('Córdoba')).toBeDefined();
+      expect(screen.getByText('$118.731')).toBeDefined();
+    });
+  });
 });

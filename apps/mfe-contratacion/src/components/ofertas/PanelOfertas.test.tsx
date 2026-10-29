@@ -35,6 +35,7 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   recepcion: recepcion(),
   puedeRegistrar: true,
   puedeCerrar: false,
+  audienciaRiesgos: { cumplido: true, motivo: null },
   listaPublicada: false,
   oferentes: [],
   ...cambios,
@@ -147,5 +148,48 @@ describe('PanelOfertas · el vencimiento del plazo', () => {
 
     expect(await screen.findByText(/Lista de oferentes publicada/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /vencimiento/ })).toBeNull();
+  });
+});
+
+/** La revisión de QA de la 6.1 (EFDS-1155): nombre, .zip y 50 MB. */
+describe('PanelOfertas · el soporte de la oferta', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const abrirRegistro = async () => {
+    vi.spyOn(contratacionService, 'ofertas').mockResolvedValue(estado() as never);
+    const vista = render(<PanelOfertas procesoId="p-1" />);
+    await userEvent.click(await screen.findByRole('button', { name: /Registrar una oferta/ }));
+    return vista.container.querySelector('input[type="file"]') as HTMLInputElement;
+  };
+
+  it('se titula como la metodología', async () => {
+    vi.spyOn(contratacionService, 'ofertas').mockResolvedValue(estado() as never);
+    render(<PanelOfertas procesoId="p-1" />);
+
+    expect(await screen.findByText('Cierre del proceso y recepción de ofertas')).toBeInTheDocument();
+  });
+
+  it('acepta un .zip con todos los documentos de la oferta', async () => {
+    const input = await abrirRegistro();
+    expect(input.accept).toContain('.zip');
+
+    const zip = new File(['z'], 'oferta-completa.zip', { type: 'application/zip' });
+    await userEvent.upload(input, zip);
+
+    expect(screen.getByText('oferta-completa.zip')).toBeInTheDocument();
+  });
+
+  it('rechaza antes de subir un archivo de más de 50 MB', async () => {
+    const { toast } = await import('sonner');
+    const input = await abrirRegistro();
+
+    const pesado = new File(['x'], 'oferta.pdf', { type: 'application/pdf' });
+    Object.defineProperty(pesado, 'size', { value: 51 * 1024 * 1024 });
+    await userEvent.upload(input, pesado);
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/máximo son 50 MB/));
+    expect(screen.queryByText('oferta.pdf')).toBeNull();
   });
 });

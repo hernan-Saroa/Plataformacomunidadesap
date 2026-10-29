@@ -16,6 +16,7 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { CdpModule } from '../cdp/cdp.module';
 import { DocumentosActividadModule } from '../documentos-actividad/documentos-actividad.module';
+import { AprobacionModule } from '../aprobacion/aprobacion.module';
 
 @Module({
   imports: [
@@ -35,6 +36,8 @@ import { DocumentosActividadModule } from '../documentos-actividad/documentos-ac
     CdpModule,
     // Qué documentos pide la 5.1 lo dice el catálogo único (EFDS-2066).
     DocumentosActividadModule,
+    // La revisión de los documentos antes de publicar (EFDS-1150).
+    AprobacionModule,
   ],
   controllers: [DocumentosController, AuditoriaController],
   providers: [DocumentosService],

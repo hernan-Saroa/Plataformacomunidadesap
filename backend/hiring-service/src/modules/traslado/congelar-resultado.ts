@@ -25,27 +25,45 @@ export function congelarResultado(
   resultado: ResultadoEvaluacion,
   oferentes: Oferente[],
   evidencias: EvidenciaEvaluacion[],
+  /**
+   * La ganadora, cuando la decide quien congela y no el resultado: el informe
+   * definitivo la elige (EFDS-1157). Sin ella se toma la del resultado, que
+   * desde la 120 no la trae: la evaluación de la 6.3 es preliminar.
+   */
+  decision?: { oferenteId: string; valorEvaluado?: number | null; justificacion?: string | null },
 ): ResultadoInforme {
-  const ganadora = oferentes.find((o) => o.id === resultado.oferenteId);
+  const ganadoraId = decision?.oferenteId ?? resultado.oferenteId;
+  const ganadora = ganadoraId ? (oferentes.find((o) => o.id === ganadoraId) ?? null) : null;
 
-  if (!ganadora) {
+  if (ganadoraId && !ganadora) {
     throw new ConflictException(
       'La oferta ganadora ya no está en la lista del proceso: revisa el resultado de la evaluación',
     );
   }
 
+  // Si quien decide no corrigió la cifra, el valor es el que la oferta presentó.
+  const valorDecidido =
+    decision?.valorEvaluado ??
+    (ganadora?.valorOfertado != null ? Number(ganadora.valorOfertado) : null);
+
   return {
     modalidad,
     resultadoId: resultado.id,
-    ganadora: {
-      oferenteId: ganadora.id,
-      nombre: ganadora.nombre,
-      identificacion: ganadora.identificacion,
-    },
+    ganadora: ganadora
+      ? {
+          oferenteId: ganadora.id,
+          nombre: ganadora.nombre,
+          identificacion: ganadora.identificacion,
+        }
+      : null,
     puntajeObtenido: resultado.puntajeObtenido != null ? Number(resultado.puntajeObtenido) : null,
     puntajeMaximo: resultado.puntajeMaximo != null ? Number(resultado.puntajeMaximo) : null,
-    valorEvaluado: resultado.valorEvaluado != null ? Number(resultado.valorEvaluado) : null,
-    justificacion: resultado.justificacion,
+    valorEvaluado: decision
+      ? valorDecidido
+      : resultado.valorEvaluado != null
+        ? Number(resultado.valorEvaluado)
+        : null,
+    justificacion: decision ? decision.justificacion?.trim() || null : resultado.justificacion,
     informeDocumentoId: resultado.informeDocumentoId,
     evidencias: evidencias.map((e) => ({
       documentoId: e.documentoId,
@@ -57,7 +75,7 @@ export function congelarResultado(
       nombre: o.nombre,
       identificacion: o.identificacion,
       valorOfertado: o.valorOfertado != null ? Number(o.valorOfertado) : null,
-      ganadora: o.id === ganadora.id,
+      ganadora: !!ganadora && o.id === ganadora.id,
     })),
   };
 }

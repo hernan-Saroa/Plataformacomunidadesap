@@ -4,9 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { Cdp } from '../../entities/cdp.entity';
 import { EstadoRp, RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -14,7 +15,13 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { ExpedirRpDto, RechazarRpDto, SolicitarRpDto } from './dto/registro-presupuestal.dto';
+import { AlcanceService } from '../../auth/alcance.service';
+import {
+  CargarRpDto,
+  ExpedirRpDto,
+  RechazarRpDto,
+  SolicitarRpDto,
+} from './dto/registro-presupuestal.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
@@ -62,6 +69,33 @@ export function cubreElContrato(valorRp: number | null, valorContrato: number): 
   return valorRp !== null && valorRp >= valorContrato;
 }
 
+/** Sin espacios ni mayúsculas: «a-02-02-02-008 » y «A-02-02-02-008» son el mismo rubro. */
+const normalizarRubro = (rubro: string) => rubro.replace(/\s+/g, '').toUpperCase();
+
+/**
+ * Por qué el RP no cabe en el CDP del proceso, o nulo si cabe.
+ *
+ * El RP compromete lo que el CDP apartó: no puede ir por más ni contra otro
+ * rubro. Antes nada lo comparaba, y un RP de $50 M quedó expedido sobre un CDP
+ * de $37 M y contra un rubro que el CDP no certificaba.
+ */
+export function contradiceElCdp(
+  rp: { valor: number; rubro: string | null },
+  cdp: { numero: string | null; valor: number | null; rubro: string | null },
+): string | null {
+  const nombre = cdp.numero ? `el CDP ${cdp.numero}` : 'el CDP del proceso';
+  if (cdp.valor != null && rp.valor > cdp.valor) {
+    return (
+      `El RP ($ ${rp.valor.toLocaleString('es-CO')}) supera lo que certificó ${nombre} ` +
+      `($ ${cdp.valor.toLocaleString('es-CO')})`
+    );
+  }
+  if (rp.rubro && cdp.rubro && normalizarRubro(rp.rubro) !== normalizarRubro(cdp.rubro)) {
+    return `El RP va contra el rubro ${rp.rubro}, pero ${nombre} certificó el ${cdp.rubro}`;
+  }
+  return null;
+}
+
 interface ArchivoCargado {
   filename: string;
   originalname: string;
@@ -72,19 +106,23 @@ interface ArchivoCargado {
 /**
  * Registro presupuestal del contrato — actividad 8.3 (EFDS-1163).
  *
- * Mismo ciclo que el CDP porque es el mismo trámite en otro momento: el CDP
- * aparta la partida, el RP la compromete.
+ * Desde la revisión de QA (2026-10-16) el RP se trata como el CDP desde la
+ * 103: la Dirección Financiera lo expide por fuera y el abogado carga el PDF
+ * con sus datos (`cargar`). La solicitud, la verificación y el rechazo dentro
+ * de la plataforma ya no se exponen; los métodos se quedan para completar los
+ * trámites viejos y para las pruebas.
  */
 @Injectable()
 export class RegistroPresupuestalService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string, _acceso: HiringAccess) {
+  async estado(procesoId: string, acceso: HiringAccess) {
     const contrato = await this.contratoDelProceso(this.dataSource.manager, procesoId);
 
     if (!contrato) {
@@ -108,7 +146,14 @@ export class RegistroPresupuestalService {
           ? 'el proponente no aceptó la minuta'
           : 'el contrato todavía no lo han firmado las dos partes',
       contrato: { numero: contrato.numero, valor: contrato.valor },
-      puedeSolicitar: suscrito && !rp,
+      puedeSolicitar: false,
+      /** Lo que queda en la pantalla: cargar el RP ya expedido (o completar uno viejo). */
+      // Sin el permiso de editar la 8.3 el cargue respondería 403: el
+      // formulario no se ofrece, como en las garantías (8.4).
+      puedeCargar:
+        suscrito &&
+        rp?.estado !== 'EXPEDIDO' &&
+        (await this.alcance.puedeEn(acceso, 'editar', '8.3')),
       rp: rp
         ? {
             id: rp.id,
@@ -133,7 +178,77 @@ export class RegistroPresupuestalService {
     };
   }
 
-  // ------------------------------------------------------------- el ciclo --
+  // ------------------------------------------------------------- el cargue --
+
+  /**
+   * Carga el RP ya expedido, con su PDF.
+   *
+   * Si quedó un trámite viejo en SOLICITADO o VERIFICADO, lo completa en vez
+   * de crear otro: el índice único no admite dos RP vigentes por contrato.
+   */
+  async cargar(
+    procesoId: string,
+    dto: CargarRpDto,
+    soporte: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
+      const previo = await this.rpVigente(contrato.id, em);
+      if (previo?.estado === 'EXPEDIDO') {
+        throw new ConflictException('El contrato ya tiene su registro presupuestal cargado');
+      }
+
+      this.validarFecha(dto.fechaExpedicion);
+
+      const cdp = await this.exigirCdpExpedido(em, procesoId);
+      const rubro = dto.rubro?.trim() || previo?.rubro || cdp.rubro || null;
+      const contradiccion = contradiceElCdp({ valor: Number(dto.valor), rubro }, cdp);
+      if (contradiccion) throw new BadRequestException(contradiccion);
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · registro presupuestal ${dto.numero}`,
+        soporte,
+        hash,
+        acceso,
+      );
+
+      const rp = previo ?? em.create(RegistroPresupuestal, { contratoId: contrato.id } as Partial<RegistroPresupuestal>);
+      Object.assign(rp, {
+        estado: 'EXPEDIDO' as const,
+        numero: dto.numero,
+        valor: dto.valor,
+        rubro,
+        fechaExpedicion: dto.fechaExpedicion,
+        vigenciaFiscal: dto.vigenciaFiscal ?? previo?.vigenciaFiscal ?? null,
+        documentoId: doc.id,
+        solicitadoPor: previo?.solicitadoPor ?? acceso.userName,
+        expedidoPor: acceso.userName,
+      });
+      await em.save(rp);
+
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
+
+      await this.traza(em, procesoId, rp.id, 'ADJUNTAR', acceso, {
+        actividad: NUMERAL_RP,
+        contrato: contrato.numero,
+        numero: dto.numero,
+        valor: dto.valor,
+        rubro,
+        cargadoPorFuera: true,
+        cubreElContrato: cubreElContrato(dto.valor, contrato.valor),
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  // ------------------------------------- el ciclo de antes (trámites viejos) --
 
   /** Radica la solicitud del RP ante la Dirección Financiera. */
   async solicitar(procesoId: string, dto: SolicitarRpDto, acceso: HiringAccess) {
@@ -146,11 +261,18 @@ export class RegistroPresupuestalService {
         );
       }
 
+      const cdp = await this.exigirCdpExpedido(em, procesoId);
+      const rubro = dto.rubro?.trim() || cdp.rubro || null;
+      const valor = dto.valor ?? contrato.valor;
+      const contradiccion = contradiceElCdp({ valor: Number(valor), rubro }, cdp);
+      if (contradiccion) throw new BadRequestException(contradiccion);
+
       const rp = await em.save(
         em.create(RegistroPresupuestal, {
           contratoId: contrato.id,
-          rubro: dto.rubro ?? null,
-          valor: dto.valor ?? contrato.valor,
+          // Sin rubro escrito se toma el del CDP: es el único que puede ser.
+          rubro,
+          valor,
           vigenciaFiscal: dto.vigenciaFiscal ?? null,
           estado: 'SOLICITADO' as const,
           solicitadoPor: acceso.userName,
@@ -209,6 +331,13 @@ export class RegistroPresupuestalService {
 
       this.exigirTransicion(rp.estado, 'EXPEDIDO');
       this.validarFecha(dto.fechaExpedicion);
+
+      const cdp = await this.exigirCdpExpedido(em, procesoId);
+      const contradiccion = contradiceElCdp(
+        { valor: Number(dto.valor), rubro: dto.rubro?.trim() || rp.rubro },
+        cdp,
+      );
+      if (contradiccion) throw new BadRequestException(contradiccion);
 
       if (soporte && hash) {
         const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -370,6 +499,24 @@ export class RegistroPresupuestalService {
       .andWhere("rp.estado NOT IN ('RECHAZADO', 'ANULADO')")
       .andWhere('rp.modificacion_id IS NULL')
       .getOne();
+  }
+
+  /**
+   * El CDP expedido del proceso, contra el que se compromete el RP.
+   *
+   * El del proceso y no el de una adición (`modificacion_id` nulo): las
+   * adiciones traen su propio CDP y su propio RP.
+   */
+  private async exigirCdpExpedido(em: EntityManager, procesoId: string) {
+    const cdp = await em.getRepository(Cdp).findOne({
+      where: { procesoId, estado: 'EXPEDIDO', modificacionId: IsNull() },
+    });
+    if (!cdp) {
+      throw new ConflictException(
+        'El proceso no tiene CDP expedido: el RP compromete lo que el CDP certificó (4.2)',
+      );
+    }
+    return { numero: cdp.numero, valor: cdp.valor != null ? Number(cdp.valor) : null, rubro: cdp.rubro };
   }
 
   private async exigirRp(contratoId: string, em?: EntityManager) {

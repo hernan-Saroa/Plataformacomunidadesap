@@ -246,7 +246,8 @@ export interface HistoricoAsignacionEntry {
     | 'CONFORMIDAD_SIN_RESPUESTA'
     | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
     | 'VOBO_VALORACION_APROBADO'
-    | 'VOBO_VALORACION_OBSERVADO';
+    | 'VOBO_VALORACION_OBSERVADO'
+    | 'VINCULACION_TRAMITE_CONTRACTUAL';
   tecnico_codigo: string | null;
   tecnico_nombre_display: string | null;
   motivo: string | null;
@@ -577,11 +578,15 @@ export interface SesionUsuarioUMI {
   permissions: string[];
 }
 
-const normPerm = (s: unknown): string =>
-  String(s ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '');
+const normPerm = (s: unknown): string => {
+  if (s == null) return '';
+  if (typeof s === 'object') {
+    const obj = s as any;
+    const c = obj.code || obj.codigo || obj.role || obj.rol || obj.name || '';
+    return String(c).trim().toUpperCase().replace(/\s+/g, '');
+  }
+  return String(s).trim().toUpperCase().replace(/\s+/g, '');
+};
 
 const FE_GRUPOS: Record<string, string[]> = {
   INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES: [
@@ -685,9 +690,28 @@ const FE_LEGACY_MAP: Record<string, string[]> = {
   SUPER_ADMIN: ['__ALL__'],
   ADMIN: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
   GESTOR_MANTENIMIENTO: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
-  ADMINISTRADOR_FUNCIONAL: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
-  ADMINISTRADOR_FUNCIONAL_INFRA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
-  COORDINADOR_INFRAESTRUCTURA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  ADMINISTRADOR_FUNCIONAL: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  ADMINISTRADOR_FUNCIONAL_INFRA: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  COORDINADOR_INFRAESTRUCTURA: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  P5: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  P3: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  P2: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
   UMI: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
   INFRAESTRUCTURA: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
   TECNICO_UMI: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
@@ -2358,6 +2382,32 @@ export const infraestructuraService = {
       throw new Error(m);
     }
     return await res.json();
+  },
+
+
+  async vincularTramiteContractual(
+    idSolicitud: string,
+    payload: {
+      procesoContractual: string;
+      radicadoOrfeo?: string;
+      presupuestoEstimadoCop?: number;
+      observaciones?: string;
+    },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/tramite-contractual`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al vincular trámite contractual';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('TRAMITE_CONTRACTUAL', idSolicitud, payload);
+    return data;
   },
 };
 

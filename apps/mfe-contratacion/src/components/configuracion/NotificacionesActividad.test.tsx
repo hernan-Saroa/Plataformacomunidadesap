@@ -18,7 +18,7 @@ vi.mock('../../auth/permisos', () => ({
 const PAPELES: ConfiguracionAvisos['papeles'] = [
   { codigo: 'QUIEN_ENVIO', nombre: 'Quien envió la actividad' },
   { codigo: 'QUIEN_APRUEBA', nombre: 'Quien la aprueba' },
-  { codigo: 'ABOGADO', nombre: 'El abogado del proceso' },
+  { codigo: 'PUESTO:p-abogado', nombre: 'Quien ocupa el puesto Abogado' },
   { codigo: 'EQUIPO_FINANCIERO', nombre: 'El equipo financiero' },
   { codigo: 'RADICADOR', nombre: 'Quien radicó el proceso' },
 ];

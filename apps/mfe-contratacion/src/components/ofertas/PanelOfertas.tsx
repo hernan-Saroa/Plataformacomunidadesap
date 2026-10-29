@@ -26,8 +26,11 @@ const TONO_PLAZO = {
   SIN_PLAZO: 'border-gray-200 bg-slate-50 text-slate-500',
 } as const;
 
+/** El mismo `MAX_BYTES_ADJUNTO` del servidor (EFDS-1155). */
+const MAX_BYTES_OFERTA = 50 * 1024 * 1024;
+
 /**
- * Actividad 6.1 · Recepción de ofertas y cierre del proceso (EFDS-1155).
+ * Actividad 6.1 · Cierre del proceso y recepción de ofertas (EFDS-1155).
  *
  * Primera pantalla de la etapa 6. El plazo manda: mientras corre se registran
  * las ofertas que llegan a ventanilla, y solo cuando vence se puede cerrar. El
@@ -212,7 +215,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
   if (!estado.aplica) {
     return (
       <Marco>
-        <Titulo>Recepción de ofertas</Titulo>
+        <Titulo>Cierre del proceso y recepción de ofertas</Titulo>
         <Aviso tono="aviso" titulo="Esta modalidad no recibe ofertas">
           {estado.motivoNoAplica ?? 'La modalidad del proceso no adelanta recepción de ofertas.'}
         </Aviso>
@@ -224,7 +227,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
 
   return (
     <Marco>
-      <Titulo>Recepción de ofertas</Titulo>
+      <Titulo>Cierre del proceso y recepción de ofertas</Titulo>
       <Ayuda>
         Las ofertas que llegan a la entidad se transcriben aquí con su soporte. Vencido el plazo, el
         cierre publica la lista de oferentes y ya no admite cambios.
@@ -330,6 +333,18 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
           El cierre se habilita cuando venza el plazo: cerrar antes dejaría fuera ofertas que
           todavía pueden presentarse.
         </p>
+      ) : null}
+
+      {/* Desde la 112 la audiencia de riesgos va después de la apertura, y donde
+          es obligatoria lo que espera por ella es este cierre. */}
+      {estado.abierto && !estado.listaPublicada && !estado.audienciaRiesgos.cumplido ? (
+        <Pendiente
+          falta="5.12"
+          texto={
+            estado.audienciaRiesgos.motivo ??
+            'La audiencia de asignación de riesgos es obligatoria en esta modalidad y no se ha celebrado.'
+          }
+        />
       ) : null}
 
       {registrando && estado.puedeRegistrar ? (
@@ -654,18 +669,27 @@ function SelectorArchivo({
           archivo ? 'text-emerald-900' : 'text-slate-600'
         }`}
       >
-        {archivo ? archivo.name : 'Sin archivo seleccionado.'}
+        {archivo
+          ? archivo.name
+          : 'PDF, Word, Excel o un .zip con todos los documentos de la oferta · máx. 50 MB.'}
       </p>
 
       <input
         ref={input}
         type="file"
         className="hidden"
-        accept=".pdf,.doc,.docx,.xls,.xlsx"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.zip"
         onChange={(e) => {
           const elegido = e.target.files?.[0];
           e.target.value = '';
-          if (elegido) onElegir(elegido);
+          if (!elegido) return;
+          // Se dice aquí y no al guardar: el servidor lo rechazaría después de
+          // subir los 50 MB, y con un mensaje en inglés.
+          if (elegido.size > MAX_BYTES_OFERTA) {
+            toast.error(`El archivo pesa ${(elegido.size / (1024 * 1024)).toFixed(1)} MB y el máximo son 50 MB.`);
+            return;
+          }
+          onElegir(elegido);
         }}
       />
       <button

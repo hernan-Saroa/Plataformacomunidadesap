@@ -275,7 +275,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   useEffect(() => {
     async function fetchPtaConfig() {
       try {
-        const res = await apiClient.get('/pta/api/v1/configuracion');
+        const res = await apiClient.get('/pta/api/v1/reglas');
         const rules = (res as any)?.data || (res as any)?.rules || res;
         if (rules) setPtaRules(rules);
       } catch (err) {

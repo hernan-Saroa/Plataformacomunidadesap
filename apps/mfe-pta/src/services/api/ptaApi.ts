@@ -26,6 +26,30 @@ export interface PTADecisionListScope {
   cetaps: string[] | null;
 }
 
+export interface PTARoleAccess {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  isSuperUser: boolean;
+}
+
+export async function getPTACurrentRoleAccess() {
+  try {
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/permisos-vigentes`, undefined,
+      { cache: 'no-store', skipErrorToast: true, retries: 0 });
+    const result = normalizeResult<PTARoleAccess | null>(raw, null);
+    const value = result.data;
+    if (!result.success || !value?.userId || !Array.isArray(value.roles)
+      || !Array.isArray(value.permissions) || typeof value.isSuperUser !== 'boolean') {
+      return { success: false, data: null };
+    }
+    return result;
+  } catch {
+    return { success: false, data: null };
+  }
+}
+
 export async function getPTADecisionListScope() {
   try {
     requireConnectionForDecision();
@@ -202,13 +226,20 @@ export async function savePTA(data: any) {
 
 export async function getConfiguracionPTAGlobal() {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/configuracion`);
+    // Lectura operativa para formularios/docentes; no concede administración.
+    const raw = await apiClient.get<any>(`${PTA_BASE}/reglas`);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][getConfiguracionPTAGlobal] Error:', error);
     return { success: false, data: null };
   }
+}
+
+export async function getConfiguracionPTAAdministracion() {
+  const raw = await apiClient.get<any>(`${PTA_BASE}/configuracion`);
+  const normalized = normalizeResult<any>(raw, null);
+  return { success: normalized.success, data: normalized.data };
 }
 
 export async function updateConfiguracionPTAGlobal(rules: any) {
@@ -940,7 +971,8 @@ export async function savePTAUserData(
 
 export async function getAllPtasConEvidencias(periodo?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/evidencias/ptas`, periodo ? { periodo } : undefined);
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/evidencias/ptas`, periodo ? { periodo } : undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -2123,7 +2155,8 @@ export async function getBancoDocenteCabezote(id: string, periodoCarga?: string)
 /** Consulta administrativa: el servidor aplica permiso funcional y alcance por componente. */
 export async function getEvidenciasSeguimientoPTA(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`);
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {

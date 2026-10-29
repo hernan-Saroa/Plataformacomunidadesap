@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +18,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
+  AgregarAmparoDto,
   CargarGarantiaDto,
   RechazarGarantiaDto,
   RegistrarArlDto,
@@ -73,6 +73,15 @@ export function exigeArl(tipoPersona: TipoPersona): boolean {
  * devolvía a BORRADOR sin que hubiera nada que registrar, dejando la
  * legalización —y con ella la 8.7 y la 8.8— bloqueada para siempre.
  */
+/** Si la modalidad constituye garantías (8.4); la matriz las excluye en enajenación. */
+export async function aplicanGarantias(em: EntityManager, modalidad: string | null): Promise<boolean> {
+  if (!modalidad) return true;
+  const excluida = await em
+    .getRepository(ActividadExcluida)
+    .findOne({ where: { numeral: NUMERAL_GARANTIAS, modalidad } });
+  return !excluida;
+}
+
 export async function aplicaArl(
   em: EntityManager,
   modalidad: string | null,
@@ -108,9 +117,16 @@ export function estaLegalizado(panorama: {
   garantiasAprobadas: number;
   requiereArl: boolean;
   arlRegistrada: boolean;
+  /**
+   * Falso donde la matriz excluye las garantías (8.4): enajenación, donde la
+   * entidad vende y no hay amparos que constituir. Sin esto el contrato no
+   * llegaba nunca a legalizado y la ejecución no arrancaba.
+   */
+  requiereGarantias?: boolean;
 }): boolean {
   const garantiasListas =
-    panorama.totalGarantias > 0 && panorama.garantiasAprobadas === panorama.totalGarantias;
+    panorama.requiereGarantias === false ||
+    (panorama.totalGarantias > 0 && panorama.garantiasAprobadas === panorama.totalGarantias);
 
   return garantiasListas && (!panorama.requiereArl || panorama.arlRegistrada);
 }
@@ -250,13 +266,20 @@ export class LegalizacionService {
 
   // ------------------------------------------------------------ garantías --
 
-  /** Registra una póliza con sus amparos desglosados. */
+  /**
+   * Registra una póliza con sus amparos desglosados.
+   *
+   * Con la fecha de aprobación en SECOP y su evidencia la póliza entra
+   * APROBADA (revisión de QA de EFDS-1164): la aprobación ya se dio allá. Sin
+   * ellas —solo las pruebas viejas llegan así— queda CARGADA, como antes.
+   */
   async cargarGarantia(
     procesoId: string,
     dto: CargarGarantiaDto,
     poliza: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
+    evidencia?: { archivo: ArchivoCargado; hash: string },
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoSuscrito(em, procesoId);
@@ -291,14 +314,45 @@ export class LegalizacionService {
         acceso,
       );
 
+      const aprobadaEnSecop = !!dto.fechaAprobacionSecop;
+      if (aprobadaEnSecop) {
+        const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        if (dto.fechaAprobacionSecop! > hoy) {
+          throw new BadRequestException('La fecha de aprobación en SECOP no puede ser posterior a hoy');
+        }
+        if (!evidencia) {
+          throw new BadRequestException('Adjunta la evidencia de la aprobación de la póliza en SECOP II');
+        }
+      }
+
+      const docEvidencia = evidencia
+        ? await this.guardarDocumento(
+            em,
+            expediente.id,
+            NUMERAL_GARANTIAS,
+            `Aprobación en SECOP II de la póliza ${dto.numeroPoliza}`,
+            evidencia.archivo,
+            evidencia.hash,
+            acceso,
+          )
+        : null;
+
       const garantia = await em.save(
         em.create(Garantia, {
           contratoId: contrato.id,
           aseguradora: dto.aseguradora,
           numeroPoliza: dto.numeroPoliza,
           documentoId: doc.id,
-          estado: 'CARGADA' as const,
+          estado: aprobadaEnSecop ? ('APROBADA' as const) : ('CARGADA' as const),
           cargadaPor: acceso.userName,
+          ...(aprobadaEnSecop
+            ? {
+                revisadaPor: acceso.userName,
+                revisadaAt: new Date(),
+                fechaAprobacionSecop: dto.fechaAprobacionSecop,
+                evidenciaAprobacionDocumentoId: docEvidencia?.id ?? null,
+              }
+            : {}),
         } as Partial<Garantia>),
       );
 
@@ -321,6 +375,60 @@ export class LegalizacionService {
         poliza: dto.numeroPoliza,
         aseguradora: dto.aseguradora,
         amparos: dto.amparos.map((a) => a.tipo),
+        fechaAprobacionSecop: dto.fechaAprobacionSecop ?? null,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Agrega un amparo a una póliza ya registrada (revisión de QA de EFDS-1164).
+   *
+   * Una póliza de cumplimiento trae varios amparos y a veces se registra uno
+   * después: un anexo de la aseguradora suma la estabilidad de obra a la
+   * misma póliza. No se agrega a una devuelta: esa ya no rige.
+   */
+  async agregarAmparo(
+    procesoId: string,
+    garantiaId: string,
+    dto: AgregarAmparoDto,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
+      const garantia = await this.exigirGarantia(em, contrato.id, garantiaId);
+      if (garantia.estado === 'RECHAZADA') {
+        throw new ConflictException('La póliza fue devuelta: registra la corregida como póliza nueva');
+      }
+
+      const existentes = await em.getRepository(Amparo).find({ where: { garantiaId } });
+      await this.validarAmparos(em, {
+        amparos: [
+          ...existentes.map((a) => ({
+            tipo: a.tipo,
+            valorAsegurado: Number(a.valorAsegurado),
+            vigenciaDesde: a.vigenciaDesde,
+            vigenciaHasta: a.vigenciaHasta,
+          })),
+          dto,
+        ],
+      } as CargarGarantiaDto);
+
+      await em.save(
+        em.create(Amparo, {
+          garantiaId,
+          tipo: dto.tipo,
+          valorAsegurado: dto.valorAsegurado,
+          vigenciaDesde: dto.vigenciaDesde,
+          vigenciaHasta: dto.vigenciaHasta,
+        } as Partial<Amparo>),
+      );
+
+      await this.traza(em, procesoId, garantia.id, 'ADJUNTAR', acceso, {
+        actividad: NUMERAL_GARANTIAS,
+        poliza: garantia.numeroPoliza,
+        amparoAgregado: dto.tipo,
       });
     });
 
@@ -349,14 +457,6 @@ export class LegalizacionService {
       if (garantia.estado === 'RECHAZADA') {
         throw new ConflictException(
           'Esta póliza fue devuelta: la corrección se carga como una póliza nueva, no se revive la devuelta',
-        );
-      }
-
-      // Quien cargó la póliza no la aprueba: si la misma cuenta hiciera las dos
-      // cosas, la revisión que pide el criterio 1 no sería una revisión.
-      if (garantia.cargadaPor && garantia.cargadaPor === acceso.userName) {
-        throw new ForbiddenException(
-          'La póliza la aprueba alguien distinto de quien la cargó: es lo que hace que la revisión exista',
         );
       }
 
@@ -536,6 +636,7 @@ export class LegalizacionService {
     const requiereArl = await aplicaArl(em, modalidad, contrato.contratistaTipo);
     const vigentes = garantiasVigentes(garantias);
     const legalizado = estaLegalizado({
+      requiereGarantias: await aplicanGarantias(em, modalidad),
       totalGarantias: vigentes.length,
       garantiasAprobadas: vigentes.filter((g) => g.estado === 'APROBADA').length,
       requiereArl,
@@ -666,6 +767,7 @@ export class LegalizacionService {
         revisadaPor: garantia.revisadaPor,
         revisadaAt: garantia.revisadaAt,
         motivoRechazo: garantia.motivoRechazo,
+        fechaAprobacionSecop: garantia.fechaAprobacionSecop,
         amparos: amparos.map((a) => ({
           tipo: a.tipo,
           valorAsegurado: a.valorAsegurado,

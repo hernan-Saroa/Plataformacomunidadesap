@@ -93,7 +93,7 @@ describe('FuidExportService', () => {
     expect(ws.getCell('H14').value).toBe('2026/09/30');
   });
 
-  it('debe usar fuente tamaño 11 sin subrayado en las filas de detalle', async () => {
+  it('debe usar fuente tamaño 11 sin subrayado y color negro en las celdas de detalle', async () => {
     const workbook = await service.generar([{ radicado: 'P-300-2026', cerrado: true }]);
     const ws = workbook.getWorksheet('TVD PERIODO 1')!;
 
@@ -101,6 +101,7 @@ describe('FuidExportService', () => {
       const font = ws.getCell(`${col}13`).font;
       expect(font?.size).toBe(11);
       expect(font?.underline).toBeFalsy();
+      expect(font?.color).toEqual({ argb: 'FF000000' });
     }
   });
 });

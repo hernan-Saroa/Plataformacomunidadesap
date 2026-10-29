@@ -124,3 +124,44 @@ export class RegistrarSesionComiteDto {
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
 }
+
+/**
+ * Lo que el comité decidió en la segunda sesión, con el pliego definitivo —
+ * actividad 5.6.1 (migración 113).
+ *
+ * Igual que la 3.7 sin la lista de actividades que reabrir: lo que el comité
+ * observa aquí es el pliego definitivo, y observar devuelve la 5.6.1 misma.
+ * El acta es opcional: puede llegar hasta diez días después.
+ */
+export class RegistrarSegundaSesionDto {
+  @ApiProperty({ description: 'Fecha de la sesión (AAAA-MM-DD)' })
+  @IsISO8601({ strict: true }, { message: 'La fecha de la sesión no es válida' })
+  fecha: string;
+
+  @ApiProperty({ enum: DECISIONES_COMITE })
+  @IsIn(DECISIONES_COMITE, {
+    message: 'El comité aprueba, aprueba con condiciones, observa o rechaza',
+  })
+  decision: DecisionComite;
+
+  @ApiProperty({ required: false, description: 'A qué queda condicionada la aprobación' })
+  @IsOptional()
+  @IsString()
+  @MinLength(10, { message: 'Di a que queda condicionada la aprobación' })
+  @MaxLength(2000)
+  condiciones?: string;
+
+  @ApiProperty({ required: false, description: 'Lo que el comité objetó' })
+  @IsOptional()
+  @IsString()
+  @MinLength(10, { message: 'Di qué objeta el comité: sin eso nadie sabe qué hacer con el proceso' })
+  @MaxLength(4000)
+  observaciones?: string;
+
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @FirmaDelMultipart()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}

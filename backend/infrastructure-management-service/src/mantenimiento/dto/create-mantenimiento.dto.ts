@@ -451,3 +451,25 @@ export class RegistrarVoBoDto {
   @IsString()
   voboObservaciones?: string;
 }
+
+export class VincularTramiteContractualDto {
+  @ApiProperty({ example: 'ESAP-SAMC-014-2026', description: 'Número o identificador del proceso contractual / SECOP II.' })
+  @IsNotEmpty({ message: 'El número de proceso contractual es obligatorio.' })
+  @IsString()
+  procesoContractual: string;
+
+  @ApiPropertyOptional({ example: '2026-ER-009845', description: 'Radicado Orfeo de remisión a Contratación.' })
+  @IsOptional()
+  @IsString()
+  radicadoOrfeo?: string;
+
+  @ApiPropertyOptional({ example: 45000000, description: 'Presupuesto oficial estimado en COP.' })
+  @IsOptional()
+  @IsNumber()
+  presupuestoEstimadoCop?: number;
+
+  @ApiPropertyOptional({ example: 'Estudios previos y diagnóstico avalados por Coordinación GIM.', description: 'Observaciones de la gestión contractual.' })
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
+}

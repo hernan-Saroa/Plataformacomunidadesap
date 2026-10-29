@@ -26,8 +26,10 @@ import { STORAGE_PATH } from '../archivos';
 import { exigirExpedienteAbierto } from '../archivo-expediente/expediente-archivado';
 import {
   aplicaAlProceso,
+  ESTADOS_CERRADOS,
   GuardiaDeDocumentos,
   obligatoriosPendientes,
+  vigentesAlCierre,
 } from './requisitos';
 
 /** Un archivo ya recibido por multer. */
@@ -115,6 +117,8 @@ export interface SoporteDelRevisor {
   mimeType: string | null;
   revisadoPor: string;
   devueltaAt: string;
+  /** De qué decisión es: una devolución o, desde la 113, una aprobación. */
+  decision?: string;
 }
 
 /**
@@ -188,6 +192,9 @@ export class DocumentosActividadService {
    *
    * La tipología sale de los datos de la 3.1, que es donde el área la elige;
    * mientras no la elija, los requisitos que declaran tipología no aplican.
+   *
+   * Cerrada la actividad, la lista ya no sigue al catálogo: se queda con lo
+   * que el proceso entregó (ver `vigentesAlCierre`).
    */
   async requeridosDe(
     procesoId: string,
@@ -203,7 +210,22 @@ export class DocumentosActividadService {
       order: { orden: 'ASC', nombre: 'ASC' },
     });
 
-    return todos.filter((r) => aplicaAlProceso(r, proceso.modalidad, tipologia));
+    const aplican = todos.filter((r) => aplicaAlProceso(r, proceso.modalidad, tipologia));
+
+    const actividad = await manager.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral },
+    });
+    if (!actividad || !ESTADOS_CERRADOS.includes(actividad.estado)) return aplican;
+
+    // Las sustituidas también cuentan: el requisito se pidió aunque su
+    // archivo vigente sea otro.
+    const entregas = await manager
+      .getRepository(DocumentoProceso)
+      .find({ where: { procesoId, numeral } });
+    return vigentesAlCierre(
+      aplican,
+      entregas.map((e) => e.codigo),
+    );
   }
 
   /**
@@ -508,7 +530,7 @@ export class DocumentosActividadService {
         archivo: archivo.originalname,
       });
 
-      await this.guardias.get(numeral)?.despuesDeCambiar?.(m, procesoId);
+      await this.guardias.get(numeral)?.despuesDeCambiar?.(m, procesoId, acceso);
       return documento;
     };
 
@@ -526,8 +548,14 @@ export class DocumentosActividadService {
     numeral: string,
     documentoProcesoId: string,
     acceso: HiringAccess,
+    /**
+     * El de quien llama, para sustituir en una sola transacción: la 5.6.1
+     * anula y carga la versión definitiva juntas, y entre una y otra la 5.1
+     * quedaría un instante en borrador (113).
+     */
+    manager?: EntityManager,
   ) {
-    await this.dataSource.transaction(async (em) => {
+    const trabajo = async (em: EntityManager) => {
       await this.exigirProceso(em, procesoId);
       await this.guardias.get(numeral)?.antesDeCambiar?.(em, procesoId, 'anular', acceso);
       await exigirExpedienteAbierto(em, procesoId);
@@ -548,9 +576,10 @@ export class DocumentosActividadService {
         documento: entregado.codigo,
       });
 
-      await this.guardias.get(numeral)?.despuesDeCambiar?.(em, procesoId);
-    });
+      await this.guardias.get(numeral)?.despuesDeCambiar?.(em, procesoId, acceso);
+    };
 
+    await (manager ? trabajo(manager) : this.dataSource.transaction(trabajo));
     return { anulado: true };
   }
 
@@ -645,6 +674,7 @@ export class DocumentosActividadService {
             mimeType: d.archivoMimeType ?? null,
             revisadoPor: r.revisadoPor,
             devueltaAt: r.createdAt.toISOString(),
+            decision: r.decision,
           },
         ];
       }),
@@ -714,9 +744,12 @@ export class DocumentosActividadService {
   }
 
   /**
-   * Adjunta a una devolución el archivo con las correcciones (migración 091).
+   * Adjunta a una devolución el archivo con las correcciones (migración 091),
+   * a una aprobación lo que la sustenta: el concepto, las observaciones de
+   * quien aprueba (113), o a una negativa lo que la funda. Las tres son la
+   * traza de por qué se decidió así.
    *
-   * Solo lo hace quien devolvió, y solo sobre la última decisión: el soporte
+   * Solo lo hace quien decidió, y solo sobre la última decisión: el soporte
    * explica esa vuelta, y dejar que otro lo cambie —o que llegue después de
    * que el área ya corrigió y reenvió— lo desligaría de lo que explicaba.
    *
@@ -751,13 +784,17 @@ export class DocumentosActividadService {
         ((!!ultima.revisadoPorId && ultima.revisadoPorId === acceso.userId) ||
           ultima.revisadoPor?.trim().toLowerCase() === acceso.userName?.trim().toLowerCase());
 
-      if (!ultima || ultima.decision !== 'DEVUELTO' || !esSuya) {
+      const deAprobacion = ultima?.decision === 'APROBADO';
+      const deNegativa = ultima?.decision === 'NEGADO';
+      if (!ultima || !esSuya) {
         throw new ConflictException(
-          'El soporte lo adjunta quien devolvió la actividad, sobre su última devolución',
+          'El soporte lo adjunta quien decidió la actividad, sobre su última decisión',
         );
       }
       // El estudio previo devuelto vuelve a borrador; lo demás queda DEVUELTO.
-      if (actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
+      // Una aprobación o una negativa no tienen esa carrera: mientras sean la
+      // última decisión, nadie ha actuado después sobre lo que se decidió.
+      if (ultima.decision === 'DEVUELTO' && actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
         throw new ConflictException(
           'La actividad ya se corrigió y se volvió a enviar: el soporte llegaría tarde',
         );
@@ -771,7 +808,13 @@ export class DocumentosActividadService {
           expedienteId: expediente.id,
           numeral,
           tipo: 'ADJUNTO',
-          nombre: `Soporte de la devolución · ${archivo.originalname}`,
+          nombre: `${
+            deAprobacion
+              ? 'Soporte de la aprobación'
+              : deNegativa
+                ? 'Soporte de la negativa'
+                : 'Soporte de la devolución'
+          } · ${archivo.originalname}`,
           archivoUrl: `hiring/files/${archivo.filename}`,
           archivoNombreOriginal: archivo.originalname,
           archivoMimeType: archivo.mimetype,
@@ -787,7 +830,11 @@ export class DocumentosActividadService {
 
       await this.traza(m, procesoId, documento.id, 'ADJUNTAR', acceso, {
         numeral,
-        soporteDeDevolucion: true,
+        ...(deAprobacion
+          ? { soporteDeAprobacion: true }
+          : deNegativa
+            ? { soporteDeNegativa: true }
+            : { soporteDeDevolucion: true }),
         revision: ultima.id,
         archivo: archivo.originalname,
       });

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, ClipboardCheck, FileText, Hourglass, Inbox, RefreshCw } from 'lucide-react';
+import { ArrowRight, ClipboardCheck, FileSpreadsheet, FileText, Hourglass, Inbox, RefreshCw } from 'lucide-react';
 
 import { ElementoPorRevisar } from '../../types';
 
@@ -166,12 +166,18 @@ export function VistaPorRevisar({
                   >
                     <span
                       className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        e.tipo === 'ESTUDIO_PREVIO' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-[#003DA5]'
+                        e.tipo === 'ESTUDIO_PREVIO'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : e.tipo === 'REVISION_PAA'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-blue-50 text-[#003DA5]'
                       }`}
                       aria-hidden="true"
                     >
                       {e.tipo === 'ESTUDIO_PREVIO' ? (
                         <FileText className="w-4 h-4" />
+                      ) : e.tipo === 'REVISION_PAA' ? (
+                        <FileSpreadsheet className="w-4 h-4" />
                       ) : (
                         <ClipboardCheck className="w-4 h-4" />
                       )}
@@ -182,15 +188,30 @@ export function VistaPorRevisar({
                         {e.radicado ?? 'Sin radicado'}
                         <span className="font-bold text-slate-500">
                           {' '}
-                          · {e.numeral} {e.tipo === 'ESTUDIO_PREVIO' ? 'Estudio previo' : e.actividad}
+                          ·{' '}
+                          {e.tipo === 'REVISION_PAA'
+                            ? `PAA · ${e.actividad}`
+                            : `${e.numeral} ${e.tipo === 'ESTUDIO_PREVIO' ? 'Estudio previo' : e.actividad}`}
                         </span>
                         {e.detalle ? (
                           <span className="font-bold text-slate-700"> · {e.detalle}</span>
                         ) : null}
+                        {/* En una cadena, qué escalón le toca a quien mira
+                            (migración 101): «escalón 2 de 3 · Coordinador». */}
+                        {e.escalon && e.escalon.de > 1 ? (
+                          <span className="font-bold text-slate-700">
+                            {' '}
+                            · escalón {e.escalon.orden} de {e.escalon.de}: {e.escalon.nombre}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="block text-[13px] text-slate-800 mt-0.5 leading-snug">{e.objeto}</span>
                       <span className="block text-[12px] text-slate-500 mt-1">
-                        {e.enviadoPor ? `Enviado por ${e.enviadoPor}` : 'Enviado'}
+                        {e.tipo === 'REVISION_PAA'
+                          ? 'Cambió el Plan Anual de Adquisiciones'
+                          : e.enviadoPor
+                            ? `Enviado por ${e.enviadoPor}`
+                            : 'Enviado'}
                         {e.version ? ` · versión ${e.version}` : ''}
                         {e.modalidad ? ` · ${e.modalidad}` : ''}
                       </span>

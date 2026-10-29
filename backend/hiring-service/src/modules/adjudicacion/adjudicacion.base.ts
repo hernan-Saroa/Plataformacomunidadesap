@@ -19,12 +19,19 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
+import {
+  NUMERAL_SOBRE_ECONOMICO,
+  excluidasPorElProceso,
+} from '../configuracion/aplicabilidad';
 
-/** Numerales de la etapa 7, tal como los numera la matriz oficial. */
+/**
+ * Numerales de la etapa 7, tal como los numera la matriz oficial. El sobre
+ * económico es la 7.1.1, colgada de la audiencia (migración 114).
+ */
 export const NUMERAL_AUDIENCIA = '7.1';
-export const NUMERAL_SOBRE_ECONOMICO = '7.2';
-export const NUMERAL_INFORME_DEFINITIVO = '7.3';
-export const NUMERAL_ACTO = '7.4';
+export { NUMERAL_SOBRE_ECONOMICO };
+export const NUMERAL_INFORME_DEFINITIVO = '7.2';
+export const NUMERAL_ACTO = '7.3';
 
 /**
  * Las cuatro actividades de la etapa, en orden.
@@ -78,13 +85,29 @@ export class AdjudicacionBase {
     });
   }
 
-  protected async exigirQueAplique(em: EntityManager, proceso: Proceso, numeral: string) {
+  /**
+   * Por qué el proceso no adelanta esta actividad, o nulo si la adelanta.
+   *
+   * Primero la modalidad (`actividades_excluidas`) y después lo que es el
+   * proceso: la 7.1.1 solo la recorre la licitación de obra pública.
+   */
+  protected async motivoNoAplica(
+    em: EntityManager,
+    proceso: Proceso,
+    numeral: string,
+  ): Promise<string | null> {
     const excluida = await this.excluida(em, proceso, numeral);
-    if (excluida) {
-      throw new BadRequestException(
-        `Esta modalidad no adelanta la actividad ${numeral}: ${excluida.motivo}`,
-      );
-    }
+    if (excluida) return `Esta modalidad no adelanta la actividad ${numeral}: ${excluida.motivo}`;
+
+    const motivo = (await excluidasPorElProceso(em, proceso.id)).get(numeral);
+    if (motivo) return `Este proceso no adelanta la actividad ${numeral}: ${motivo}`;
+
+    return null;
+  }
+
+  protected async exigirQueAplique(em: EntityManager, proceso: Proceso, numeral: string) {
+    const motivo = await this.motivoNoAplica(em, proceso, numeral);
+    if (motivo) throw new BadRequestException(motivo);
   }
 
   /**

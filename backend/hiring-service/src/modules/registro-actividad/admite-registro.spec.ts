@@ -15,14 +15,17 @@ const base = {
 };
 
 describe('admiteRegistro · qué actividades se cumplen dejando constancia', () => {
-  it('son las ocho que ninguna historia recogió y siguen sin pantalla propia', () => {
+  it('son las diez que ninguna historia recogió y siguen sin pantalla propia', () => {
     // Eran catorce. De la etapa 3 fueron saliendo cinco: radicar es recibir el
     // proceso (3.3); la 3.4 es la decisión del abogado sobre el estudio previo;
     // la 3.5 es ratificar la modalidad; la 3.6 es elegir la causal del catálogo
     // de esa modalidad; y la 3.7 es lo que decidió el comité, que son tres
     // desenlaces. Ninguna cabe en una fecha y un documento. La sexta, la 3.2,
-    // se entrega con el estudio previo (migración 090).
+    // se entrega con el estudio previo (migración 090). El cronograma (5.2) y
+    // la web de la ESAP (5.4) llegaron con la 112.
     expect([...NUMERALES_CON_REGISTRO]).toEqual([
+      '5.2',
+      '5.4',
       '5.9',
       '5.10',
       '5.11',

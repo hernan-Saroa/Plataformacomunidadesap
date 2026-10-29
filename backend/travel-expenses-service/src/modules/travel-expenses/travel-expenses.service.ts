@@ -2376,6 +2376,86 @@ export class TravelExpensesService implements OnModuleInit {
     };
   }
 
+  /**
+   * Calcula el costo total estimado de tiquetes aéreos analizando los tramos reales
+   * del itinerario de forma automática (evitando duplicaciones y calculando tramo a tramo).
+   */
+  private async calcularCostoEstimadoTiquetesItinerario(
+    itinerario?: any[],
+    destinoFallback?: string,
+    origenFallback?: string,
+  ): Promise<{
+    origenCiudad: string;
+    destinoCiudad: string;
+    montoEstimadoTotal: number;
+    tarifaPrincipal: any;
+    totalTramosAereos: number;
+  }> {
+    const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+      this.resolverItinerarioCiudades(itinerario, destinoFallback, origenFallback);
+
+    if (!this.ticketsService) {
+      return {
+        origenCiudad,
+        destinoCiudad,
+        montoEstimadoTotal: 0,
+        tarifaPrincipal: null,
+        totalTramosAereos: 0,
+      };
+    }
+
+    const tramos = Array.isArray(itinerario) ? itinerario : [];
+    const tramosAereos = tramos.filter(
+      (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete === true,
+    );
+
+    let tarifaPrincipal: any = null;
+    let montoEstimadoTotal = 0;
+
+    if (tramosAereos.length > 0) {
+      for (const tramo of tramosAereos) {
+        const origTramo = tramo.origenCiudad || origenCiudad;
+        const destTramo = tramo.destinoCiudad || destinoCiudad;
+        try {
+          const resp = await this.ticketsService.consultarTarifaEstimada(origTramo, destTramo);
+          if (resp && resp.tarifaEstimada > 0) {
+            if (!tarifaPrincipal) {
+              tarifaPrincipal = resp;
+            }
+            montoEstimadoTotal += Number(resp.tarifaEstimada);
+          }
+        } catch (e: any) {
+          this.logger.warn(`[calcularCostoEstimadoTiquetesItinerario] Error en tramo ${origTramo}-${destTramo}: ${e?.message}`);
+        }
+      }
+    } else {
+      // Fallback para solicitudes sin itinerario multiruta detallado
+      try {
+        const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+        if (respTarifa && respTarifa.tarifaEstimada > 0) {
+          tarifaPrincipal = respTarifa;
+          montoEstimadoTotal = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+        }
+      } catch (err: any) {
+        this.logger.warn(`[calcularCostoEstimadoTiquetesItinerario] Error: ${err?.message}`);
+      }
+    }
+
+    // Si por alguna razón los tramos no sumaron monto pero hay tarifa principal
+    if (montoEstimadoTotal === 0 && tarifaPrincipal && tarifaPrincipal.tarifaEstimada > 0) {
+      const factor = tramosAereos.length > 0 ? tramosAereos.length : (esViajeIdaVuelta ? 2 : 1);
+      montoEstimadoTotal = Number(tarifaPrincipal.tarifaEstimada) * factor;
+    }
+
+    return {
+      origenCiudad,
+      destinoCiudad,
+      montoEstimadoTotal,
+      tarifaPrincipal,
+      totalTramosAereos: tramosAereos.length > 0 ? tramosAereos.length : (esViajeIdaVuelta ? 2 : 1),
+    };
+  }
+
   async obtenerSolicitudCompleta(
     solicitudId: string,
   ): Promise<
@@ -2535,34 +2615,31 @@ export class TravelExpensesService implements OnModuleInit {
     if (solicitud.requiereTiquetes && this.ticketsService) {
       try {
         const idDep = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
-        const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
-          this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+        const resCalculo = await this.calcularCostoEstimadoTiquetesItinerario(
+          solicitud.itinerario,
+          solicitud.destinoCiudad,
+        );
+
+        if (resCalculo.tarifaPrincipal) {
+          tarifaEstimada = resCalculo.tarifaPrincipal;
+        }
 
         let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
-
-        try {
-          const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
-          if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
-            tarifaEstimada = respTarifa;
-            if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
-              montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
-            }
-          }
-        } catch (err: any) {
-          this.logger.warn(`[travel-expenses] No se pudo consultar tarifa estimada: ${err?.message}`);
+        if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+          montoEstimadoTiquete = resCalculo.montoEstimadoTotal;
         }
 
         const resTiquete = await this.ticketsService.validarTiquete({
           dependenciaId: String(idDep),
-          origenCiudad,
-          destinoCiudad,
+          origenCiudad: resCalculo.origenCiudad,
+          destinoCiudad: resCalculo.destinoCiudad,
           tipoTransporte: 'AEREO',
           montoEstimadoTiquete,
         });
         if (resTiquete) {
           validacionTiquete = resTiquete;
         }
-      } catch (err) {
+      } catch (err: any) {
         this.logger.warn(
           `[travel-expenses] No se pudo validar tiquete para solicitud ${solicitud.id}: ${err?.message || err}`,
         );
@@ -10031,23 +10108,18 @@ if (itinerarioGeneral) {
      let tarifaEstimada: any = null;
 
      if (solicitud.requiereTiquetes && this.ticketsService) {
-       const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
-         this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+       const resCalculo = await this.calcularCostoEstimadoTiquetesItinerario(
+         solicitud.itinerario,
+         solicitud.destinoCiudad,
+       );
+
+       if (resCalculo.tarifaPrincipal) {
+         tarifaEstimada = resCalculo.tarifaPrincipal;
+       }
 
        let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
-
-       try {
-         const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
-         if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
-           tarifaEstimada = respTarifa;
-           if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
-             montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
-           }
-         }
-       } catch (err: any) {
-         this.logger.warn(
-           `[obtenerSolicitudControlViaticos] No se pudo consultar tarifa estimada: ${err?.message}`,
-         );
+       if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+         montoEstimadoTiquete = resCalculo.montoEstimadoTotal;
        }
 
        if (idDependencia != null) {
@@ -10055,8 +10127,8 @@ if (itinerarioGeneral) {
            validacionTiquete = await this.ticketsService.validarTiquete({
              dependenciaId: String(idDependencia),
              montoEstimadoTiquete,
-             origenCiudad,
-             destinoCiudad,
+             origenCiudad: resCalculo.origenCiudad,
+             destinoCiudad: resCalculo.destinoCiudad,
              tipoTransporte: 'AEREO',
            });
          } catch (err: any) {

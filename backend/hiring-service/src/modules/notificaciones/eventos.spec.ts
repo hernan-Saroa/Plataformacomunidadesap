@@ -28,6 +28,52 @@ const traza = (parcial: Partial<TrazaLeida>): TrazaLeida => ({
 });
 
 describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
+  /*
+   * Con escalones (migración 101), una aprobación intermedia no es «se
+   * aprobó»: a quien la envió no se le dice que quedó lista, y al siguiente
+   * escalón le llega que tiene algo esperando su visto bueno.
+   */
+  describe('aprobar con escalones', () => {
+    const aprobar = (detalle: Record<string, unknown>) =>
+      eventosDeTraza(traza({ accion: 'APROBAR', detalle: { numeral: '5.2', ...detalle } }));
+
+    it('la intermedia le pasa la actividad al siguiente escalón', () => {
+      expect(aprobar({ definitiva: false, activado: 3 }).map((e) => e.evento)).toEqual(['ENVIADA_A_APROBACION']);
+    });
+
+    it('la que solo suma una firma de varias no avisa a nadie', () => {
+      expect(aprobar({ definitiva: false, activado: null })).toEqual([]);
+    });
+
+    it('la definitiva sí es «se aprobó»', () => {
+      expect(aprobar({ definitiva: true }).map((e) => e.evento)).toEqual(['APROBADA']);
+    });
+
+    it('las trazas de antes de la 101 eran todas definitivas', () => {
+      expect(aprobar({}).map((e) => e.evento)).toEqual(['APROBADA']);
+    });
+  });
+
+  it('avisa al abogado cuando un cambio del PAA le abre una revisión al proceso', () => {
+    const [ev] = eventosDeTraza(
+      traza({
+        entidad: 'paa_revisiones',
+        accion: 'ABRIR_REVISION_PAA',
+        detalle: { observaciones: 'La línea CHOCO 3 ya no está en la versión 4 del PAA.' },
+      }),
+    );
+    expect(ev).toMatchObject({ evento: 'REVISION_PAA', numeral: '3.1', observaciones: expect.stringContaining('CHOCO 3') });
+    expect(mensajeDeAviso(ev, 'Estudio previo', 'CTO-2026-0001').mensaje).toContain('CHOCO 3');
+  });
+
+  it('avisa que el proceso se canceló por el PAA, con la justificación', () => {
+    const [ev] = eventosDeTraza(
+      traza({ entidad: 'paa_revisiones', accion: 'CANCELAR', detalle: { observaciones: 'No sigue en 2027' } }),
+    );
+    expect(ev).toMatchObject({ evento: 'PROCESO_CANCELADO', numeral: '3.1' });
+    expect(mensajeDeAviso(ev, null, 'CTO-2026-0001')).toMatchObject({ titulo: 'Se canceló un proceso', prioridad: 'Alta' });
+  });
+
   it('reconoce la devolución de la aprobación genérica, con su actividad', () => {
     const [ev] = eventosDeTraza(traza({ detalle: { numeral: '3.4', observaciones: ' Falta el CDP ' } }));
 
@@ -88,9 +134,16 @@ describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
   it('pone la actividad fija a los eventos del reparto, que no la guardan', () => {
     expect(eventosDeTraza(traza({ entidad: 'participacion_proceso', accion: 'RADICAR', detalle: {} }))[0])
       .toMatchObject({ evento: 'RECIBIDO_EN_CONTRATACION', numeral: '3.3' });
+  });
+
+  it('poner a alguien en un puesto cuyo escalón ya espera es «tienes algo por aprobar»', () => {
     expect(
-      eventosDeTraza(traza({ entidad: 'participacion_proceso', accion: 'DESIGNAR', detalle: { papel: 'ABOGADO' } }))[0],
-    ).toMatchObject({ evento: 'HABILITADA', numeral: '3.4' });
+      eventosDeTraza(traza({ entidad: 'asignacion_puesto', accion: 'DESIGNAR', detalle: { pendiente: '3.1' } }))[0],
+    ).toMatchObject({ evento: 'ENVIADA_A_APROBACION', numeral: '3.1' });
+    // Si nada de ese puesto espera todavía, no hay aviso: le llegará con la ronda.
+    expect(
+      eventosDeTraza(traza({ entidad: 'asignacion_puesto', accion: 'DESIGNAR', detalle: { pendiente: null } })),
+    ).toEqual([]);
   });
 
   it('radicar el proceso es un evento de la 3.1', () => {
@@ -178,8 +231,8 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
     expect(eventosDeActividad('5.8').map((e) => e.codigo)).toContain('HABILITADA');
   });
 
-  it('en la 3.4 viene encendido para el abogado que asignan', () => {
-    expect(avisoQueRige('HABILITADA', undefined, '3.4')).toMatchObject({ activo: true, papeles: ['ABOGADO'] });
+  it('en la 3.4 viene apagado: no tiene pantalla, se resuelve en la ronda de la 3.1', () => {
+    expect(avisoQueRige('HABILITADA', undefined, '3.4')).toMatchObject({ activo: false, papeles: ['QUIEN_APRUEBA'] });
   });
 
   it('donde no hay pantalla viene apagado: lo enciende quien sepa que sirve', () => {
@@ -187,11 +240,6 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
     expect(avisoQueRige('HABILITADA', undefined, '1.1')).toMatchObject({ activo: false });
   });
 
-  it('en la 3.4 dice que sale al asignar el abogado', () => {
-    expect(
-      mensajeDeAviso({ evento: 'HABILITADA', numeral: '3.4', actorNombre: 'Patricia', observaciones: null }, null, 'CTO-1'),
-    ).toMatchObject({ titulo: 'Te toca revisar un proceso' });
-  });
 
   it('viene encendido y dirigido a quien hace cada actividad, sin configurar nada', () => {
     expect(avisoQueRige('HABILITADA', undefined, '4.1')).toMatchObject({

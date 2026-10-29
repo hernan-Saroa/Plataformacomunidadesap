@@ -1,25 +1,19 @@
 import { admitePublicacion } from './publicacion-contrato.service';
 
 /**
- * Actividad 8.8 de la matriz: la publicación del contrato.
+ * Actividad 8.8: la publicación del contrato.
  *
- * La matriz la sitúa en el último puesto de la etapa, así que leerla como
- * flujo lineal exige cumplidas las anteriores. La historia EFDS-1166 dice lo
- * mismo con otras palabras —«dado un contrato perfeccionado y legalizado»—:
- * legalizado es haber pasado por las garantías (8.4) y la ARL (8.5).
- *
- * Publicar antes anunciaría como firme un contrato al que aún pueden faltarle
- * las coberturas.
+ * Se publica con el contrato firmado por las dos partes: el plazo legal (tres
+ * días hábiles, Decreto 1082) corre desde ahí y no espera a las garantías ni
+ * a la ARL. Antes exigía el contrato legalizado y podía vencerse el término.
  */
 describe('admitePublicacion', () => {
-  it('un contrato legalizado se publica', () => {
-    expect(admitePublicacion('LEGALIZADO')).toBe(true);
+  it('un contrato firmado por las dos partes se publica', () => {
+    expect(admitePublicacion('PERFECCIONADO')).toBe(true);
   });
 
-  it('no se publica uno al que le faltan las garantías', () => {
-    // Perfeccionado significa firmado, no amparado: la historia pide las dos
-    // cosas, «perfeccionado y legalizado».
-    expect(admitePublicacion('PERFECCIONADO')).toBe(false);
+  it('no espera a las garantías ni a la ARL', () => {
+    expect(admitePublicacion('LEGALIZADO')).toBe(true);
   });
 
   it('no se publica antes de las firmas', () => {
