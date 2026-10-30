@@ -92,8 +92,9 @@ export function PanelSuscripcionActa({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Acta de inicio</Titulo>
       <Ayuda>
-        La entidad y el contratista suscriben el acta de inicio. Con ella se cierra la legalización;
-        el contrato entra en ejecución con la reunión de inicio (9.1).
+        La entidad y el contratista suscriben el acta de inicio. Con ella se cierra la legalización
+        y el contrato entra en ejecución desde la fecha de firma; la reunión de inicio (9.1) es
+        opcional.
       </Ayuda>
 
       {!estado.aplica ? (

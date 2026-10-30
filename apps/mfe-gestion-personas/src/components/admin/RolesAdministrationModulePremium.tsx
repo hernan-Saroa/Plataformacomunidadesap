@@ -82,90 +82,9 @@ const getIconComponent = (iconName: string) => {
   return ICON_MAP[iconName] || Shield;
 };
 
-const ROLE_MOJIBAKE_PATTERN = /[ÃÂâ�]|\?\?/;
-
-const ROLE_TEXT_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\bSubdirecci(?:\?\?|�)n\b/g, 'Subdirección'],
-  [/\bsubdirecci(?:\?\?|�)n\b/g, 'subdirección'],
-  [/\bSecretar(?:\?\?|�)a\b/g, 'Secretaría'],
-  [/\bsecretar(?:\?\?|�)a\b/g, 'secretaría'],
-  [/\bAcad(?:\?\?|�)mico\b/g, 'Académico'],
-  [/\bacad(?:\?\?|�)mico\b/g, 'académico'],
-  [/\bAcad(?:\?\?|�)mica\b/g, 'Académica'],
-  [/\bacad(?:\?\?|�)mica\b/g, 'académica'],
-  [/\bJur(?:\?\?|�)dica\b/g, 'Jurídica'],
-  [/\bjur(?:\?\?|�)dica\b/g, 'jurídica'],
-  [/\bPlaneaci(?:\?\?|�)n\b/g, 'Planeación'],
-  [/\bplaneaci(?:\?\?|�)n\b/g, 'planeación'],
-  [/\bVerificaci(?:\?\?|�)n\b/g, 'Verificación'],
-  [/\bverificaci(?:\?\?|�)n\b/g, 'verificación'],
-  [/\bT(?:\?\?|�)tulos\b/g, 'Títulos'],
-  [/\bt(?:\?\?|�)tulos\b/g, 'títulos'],
-  [/\bDecisi(?:\?\?|�)n\b/g, 'Decisión'],
-  [/\bdecisi(?:\?\?|�)n\b/g, 'decisión'],
-  [/\bC(?:\?\?|�)digo\b/g, 'Código'],
-  [/\bc(?:\?\?|�)digo\b/g, 'código'],
-  [/\bB(?:\?\?|�)squeda\b/g, 'Búsqueda'],
-  [/\bb(?:\?\?|�)squeda\b/g, 'búsqueda'],
-  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rea\b/g, '$1área'],
-  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rganos\b/g, '$1órganos'],
-  [/\bAcademico\b/g, 'Académico'],
-  [/\bacademico\b/g, 'académico'],
-  [/\bAcademica\b/g, 'Académica'],
-  [/\bacademica\b/g, 'académica'],
-  [/\bVerificacion\b/g, 'Verificación'],
-  [/\bverificacion\b/g, 'verificación'],
-  [/\bTitulos\b/g, 'Títulos'],
-  [/\btitulos\b/g, 'títulos'],
-  [/\bPlaneacion\b/g, 'Planeación'],
-  [/\bplaneacion\b/g, 'planeación'],
-  [/\bJuridica\b/g, 'Jurídica'],
-  [/\bjuridica\b/g, 'jurídica'],
-  [/\bSecretaria\b/g, 'Secretaría'],
-  [/\bsecretaria\b/g, 'secretaría'],
-  [/\bSubdireccion\b/g, 'Subdirección'],
-  [/\bsubdireccion\b/g, 'subdirección'],
-  [/\bDecision\b/g, 'Decisión'],
-  [/\bdecision\b/g, 'decisión'],
-  [/\bCodigo\b/g, 'Código'],
-  [/\bcodigo\b/g, 'código'],
-  [/\bBusqueda\b/g, 'Búsqueda'],
-  [/\bbusqueda\b/g, 'búsqueda'],
-];
-
-const applyRoleTextCorrections = (value: string) =>
-  ROLE_TEXT_REPLACEMENTS.reduce(
-    (text, [pattern, fixed]) => text.replace(pattern, fixed),
-    value,
-  );
-
-const repairRoleDisplayText = (value?: string | null) => {
-  if (!value) return '';
-
-  if (ROLE_MOJIBAKE_PATTERN.test(value)) {
-    const isLatin1Only = Array.from(value).every((char) => char.charCodeAt(0) <= 255);
-    if (isLatin1Only) {
-      try {
-        const bytes = Uint8Array.from(
-          Array.from(value),
-          (char) => char.charCodeAt(0) & 0xff,
-        );
-        const repaired = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-        if (!repaired.includes('\uFFFD')) return applyRoleTextCorrections(repaired);
-      } catch {
-        // Fall back to targeted display replacements.
-      }
-    }
-  }
-
-  return applyRoleTextCorrections(value);
-};
-
-const getRoleDisplayName = (role: SystemRole | null) =>
-  repairRoleDisplayText(role?.name || '');
-
-const getRoleDisplayDescription = (role: SystemRole | null) =>
-  repairRoleDisplayText(role?.description || '');
+// Display the persisted label exactly; only the technical role code is normalized.
+const getRoleDisplayName = (role: SystemRole | null) => role?.name || '';
+const getRoleDisplayDescription = (role: SystemRole | null) => role?.description || '';
 
 const generateRoleCode = (name: string): string => {
   if (!name.trim()) return 'ROL_SIN_NOMBRE';

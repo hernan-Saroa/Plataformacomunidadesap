@@ -74,16 +74,27 @@ describe('F014: extracción de candidatos no confiables',()=>{
     const page={pagina:1,texto:'NOMBRES DANIELA PATRICIA',confianza:0.99};
     expect(validateCandidates({sugerencias:[{campo:'genero',valor:'Femenino',pagina:1,evidencia:page.texto,confianza:0.99}]},[page],['genero'])).toEqual([]);
   });
+  it.each(['LCEDULADECIUDADANIA','CÉDULA\nDE CIUDADANÍA'])('recupera la etiqueta documental unida o dividida por OCR conservando la cita: %s',text=>{
+    const page={pagina:1,texto:text,confianza:0.96};
+    const result=validateCandidates({sugerencias:[{campo:'documentType',valor:'CC',pagina:1,evidencia:'Cédula de ciudadanía',confianza:0.97}]},[page],['documentType']);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({valor:'CC',evidencia:text});
+  });
+  it.each(['CIUDADANIA','CC','CÉDULADEEXTRANJERÍA','CEDULA DE CIUDADANIA O CEDULA DE EXTRANJERIA'])('no completa CC sin una etiqueta inequívoca en el documento: %s',text=>{
+    expect(validateCandidates({sugerencias:[{campo:'documentType',valor:'CC',pagina:1,evidencia:text,confianza:1}]},[{pagina:1,texto:text,confianza:1}],['documentType'])).toEqual([]);
+  });
   it.each(['https://ollama.com','http://example.com','http://user:pass@localhost','file:///tmp/doc'])('no envía documentos a direcciones públicas: %s',url=>{
     expect(()=>localExtractionUrl(url)).toThrow();
   });
   it.each(['http://localhost:8091','http://rund-ocr:8091','http://192.168.1.10:8091'])('permite infraestructura local: %s',url=>{
     expect(localExtractionUrl(url)).toBe(url);
   });
-  it('usa solo el modelo Qwen local validado y rechaza el Gemma anterior',()=>{
+  it('permite los modelos locales de las instalaciones compatibles y rechaza variantes no soportadas',()=>{
     expect(localExtractionModel('qwen3.5:4b')).toBe('qwen3.5:4b');
+    expect(localExtractionModel('gemma4:e4b')).toBe('gemma4:e4b');
     expect(()=>localExtractionModel('qwen3.5:cloud')).toThrow('MODELO_LOCAL_REQUERIDO');
     expect(()=>localExtractionModel('gemma4:rund-e2b-text')).toThrow('MODELO_LOCAL_REQUERIDO');
+    expect(()=>localExtractionModel('gemma4:e4b-cloud')).toThrow('MODELO_LOCAL_REQUERIDO');
   });
 });
 
@@ -128,6 +139,26 @@ describe('F014: validación humana obligatoria',()=>{
 describe('F014: aplicación directa y segura',()=>{
   const actor={actorId:'REVISOR',roles:['GESTION_PROFESORAL'],fullAccess:true};
   const transactionDb=(query:jest.Mock)=>({transaction:jest.fn(async(work:any)=>work({query}))});
+
+  it.each([{valorCorregido:'',motivo:'Corregir'}, {valorCorregido:'Dato correcto',motivo:' '}, {valorCorregido:123,motivo:'Corrección humana'}])('rechaza una corrección incompleta antes de abrir la transacción: %p',async correction=>{
+    const db=transactionDb(jest.fn());
+    const service=new RundExtraccionService(db as any,{} as any);
+    await expect(service.confirm('doc-1',id,actor,correction as any)).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('confirma M y Masculino como coincidencia sin reescribir el perfil',async()=>{
+    const selected={id,campo:'genero',valor:'Masculino',valor_previo:'M',trabajo_id:'job-1',documento_id:'pdf-1',estado:'PENDIENTE',documento_estado:'ACTIVO',trabajo_estado:'COMPLETADO'};
+    const query=jest.fn(async(sql:string)=>{
+      if(sql.includes('SELECT s.id,s.campo')||sql.includes('SELECT s.*'))return [selected];
+      if(sql.includes('p.nom_largo'))return [{gen_tercero:'M'}];
+      return [];
+    });
+    const service=new RundExtraccionService(transactionDb(query) as any,{} as any);
+    await expect(service.confirm('doc-1',id,actor)).resolves.toMatchObject({confirmed:true,changed:false});
+    expect(query.mock.calls.some(([sql])=>String(sql).includes('UPDATE auth.personas'))).toBe(false);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('RundAprobacionLog'),expect.arrayContaining(['CONFIRMAR_COINCIDENCIA_OCR']));
+  });
 
   it('advierte en la interfaz pero permite que la decisión humana aplique un dato diferente',async()=>{
     const selected={id,campo:'genero',valor:'Femenino',valor_previo:'M',trabajo_id:'job-1',documento_id:'pdf-1',estado:'PENDIENTE',documento_estado:'ACTIVO',trabajo_estado:'COMPLETADO'};
@@ -215,6 +246,17 @@ describe('F014: cola independiente del flujo documental',()=>{
     const db={query:jest.fn()}; const storage={read:jest.fn()};const service=new RundExtraccionService(db as any,storage as any);
     service.onModuleInit();await service.tick();service.onModuleDestroy();
     expect(db.query).not.toHaveBeenCalled();expect(storage.read).not.toHaveBeenCalled();
+  });
+  it('las cargas nuevas no inician OCR sin una selección explícita por defecto',async()=>{
+    process.env.RUND_OCR_ENABLED='true';
+    const previousAuto=process.env.RUND_EXTRACCION_AUTOMATICA;
+    delete process.env.RUND_EXTRACCION_AUTOMATICA;
+    const db={query:jest.fn(async(_sql:string)=>[])};
+    try{
+      await new RundExtraccionService(db as any,{} as any).tick();
+      expect(db.query.mock.calls.some(([sql])=>String(sql).includes('INSERT INTO academic_work_plan."RundExtraccionTrabajo"'))).toBe(false);
+      expect(db.query.mock.calls.some(([sql])=>String(sql).includes('SELECT * FROM reservado'))).toBe(true);
+    }finally{if(previousAuto===undefined)delete process.env.RUND_EXTRACCION_AUTOMATICA;else process.env.RUND_EXTRACCION_AUTOMATICA=previousAuto;}
   });
   it('un fallo del OCR no propaga errores al flujo principal ni escribe el perfil',async()=>{
     process.env.RUND_OCR_ENABLED='true';

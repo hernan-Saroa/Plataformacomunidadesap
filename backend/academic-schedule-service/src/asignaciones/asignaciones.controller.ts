@@ -1,8 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { AcumuladoService } from './acumulado.service.js';
+import { tokenDe } from '../acceso/token.js';
 import { AsignacionesService, type AsignarDocenteDto } from './asignaciones.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
+import { rolesDe } from '../acceso/roles.js';
+import { puedeAsignarDocentes, puedeVerDisponibilidadDocente } from '../auth/programacion-permissions.js';
+import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 
 /**
  * Asignación de docente a grupo con bloqueo duro (EFDS-1372) y descuento de horas
@@ -17,18 +22,19 @@ export class AsignacionesController {
   constructor(
     private readonly asignaciones: AsignacionesService,
     private readonly acumulado: AcumuladoService,
+    private readonly permisos: ProgramacionPermissionsService,
   ) {}
 
-  /** Token de la petición, para reenviarlo al contrato (que exige autenticación). */
-  private tokenDe(req: Request): string | null {
-    const auth = String(req.headers['authorization'] || '');
-    if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
-    const cookie = String(req.headers['cookie'] || '');
-    for (const parte of cookie.split(';')) {
-      const [k, ...v] = parte.trim().split('=');
-      if (k === 'esap_access_token') return v.join('=').trim() || null;
+  /**
+   * El panel del docente (situación, horas, tope) es del backoffice: lo ve quien
+   * consulta la disponibilidad docente o asigna docentes. Antes bastaba cualquier
+   * token válido, incluido el de un docente.
+   */
+  private async exigirConsulta(req: Request): Promise<void> {
+    const permisos = await this.permisos.resolveForRoles(rolesDe(req));
+    if (!puedeVerDisponibilidadDocente(permisos) && !puedeAsignarDocentes(permisos)) {
+      throw new ForbiddenException('No tiene permiso para consultar la disponibilidad de los docentes.');
     }
-    return null;
   }
 
   /**
@@ -43,14 +49,29 @@ export class AsignacionesController {
     @Param('documento') documento: string,
     @Query('grupo') idGrupo?: string,
   ) {
-    const data = await this.asignaciones.consultarDocente(documento, idGrupo, this.tokenDe(req));
+    await this.exigirConsulta(req);
+    const data = await this.asignaciones.consultarDocente(documento, idGrupo, tokenDe(req));
     return { success: true, data };
+  }
+
+  /**
+   * GET /asignaciones/candidatos?grupo=<id>&franjas=<id>,<id> — EFDS-2341.
+   *
+   * Docentes del área de la asignatura para las franjas pedidas (todas si no se
+   * indican), con sus bloqueos en seco y el sugerido con sus razones. Solo lectura.
+   */
+  @Get('candidatos')
+  async candidatos(@Req() req: Request, @Query('grupo', ParseUUIDPipe) idGrupo: string, @Query('franjas') franjas?: string) {
+    await this.exigirConsulta(req);
+    const ids = franjas ? franjas.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+    return { success: true, data: await this.asignaciones.candidatos(idGrupo, ids, tokenDe(req)) };
   }
 
   /** GET /asignaciones/acumulado/:documento — consumo transversal por oferta y tope (RN-04/05/06). */
   @Get('acumulado/:documento')
-  async acumuladoDocente(@Param('documento') documento: string) {
-    return { success: true, data: await this.acumulado.consumo(documento) };
+  async acumuladoDocente(@Req() req: Request, @Param('documento') documento: string) {
+    await this.exigirConsulta(req);
+    return { success: true, data: await this.acumulado.consumo(documento, tokenDe(req)) };
   }
 
   /**
@@ -61,15 +82,23 @@ export class AsignacionesController {
    * contrato; el cliente no lo fija.
    */
   @Post()
+  @EscrituraEn({ grupo: { body: 'idGrupo' } }, { exigeNivel: 'asignacion' })
   async asignar(@Req() req: Request, @Body() body: AsignarDocenteDto) {
-    const data = await this.asignaciones.asignar(body, this.tokenDe(req));
+    // Quién asignó sale del token, no del cuerpo (trazabilidad, EFDS-2342).
+    const data = await this.asignaciones.asignar({ ...body, asignadoPor: idUserDe(req) ?? body?.asignadoPor }, tokenDe(req));
     return { success: true, data };
   }
 
   /** DELETE /asignaciones/grupo/:idGrupo — retira la asignación y libera sus franjas. */
   @Delete('grupo/:idGrupo')
-  async retirar(@Param('idGrupo') idGrupo: string) {
+  @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: 'asignacion' })
+  async retirar(@Param('idGrupo', ParseUUIDPipe) idGrupo: string) {
     const data = await this.asignaciones.retirar(idGrupo);
     return { success: true, data };
   }
+}
+
+function idUserDe(req: Request): string | null {
+  const id = String(req.headers['x-user-id'] || (req as any)?.user?.userId || '').trim();
+  return id || null;
 }

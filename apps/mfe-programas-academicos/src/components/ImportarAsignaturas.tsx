@@ -11,10 +11,12 @@ import {
 import { toast } from 'sonner';
 import {
   useImportAsignaturas,
-  ImportResult,
+  type ImportCount,
   type EstructuraImportStatus,
 } from '../hooks/useImportAsignaturas';
 import { downloadCatalogImportTemplate } from '../utils/catalogImportTemplate';
+import { describeCatalogImportError } from '../utils/catalogImportError';
+import { CatalogImportErrorPanel } from './CatalogImportErrorPanel';
 
 interface ImportarAsignaturasProps {
   onBack: () => void;
@@ -23,6 +25,12 @@ interface ImportarAsignaturasProps {
 }
 
 type WizardStep = 'upload' | 'validate' | 'importing';
+
+function totalRegistros(cuenta?: ImportCount): number {
+  if (!cuenta) return 0;
+  return cuenta.creados + cuenta.actualizados +
+    (cuenta.sin_cambios ?? cuenta.omitidos) + (cuenta.rechazadas ?? 0);
+}
 
 export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }: ImportarAsignaturasProps) {
   const {
@@ -33,6 +41,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
     loading,
     result,
     error,
+    importFailure,
   } = useImportAsignaturas();
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -61,7 +70,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
   // Derive wizard step
   const currentStep: WizardStep =
     loading ? 'importing' :
-    (result && !error) ? 'validate' :
+    (result || importFailure) ? 'validate' :
     'upload';
 
   const steps = [
@@ -87,7 +96,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
         setEstructuraStatus(statusRes);
 
         if (data && Array.isArray(data)) {
-          const activo = data.find((p: any) => p.estado === 'en_curso');
+          const activo = data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario);
           // Si se entró desde el botón "Importar" de un período específico, la carga
           // se hace a ESE período (cada período tiene su propio botón). Solo si no se
           // indicó ninguno se usa el período activo como predeterminado.
@@ -161,7 +170,8 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
       }
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Error al procesar el archivo.');
+      const failure = describeCatalogImportError(err);
+      toast.error(failure.title, { description: failure.notification });
     }
   };
 
@@ -189,11 +199,11 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
 
   // ─── Computed ───
   const carga = result?.carga;
-  const totalProgramas = carga?.programas?.creados || 0;
-  const totalNucleos = carga?.nucleos_tematicos?.creados || 0;
-  const totalCetaps = carga?.cetaps?.creados || 0;
-  const totalAsignaturas = carga?.asignaturas?.creados || 0;
-  const totalOfertas = carga?.ofertas_cetap_programa?.creados || 0;
+  const totalProgramas = totalRegistros(carga?.programas);
+  const totalNucleos = totalRegistros(carga?.nucleos_tematicos);
+  const totalCetaps = totalRegistros(carga?.cetaps);
+  const totalAsignaturas = totalRegistros(carga?.asignaturas);
+  const totalOfertas = totalRegistros(carga?.ofertas_cetap_programa);
   const hasErrors = result?.errores && result.errores.length > 0;
 
   // Para el aviso de ÉXITO se muestra lo que QUEDÓ en el período (resumen_periodo),
@@ -455,26 +465,13 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.25 }}
           >
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-red-100 bg-red-50/30 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-gray-900 text-sm">Error de validación</h4>
-                  <p className="text-[11px] text-gray-500">Corrija los errores e intente nuevamente</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={resetState} className="px-3 py-1.5 text-[11px] font-bold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all">
-                    Cargar otro
-                  </button>
-                  <button onClick={onBack} className="px-3 py-1.5 text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
-                    Volver
-                  </button>
-                </div>
-              </div>
-              <div className="p-6 text-xs text-red-800 font-mono bg-red-50/30">{error}</div>
-            </div>
+            <CatalogImportErrorPanel
+              failure={importFailure ?? describeCatalogImportError(error)}
+              fileName={file?.name}
+              periodo={periodoActivo?.codigo || periodo}
+              onChangeFile={resetState}
+              onBack={onBack}
+            />
           </motion.div>
         )}
 
@@ -534,7 +531,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
           </motion.div>
         )}
 
-        {currentStep === 'validate' && !importSuccess && (
+        {currentStep === 'validate' && result && !error && !importSuccess && (
           <motion.div
             key="validate"
             initial={{ opacity: 0, x: -20 }}
@@ -576,6 +573,9 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                       <p className="text-xs text-gray-500 mt-0.5">
                         Todos los registros del archivo (programas, asignaturas, etc.) ya existen en la plataforma y tienen exactamente la misma información. <strong>No se detectó ningún dato nuevo ni ninguna diferencia para actualizar.</strong>
                       </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        La oferta del archivo también está vinculada al período {periodoActivo?.codigo || periodo}. No es necesario volver a importar.
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -616,9 +616,14 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                       <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-900 text-sm">Validación exitosa</h3>
+                      <h3 className="font-bold text-gray-900 text-sm">Archivo validado — falta confirmar la importación</h3>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Listos para procesar: <strong>{totalProgramas}</strong> programas nuevos ({carga?.programas?.actualizados || 0} a actualizar) y <strong>{totalAsignaturas}</strong> asignaturas nuevas ({carga?.asignaturas?.actualizados || 0} a actualizar).
+                        El archivo contiene <strong>{totalProgramas}</strong> programas, <strong>{totalAsignaturas}</strong> asignaturas y <strong>{totalOfertas}</strong> ofertas CETAP-Programa. Período de destino: <strong>{periodoActivo?.codigo || periodo}</strong>.
+                      </p>
+                      {/* Las cifras de abajo son una VISTA PREVIA. Sin este aviso la pantalla parecía una carga terminada
+                          y se salía de ella sin pulsar «Importar ahora»: el periodo quedaba sin programas. */}
+                      <p className="text-xs font-semibold text-blue-700 mt-1">
+                        Pulse «Importar ahora» para guardar los cambios y habilitar la oferta en ese período. Esta vista previa todavía no guarda datos.
                       </p>
                     </div>
                   </div>
@@ -655,7 +660,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                         onClick={() => handleImportar(false, undefined, true)}
                         className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-all shadow-sm"
                       >
-                        Importar válidos ({totalAsignaturas})
+                        Importar válidos ({totalAsignaturas - (carga?.asignaturas?.rechazadas || 0)})
                       </button>
                     </div>
                   </div>
@@ -674,11 +679,11 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
               {/* Metrics row */}
               <div className="px-8 py-5 grid grid-cols-5 gap-6 border-b border-gray-100">
                 {[
-                  { label: 'Programas', value: totalProgramas, icon: BookOpen, color: 'text-[#003DA5]', bg: 'bg-blue-50' },
-                  { label: 'Núcleos', value: totalNucleos, icon: Layers, color: 'text-purple-600', bg: 'bg-purple-50' },
-                  { label: 'Asignaturas', value: totalAsignaturas, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'CETAPs Vinculados', value: totalCetaps, icon: Building, color: 'text-gray-600', bg: 'bg-gray-50' },
-                  { label: 'Ofertas', value: totalOfertas, icon: CheckCircle2, color: 'text-amber-600', bg: 'bg-amber-50' },
+                  { label: 'Programas del archivo', value: totalProgramas, icon: BookOpen, color: 'text-[#003DA5]', bg: 'bg-blue-50' },
+                  { label: 'Núcleos detectados', value: totalNucleos, icon: Layers, color: 'text-purple-600', bg: 'bg-purple-50' },
+                  { label: 'Asignaturas del archivo', value: totalAsignaturas, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: 'CETAPs del archivo', value: totalCetaps, icon: Building, color: 'text-gray-600', bg: 'bg-gray-50' },
+                  { label: 'Ofertas del archivo', value: totalOfertas, icon: CheckCircle2, color: 'text-amber-600', bg: 'bg-amber-50' },
                 ].map(({ label, value, icon: Icon, color, bg }) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
@@ -710,16 +715,24 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
               {/* Detail summary table */}
               <div className="flex-1 flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-sm font-bold text-gray-800">Resumen del Catálogo</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Detalle de la carga por categoría para el período {periodoActivo?.codigo || periodo}</p>
+                  <h3 className="text-sm font-bold text-gray-800">
+                    {result?.dry_run === false ? 'Resumen del Catálogo' : 'Vista previa del Catálogo (aún sin guardar)'}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Los programas y las asignaturas pertenecen a un catálogo compartido entre períodos. Aunque el período {periodoActivo?.codigo || periodo} esté vacío, se reutilizan los registros que ya existen; «0 por crear» significa que no es necesario duplicarlos.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    «Por actualizar» indica cambios al catálogo compartido. «Sin cambios» indica registros que ya coinciden con el archivo y se reutilizan correctamente. Las ofertas CETAP-Programa se vinculan al período de destino.
+                  </p>
                 </div>
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50/80 sticky top-0 border-b border-gray-100 z-10">
                     <tr>
                       <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Categoría</th>
-                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Creados</th>
-                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Actualizados</th>
-                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Omitidos</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">{result?.dry_run === false ? 'Creados' : 'Por crear'}</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">{result?.dry_run === false ? 'Actualizados' : 'Por actualizar'}</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Sin cambios</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Rechazados</th>
                       <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Estado</th>
                     </tr>
                   </thead>
@@ -732,8 +745,9 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                     ].map(({ name, icon: Icon, data }) => {
                       const creados = data?.creados || 0;
                       const actualizados = data?.actualizados || 0;
-                      const omitidos = data?.omitidos || 0;
-                      const hasIssue = omitidos > 0;
+                      const sinCambios = data?.sin_cambios ?? data?.omitidos ?? 0;
+                      const rechazados = data?.rechazadas || 0;
+                      const hasIssue = rechazados > 0;
                       return (
                         <tr key={name} className="hover:bg-blue-50/20 transition-colors">
                           <td className="px-5 py-3">
@@ -749,7 +763,10 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                             <span className="text-blue-600 font-bold">{actualizados}</span>
                           </td>
                           <td className="px-5 py-3 text-center">
-                            <span className={`font-bold ${hasIssue ? 'text-red-500' : 'text-gray-300'}`}>{omitidos}</span>
+                            <span className="font-bold text-gray-500">{sinCambios}</span>
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            <span className={`font-bold ${hasIssue ? 'text-red-500' : 'text-gray-400'}`}>{rechazados}</span>
                           </td>
                           <td className="px-5 py-3 text-center">
                             <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${

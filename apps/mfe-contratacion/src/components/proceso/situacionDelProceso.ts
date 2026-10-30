@@ -1,11 +1,12 @@
 import { cubre } from '../../auth/alcance';
-import { AccionAlcance, RespondeElAsignado, ResponsableDeLugar } from '../../types';
+import { AccionAlcance, EstadoDelProceso, RespondeElAsignado, ResponsableDeLugar } from '../../types';
 import {
   actividadesDisponibles,
   estaTerminada,
   motivoDelBloqueo,
-  NUNCA_BLOQUEA,
+  noDetiene,
   PasoDelFlujo,
+  SecuenciaDelPaso,
 } from './secuenciaActividades';
 
 /**
@@ -23,7 +24,11 @@ export type Momento =
   | 'tramite'
   | 'ejecucion'
   | 'terminado'
-  | 'negado';
+  | 'negado'
+  // Plan Anual de Adquisiciones (migración 097): una revisión por cambio del
+  // PAA lo detiene, o lo canceló.
+  | 'detenido'
+  | 'cancelado';
 
 /** Un paso del flujo con lo que hace falta para nombrarlo. */
 export interface PasoConDatos extends PasoDelFlujo {
@@ -49,8 +54,11 @@ export interface EntradaSituacion {
   pasos: PasoConDatos[];
   participacion?: {
     contratacion?: Persona | null;
-    abogado?: Persona | null;
     financiera?: Persona | null;
+    /** Quién ocupa cada puesto del proceso (109). */
+    puestos?: { puesto: string; nombre: string; esMio?: boolean }[];
+    /** Los puestos obligatorios que nadie ocupa todavía, si se saben. */
+    puestosVacios?: string[];
   };
   /** Quien mira radicó el proceso: es el área que redacta. */
   radicadoPorMi?: boolean;
@@ -64,6 +72,10 @@ export interface EntradaSituacion {
    * él, el «te toca» sale solo de las personas a cargo.
    */
   puedo?: (accion: AccionAlcance, lugar: string) => boolean;
+  /** El desenlace del proceso, si ya lo tiene. */
+  estadoProceso?: EstadoDelProceso;
+  /** Una revisión por cambio del PAA lo tiene detenido. */
+  detenidoPorPaa?: boolean;
 }
 
 export interface Situacion {
@@ -91,11 +103,6 @@ const RADICACION = '3.3';
  */
 const REVISION = '3.4';
 /** El papel del backend con el nombre que lleva en la participación. */
-const EN_LA_PARTICIPACION = {
-  CONTRATACION: 'contratacion',
-  ABOGADO: 'abogado',
-  FINANCIERA: 'financiera',
-} as const;
 /** La reunión de inicio: desde ahí el contrato está en ejecución. */
 const INICIO_EJECUCION = '9.1';
 
@@ -162,31 +169,27 @@ export function responsableDelPaso(
   paso: PasoConDatos,
   acciones: Exclude<AccionAlcance, 'ver'>[] = ['editar', 'decidir'],
 ): { quien: string | null; teToca: boolean; accion: Exclude<AccionAlcance, 'ver'> } {
-  const { participacion = {}, responsables = [], puedo } = entrada;
+  const { responsables = [], puedo } = entrada;
   const puedoEn = (accion: AccionAlcance, numeral: string) => puedo?.(accion, numeral) ?? false;
   const accionPrincipal = acciones[0];
 
   /*
-   * Actividades de las que responde una persona del proceso y no un rol: el
-   * abogado de la 3.7, aunque el Gestor tenga el alcance de editarla. Cuáles
-   * son lo dice el backend (`responde`), que es quien lo exige; aquí solo se
-   * lee, para que la pantalla no nombre a quien después no puede actuar.
+   * Actividades que no hace cualquiera con el permiso sino quien dice su regla
+   * «quién la hace» (109): el ocupante de un puesto o unas personas. Lo resuelve
+   * el backend (`responde`), que es quien lo exige; aquí solo se lee, para que
+   * la pantalla no nombre a quien después no puede actuar.
    */
   const regla = paso.responde;
   if (regla && (!regla.soloEnRevision || paso.estado === 'EN_REVISION')) {
-    const persona = participacion[EN_LA_PARTICIPACION[regla.papel]];
-    if (persona) {
-      return { quien: persona.nombre, teToca: !!persona.esMio, accion: regla.accion };
+    if (regla.persona) {
+      return {
+        quien: regla.puesto ? `${regla.persona.nombre} (${regla.puesto})` : regla.persona.nombre,
+        teToca: regla.persona.esMio && puedoEn(regla.accion, paso.numeral),
+        accion: regla.accion,
+      };
     }
-    // Sin nadie en el papel se nombra a los roles configurados para esa
-    // acción. Si el papel se asigna, ninguno puede actuar todavía; si se toma
-    // de la bandeja, le toca a quien pueda tomarlo.
-    const roles = rolesQuePueden(responsables, regla.accion, paso.numeral);
-    return {
-      quien: paso.responsableCargo || unaDeEstas(roles),
-      teToca: regla.seToma && puedoEn(regla.accion, paso.numeral),
-      accion: regla.accion,
-    };
+    // El puesto está vacío: nadie puede hacerla hasta que se asigne en la 3.3.
+    return { quien: `${regla.puesto ?? 'El puesto'}, sin asignar`, teToca: false, accion: regla.accion };
   }
 
   for (const accion of acciones) {
@@ -220,6 +223,31 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
   });
 
   const estudio = pasos.find((p) => p.numeral === ESTUDIO_PREVIO) ?? null;
+
+  // Lo que dice el PAA manda sobre el riel: un proceso cancelado o detenido no
+  // le toca a nadie aunque tenga una actividad abierta, y decir «te toca» ahí
+  // lleva a un formulario que el servidor va a rechazar.
+  if (entrada.estadoProceso === 'CANCELADO') {
+    return {
+      ...base(null),
+      momento: 'cancelado',
+      titulo: 'Proceso cancelado',
+      quien: null,
+      teToca: false,
+      espera: 'Se canceló por un cambio del Plan Anual de Adquisiciones',
+    };
+  }
+  if (entrada.detenidoPorPaa) {
+    return {
+      ...base(null),
+      momento: 'detenido',
+      titulo: 'Detenido por un cambio del PAA',
+      // La decide quien tenga decidir en las revisiones del PAA (109).
+      quien: null,
+      teToca: puedoEn('decidir', 'PAA.R'),
+      espera: 'Sigue cuando se decida la revisión por cambio del Plan Anual de Adquisiciones',
+    };
+  }
 
   if (estudio?.estado === 'NEGADO') {
     return {
@@ -283,23 +311,30 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
       };
     }
 
-    if (!participacion.abogado) {
+    const vacios = participacion.puestosVacios ?? [];
+    if (vacios.length) {
       return {
         ...base(radicacion),
         momento: 'asignacion',
-        titulo: 'Asignar abogado',
+        titulo: 'Asignar los puestos del proceso',
         quien: participacion.contratacion.nombre,
         teToca: !!participacion.contratacion.esMio,
-        espera: 'Sin abogado asignado nadie puede revisar el estudio previo',
+        espera: `Falta asignar: ${vacios.join(', ')}`,
       };
     }
 
+    /*
+     * La revisión es la ronda de la aprobación de la 3.1 (109): la decide el
+     * escalón que espera. Aquí se nombra a quienes ocupan los puestos del
+     * proceso; quién decide exactamente lo dice la pantalla de revisión.
+     */
+    const puestos = participacion.puestos ?? [];
     return {
       ...base(estudio),
       momento: 'revision',
       titulo: 'Revisión del estudio previo',
-      quien: participacion.abogado.nombre,
-      teToca: !!participacion.abogado.esMio,
+      quien: puestos.length ? puestos.map((x) => x.nombre).join(', ') : null,
+      teToca: puestos.some((x) => x.esMio),
       espera: null,
     };
   }
@@ -312,7 +347,7 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
       p.aplica &&
       p.construida &&
       !estaTerminada(p) &&
-      !NUNCA_BLOQUEA.has(p.numeral),
+      !noDetiene(p),
   );
 
   const actual = pendientes.find((p) => disponibles.has(p.numeral));
@@ -362,7 +397,7 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
    */
   const inicio = pasos.find((p) => p.numeral === INICIO_EJECUCION);
   const enEjecucion = pasos.some(
-    (p) => NUNCA_BLOQUEA.has(p.numeral) && p.aplica && p.construida && !estaTerminada(p),
+    (p) => noDetiene(p) && p.aplica && p.construida && !estaTerminada(p),
   );
   if (inicio && estaTerminada(inicio) && enEjecucion) {
     const seguimiento = pasos.find((p) => p.numeral === '9.2') ?? inicio;
@@ -403,6 +438,7 @@ export function pasosDelCatalogo(
     estado?: string | null;
     actualizadoEn?: string | null;
     responsableCargo?: string | null;
+    secuencia?: SecuenciaDelPaso | null;
   }[],
   estadoDelEstudio: string | null | undefined,
   construida: (numeral: string) => boolean,
@@ -416,6 +452,7 @@ export function pasosDelCatalogo(
     construida: construida(act.numeral),
     actualizadoEn: act.actualizadoEn ?? null,
     responsableCargo: act.responsableCargo ?? null,
+    secuencia: act.secuencia ?? null,
   }));
 }
 
@@ -437,6 +474,6 @@ export function situacionTrasAprobar(entrada: EntradaSituacion, numeral: string)
 /** «Verificar disponibilidad presupuestal · Dirección Financiera», o el fin. */
 export function destinoDeLaSituacion(s: Situacion): string {
   if (s.momento === 'terminado') return 'El proceso queda sin pasos pendientes';
-  if (s.momento === 'negado') return 'El proceso termina';
+  if (s.momento === 'negado' || s.momento === 'cancelado') return 'El proceso termina';
   return s.quien ? `${s.titulo} · ${s.quien}` : s.titulo;
 }

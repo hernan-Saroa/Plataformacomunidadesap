@@ -76,7 +76,21 @@ export type AccionTraza =
   | 'CAMBIAR_MODALIDAD'
   // El área corrige el valor estimado que digitó al crear el proceso, sola o
   // con la modalidad que la nueva cuantía exige.
-  | 'CAMBIAR_VALOR';
+  | 'CAMBIAR_VALOR'
+  // Plan Anual de Adquisiciones (migración 097). Cargar no es adjuntar: el
+  // archivo no va a ningún expediente, es la fuente de la que nacen procesos.
+  | 'CARGAR'
+  | 'ACTIVAR'
+  | 'DESCARTAR'
+  | 'DECLARAR_VIGENTE'
+  | 'CONFIGURAR'
+  // Lo que un cambio del PAA le hace a un proceso: actualizar sus datos, abrirle
+  // una revisión, migrarlo de vigencia o cancelarlo.
+  | 'ACTUALIZAR_DESDE_PAA'
+  | 'ABRIR_REVISION_PAA'
+  | 'CONTINUAR'
+  | 'MIGRAR'
+  | 'CANCELAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

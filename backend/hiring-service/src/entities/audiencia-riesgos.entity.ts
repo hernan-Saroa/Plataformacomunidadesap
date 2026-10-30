@@ -15,10 +15,11 @@ export class AudienciaRiesgosConfig {
   modalidad: string;
 
   /**
-   * Obligatoria: sin la audiencia celebrada el proceso no puede abrirse.
+   * Obligatoria: sin la audiencia celebrada no se cierra la recepción de
+   * ofertas (desde la 112; antes bloqueaba la apertura).
    *
    * Distinto de que la actividad aplique. Donde aplica sin ser obligatoria, la
-   * audiencia puede celebrarse y registrarse, pero no bloquea la apertura.
+   * audiencia puede celebrarse y registrarse, pero no bloquea el cierre.
    */
   @Column({ default: false })
   obligatoria: boolean;

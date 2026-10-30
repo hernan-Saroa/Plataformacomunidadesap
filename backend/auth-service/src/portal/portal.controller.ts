@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, HttpCode, HttpStatus, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Param, Body, Query, Req, HttpCode, HttpStatus, HttpException, ServiceUnavailableException, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
 import type { Request } from 'express';
@@ -309,17 +309,29 @@ export class PortalController {
   /**
    * POST /portal/foto-perfil
    * Carga de foto de perfil.
-   * Stub funcional — acepta la petición y devuelve success.
-   * En producción se integrará con S3 / almacenamiento local.
+   * Compatibilidad con clientes anteriores: envía la foto al flujo único RUND.
+   * La persona se obtiene de la sesión en PTA; no se confía en personaId del body.
    */
   @Post('foto-perfil')
   @HttpCode(HttpStatus.OK)
-  uploadFotoPerfil(@Req() req: Request & { user?: any }) {
-    return {
-      success: true,
-      message: 'Foto de perfil recibida (almacenamiento pendiente de configurar)',
-      data: { url: null },
-    };
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
+  async uploadFotoPerfil(@Req() req: Request & { user?: any }, @UploadedFile() file?: { buffer: Buffer; originalname: string; mimetype: string }) {
+    if (!file) throw new BadRequestException('Seleccione una foto PNG o JPEG de máximo 2 MB.');
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname);
+    const base = process.env.ACADEMIC_WORK_PLAN_SERVICE_URL || (process.env.NODE_ENV === 'production' ? 'http://academic-work-plan-service:3003' : 'http://127.0.0.1:3003');
+    let response: globalThis.Response;
+    try {
+      response = await fetch(`${base.replace(/\/$/,'')}/pta/fotos-perfil/mia`, {
+        method: 'POST', body: form, signal: AbortSignal.timeout(15_000),
+        headers: { ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}), ...(req.headers.cookie ? { cookie: req.headers.cookie } : {}) },
+      });
+    } catch { throw new ServiceUnavailableException('No se pudo enviar la foto a validación. Intente nuevamente.'); }
+    let data: any;
+    try { data = await response.json(); }
+    catch { throw new ServiceUnavailableException('No se pudo confirmar el envío de la foto a validación. Consulte su solicitud antes de reintentar.'); }
+    if (!response.ok) throw new HttpException(data, response.status);
+    return { success: true, data, message: 'Foto pendiente de validación del grupo RUND.' };
   }
 }
 

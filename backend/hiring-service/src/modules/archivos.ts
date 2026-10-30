@@ -32,10 +32,29 @@ export const MIME_DOCUMENTOS = [
  */
 export const MIME_IMAGENES = ['image/png', 'image/jpeg'];
 
+/**
+ * Un .zip con todos los documentos de una oferta, en una sola carga (EFDS-1155).
+ *
+ * La plataforma no lo abre ni muestra su contenido: quien revisa la oferta lo
+ * descarga completo. Windows lo envía como `x-zip-compressed`, y algunos
+ * navegadores como `octet-stream`; ese último se admite solo con extensión .zip.
+ */
+export const MIME_ZIP = ['application/zip', 'application/x-zip-compressed', 'application/x-zip'];
+
+/**
+ * Peso máximo de un adjunto (EFDS-1155).
+ *
+ * Subió de 25 a 50 MB: las ofertas de obra traen PDF y Excel más pesados. Es
+ * el mismo para todo el expediente; la pantalla lo repite en `PiezasPanel`.
+ */
+export const MAX_BYTES_ADJUNTO = 50 * 1024 * 1024;
+
 const EXTENSIONES: Record<string, string> = {
   'application/pdf': '.pdf',
   'image/png': '.png',
   'image/jpeg': '.jpg',
+  'application/zip': '.zip',
+  'application/x-zip-compressed': '.zip',
 };
 
 /** Integridad probatoria: el expediente es prueba ante entes de control. */
@@ -75,10 +94,19 @@ export function opcionesDeCarga(mimePermitidos: string[], mensajeFormato: string
         cb(null, `${randomBytes(16).toString('hex')}${extension}`);
       },
     }),
-    limits: { fileSize: 25 * 1024 * 1024 },
+    limits: { fileSize: MAX_BYTES_ADJUNTO },
     fileFilter: (_req: any, file: any, cb: any) =>
-      mimePermitidos.includes(file.mimetype)
+      mimePermitidos.includes(file.mimetype) || esZipSinTipo(file, mimePermitidos)
         ? cb(null, true)
         : cb(new BadRequestException(mensajeFormato), false),
   };
+}
+
+/** Un .zip que el navegador mandó sin tipo, donde la actividad admite .zip. */
+function esZipSinTipo(file: any, mimePermitidos: string[]) {
+  return (
+    mimePermitidos.includes('application/zip') &&
+    file.mimetype === 'application/octet-stream' &&
+    extname(file.originalname ?? '').toLowerCase() === '.zip'
+  );
 }

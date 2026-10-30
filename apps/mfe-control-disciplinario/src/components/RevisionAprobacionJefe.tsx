@@ -72,7 +72,7 @@ interface SolicitudReasignacion {
 interface RevisionAprobacionJefeProps {
   borradores: BorradorPendiente[];
   solicitudesReasignacion?: SolicitudReasignacion[];
-  onAprobar: (borradorId: string, comentarios: string, radicadorAsignadoId?: string) => void | Promise<void>;
+  onAprobar: (borradorId: string, comentarios: string, radicadorAsignadoId?: string, extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => void | Promise<void>;
   onDevolver: (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => void;
   onSendJuridica?: (borradorId: string) => void;
   onAprobarReasignacion?: (solicitudId: string, observaciones: string) => void;
@@ -207,9 +207,9 @@ export function RevisionAprobacionJefe({
     return (ordenReasignacion[a.estado] ?? 3) - (ordenReasignacion[b.estado] ?? 3);
   });
 
-  const handleAprobar = async (comentarios: string, radicadorAsignadoId?: string) => {
+  const handleAprobar = async (comentarios: string, radicadorAsignadoId?: string, extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => {
     if (borradorSeleccionado) {
-      await onAprobar(borradorSeleccionado.id, comentarios, radicadorAsignadoId);
+      await onAprobar(borradorSeleccionado.id, comentarios, radicadorAsignadoId, extraData);
       setBorradorSeleccionado(null);
     }
   };

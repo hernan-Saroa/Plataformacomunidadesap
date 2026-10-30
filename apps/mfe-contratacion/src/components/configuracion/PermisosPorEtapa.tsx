@@ -16,9 +16,9 @@ import { NOMBRE_ETAPA } from './simbolos';
  * el módulo. El área Legal que ve la etapa 3, la 4 y solo la 7.2 de la 7 es un
  * permiso y tres casillas, no tres permisos.
  *
- * La pantalla enseña las dos capas juntas y avisa cuando no coinciden —una
- * casilla de «Editar» en un rol al que el backoffice no le dio ese permiso no
- * tiene efecto—, pero solo escribe la suya.
+ * La pantalla enseña las dos capas juntas y solo escribe la suya. Una casilla
+ * de «Editar» en un rol al que el backoffice no le dio ese permiso no se puede
+ * marcar: no tendría efecto. Las que quedaron de antes se señalan y se quitan.
  */
 
 const ACCIONES: { accion: AccionAlcance; nombre: string; ayuda: string }[] = [
@@ -40,16 +40,36 @@ const NOMBRE_ACCION: Record<AccionAlcance, string> = {
 };
 
 /** Los trámites del incumplimiento, que no tienen numeral en la matriz. */
-const TRAMITES = [
-  { lugar: 'INC.1', nombre: 'Reporte de presunto incumplimiento' },
-  { lugar: 'INC.2', nombre: 'Trámite sancionatorio' },
+/**
+ * Lo que no cuelga de ninguna etapa, en grupos: cada grupo explica por qué va
+ * aparte, que es justo lo que quien configura se pregunta al no encontrarlo
+ * dentro de una etapa.
+ */
+const GRUPOS_DE_TRAMITES = [
+  {
+    titulo: 'Incumplimiento',
+    ayuda: 'Se configura aparte de la etapa 9: quien reporta no es quien tramita ni decide',
+    tramites: [
+      { lugar: 'INC.1', nombre: 'Reporte de presunto incumplimiento' },
+      { lugar: 'INC.2', nombre: 'Trámite sancionatorio' },
+    ],
+  },
+  {
+    titulo: 'Plan Anual de Adquisiciones',
+    ayuda: 'Quien carga y activa el PAA no es quien decide si un proceso afectado sigue',
+    tramites: [
+      { lugar: 'PAA', nombre: 'Regiones, vigencias, versiones y campos del formulario' },
+      { lugar: 'PAA.R', nombre: 'Revisiones de procesos afectados (aprobar: autorizar migraciones)' },
+    ],
+  },
 ];
 
 /**
  * Los perfiles por defecto (EFDS-1183), como punto de partida.
  *
  * Catorce roles confunden a quien configura, y la Dirección los resumió en
- * cinco perfiles. Cada uno lo encarna un rol del catálogo; partir de un perfil
+ * cuatro perfiles —la Financiera salió con su rol en la 106—. Cada uno lo
+ * encarna un rol del catálogo; partir de un perfil
  * copia el alcance vigente de ese rol, así que si la Dirección cambia lo que
  * hace el abogado, el perfil cambia con él sin tocar el código.
  */
@@ -62,17 +82,12 @@ const PERFILES = [
   {
     nombre: 'Contratación',
     rol: 'GESTOR_CONTRATACION',
-    queHace: 'Recibe el proceso en la 3.3, asigna el abogado y lleva el expediente de ahí en adelante.',
+    queHace: 'Recibe el proceso en la 3.3, asigna los puestos y lleva el expediente de ahí en adelante.',
   },
   {
     nombre: 'Abogado',
     rol: 'REVISOR_CONTRATACION',
     queHace: 'Revisa en la 3.4 (aprueba, devuelve o niega) y aprueba lo que carga Contratación.',
-  },
-  {
-    nombre: 'Financiera',
-    rol: 'ESTRUCTURADOR_FINANCIERO',
-    queHace: 'Gestiona el CDP, el RP, los pagos avalados y el cierre financiero; el resto del proceso solo lo consulta.',
   },
   { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Consulta todo el proceso sin modificar nada.' },
 ];
@@ -162,7 +177,7 @@ export function PermisosPorEtapa() {
       return siguiente;
     });
 
-  /** Acciones marcadas que el backoffice no le dio al rol: no tienen efecto. */
+  /** Acciones marcadas de antes que el backoffice ya no le da al rol: no tienen efecto. */
   const sinPermiso = useMemo(() => {
     if (!elegido) return [];
     const usadas = new Set(aLista(borrador).map((a) => a.accion));
@@ -234,15 +249,29 @@ export function PermisosPorEtapa() {
   const celda = (accion: AccionAlcance, lugar: string, etiqueta: string) => {
     const marcada = borrador.has(clave(accion, lugar));
     const porArriba = marcada ? null : cubiertoPor(borrador, accion, lugar);
+    /*
+     * Sin el permiso general la casilla no se puede marcar: guardaría algo
+     * que no funciona. La que ya estaba marcada sí se puede quitar.
+     */
+    const sinElPermiso = !!elegido && !elegido.acciones.includes(accion);
+    const bloqueada = sinElPermiso && !marcada;
     return (
-      <td key={accion} className="border-b border-gray-100 px-2 py-1.5 text-center">
+      <td key={accion} className={`border-b border-gray-100 px-2 py-1.5 text-center ${sinElPermiso && marcada ? 'bg-amber-50' : ''}`}>
         <input
           type="checkbox"
           checked={marcada || porArriba !== null}
-          disabled={porArriba !== null || guardando}
+          disabled={porArriba !== null || bloqueada || guardando}
           onChange={() => alternar(accion, lugar)}
           aria-label={`${NOMBRE_ACCION[accion]} en ${etiqueta}`}
-          title={porArriba ? `Ya lo cubre ${porArriba}` : undefined}
+          title={
+            sinElPermiso
+              ? `Este rol no tiene el permiso «${NOMBRE_ACCION[accion]}» en la administración de roles de la plataforma${
+                  marcada ? ': esta casilla no tiene efecto' : ''
+                }`
+              : porArriba
+                ? `Ya lo cubre ${porArriba}`
+                : undefined
+          }
           className="h-4 w-4 accent-[#003DA5] disabled:opacity-40"
         />
       </td>
@@ -255,7 +284,7 @@ export function PermisosPorEtapa() {
         <p className="m-0 text-xs text-gray-600 leading-relaxed">
           Elige un rol y marca dónde puede <strong className="font-bold text-gray-700">ver, editar,
           aprobar o decidir</strong>: en todo el módulo, en una etapa completa o en actividades
-          puntuales. Para que una columna tenga efecto, el rol también necesita ese permiso en la
+          puntuales. Solo se pueden marcar las columnas cuyo permiso tiene el rol en la
           administración de roles de la plataforma.
         </p>
       </div>
@@ -334,10 +363,23 @@ export function PermisosPorEtapa() {
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" aria-hidden />
                   <p className="m-0 text-[11.5px] text-amber-800 leading-relaxed">
-                    <strong className="font-bold">Sin efecto todavía.</strong> Este rol no tiene el
+                    <strong className="font-bold">Casillas sin efecto.</strong> Este rol ya no tiene el
                     permiso {sinPermiso.map((a) => `«${NOMBRE_ACCION[a]}»`).join(' ni ')} en la
-                    administración de roles de la plataforma. Esas casillas empezarán a funcionar
-                    cuando se lo asignen allí.
+                    administración de roles de la plataforma. Las marcadas en amarillo no funcionan y no
+                    se pueden marcar nuevas; vuelven a valer si le devuelven el permiso allí.{' '}
+                    <button
+                      type="button"
+                      disabled={guardando}
+                      onClick={() =>
+                        setBorrador(
+                          (previo) =>
+                            new Set([...previo].filter((c) => elegido.acciones.includes(c.split('|')[0] as AccionAlcance))),
+                        )
+                      }
+                      className="font-semibold text-amber-900 underline hover:no-underline disabled:opacity-40"
+                    >
+                      Quitarlas
+                    </button>
                   </p>
                 </div>
               )}
@@ -374,8 +416,15 @@ export function PermisosPorEtapa() {
                         disabled={guardando}
                         onClick={() => {
                           const origen = roles.find((r) => r.codigo === p.rol)!;
-                          setBorrador(new Set(origen.alcances.map((a) => clave(a.accion, a.lugar))));
-                          setAviso(`Copiamos los permisos del perfil ${p.nombre}. Revísalos y pulsa «Guardar cambios».`);
+                          // Solo lo que este rol puede tener: el resto no se podría guardar.
+                          const copiables = origen.alcances.filter((a) => elegido.acciones.includes(a.accion));
+                          setBorrador(new Set(copiables.map((a) => clave(a.accion, a.lugar))));
+                          const fuera = origen.alcances.length - copiables.length;
+                          setAviso(
+                            `Copiamos los permisos del perfil ${p.nombre}${
+                              fuera ? ` salvo ${fuera === 1 ? '1 casilla' : `${fuera} casillas`} de acciones que este rol no tiene en la plataforma` : ''
+                            }. Revísalos y pulsa «Guardar cambios».`,
+                          );
                         }}
                         className="rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[11.5px] font-semibold text-slate-700 hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-40"
                       >
@@ -469,26 +518,28 @@ export function PermisosPorEtapa() {
                     );
                   })}
 
-                  <tr className="bg-gray-50">
-                    <th scope="row" className="border-b border-gray-100 px-3 py-1.5 text-left text-[12.5px] font-bold text-slate-700">
-                      Incumplimiento
-                      <span className="block text-[10.5px] font-normal text-gray-400">
-                        Se configura aparte de la etapa 9: quien reporta no es quien tramita ni decide
-                      </span>
-                    </th>
-                    <td colSpan={4} className="border-b border-gray-100" />
-                  </tr>
-                  {TRAMITES.map((t) => (
-                    <tr key={t.lugar}>
-                      <th
-                        scope="row"
-                        className="border-b border-gray-100 py-1.5 pl-9 pr-3 text-left text-[12px] font-normal text-slate-600"
-                      >
-                        <span className="font-mono text-gray-400 mr-1.5">{t.lugar}</span>
-                        {t.nombre}
-                      </th>
-                      {ACCIONES.map((a) => celda(a.accion, t.lugar, t.nombre))}
-                    </tr>
+                  {GRUPOS_DE_TRAMITES.map((grupo) => (
+                    <React.Fragment key={grupo.titulo}>
+                      <tr className="bg-gray-50">
+                        <th scope="row" className="border-b border-gray-100 px-3 py-1.5 text-left text-[12.5px] font-bold text-slate-700">
+                          {grupo.titulo}
+                          <span className="block text-[10.5px] font-normal text-gray-400">{grupo.ayuda}</span>
+                        </th>
+                        <td colSpan={4} className="border-b border-gray-100" />
+                      </tr>
+                      {grupo.tramites.map((t) => (
+                        <tr key={t.lugar}>
+                          <th
+                            scope="row"
+                            className="border-b border-gray-100 py-1.5 pl-9 pr-3 text-left text-[12px] font-normal text-slate-600"
+                          >
+                            <span className="font-mono text-gray-400 mr-1.5">{t.lugar}</span>
+                            {t.nombre}
+                          </th>
+                          {ACCIONES.map((a) => celda(a.accion, t.lugar, t.nombre))}
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

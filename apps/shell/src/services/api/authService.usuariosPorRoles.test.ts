@@ -62,4 +62,59 @@ describe('authService.getUsuariosPorRoles', () => {
     expect(res).toEqual([]);
     expect(apiClient.get).not.toHaveBeenCalled();
   });
+
+  it('un usuario con varios roles aparece una sola vez', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: [usuario('u6', 'Varios Roles', [
+        { id: 'r1', code: 'RESUELVE_GESTION_LEGAL', name: 'Resuelve Gestión Legal' },
+        { id: 'r2', code: 'SECRETARIADO_GESTION_LEGAL', name: 'Secretariado Gestión Legal' },
+      ])],
+      meta: {},
+    } as any);
+    const res = await authService.getUsuariosPorRoles(['RESUELVE_GESTION_LEGAL', 'SECRETARIADO_GESTION_LEGAL']);
+    expect(res.map(u => u.id)).toEqual(['u6']);
+  });
+
+  it('acepta la respuesta como arreglo plano (sin envoltorio data/meta)', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(USUARIOS as any);
+    const res = await authService.getUsuariosPorRoles(['SECRETARIADO_GESTION_LEGAL']);
+    expect(res.map(u => u.id)).toEqual(['u2']);
+  });
+
+  it('lee los roles cuando vienen en user.roles', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: [{
+        user: { id_user: 'u7', roles: [{ id: 'r2', code: 'SECRETARIADO_GESTION_LEGAL', name: 'Secretariado Gestión Legal' }] },
+        person: { full_name: 'Anidado', email: 'anidado@esap.edu.co' },
+      }],
+      meta: {},
+    } as any);
+    const res = await authService.getUsuariosPorRoles(['SECRETARIADO_GESTION_LEGAL']);
+    expect(res).toEqual([
+      expect.objectContaining({ id: 'u7', nombreCompleto: 'Anidado', email: 'anidado@esap.edu.co' }),
+    ]);
+  });
+
+  it('usuarios sin roles o con roles sin code/id no rompen el filtro', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: [
+        { id_user: 'u8', person: { full_name: 'Sin roles' } },
+        usuario('u9', 'Rol vacío', [{ name: 'Gestión Legal sin identificador' }]),
+      ],
+      meta: {},
+    } as any);
+    const res = await authService.getUsuariosPorRoles(['SECRETARIADO_GESTION_LEGAL']);
+    expect(res).toEqual([]);
+  });
+
+  it('devuelve id, nombre, nombreCompleto y email mapeados', async () => {
+    const res = await authService.getUsuariosPorRoles(['CONSULTA_SEGUIMIENTO_GESTION_LEGAL']);
+    expect(res).toEqual([
+      { id: 'u3', nombre: 'Erika Consulta', nombreCompleto: 'Erika Consulta', email: 'u3@esap.edu.co' },
+    ]);
+  });
+
+  // Pendientes: la regla del ticket (filtrar por nombre de rol) aún no está implementada.
+  it.todo('CA-05: incluye cualquier rol cuyo nombre contenga "Gestión Legal" sin configurarlo');
+  it.todo('CA-04: excluye usuarios no vigentes aunque estén activos');
 });

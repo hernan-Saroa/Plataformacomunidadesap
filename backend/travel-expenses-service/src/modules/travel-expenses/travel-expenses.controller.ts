@@ -18,6 +18,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Response } from 'express';
@@ -55,6 +56,11 @@ import {
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
 import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import {
+  RegistrarRevocatoriaSiifDto,
+  AplicarReduccionRpDto,
+} from '../../dto/revocatoria.dto';
+import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
 import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
 import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
@@ -68,6 +74,7 @@ import {
   SolicitarOtpFirmaDto,
   VerificarOtpFirmaDto,
   SolicitarFirmasDto,
+  RegistrarVoBoDuracionDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import { getClientIp } from '../../common/ip.util';
@@ -91,6 +98,38 @@ const SUPER_ADMIN_ROLES = [
   'SUPER_ADMINISTRADOR',
 ];
 
+const COORDINADOR_COMISIONES_ROLES = [
+  'COORDINADOR_COMISIONES_VIATICOS',
+  'COORDINADOR_GRUPO_COMISIONES',
+  'COORDINADOR_COMISIONES',
+  'COORDINADORA_GRUPO_COMISIONES',
+  'COORDINADORA_COMISIONES_VIATICOS',
+  'COORDINADOR_DE_COMISIONES',
+];
+
+function isCoordinadorComisiones(user: AuthenticatedRequest['user']): boolean {
+  if (!user) return false;
+  const rawRoles = Array.isArray(user.roles) ? user.roles : [];
+  const singleRole = user.role ? [user.role] : [];
+  const allRoles = [...rawRoles, ...singleRole];
+  const rawPermissions = Array.isArray(user.permissions) ? user.permissions : [];
+  const normalizedPermissions = rawPermissions.map((p: any) =>
+    typeof p === 'string' ? p : p?.code || '',
+  );
+
+  return (
+    allRoles.some((r) => {
+      const code = normalizeRoleCode(r);
+      return (
+        COORDINADOR_COMISIONES_ROLES.includes(code) ||
+        code.includes('COORDINADOR_COMISIONES') ||
+        code.includes('COORDINADOR_GRUPO_COMISIONES')
+      );
+    }) ||
+    normalizedPermissions.includes('travel_expenses.general.es_coordinador_comisiones')
+  );
+}
+
 function normalizeRoleCode(role: any): string {
   if (typeof role === 'string') {
     return role.toUpperCase().replace(/\s+/g, '_');
@@ -108,8 +147,49 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
   const rawRoles = Array.isArray(user.roles) ? user.roles : [];
   const singleRole = user.role ? [user.role] : [];
   const allRoles = [...rawRoles, ...singleRole];
-  return allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r)));
+  return (
+    allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r))) ||
+    isCoordinadorComisiones(user)
+  );
 }
+
+/**
+ * RF-SIS-001 — Quienes pueden consultar el detalle de una comisión pueden ver su
+ * trazabilidad y descargar el expediente (incluye coordinación de comisiones y
+ * gerentes, que cuentan con travel_expenses:read_requests).
+ */
+const PERMISOS_CONSULTA_EXPEDIENTE = [
+  'travel_expenses:sign_approval',
+  'travel_expenses:read_approvals',
+  'travel_expenses:create_request',
+  'travel_expenses:read_inbox',
+  'travel_expenses:set_priority',
+  'travel_expenses:return_request',
+  'travel_expenses:assign_analyst',
+  'travel_expenses:read_assigned',
+  'travel_expenses:view_assigned_requests',
+  'travel_expenses:verify_request',
+  'travel_expenses:export_siif',
+  'travel_expenses:return_assigned',
+  'travel_expenses:read_siif_requested',
+  'travel_expenses:double_check_request',
+  'travel_expenses:return_to_analyst',
+  'travel_expenses:read_payments',
+  'travel_expenses:process_payment',
+  'travel_expenses:register_payment',
+  'travel_expenses:read_sst_requests',
+  'travel_expenses:read_sst_logs',
+  'travel_expenses:read_authorized',
+  'travel_expenses:issue_rp',
+  'travel_expenses:read_authorizations',
+  'travel_expenses:authorize_expense',
+  'travel_expenses:read_obligations',
+  'travel_expenses:read_requests',
+  'travel_expenses:read_own_requests',
+  'travel_expenses:read_extemporaneous_authorizations',
+  'travel_expenses:authorize_extemporaneous',
+  'travel_expenses:reject_extemporaneous',
+];
 
 @Controller()
 @ApiTags('control-viaticos')
@@ -135,15 +215,23 @@ export class TravelExpensesController {
         ? r.toUpperCase().replace(/\s+/g, '_')
         : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
     );
-    const superAdmin = normalizedRoles.some((r) =>
-      SUPER_ADMIN_ROLES.includes(r),
-    );
     const rawPermissions = Array.isArray(req.user?.permissions)
       ? req.user.permissions
       : [];
     const normalizedPermissions = rawPermissions.map((p: any) =>
       typeof p === 'string' ? p : p?.code || '',
     );
+    const isCoordinador =
+      normalizedRoles.some((r) =>
+        COORDINADOR_COMISIONES_ROLES.includes(r) ||
+        r.includes('COORDINADOR_COMISIONES') ||
+        r.includes('COORDINADOR_GRUPO_COMISIONES'),
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_coordinador_comisiones');
+
+    const superAdmin =
+      normalizedRoles.some((r) => SUPER_ADMIN_ROLES.includes(r)) ||
+      isCoordinador;
     const isControlViaticos =
       normalizedRoles.some(
         (r) => r === 'CONTROL_VIATICOS' || r === 'ROL_CONTROL_VIATICOS',
@@ -657,6 +745,7 @@ export class TravelExpensesController {
       busqueda,
       usuarioId,
       superAdmin,
+      normalizedRoles,
     );
     return {
       success: true,
@@ -826,6 +915,27 @@ export class TravelExpensesController {
     return this.service.notificarFirmaPendiente(id, tipoFirmaPendiente, req.user?.userId);
   }
 
+  @Post('requests/:id/vobo-duracion')
+  @ApiOperation({
+    summary:
+      'Registra el visto bueno (VoBo) o rechazo de comisión que supere 3 días calendario / 3.5 días de valor (Dirección Nacional / Director Territorial)',
+    description:
+      'Exige justificación y visto bueno institucional inmutable en trazabilidad para comisiones > 3 días calendario.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_authorizations',
+  )
+  registrarVoBoDuracion(
+    @Param('id') id: string,
+    @Body() dto: RegistrarVoBoDuracionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const roles = req.user?.roles || (req.user?.role ? [req.user.role] : []);
+    return this.service.registrarVoBoDuracion(id, dto, req.user?.userId, roles);
+  }
+
   /**
    * RF-REV-002 — Bandeja de solicitudes en estado SOLICITADA_SIIF.
    *
@@ -951,6 +1061,43 @@ export class TravelExpensesController {
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
+  }
+
+  @Get('requests/:id/trazabilidad')
+  @Permissions(...PERMISOS_CONSULTA_EXPEDIENTE)
+  @ApiOperation({
+    summary: 'Consultar la trazabilidad completa del expediente (RF-SIS-001)',
+    description:
+      'Devuelve el historial de estados con responsable, fecha y decisión, y los documentos soporte de la comisión.',
+  })
+  @ApiResponse({ status: 200, description: 'Trazabilidad del expediente.' })
+  @ApiResponse({ status: 404, description: 'Solicitud no encontrada.' })
+  @ApiBearerAuth()
+  obtenerTrazabilidad(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.obtenerTrazabilidadSolicitud(id);
+  }
+
+  @Get('requests/:id/expediente/pdf')
+  @Permissions(...PERMISOS_CONSULTA_EXPEDIENTE)
+  @ApiOperation({
+    summary: 'Descargar el expediente de la comisión en PDF (RF-SIS-001)',
+    description:
+      'Genera el expediente con los datos de la comisión, el historial completo de estados y la relación de documentos soporte.',
+  })
+  @ApiResponse({ status: 200, description: 'PDF del expediente.' })
+  @ApiResponse({ status: 404, description: 'Solicitud no encontrada.' })
+  @ApiBearerAuth()
+  async descargarExpediente(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.service.exportarExpedientePdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Expediente-Comision-${id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
   }
 
   @Get('requests/inbox/secretary')
@@ -1825,10 +1972,110 @@ export class TravelExpensesController {
       roles,
       dto,
     );
+    const esRevocatoria = result.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA;
     return {
       success: true,
       data: result,
-      message: 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      message: esRevocatoria
+        ? 'Proceso de revocatoria iniciado exitosamente. Pendiente de registro en SIIF Nación por Ordenador del Gasto.'
+        : 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación con reporte PDF (Ordenador del Gasto).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/revocatoria/registrar-siif
+   * Alias: POST requests/:id/revocatoria/registrar-siif
+   */
+  @Post(['requests/:id/revocatoria/registrar-siif', 'api/v1/requests/:id/revocatoria/registrar-siif'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('revocatoria')
+  @ApiOperation({
+    summary: 'Registrar revocatoria en SIIF Nación (Ordenador del Gasto)',
+    description:
+      'Registra el acto de revocatoria formal en SIIF Nación y almacena el PDF del reporte oficial. Si la comisión tiene RP, transiciona a solicitud de reducción de RP para Presupuesto; si no tiene RP, formaliza la revocatoria a REVOCADA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Revocatoria registrada exitosamente en SIIF Nación.',
+  })
+  @ApiBearerAuth()
+  async registrarRevocatoriaSiif(
+    @Param('id') id: string,
+    @Body() dto: RegistrarRevocatoriaSiifDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.registrarRevocatoriaSiif(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    const tieneRp = (result.camposAdicionales as any)?.procesoRevocatoria?.tieneRp;
+    return {
+      success: true,
+      data: result,
+      message: tieneRp
+        ? 'Revocatoria registrada en SIIF Nación. Solicitud de reducción de RP remitida al Grupo de Presupuesto con reporte PDF adjunto.'
+        : 'Revocatoria formalizada en SIIF Nación exitosamente (Comisión revocada sin RP).',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción de RP por Revocatoria en SIIF Nación (Grupo de Presupuesto).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/revocatoria/aplicar-reduccion-rp
+   * Alias: POST requests/:id/revocatoria/aplicar-reduccion-rp
+   */
+  @Post(['requests/:id/revocatoria/aplicar-reduccion-rp', 'api/v1/requests/:id/revocatoria/aplicar-reduccion-rp'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('revocatoria')
+  @ApiOperation({
+    summary: 'Aplicar reducción de RP en SIIF Nación por Revocatoria (Grupo de Presupuesto)',
+    description:
+      'Registra la reducción presupuestal del Registro Presupuestal (RP) en SIIF Nación tras revocatoria aprobada por el Ordenador con reporte PDF.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reducción de RP aplicada exitosamente y comisión revocada formalmente.',
+  })
+  @ApiBearerAuth()
+  async aplicarReduccionRpRevocatoria(
+    @Param('id') id: string,
+    @Body() dto: AplicarReduccionRpDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.aplicarReduccionRpRevocatoria(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Reducción de RP aplicada exitosamente en SIIF Nación. Proceso de revocatoria finalizado.',
       timestamp: new Date().toISOString(),
     };
   }

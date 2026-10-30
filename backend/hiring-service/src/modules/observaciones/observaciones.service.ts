@@ -25,17 +25,31 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
   RegistrarObservacionDto,
   ResponderObservacionDto,
+  ResponderTodasDto,
 } from './dto/observacion.dto';
 
-/** Actividad 5.3 de la matriz: las observaciones al proyecto de pliego. */
-export const NUMERAL_OBSERVACIONES = '5.3';
+interface ArchivoCargado {
+  filename: string;
+  originalname: string;
+  mimetype: string;
+  size: number;
+}
+
+/** Un archivo ya en disco con su huella. */
+export interface SoporteCargado {
+  archivo: ArchivoCargado;
+  hash: string;
+}
+
+/** Actividad 5.6 de la matriz: las observaciones al proyecto de pliego. */
+export const NUMERAL_OBSERVACIONES = '5.6';
 
 @Injectable()
 export class ObservacionesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly publicacion: PublicacionService,
-    /** Si la 5.3 exige firmar con el token institucional al cerrarse (EFDS-2070). */
+    /** Si la 5.6 exige firmar con el token institucional al cerrarse (EFDS-2070). */
     private readonly cierre: CierreActividadService,
     /** Quién puede gestionar las observaciones (migración 083). */
     private readonly alcance: AlcanceService,
@@ -113,7 +127,7 @@ export class ObservacionesService {
         fueraDeTermino: observaciones.filter((o) => o.fueraDeTermino).length,
       },
       plazoVencido,
-      /** La actividad 5.3 ya está dada por cumplida. */
+      /** La actividad 5.6 ya está dada por cumplida. */
       cumplida,
       /**
        * Cerrar sin observaciones solo tiene sentido cuando ya no pueden llegar
@@ -127,7 +141,7 @@ export class ObservacionesService {
        * La llave de pruebas para no esperar los días hábiles del término.
        *
        * Vive también aquí, y no solo en el panel de la publicación, porque es
-       * en la 5.3 donde el plazo estorba: un proceso sin observaciones no se
+       * en la 5.6 donde el plazo estorba: un proceso sin observaciones no se
        * puede cerrar hasta que venza, y es justo el camino que hay que poder
        * recorrer en una sesión de QA. El botón llama al mismo endpoint.
        */
@@ -141,17 +155,17 @@ export class ObservacionesService {
   // ------------------------------------------------------------- registro --
 
   /**
-   * Actividad 5.3: se registra una observación recibida.
+   * Actividad 5.6: se registra lo que presentó un interesado.
    *
-   * El soporte es opcional, a diferencia de la evidencia de la publicación: una
-   * observación puede haber llegado por un canal que no deja documento, y
-   * exigirlo obligaría a inventarse un archivo o a no registrarla.
+   * Una fila por interesado, con su observación general y los archivos que
+   * traen el detalle (127). Los archivos son opcionales, a diferencia de la
+   * evidencia de la publicación: la observación pudo llegar por un canal que
+   * no deja documento, y exigirlo obligaría a no registrarla.
    */
   async registrar(
     procesoId: string,
     dto: RegistrarObservacionDto,
-    archivo: { filename: string; originalname: string; mimetype: string; size: number } | null,
-    hash: string | null,
+    soportes: SoporteCargado[],
     acceso: HiringAccess,
   ) {
     return this.dataSource.transaction(async (em) => {
@@ -170,12 +184,14 @@ export class ObservacionesService {
         );
       }
 
-      if (dto.fechaPresentacion > this.hoy()) {
+      const fechaPresentacion = dto.fechaPresentacion ?? this.hoy();
+
+      if (fechaPresentacion > this.hoy()) {
         throw new BadRequestException(
           'La fecha de presentación no puede ser futura: se registra lo que ya se recibió',
         );
       }
-      if (dto.fechaPresentacion < publicacion.fechaPublicacion) {
+      if (fechaPresentacion < publicacion.fechaPublicacion) {
         throw new BadRequestException(
           `La observación no puede ser anterior a la publicación del pliego (${publicacion.fechaPublicacion})`,
         );
@@ -186,23 +202,25 @@ export class ObservacionesService {
       // impide registrarla, solo la marca.
       const fueraDeTermino =
         publicacion.fechaVencimiento !== null &&
-        dto.fechaPresentacion > publicacion.fechaVencimiento;
+        fechaPresentacion > publicacion.fechaVencimiento;
 
-      const documento = archivo
-        ? await this.guardarSoporte(em, procesoId, archivo, hash!, acceso)
-        : null;
+      const documentos = [];
+      for (const { archivo, hash } of soportes) {
+        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso));
+      }
 
       const observacion = await em.save(
         em.create(ObservacionPliego, {
           procesoId,
           publicacionId: publicacion.id,
-          presentadoPor: dto.presentadoPor,
+          presentadoPor: dto.presentadoPor?.trim() || null,
           identificacion: dto.identificacion ?? null,
-          fechaPresentacion: dto.fechaPresentacion,
-          asunto: dto.asunto,
+          fechaPresentacion,
+          asunto: dto.asunto?.trim() || null,
           contenido: dto.contenido,
           fueraDeTermino,
-          documentoId: documento?.id ?? null,
+          documentoId: documentos[0]?.id ?? null,
+          soportesDocumentoIds: documentos.map((d) => d.id),
           registradoPor: acceso.userName,
         }),
       );
@@ -212,9 +230,10 @@ export class ObservacionesService {
       await this.marcarActividad(em, procesoId, 'BORRADOR', acceso);
 
       await this.traza(em, procesoId, observacion.id, 'CREAR', acceso, {
-        presentadoPor: dto.presentadoPor,
-        fechaPresentacion: dto.fechaPresentacion,
+        presentadoPor: dto.presentadoPor ?? null,
+        fechaPresentacion,
         fueraDeTermino,
+        archivos: documentos.length,
       });
 
       return this.listar(procesoId, em, acceso);
@@ -241,7 +260,7 @@ export class ObservacionesService {
       }
 
       observacion.respuesta = dto.respuesta;
-      observacion.modificoPliego = dto.modificoPliego;
+      observacion.modificoPliego = dto.modificoPliego ?? null;
       observacion.respondidaPor = acceso.userName;
       observacion.respondidaAt = new Date();
       observacion.updatedAt = new Date();
@@ -251,7 +270,59 @@ export class ObservacionesService {
 
       await this.traza(em, procesoId, observacion.id, 'APROBAR', acceso, {
         accion: 'RESPONDER',
-        modificoPliego: dto.modificoPliego,
+        modificoPliego: dto.modificoPliego ?? null,
+      });
+
+      return this.listar(procesoId, em, acceso);
+    });
+  }
+
+  /**
+   * Responde de una vez a todos los interesados pendientes (127).
+   *
+   * Es lo habitual: un solo documento de respuestas para la actividad. Cada
+   * observación pendiente queda respondida con el mismo documento, así el
+   * expediente sigue diciendo de cada interesado con qué se le respondió.
+   */
+  async responderTodas(
+    procesoId: string,
+    dto: ResponderTodasDto,
+    soportes: SoporteCargado[],
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const pendientes = await em.getRepository(ObservacionPliego).find({
+        where: { procesoId, respondidaAt: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!pendientes.length) {
+        throw new ConflictException('No hay observaciones pendientes de respuesta');
+      }
+
+      const documentos = [];
+      for (const { archivo, hash } of soportes) {
+        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso));
+      }
+
+      const ahora = new Date();
+      for (const observacion of pendientes) {
+        observacion.respuesta = dto.respuesta?.trim() || 'Respondida en el documento general de respuestas';
+        observacion.modificoPliego = dto.modificoPliego ?? null;
+        observacion.respuestaSoportesIds = documentos.map((d) => d.id);
+        observacion.respuestaGeneral = true;
+        observacion.respondidaPor = acceso.userName;
+        observacion.respondidaAt = ahora;
+        observacion.updatedAt = ahora;
+      }
+      await em.save(pendientes);
+
+      await this.sincronizarActividad(em, procesoId, acceso, dto.firma);
+
+      await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
+        accion: 'RESPONDER_TODAS',
+        interesados: pendientes.length,
+        archivos: documentos.length,
+        modificoPliego: dto.modificoPliego ?? null,
       });
 
       return this.listar(procesoId, em, acceso);
@@ -330,7 +401,7 @@ export class ObservacionesService {
   private async guardarSoporte(
     em: EntityManager,
     procesoId: string,
-    archivo: { filename: string; originalname: string; mimetype: string; size: number },
+    archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
   ) {
@@ -359,7 +430,7 @@ export class ObservacionesService {
     return proceso;
   }
 
-  /** Crea o actualiza la actividad 5.3; no se instancia en ningún paso previo. */
+  /** Crea o actualiza la actividad 5.6; no se instancia en ningún paso previo. */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,

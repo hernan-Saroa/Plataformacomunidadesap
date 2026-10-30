@@ -77,6 +77,11 @@ export function extractionValueValidationError(fieldName:string, rawValue:unknow
 }
 
 export const allowedExtractionFields = (type: string) => Object.keys(EXTRACTION_FIELDS).filter(key => EXTRACTION_FIELDS[key].types.includes(type));
+/**
+ * Fields a document may propose. An evidence linked to a checkpoint only proposes the rows of
+ * its support type (and therefore of its tab). A general attachment is limited to its category;
+ * "Otros" accredits no profile row, so it is not analyzed.
+ */
 export function extractionFieldsForDocument(document: any) {
   if (document.tipo_soporte) return allowedExtractionFields(document.tipo_soporte);
   const categories: Record<string,string[]> = {
@@ -85,14 +90,37 @@ export function extractionFieldsForDocument(document: any) {
     CONTRATOS: ['actoAdministrativoVinculacion','fechaInicioVinculacion','fechaFinVinculacion'],
     RESOLUCIONES: ['actoAdministrativoVinculacion','fechaInicioVinculacion','fechaFinVinculacion','origenVinculacion','situacionAdministrativa','escalafon','nucleoTematico'],
     CERTIFICADOS: ['investigacion','ultimaEvaluacion','perfilAcademico'],
-    OTROS: Object.keys(EXTRACTION_FIELDS),
   };
   return categories[document.categoria_codigo] || [];
 }
+/** A suggestion is applicable only when its source document can accredit that row. */
+export const extractionFieldInScope = (document: any, campo: string) => extractionFieldsForDocument(document).includes(campo);
 export const extractionValue = (value: any) => value == null ? '' : value instanceof Date ? value.toISOString().slice(0,10) : String(value).trim();
 export const comparable = (value: any) => extractionValue(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toUpperCase();
+/** Compara códigos del perfil con los valores legibles del asistente. */
+export function extractionComparisonValue(field: string, value: unknown): string {
+  const normalized = comparable(value);
+  const aliases: Record<string, Record<string, string>> = {
+    genero: { M: 'MASCULINO', F: 'FEMENINO' },
+    sexoBiologico: { M: 'HOMBRE', MASCULINO: 'HOMBRE', F: 'MUJER', FEMENINO: 'MUJER' },
+  };
+  return aliases[field]?.[normalized] || normalized;
+}
 const compactAlphanumeric = (value: any) => comparable(value).replace(/[^A-Z0-9]/g, '');
 const words = (value: any): string[] => comparable(value).match(/[A-Z]{2,}/g) || [];
+
+function documentTypeFromEvidence(text: string): string | undefined {
+  // El OCR puede unir palabras de una etiqueta pequeña. Solo se ignoran
+  // separadores: siguen siendo obligatorias las palabras del tipo documental.
+  const compact = compactAlphanumeric(text);
+  const matches = [
+    /CEDULA(?:DE)?CIUDADANIA/.test(compact) && 'CC',
+    /CEDULA(?:DE)?EXTRANJERIA/.test(compact) && 'CE',
+    /PASAPORTE/.test(compact) && 'PA',
+    (/PERMISO(?:ESPECIAL)?DEPERMANENCIA/.test(compact) || /\bPEP\b/.test(comparable(text))) && 'PEP',
+  ].filter(Boolean);
+  return matches.length === 1 ? matches[0] as string : undefined;
+}
 
 function normalizedValueIsGrounded(field: ExtractionField, value: string, quote: string): boolean {
   if (field.date) return true;
@@ -107,15 +135,7 @@ function normalizedValueIsGrounded(field: ExtractionField, value: string, quote:
     return tokens.length >= 2 && tokens.every(token => evidence.includes(token));
   }
   if (field.match === 'documentType') {
-    const normalized = comparable(value);
-    const evidence = comparable(quote);
-    const markers: Record<string, RegExp> = {
-      CC: /CEDULA(?:\s+DE)?\s+CIUDADANIA/,
-      CE: /CEDULA(?:\s+DE)?\s+EXTRANJERIA/,
-      PA: /PASAPORTE/,
-      PEP: /PERMISO(?:\s+ESPECIAL)?\s+DE\s+PERMANENCIA|\bPEP\b/,
-    };
-    return Boolean(markers[normalized]?.test(evidence));
+    return documentTypeFromEvidence(quote) === comparable(value);
   }
   const evidence = comparable(quote);
   const hasSexMarker = /\b(SEXO|GENERO)\b/.test(evidence);
@@ -147,8 +167,11 @@ function compactIdentityEvidence(fieldName: string, pageText: string, value: str
   if (!lines.length) return '';
 
   if (fieldName === 'documentType') {
-    const index = lines.findIndex(line => /CEDULA(?:\s+DE)?\s+(?:CIUDADANIA|EXTRANJERIA)|PASAPORTE|PERMISO(?:\s+ESPECIAL)?\s+DE\s+PERMANENCIA|\bPEP\b/.test(comparable(line)));
-    return index >= 0 ? excerpt(index - 1, index) : '';
+    for (let index = 0; index < lines.length; index++) for (let count = 1; count <= 3; count++) {
+      const quote = excerpt(index, index + count - 1);
+      if (documentTypeFromEvidence(quote) === comparable(value)) return quote;
+    }
+    return '';
   }
   if (fieldName === 'documentNumber') {
     const target = compactAlphanumeric(value);
@@ -229,7 +252,7 @@ export async function lockExtractionSuggestions(db: any, docenteId: string, ids:
   await db.query('SELECT id FROM academic_work_plan."Docente" WHERE id::text = $1 FOR UPDATE', [docenteId]);
   await db.query(`SELECT p.id_person FROM auth.personas p JOIN academic_work_plan."Docente" d
     ON d."personaId"::text = p.id_person::text WHERE d.id::text = $1 FOR UPDATE OF p`, [docenteId]);
-  const rows = await db.query(`SELECT s.*, d.estado AS documento_estado, j.estado AS trabajo_estado
+  const rows = await db.query(`SELECT s.*, d.estado AS documento_estado, j.estado AS trabajo_estado, d.tipo_soporte, d.categoria_codigo
     FROM academic_work_plan."RundExtraccionSugerencia" s
     JOIN academic_work_plan."RundExtraccionTrabajo" j ON j.id = s.trabajo_id
     JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
@@ -239,6 +262,8 @@ export async function lockExtractionSuggestions(db: any, docenteId: string, ids:
   for (const s of rows) {
     if (s.estado !== 'PENDIENTE' || s.documento_estado !== 'ACTIVO' || s.trabajo_estado !== 'COMPLETADO') throw new ConflictException('La sugerencia ya fue revisada o su PDF dejó de estar vigente. Actualice el expediente.');
     if (!EXTRACTION_FIELDS[s.campo] || typeof payload[s.campo] !== 'string' || !payload[s.campo].trim()) throw new BadRequestException('Revise el valor del campo sugerido antes de confirmar.');
+    // Older analyses of general attachments could propose rows the document does not accredit.
+    if ((s.tipo_soporte || s.categoria_codigo) && !extractionFieldInScope(s, s.campo)) throw new ConflictException('Este documento no acredita ese dato. Rechace la sugerencia.');
     if (comparable(profile[s.campo]) !== comparable(s.valor_previo)) throw new ConflictException('El dato del perfil cambió desde la extracción. Descarte esta sugerencia y vuelva a procesar el documento.');
   }
   return rows;

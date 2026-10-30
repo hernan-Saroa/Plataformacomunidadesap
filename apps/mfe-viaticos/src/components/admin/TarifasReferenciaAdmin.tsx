@@ -554,7 +554,7 @@ export default function TarifasReferenciaAdmin() {
                 <tr>
                   <th className="text-left py-3 px-4">Ruta Aérea</th>
                   <th className="text-center py-3 px-3">Códigos IATA</th>
-                  <th className="text-right py-3 px-4">Tarifa Estimada</th>
+                  <th className="text-right py-3 px-4">Tarifa por Trayecto (Solo Ida)</th>
                   <th className="text-right py-3 px-4">Rango (Mín – Máx)</th>
                   <th className="text-center py-3 px-3">Fuente</th>
                   <th className="text-center py-3 px-3">Última Actualización</th>
@@ -765,7 +765,7 @@ export default function TarifasReferenciaAdmin() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                    Tarifa Estimada ($ COP) *
+                    Tarifa por Trayecto (Solo Ida) ($ COP) *
                   </label>
                   <input
                     type="text"
@@ -777,7 +777,7 @@ export default function TarifasReferenciaAdmin() {
                         tarifaEstimada: soloNumeros(e.target.value),
                       })
                     }
-                    placeholder="380000"
+                    placeholder="190000"
                     className="w-full px-3 py-2 text-xs font-bold border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

@@ -26,21 +26,13 @@ import graduadosService, {
   GraduadoData,
 } from '../../services/api/graduados.service';
 
-type SedeTerritorialOption = {
-  territorial: string;
-  sede: string;
-};
-
 type BulkGraduatesUploadModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImported: (graduates: GraduadoData[]) => void;
   createdBy?: string;
   programOptions: string[];
-  territorialOptions: string[];
-  sedeTerritorialOptions: SedeTerritorialOption[];
   programsPeriod?: string;
-  structurePeriod?: string;
 };
 
 type FieldKey =
@@ -81,9 +73,6 @@ type ParsedGraduateRow = {
 
 type Catalogs = {
   programsByKey: Map<string, string>;
-  territorialByKey: Map<string, string>;
-  sedeByKey: Map<string, string>;
-  territorialSedePairs: Set<string>;
 };
 
 const TEMPLATE_HEADERS = [
@@ -239,8 +228,8 @@ const TEMPLATE_RULES = [
   'Una misma IDENTIFICACION puede aparecer varias veces solo si el TITULO es diferente.',
   'No se permite repetir la combinación IDENTIFICACION + TITULO en el archivo ni en la base de datos.',
   'FECHAREGISTRO no puede ser posterior a la fecha actual.',
-  'TITULO, TERRITORIAL y SEDE deben copiarse exactamente desde los bloques de PARAMETROS.',
-  'La SEDE debe pertenecer a la TERRITORIAL indicada en el bloque TERRITORIALES_Y_SEDES_DETALLE.',
+  'TITULO debe copiarse del catálogo propio de Graduados en PARAMETROS.',
+  'TERRITORIAL y SEDE se diligencian como texto libre del graduado; no se exige una relación de catálogo.',
   'IDENTIFICACION solo debe contener números; graduados no almacena tipo de documento.',
   'REGISTRO, ACTA/FOLIO y LIBRO son obligatorios y numéricos. REGISTRO debe tener entre 1 y 20 dígitos; ACTA/FOLIO y LIBRO entre 1 y 10.',
   'DIPLOMA no se diligencia en la plantilla; el sistema lo asigna automáticamente al crear el graduado.',
@@ -412,60 +401,20 @@ const validateName = (value: string) =>
 
 const hasControlCharacters = (value: string) => /[\u0000-\u001F\u007F]/.test(value);
 
-const buildCatalogs = (
-  programOptions: string[],
-  territorialOptions: string[],
-  sedeTerritorialOptions: SedeTerritorialOption[],
-): Catalogs => {
-  const programsByKey = new Map<string, string>();
-  uniqueSorted(programOptions).forEach((program) => programsByKey.set(normalizeKey(program), program));
-
-  const territorialByKey = new Map<string, string>();
-  territorialOptions.map(normalizeDisplayValue).filter(Boolean).forEach((territorial) =>
-    territorialByKey.set(normalizeKey(territorial), territorial),
-  );
-
-  const sedeByKey = new Map<string, string>();
-  const territorialSedePairs = new Set<string>();
-  sedeTerritorialOptions.forEach(({ territorial, sede }) => {
-    const sedeKey = normalizeKey(sede);
-    const territorialKey = normalizeKey(territorial);
-    if (sedeKey) {
-      sedeByKey.set(sedeKey, sede);
-    }
-    if (sedeKey && territorialKey) {
-      territorialSedePairs.add(`${territorialKey}::${sedeKey}`);
-    }
-    if (territorialKey && !territorialByKey.has(territorialKey)) {
-      territorialByKey.set(territorialKey, territorial);
-    }
-  });
-
-  return {
-    programsByKey,
-    territorialByKey,
-    sedeByKey,
-    territorialSedePairs,
-  };
-};
+export const buildCatalogs = (programOptions: string[]): Catalogs => ({
+  programsByKey: new Map(uniqueSorted(programOptions).map(program=>[normalizeKey(program),program])),
+});
 
 const resolveCatalogValue = (value: string, options: Map<string, string>) =>
   options.get(normalizeKey(value));
 
-const createExampleRows = (
-  programOptions: string[],
-  territorialOptions: string[],
-  sedeTerritorialOptions: SedeTerritorialOption[],
-) => {
+const createExampleRows = (programOptions: string[]) => {
   const programs = uniqueSorted(programOptions);
-  const territorialRows = sedeTerritorialOptions;
-  if (!programs.length || !territorialRows.length) {
+  if (!programs.length) {
     return [];
   }
   const firstProgram = programs[0];
   const secondProgram = programs[1] || firstProgram;
-  const firstLocation = territorialRows[0];
-  const secondLocation = territorialRows[1] || firstLocation;
 
   return [
     [
@@ -479,8 +428,8 @@ const createExampleRows = (
       '2022',
       'laura.andrade@example.com',
       '3004567890',
-      firstLocation.territorial,
-      firstLocation.sede,
+      '',
+      '',
     ],
     [
       '900100002',
@@ -493,159 +442,28 @@ const createExampleRows = (
       '2021',
       'mateo.parra@example.com',
       '3109876543',
-      secondLocation.territorial,
-      secondLocation.sede,
+      '',
+      '',
     ],
   ];
 };
 
-const buildLocationGroups = (
-  territorialOptions: string[],
-  sedeTerritorialOptions: SedeTerritorialOption[],
-) => {
-  const fallbackRows = territorialOptions.map((territorial) => ({ territorial, sede: '' }));
-  const rows = (sedeTerritorialOptions.length ? sedeTerritorialOptions : fallbackRows)
-    .map((row) => ({
-      territorial: row.territorial.trim(),
-      sede: row.sede.trim(),
-    }))
-    .filter((row) => row.territorial || row.sede)
-    .sort((a, b) =>
-      `${a.territorial} ${a.sede}`.localeCompare(`${b.territorial} ${b.sede}`, 'es'),
-    );
-
-  const groupsByTerritorial = new Map<string, { territorial: string; sedes: string[] }>();
-
-  rows.forEach((row) => {
-    const key = normalizeKey(row.territorial);
-    if (!key) return;
-    const current = groupsByTerritorial.get(key) || {
-      territorial: row.territorial,
-      sedes: [],
-    };
-    if (row.sede) {
-      current.sedes.push(row.sede);
-    }
-    groupsByTerritorial.set(key, current);
-  });
-
-  return Array.from(groupsByTerritorial.values())
-    .map((group) => ({
-      ...group,
-      sedes: group.sedes,
-    }))
-    .sort((a, b) => a.territorial.localeCompare(b.territorial, 'es'));
-};
-
-const buildParametersRows = (
-  programOptions: string[],
-  territorialOptions: string[],
-  sedeTerritorialOptions: SedeTerritorialOption[],
-  programsPeriod?: string,
-  structurePeriod?: string,
-) => {
-  const programs = uniqueSorted(programOptions);
-  const locationGroups = buildLocationGroups(territorialOptions, sedeTerritorialOptions);
-  const locationDetailRows = locationGroups.flatMap((group, groupIndex) => {
-    const sedes = group.sedes.length ? group.sedes : [''];
-    return sedes.map((sede, sedeIndex) => ({
-      order: groupIndex + 1,
-      territorial: group.territorial,
-      sede,
-      sedePosition: group.sedes.length ? `${sedeIndex + 1} de ${group.sedes.length}` : 'Sin sede asociada',
-      sedeCount: group.sedes.length,
-    }));
-  });
+const buildParametersRows = (programOptions: string[], programsPeriod?: string) => {
+  const programs=uniqueSorted(programOptions);
   const rows: Array<Array<string | number>> = [
     ['PARAMETROS DE CARGA MASIVA DE GRADUADOS'],
-    [
-      'Use esta hoja como catálogo oficial. Copie y pegue los valores exactamente como aparecen para evitar errores en GRADUADOS.',
-    ],
-    [
-      'Para sedes, copie siempre TERRITORIAL y SEDE desde la misma fila del bloque TERRITORIALES_Y_SEDES_DETALLE.',
-    ],
-    [
-      `Fuentes: TITULOS = ${programsPeriod || 'No disponible'} | ESTRUCTURA ORGANIZACIONAL = ${structurePeriod || 'No disponible'}.`,
-    ],
+    ['Copie TITULO del catálogo propio de Gestión de Graduados.'],
+    ['TERRITORIAL y SEDE son texto libre del graduado; no requieren un catálogo de relaciones. Complete estos campos también en las filas de ejemplo.'],
+    [`Fuente de títulos: ${programsPeriod || 'Gestión de Graduados'}.`],
     ['RESUMEN DE CATALOGOS'],
-    ['CATALOGO', 'CANTIDAD', 'COLUMNA EN GRADUADOS', 'COMO USARLO', 'OBSERVACION'],
-    [
-      'Títulos válidos',
-      programs.length,
-      'TITULO',
-      'Copiar un valor del bloque TITULOS_VALIDOS.',
-      'Debe coincidir exactamente con un programa del catálogo administrado en Gestión de Graduados.',
-    ],
-    [
-      'Territoriales',
-      locationGroups.length,
-      'TERRITORIAL',
-      'Copiar junto con la SEDE de la misma fila del detalle.',
-      'La territorial proviene de Estructura Organizacional.',
-    ],
-    [
-      'Relaciones territorial-sede',
-      locationDetailRows.length,
-      'TERRITORIAL + SEDE',
-      'Usar el bloque de detalle para evitar cruces incorrectos.',
-      'Una sede solo es válida dentro de su territorial asociada.',
-    ],
-    [''],
+    ['CATALOGO','CANTIDAD','COLUMNA EN GRADUADOS'],
+    ['Títulos válidos',programs.length,'TITULO'],
     ['BLOQUE 1 - TITULOS_VALIDOS'],
-    ['#', 'TITULO_VALIDO', 'COPIAR_EN_COLUMNA', 'OBSERVACION'],
+    ['#','TITULO_VALIDO','COPIAR_EN_COLUMNA'],
   ];
-
-  programs.forEach((program, index) => {
-    rows.push([index + 1, program, 'TITULO', 'Copie exactamente este texto.']);
-  });
-
-  rows.push(
-    [''],
-    ['BLOQUE 2 - RESUMEN_SEDES_POR_TERRITORIAL'],
-    [
-      '#',
-      'TERRITORIAL',
-      'TOTAL_SEDES',
-      'SEDES_DE_ESTA_TERRITORIAL',
-      'USO',
-    ],
-  );
-
-  locationGroups.forEach((group, index) => {
-    rows.push([
-      index + 1,
-      group.territorial,
-      group.sedes.length,
-      group.sedes.join(' | ') || 'Sin sedes asociadas',
-      'Resumen de consulta. Para copiar datos use el bloque 3.',
-    ]);
-  });
-
-  rows.push(
-    [''],
-    ['BLOQUE 3 - TERRITORIALES_Y_SEDES_DETALLE'],
-    [
-      '#',
-      'TERRITORIAL',
-      'SEDE',
-      'SEDE_EN_TERRITORIAL',
-      'COPIAR_EN_GRADUADOS',
-    ],
-  );
-
-  locationDetailRows.forEach((location, index) => {
-    rows.push([
-      index + 1,
-      location.territorial,
-      location.sede || 'Sin sede asociada',
-      location.sedePosition,
-      'Copie TERRITORIAL y SEDE de esta misma fila.',
-    ]);
-  });
-
-  rows.push([''], ['BLOQUE 4 - REGLAS_DE_CARGA'], ['#', 'REGLA']);
-  TEMPLATE_RULES.forEach((rule, index) => rows.push([index + 1, rule]));
-
+  programs.forEach((program,index)=>rows.push([index+1,program,'TITULO']));
+  rows.push([''],['BLOQUE 2 - REGLAS_DE_CARGA'],['#','REGLA']);
+  TEMPLATE_RULES.forEach((rule,index)=>rows.push([index+1,rule]));
   return rows;
 };
 
@@ -703,7 +521,7 @@ const validateNumericControlField = (
   }
 };
 
-const buildParsedRow = (
+export const buildParsedRow = (
   row: Record<string, unknown>,
   rowNumber: number,
   duplicateKeys: Set<string>,
@@ -791,38 +609,20 @@ const buildParsedRow = (
     }
   }
 
-  const resolvedTerritorial = territorial ? resolveCatalogValue(territorial, catalogs.territorialByKey) : '';
   if (!territorial) {
     addError('territorial', 'es obligatoria.');
-  } else if (catalogs.territorialByKey.size > 0 && !resolvedTerritorial) {
-    addError('territorial', 'no coincide con las territoriales válidas de la hoja PARAMETROS.');
   } else if (territorial.length > TERRITORIAL_MAX_LENGTH) {
     addError('territorial', `no puede superar ${TERRITORIAL_MAX_LENGTH} caracteres.`);
   } else if (hasControlCharacters(territorial)) {
     addError('territorial', 'contiene caracteres no permitidos.');
   }
 
-  const resolvedSede = sede ? resolveCatalogValue(sede, catalogs.sedeByKey) : '';
   if (!sede) {
     addError('sede', 'es obligatoria.');
-  } else if (catalogs.sedeByKey.size > 0 && !resolvedSede) {
-    addError('sede', 'no coincide con las sedes válidas de la hoja PARAMETROS.');
   } else if (sede.length > SEDE_MAX_LENGTH) {
     addError('sede', `no puede superar ${SEDE_MAX_LENGTH} caracteres.`);
   } else if (hasControlCharacters(sede)) {
     addError('sede', 'contiene caracteres no permitidos.');
-  }
-
-  const territorialSedePair =
-    territorial && sede
-      ? `${normalizeKey(territorial)}::${normalizeKey(sede)}`
-      : '';
-  if (
-    territorialSedePair &&
-    catalogs.territorialSedePairs.size > 0 &&
-    !catalogs.territorialSedePairs.has(territorialSedePair)
-  ) {
-    addError('sede', 'no pertenece a la TERRITORIAL indicada.');
   }
 
   const duplicateKey = `${identificacion}::${normalizeKey(resolvedTitle || titulo)}`;
@@ -834,8 +634,8 @@ const buildParsedRow = (
   }
 
   const finalTitle = resolvedTitle || titulo;
-  const finalTerritorial = resolvedTerritorial || territorial;
-  const finalSede = resolvedSede || sede;
+  const finalTerritorial = territorial;
+  const finalSede = sede;
   const { firstName, lastName } = splitFullName(estudiante);
   const payload: Partial<GraduadoData> | undefined = errors.length
     ? undefined
@@ -898,10 +698,7 @@ export function BulkGraduatesUploadModal({
   onImported,
   createdBy,
   programOptions,
-  territorialOptions,
-  sedeTerritorialOptions,
   programsPeriod,
-  structurePeriod,
 }: BulkGraduatesUploadModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
@@ -911,31 +708,11 @@ export function BulkGraduatesUploadModal({
   const [importProgress, setImportProgress] = useState({ processed: 0, total: 0 });
   const [importResult, setImportResult] = useState<BulkCreateGraduadosResponse | null>(null);
 
-  const validSedeTerritorialOptions = useMemo(() => {
-    return sedeTerritorialOptions
-      .map((option) => ({
-        territorial: normalizeDisplayValue(option.territorial),
-        sede: normalizeDisplayValue(option.sede),
-      }))
-      .filter((option) => option.territorial && option.sede);
-  }, [sedeTerritorialOptions]);
-
-  const catalogs = useMemo(
-    () => buildCatalogs(programOptions, territorialOptions, validSedeTerritorialOptions),
-    [programOptions, territorialOptions, validSedeTerritorialOptions],
-  );
+  const catalogs = useMemo(() => buildCatalogs(programOptions), [programOptions]);
   const validRows = useMemo(() => rows.filter((row) => row.errors.length === 0), [rows]);
   const invalidRows = rows.length - validRows.length;
   const readyToImport = validRows.length > 0 && !isParsing && !isImporting;
-  const catalogsReady =
-    programOptions.length > 0 &&
-    territorialOptions.length > 0 &&
-    validSedeTerritorialOptions.length > 0;
-  const missingCatalogs = [
-    programOptions.length === 0 ? 'títulos' : '',
-    territorialOptions.length === 0 ? 'territoriales' : '',
-    validSedeTerritorialOptions.length === 0 ? 'relaciones territorial-sede' : '',
-  ].filter(Boolean);
+  const catalogsReady = catalogs.programsByKey.size > 0;
 
   const resetState = () => {
     setSelectedFileName('');
@@ -959,24 +736,14 @@ export function BulkGraduatesUploadModal({
     if (!catalogsReady) {
       toast.error('No se puede generar la plantilla', {
         description:
-          'Los catálogos deben tener programas y relaciones territorial-sede disponibles.',
+          'No hay títulos disponibles en el catálogo propio de Gestión de Graduados.',
       });
       return;
     }
 
     const fileBaseName = 'Plantilla_Carga_Masiva_Graduados_ESAP';
-    const exampleRows = createExampleRows(
-      programOptions,
-      territorialOptions,
-      validSedeTerritorialOptions,
-    );
-    const parameterRows = buildParametersRows(
-      programOptions,
-      territorialOptions,
-      validSedeTerritorialOptions,
-      programsPeriod,
-      structurePeriod,
-    );
+    const exampleRows = createExampleRows(programOptions);
+    const parameterRows = buildParametersRows(programOptions, programsPeriod);
     const ExcelJS = (await import('exceljs')).default;
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ESAP';
@@ -1039,32 +806,12 @@ export function BulkGraduatesUploadModal({
       state: 'veryHidden',
     });
     const programs = uniqueSorted(programOptions);
-    const territorials = territorialOptions.map(normalizeDisplayValue).filter(Boolean);
-    const sedes = validSedeTerritorialOptions
-      .map((option) => normalizeDisplayValue(option.sede))
-      .filter(Boolean);
-    listsSheet.addRow(['TITULOS', 'TERRITORIALES', 'SEDES']);
-    const maxCatalogLength = Math.max(programs.length, territorials.length, sedes.length);
-    for (let index = 0; index < maxCatalogLength; index += 1) {
-      listsSheet.addRow([
-        programs[index] || '',
-        territorials[index] || '',
-        sedes[index] || '',
-      ]);
-    }
+    listsSheet.addRow(['TITULOS']);
+    programs.forEach(program=>listsSheet.addRow([program]));
     workbook.definedNames.add(
       `CATALOGOS_VALIDACION!$A$2:$A$${programs.length + 1}`,
       'LISTA_TITULOS_GRADUADOS',
     );
-    workbook.definedNames.add(
-      `CATALOGOS_VALIDACION!$B$2:$B$${territorials.length + 1}`,
-      'LISTA_TERRITORIALES_GRADUADOS',
-    );
-    workbook.definedNames.add(
-      `CATALOGOS_VALIDACION!$C$2:$C$${sedes.length + 1}`,
-      'LISTA_SEDES_GRADUADOS',
-    );
-
     const addListValidation = (
       targetColumn: string,
       listName: string,
@@ -1081,8 +828,6 @@ export function BulkGraduatesUploadModal({
       });
     };
     addListValidation('C', 'LISTA_TITULOS_GRADUADOS', 'Título no válido');
-    addListValidation('K', 'LISTA_TERRITORIALES_GRADUADOS', 'Territorial no válida');
-    addListValidation('L', 'LISTA_SEDES_GRADUADOS', 'Sede no válida');
 
     const addNumericControlValidation = (
       targetColumn: string,
@@ -1155,7 +900,7 @@ export function BulkGraduatesUploadModal({
       `${fileBaseName}.xlsx`,
     );
     toast.success('Plantilla XLSX descargada', {
-      description: 'La plantilla incluye GRADUADOS para diligenciar y PARAMETROS con títulos, sedes y reglas.',
+      description: 'La plantilla incluye GRADUADOS para diligenciar y PARAMETROS con títulos y reglas propias de Graduados.',
     });
   };
 
@@ -1175,7 +920,7 @@ export function BulkGraduatesUploadModal({
     if (!catalogsReady) {
       toast.error('No se puede validar la plantilla', {
         description:
-          'No se cargaron títulos, territoriales o sedes desde la plataforma. Intente abrir nuevamente el módulo antes de importar.',
+          'No se cargaron títulos del catálogo de Gestión de Graduados. Intente abrir nuevamente el módulo antes de importar.',
       });
       return;
     }
@@ -1341,7 +1086,7 @@ export function BulkGraduatesUploadModal({
                     Plantilla oficial
                   </p>
                   <p className="mt-1 text-xs leading-5" style={{ color: '#64748B' }}>
-                    El archivo de Excel contiene dos hojas: <strong>GRADUADOS</strong> para diligenciar personas y <strong>PARAMETROS</strong> para copiar títulos, territoriales y sedes válidas.
+                    El archivo de Excel contiene dos hojas: <strong>GRADUADOS</strong> para diligenciar personas y <strong>PARAMETROS</strong> para copiar títulos y consultar las reglas de Graduados. Territorial y sede se diligencian como texto libre.
                   </p>
                 </div>
                 <FileSpreadsheet className="h-8 w-8 flex-shrink-0" style={{ color: '#047857' }} />
@@ -1363,13 +1108,13 @@ export function BulkGraduatesUploadModal({
                 </button>
               </div>
               <div className="mt-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
-                Catálogos disponibles: {programOptions.length} títulos, {territorialOptions.length} territoriales y {validSedeTerritorialOptions.length} relaciones territorial-sede.
+                Catálogo propio de Graduados: {programOptions.length} títulos.
                 <br />
-                Fuentes: títulos <strong>{programsPeriod || 'no disponible'}</strong> · estructura <strong>{structurePeriod || 'no disponible'}</strong>.
+                Fuente: <strong>{programsPeriod || 'Gestión de Graduados'}</strong>. Territorial y sede son texto libre.
               </div>
               {!catalogsReady && (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                  No se puede descargar ni validar una carga porque faltan: <strong>{missingCatalogs.join(', ')}</strong>. Revise los catálogos en los módulos de origen.
+                  No hay títulos disponibles en Gestión de Graduados. Revise su catálogo de programas antes de importar.
                 </div>
               )}
             </div>
@@ -1411,7 +1156,7 @@ export function BulkGraduatesUploadModal({
               </button>
               <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-600">
                 <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
-                Se lee únicamente la hoja GRADUADOS. PARAMETROS es la guía para copiar valores válidos y evitar errores de escritura.
+                Se lee únicamente la hoja GRADUADOS. PARAMETROS contiene los títulos válidos y las reglas de Graduados. Territorial y sede son texto libre.
               </p>
               <p className="mt-2 text-xs leading-5 text-slate-600">
                 Controles numéricos obligatorios: <strong>REGISTRO de 1 a 20 dígitos</strong> y <strong>ACTA/FOLIO y LIBRO de 1 a 10 dígitos</strong>.

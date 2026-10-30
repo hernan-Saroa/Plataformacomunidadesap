@@ -1,0 +1,80 @@
+.esap-chatbot-widget {
+  position: fixed;
+  /* Sobre la navegación fija; debajo de los diálogos y sus fondos. */
+  z-index: var(--z-fixed, 1030);
+  box-sizing: border-box;
+  top: var(--chatbot-viewport-top, 0px);
+  left: var(--chatbot-viewport-left, 0px);
+  width: var(--chatbot-viewport-width, 100vw);
+  height: var(--chatbot-viewport-height, 100vh);
+  height: var(--chatbot-viewport-height, 100dvh);
+  pointer-events: none;
+  --chatbot-gap: 16px;
+  --chatbot-right: max(var(--chatbot-gap), env(safe-area-inset-right, 0px));
+  --chatbot-bottom: max(var(--chatbot-gap), env(safe-area-inset-bottom, 0px));
+  --chatbot-left: max(var(--chatbot-gap), env(safe-area-inset-left, 0px));
+  --chatbot-top: max(var(--chatbot-gap), env(safe-area-inset-top, 0px));
+  color: #1e293b;
+}
+.esap-chatbot-widget__panel {
+  position: absolute;
+  box-sizing: border-box;
+  container: esap-chatbot-widget / size;
+  right: var(--chatbot-right);
+  bottom: var(--chatbot-bottom);
+  width: min(420px, calc(100% - var(--chatbot-right) - var(--chatbot-left)));
+  height: min(580px, calc(100% - var(--chatbot-bottom) - var(--chatbot-top)));
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  box-shadow: 0 12px 48px #0f172a40;
+}
+.esap-chatbot-widget__panel--expanded {
+  width: calc(100% - var(--chatbot-right) - var(--chatbot-left));
+  height: calc(100% - var(--chatbot-bottom) - var(--chatbot-top));
+}
+.esap-chatbot-widget__header {
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  gap: 8px; padding: 8px 12px; color: white;
+  background: linear-gradient(110deg, #1d4ed8, #3730a3);
+}
+.esap-chatbot-widget__identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.esap-chatbot-widget__identity > svg { flex-shrink: 0; }
+.esap-chatbot-widget__identity > div { min-width: 0; overflow-wrap: anywhere; }
+/* La regla global de h2 en portátiles utiliza !important. */
+.esap-chatbot-widget__header h2 { margin: 0; font-size: 13px !important; font-weight: 700; line-height: 1.4; }
+.esap-chatbot-widget__header p { margin: 0; font-size: 11px; line-height: 1.4; color: #dbeafe; }
+.esap-chatbot-widget__actions { display: flex; flex-shrink: 0; }
+.esap-chatbot-widget__actions button {
+  display: flex; justify-content: center; align-items: center;
+  width: 44px; height: 44px; border-radius: 8px; cursor: pointer;
+  color: inherit; background: transparent; border: 0;
+}
+.esap-chatbot-widget__actions button:hover { background: #ffffff26; }
+.esap-chatbot-widget__content { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.esap-chatbot-widget__content > * { flex: 1; min-width: 0; min-height: 0; }
+.esap-chatbot-widget__loading { padding: 24px; text-align: center; font-size: 13px; }
+.esap-chatbot-widget__launcher {
+  position: absolute; right: var(--chatbot-right); bottom: var(--chatbot-bottom);
+  pointer-events: auto; display: flex; align-items: center; gap: 8px;
+  max-width: calc(100% - var(--chatbot-right) - var(--chatbot-gap));
+  min-height: 48px; padding: 12px 16px; border: 0; border-radius: 32px;
+  background: linear-gradient(110deg, #2563eb, #4338ca); color: white;
+  box-shadow: 0 6px 24px #0f172a40; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.esap-chatbot-widget button:focus-visible, .esap-chatbot-widget__panel:focus-visible { outline: 3px solid #fbbf24; outline-offset: -3px; }
+@media (max-width: 360px), (max-height: 420px) {
+  .esap-chatbot-widget { --chatbot-gap: 8px; }
+  .esap-chatbot-widget__header { padding: 4px 8px; }
+  .esap-chatbot-widget__identity > svg { display: none; }
+}
+@container esap-chatbot-widget (max-height: 400px) {
+  .esap-chatbot-widget__header { padding: 4px 8px; }
+  .esap-chatbot-widget__identity > svg, .esap-chatbot-widget__identity p { display: none; }
+}

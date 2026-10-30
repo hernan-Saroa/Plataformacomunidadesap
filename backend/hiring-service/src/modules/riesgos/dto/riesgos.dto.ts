@@ -27,7 +27,7 @@ export class RegistrarAudienciaDto {
   @MaxLength(4000)
   observaciones?: string;
 
-  /** Solo si la 5.5 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 5.12 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @FirmaDelMultipart()

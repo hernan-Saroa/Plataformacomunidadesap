@@ -55,7 +55,7 @@ export class ActaInicioController {
   @ApiOperation({
     summary: 'Actividad 8.7 · Registrar el acta de inicio suscrita',
     description:
-      'Con el acta firmada por las dos partes. Cierra la legalización; el contrato entra en ejecución con la reunión (9.1).',
+      'Con el acta firmada por las dos partes. Cierra la legalización y pone el contrato en ejecución desde la fecha de suscripción.',
   })
   async registrarActa(
     @Param('id', ParseUUIDPipe) procesoId: string,

@@ -16,9 +16,14 @@ import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CdpService } from '../cdp/cdp.service';
 import { DocumentosService } from '../documentos/documentos.service';
-import { RiesgosService } from '../riesgos/riesgos.service';
 import { OfertasService } from '../ofertas/ofertas.service';
 import { RegistrarAperturaDto } from './dto/apertura.dto';
+import { SesionComiteContratacion } from '../../entities/comite-contratacion.entity';
+import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  NUMERAL_SEGUNDA_SESION,
+  requisitoDeLaSegundaSesion,
+} from '../comite-contratacion/segunda-sesion';
 
 /** Actividad 5.7 de la matriz: la apertura formal del proceso. */
 export const NUMERAL_APERTURA = '5.7';
@@ -37,7 +42,6 @@ export class AperturaService {
     private readonly dataSource: DataSource,
     private readonly cdp: CdpService,
     private readonly documentos: DocumentosService,
-    private readonly riesgos: RiesgosService,
     private readonly ofertas: OfertasService,
   ) {}
 
@@ -69,7 +73,7 @@ export class AperturaService {
 
     const respaldo = await this.cdp.estadoRespaldo(procesoId);
     const documentos = await this.documentos.estado(procesoId);
-    const audiencia = await this.riesgos.requisitoParaApertura(procesoId);
+    const comite = await this.requisitoComite(this.dataSource.manager, procesoId);
 
     // Los tres documentos del acto, para que el panel pueda enseñarlos sin
     // pedir el expediente entero.
@@ -116,11 +120,14 @@ export class AperturaService {
         // condiciona el CDP—, pero abrir con la elaboración a medias es una
         // señal de que algo se saltó, y callarlo no ayuda a nadie.
         documentos: { cumplido: !documentos.aplica || documentos.completa },
-        // La audiencia de riesgos sí bloquea donde es obligatoria: es el
-        // segundo criterio de EFDS-1153, y avanzar en la etapa 5 es abrir.
-        audienciaRiesgos: audiencia,
+        // La segunda sesión del comité con el pliego definitivo (5.6.1, 113).
+        // Solo en las modalidades que la recorren; en las demás se cumple sola.
+        comite,
+        // La audiencia de riesgos ya no está aquí: desde la 112 va después de
+        // la apertura, como en la matriz, y lo que bloquea es el cierre de la
+        // recepción de ofertas (ver RiesgosService.requisitoParaCerrarOfertas).
       },
-      puedeAbrir: !excluida && !apertura && respaldo.puedeAbrirse && audiencia.cumplido,
+      puedeAbrir: !excluida && !apertura && respaldo.puedeAbrirse && comite.cumplido,
     };
   }
 
@@ -163,15 +170,12 @@ export class AperturaService {
         );
       }
 
-      // RF-PUB-04: la audiencia obligatoria condiciona la apertura igual que el
-      // CDP. Se comprueba aquí y no solo en la pantalla porque es una regla de
-      // negocio: un cliente que llame la API directamente tampoco puede saltarla.
-      const audiencia = await this.riesgos.requisitoParaApertura(procesoId, em);
-      if (!audiencia.cumplido) {
-        throw new ConflictException(`No se puede abrir el proceso: ${audiencia.motivo}`);
-      }
-
       this.validarFecha(dto.resolucionFecha);
+
+      // En licitación, el pliego definitivo tiene que haber pasado por la
+      // segunda sesión del comité: la resolución de apertura va después (113).
+      const comite = await this.requisitoComite(em, procesoId);
+      if (!comite.cumplido) throw new ConflictException(comite.motivo);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
@@ -241,6 +245,18 @@ export class AperturaService {
   }
 
   // ----------------------------------------------------------- auxiliares --
+
+  /** Lo que la segunda sesión del comité (5.6.1) le dice a la apertura. */
+  private async requisitoComite(em: EntityManager, procesoId: string) {
+    const actividad = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_SEGUNDA_SESION },
+    });
+    const sesiones = await em.getRepository(SesionComiteContratacion).find({
+      where: { procesoId, sumision: 2 },
+      order: { fecha: 'DESC', createdAt: 'DESC' },
+    });
+    return requisitoDeLaSegundaSesion(actividad?.estado ?? null, sesiones);
+  }
 
   /**
    * La resolución no puede ser del futuro.

@@ -4,21 +4,27 @@
  * Quien solo aprueba (está en el comité y tiene el permiso de aprobar, sin el de
  * editar ni activar) entra a una sola página: revisa el Plan Anual y el Programa
  * Anual —ver en pantalla o descargar— y firma. La firma aprueba los dos.
+ *
+ * Los dos documentos se ven en PDF y se descargan en PDF o Excel. El Programa Anual
+ * solo se genera en Excel (formato oficial), así que su PDF es ese mismo Excel
+ * convertido por OnlyOffice en el servidor.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { CalendarDays, ChevronDown, Download, Eye, FileText, Loader2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, Download, Eye, FileSpreadsheet, FileText, Loader2, X } from 'lucide-react';
 import { VisorOnlyOffice } from './VisorOnlyOffice';
-import { subirVistaPrevia } from './services/onlyofficeVisor';
+import { convertirVistaPreviaAPdf, descargarVistaPrevia, subirVistaPrevia } from './services/onlyofficeVisor';
 import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
-const MORADO = '#5b21b6';
-const MORADO_TEXTO = '#4c1d95';
-const MORADO_SUAVE = '#ede9fe';
-const MORADO_BORDE = '#c4b5fd';
+// Azul del módulo, el mismo del encabezado "Plan Anual de Auditoría OCI"
+const AZUL = '#2962FF';
+const AZUL_TEXTO = '#003DA5';
+const AZUL_SUAVE = '#e8eeff';
+const AZUL_BORDE = '#b3c6ff';
 
 interface PlanResumen {
   id: string;
@@ -42,11 +48,16 @@ interface Props {
   bloqueAprobacion: ReactNode;
 }
 
-interface VistaPrevia {
-  titulo: string;
-  id: string | null;
+interface DocumentoGenerado {
   archivo: Blob;
   nombreArchivo: string;
+  /** Si el documento ya quedó en el servidor (el PDF convertido), su id de vista previa. */
+  id?: string;
+}
+
+interface VistaPrevia extends Omit<DocumentoGenerado, 'id'> {
+  titulo: string;
+  id: string | null;
   falloVisor: string | null;
 }
 
@@ -70,17 +81,15 @@ function descargarBlob(archivo: Blob, nombre: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Botonera de la propuesta: ver | descargar | elegir formato. */
+/** Botonera de cada documento: ver | descargar (abre la lista de formatos). */
 function AccionesDocumento({
   onVer,
-  onDescargar,
   formatos,
   ocupado,
   etiqueta,
 }: {
   onVer: () => void;
-  onDescargar: () => void;
-  formatos: { etiqueta: string; accion: () => void }[];
+  formatos: { etiqueta: 'PDF' | 'Excel'; accion: () => void }[];
   ocupado: boolean;
   etiqueta: string;
 }) {
@@ -96,10 +105,10 @@ function AccionesDocumento({
     return () => document.removeEventListener('mousedown', cerrar);
   }, [abierto]);
 
-  const estiloBoton = { color: MORADO };
+  const estiloBoton = { color: AZUL };
   return (
     <div ref={ref} className="relative flex-shrink-0">
-      <div className="flex items-stretch rounded-lg border-2 bg-white" style={{ borderColor: MORADO_BORDE }}>
+      <div className="flex items-stretch rounded-lg border-2 bg-white" style={{ borderColor: AZUL_BORDE }}>
         <button
           type="button"
           onClick={onVer}
@@ -111,48 +120,41 @@ function AccionesDocumento({
         >
           {ocupado ? <Loader2 className="w-5 h-5 animate-spin" /> : <Eye className="w-5 h-5" />}
         </button>
-        <span className="w-px my-2" style={{ backgroundColor: MORADO_BORDE }} />
-        <button
-          type="button"
-          onClick={onDescargar}
-          disabled={ocupado}
-          title={`Descargar ${etiqueta} (${formatos[0]?.etiqueta})`}
-          aria-label={`Descargar ${etiqueta}`}
-          className="px-4 py-2.5 hover:bg-gray-50 disabled:opacity-50"
-          style={estiloBoton}
-        >
-          <Download className="w-5 h-5" />
-        </button>
-        <span className="w-px my-2" style={{ backgroundColor: MORADO_BORDE }} />
+        <span className="w-px my-2" style={{ backgroundColor: AZUL_BORDE }} />
         <button
           type="button"
           onClick={() => setAbierto((v) => !v)}
           disabled={ocupado}
-          title="Elegir formato de descarga"
-          aria-label="Elegir formato de descarga"
+          title={`Descargar ${etiqueta}`}
+          aria-label={`Descargar ${etiqueta}`}
+          aria-haspopup="menu"
           aria-expanded={abierto}
-          className="px-3 py-2.5 hover:bg-gray-50 disabled:opacity-50 rounded-r-md"
+          className="px-4 py-2.5 hover:bg-gray-50 disabled:opacity-50 rounded-r-md"
           style={estiloBoton}
         >
-          <ChevronDown className={`w-5 h-5 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+          <Download className="w-5 h-5" />
         </button>
       </div>
       {abierto && (
-        <div className="absolute right-0 top-full mt-1 z-30 min-w-[190px] rounded-lg border border-gray-200 bg-white shadow-xl p-1">
-          {formatos.map((f) => (
-            <button
-              key={f.etiqueta}
-              type="button"
-              onClick={() => {
-                setAbierto(false);
-                f.accion();
-              }}
-              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md flex items-center gap-2"
-            >
-              <Download className="w-4 h-4 text-gray-400" />
-              Descargar {f.etiqueta}
-            </button>
-          ))}
+        <div role="menu" className="absolute right-0 top-full mt-1 z-30 rounded-lg border border-gray-200 bg-white shadow-xl p-1" style={{ minWidth: 190 }}>
+          {formatos.map((f) => {
+            const Icono = f.etiqueta === 'PDF' ? FileText : FileSpreadsheet;
+            return (
+              <button
+                key={f.etiqueta}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAbierto(false);
+                  f.accion();
+                }}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md flex items-center gap-2 whitespace-nowrap"
+              >
+                <Icono className="w-4 h-4" style={{ color: f.etiqueta === 'PDF' ? '#dc2626' : '#16a34a' }} />
+                Descargar {f.etiqueta}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -173,11 +175,11 @@ function TarjetaDocumento({
   return (
     <div className="bg-white rounded-xl border-2 border-gray-200 p-5 flex flex-col md:flex-row md:items-center gap-4">
       <div className="flex items-start gap-4 flex-1 min-w-0">
-        <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: MORADO_SUAVE }}>
+        <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: AZUL_SUAVE }}>
           {icono}
         </div>
         <div className="min-w-0">
-          <h3 className="text-lg font-bold" style={{ color: MORADO_TEXTO }}>{titulo}</h3>
+          <h3 className="text-lg font-bold" style={{ color: AZUL_TEXTO }}>{titulo}</h3>
           <p className="text-sm text-gray-600 mt-1">{descripcion}</p>
         </div>
       </div>
@@ -226,25 +228,43 @@ export function VistaAprobadorPlanAnual({
   const abrirVistaPrevia = async (
     cual: 'plan' | 'programa',
     titulo: string,
-    generar: () => Promise<{ archivo: Blob; nombreArchivo: string } | null>,
+    generar: () => Promise<DocumentoGenerado | null>,
   ) => {
     setPreparando(cual);
     try {
       const generado = await generar();
       if (!generado) return;
-      let id: string | null = null;
+      let id: string | null = generado.id ?? null;
       let falloVisor: string | null = null;
-      try {
-        id = await subirVistaPrevia(generado.archivo, generado.nombreArchivo);
-      } catch (e) {
-        falloVisor = e instanceof Error ? e.message : 'No se pudo preparar la vista previa';
+      if (!id) {
+        try {
+          id = await subirVistaPrevia(generado.archivo, generado.nombreArchivo);
+        } catch (e) {
+          falloVisor = e instanceof Error ? e.message : 'No se pudo preparar la vista previa';
+        }
       }
-      setVistaPrevia({ titulo, id, falloVisor, ...generado });
+      setVistaPrevia({ titulo, ...generado, id, falloVisor });
     } catch (e) {
       toast.error('No se pudo generar el documento', { description: e instanceof Error ? e.message : undefined });
     } finally {
       setPreparando(null);
     }
+  };
+
+  /** El Programa Anual en Excel, tal como se descarga, sin bajarlo. */
+  const generarExcelPrograma = async (): Promise<DocumentoGenerado> => {
+    const resultado = await exportarProgramaAnualVersionado(plan.vigencia, { soloArchivo: true });
+    if (!resultado.exito || !resultado.archivo) throw new Error(resultado.error || 'No se pudo generar el Programa Anual');
+    return { archivo: resultado.archivo, nombreArchivo: resultado.nombreArchivo };
+  };
+
+  /** El mismo Excel del Programa Anual pasado a PDF por OnlyOffice. */
+  const generarPdfPrograma = async (): Promise<DocumentoGenerado & { id: string }> => {
+    const excel = await generarExcelPrograma();
+    const idExcel = await subirVistaPrevia(excel.archivo, excel.nombreArchivo);
+    const idPdf = await convertirVistaPreviaAPdf(idExcel);
+    const archivo = await descargarVistaPrevia(idPdf);
+    return { archivo, nombreArchivo: excel.nombreArchivo.replace(/\.xlsx?$/i, '') + '.pdf', id: idPdf };
   };
 
   const verPlan = () =>
@@ -255,12 +275,18 @@ export function VistaAprobadorPlanAnual({
 
   const verPrograma = () =>
     abrirVistaPrevia('programa', `Programa Anual de Auditoría ${plan.vigencia}`, async () => {
-      const resultado = await exportarProgramaAnualVersionado(plan.vigencia, { soloArchivo: true });
-      if (!resultado.exito || !resultado.archivo) throw new Error(resultado.error || 'No se pudo generar el Programa Anual');
-      return { archivo: resultado.archivo, nombreArchivo: resultado.nombreArchivo };
+      try {
+        return await generarPdfPrograma();
+      } catch (e) {
+        // Sin conversión a PDF se ve el Excel, que es el mismo documento
+        toast.warning('No se pudo pasar el Programa Anual a PDF; se muestra en Excel', {
+          description: e instanceof Error ? e.message : undefined,
+        });
+        return generarExcelPrograma();
+      }
     });
 
-  const descargarPrograma = async () => {
+  const descargarProgramaExcel = async () => {
     setDescargandoPrograma(true);
     try {
       const resultado = await exportarProgramaAnualVersionado(plan.vigencia);
@@ -268,6 +294,21 @@ export function VistaAprobadorPlanAnual({
       else toast.error('No se pudo descargar el Programa Anual', { description: resultado.error });
     } catch (e) {
       toast.error('No se pudo descargar el Programa Anual', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setDescargandoPrograma(false);
+    }
+  };
+
+  const descargarProgramaPdf = async () => {
+    setDescargandoPrograma(true);
+    try {
+      const pdf = await generarPdfPrograma();
+      descargarBlob(pdf.archivo, pdf.nombreArchivo);
+      toast.success('Programa Anual descargado en PDF');
+    } catch (e) {
+      toast.error('No se pudo descargar el Programa Anual en PDF', {
+        description: e instanceof Error ? `${e.message}. Puede descargarlo en Excel.` : 'Puede descargarlo en Excel.',
+      });
     } finally {
       setDescargandoPrograma(false);
     }
@@ -283,7 +324,7 @@ export function VistaAprobadorPlanAnual({
       {/* Resumen del plan */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-5 flex flex-col xl:flex-row xl:items-center gap-5">
         <div className="flex items-center gap-4 flex-shrink-0">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: MORADO }}>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: AZUL }}>
             <FileText className="w-6 h-6 text-white" />
           </div>
           <div className="min-w-0">
@@ -291,7 +332,7 @@ export function VistaAprobadorPlanAnual({
               <h2 className="text-xl font-black text-gray-900 whitespace-nowrap">Plan Anual de Auditoría {plan.vigencia}</h2>
               <span
                 className="px-2.5 py-0.5 rounded-md border text-xs font-bold whitespace-nowrap"
-                style={{ color: MORADO, borderColor: MORADO_BORDE, backgroundColor: '#faf8ff' }}
+                style={{ color: AZUL_TEXTO, borderColor: AZUL_BORDE, backgroundColor: AZUL_SUAVE }}
               >
                 {ETIQUETA_ESTADO[estado] || plan.estado}
               </span>
@@ -324,14 +365,13 @@ export function VistaAprobadorPlanAnual({
       </div>
 
       <TarjetaDocumento
-        icono={<FileText className="w-7 h-7" style={{ color: MORADO }} />}
+        icono={<FileText className="w-7 h-7" style={{ color: AZUL }} />}
         titulo="Plan Anual de Auditoría"
         descripcion="Revise el Plan Anual de Auditoría con la información de objetivos, alcance, procesos y actividades."
         acciones={
           <AccionesDocumento
             etiqueta="el Plan Anual"
             onVer={verPlan}
-            onDescargar={descargarPdfPlan}
             ocupado={preparando === 'plan' || !!exportandoPlan}
             formatos={[
               { etiqueta: 'PDF', accion: descargarPdfPlan },
@@ -342,7 +382,7 @@ export function VistaAprobadorPlanAnual({
       />
 
       <TarjetaDocumento
-        icono={<CalendarDays className="w-7 h-7" style={{ color: MORADO }} />}
+        icono={<CalendarDays className="w-7 h-7" style={{ color: AZUL }} />}
         titulo="Programa Anual de Auditoría"
         descripcion={
           <>
@@ -358,9 +398,11 @@ export function VistaAprobadorPlanAnual({
           <AccionesDocumento
             etiqueta="el Programa Anual"
             onVer={verPrograma}
-            onDescargar={descargarPrograma}
             ocupado={preparando === 'programa' || descargandoPrograma}
-            formatos={[{ etiqueta: 'Excel', accion: descargarPrograma }]}
+            formatos={[
+              { etiqueta: 'PDF', accion: descargarProgramaPdf },
+              { etiqueta: 'Excel', accion: descargarProgramaExcel },
+            ]}
           />
         }
       />
@@ -403,14 +445,14 @@ export function VistaAprobadorPlanAnual({
                     <span className="text-gray-500"> · V{p.version} · {ETIQUETA_ESTADO[est] || p.estado}</span>
                   </div>
                   {actual ? (
-                    <span className="text-xs font-bold" style={{ color: MORADO }}>Viendo</span>
+                    <span className="text-xs font-bold" style={{ color: AZUL }}>Viendo</span>
                   ) : (
                     (contextoVigencia || onCambiarPlan) && (
                       <button
                         type="button"
                         onClick={() => verOtroPlan(p.id)}
                         className="text-xs font-bold hover:underline"
-                        style={{ color: MORADO }}
+                        style={{ color: AZUL }}
                       >
                         Ver este plan
                       </button>
@@ -423,37 +465,29 @@ export function VistaAprobadorPlanAnual({
         )}
       </div>
 
-      {/* Vista previa */}
-      {vistaPrevia && (
+      {/* Vista previa. Va en un portal al body: dentro del contenido del shell (que se anima con
+          transform y tiene su propio scroll) el modal quedaba recortado y a veces sin cabecera */}
+      {vistaPrevia && createPortal(
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={() => setVistaPrevia(null)}>
           <div
             className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
+            {/* shrink-0: el visor del navegador no puede comerse la cabecera (título y X) */}
+            <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
               <div className="min-w-0">
                 <h3 className="font-bold text-gray-900 truncate">{vistaPrevia.titulo}</h3>
                 <p className="text-xs text-gray-500">Vista previa · {vistaPrevia.nombreArchivo}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => descargarBlob(vistaPrevia.archivo, vistaPrevia.nombreArchivo)}
-                  className="px-4 py-2 rounded-lg text-white text-sm font-bold flex items-center gap-2"
-                  style={{ backgroundColor: MORADO }}
-                >
-                  <Download className="w-4 h-4" />
-                  Descargar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVistaPrevia(null)}
-                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
-                  aria-label="Cerrar vista previa"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              {/* Sin botón de descarga propio: el visor de OnlyOffice ya trae el suyo */}
+              <button
+                type="button"
+                onClick={() => setVistaPrevia(null)}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label="Cerrar vista previa"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="flex-1 min-h-0">
               {!vistaPrevia.falloVisor && vistaPrevia.id ? (
@@ -472,7 +506,7 @@ export function VistaAprobadorPlanAnual({
                     type="button"
                     onClick={() => descargarBlob(vistaPrevia.archivo, vistaPrevia.nombreArchivo)}
                     className="px-4 py-2 rounded-lg text-white text-sm font-bold flex items-center gap-2"
-                    style={{ backgroundColor: MORADO }}
+                    style={{ backgroundColor: AZUL }}
                   >
                     <Download className="w-4 h-4" />
                     Descargar el documento
@@ -481,7 +515,8 @@ export function VistaAprobadorPlanAnual({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </motion.div>
   );

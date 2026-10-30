@@ -34,7 +34,7 @@ describe('BancoDocentesController - acceso a datos sensibles', () => {
       const controller = new BancoDocentesController(service as any, {} as any);
       const response = await controller.getById(profile.docente_id, undefined, {
         user: { userId: 'lector-1', roles: [role] },
-        rundPermissions: new Set(Object.values(RUND_PERMISSIONS)),
+        rundPermissions: new Set(Object.values(RUND_PERMISSIONS).filter(permission => permission !== RUND_PERMISSIONS.SENSITIVE_VIEW)),
       });
       expect(response.data.documento_identidad).toBe('******4050');
       expect(response.data.puntaje_salarial).toBeNull();

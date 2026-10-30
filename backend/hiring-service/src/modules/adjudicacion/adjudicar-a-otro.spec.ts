@@ -39,7 +39,15 @@ const dto = (parcial: any = {}) => ({
  * Un servicio con las consultas resueltas: informe definitivo publicado, sin
  * acto vigente y con las dos ofertas del proceso.
  */
-function conEscenario(opciones: { definitivo?: any; actoVigente?: any } = {}) {
+function conEscenario(
+  opciones: {
+    definitivo?: any;
+    actoVigente?: any;
+    sinConvocatoria?: boolean;
+    cdp?: any;
+    sinCdp?: boolean;
+  } = {},
+) {
   const s = servicio() as any;
   s.exigirProceso = async () => ({ id: 'p-1', modalidad: 'LICITACION_PUBLICA' });
   s.exigirQueAplique = async () => undefined;
@@ -48,6 +56,11 @@ function conEscenario(opciones: { definitivo?: any; actoVigente?: any } = {}) {
   s.definitivoPublicado = async () =>
     opciones.definitivo === undefined ? DEFINITIVO : opciones.definitivo;
   s.actoVigente = async () => opciones.actoVigente ?? null;
+  s.sinConvocatoria = async () => opciones.sinConvocatoria ?? false;
+  // Solo se pregunta por la 4.2: si la modalidad lleva CDP.
+  s.excluida = async () => (opciones.sinCdp ? { motivo: 'no compromete gasto' } : null);
+  s.cdpDelProceso = async () =>
+    opciones.cdp === undefined ? { numero: 'CDP-1', valor: 100_000_000 } : opciones.cdp;
   s.guardarDocumento = async () => ({ id: 'doc-1' });
   s.marcarActividad = async () => undefined;
   s.traza = async () => undefined;
@@ -130,5 +143,77 @@ describe('adjudicar', () => {
     await expect(
       s.adjudicar('p-1', dto({ oferenteId: 'of-ajena' }), archivo, 'hash', acceso),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+/**
+ * La 7.3 en contratación directa: la matriz la marca, pero excluye la 6.1 y la
+ * 7.2. Sin ofertas ni informe definitivo, el acto dice él mismo a quién se
+ * adjudica. Antes exigía las dos cosas y el proceso no llegaba nunca al contrato.
+ */
+describe('adjudicar sin convocatoria', () => {
+  const directa = (parcial: any = {}) => ({
+    numeroActo: 'RES-2026-200',
+    fechaActo: '2026-10-21',
+    valorAdjudicado: 37_248_000,
+    contratistaNombre: 'Ana Pérez',
+    contratistaDocumento: '1020304050',
+    contratistaTipo: 'NATURAL',
+    ...parcial,
+  });
+
+  it('adjudica sin informe definitivo y guarda al contratista del acto', async () => {
+    const { servicio: s, guardados } = conEscenario({ sinConvocatoria: true, definitivo: null });
+
+    await s.adjudicar('p-1', directa(), archivo, 'hash', acceso);
+
+    expect(guardados[0]).toMatchObject({
+      oferenteId: null,
+      informeDefinitivoId: null,
+      contratistaNombre: 'Ana Pérez',
+      contratistaDocumento: '1020304050',
+      contratistaTipo: 'NATURAL',
+    });
+  });
+
+  it('exige saber a quién se adjudica', async () => {
+    const { servicio: s } = conEscenario({ sinConvocatoria: true, definitivo: null });
+
+    await expect(
+      s.adjudicar('p-1', directa({ contratistaDocumento: '  ' }), archivo, 'hash', acceso),
+    ).rejects.toThrow(/nombre, documento y tipo/);
+  });
+});
+
+/**
+ * El acto no puede adjudicar por más de lo que el CDP certificó: se adjudicaron
+ * $50 M sobre un CDP de $37 M.
+ */
+describe('adjudicar contra el CDP', () => {
+  it('rechaza un valor por encima del CDP', async () => {
+    const { servicio: s } = conEscenario({ cdp: { numero: 'CDP-1', valor: 37_248_000 } });
+
+    await expect(
+      s.adjudicar('p-1', dto({ valorAdjudicado: 50_000_000 }), archivo, 'hash', acceso),
+    ).rejects.toThrow(/supera lo que certificó el CDP/);
+  });
+
+  it('sin CDP expedido no se adjudica', async () => {
+    const { servicio: s } = conEscenario({ cdp: null });
+
+    await expect(s.adjudicar('p-1', dto(), archivo, 'hash', acceso)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+});
+
+/** Enajenación: la entidad vende, no gasta; no hay CDP con qué comparar el acto. */
+describe('adjudicar donde la modalidad no lleva CDP', () => {
+  it('adjudica sin CDP', async () => {
+    const { servicio: s, guardados } = conEscenario({ sinCdp: true, cdp: null });
+
+    await s.adjudicar('p-1', dto(), archivo, 'hash', acceso);
+
+    expect(guardados[0]).toMatchObject({ oferenteId: 'of-2' });
   });
 });

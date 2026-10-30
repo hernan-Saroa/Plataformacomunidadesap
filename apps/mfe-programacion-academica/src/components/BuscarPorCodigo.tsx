@@ -43,7 +43,7 @@ function Campo({ etiqueta, valor, ancho = '' }: { etiqueta: string; valor: React
   );
 }
 
-export function BuscarPorCodigo() {
+export function BuscarPorCodigo({ idPeriodo }: { idPeriodo?: string } = {}) {
   const [codigo, setCodigo] = useState('');
   const [datos, setDatos] = useState<AsignaturaSnies | null>(null);
   const [buscando, setBuscando] = useState(false);
@@ -56,7 +56,8 @@ export function BuscarPorCodigo() {
     setError('');
     setDatos(null);
     try {
-      setDatos(await getAsignaturaPorCodigo(limpio));
+      // Con el periodo seleccionado: si el programa no se dicta en él, el backend lo dice.
+      setDatos(await getAsignaturaPorCodigo(limpio, idPeriodo || undefined));
     } catch (e: any) {
       // El backend dice qué código no existe o de qué nivel es: se muestra tal cual.
       setError(e?.message || 'No se pudo consultar la asignatura.');

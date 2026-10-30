@@ -385,6 +385,7 @@ export enum Permissions {
   CONTROL_INTERNO_PLAN_ANUAL_EXPORT = 'control-interno.plan-anual.export',
   CONTROL_INTERNO_PLAN_ANUAL_ASSIGN = 'control-interno.plan-anual.assign',
   CONTROL_INTERNO_PLAN_ANUAL_FOLLOW_UP = 'control-interno.plan-anual.follow-up',
+  CONTROL_INTERNO_PLAN_ANUAL_FOLLOW_UP_ALL = 'control-interno.plan-anual.follow-up.all',
 
   // Planes de Mejoramiento
   CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE = 'control-interno.planes-mejoramiento.manage',
@@ -481,4 +482,11 @@ export enum Permissions {
   VIATICOS_GENERAL_ES_TESORERIA = 'travel_expenses.general.es_tesoreria',
   VIATICOS_GENERAL_ES_SST = 'travel_expenses.general.es_sst',
   VIATICOS_GENERAL_ES_TIQUETES = 'travel_expenses.general.es_responsable_tiquetes',
+
+  // Dashboard Ejecutivo / Centro de Comando (Migración 006)
+  DASHBOARD_PANEL_SEGUIMIENTO_VIEW = 'dashboard.panel_seguimiento.view',
+  DASHBOARD_PANEL_SEGUIMIENTO_EDIT = 'dashboard.panel_seguimiento.edit',
+  DASHBOARD_DESARROLLO_OTIC_VIEW = 'dashboard.desarrollo_otic.view',
+  DASHBOARD_DESARROLLO_OTIC_EDIT = 'dashboard.desarrollo_otic.edit',
 }
+

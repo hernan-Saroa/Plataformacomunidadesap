@@ -37,8 +37,19 @@ function contexto(handler: keyof ControladorDePrueba, request: any) {
   } as any;
 }
 
-function guardCon(alcances: Alcance[], permisosDeRoles: string[] = []) {
-  const alcanceService = { deRoles: jest.fn().mockResolvedValue(alcances) };
+function guardCon(
+  alcances: Alcance[],
+  permisosDeRoles: string[] = [],
+  quienHace: { motivo: string | null; responsable: { nombre: string } | null; puesto: string | null } = {
+    motivo: null,
+    responsable: null,
+    puesto: null,
+  },
+) {
+  const alcanceService = {
+    deRoles: jest.fn().mockResolvedValue(alcances),
+    quienHace: jest.fn().mockResolvedValue(quienHace),
+  };
   const permisosService = {
     alguno: jest.fn(async (_roles: string[], pedidos: string[]) =>
       pedidos.some((p) => permisosDeRoles.includes(p)),
@@ -144,5 +155,50 @@ describe('PuedeGuard', () => {
     await expect(guard.canActivate(contexto('fijo', { params: {} }))).rejects.toThrow(
       'Usuario no autenticado',
     );
+  });
+
+  /*
+   * La regla «quién la hace» (109): con el permiso de editar una actividad de
+   * un proceso, solo la edita quien la regla dice. Nunca da el permiso.
+   */
+  describe('quién hace la actividad', () => {
+    const PROCESO = '11111111-1111-4111-8111-111111111111';
+    const enProceso = { ...usuario, params: { id: PROCESO, numeral: '4.2' } };
+
+    it('si la hace quien ocupa el puesto, a otro con el permiso lo niega diciendo quién', async () => {
+      const { guard } = guardCon(financiera, [], {
+        motivo: 'NO_ES_TUYO',
+        responsable: { nombre: 'Andrés Rojas' },
+        puesto: 'Abogado',
+      });
+
+      await expect(guard.canActivate(contexto('ruta', enProceso))).rejects.toThrow(
+        'La 4.2 la hace Andrés Rojas (Abogado)',
+      );
+    });
+
+    it('con el puesto vacío dice que se asigna en la 3.3', async () => {
+      const { guard } = guardCon(financiera, [], { motivo: 'SIN_ASIGNAR', responsable: null, puesto: 'Abogado' });
+
+      await expect(guard.canActivate(contexto('ruta', enProceso))).rejects.toThrow(/se asigna en la 3\.3/);
+    });
+
+    it('a quien la hace lo deja pasar', async () => {
+      const { guard, alcanceService } = guardCon(financiera);
+
+      await expect(guard.canActivate(contexto('ruta', enProceso))).resolves.toBe(true);
+      expect(alcanceService.quienHace).toHaveBeenCalledWith(expect.anything(), PROCESO, '4.2', 'editar');
+    });
+
+    it('fuera de un proceso no aplica: no hay a quién preguntarle', async () => {
+      const { guard, alcanceService } = guardCon(financiera, [], {
+        motivo: 'NO_ES_TUYO',
+        responsable: null,
+        puesto: null,
+      });
+
+      await expect(guard.canActivate(contexto('fijo', usuario))).resolves.toBe(true);
+      expect(alcanceService.quienHace).not.toHaveBeenCalled();
+    });
   });
 });

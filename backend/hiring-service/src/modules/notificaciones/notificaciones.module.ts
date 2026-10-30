@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AvisosController, CorreoAvisosController, DependenciasController } from './avisos.controller';
+import { CadenaAprobacionModule } from '../cadena-aprobacion/cadena-aprobacion.module';
 import { AvisosService } from './avisos.service';
 import { NotificacionesSubscriber } from './notificaciones.subscriber';
 import { NotificadorService } from './notificador.service';
@@ -13,6 +14,8 @@ import { NotificadorService } from './notificador.service';
  * más.
  */
 @Module({
+  // Quién decide el escalón que espera, para el aviso a quien aprueba (101).
+  imports: [CadenaAprobacionModule],
   controllers: [AvisosController, CorreoAvisosController, DependenciasController],
   providers: [AvisosService, NotificadorService, NotificacionesSubscriber],
   exports: [NotificadorService],

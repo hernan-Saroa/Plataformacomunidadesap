@@ -40,3 +40,30 @@ describe('authService.isSuperAdmin', () => {
     expect(authService.isSuperAdmin()).toBe(false);
   });
 });
+
+describe('authService.isCoordinadorComisiones & Administrador de Viáticos', () => {
+  it.each([
+    'COORDINADOR_COMISIONES_VIATICOS',
+    'COORDINADOR_GRUPO_COMISIONES',
+    'COORDINADOR_COMISIONES',
+    'COORDINADORA_GRUPO_COMISIONES',
+  ])('%s es Administrador del Módulo de Viáticos', (rol) => {
+    conRoles([rol]);
+    expect(authService.isCoordinadorComisiones()).toBe(true);
+    expect(authService.isAdministradorViaticos()).toBe(true);
+    expect(authService.canCancelarComision()).toBe(true);
+    expect(authService.canManageConfig()).toBe(true);
+    expect(authService.hasPermission('travel_expenses:manage_config')).toBe(true);
+    expect(authService.hasPermission('travel_expenses:cancel_request')).toBe(true);
+    expect(authService.hasPermission('travel_expenses:read_requests')).toBe(true);
+  });
+
+  it('un rol regular no es coordinador ni puede configurar ni cancelar sin permisos', () => {
+    conRoles(['COMISIONADO']);
+    expect(authService.isCoordinadorComisiones()).toBe(false);
+    expect(authService.isAdministradorViaticos()).toBe(false);
+    expect(authService.canCancelarComision()).toBe(false);
+    expect(authService.canManageConfig()).toBe(false);
+  });
+});
+

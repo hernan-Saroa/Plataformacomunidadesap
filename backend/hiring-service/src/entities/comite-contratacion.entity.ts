@@ -27,6 +27,9 @@ export type DecisionComite =
   | 'OBSERVADO'
   | 'RECHAZADO';
 
+/** 1 = la 3.7, primera sesión; 2 = la 5.6.1, con el pliego definitivo (113). */
+export type SumisionComite = 1 | 2;
+
 /**
  * Condición de cuantía para pasar por el comité de contratación.
  *
@@ -89,11 +92,18 @@ export class SesionComiteContratacion {
   observaciones: string | null;
 
   /**
+   * A cuál de las dos sumisiones pertenece (migración 113): 1 es la 3.7; 2 es
+   * la 5.6.1, con el pliego definitivo. Sin esto la segunda sesión se leería
+   * como una sesión más de la 3.7 y reabriría una actividad ya cerrada.
+   */
+  @Column({ type: 'smallint', default: 1 })
+  sumision: SumisionComite;
+
+  /**
    * El acta de la sesión.
    *
-   * Nullable en la base por las sesiones que pudieran migrarse de registros
-   * viejos; el servicio la exige al registrar, porque es lo único que prueba
-   * que un cuerpo colegiado sesionó.
+   * Desde la 113 puede llegar después: el acta tarda hasta diez días y no puede
+   * frenar el proceso. Mientras falte, el abogado del proceso tiene una alerta.
    */
   @Column({ name: 'acta_documento_id', type: 'uuid', nullable: true })
   actaDocumentoId: string | null;

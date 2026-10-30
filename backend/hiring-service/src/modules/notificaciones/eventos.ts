@@ -7,7 +7,7 @@
  */
 
 import { quienLaHace } from './quien-la-hace';
-import { SE_HABILITA_AL_ASIGNAR_ABOGADO, SIN_PANEL } from './secuencia';
+import { SIN_PANEL } from './secuencia';
 
 /** Lo que puede pasar en un proceso y merece un aviso. */
 export type EventoAviso =
@@ -18,19 +18,26 @@ export type EventoAviso =
   | 'APROBADA'
   | 'RECIBIDO_EN_CONTRATACION'
   | 'PROCESO_RADICADO'
-  | 'DOCUMENTO_ADJUNTO';
+  | 'DOCUMENTO_ADJUNTO'
+  | 'REVISION_PAA'
+  | 'PROCESO_CANCELADO';
 
 /**
  * El papel que alguien cumple en un proceso concreto.
  *
  * Es lo que distingue «avisar al gestor» —todos los que tienen el rol en la
- * entidad— de «avisar al abogado de este proceso», que es casi siempre lo que
- * se quiere decir.
+ * entidad— de «avisar a quien ocupa el puesto Abogado en este proceso», que
+ * es casi siempre lo que se quiere decir.
+ *
+ * `PUESTO:<id>` es quien ocupa ese puesto del proceso (109): los puestos los
+ * crea la Dirección, así que no hay una lista fija de ellos.
  */
 export type PapelAviso =
   | 'QUIEN_ENVIO'
   | 'QUIEN_APRUEBA'
-  | 'ABOGADO'
+  | 'QUIEN_LA_HACE'
+  | `PUESTO:${string}`
+  | 'DECIDE_REVISION_PAA'
   | 'CONTRATACION'
   | 'RADICADOR'
   | 'BANDEJA_CONTRATACION'
@@ -105,7 +112,7 @@ export interface DefinicionEvento {
 function aQuienLeToca(numeral: string): Sugerido {
   const destino = quienLaHace(numeral);
   if (!destino) return { activo: false, papeles: [] };
-  const sinPantalla = SIN_PANEL.has(numeral) && numeral !== SE_HABILITA_AL_ASIGNAR_ABOGADO;
+  const sinPantalla = SIN_PANEL.has(numeral);
   return { activo: !sinPantalla, ...destino };
 }
 
@@ -122,9 +129,7 @@ export const EVENTOS: DefinicionEvento[] = [
     // destraba, y apagado hasta que alguien configurara las 63 no avisaba nada.
     sugeridoEn: aQuienLeToca,
     ayudaEn: (numeral) =>
-      numeral === SE_HABILITA_AL_ASIGNAR_ABOGADO
-        ? 'Sale cuando, en la 3.3, la Dirección se hace cargo del proceso y elige al abogado: ahí le toca revisarlo.'
-        : SIN_PANEL.has(numeral)
+      SIN_PANEL.has(numeral)
           ? 'Sale cuando el proceso llega a esta actividad. Se hace fuera de la plataforma, así que no detiene a las siguientes.'
           : 'Sale cuando se termina lo que venía antes y esta actividad ya se puede trabajar, para que quien la hace sepa que es su turno.',
   },
@@ -177,22 +182,39 @@ export const EVENTOS: DefinicionEvento[] = [
     sugerido: { activo: true, papeles: ['REPARTE_PROCESOS'] },
   },
   {
+    codigo: 'REVISION_PAA',
+    nombre: 'Un cambio del PAA abre una revisión',
+    ayuda:
+      'Sale cuando una versión nueva del Plan Anual de Adquisiciones cambia o retira la línea del proceso, o cuando empieza un año nuevo, para que quien decide las revisiones del PAA diga si el proceso sigue.',
+    // Se configura en la 3.1 porque ahí nace el proceso desde su línea del PAA.
+    numeral: '3.1',
+    sugerido: { activo: true, papeles: ['DECIDE_REVISION_PAA'] },
+  },
+  {
+    codigo: 'PROCESO_CANCELADO',
+    nombre: 'Se cancela el proceso por un cambio del PAA',
+    ayuda: 'Para que quien lo radicó y quien lo lleva en Contratación sepan que el proceso terminó y por qué.',
+    numeral: '3.1',
+    sugerido: { activo: true, papeles: ['RADICADOR', 'CONTRATACION'] },
+  },
+  {
     codigo: 'DOCUMENTO_ADJUNTO',
     nombre: 'Se adjunta un documento',
     ayuda: 'Para enterarse cuando llega un soporte nuevo al expediente.',
     numeral: null,
-    sugerido: { activo: false, papeles: ['ABOGADO'] },
+    sugerido: { activo: false, papeles: ['CONTRATACION'] },
   },
 ];
 
 export const PAPELES: { codigo: PapelAviso; nombre: string }[] = [
   { codigo: 'QUIEN_ENVIO', nombre: 'Quien envió la actividad' },
   { codigo: 'QUIEN_APRUEBA', nombre: 'Quien la aprueba' },
-  { codigo: 'ABOGADO', nombre: 'El abogado del proceso' },
+  { codigo: 'QUIEN_LA_HACE', nombre: 'Quien hace la actividad' },
+  { codigo: 'DECIDE_REVISION_PAA', nombre: 'Quien decide las revisiones del PAA' },
   { codigo: 'CONTRATACION', nombre: 'Quien lo recibió en Contratación' },
   { codigo: 'RADICADOR', nombre: 'Quien radicó el proceso' },
   { codigo: 'BANDEJA_CONTRATACION', nombre: 'Quien puede recibirlo en Contratación' },
-  { codigo: 'EQUIPO_FINANCIERO', nombre: 'El equipo financiero' },
+  { codigo: 'EQUIPO_FINANCIERO', nombre: 'Quien registra el CDP, el RP o el cierre financiero' },
   { codigo: 'COMITE_EVALUADOR', nombre: 'El comité evaluador' },
   { codigo: 'SUPERVISOR', nombre: 'El supervisor del contrato' },
   { codigo: 'REPARTE_PROCESOS', nombre: 'Quien reparte los procesos en Contratación' },
@@ -431,14 +453,24 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
       return ocurrido('PROCESO_RADICADO', '3.1');
     case 'participacion_proceso:RADICAR':
       return ocurrido('RECIBIDO_EN_CONTRATACION', '3.3');
-    case 'participacion_proceso:DESIGNAR':
-      // Asignar el abogado es el «le toca» de la 3.4: desde ahí puede revisar.
-      return detalle.papel === 'ABOGADO' ? ocurrido('HABILITADA', SE_HABILITA_AL_ASIGNAR_ABOGADO) : null;
+    // Puesto en un puesto cuyo escalón ya espera (109): le toca decidir.
+    case 'asignacion_puesto:DESIGNAR':
+      return typeof detalle.pendiente === 'string' ? ocurrido('ENVIADA_A_APROBACION', detalle.pendiente) : null;
 
     // La aprobación genérica guarda el numeral; el estudio previo es la 3.1.
     case 'aprobacion_actividad:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', numeral);
+    /*
+     * Con escalones (migración 101), solo la última aprobación aprueba la
+     * actividad. Una intermedia le pasa la actividad al siguiente escalón:
+     * para él es «tienes algo esperando tu visto bueno», y a quien la envió
+     * no se le dice que quedó aprobada. Las trazas anteriores a la 101 no
+     * traen `definitiva` y fueron todas definitivas.
+     */
     case 'aprobacion_actividad:APROBAR':
+      if (detalle.definitiva === false) {
+        return detalle.activado ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
+      }
       return ocurrido('APROBADA', numeral);
     case 'aprobacion_actividad:DEVOLVER':
       return ocurrido('DEVUELTA', numeral);
@@ -459,14 +491,30 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     case 'estudio_previo:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', '3.1');
     case 'estudio_previo:APROBAR':
+      // Por cadena (101), igual que las demás: la intermedia pasa al siguiente.
+      if (detalle.definitiva === false) {
+        return detalle.activado ? ocurrido('ENVIADA_A_APROBACION', '3.1') : null;
+      }
       return ocurrido('APROBADA', '3.1');
     case 'estudio_previo:DEVOLVER':
       return ocurrido('DEVUELTA', '3.1');
 
+    // Una solicitud de modificación (9.5) espera a quien la aprueba: la
+    // registra la supervisión y le llega a Contratación (revisión de QA de
+    // EFDS-1176). Los destinatarios se configuran como cualquier aviso.
+    case 'modificacion_contrato:SOLICITAR':
+      return ocurrido('ENVIADA_A_APROBACION', '9.5');
     case 'registros_actividad:GUARDAR':
       return t.detalle?.estado === 'EN_REVISION' ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
     case 'documento_actividad:ADJUNTAR':
       return ocurrido('DOCUMENTO_ADJUNTO', numeral);
+
+    // Plan Anual de Adquisiciones (migración 097). Devolver por un cambio del
+    // PAA ya avisa como cualquier devolución del estudio previo.
+    case 'paa_revisiones:ABRIR_REVISION_PAA':
+      return ocurrido('REVISION_PAA', '3.1');
+    case 'paa_revisiones:CANCELAR':
+      return ocurrido('PROCESO_CANCELADO', '3.1');
 
     default:
       return null;
@@ -504,13 +552,6 @@ export function mensajeDeAviso(
 
   switch (ocurrido.evento) {
     case 'HABILITADA':
-      if (ocurrido.numeral === SE_HABILITA_AL_ASIGNAR_ABOGADO) {
-        return {
-          titulo: 'Te toca revisar un proceso',
-          mensaje: `Te asignaron el proceso${elProceso}${quien}: revisa su estudio previo.`,
-          prioridad: 'Media',
-        };
-      }
       return {
         titulo: 'Te toca una actividad',
         mensaje: `${que}${proceso} ya se puede trabajar: se terminó lo que venía antes.`,
@@ -562,6 +603,22 @@ export function mensajeDeAviso(
         titulo: 'Hay un proceso nuevo',
         mensaje: `Se creó el proceso${elProceso}${quien}.`,
         prioridad: 'Media',
+      };
+    case 'REVISION_PAA':
+      return {
+        titulo: 'Un cambio del PAA afecta un proceso',
+        mensaje: `El proceso${elProceso} tiene una revisión por cambio del Plan Anual de Adquisiciones${
+          ocurrido.observaciones ? `: ${ocurrido.observaciones}` : '.'
+        }`,
+        prioridad: 'Alta',
+      };
+    case 'PROCESO_CANCELADO':
+      return {
+        titulo: 'Se canceló un proceso',
+        mensaje: `El proceso${elProceso} se canceló${quien} por un cambio del Plan Anual de Adquisiciones${
+          ocurrido.observaciones ? `: «${ocurrido.observaciones}»` : '.'
+        }`,
+        prioridad: 'Alta',
       };
     case 'DOCUMENTO_ADJUNTO':
       return {

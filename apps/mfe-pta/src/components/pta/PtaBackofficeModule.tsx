@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { isOlderPtaWorkflow } from './shared/ptaWorkflowSync';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -75,11 +76,13 @@ import {
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
   hasComponentPermission,
+  hasDocumentTrackingComponentPermission,
   labelDeComponente,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import { groupPtaBulkApprovalResults } from './shared/ptaBulkApprovalResult';
 import { getPtaAssignmentTerritorialLabel } from './shared/ptaTerritorialDisplay';
+import { canAccessPTAView, canViewPTAReports, defaultPTAView, PTA_REPORT_VIEWS } from './shared/ptaNavigation';
 import '../../styles/pta-world-class.css';
 
 // ══ Lazy-loaded components (code splitting — loaded only when their tab/view is active) ══
@@ -1003,15 +1006,13 @@ function SeguimientoDocumentosAdmin({
   rolLabel: string;
   periodo: string;
 }) {
-  // Alcance POR COMPONENTE basado exclusivamente en los permisos granulares
-  // pta.approve.<componente> (+ pta.approve.all y superuser). La entrada a esta
-  // vista ya fue autorizada aparte con el permiso funcional de Seguimiento. No se usa
-  // permisos.componentesAprobables porque muchos roles mapean a 'admin' por defecto y
-  // devolverían todos los componentes, ignorando los permisos reales del rol.
+  // El permiso funcional abre la vista; los permisos vigentes de revisión y
+  // aprobación delimitan los componentes, sin depender del nombre del rol.
   const { puede } = usePermisosPTAGranulares();
-  const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
-  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puede, key);
-  const tieneAlcanceSeguimiento = apruebaTodo || PTA_COMPONENT_KEYS.some(isComponentAuthorized);
+  const { session: authSession, refreshPermissions } = useAuth();
+  const isComponentAuthorized = (key: PTAComponentKey) => hasDocumentTrackingComponentPermission(puede, key);
+  const trackingScopeKey = PTA_COMPONENT_KEYS.filter(isComponentAuthorized).join('|');
+  const tieneAlcanceSeguimiento = PTA_COMPONENT_KEYS.some(isComponentAuthorized);
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {
@@ -1033,6 +1034,8 @@ function SeguimientoDocumentosAdmin({
   const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
   const loadRequestRef = useRef(0);
 
+  useEffect(() => { void refreshPermissions?.(); }, [refreshPermissions]);
+
   const load = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
     if (!periodo) {
@@ -1041,6 +1044,7 @@ function SeguimientoDocumentosAdmin({
       return;
     }
     setLoading(true);
+    setPtasData([]);
     const res = await getAllPtasConEvidencias(periodo);
     if (requestId !== loadRequestRef.current) return;
     if (res.success) {
@@ -1052,7 +1056,7 @@ function SeguimientoDocumentosAdmin({
       toast.error(res.message || 'No fue posible consultar el Seguimiento documental.');
     }
     setLoading(false);
-  }, [periodo]);
+  }, [periodo, authSession, trackingScopeKey]);
 
   useEffect(() => {
     void load();
@@ -1168,12 +1172,12 @@ function SeguimientoDocumentosAdmin({
         <div style={{ textAlign: 'center', padding: 60, background: '#F9FAFB', borderRadius: 14 }}>
           <FolderOpen style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
           <p style={{ fontSize: '0.9rem', color: '#9CA3AF', margin: 0 }}>
-            {tieneAlcanceSeguimiento ? 'Sin documentos para revisar' : 'Sin componentes de aprobación asignados'}
+            {tieneAlcanceSeguimiento ? 'Sin documentos para revisar' : 'Sin componentes de seguimiento asignados'}
           </p>
           <p style={{ fontSize: '0.75rem', color: '#9CA3AF', margin: '4px 0 0' }}>
             {tieneAlcanceSeguimiento
               ? 'Los docentes aún no han subido soportes a sus PTAs aprobados'
-              : 'El acceso a Seguimiento está activo, pero el rol necesita al menos un permiso de aprobación por componente.'}
+              : 'El acceso a Seguimiento está activo, pero los roles necesitan al menos un permiso de revisión o aprobación por componente.'}
           </p>
         </div>
       ) : (
@@ -1499,6 +1503,29 @@ export function PtaBackofficeModule({ initialView }: { initialView?: string } = 
 type ModuleView = 'gestion' | 'seguimiento_docs' | 'configuracion' | 'banco_docentes' | 'programacion' | 'concertacion' | 'tablero' | 'reporte' | 'seguimiento' | 'directivo' | 'territorial' | 'comparativo' | 'sna' | 'validador' | 'test_e2e' | 'mapa_territorial' | 'alertas' | 'indicadores' | 'acta_concertacion' | 'simulador_carga' | 'benchmarking' | 'exportador_actas' | 'comite_evaluacion' | 'calendario_academico' | 'asignador_automatico' | 'kanban' | 'metricas_sla' | 'generador_resoluciones' | 'gestion_conflictos' | 'preferencias_notificaciones' | 'workflow_visualizer' | 'verificacion_qr' | 'programacion_institucional' | 'centro_reportes' | 'cronograma' | 'mapeo_sincronizacion' | 'salud_sistema' | 'reconciliacion_masiva' | 'tablero_unificado' | 'solicitudes_pta';
 type FiltroEtapaPersonal = '' | 'revision_pendiente' | 'revision_revisado' | 'aprobacion_pendiente' | 'aprobacion_aprobado';
 type EstadoEtapaPersonal = 'sin_alcance' | 'pendiente' | 'resuelto';
+
+/** Combina el detalle general con las tareas personales ya autorizadas. */
+function mergePtaWorkflowUpdate(pta: any, update: any) {
+  if (isOlderPtaWorkflow(update, pta)) return pta;
+  const merged = { ...pta, ...update };
+  for (const etapa of ['revision', 'aprobacion']) {
+    const personal = `componentes_${etapa}_usuario`;
+    const general = `componentes_${etapa}_estado`;
+    // Una colección personal explícita, incluso vacía, es autoritativa. El
+    // detalle general solo puede renovar filas que ya pertenecían al usuario.
+    if (Array.isArray(update[personal]) || !Array.isArray(update[general])
+      || !Array.isArray(pta[personal])) continue;
+    merged[personal] = pta[personal].map((row: any) => {
+      // El consolidado territorial no decide por un par territorial/nivel.
+      if (row.territorial_id || row.territorialId) return row;
+      const confirmed = update[general].find((item: any) => item.componente === row.componente
+        && !item.territorial_id && !item.territorialId
+        && (etapa !== 'revision' || (item.subseccion || 'general') === (row.subseccion || 'general')));
+      return confirmed ? { ...row, ...confirmed } : row;
+    });
+  }
+  return merged;
+}
 
 function normalizeEstadoKey(value?: string | null) {
   return String(value || '')
@@ -1955,7 +1982,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const preferred = preferredCode
         ? data.find((p: any) => getPeriodCode(p) === preferredCode)
         : null;
-      const activo = preferred || data.find((p: any) => p.estado === 'en_curso') || data[0];
+      const activo = preferred || data.find((p: any) => p.estado === 'en_curso' && !p.extraordinario) || data[0];
       const codigo = getPeriodCode(activo);
       setPeriodoSeleccionadoPTA(codigo);
       setFiltroPeriodo(codigo);
@@ -1992,7 +2019,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return () => window.removeEventListener('esap:academic-catalog-period-changed', handleCatalogPeriodChange);
   }, [cargarPeriodosPTA]);
 
-  const periodoActivoPTA = periodosPTA.find((p: any) => p.estado === 'en_curso') || periodosPTA[0];
+  const periodoActivoPTA = periodosPTA.find((p: any) => p.estado === 'en_curso' && !p.extraordinario) || periodosPTA[0];
   const periodoActivoCodigoPTA = getPeriodCode(periodoActivoPTA);
   const esPeriodoActivoPTA = !!periodoSeleccionadoPTA && periodoSeleccionadoPTA === periodoActivoCodigoPTA;
   const [estadisticas, setEstadisticas] = useState<any>(null);
@@ -2003,14 +2030,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [devolucionMotivo, setDevolucionMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
   const fallbackModuleView = useMemo<ModuleView>(() => {
-    if (tieneVista('gestion')) return 'gestion';
-    if (tieneVista('solicitudes_pta')) return 'solicitudes_pta';
-    if (tieneVista('seguimiento_docs')) return 'seguimiento_docs';
-    return 'gestion';
+    return defaultPTAView(tieneVista);
   }, [tieneVista]);
   const initialModuleView = useMemo<ModuleView>(() => {
     const requested = (initialView as ModuleView) || fallbackModuleView;
-    return tieneVista(requested) ? requested : fallbackModuleView;
+    return canAccessPTAView(requested, tieneVista) ? requested : fallbackModuleView;
   }, [initialView, tieneVista, fallbackModuleView]);
   const [moduleView, setModuleView] = useState<ModuleView>(initialModuleView);
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
@@ -2020,8 +2044,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // Si los permisos cambian durante la sesión, no conservar montada una bandeja
   // que el rol ya no puede abrir.
   useEffect(() => {
-    if (!tieneVista(moduleView)) setModuleView(fallbackModuleView);
+    if (!canAccessPTAView(moduleView, tieneVista)) setModuleView(fallbackModuleView);
   }, [moduleView, tieneVista, fallbackModuleView]);
+
+  useEffect(() => {
+    if (tieneVista('gestion')) return;
+    setSelectedPTA(null);
+    setConcertacionPtaId(null);
+    setShowApproval(false);
+    setShowDevolucion(false);
+    setShowFirmaDigital(false);
+    setShowReporteR01(false);
+  }, [tieneVista]);
 
   // ── Listener: abrir detalle de PTA desde una notificación (bandeja/correo) ──
   // El backend (`pta-notifications.service.ts`) emite notificaciones con
@@ -2551,7 +2585,13 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     
     // Validación robusta: asegurar que siempre sean arrays
     if (ptaRes.success && Array.isArray(ptaRes.data)) {
-      setPtas(ptaRes.data);
+      setPtas(previous => {
+        const byId = new Map(previous.map(pta => [pta.id, pta]));
+        return ptaRes.data.map(pta => {
+          const current = byId.get(pta.id);
+          return current && isOlderPtaWorkflow(pta, current) ? current : pta;
+        });
+      });
     } else {
       console.warn('[PtaBackoffice] PTA data is not an array:', ptaRes);
       // Keep the last valid list on transient failures, including pending PTAs.
@@ -2565,7 +2605,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const actualizado = ptaRes.success && Array.isArray(ptaRes.data)
         ? ptaRes.data.find((item: any) => item.id === current.id && item.periodo === current.periodo) : null;
       const reporte = current.id === reportPtaId && reportRes?.success ? reportRes.data : null;
-      return actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+      const next = actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+      return isOlderPtaWorkflow(next, current) ? current : next;
     });
     setLoading(false);
     setLastRefreshed(new Date());
@@ -2582,10 +2623,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     const byId = new Map<string, any>(actualizados.map((pta: any) => [pta.id, pta]));
     const aplicarActualizacion = (pta: any) => {
       const actualizado = byId.get(pta.id);
-      return actualizado && actualizado.periodo === pta.periodo ? { ...pta, ...actualizado } : pta;
+      return actualizado && actualizado.periodo === pta.periodo ? mergePtaWorkflowUpdate(pta, actualizado) : pta;
     };
     setPtas(prev => prev.map(aplicarActualizacion));
-    setSelectedPTA((prev: any) => prev && byId.has(prev.id) ? { ...prev, ...byId.get(prev.id) } : prev);
+    setSelectedPTA((prev: any) => prev ? aplicarActualizacion(prev) : prev);
     const etapa = filtroEstado === 'revision_pendiente' ? 'revision'
       : filtroEstado === 'aprobacion_pendiente' ? 'aprobacion' : null;
     if (etapa && contextoBandeja === contextoBandejaRef.current) {
@@ -3246,6 +3287,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     },
   ];
 
+  if (!canAccessPTAView(moduleView, tieneVista)) {
+    return <div role="status">Sus roles activos no tienen acceso a esta vista del PTA.</div>;
+  }
+
   if (concertacionPtaId) {
     return (
       <MesaConcertacion
@@ -3757,8 +3802,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
                 if (group.type === 'button') {
                   const btn = group as any;
-                  const reportViews = ['tablero_unificado', 'centro_reportes', 'tablero', 'reporte', 'comparativo', 'indicadores', 'directivo', 'territorial', 'mapa_territorial', 'workflow_visualizer', 'cronograma'];
-                  const isActive = reportViews.includes(moduleView);
+                  if (!canViewPTAReports(tieneVista)) return null;
+                  const isActive = PTA_REPORT_VIEWS.some(view => view === moduleView);
                   return (
                     <button
                       key={btn.key}
@@ -3804,7 +3849,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
 
       {/* ═══ Module Views ═══ */}
-      {moduleView === 'tablero_unificado' ? (
+      {moduleView === 'tablero_unificado' && canViewPTAReports(tieneVista) ? (
         <TableroControlUnificadoPTA />
       ) : moduleView === 'centro_reportes' ? (
         <CentroReportesPTA periodo={filtroPeriodo} />
@@ -3853,7 +3898,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         <ComparativoPeriodosPTA />
       ) : moduleView === 'validador' ? (
         <ValidadorCatalogoGTH />
-      ) : moduleView === 'configuracion' ? (
+      ) : moduleView === 'configuracion' && tieneVista('configuracion') ? (
           <ConfiguracionReglasPTA />
       ) : moduleView === 'test_e2e' ? (
         <TestE2E_FlujoPTA />
@@ -7172,6 +7217,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       {/* ═══ Mobile Bottom Navigation Bar ═══ */}
       <PTAMobileBar
         moduleView={moduleView}
+        tieneVista={tieneVista}
         onNavigate={(view) => {
           setModuleView(view as ModuleView);
           setOpenDropdown(null);

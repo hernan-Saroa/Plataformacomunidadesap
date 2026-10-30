@@ -1,0 +1,65 @@
+.esap-chatbot-module { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.esap-chatbot-module__workspace { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.esap-chatbot-module__history { width: 320px; min-width: 0; min-height: 0; }
+.esap-chatbot-module--compact .esap-chatbot-module__history { width: 100%; }
+.esap-chatbot-module__toolbar {
+  display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: space-between;
+  gap: 4px; padding: 4px 8px; background: white; border-bottom: 1px solid #e2e8f0;
+}
+.esap-chatbot-module__toolbar button {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  min-height: 44px; padding: 6px 8px; border-radius: 8px; color: #1d4ed8; font-size: 12px; cursor: pointer;
+}
+.esap-chatbot-module__toolbar button:disabled { opacity: .5; cursor: default; }
+.esap-chatbot-module__toolbar button:hover:not(:disabled) { background: #eff6ff; }
+.esap-chatbot-module__messages { min-height: 0; overscroll-behavior: contain; }
+.esap-chatbot-module__notice { flex-shrink: 0; max-height: 35%; overflow-y: auto; }
+.esap-chatbot-module__messages > div { min-width: 0; }
+.esap-chatbot-module__bubble { min-width: 0; overflow-wrap: anywhere; }
+.esap-chatbot-module__composer { flex-shrink: 0; }
+.esap-chatbot-module__composer input { min-width: 0; }
+.esap-chatbot-module button:focus-visible { outline: 3px solid #2563eb; outline-offset: -3px; }
+.esap-chatbot-module--widget { height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.esap-chatbot-module--widget .esap-chatbot-module__messages { flex: 1 1 0%; padding: 12px; overflow-y: auto; overflow-x: hidden; }
+.esap-chatbot-module--widget .esap-chatbot-module__welcome { padding: 20px 0; }
+.esap-chatbot-module--widget .esap-chatbot-module__welcome-icon { width: 44px; height: 44px; margin-bottom: 12px; }
+.esap-chatbot-module--widget .esap-chatbot-module__welcome h3 { font-size: 16px; line-height: 1.4; }
+.esap-chatbot-module--widget .esap-chatbot-module__welcome-help { margin-bottom: 16px; }
+.esap-chatbot-module--widget .esap-chatbot-module__suggestions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+.esap-chatbot-module--widget .esap-chatbot-module__suggestion { min-width: 0; min-height: 44px; gap: 8px; text-align: left; }
+.esap-chatbot-module--widget .esap-chatbot-module__suggestion > div:first-child { flex-shrink: 0; }
+.esap-chatbot-module--widget .esap-chatbot-module__suggestion > div:last-child { min-width: 0; overflow-wrap: anywhere; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer { padding: 8px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer form { gap: 8px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer input { min-height: 44px; padding: 10px; }
+.esap-chatbot-module--widget .esap-chatbot-module__composer button { min-height: 44px; flex-shrink: 0; padding: 10px; }
+.esap-chatbot-public { min-height: 0; }
+.esap-chatbot-public__intro, .esap-chatbot-public__error { flex-shrink: 0; max-height: 30%; overflow-y: auto; }
+.esap-chatbot-public__messages { min-height: 0; overflow-wrap: anywhere; overscroll-behavior: contain; }
+.esap-chatbot-public__composer { flex-shrink: 0; }
+.esap-chatbot-temporary { width: 100%; height: 100%; overflow: hidden; }
+.esap-chatbot-temporary--page { height: calc(100vh - 5.5rem); height: calc(100dvh - 5.5rem); border: 1px solid #e2e8f0; border-radius: 12px; }
+.esap-chatbot-temporary__hint { align-self: center; min-width: 0; margin: 0; font-size: 11px; line-height: 1.5; color: #64748b; }
+.esap-chatbot-temporary__messages { padding: 16px; flex: 1 1 0%; overflow: auto; overflow-wrap: anywhere; }
+.esap-chatbot-temporary__exchange { max-width: 800px; margin: 0 auto 18px; }
+.esap-chatbot-temporary__question,.esap-chatbot-temporary__answer { padding: 12px; border-radius: 12px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.esap-chatbot-temporary__question { margin: 0 0 10px 24px; background: #dbeafe; }
+.esap-chatbot-temporary__answer { margin-right: 24px; background: white; border: 1px solid #e2e8f0; }
+.esap-chatbot-temporary__pending { font-size: 12px; color: #475569; }
+.esap-chatbot-temporary__error { padding: 12px; background: #fff1f2; color: #991b1b; font-size: 12px; }
+.esap-chatbot-temporary .esap-chatbot-module__composer button { min-height: 44px; flex-shrink: 0; }
+.esap-chatbot-temporary .esap-chatbot-module__composer input { min-height: 44px; }
+.esap-chatbot-temporary .esap-chatbot-module__welcome { padding: 20px 0; }
+.esap-chatbot-temporary .esap-chatbot-module__suggestion { min-width: 0; text-align: left; cursor: pointer; }
+.esap-chatbot-temporary .esap-chatbot-module__suggestion:disabled { opacity: .5; cursor: default; }
+@media (max-width: 640px) {
+  .esap-chatbot-module--widget input, .esap-chatbot-public input, .esap-chatbot-temporary input { font-size: 16px; }
+}
+@container esap-chatbot-widget (max-height: 480px) {
+  .esap-chatbot-module--widget .esap-chatbot-module__welcome { padding: 8px 0; }
+  .esap-chatbot-module--widget .esap-chatbot-module__welcome-icon { width: 32px; height: 32px; margin-bottom: 8px; }
+  .esap-chatbot-module--widget .esap-chatbot-module__welcome-icon svg { width: 22px; height: 22px; }
+  .esap-chatbot-module--widget .esap-chatbot-module__welcome-help { margin-bottom: 10px; }
+  .esap-chatbot-module--widget .esap-chatbot-module__suggestion { padding: 8px; }
+  .esap-chatbot-module--widget .esap-chatbot-module__notice { flex-shrink: 1; min-height: 0; padding: 4px 10px; }
+}

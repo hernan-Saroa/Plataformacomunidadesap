@@ -37,11 +37,51 @@ import {
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
+import {
+  DOCENCIA_KEYS,
+  SCOPE_PROGRAMACION,
+  aplicarPendientesAlCrear,
+  exigirDecisionDocenciaEnPta,
+  exigirDocenciaParaEnviar,
+  habilitadaLocal,
+  protegerAsignaturas,
+  regimenDocencia,
+  regimenDocenciaSeguro,
+  tieneDocenciaDeProgramacion,
+} from './docencia-programacion';
 import { etapasComplementaria, tipoAprobacionComplementaria, complementariasHistoricas,
   COMPLEMENTARIAS_FLUJO_SECUENCIAL, COMPLEMENTARIAS_FLUJO_LEGACY } from './utils/complementarias-flujo';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
+
+/** Estados que el cierre por nuevo periodo no toca. */
+const ESTADOS_PTA_TERMINALES_CIERRE = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+
+/**
+ * Qué PTA quedan terminados al activar un periodo ($1 = código del periodo que
+ * se activa, $2 = ESTADOS_PTA_TERMINALES_CIERRE). La comparten la terminación
+ * (`finalizarPtasPorNuevoPeriodo`) y su vista previa
+ * (`contarPtasAFinalizarPorNuevoPeriodo`, EFDS-2328): si cambia, cambian las dos.
+ */
+const CONDICION_PTA_A_FINALIZAR = `
+        p.estado <> ALL($2::text[])
+        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
+        -- EFDS-2346: los PTA del periodo EXTRAORDINARIO en curso (p. ej. el interperiodo)
+        -- no se terminan al activar el principal: van aparte y se cierran con su periodo.
+        AND NOT EXISTS (
+          SELECT 1 FROM academic_work_plan.periodo_academico pe
+           WHERE pe.estado = 'en_curso' AND pe.extraordinario AND pe.codigo = p.periodo)
+        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
+        -- completar su edición aunque pertenezca a un periodo anterior. Al
+        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
+        AND NOT EXISTS (
+          SELECT 1
+          FROM academic_work_plan."SolicitudPTA" s
+          WHERE s."ptaId" = p.id
+            AND s."tipoSolicitud" = 'edicion_componentes'
+            AND s.estado IN ('aprobado', 'en_aprobacion')
+        )`;
 
 const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION = 'Resolución proyecto de investigación';
 const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION =
@@ -1918,14 +1958,16 @@ export class PtaService {
     }
   }
 
-  private validateDocenciaDateOverlaps(asignaturas: any[]): void {
+  private getDocenciaDateOverlaps(asignaturas: any[]): Array<{ indices: number[]; descripcion: string }> {
+    const overlaps: Array<{ indices: number[]; descripcion: string }> = [];
     const candidates = (Array.isArray(asignaturas) ? asignaturas : [])
-      .filter((asig: any) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
+      .map((asig: any, index: number) => ({ asig, index }))
+      .filter(({ asig }) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
 
     for (let i = 0; i < candidates.length; i += 1) {
       for (let j = i + 1; j < candidates.length; j += 1) {
-        const first = candidates[i];
-        const second = candidates[j];
+        const first = candidates[i].asig;
+        const second = candidates[j].asig;
 
         // Una modalidad pendiente proviene del catálogo institucional y no debe
         // bloquear al docente. Tampoco se presume presencial o remota para
@@ -1946,16 +1988,26 @@ export class PtaService {
           .some(date => Number.isNaN(date.getTime()))) continue;
 
         if (firstStart <= secondEnd && secondStart <= firstEnd) {
-          const firstLabel = first?.asignatura_nombre || 'Asignatura 1';
-          const secondLabel = second?.asignatura_nombre || 'Asignatura 2';
-          throw new BadRequestException(
-            `No se puede enviar el PTA: las asignaturas presenciales "${firstLabel}" y "${secondLabel}" `
-            + `tienen fechas cruzadas (${first.fecha_inicio}-${first.fecha_fin} / ${second.fecha_inicio}-${second.fecha_fin}). `
-            + 'La territorial no cambia esta validacion.',
-          );
+          const firstLabel = first?.asignatura_nombre || first?.nombre || `Asignatura ${candidates[i].index + 1}`;
+          const secondLabel = second?.asignatura_nombre || second?.nombre || `Asignatura ${candidates[j].index + 1}`;
+          overlaps.push({ indices: [candidates[i].index, candidates[j].index],
+            descripcion: `"${firstLabel}" y "${secondLabel}" tienen fechas cruzadas `
+              + `(${first.fecha_inicio}–${first.fecha_fin} / ${second.fecha_inicio}–${second.fecha_fin}).`,
+          });
         }
       }
     }
+    return overlaps;
+  }
+
+  /** Metadatos informativos calculados desde las fechas, nunca desde flags del cliente. */
+  private annotateDocenciaDateOverlaps(asignaturas: any[]) {
+    const cruces = this.getDocenciaDateOverlaps(asignaturas);
+    const indices = new Set(cruces.flatMap(cruce => cruce.indices));
+    return {
+      asignaturas: asignaturas.map((asig, index) => ({ ...asig, cruce_fechas: indices.has(index) })),
+      docencia_cruces_fechas: cruces,
+    };
   }
 
   private validateGlobalPtaHours(totalHours: number, horasAProgramar: number): void {
@@ -2497,7 +2549,6 @@ export class PtaService {
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
       : [];
-    this.validateDocenciaDateOverlaps(asignaturas);
 
     const maxExtension = this.getScaledRuleLimit(
       rules,
@@ -2661,6 +2712,7 @@ export class PtaService {
       tipo_vinculacion: (entity as any).tipoVinculacion,
       semanas_vinculacion: (entity as any).semanasVinculacion,
       ...extra,
+      ...this.annotateDocenciaDateOverlaps(asignaturas),
       createdAt: entity.createdAt,
       created_at: entity.createdAt,
       updatedAt: entity.updatedAt,
@@ -3071,6 +3123,11 @@ export class PtaService {
 
     for (const dto of dtos) {
       const draft = isDraftPtaState(dto?.estado);
+      // Una revisión/aprobación parcial puede no cambiar estado, versión ni
+      // updatedAt del PTA. Su historial sí cambia y permite descartar respuestas
+      // anteriores en clientes atendidos por distintas instancias/cachés.
+      dto.flujo_actualizado_en = (historiesByPta.get(dto.id) || [])[0]?.createdAt
+        || dto.updatedAt || dto.updated_at || dto.createdAt || dto.created_at || null;
       const submission = (historiesByPta.get(dto.id) || []).find(h =>
         isPendingRoleApprovalState(h.estadoNuevo) &&
         !isPendingRoleApprovalState(h.estadoAnterior),
@@ -3161,7 +3218,7 @@ export class PtaService {
     let tipoPorPrograma = new Map<string, string>();
     if (programaIds.length > 0) {
       try {
-        const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+        const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any, withDeleted: true });
         tipoPorPrograma = new Map(programas.map(p => [String(p.id), p.tipo]));
       } catch (err: any) {
         this.logger.warn(`No se pudo resolver el tipo de programa para Docencia: ${err?.message || err}`);
@@ -3993,10 +4050,9 @@ export class PtaService {
       this.historialRepo.find({ where: { ptaId: id }, order: { createdAt: 'DESC' } }),
     ]);
 
-    const [dto] = await this.enrichPtaSummaries([
-      this.toPtaDto(pta, await this.getExtMultiplicadores()) as any,
-    ]);
-    await this.attachPtaReferenceDates([dto]);
+    const baseDto = this.toPtaDto(pta, await this.getExtMultiplicadores()) as any;
+    await this.attachPtaReferenceDates([baseDto]);
+    const [dto] = await this.enrichPtaSummaries([baseDto]);
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
       // Reconciliar primero referencias legacy. Una recarga completa del catálogo
@@ -4420,6 +4476,19 @@ export class PtaService {
     // No confiar en el total enviado por el navegador: puede venir de un
     // borrador abierto antes de una modificación de cupos. La oferta académica
     // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    // EFDS-2315: en el régimen nuevo la docencia "de programación" no se edita ni
+    // se agregan asignaturas a mano. Apagado, no se consulta nada.
+    if (habilitadaLocal()) {
+      const previo = existingForDocenteEdit ?? (id ? await this.ptaRepo.findOne({ where: { id } }) : null);
+      const regimen = await regimenDocencia({
+        periodo, estado: previo?.estado ?? 'BORRADOR', datosEstructurados: previo?.datosEstructurados ?? null,
+      });
+      input = { ...input, asignaturas: protegerAsignaturas(regimen, previo?.datosEstructurados, input?.asignaturas) };
+      if (isPendingRoleApprovalState(estado)) {
+        await exigirDocenciaParaEnviar({ periodo, estado: previo?.estado ?? 'BORRADOR', datosEstructurados: input });
+      }
+    }
+
     if (Array.isArray(input?.asignaturas)) {
       const asignaturasConPensum = await this.syncAsignaturasPensum(input.asignaturas, false);
       input = {
@@ -4532,6 +4601,7 @@ export class PtaService {
       this.validatePtaForSubmission(input, horas, horasAProgramar, ptaRules);
     }
 
+    input = { ...input, ...this.annotateDocenciaDateOverlaps(Array.isArray(input.asignaturas) ? input.asignaturas : []) };
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
       docenteId,
       periodo,
@@ -4567,6 +4637,11 @@ export class PtaService {
       }
     } else {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
+    }
+
+    if (!estadoAnteriorSave && habilitadaLocal()) {
+      // EFDS-2315: un PTA nuevo del régimen nuevo recibe la docencia ya concertada.
+      await aplicarPendientesAlCrear(this.ptaRepo.manager, saved as any);
     }
 
     if (isPtaHabilitadoParaSeguimientoPorEstado(saved.estado)) {
@@ -5058,6 +5133,11 @@ export class PtaService {
       }
     }
 
+    if (isPendingRoleApprovalState(nuevoEstado) && habilitadaLocal()) {
+      // EFDS-2315: sin la docencia concertada no se envía un PTA del régimen nuevo.
+      await exigirDocenciaParaEnviar(existing);
+    }
+
     if (isPendingRoleApprovalState(nuevoEstado)) {
       await this.validatePtaBeforeApproval(
         existing, a === 'reenviar_corregido' ? solicitudEdicionParcial : null,
@@ -5521,6 +5601,20 @@ export class PtaService {
           );
         }
       }
+    } else if (habilitadaLocal()) {
+      // EFDS-2315: un reenvío no borra la Docencia aprobada en la concertación.
+      await this.ptaComponentApprovalRepo.createQueryBuilder().delete()
+        .where('pta_id = :ptaId AND componente IN (:...keys)', { ptaId, keys: componentKeys })
+        .andWhere('scope IS DISTINCT FROM :scope', { scope: SCOPE_PROGRAMACION })
+        .execute();
+      await this.ptaComponentReviewRepo.delete({ ptaId, componente: In(componentKeys) } as any);
+      // Tampoco la Docencia territorial concertada (scope en SQL directo: la
+      // columna es de la migración 668 y la entidad no la mapea, para que el PTA
+      // apagado no consulte nada nuevo).
+      await this.ptaTerritorialApprovalRepo.query(
+        `DELETE FROM academic_work_plan."PtaTerritorialApproval" WHERE pta_id = $1 AND scope IS DISTINCT FROM $2`,
+        [ptaId, SCOPE_PROGRAMACION]);
+      await this.ptaTerritorialReviewRepo.delete({ ptaId } as any);
     } else {
       await this.ptaComponentApprovalRepo.delete({
         ptaId,
@@ -5925,13 +6019,13 @@ export class PtaService {
     return rows.map((row) => this.toEvidenciaDto(row));
   }
 
-  /** Consulta administrativa protegida y limitada al alcance aprobable del actor. */
+  /** Consulta administrativa limitada a los componentes revisables o aprobables del actor. */
   async getEvidenciasSeguimientoPTA(ptaId: string, auth?: PtaAuthenticatedUser) {
     if (!this.puedeGestionarSeguimientoDocumental(auth)) {
       throw new ForbiddenException('No tienes permiso para consultar el Seguimiento documental del PTA.');
     }
     const authenticated = auth as PtaAuthenticatedUser;
-    if (!authenticated.isSuperUser && !authenticated.approvesAll && !(authenticated.allowedComponents || []).length) {
+    if (!this.tieneComponentesSeguimiento(authenticated)) {
       return [];
     }
 
@@ -6007,9 +6101,25 @@ export class PtaService {
   private puedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity, docenciaEnAlcance = true): boolean {
     if (!auth) return false;
     if (!docenciaEnAlcance && this.grupoSeguimientoParaEvidencia(evidencia) === 'docencia') return false;
-    if (auth.isSuperUser || auth.approvesAll) return true;
-    const permitidos = new Set(auth.allowedComponents || []);
+    if (auth.isSuperUser || auth.approvesAll || auth.reviewsAll) return true;
+    const permitidos = new Set([
+      ...(auth.allowedComponents || []),
+      ...(auth.allowedReviewSubsecciones || []).map(key => key.split(':')[0]),
+    ]);
     return this.componentKeysForEvidencia(evidencia).some(key => permitidos.has(key));
+  }
+
+  private tieneComponentesSeguimiento(auth: PtaAuthenticatedUser): boolean {
+    return Boolean(auth.isSuperUser || auth.approvesAll || auth.reviewsAll
+      || auth.allowedComponents?.length || auth.allowedReviewSubsecciones?.length);
+  }
+
+  private tieneAlcanceSeguimiento(pta: any, soloDocencia = false): boolean {
+    const componentes = [
+      ...(pta.componentes_aprobacion_en_alcance || []),
+      ...(pta.componentes_revision_en_alcance || []).map((key: string) => key.split(':')[0]),
+    ];
+    return componentes.some(key => !soloDocencia || DOCENCIA_COMPONENT_KEYS.includes(key));
   }
 
   private puedeGestionarSeguimientoDocumental(auth?: PtaAuthenticatedUser): boolean {
@@ -6021,8 +6131,8 @@ export class PtaService {
 
   /**
    * Comprueba el alcance real del PTA, incluido el territorial, antes de exponer
-   * o modificar sus evidencias. Se eliminan expresamente los permisos de revisión:
-   * en Seguimiento el alcance lo conceden solo los permisos de aprobación.
+   * o modificar sus evidencias. Cada etapa conserva su permiso y su alcance;
+   * un revisor no recibe por ello permisos para aprobar componentes del PTA.
    */
   private async getPtaEnAlcanceSeguimiento(
     ptaId: string,
@@ -6046,10 +6156,12 @@ export class PtaService {
         reviewsAll: false,
         allowedComponents: auth.approvesAll ? DOCENCIA_COMPONENT_KEYS
           : auth.allowedComponents.filter(key => DOCENCIA_COMPONENT_KEYS.includes(key)),
+        allowedReviewSubsecciones: auth.reviewsAll
+          ? DOCENCIA_COMPONENT_KEYS.map(key => `${key}:general`)
+          : auth.allowedReviewSubsecciones.filter(key => DOCENCIA_COMPONENT_KEYS.includes(key.split(':')[0] as PTAComponentKey)),
       } : {}),
-      allowedReviewSubsecciones: [],
     });
-    return visibles.some(item => (item.componentes_aprobacion_en_alcance || []).length > 0)
+    return visibles.some(item => this.tieneAlcanceSeguimiento(item, acotarDocencia))
       ? pta : null;
   }
 
@@ -7266,7 +7378,6 @@ export class PtaService {
   // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
-    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
     const rows = await this.ptaRepo.manager.query(
       `
@@ -7274,21 +7385,10 @@ export class PtaService {
       SET estado = 'Terminado',
           "estadoAntesCierrePeriodo" = estado,
           "cerradoPorPeriodo" = NULLIF($1, '')
-      WHERE p.estado <> ALL($2::text[])
-        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
-        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
-        -- completar su edición aunque pertenezca a un periodo anterior. Al
-        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
-        AND NOT EXISTS (
-          SELECT 1
-          FROM academic_work_plan."SolicitudPTA" s
-          WHERE s."ptaId" = p.id
-            AND s."tipoSolicitud" = 'edicion_componentes'
-            AND s.estado IN ('aprobado', 'en_aprobacion')
-        )
+      WHERE ${CONDICION_PTA_A_FINALIZAR}
       RETURNING p.id
       `,
-      [codigo, terminales],
+      [codigo, ESTADOS_PTA_TERMINALES_CIERRE],
     );
     const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
@@ -7297,6 +7397,29 @@ export class PtaService {
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Cuántos PTA terminaría activar `codigo`, por periodo — EFDS-2328.
+   *
+   * Solo lectura. Usa EXACTAMENTE la misma condición que
+   * `finalizarPtasPorNuevoPeriodo` (CONDICION_PTA_A_FINALIZAR), para que la
+   * confirmación que ve el administrador no pueda diferir de lo que pasa.
+   * `restaurarPtasPorReactivacionPeriodo` corre antes al activar, pero solo
+   * toca los PTA de `codigo`, que esta condición ya excluye.
+   */
+  async contarPtasAFinalizarPorNuevoPeriodo(codigo: string): Promise<Array<{ codigo: string | null; ptas: number }>> {
+    const rows = await this.ptaRepo.manager.query(
+      `
+      SELECT p.periodo AS codigo, COUNT(*)::int AS ptas
+        FROM academic_work_plan."PlanTrabajoAcademico" AS p
+       WHERE ${CONDICION_PTA_A_FINALIZAR}
+       GROUP BY p.periodo
+       ORDER BY p.periodo
+      `,
+      [coalesceString(codigo) || '', ESTADOS_PTA_TERMINALES_CIERRE],
+    );
+    return (rows || []).map((r: any) => ({ codigo: r.codigo ?? null, ptas: Number(r.ptas) }));
   }
 
   /**
@@ -7411,8 +7534,8 @@ export class PtaService {
     }
     const authenticated = auth as PtaAuthenticatedUser;
     // El permiso funcional abre la bandeja, pero no debe ampliar el alcance. Un
-    // rol sin permisos de aprobación por componente recibe una bandeja vacía.
-    if (!authenticated.isSuperUser && !authenticated.approvesAll && !(authenticated.allowedComponents || []).length) {
+    // rol sin permisos de revisión ni aprobación recibe una bandeja vacía.
+    if (!this.tieneComponentesSeguimiento(authenticated)) {
       return [];
     }
     const qb = this.ptaRepo.createQueryBuilder('pta');
@@ -7425,13 +7548,10 @@ export class PtaService {
     const dtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
     await this.attachPtaReferenceDates(dtos);
     const summaries = await this.enrichPtaSummaries(dtos);
-    // Seguimiento usa exclusivamente el alcance de aprobación. Los permisos de
-    // revisión pueden convivir en el rol, pero no deben hacer visibles PTAs ni
-    // evidencias adicionales dentro de esta bandeja.
-    const scopedPtas = this.sortPtasByReferenceDate((await this.filterGestionPtas(summaries, ptas, {
-      ...authenticated,
-      allowedReviewSubsecciones: [],
-    })).filter(pta => (pta.componentes_aprobacion_en_alcance || []).length > 0)).slice(0, 500);
+    // Se conserva cada etapa para aplicar su nivel y territorial antes de unir
+    // los componentes visibles en Seguimiento.
+    const scopedPtas = this.sortPtasByReferenceDate((await this.filterGestionPtas(summaries, ptas, authenticated))
+      .filter(pta => this.tieneAlcanceSeguimiento(pta))).slice(0, 500);
     const ids = scopedPtas.map((pta) => pta.id || pta.pta_id).filter(Boolean);
     if (ids.length === 0) return [];
 
@@ -7473,7 +7593,7 @@ export class PtaService {
     const docenciaEnAlcanceByPta = new Map(scopedPtasActualizados.map(pta => [
       String(pta.id || pta.pta_id),
       !(pta.asignaturas || []).length
-        || (pta.componentes_aprobacion_en_alcance || []).some((key: PTAComponentKey) => DOCENCIA_COMPONENT_KEYS.includes(key)),
+        || this.tieneAlcanceSeguimiento(pta, true),
     ]));
     const resumenByPta: Record<string, Record<string, { horas_aprobadas: number }>> = {};
     for (const ev of evidencias) {
@@ -7791,7 +7911,7 @@ export class PtaService {
   // Catálogos (migración legacy)
   // ─────────────────────────────
   async getCatalogoProgramas() {
-    const progs = await this.programaRepo.find({ order: { nombre: 'ASC' } });
+    const progs = await this.programaRepo.find({ where: { activo: true }, order: { nombre: 'ASC' } });
     const nivelFormacionMap: Record<string, string> = {
       pregrado: 'Pregrado',
       especializacion: 'Especialización',
@@ -7809,12 +7929,14 @@ export class PtaService {
     const completo = String(q.completo || '').toLowerCase() === 'true';
 
     const params: any[] = [];
-    const where = !completo && programaId
-      ? (() => {
-          params.push(programaId);
-          return `WHERE a.id_programa::text = $1 OR p.id::text = $1 OR p.codigo = $1`;
-        })()
-      : '';
+    // El formulario consume el catálogo vigente. El catálogo completo conserva
+    // las referencias históricas que necesitan administración y reportes.
+    const conditions = completo ? [] : ['a.activa = TRUE', 'a.deleted_at IS NULL', 'p.activo = TRUE', 'p.deleted_at IS NULL'];
+    if (!completo && programaId) {
+      params.push(programaId);
+      conditions.push('(a.id_programa::text = $1 OR p.id::text = $1 OR p.codigo = $1)');
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = await this.asignaturaRepo.query(
       `
@@ -7824,6 +7946,8 @@ export class PtaService {
         a.nombre,
         a.codigo,
         a.pensum,
+        a.activa,
+        a.deleted_at AS "deletedAt",
         a.nombre_base AS "nombreBase",
         a.creditos,
         a.horas_fijas_pta AS horas,
@@ -7867,6 +7991,8 @@ export class PtaService {
       codigo: a.codigo,
       pensum: a.pensum,
       pensumKey: a.pensum || '__SIN_PENSUM__',
+      activa: a.activa,
+      deletedAt: a.deletedAt,
       nombreBase: a.nombreBase,
       creditos: a.creditos,
       horas: a.horas,
@@ -9353,7 +9479,7 @@ export class PtaService {
     ));
     let tipoPorId = new Map<string, string>();
     if (programaIds.length > 0) {
-      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any, withDeleted: true });
       tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
     }
 
@@ -9506,7 +9632,7 @@ export class PtaService {
     ));
     let tipoPorId = new Map<string, string>();
     if (programaIds.length > 0) {
-      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any, withDeleted: true });
       tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
     }
 
@@ -10256,6 +10382,16 @@ export class PtaService {
 
     const byComponent = new Map(componentList.map(item => [item.componente, item]));
     const toSave: PtaComponentApprovalEntity[] = [];
+    // EFDS-2315: en el régimen nuevo, mientras el PTA espera su Docencia concertada,
+    // la Docencia sin horas NO se auto-aprueba: sería aprobarla sin concertación
+    // (ante la duda, si no responde PA, tampoco). Cuando ya llegó Docencia
+    // concertada, un componente de Docencia vacío (p. ej. pregrado, si todo lo
+    // concertado es territorial) se auto-aprueba como hoy: si no, quedaría sin
+    // ninguna aprobación.
+    const docenciaDeProgramacion = habilitadaLocal() && ptaEntity
+      ? (await regimenDocenciaSeguro(ptaEntity)) === 'programacion'
+        && !tieneDocenciaDeProgramacion(ptaEntity.datosEstructurados)
+      : false;
 
     for (const c of todosComponentes) {
       const tieneContenido = horasPorComponente[c] > 0 || complementariasConContenido[c] === true;
@@ -10268,7 +10404,8 @@ export class PtaService {
       const requiereReaprobacionManual =
         existing?.scope === 'solicitud_edicion'
         && ['pendiente', 'devuelto'].includes(String(existing.estado || '').toLowerCase());
-      const autoAprobar = hayActividades && !tieneContenido && !requiereReaprobacionManual;
+      const autoAprobar = hayActividades && !tieneContenido && !requiereReaprobacionManual
+        && !(docenciaDeProgramacion && DOCENCIA_KEYS.has(c));
 
       if (!existing) {
         const item = this.ptaComponentApprovalRepo.create({
@@ -10461,6 +10598,10 @@ export class PtaService {
     const estado = coalesceString(body?.estado); // 'revisado' o 'devuelto'
     if (!componente || !estado) {
       throw new BadRequestException('Componente y estado son requeridos');
+    }
+    // EFDS-2315: la Docencia del régimen nuevo tampoco se revisa en el PTA.
+    if (habilitadaLocal() && DOCENCIA_KEYS.has(componente)) {
+      await exigirDecisionDocenciaEnPta(await this.ptaRepo.findOne({ where: { id: ptaId } }), componente);
     }
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
@@ -10722,6 +10863,11 @@ export class PtaService {
     }
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
+    }
+    // EFDS-2315: con la concertación encendida, la Docencia del periodo de corte
+    // se aprueba en Programación Académica; aquí no (ni aprobar ni devolver).
+    if (habilitadaLocal() && DOCENCIA_KEYS.has(componente)) {
+      await exigirDecisionDocenciaEnPta(await this.ptaRepo.findOne({ where: { id: ptaId } }), componente);
     }
     if (!['aprobado', 'devuelto'].includes(estado)) {
       throw new BadRequestException('El estado del componente debe ser "aprobado" o "devuelto".');
@@ -11292,6 +11438,7 @@ export class PtaService {
       const rows = await this.ptaRepo.find({ where: { id: In(ptaIds) } });
       const extMult = await this.getExtMultiplicadores();
       const dtos = rows.map(row => this.toPtaDto(row, extMult));
+      await this.attachPtaReferenceDates(dtos);
       await this.attachComponentApprovalProgress(dtos);
       return await this.filterGestionPtas(dtos, rows, auth);
     } catch (error) {

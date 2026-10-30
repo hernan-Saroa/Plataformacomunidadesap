@@ -42,6 +42,7 @@ export interface AuditoriaBackendDTO {
   areaObjetivo?: string;
   procesoAuditado?: string;
   unidadesAuditables?: string[]; // Unidades auditables que cubre (EFDS-2316)
+  dependenciasAuditadas?: string[]; // Dependencias que se auditan (EFDS-2367)
   alcance?: string;
   metodologia?: string;
   nivelRiesgo?: string;
@@ -81,6 +82,7 @@ export interface AuditoriaFormData {
   areaObjetivo?: string;
   procesoAuditado?: string;
   unidadesAuditables?: string[]; // Unidades auditables que cubre (EFDS-2316)
+  dependenciasAuditadas?: string[]; // Dependencias que se auditan (EFDS-2367)
   alcance?: string;
   
   // Equipo
@@ -198,6 +200,7 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     areaObjetivo: form.areaObjetivo,
     procesoAuditado: form.procesoAuditado,
     unidadesAuditables: form.unidadesAuditables ?? [],
+    dependenciasAuditadas: form.dependenciasAuditadas ?? [],
     alcance: form.alcance || form.descripcion,
     metodologia: form.metodologia,
     nivelRiesgo: form.nivelRiesgo,
@@ -267,6 +270,7 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     // Semanas que se sacaron del cronograma, para pintar el calendario igual (EFDS-2132)
     semanasExcluidas: (auditoria as any).semanasExcluidas || [],
     unidadesAuditables: (auditoria as any).unidadesAuditables || [],
+    dependenciasAuditadas: (auditoria as any).dependenciasAuditadas || [],
     // ✅ Pasar estadoKanban para mapeo correcto
     estado: mapearEstadoUI(auditoria.fase, auditoria.progreso, estadoKanban),
     // ✅ Conservar estadoKanban original para filtros
@@ -318,6 +322,8 @@ export interface AuditoriaUI {
   semanasExcluidas?: string[];
   /** Unidades auditables que cubre (EFDS-2316) */
   unidadesAuditables?: string[];
+  /** Dependencias que se auditan (EFDS-2367) */
+  dependenciasAuditadas?: string[];
   estado: 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
   // ✅ Estado Kanban original del backend (Planeación, Ejecución, Comunicación, Finalizada)
   estadoKanban?: string;

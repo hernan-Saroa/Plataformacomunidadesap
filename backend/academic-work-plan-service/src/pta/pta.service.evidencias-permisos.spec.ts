@@ -31,6 +31,84 @@ describe('Seguimiento de evidencias - autorización por componente', () => {
     return service;
   }
 
+  function territorialReviewer() {
+    return { ...auth(), roles: ['REVISOR_DOCENCIA_TERRITORIAL'], territorialIds: ['Risaralda'],
+      allowedReviewSubsecciones: ['academica_territorial:general'],
+      allowedNivelesTerritorialRevisar: ['pregrado'] };
+  }
+
+  function scopedReviewerService() {
+    const service = Object.create(PtaService.prototype) as any;
+    const plans = [
+      { id: 'risaralda', territorial: 'Risaralda', nivel: 'pregrado' },
+      { id: 'caldas', territorial: 'Caldas', nivel: 'pregrado' },
+      { id: 'posgrado', territorial: 'Risaralda', nivel: 'posgrado' },
+    ].map(pta => ({ ...pta, estado: 'Aprobado', datosEstructurados: { asignaturas: [{}] } }));
+    const evidencias = plans.map(pta => ({ id: `ev-${pta.id}`, ptaId: pta.id,
+      componentePta: 'docencia', estadoRevision: 'pendiente' }));
+    const query = (rows: any[]) => ({ andWhere: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(), getMany: jest.fn().mockResolvedValue(rows) });
+    service.ptaRepo = { createQueryBuilder: () => query(plans),
+      findOne: jest.fn(async ({ where }) => plans.find(pta => pta.id === where.id)) };
+    service.evidenciaRepo = { createQueryBuilder: () => query(evidencias),
+      find: jest.fn(async ({ where }) => evidencias.filter(ev => ev.ptaId === where.ptaId)),
+      findOne: jest.fn(async ({ where }) => evidencias.find(ev => ev.ptaId === where.ptaId && ev.id === where.id)),
+      save: jest.fn(async row => row) };
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn(pta => ({ id: pta.id, pta_id: pta.id, estado: pta.estado, asignaturas: [{}],
+      componentes_con_datos: ['academica_territorial'], subsecciones_con_datos: ['academica_territorial:general'] }));
+    service.attachPtaReferenceDates = jest.fn();
+    service.enrichPtaSummaries = jest.fn(async rows => rows);
+    service.sortPtasByReferenceDate = (rows: any[]) => rows;
+    service.getTerritorialNivelPairsDelComponente = jest.fn(async pta => [{ territorialId: pta.territorial, nivel: pta.nivel }]);
+    service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
+    service.resolveNombresSeccionales = jest.fn(async ids => ids);
+    service.syncResolucionProyectoInvestigacion = jest.fn();
+    service.syncPtaSeguimientoEstado = jest.fn();
+    service.toEvidenciaDto = (row: any) => row;
+    return service;
+  }
+
+  it('el rol revisor territorial accede sin aprobación individual solo a su territorial y nivel', async () => {
+    const service = scopedReviewerService();
+    const actor = territorialReviewer();
+    const rows = await service.getAllPtasConEvidencias('2026-2', actor);
+    expect(rows.map(row => row.id)).toEqual(['risaralda']);
+    expect(rows[0].evidencias.map(row => row.id)).toEqual(['ev-risaralda']);
+    expect(actor.allowedComponents).toEqual([]);
+    expect(rows[0].componentes_aprobacion_en_alcance).toEqual([]);
+    expect(rows[0].componentes_revision_en_alcance).toEqual(['academica_territorial:general']);
+    await expect(service.getEvidenciasSeguimientoPTA('risaralda', actor)).resolves.toHaveLength(1);
+    await expect(service.getEvidenciasSeguimientoPTA('caldas', actor)).resolves.toEqual([]);
+    await expect(service.getEvidenciasSeguimientoPTA('posgrado', actor)).resolves.toEqual([]);
+  });
+
+  it('permite al revisor gestionar sus evidencias y bloquea cambios fuera de su alcance', async () => {
+    const service = scopedReviewerService();
+    await service.revisarEvidenciaPTA('risaralda', 'ev-risaralda', { decision: 'rechazado' }, territorialReviewer());
+    expect(service.evidenciaRepo.save).toHaveBeenCalledTimes(1);
+    for (const ptaId of ['caldas', 'posgrado']) {
+      await expect(service.revisarEvidenciaPTA(ptaId, `ev-${ptaId}`, { decision: 'rechazado' }, territorialReviewer()))
+        .rejects.toBeInstanceOf(ForbiddenException);
+    }
+    expect(service.evidenciaRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('la unión de revisión y aprobación no permite usar otro componente para saltarse la territorial de Docencia', async () => {
+    const service = scopedReviewerService();
+    const actor = { ...territorialReviewer(), allowedComponents: ['investigacion'] };
+    const pta = await service.ptaRepo.findOne({ where: { id: 'caldas' } });
+    const originalDto = service.toPtaDto;
+    service.toPtaDto = jest.fn(row => ({ ...originalDto(row),
+      componentes_con_datos: ['academica_territorial', 'investigacion'],
+      subsecciones_con_datos: ['academica_territorial:general', 'investigacion:general'] }));
+    expect(await service.getPtaEnAlcanceSeguimiento(pta.id, actor)).toBe(pta);
+    await expect(service.getEvidenciasSeguimientoPTA(pta.id, actor)).resolves.toEqual([]);
+    await expect(service.revisarEvidenciaPTA(pta.id, `ev-${pta.id}`, { decision: 'rechazado' }, actor))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.evidenciaRepo.save).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['pta.approve.academica.pregrado', ['academica_pregrado'], { componentePta: 'docencia' }],
     ['pta.approve.investigacion', ['investigacion'], { componentePta: 'investigacion' }],

@@ -439,6 +439,8 @@ export interface CreateAutoDto {
     documentName?: string;
     documentType?: string;
     documentSize?: number;
+    entidadDestino?: string;
+    entidadDestinoEmail?: string;
 }
 
 export interface DocumentoExpediente {
@@ -631,23 +633,27 @@ class DisciplinaryService {
      * Envía un correo con la información de la noticia a la entidad destinataria
      */
     async remitirPorCompetencia(data: {
-        newsId: string;
+        newsId?: string;
+        processId?: string;
         radicado?: string;
         emailDestinatario: string;
         entidadDestino: string;
         justificacion: string;
+        tipoRemision?: string;
         usuarioRemision?: string;
     }): Promise<{
         success: boolean;
         message: string;
-        newsId: string;
+        newsId?: string;
+        processId?: string;
         emailEnviado: string;
         fechaRemision: Date;
     }> {
         return apiClient.post<{
             success: boolean;
             message: string;
-            newsId: string;
+            newsId?: string;
+            processId?: string;
             emailEnviado: string;
             fechaRemision: Date;
         }>(`${SERVICE_PREFIX}/disciplinary-processes/remitir-competencia`, data);
@@ -947,6 +953,148 @@ class DisciplinaryService {
     }
 
     /**
+     * Descargar el FUID individual del expediente en el formato oficial EI-FO-003 (Excel).
+     */
+    async descargarFuidIndividual(
+        processId: string,
+        item: any,
+        header?: any,
+        filename?: string,
+    ): Promise<void> {
+        const restPath = `/disciplinary-processes/${processId}/fuid`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/octet-stream',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ item, header }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const hoy = new Date();
+        const yyyy = hoy.getFullYear();
+        const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+        const dd = String(hoy.getDate()).padStart(2, '0');
+        const fallbackName = `${yyyy}${mm}${dd}_FUID_${item?.radicado || processId}.xlsx`;
+
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename || fallbackName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Descargar el FUID en lote (múltiples expedientes o filtro activo) en el formato oficial EI-FO-003.
+     */
+    async descargarFuidLote(
+        items: any[],
+        header?: any,
+        filename?: string,
+    ): Promise<void> {
+        const restPath = `/disciplinary-processes/fuid/batch`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/octet-stream',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ items, header }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const hoy = new Date();
+        const yyyy = hoy.getFullYear();
+        const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+        const dd = String(hoy.getDate()).padStart(2, '0');
+        const fallbackName = `${yyyy}${mm}${dd}_FUID.xlsx`;
+
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename || fallbackName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Compartir el FUID (EI-FO-003) por correo electrónico como archivo adjunto.
+     */
+    async compartirFuidPorCorreo(payload: {
+        items: any[];
+        header?: any;
+        emailDestinatario: string;
+        mensaje?: string;
+        filename?: string;
+    }): Promise<{ success: boolean; message: string; filename: string }> {
+        const restPath = `/disciplinary-processes/fuid/share`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    }
+
+    /**
      * Descargar archivo desde una URL directa (para Autos y otros)
      */
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
@@ -1118,8 +1266,17 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async aprobarAuto(id: string, aprobadoPorId: string, radicadorAsignadoId?: string): Promise<LegalAuto> {
-        const body: any = { action: 'APPROVE' };
+    async aprobarAuto(
+        id: string,
+        aprobadoPorId: string,
+        radicadorAsignadoId?: string,
+        extraData?: {
+            entidadDestino?: string;
+            entidadDestinoEmail?: string;
+            observaciones?: string;
+        }
+    ): Promise<LegalAuto> {
+        const body: any = { action: 'APPROVE', ...extraData };
         if (radicadorAsignadoId) {
             body.radicadorAsignadoId = radicadorAsignadoId;
         }

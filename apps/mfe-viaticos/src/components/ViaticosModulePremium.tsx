@@ -40,6 +40,7 @@ import {
   Wallet,
   Building2,
   User,
+  ShieldAlert,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -48,8 +49,10 @@ import ControlViaticosModal from './ControlViaticosModal';
 import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
+import RevocatoriaModal from './RevocatoriaModal';
 import PresupuestoInbox from './PresupuestoInbox';
 import ReintegrosInbox from './ReintegrosInbox';
+import TrazabilidadExpediente from './TrazabilidadExpediente';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
 import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
@@ -148,6 +151,8 @@ const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   PENDIENTE_LEGALIZACION: 13,
   LEGALIZADO: 14,
   CANCELADA: 15,
+  EN_REVOCATORIA: 15.2,
+  REVOCADA: 15.5,
   RECHAZADO: 16,
 };
 
@@ -176,6 +181,8 @@ const OPCIONES_FILTRO_ESTADOS_SOLICITUD: { value: string; label: string }[] = [
   { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
   { value: 'TIQUETES_COMPRADOS', label: 'Tiquetes Comprados' },
   { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
+  { value: 'EN_REVOCATORIA', label: 'En Revocatoria (SIIF)' },
+  { value: 'REVOCADA', label: 'Revocada' },
   { value: 'CANCELADA', label: 'Cancelada' },
   { value: 'RECHAZADO', label: 'Rechazada' },
 ];
@@ -221,6 +228,7 @@ export default function ViaticosModulePremium() {
   const [esJefeDependencia, setEsJefeDependencia] = useState(false);
   const [esGerenteProyecto, setEsGerenteProyecto] = useState(false);
   const [esComisionado, setEsComisionado] = useState(false);
+  const [esCoordinadorComisiones, setEsCoordinadorComisiones] = useState(false);
   const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const {
@@ -246,6 +254,9 @@ export default function ViaticosModulePremium() {
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
   const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
+  const [solicitudParaRevocatoria, setSolicitudParaRevocatoria] = useState<SolicitudViatico | null>(null);
+  const [modalRevocatoriaAbierto, setModalRevocatoriaAbierto] = useState(false);
+  const [esOrdenadorGasto, setEsOrdenadorGasto] = useState(false);
   const [solicitudParaFirmas, setSolicitudParaFirmas] = useState<SolicitudViatico | null>(null);
 
   // Estados Notificación SST (RF-PAG-002)
@@ -453,6 +464,7 @@ export default function ViaticosModulePremium() {
         setEsControlViaticos(authService.isControlViaticos());
         setEsSubdireccion(subdir);
         setEsDireccionNacional(dirNac);
+        setEsOrdenadorGasto(authService.isOrdenadorGasto());
         const presupuesto = authService.isPresupuesto();
         setEsPresupuesto(presupuesto);
         const tesoreria = authService.isTesoreria();
@@ -462,10 +474,14 @@ export default function ViaticosModulePremium() {
         const jefeDep = authService.isJefeDependencia();
         const gerenteProy = authService.isGerenteProyecto();
         const comisionado = authService.isComisionado();
+        const coordComisiones = authService.isCoordinadorComisiones();
         setEsJefeDependencia(jefeDep);
         setEsGerenteProyecto(gerenteProy);
         setEsComisionado(comisionado);
-        if (dirNac && !superAdmin) {
+        setEsCoordinadorComisiones(coordComisiones);
+        if (coordComisiones && !superAdmin) {
+          setSeccion('solicitudes');
+        } else if (dirNac && !superAdmin) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
@@ -494,10 +510,10 @@ export default function ViaticosModulePremium() {
   }, []);
 
   useEffect(() => {
-    if (!cargandoRol && (!esAnalista || esSuperAdmin)) {
+    if (!cargandoRol && (!esAnalista || esSuperAdmin || esCoordinadorComisiones)) {
       cargarDatos();
     }
-  }, [cargandoRol, esAnalista, esSuperAdmin]);
+  }, [cargandoRol, esAnalista, esSuperAdmin, esCoordinadorComisiones]);
 
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
@@ -764,9 +780,14 @@ export default function ViaticosModulePremium() {
       (currentUser.roles?.length || currentUser.permissions?.length),
   );
 
+  const esAdminViaticos =
+    esSuperAdmin ||
+    esCoordinadorComisiones ||
+    authService.isAdministradorViaticos();
+
   const puedeVerSolicitudes =
     !tieneContextoAuth ||
-    esSuperAdmin ||
+    esAdminViaticos ||
     authService.isSecretario() ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_SOLICITUDES_READ_OWN,
@@ -822,7 +843,8 @@ export default function ViaticosModulePremium() {
     ]);
   const puedeVerConfiguracion =
     !tieneContextoAuth ||
-    esSuperAdmin ||
+    esAdminViaticos ||
+    authService.canManageConfig() ||
     authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
   const puedeVerSolicitudesAsignadas =
     !tieneContextoAuth ||
@@ -1800,7 +1822,21 @@ export default function ViaticosModulePremium() {
                                     )}
                                   </button>
                                 )}
-                                {puedeCancelarComision && sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && (
+                                {sol.estado === 'EN_REVOCATORIA' && (esOrdenadorGasto || esSuperAdmin) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSolicitudParaRevocatoria(sol);
+                                      setModalRevocatoriaAbierto(true);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition-colors shadow-xs"
+                                    title="Registrar Revocatoria en SIIF Nación"
+                                    aria-label="Registrar Revocatoria SIIF"
+                                  >
+                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-800" />
+                                  </button>
+                                )}
+                                {puedeCancelarComision && sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && sol.estado !== 'REVOCADA' && sol.estado !== 'EN_REVOCATORIA' && (
                                   <button
                                     type="button"
                                     onClick={() => setSolicitudParaCancelar(sol)}
@@ -2269,26 +2305,71 @@ export default function ViaticosModulePremium() {
                      </div>
                    )}
 
-                    {puedeCancelarComision && solicitudSeleccionada.estado !== 'LEGALIZADO' && solicitudSeleccionada.estado !== 'CANCELADA' && (
-                      <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
-                            Novedades de Comisión (Etapa 6)
+                    {solicitudSeleccionada.estado === 'EN_REVOCATORIA' && (
+                      <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                            <ShieldAlert className="w-4 h-4 text-amber-700" />
+                            Proceso de Revocatoria en Curso (SIIF Nación)
                           </span>
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            Cancelar comisión con trazabilidad completa y registro de responsable.
-                          </p>
+                          {(esOrdenadorGasto || esSuperAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSolicitudParaRevocatoria(solicitudSeleccionada);
+                                setModalRevocatoriaAbierto(true);
+                              }}
+                              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ShieldAlert className="w-3.5 h-3.5" />
+                              Gestionar Revocatoria en SIIF
+                            </button>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setSolicitudParaCancelar(solicitudSeleccionada)}
-                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          Cancelar Comisión
-                        </button>
+                        <p className="text-xs text-amber-800">
+                          {solicitudSeleccionada.procesoRevocatoria?.fase === 'PENDIENTE_REDUCCION_PRESUPUESTO'
+                            ? 'El Ordenador del Gasto ya radicó el reporte en SIIF Nación. Se encuentra en Presupuesto para aplicar la reducción del RP.'
+                            : 'La comisión fue cancelada tras su autorización. Se requiere que el Ordenador del Gasto radique el acto en SIIF Nación y adjunte el reporte en PDF.'}
+                        </p>
                       </div>
                     )}
+
+                    {solicitudSeleccionada.estado === 'REVOCADA' && (
+                      <div className="mt-4 p-4 bg-rose-50/70 rounded-xl border border-rose-200 space-y-2">
+                        <div className="flex items-center gap-1.5 text-rose-900 font-bold text-xs">
+                          <CheckCircle2 className="w-4 h-4 text-rose-600" />
+                          Comisión Formalmente REVOCADA
+                        </div>
+                        <p className="text-xs text-slate-700">
+                          La comisión fue revocada en SIIF Nación y los compromisos presupuestales asociados han sido liberados.
+                        </p>
+                      </div>
+                    )}
+
+                    {puedeCancelarComision &&
+                      solicitudSeleccionada.estado !== 'LEGALIZADO' &&
+                      solicitudSeleccionada.estado !== 'CANCELADA' &&
+                      solicitudSeleccionada.estado !== 'REVOCADA' &&
+                      solicitudSeleccionada.estado !== 'EN_REVOCATORIA' && (
+                        <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
+                              Novedades de Comisión (Etapa 6)
+                            </span>
+                            <p className="text-xs text-slate-600 mt-0.5">
+                              Cancelar comisión con trazabilidad completa y registro de responsable.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSolicitudParaCancelar(solicitudSeleccionada)}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Cancelar Comisión
+                          </button>
+                        </div>
+                      )}
 
                     {solicitudSeleccionada.estado === 'CANCELADA' && (
                       <div className="mt-4 p-3.5 bg-rose-50/50 rounded-xl border border-rose-200">
@@ -2657,6 +2738,12 @@ export default function ViaticosModulePremium() {
                     )}
 
                     {/* ========================================================================= */}
+                    {/* TRAZABILIDAD DEL EXPEDIENTE Y DESCARGA (RF-SIS-001) */}
+                    <TrazabilidadExpediente
+                      solicitudId={solicitudSeleccionada.id}
+                      codigo={solicitudSeleccionada.codigo}
+                    />
+
                     {/* GESTIÓN DE FIRMAS INSTITUCIONALES — APROBACIÓN POR COMPONENTE (FORMATO 023) */}
                     {/* ========================================================================= */}
                     <div className="mt-4 pt-4 border-t border-slate-200">
@@ -2758,6 +2845,23 @@ export default function ViaticosModulePremium() {
           if (solicitudSeleccionada) {
             setSolicitudSeleccionada(null);
           }
+          cargarDatos();
+        }}
+      />
+
+      <RevocatoriaModal
+        solicitud={solicitudParaRevocatoria}
+        abierto={modalRevocatoriaAbierto}
+        onCerrar={() => {
+          setModalRevocatoriaAbierto(false);
+          setSolicitudParaRevocatoria(null);
+        }}
+        onExito={(actualizada) => {
+          setMensajeExito(
+            `Proceso de revocatoria actualizado exitosamente para ${actualizada?.consecutivoUnico || actualizada?.codigo || 'la comisión'}.`,
+          );
+          setModalRevocatoriaAbierto(false);
+          setSolicitudParaRevocatoria(null);
           cargarDatos();
         }}
       />

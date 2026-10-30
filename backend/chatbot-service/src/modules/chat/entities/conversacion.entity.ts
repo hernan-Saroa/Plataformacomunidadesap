@@ -16,6 +16,10 @@ export class Conversacion {
   @Column({ type: 'uuid', nullable: true, name: 'usuario_id' })
   usuarioId?: string;
 
+  // Separado de los identificadores legacy, que antes suministraba el cliente.
+  @Column({ type: 'uuid', nullable: true, name: 'propietario_usuario_id' })
+  propietarioUsuarioId?: string;
+
   @Column({ type: 'varchar', length: 255, nullable: true, name: 'usuario_email' })
   usuarioEmail?: string;
 

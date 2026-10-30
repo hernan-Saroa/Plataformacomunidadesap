@@ -8,6 +8,7 @@ import {
   listPensumsForProgram,
   mergeAssignmentCatalog,
   reconcileLegacyAssignment,
+  replaceProgramAssignmentCatalog,
   SIN_PENSUM_KEY,
 } from './ptaPensumCompatibility';
 
@@ -18,6 +19,36 @@ const catalog = [
 ];
 
 describe('compatibilidad Pensum para borradores PTA', () => {
+  it('ofrece únicamente los pensums activos del programa seleccionado', () => {
+    const rows = [
+      { id: '1', programaId: 'diurno', pensum: 'AP_33', activa: true },
+      { id: '2', programaId: 'diurno', pensum: 'AP_35', activa: true },
+      { id: '3', programaId: 'diurno', pensum: 'AP_34', activa: false },
+      { id: '4', programaId: 'diurno', pensum: 'AP_36', deletedAt: '2026-10-01' },
+      { id: '5', programaId: 'nocturno', pensum: 'AP_34', activa: true },
+      { id: '6', programaId: 'nocturno', pensum: 'AP_36', activa: true },
+    ];
+    expect(listPensumsForProgram(rows, 'diurno').map(row => row.value)).toEqual(['AP_33', 'AP_35']);
+    expect(listPensumsForProgram(rows, 'nocturno').map(row => row.value)).toEqual(['AP_34', 'AP_36']);
+    expect(filterAssignmentsByPensum(rows, 'diurno', '').map(row => row.id)).toEqual(['1', '2']);
+    expect(filterAssignmentsByPensum(rows, 'diurno', 'AP_34')).toEqual([]);
+  });
+
+  it('respeta estados inactivos serializados y conserva referencias históricas para lectura', () => {
+    const rows = [false, 0, 'false', '0'].map((activa, index) => ({ id: String(index), programaId: 'diurno', pensum: 'AP_34', activa }));
+    expect(listPensumsForProgram(rows, 'diurno')).toEqual([]);
+    expect(findLegacyCatalogAssignment({ asignatura_id: '0', programa_id: 'diurno' }, rows)?.id).toBe('0');
+  });
+
+  it('reemplaza el catálogo del programa sin conservar pensums de una respuesta anterior', () => {
+    const anteriores = [...catalog, { id: '12', programaId: '1', pensum: 'ANTIGUO' }];
+    const merged = replaceProgramAssignmentCatalog(anteriores, [catalog[0],
+      { id: '21', programaId: '2', pensum: 'AJENO' }], '1');
+    expect(listPensumsForProgram(merged, '1').map(row => row.value)).toEqual(['AP_35']);
+    expect(merged.find(row => row.id === '20')).toEqual(catalog[2]);
+    expect(merged.some(row => row.id === '21')).toBe(false);
+  });
+
   it('recupera Pensum aunque los ids antiguos sean numéricos', () => {
     expect(inferLegacyPensum({ asignatura_id: 10, programa_id: 1 }, catalog)).toBe('AP_35');
   });

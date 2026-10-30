@@ -4,11 +4,12 @@ import { DataSource } from 'typeorm';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
-import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { PuestosService, UsoDePuesto } from '../participacion/puestos.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
-import { ParticipacionService } from '../participacion/participacion.service';
 import { plazoDeActividad } from './plazos-actividad';
+import { limiteDelActa, numeralDeLaSumision } from '../comite-contratacion/segunda-sesion';
 import {
   ClaveParametroAlerta,
   PARAMETROS_POR_DEFECTO,
@@ -37,19 +38,7 @@ export const ANTICIPACION_POR_DEFECTO = 30;
  * Se dejan dos y no cero para no alarmar por el hueco normal entre recibir el
  * proceso y sentarse a repartirlo.
  */
-export const TOLERANCIA_SIN_ABOGADO = 2;
-
-/**
- * Días que una solicitud de CDP puede estar sin que nadie la atienda.
- *
- * Vive en `cdp.service` y se reexporta aquí para no romper a quien ya la
- * importaba de este archivo. Se mudó cuando la bandeja de la Financiera pasó a
- * marcar con ella qué solicitudes van demoradas: importarla desde el CDP habría
- * cerrado el ciclo `cdp → alertas → participacion → cdp`, y el umbral es una
- * regla del CDP —cuánto puede esperar una solicitud— que la alerta usa, no al
- * revés.
- */
-export { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
+export const TOLERANCIA_SIN_RESPONSABLE = 2;
 
 /**
  * Plazo legal para liquidar de común acuerdo: cuatro meses desde que el
@@ -89,24 +78,31 @@ export type TipoAlerta =
    * dure, la 3.4 no la puede resolver nadie: el proceso está parado y no lo
    * dice ninguna pantalla salvo la suya.
    */
-  | 'SIN_ABOGADO'
-  /**
-   * Una solicitud de CDP que la Dirección Financiera no ha resuelto.
-   *
-   * Es la única alerta que puede no tener responsable y aun así tener que
-   * enviarse: mientras nadie la toma de la bandeja no hay a quién reclamarle,
-   * y es justo entonces cuando hay que avisar para que no se acumulen. Por eso
-   * `notificar` la expande a una por cada cuenta que pueda resolverla, en vez
-   * de descartarla como al resto de lo que llega sin destinatario.
-   */
-  | 'CDP_SIN_ATENDER'
+  | 'SIN_RESPONSABLE'
   /**
    * Una actividad con plazo que está por vencer o ya se venció (EFDS-1183).
    *
    * Sus días se cuentan hábiles, no calendario como los demás: así se acordó
    * para los plazos de las actividades.
    */
-  | 'PLAZO_ACTIVIDAD';
+  | 'PLAZO_ACTIVIDAD'
+  /**
+   * Una sesión del Comité de Contratación sin acta (migración 113).
+   *
+   * El acta tarda hasta diez días y no frena el proceso, así que la sesión se
+   * registra sin ella; esto es lo que impide que se olvide. Le llega a quien
+   * hace la actividad de esa sesión —la 3.7 o la 5.6.1— hasta que la cargue:
+   * dentro del plazo como por vencer, después como vencida.
+   */
+  | 'ACTA_COMITE_PENDIENTE'
+  /**
+   * Un comité evaluador designado sin memorando (117, EFDS-1156).
+   *
+   * Mismo razonamiento que el acta: el memorando depende de firmas que tardan
+   * y no frena la evaluación, así que esto es lo que impide que se olvide. Le
+   * llega a quien hace la 6.2 en el proceso hasta que lo cargue.
+   */
+  | 'MEMORANDO_COMITE_PENDIENTE';
 
 /** Algo que espera la decisión de quien consulta (bandeja «Por revisar»). */
 export interface ElementoPorRevisar {
@@ -116,9 +112,14 @@ export interface ElementoPorRevisar {
    * las modificaciones y las cuentas de cobro se deciden una por una dentro de
    * su actividad.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
+  /**
+   * Qué abrir cuando el proceso y el numeral no bastan: la revisión del PAA,
+   * que no es una actividad del riel sino una decisión sobre el proceso.
+   */
+  referencia: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;
@@ -130,6 +131,11 @@ export interface ElementoPorRevisar {
   enviadoPor: string | null;
   desde: string;
   diasEsperando: number;
+  /**
+   * En qué escalón espera, cuando la actividad se aprueba por una cadena
+   * (migración 101): «Escalón 2 de 4 · Coordinador». Nulo en lo demás.
+   */
+  escalon?: { orden: number; de: number; nombre: string } | null;
 }
 
 /** Una actividad cuyo plazo aprieta o ya pasó. */
@@ -222,21 +228,30 @@ export class AlertasService {
 
   constructor(
     private readonly dataSource: DataSource,
-    /**
-     * Para saber a quién avisarle de una solicitud que nadie ha tomado.
-     *
-     * Se pide el servicio en vez de repetir aquí la consulta de «cuentas con
-     * este permiso»: quién puede resolver un CDP tiene que responderlo un solo
-     * sitio, o el aviso y la bandeja acabarán discrepando sobre lo mismo.
-     */
-    private readonly participacion: ParticipacionService,
     @Optional() private readonly parametros?: ParametrosAlertaService,
     /**
      * Quién puede aprobar pólizas, decidir modificaciones o ratificar la
      * modalidad: la matriz de permisos, la misma que consultan los guards.
      */
     @Optional() private readonly alcance?: AlcanceService,
-  ) {}
+    /**
+     * Quién decide cada escalón (migración 101). Opcional como los demás, para
+     * que las pruebas que construyen el servicio a mano sigan funcionando con
+     * solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+    /**
+     * Qué hace cada puesto en una modalidad y versión del flujo (109, 111):
+     * un puesto vacío solo alerta donde hace algo.
+     */
+    @Optional() puestos?: PuestosService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+    this.puestos = puestos ?? new PuestosService(dataSource, alcance as AlcanceService);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
+  private readonly puestos: PuestosService;
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -273,18 +288,20 @@ export class AlertasService {
       liquidaciones,
       aprobaciones,
       devueltas,
-      sinAbogado,
-      cdpSinAtender,
+      sinResponsable,
       plazosActividad,
+      actasPendientes,
+      memorandosPendientes,
     ] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
       this.liquidacionesPendientes(),
       this.aprobacionesPendientes(acceso),
       this.devueltasParaCorregir(acceso),
-      this.procesosSinAbogado(hoy, plazos.tolerancia_sin_abogado, acceso),
-      this.solicitudesDeCdpSinAtender(hoy),
+      this.procesosSinResponsable(hoy, plazos.tolerancia_sin_abogado, acceso),
       this.plazosDeActividades(acceso),
+      this.actasDelComitePendientes(hoy, plazos.plazo_acta_comite, acceso),
+      this.memorandosDelComitePendientes(hoy, plazos.plazo_memorando_comite, acceso),
     ]);
 
     const conPlazo: Alerta[] = plazosActividad.map((p) => ({
@@ -318,7 +335,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinAbogado, ...cdpSinAtender, ...conPlazo, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinResponsable, ...actasPendientes, ...memorandosPendientes, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -403,47 +420,9 @@ export class AlertasService {
    * distintas sobre lo mismo.
    */
   private filasPorAprobar(acceso: HiringAccess): Promise<any[]> {
-    const roles = acceso.roles ?? [];
-    const esSuperAdmin = roles.includes('SUPER_ADMIN');
-
-    return this.dataSource.query(
-      `
-      SELECT DISTINCT ON (pa.id)
-             p.id                AS proceso_id,
-             p.radicado          AS radicado,
-             p.objeto            AS objeto,
-             m.nombre            AS modalidad,
-             pa.numeral          AS numeral,
-             a.nombre            AS actividad,
-             a.etapa             AS etapa,
-             pa.version          AS version,
-             pa.enviado_por      AS enviado_por,
-             pa.updated_at       AS desde
-        FROM hiring.proceso_actividades pa
-        JOIN hiring.procesos p ON p.id = pa.proceso_id
-        JOIN hiring.actividades a ON a.numeral = pa.numeral
-        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
-        JOIN hiring.reglas_actividad r
-              ON r.numeral = pa.numeral
-             AND r.tipo = 'EXIGE_APROBACION'
-             AND r.vigente_hasta IS NULL
-             AND (r.modalidad IS NULL OR r.modalidad = p.modalidad)
-       WHERE pa.estado = 'EN_REVISION'
-         -- Las propias también se ofrecen: quien las trabaja las aprueba si
-         -- tiene el rol, y esconderlas le dejaba pendientes que nadie más iba
-         -- a resolver.
-         AND (
-           $3 = true
-           OR (r.config -> 'personas') ? $2
-           OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(COALESCE(r.config -> 'roles', '[]'::jsonb)) rol
-              WHERE rol = ANY($1::text[])
-           )
-         )
-       ORDER BY pa.id, pa.updated_at ASC
-      `,
-      [roles, acceso.userId ?? '', esSuperAdmin],
-    );
+    // El escalón que espera a quien consulta, con la misma regla con que la
+    // cadena le deja decidir (migración 101).
+    return this.cadenas.filasPorDecidir(acceso);
   }
 
   private async aprobacionesPendientes(
@@ -497,14 +476,10 @@ export class AlertasService {
    * disciplinario: quien revisa ve de una vez todo lo que espera su decisión,
    * sin entrar proceso por proceso.
    *
-   * - Las actividades con aprobación configurada, con la misma consulta que la
-   *   alerta.
-   * - Los estudios previos enviados cuyo abogado es quien consulta. La 3.4 no
-   *   sale de una regla de aprobación sino del reparto de la 3.3, y por eso la
-   *   alerta no la veía: el abogado tenía que entrar al proceso para enterarse.
-   *
-   * La 3.1 no se toma de la primera fuente aunque tuviera regla: su decisión
-   * es la del abogado, y listarla dos veces ofrecería dos caminos para lo mismo.
+   * Las actividades con aprobación configurada, con la misma consulta que la
+   * alerta. El estudio previo (3.1) también: desde la 109 su revisión es
+   * siempre una ronda de su aprobación —quizá del puesto Abogado—, y no un
+   * camino aparte del abogado repartido.
    *
    * Desde que solo se decide en la pantalla de revisión entran también las
    * decisiones que no salen de una regla de aprobación: la modalidad (3.5), que
@@ -513,49 +488,14 @@ export class AlertasService {
    * cobro (9.4)—. Sin ellas, quien tenía que decidir no tenía cómo enterarse.
    */
   async porRevisar(acceso: HiringAccess): Promise<ElementoPorRevisar[]> {
-    const nombre = (acceso.userName ?? '').trim();
-    const id = (acceso.userId ?? '').trim();
-
-    const [aprobaciones, estudios] = await Promise.all([
-      this.filasPorAprobar(acceso),
-      nombre || id
-        ? this.dataSource.query(
-            `
-            SELECT p.id           AS proceso_id,
-                   p.radicado     AS radicado,
-                   p.objeto       AS objeto,
-                   m.nombre       AS modalidad,
-                   pa.numeral     AS numeral,
-                   a.nombre       AS actividad,
-                   a.etapa        AS etapa,
-                   pa.version     AS version,
-                   pa.enviado_por AS enviado_por,
-                   pa.updated_at  AS desde
-              FROM hiring.proceso_actividades pa
-              JOIN hiring.procesos p ON p.id = pa.proceso_id
-              JOIN hiring.actividades a ON a.numeral = pa.numeral
-              LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
-              JOIN hiring.participaciones_proceso pp
-                    ON pp.proceso_id = p.id
-                   AND pp.papel = 'ABOGADO'
-                   AND pp.estado = 'VIGENTE'
-             WHERE pa.numeral = '3.1'
-               AND pa.estado = 'EN_REVISION'
-               AND (
-                 ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
-                 OR ($2 <> '' AND pp.usuario_id::text = $2)
-               )
-            `,
-            [nombre, id],
-          )
-        : Promise.resolve([]),
-    ]);
+    const aprobaciones = await this.filasPorAprobar(acceso);
 
     const aElemento = (tipo: ElementoPorRevisar['tipo']) => (f: any): ElementoPorRevisar => {
       const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
       return {
         tipo,
         detalle: f.detalle ?? null,
+        referencia: f.referencia ?? null,
         procesoId: f.proceso_id,
         radicado: f.radicado,
         objeto: f.objeto,
@@ -567,33 +507,73 @@ export class AlertasService {
         enviadoPor: f.enviado_por ?? null,
         desde: desde.toISOString(),
         diasEsperando: Math.max(0, Math.floor((Date.now() - desde.getTime()) / 86_400_000)),
+        escalon:
+          f.escalon !== undefined && f.escalon !== null
+            ? { orden: Number(f.escalon), de: Number(f.escalones), nombre: f.escalon_nombre }
+            : null,
       };
     };
 
-    const [garantias, modificaciones, pagos] = await Promise.all([
+    const [garantias, modificaciones, pagos, revisionesPaa] = await Promise.all([
       this.garantiasPorAprobar(acceso),
       this.modificacionesPorDecidir(acceso),
       this.pagosPorAvalar(acceso),
+      this.revisionesDelPaa(acceso),
     ]);
 
     return [
-      ...estudios.map(aElemento('ESTUDIO_PREVIO')),
-      ...aprobaciones
-        .filter((f: any) => f.numeral !== '3.1')
-        .map(aElemento('ACTIVIDAD')),
+
+      // La 3.1 por cadena se abre en la revisión del estudio previo.
+      ...aprobaciones.map((f: any) => aElemento(f.numeral === '3.1' ? 'ESTUDIO_PREVIO' : 'ACTIVIDAD')(f)),
       ...garantias.map(aElemento('GARANTIA')),
       ...modificaciones.map(aElemento('MODIFICACION')),
       ...pagos.map(aElemento('PAGO')),
+      ...revisionesPaa.map(aElemento('REVISION_PAA')),
     ]
       // Lo que más lleva esperando, arriba.
       .sort((a, b) => b.diasEsperando - a.diasEsperando || a.desde.localeCompare(b.desde));
   }
 
   /**
+   * Revisiones abiertas por un cambio del Plan Anual de Adquisiciones.
+   *
+   * Las decide quien tenga `decidir` en `PAA.R` (109): ya no hay un abogado
+   * del proceso que responda por ellas.
+   */
+  private async revisionesDelPaa(acceso: HiringAccess): Promise<any[]> {
+    const bandeja = !!this.alcance && (await this.alcance.puedeEn(acceso, 'decidir', 'PAA.R'));
+    if (!bandeja) return [];
+
+    return this.dataSource.query(
+      `
+      SELECT p.id           AS proceso_id,
+             p.radicado     AS radicado,
+             p.objeto       AS objeto,
+             m.nombre       AS modalidad,
+             '3.1'          AS numeral,
+             CASE r.tipo
+               WHEN 'CAMBIO_VIGENCIA' THEN 'Evaluación por cambio de vigencia del PAA'
+               WHEN 'ELIMINACION' THEN 'Línea retirada del PAA'
+               ELSE 'Línea modificada en el PAA'
+             END            AS actividad,
+             p.etapa        AS etapa,
+             NULL           AS version,
+             NULL           AS enviado_por,
+             r.codigo || CASE WHEN r.bloquea THEN ' · detiene el proceso' ELSE '' END AS detalle,
+             r.id::text     AS referencia,
+             r.created_at   AS desde
+        FROM hiring.paa_revisiones r
+        JOIN hiring.procesos p ON p.id = r.proceso_id
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+       WHERE r.estado = 'PENDIENTE'
+      `,
+    );
+  }
+
+  /**
    * Pólizas cargadas que esperan aprobación (8.4).
    *
-   * Las aprueba quien tiene el permiso en el punto, menos quien las cargó: es
-   * la regla de `LegalizacionService.aprobarGarantia`, que responde 403.
+   * Las aprueba quien tiene el permiso en el punto, aunque sea quien las cargó.
    */
   private async garantiasPorAprobar(acceso: HiringAccess): Promise<any[]> {
     if (!this.alcance || !(await this.alcance.puedeEn(acceso, 'aprobar', '8.4'))) return [];
@@ -617,9 +597,7 @@ export class AlertasService {
         JOIN hiring.actividades a ON a.numeral = '8.4'
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
        WHERE g.estado = 'CARGADA'
-         AND (g.cargada_por IS NULL OR g.cargada_por <> $1)
       `,
-      [acceso.userName ?? ''],
     );
   }
 
@@ -673,12 +651,13 @@ export class AlertasService {
    * Cuentas de cobro radicadas que esperan el aval (9.4).
    *
    * Las avala el supervisor vigente del contrato, no un rol: es la regla de
-   * `PagosService.exigirSupervisor`, por persona o por nombre de cuenta.
+   * `PagosService.exigirSupervisor`. Por la cuenta que ocupa el puesto que
+   * llenó la designación (121); si la 9.4 no nombra puesto, por la cuenta
+   * designada.
    */
   private pagosPorAvalar(acceso: HiringAccess): Promise<any[]> {
-    const nombre = (acceso.userName ?? '').trim();
     const id = (acceso.userId ?? '').trim();
-    if (!nombre && !id) return Promise.resolve([]);
+    if (!id) return Promise.resolve([]);
 
     return this.dataSource.query(
       `
@@ -703,31 +682,18 @@ export class AlertasService {
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
        WHERE pg.estado = 'RADICADO'
          AND (
-           ($1 <> '' AND s.nombre = $1)
-           OR ($2 <> '' AND s.persona_id::text = $2)
+           EXISTS (
+             SELECT 1 FROM hiring.asignaciones_puesto ap
+              WHERE ap.proceso_id = p.id AND ap.puesto_id = s.puesto_id
+                AND ap.estado = 'VIGENTE' AND ap.usuario_id::text = $1
+           )
+           OR (s.puesto_id IS NULL AND s.usuario_id::text = $1)
          )
       `,
-      [nombre, id],
+      [id],
     );
   }
 
-  /**
-   * Solicitudes de CDP que siguen sin resolverse.
-   *
-   * Entran las dos situaciones y la consulta no las distingue, porque lo que se
-   * mide es lo mismo —cuánto lleva parada la solicitud— pero el destinatario
-   * cambia: si alguien la tomó, el aviso es suyo; si sigue en la bandeja, no
-   * hay responsable y `notificar` se lo manda a toda la Dirección Financiera.
-   * Esa es la diferencia con `procesosSinAbogado`, que deja fuera lo que nadie
-   * ha recibido porque allí sí existe alguien a quien reclamarle el reparto.
-   *
-   * Se cuenta desde `solicitado_at` y no desde que el proceso llegó a la etapa:
-   * lo que está detenido es la solicitud, y es la fecha que el expediente
-   * conserva.
-   *
-   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
-   * adición tiene su propio trámite y no es este.
-   */
   /**
    * Las actividades con plazo que están por vencer o ya se vencieron.
    *
@@ -790,56 +756,6 @@ export class AlertasService {
       .filter((p): p is PlazoDeActividad => p.estado !== 'VIGENTE');
   }
 
-  private async solicitudesDeCdpSinAtender(hoy: string): Promise<Alerta[]> {
-    const filas = await this.dataSource.query(
-      `SELECT p.id            AS proceso_id,
-              p.radicado      AS radicado,
-              cdp.solicitado_at AS desde,
-              f.nombre        AS responsable,
-              f.email         AS responsable_email,
-              f.usuario_id    AS responsable_id
-         FROM hiring.cdp cdp
-         JOIN hiring.procesos p ON p.id = cdp.proceso_id
-         LEFT JOIN hiring.participaciones_proceso f
-                ON f.proceso_id = p.id
-               AND f.papel = 'FINANCIERA'
-               AND f.estado = 'VIGENTE'
-        WHERE cdp.estado = 'SOLICITADO'
-          AND cdp.modificacion_id IS NULL
-          AND p.estado = 'EN_CURSO'
-        ORDER BY cdp.solicitado_at ASC`,
-    );
-
-    return filas
-      .map((f: any) => {
-        const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
-        const limite = new Date(desde);
-        limite.setDate(limite.getDate() + TOLERANCIA_CDP_SIN_ATENDER);
-        const vence = limite.toISOString().slice(0, 10);
-        const diasRestantes = diasParaVencer(vence, hoy);
-
-        return {
-          tipo: 'CDP_SIN_ATENDER' as TipoAlerta,
-          procesoId: f.proceso_id,
-          radicado: f.radicado,
-          contrato: null,
-          descripcion: '4.1 · la solicitud de CDP espera a la Dirección Financiera',
-          vence,
-          diasRestantes,
-          estado: estadoAlerta(diasRestantes, TOLERANCIA_CDP_SIN_ATENDER),
-          // Nulos mientras nadie la tome: es lo que `notificar` expande al
-          // equipo entero, y lo que hace que el aviso exista antes de que haya
-          // alguien a quien dirigirlo.
-          responsable: f.responsable ?? null,
-          responsableEmail: f.responsable_email ?? null,
-          responsableId: f.responsable_id ?? null,
-        };
-      })
-      // Dentro de la tolerancia no se alarma: es el margen normal entre pedir
-      // el CDP y que la Financiera se siente a resolverlo.
-      .filter((a) => a.estado !== 'VIGENTE');
-  }
-
   /**
    * Procesos recibidos en la Dirección y sin abogado que los revise
    * (EFDS-1183).
@@ -857,9 +773,9 @@ export class AlertasService {
    * los días restantes y el estado se calculan como en el resto de la lista, en
    * vez de inventar una segunda forma de ordenar lo urgente.
    */
-  private async procesosSinAbogado(
+  private async procesosSinResponsable(
     hoy: string,
-    tolerancia: number = TOLERANCIA_SIN_ABOGADO,
+    tolerancia: number = TOLERANCIA_SIN_RESPONSABLE,
     acceso?: HiringAccess,
   ): Promise<Alerta[]> {
     /*
@@ -873,9 +789,16 @@ export class AlertasService {
     const todos =
       !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
 
+    // Un proceso recibido con un puesto obligatorio vacío (109): una fila por
+    // puesto, porque cada uno se resuelve por separado en la 3.3.
     const filas = await this.dataSource.query(
       `SELECT p.id       AS proceso_id,
               p.radicado AS radicado,
+              p.modalidad AS modalidad,
+              COALESCE(p.flujo_version_id, (SELECT id FROM hiring.flujo_versiones WHERE estado = 'ACTIVA'))::text
+                         AS version,
+              pu.id::text AS puesto_id,
+              pu.nombre  AS puesto,
               c.usuario_id::text AS responsable_id,
               c.nombre   AS responsable,
               c.email    AS responsable_email,
@@ -883,25 +806,33 @@ export class AlertasService {
                 c.asignado_at,
                 COALESCE(
                   (SELECT MAX(a.relevado_at)
-                     FROM hiring.participaciones_proceso a
-                    WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO'),
+                     FROM hiring.asignaciones_puesto a
+                    WHERE a.proceso_id = p.id AND a.puesto_id = pu.id),
                   c.asignado_at
                 )
               ) AS desde
          FROM hiring.procesos p
          JOIN hiring.participaciones_proceso c
            ON c.proceso_id = p.id AND c.papel = 'CONTRATACION' AND c.estado = 'VIGENTE'
+         JOIN hiring.puestos_proceso pu ON pu.activo AND pu.obligatorio
         WHERE p.estado = 'EN_CURSO'
           AND NOT EXISTS (
-            SELECT 1 FROM hiring.participaciones_proceso a
-             WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO' AND a.estado = 'VIGENTE'
+            SELECT 1 FROM hiring.asignaciones_puesto a
+             WHERE a.proceso_id = p.id AND a.puesto_id = pu.id AND a.estado = 'VIGENTE'
           )
           AND ($1 = true OR c.usuario_id::text = $2)
         ORDER BY desde ASC`,
       [todos, acceso?.userId ?? ''],
     );
 
-    return filas
+    // Obligatorio no basta: el puesto tiene que hacer o aprobar algo en la
+    // modalidad del proceso, según la versión con la que corre. Si no, nadie lo
+    // necesita ahí y la alerta reclamaría un reparto que no sirve para nada.
+    const conUso = await puestosQueHacenAlgo(filas, (modalidad, version) =>
+      this.puestos.usos(modalidad, undefined, version),
+    );
+
+    return conUso
       .map((f: any) => {
         const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
         const limite = new Date(desde);
@@ -910,11 +841,11 @@ export class AlertasService {
         const diasRestantes = diasParaVencer(vence, hoy);
 
         return {
-          tipo: 'SIN_ABOGADO' as TipoAlerta,
+          tipo: 'SIN_RESPONSABLE' as TipoAlerta,
           procesoId: f.proceso_id,
           radicado: f.radicado,
           contrato: null,
-          descripcion: '3.4 · el proceso no tiene abogado que lo revise',
+          descripcion: `3.3 · nadie ocupa el puesto ${f.puesto}`,
           vence,
           diasRestantes,
           estado: estadoAlerta(diasRestantes, tolerancia),
@@ -929,6 +860,117 @@ export class AlertasService {
       // Dentro de la tolerancia no se avisa: es el hueco normal entre recibir
       // el proceso y sentarse a repartirlo.
       .filter((a) => a.estado !== 'VIGENTE');
+  }
+
+  /**
+   * Las sesiones del Comité de Contratación que siguen sin acta (113).
+   *
+   * El destinatario es quien hace la actividad de la sesión en el proceso —el
+   * ocupante del puesto, si la regla es de puesto—, no quien la transcribió: si
+   * el caso cambió de abogado, el acta la debe el que lo tiene ahora. Sin regla
+   * de puesto, quien la transcribió, que es el único dato cierto.
+   *
+   * Solo a quien se la deben cargar y a quien ve todos los procesos; sin
+   * usuario —el aviso diario— todas, y cada una va a su destinatario.
+   */
+  private async actasDelComitePendientes(
+    hoy: string,
+    plazo: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT s.id, s.proceso_id, s.sumision, s.fecha::text AS fecha,
+              s.registrado_por, s.registrado_por_id, p.radicado
+         FROM hiring.sesiones_comite_contratacion s
+         JOIN hiring.procesos p ON p.id = s.proceso_id
+        WHERE s.acta_documento_id IS NULL
+        ORDER BY s.fecha ASC`,
+    );
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const numeral = numeralDeLaSumision(Number(f.sumision) === 2 ? 2 : 1);
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, numeral).catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.registrado_por_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const vence = limiteDelActa(f.fecha, plazo);
+      const diasRestantes = diasParaVencer(vence, hoy);
+      alertas.push({
+        tipo: 'ACTA_COMITE_PENDIENTE',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `${numeral} · acta de la ${Number(f.sumision) === 2 ? 'segunda' : 'primera'} sesión del comité (${f.fecha})`,
+        vence,
+        diasRestantes,
+        // Siempre se alerta, dentro y fuera del plazo: el acta se debe desde el
+        // día de la sesión. El plazo solo dice cuándo pasa a vencida.
+        estado: estadoAlerta(diasRestantes, plazo),
+        responsable: quien?.responsable?.nombre ?? f.registrado_por ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
+  }
+
+  /**
+   * Los comités evaluadores vigentes que siguen sin memorando (117).
+   *
+   * El plazo corre desde que se registró el comité. El destinatario es quien
+   * hace la 6.2 en el proceso, o quien registró el comité si la actividad no
+   * tiene puesto: el mismo criterio que el acta del Comité de Contratación.
+   */
+  private async memorandosDelComitePendientes(
+    hoy: string,
+    plazo: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT c.id, c.proceso_id, (c.created_at AT TIME ZONE 'America/Bogota')::date::text AS desde,
+              c.designado_por, c.designado_por_id, p.radicado
+         FROM hiring.comites_evaluadores c
+         JOIN hiring.procesos p ON p.id = c.proceso_id
+        WHERE c.estado = 'VIGENTE' AND c.memorando_documento_id IS NULL
+        ORDER BY c.created_at ASC`,
+    );
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, '6.2').catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.designado_por_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const vence = limiteDelActa(f.desde, plazo);
+      const diasRestantes = diasParaVencer(vence, hoy);
+      alertas.push({
+        tipo: 'MEMORANDO_COMITE_PENDIENTE',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `6.2 · memorando de designación del comité evaluador (desde el ${f.desde})`,
+        vence,
+        diasRestantes,
+        estado: estadoAlerta(diasRestantes, plazo),
+        responsable: quien?.responsable?.nombre ?? f.designado_por ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
   }
 
   /**
@@ -1113,31 +1155,7 @@ export class AlertasService {
     // toca cada una y si va por correo; aquí saldrían sin destinatario.
     const brutas = (await this.listar(anticipacion, acceso)).filter((a) => a.tipo !== 'PLAZO_ACTIVIDAD');
 
-    /**
-     * La solicitud que nadie ha tomado se le avisa a todo el equipo.
-     *
-     * Es la excepción a «sin destinatario no se avisa», y existe para lo que
-     * esa regla no preveía: una bandeja compartida donde el trabajo se acumula
-     * precisamente porque todavía no es de nadie. Dirigirla a cada cuenta que
-     * puede resolverla es lo que la saca de ahí; en cuanto alguien la toma, la
-     * siguiente pasada ya trae responsable y el aviso deja de sonarle al resto.
-     *
-     * La lista se pide una sola vez y solo si hace falta: son las cuentas de la
-     * Dirección Financiera, no cambian entre una alerta y la siguiente.
-     */
-    const sinTomar = brutas.filter((a) => a.tipo === 'CDP_SIN_ATENDER' && !a.responsableId);
-    const equipo = sinTomar.length ? await this.participacion.financieros() : [];
-
-    const alertas: Alerta[] = brutas.flatMap((a) =>
-      sinTomar.includes(a)
-        ? equipo.map((cuenta) => ({
-            ...a,
-            responsable: cuenta.nombre,
-            responsableEmail: cuenta.email,
-            responsableId: cuenta.usuarioId,
-          }))
-        : [a],
-    );
+    const alertas = brutas;
 
     // Sin destinatario no hay a quién avisar: se cuentan aparte para que el log
     // distinga «no había nada» de «había y nadie tenía responsable».
@@ -1166,26 +1184,7 @@ export class AlertasService {
     // días» sobre algo que no vence. Además cada una pide algo distinto —una
     // decidir, otra corregir— y el aviso tiene que decir cuál de las dos.
     const mensajes = conDestinatario.map((a) =>
-      a.tipo === 'CDP_SIN_ATENDER'
-        ? {
-            id_usuario_destinatario: a.responsableId as string,
-            tipo_notificacion: 'contratacion_cdp_por_expedir',
-            // El título cambia al pasar la tolerancia, y no es un detalle de
-            // redacción: `sinAvisarYa` compara el mensaje, así que un texto
-            // distinto es lo que permite que el segundo aviso —el de la
-            // solicitud ya detenida— llegue en vez de descartarse como repetido.
-            titulo:
-              a.estado === 'VENCIDO'
-                ? 'Solicitud de CDP sin atender'
-                : 'Tienes una solicitud de CDP por atender',
-            mensaje:
-              a.estado === 'VENCIDO'
-                ? `La solicitud de CDP del proceso ${a.radicado} lleva ${Math.abs(
-                    a.diasRestantes,
-                  )} días sin resolverse. Sin el CDP expedido el proceso no puede abrirse.`
-                : `El proceso ${a.radicado} pide CDP y espera a la Dirección Financiera. Tómala para hacerte cargo de verificarla y expedirla.`,
-          }
-        : a.tipo === 'DEVUELTA_PARA_CORREGIR'
+      a.tipo === 'DEVUELTA_PARA_CORREGIR'
         ? {
             id_usuario_destinatario: a.responsableId as string,
             tipo_notificacion: 'contratacion_devolucion',
@@ -1194,14 +1193,39 @@ export class AlertasService {
               a.responsable ? ` por ${a.responsable}` : ''
             }. Corrígela y vuelve a enviarla.`,
           }
-        : a.tipo === 'SIN_ABOGADO'
+        : a.tipo === 'SIN_RESPONSABLE'
         ? {
             // Tenía que tener su propio texto: caía en el de vencimientos y
             // decía «vence en N días del contrato» sobre un proceso sin contrato.
             id_usuario_destinatario: a.responsableId as string,
-            tipo_notificacion: 'contratacion_sin_abogado',
-            titulo: 'Un proceso sigue sin abogado',
-            mensaje: `El proceso ${a.radicado} lleva ${Math.abs(a.diasRestantes)} días sin abogado asignado. Repártelo en la 3.4.`,
+            tipo_notificacion: 'contratacion_sin_responsable',
+            titulo: 'Un proceso tiene un puesto vacío',
+            mensaje: `En el proceso ${a.radicado}, ${a.descripcion.replace(/^3\.3 · /, '')} desde hace ${Math.abs(a.diasRestantes)} días. Asígnalo en la 3.3.`,
+          }
+        : a.tipo === 'ACTA_COMITE_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_acta_comite',
+            titulo: a.estado === 'VENCIDO' ? 'Acta del comité vencida' : 'Falta el acta del comité',
+            mensaje: `Proceso ${a.radicado}: ${a.descripcion.replace(/^[\d.]+ · /, '')} sigue sin cargarse${
+              a.estado === 'VENCIDO'
+                ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
+                : `; el plazo vence el ${a.vence}`
+            }.`,
+          }
+        : a.tipo === 'MEMORANDO_COMITE_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_memorando_comite',
+            titulo:
+              a.estado === 'VENCIDO'
+                ? 'Memorando del comité evaluador vencido'
+                : 'Falta el memorando del comité evaluador',
+            mensaje: `Proceso ${a.radicado}: el memorando de designación del comité evaluador sigue sin cargarse${
+              a.estado === 'VENCIDO'
+                ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
+                : `; el plazo vence el ${a.vence}`
+            }.`,
           }
         : a.tipo === 'APROBACION_PENDIENTE'
         ? {
@@ -1260,4 +1284,23 @@ export class AlertasService {
       sinDestinatario: alertas.length - conDestinatario.length,
     };
   }
+}
+
+/**
+ * De las filas de puesto vacío, las que de verdad paran el proceso: aquellas
+ * cuyo puesto hace o aprueba algo en su modalidad y versión del flujo. Se
+ * consulta una vez por cada pareja modalidad–versión, no por proceso.
+ */
+export async function puestosQueHacenAlgo<F extends { modalidad: string | null; version: string | null; puesto_id: string }>(
+  filas: F[],
+  usosDe: (modalidad: string | null, version: string | null) => Promise<UsoDePuesto[]>,
+): Promise<F[]> {
+  const conUso = new Map<string, Set<string>>();
+  const clave = (f: F) => `${f.modalidad ?? ''}|${f.version ?? ''}`;
+  for (const f of filas) {
+    if (conUso.has(clave(f))) continue;
+    const usos = await usosDe(f.modalidad ?? null, f.version ?? null);
+    conUso.set(clave(f), new Set(usos.map((u) => u.puestoId)));
+  }
+  return filas.filter((f) => conUso.get(clave(f))?.has(f.puesto_id));
 }

@@ -16,8 +16,12 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 
+import { OfertasModule } from '../ofertas/ofertas.module';
+
 @Module({
   imports: [
+    // Donde la modalidad no tiene apertura, la publicación abre la recepción.
+    OfertasModule,
     TypeOrmModule.forFeature([
       PublicacionPliego,
       PlazoPublicacion,

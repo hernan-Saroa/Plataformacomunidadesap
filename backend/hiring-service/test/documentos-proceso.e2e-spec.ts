@@ -63,7 +63,8 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
   // ------------------------------------------------------------ criterio 1 --
 
   describe('Criterio 1 · modalidad con pliego', () => {
-    it('exige el aviso de convocatoria y el proyecto de pliego', async () => {
+    // La minuta se exige desde la revisión de QA de EFDS-1150 (128).
+    it('exige el aviso de convocatoria, el proyecto de pliego y la minuta', async () => {
       const proceso = await crear('LICITACION_PUBLICA');
       const estado = await documentos.estado(proceso.id);
 
@@ -71,6 +72,7 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
       expect(estado.documentos.map((d) => d.codigo)).toEqual([
         'AVISO_CONVOCATORIA',
         'PROYECTO_PLIEGO',
+        'MINUTA',
       ]);
     });
 
@@ -85,8 +87,9 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
       expect(estado.documentos.every((d) => d.cargado === null)).toBe(true);
     });
 
-    it('registra cada documento y solo da la actividad por cumplida con los dos', async () => {
+    it('registra cada documento y con los tres los manda a revisión', async () => {
       const proceso = await crear('LICITACION_PUBLICA');
+      await documentos.cargar(proceso.id, 'MINUTA', archivo('minuta.pdf'), 'm'.repeat(64), gestor);
 
       const conAviso = await documentos.cargar(
         proceso.id,
@@ -96,7 +99,7 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
         gestor,
       );
 
-      // Un documento de dos: la actividad está en curso, no cumplida.
+      // Faltando uno: la actividad está en curso, no cumplida.
       expect(conAviso.completa).toBe(false);
       expect(conAviso.estado).toBe('BORRADOR');
       expect(conAviso.documentos.find((d) => d.codigo === 'AVISO_CONVOCATORIA')?.cargado).not.toBe(
@@ -111,8 +114,10 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
         gestor,
       );
 
+      // Con la cadena de la 128, completa no es aprobada: pasa al abogado
+      // revisor y a la Directora antes de publicarse.
       expect(conPliego.completa).toBe(true);
-      expect(conPliego.estado).toBe('APROBADO');
+      expect(conPliego.estado).toBe('EN_REVISION');
     });
 
     it('no admite el mismo documento dos veces sin sustituir el anterior', async () => {
@@ -128,6 +133,7 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
 
     it('al sustituir un documento la actividad vuelve a estar incompleta', async () => {
       const proceso = await crear('LICITACION_PUBLICA');
+      await documentos.cargar(proceso.id, 'MINUTA', archivo('m.pdf'), 'g'.repeat(64), gestor);
       await documentos.cargar(proceso.id, 'AVISO_CONVOCATORIA', archivo('a.pdf'), 'e'.repeat(64), gestor);
       const completo = await documentos.cargar(
         proceso.id,
@@ -203,12 +209,21 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
 
   // ------------------------------------------------- aplicabilidad general --
 
-  it('el régimen especial 092 no elabora los documentos ordinarios', async () => {
-    const proceso = await crear('REGIMEN_ESPECIAL_092');
+  it('la compra por Tienda Virtual no elabora los documentos del proceso', async () => {
+    // La matriz marca NO en la 5.1 para TVEC: se compra por el catálogo del
+    // acuerdo marco. El 092 sí los elabora desde la 112, como dice la matriz.
+    const proceso = await crear('ABREVIADA_TVEC');
     const estado = await documentos.estado(proceso.id);
 
     expect(estado.aplica).toBe(false);
-    expect(estado.motivoNoAplica).toMatch(/092/);
+    expect(estado.motivoNoAplica).toMatch(/matriz/i);
+  });
+
+  it('el régimen especial 092 elabora los documentos, como en la matriz', async () => {
+    const proceso = await crear('REGIMEN_ESPECIAL_092');
+    const estado = await documentos.estado(proceso.id);
+
+    expect(estado.aplica).toBe(true);
   });
 
   it('rechaza un documento que no corresponde a la modalidad', async () => {

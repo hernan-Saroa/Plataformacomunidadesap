@@ -35,7 +35,7 @@ import { PermisosGuard } from '../../auth/permisos.guard';
 import { Puede } from '../../auth/puede.guard';
 
 /**
- * Publicación del proyecto de pliego — actividad 5.2 (EFDS-1150).
+ * Publicación del proyecto de pliego — actividad 5.3 (EFDS-1150).
  *
  * No publica en SECOP II: registra que se publicó y controla el plazo legal que
  * corre desde ese día. Mientras no exista la integración (EFDS-1386), la
@@ -47,7 +47,7 @@ export class PublicacionController {
   constructor(private readonly service: PublicacionService) {}
 
   @Get()
-  @Puede('ver', '5.2')
+  @Puede('ver', '5.3')
   @ApiOperation({
     summary: 'Estado de la publicación y del plazo de publicidad',
     description:
@@ -58,7 +58,7 @@ export class PublicacionController {
   }
 
   @Post()
-  @Puede('editar', '5.2')
+  @Puede('editar', '5.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -70,7 +70,7 @@ export class PublicacionController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 5.2 · Registrar la publicación del proyecto de pliego',
+    summary: 'Actividad 5.3 · Registrar la publicación del proyecto de pliego',
     description:
       'Multipart: los datos van con la evidencia en la misma petición. La fecha es la de la publicación real en SECOP II, no la del registro: es la que arranca el plazo. Sin evidencia no se registra, porque el soporte es lo único que prueba que la publicación existió.',
   })
@@ -100,7 +100,7 @@ export class PublicacionController {
   }
 
   @Post('anular')
-  @Puede('editar', '5.2')
+  @Puede('editar', '5.3')
   @ApiOperation({
     summary: 'Anular la publicación registrada para corregirla',
     description:

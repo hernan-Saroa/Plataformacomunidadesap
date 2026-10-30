@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PublishedAvatar } from '../../../../shared/profile-photos';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, RefreshCw, Lightbulb, LogOut, ArrowLeftRight } from 'lucide-react';
 import { useConfirmation } from './ConfirmationModal';
@@ -130,7 +131,7 @@ export function UserMenu({
             aria-label="Ver perfil"
             title="Ver mi perfil"
           >
-            {userInitials}
+            <PublishedAvatar own name={userName} size={44} />
           </button>
 
           {/* Botón de menú contextual (tres puntos) */}

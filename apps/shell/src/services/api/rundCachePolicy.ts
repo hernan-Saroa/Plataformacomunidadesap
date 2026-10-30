@@ -1,6 +1,6 @@
 /** Las consultas RUND se revalidan con el servidor y el rol de la sesión actual. */
 export function isRundRequest(url: string): boolean {
-  return /\/(banco-docentes|macro-docente|docentes-disponibles)(\/|\?|$)/i.test(url);
+  return /\/(banco-docentes|macro-docente|docentes-disponibles|fotos-perfil)(\/|\?|$)/i.test(url);
 }
 
 export function excludesRundCache(url: string, data?: unknown): boolean {

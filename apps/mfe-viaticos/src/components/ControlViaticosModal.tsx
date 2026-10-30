@@ -625,8 +625,13 @@ export default function ControlViaticosModal({
             .consultarTarifaEstimada(origen, destino)
             .then((res) => {
               setTarifaEstimadaReferencia(res);
-              const esIdaVuelta = sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1);
-              const montoEstimado = (res?.tarifaEstimada || 0) * (esIdaVuelta ? 2 : 1);
+              const tramosAereos = (solicitud.itinerario || []).filter(
+                (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete,
+              );
+              const numTramos = tramosAereos.length > 0
+                ? tramosAereos.length
+                : (sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1)) ? 2 : 1;
+              const montoEstimado = (res?.tarifaEstimada || 0) * numTramos;
               const depId = solicitud.comisionado?.idDependencia ?? (solicitud as any).idDependencia;
 
               // Prellenar recomendación para optimizar usabilidad si no se ha digitado un valor
@@ -650,8 +655,13 @@ export default function ControlViaticosModal({
             .catch(() => {})
             .finally(() => setCargandoTarifa(false));
         } else if (solicitud.tarifaEstimada) {
-          const esIdaVuelta = sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1);
-          const montoEstimado = (solicitud.tarifaEstimada.tarifaEstimada || 0) * (esIdaVuelta ? 2 : 1);
+          const tramosAereos = (solicitud.itinerario || []).filter(
+            (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete,
+          );
+          const numTramos = tramosAereos.length > 0
+            ? tramosAereos.length
+            : (sync.esViajeIdaVuelta ?? ((solicitud.itinerario?.length || 0) > 1)) ? 2 : 1;
+          const montoEstimado = (solicitud.tarifaEstimada.tarifaEstimada || 0) * numTramos;
           if (montoEstimado > 0 && (!solicitud.costoEstimadoTiquete || Number(solicitud.costoEstimadoTiquete) === 0)) {
             setCostoTiqueteInput(String(montoEstimado));
           }
@@ -716,8 +726,13 @@ export default function ControlViaticosModal({
 
   // Cálculo y sincronización de itinerario para tiquetes y desplazamientos
   const syncItin = sincronizarItinerarioFormulario(solicitud?.itinerario || []);
-  const esIdaVuelta = syncItin.esViajeIdaVuelta ?? ((solicitud?.itinerario?.length || 0) > 1);
-  const multiplicadorTramos = esIdaVuelta ? 2 : 1;
+  const tramosAereos = (solicitud?.itinerario || []).filter(
+    (t: any) => t.tipoTransporte === 'AEREO' || t.requiereTiquete,
+  );
+  const numTramosAereos = tramosAereos.length > 0
+    ? tramosAereos.length
+    : (syncItin.esViajeIdaVuelta ?? ((solicitud?.itinerario?.length || 0) > 1)) ? 2 : 1;
+  const multiplicadorTramos = numTramosAereos;
   const tarifaUnit = Number(tarifaEstimadaReferencia?.tarifaEstimada || 0);
   const totalTiquetesReferencia = tarifaUnit * multiplicadorTramos;
 
@@ -1155,13 +1170,15 @@ export default function ControlViaticosModal({
                               {tarifaEstimadaReferencia.origen} ⇄ {tarifaEstimadaReferencia.destino}
                             </span>
                             <span className="text-[10px] text-slate-500 block mt-0.5">
-                              {esIdaVuelta ? '2 tramos (Ida y Vuelta)' : '1 tramo (Solo Ida)'}
+                              {multiplicadorTramos === 2
+                                ? '2 tramos (Ida y Vuelta)'
+                                : `${multiplicadorTramos} tramo${multiplicadorTramos === 1 ? ' (Solo Ida)' : 's'}`}
                             </span>
                           </div>
                           <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                            <span className="text-slate-400 block text-[10px] font-bold uppercase">Tarifa Segmento</span>
+                            <span className="text-slate-400 block text-[10px] font-bold uppercase">Tarifa por Trayecto</span>
                             <span className="font-mono font-bold text-slate-800">
-                              {formatearMoneda(tarifaUnit)} / tramo
+                              {formatearMoneda(tarifaUnit)} / trayecto
                             </span>
                             {tarifaEstimadaReferencia.tarifaMinima != null && tarifaEstimadaReferencia.tarifaMaxima != null && (
                               <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -1170,7 +1187,7 @@ export default function ControlViaticosModal({
                             )}
                           </div>
                           <div className="p-2 bg-sky-50 rounded-lg border border-sky-100">
-                            <span className="text-sky-700 block text-[10px] font-bold uppercase">Total Estimado Ruta</span>
+                            <span className="text-sky-700 block text-[10px] font-bold uppercase">Total Estimado Pasajes</span>
                             <span className="font-mono font-black text-sky-900 text-xs">
                               {formatearMoneda(totalTiquetesReferencia)}
                             </span>

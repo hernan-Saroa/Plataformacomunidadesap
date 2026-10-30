@@ -32,7 +32,7 @@ interface Props {
   onCambio?: () => void;
 }
 
-const NUMERAL = '5.4';
+const NUMERAL = '5.5';
 
 const pesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -41,7 +41,7 @@ const pesos = new Intl.NumberFormat('es-CO', {
 });
 
 /**
- * Actividad 5.4 · Limitación de la convocatoria a MIPYME (EFDS-1151).
+ * Actividad 5.5 · Limitación de la convocatoria a MIPYME (EFDS-1151).
  *
  * El sistema calcula las condiciones y las pone delante de quien decide; la
  * limitación la resuelve la entidad. La pantalla está construida sobre esa

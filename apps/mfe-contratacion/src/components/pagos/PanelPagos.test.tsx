@@ -93,3 +93,33 @@ describe('PanelPagos · el aval del supervisor', () => {
     expect(screen.queryByRole('button', { name: /Abrir la revisión/ })).toBeNull();
   });
 });
+
+/**
+ * Tramitar el pago lo registra Contratación o el supervisor de este contrato
+ * (migración 133): a quien no puede, el botón no se le ofrece.
+ */
+describe('PanelPagos · el trámite del pago', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('ofrece tramitar la cuenta avalada a quien puede registrarlo', async () => {
+    vi.spyOn(contratacionService, 'pagos').mockResolvedValue({
+      ...conCuenta('AVALADO'),
+      puedeTramitar: true,
+    } as never);
+    render(<PanelPagos procesoId="p-1" />);
+
+    expect(await screen.findByRole('button', { name: /Tramitar el pago/ })).toBeInTheDocument();
+  });
+
+  it('no lo ofrece a quien no puede registrarlo', async () => {
+    vi.spyOn(contratacionService, 'pagos').mockResolvedValue({
+      ...conCuenta('AVALADO'),
+      esSupervisor: false,
+      puedeTramitar: false,
+    } as never);
+    render(<PanelPagos procesoId="p-1" />);
+
+    expect(await screen.findByText(/Pago 3/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Tramitar el pago/ })).toBeNull();
+  });
+});

@@ -113,7 +113,7 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
       {estado.completa ? (
         <Aviso tono="ok" titulo="Documentos completos">
           Ya cargaste todo lo que exige la modalidad. El siguiente paso es publicar el proyecto de
-          pliego en la actividad 5.2.
+          pliego en la actividad 5.3.
         </Aviso>
       ) : null}
     </Marco>

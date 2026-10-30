@@ -17,121 +17,194 @@ export interface ConversacionChat {
   createdAt: string;
   updatedAt: string;
   mensajes?: MensajeChat[];
+  puedeEscribir?: boolean;
 }
 
-const GATEWAY_BASE = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
-  ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '')
-  : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:4000' : '/services');
+export class ChatbotHttpError extends Error {
+  constructor(public readonly status: number) {
+    super(status === 401 ? 'No se pudo validar tu sesión. Reconecta el asistente o inicia sesión nuevamente.'
+      : status === 403 ? 'No tienes permiso para consultar este historial.'
+      : status === 404 ? 'La conversación no está disponible para tu cuenta.'
+      : status === 429 ? 'Hay demasiadas consultas. Espera un momento antes de reintentar.'
+      : status >= 500 ? 'El servicio del chatbot no está disponible. Intenta nuevamente.'
+      : 'El servicio no pudo aceptar la consulta. Revisa los datos e intenta nuevamente.');
+  }
+}
 
-const BASE_URL = `${GATEWAY_BASE}/chatbot/api/v1/chat`;
+export class ChatbotServiceError extends Error {
+  constructor(public readonly reason: 'network' | 'timeout' | 'response' | 'configuration') {
+    super(reason === 'timeout' ? 'El servicio tardó demasiado en responder. Intenta nuevamente.'
+      : reason === 'response' ? 'El chatbot recibió una respuesta no válida del servicio. Intenta nuevamente.'
+      : reason === 'configuration' ? 'La conexión del chatbot no está configurada correctamente. Contacta al administrador.'
+      : 'No se pudo conectar con el chatbot. Comprueba tu conexión e intenta nuevamente.');
+  }
+}
 
-export const ChatbotService = {
-  async listarConversaciones(usuarioEmail?: string, todos: boolean = false): Promise<ConversacionChat[]> {
-    try {
-      let url = `${BASE_URL}/conversaciones`;
-      const params = new URLSearchParams();
-      if (todos) {
-        params.append('todos', 'true');
-      } else if (usuarioEmail) {
-        params.append('email', usuarioEmail);
-      }
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
+export const CHATBOT_REQUEST_TIMEOUT_MS = 20_000;
 
-      const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) throw new Error('Error al listar conversaciones');
-      return await res.json();
-    } catch (error) {
-      console.warn('Fallback local para conversaciones:', error);
-      return [];
+const sessionRefreshes = new Map<string, Promise<void>>();
+
+async function renewSession(gateway: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHATBOT_REQUEST_TIMEOUT_MS);
+  try {
+    // El servidor renueva la cookie HttpOnly; nunca leer ni almacenar el JWT.
+    const response = await fetch(`${gateway}/auth/api/v1/refresh`, {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: '{}', signal: controller.signal,
+    });
+    if (!response.ok) throw new ChatbotHttpError(response.status === 403 ? 401 : response.status);
+  } catch (error) {
+    if (error instanceof ChatbotHttpError) throw error;
+    throw new ChatbotServiceError(controller.signal.aborted ? 'timeout' : 'network');
+  } finally { clearTimeout(timeout); }
+}
+
+function refreshSession(gateway: string, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new ChatbotServiceError('timeout'));
+  let pending = sessionRefreshes.get(gateway);
+  if (!pending) {
+    pending = renewSession(gateway);
+    sessionRefreshes.set(gateway, pending);
+    const release = () => { if (sessionRefreshes.get(gateway) === pending) sessionRefreshes.delete(gateway); };
+    void pending.then(release, release);
+  }
+  // Cada consulta conserva su tiempo límite, incluso si comparte una renovación.
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new ChatbotServiceError('timeout'));
+    signal.addEventListener('abort', abort, { once: true });
+    void pending.then(() => { signal.removeEventListener('abort', abort); resolve(); },
+      error => { signal.removeEventListener('abort', abort); reject(error); });
+  });
+}
+
+export function resolveChatbotGatewayBaseUrl(apiBaseUrl?: string): string {
+  // El shell entrega la misma base que utiliza su cliente autenticado.
+  // Runtime/Vite y /services son alternativas para abrir el remoto por separado.
+  const runtimeUrl: unknown = typeof window !== 'undefined' ? (window as any).__ESAP_CONFIG__?.API_URL : undefined;
+  const candidates: unknown[] = [apiBaseUrl, runtimeUrl, import.meta.env.VITE_API_URL];
+  const configured = candidates.find((value) => value !== undefined && value !== null && value !== '');
+  if (configured === undefined) return '/services';
+  try {
+    if (typeof configured !== 'string' || !configured.trim()) throw new Error('Invalid gateway configuration');
+    const url = new URL(configured.trim(), typeof window !== 'undefined' ? window.location.origin : undefined);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+      throw new Error('Invalid gateway configuration');
     }
+    const isLoopback = (hostname: string) => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname);
+    // Misma normalización del shell para builds locales utilizados en un dominio remoto.
+    if (typeof window !== 'undefined' && isLoopback(url.hostname) && !isLoopback(window.location.hostname)) {
+      url.host = window.location.host;
+      url.protocol = window.location.protocol;
+    }
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.protocol === 'http:') {
+      throw new Error('Mixed content gateway');
+    }
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    throw new ChatbotServiceError('configuration');
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+const isMensaje = (value: unknown): value is MensajeChat => isRecord(value)
+  && typeof value.id === 'string' && value.id.length > 0
+  && typeof value.conversacionId === 'string'
+  && ['user', 'assistant', 'system'].includes(value.rol as string)
+  && typeof value.contenido === 'string' && typeof value.createdAt === 'string';
+const isConversacion = (value: unknown): value is ConversacionChat => isRecord(value)
+  && typeof value.id === 'string' && value.id.length > 0
+  && typeof value.titulo === 'string' && typeof value.contexto === 'string'
+  && typeof value.createdAt === 'string' && typeof value.updatedAt === 'string'
+  && typeof value.puedeEscribir === 'boolean'
+  && (value.mensajes === undefined || (Array.isArray(value.mensajes)
+    && value.mensajes.every((message) => isMensaje(message) && message.conversacionId === value.id)));
+
+// Una llamada fallida nunca representa un historial vacío ni un mensaje guardado.
+// Solo repetir una vez tras un 401 y una renovación correcta: el guard rechazó
+// la consulta antes de ejecutarla. Nunca repetir escrituras tras timeout/red/5xx.
+async function request<T>(apiBaseUrl: string | undefined, path: string, validate: (value: unknown) => value is T, init: RequestInit = {}): Promise<T> {
+  const gateway = resolveChatbotGatewayBaseUrl(apiBaseUrl);
+  const baseUrl = `${gateway}/chatbot/api/v1`;
+  const isPublic = path.startsWith('/public/');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHATBOT_REQUEST_TIMEOUT_MS);
+  try {
+    const send = () => fetch(`${baseUrl}${path}`, {
+      ...init,
+      credentials: isPublic ? 'omit' : 'include',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    let res = await send();
+    if (res.status === 401 && !isPublic) {
+      await refreshSession(gateway, controller.signal);
+      if (controller.signal.aborted) throw new ChatbotServiceError('timeout');
+      res = await send();
+    }
+    if (!res.ok) throw new ChatbotHttpError(res.status);
+    let data: unknown;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ChatbotServiceError(controller.signal.aborted ? 'timeout' : 'response');
+    }
+    if (!validate(data)) throw new ChatbotServiceError('response');
+    return data;
+  } catch (error) {
+    if (error instanceof ChatbotHttpError || error instanceof ChatbotServiceError) throw error;
+    throw new ChatbotServiceError(controller.signal.aborted ? 'timeout' : 'network');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const createChatbotService = (apiBaseUrl?: string) => ({
+  obtenerConfiguracion(): Promise<{ activo: boolean }> {
+    return request(apiBaseUrl, '/public/config', (value): value is { activo: boolean } => isRecord(value) && typeof value.activo === 'boolean');
   },
 
-  async crearConversacion(
+  consultarPublico(contenido: string): Promise<{ respuesta: string }> {
+    return request(apiBaseUrl, '/public/consultas', (value): value is { respuesta: string } => isRecord(value)
+      && typeof value.respuesta === 'string' && value.respuesta.trim().length > 0,
+    { method: 'POST', body: JSON.stringify({ contenido }) });
+  },
+
+  obtenerAcceso(): Promise<{ puedeVerTodas: boolean }> {
+    return request(apiBaseUrl, '/chat/acceso', (value): value is { puedeVerTodas: boolean } => isRecord(value) && typeof value.puedeVerTodas === 'boolean');
+  },
+
+  listarConversaciones(todos: boolean = false): Promise<ConversacionChat[]> {
+    return request(apiBaseUrl, `/chat/conversaciones${todos ? '?todos=true' : ''}`,
+      (value): value is ConversacionChat[] => Array.isArray(value) && value.every(isConversacion));
+  },
+
+  crearConversacion(
     titulo?: string,
     contexto?: string,
-    usuarioEmail?: string,
-    usuarioId?: string,
-    usuarioNombre?: string,
   ): Promise<ConversacionChat> {
-    try {
-      const res = await fetch(`${BASE_URL}/conversaciones`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo,
-          contexto: contexto || 'general',
-          usuarioEmail,
-          usuarioId,
-          usuarioNombre,
-        }),
-      });
-      if (!res.ok) throw new Error('Error al crear conversación');
-      return await res.json();
-    } catch (error) {
-      console.warn('Fallback al crear conversación:', error);
-      const id = 'local-' + Date.now();
-      return {
-        id,
-        titulo: titulo || 'Nueva consulta',
-        contexto: contexto || 'general',
-        usuarioEmail,
-        usuarioNombre,
-        usuarioId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        mensajes: [
-          {
-            id: 'msg-init',
-            conversacionId: id,
-            rol: 'assistant',
-            contenido: '¡Hola! Soy el Asistente Virtual institucional de la ESAP. ¿En qué puedo ayudarte hoy?',
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      };
-    }
+    return request(apiBaseUrl, '/chat/conversaciones', isConversacion, {
+      method: 'POST', body: JSON.stringify({ titulo, contexto: contexto || 'general' }),
+    });
   },
 
-  async obtenerConversacion(id: string): Promise<ConversacionChat> {
-    const res = await fetch(`${BASE_URL}/conversaciones/${id}`);
-    if (!res.ok) throw new Error('Error al obtener conversación');
-    return await res.json();
+  obtenerConversacion(id: string): Promise<ConversacionChat> {
+    return request(apiBaseUrl, `/chat/conversaciones/${encodeURIComponent(id)}`,
+      (value): value is ConversacionChat => isConversacion(value) && value.id === id);
   },
 
-  async enviarMensaje(
+  enviarMensaje(
     conversacionId: string,
     contenido: string,
   ): Promise<{ userMessage: MensajeChat; botMessage: MensajeChat }> {
-    try {
-      const res = await fetch(`${BASE_URL}/conversaciones/${conversacionId}/mensajes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contenido }),
-      });
-      if (!res.ok) throw new Error('Error al enviar mensaje');
-      return await res.json();
-    } catch (error) {
-      console.warn('Simulando respuesta local:', error);
-      return {
-        userMessage: {
-          id: 'user-' + Date.now(),
-          conversacionId,
-          rol: 'user',
-          contenido,
-          createdAt: new Date().toISOString(),
-        },
-        botMessage: {
-          id: 'bot-' + Date.now(),
-          conversacionId,
-          rol: 'assistant',
-          contenido: `He recibido tu mensaje: "${contenido}". Puedes acceder a los diferentes módulos de la ESAP a través del menú lateral para gestionar trámites académicos, viáticos, certificaciones o gestión profesoral.`,
-          createdAt: new Date().toISOString(),
-        },
-      };
-    }
+    return request(apiBaseUrl, `/chat/conversaciones/${encodeURIComponent(conversacionId)}/mensajes`,
+      (value): value is { userMessage: MensajeChat; botMessage: MensajeChat } => isRecord(value)
+        && isMensaje(value.userMessage) && value.userMessage.rol === 'user' && value.userMessage.conversacionId === conversacionId
+        && isMensaje(value.botMessage) && value.botMessage.rol === 'assistant' && value.botMessage.conversacionId === conversacionId,
+      { method: 'POST', body: JSON.stringify({ contenido }) });
   },
-};
+});
+
+export const ChatbotService = createChatbotService();

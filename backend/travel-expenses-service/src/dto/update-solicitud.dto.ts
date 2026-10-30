@@ -199,4 +199,8 @@ export class UpdateSolicitudDto {
   @IsOptional()
   @IsArray()
   alertasLiquidacion?: string[];
+
+  @IsOptional()
+  @IsString()
+  justificacionDuracion?: string;
 }

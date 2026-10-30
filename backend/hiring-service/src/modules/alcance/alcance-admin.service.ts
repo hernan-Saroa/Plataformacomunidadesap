@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import { ACCIONES, Accion, Alcance, alcanceDeLugar, lugarDe } from '../../auth/alcance';
+import { ACCIONES, Accion, Alcance, PERMISO_DE_ACCION, alcanceDeLugar, lugarDe } from '../../auth/alcance';
+
+const NOMBRE_ACCION: Record<Accion, string> = { ver: 'Ver', editar: 'Editar', aprobar: 'Aprobar', decidir: 'Decidir' };
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess, normalizeRoles } from '../../auth/hiring-access';
 import { PERMISOS_TRANSVERSALES, permisosDelUsuario } from '../../auth/permisos';
@@ -35,8 +37,8 @@ export interface RolConAlcance {
  *
  * La pantalla escribe aquí el «dónde»; el «qué» —el permiso de cada acción— lo
  * sigue dando el backoffice de roles de la plataforma, que no es de este
- * módulo. Por eso la matriz enseña las dos cosas juntas y avisa cuando no
- * coinciden, pero solo escribe la suya.
+ * módulo. Por eso la matriz enseña las dos cosas juntas, solo escribe la suya y
+ * no deja marcar una acción que el backoffice no le dio al rol.
  */
 @Injectable()
 export class AlcanceAdminService {
@@ -183,6 +185,33 @@ export class AlcanceAdminService {
       );
       const queda = new Set(nuevos.map(clave));
       const habia = new Set(actuales.map((a) => clave({ ...a, etapa: a.etapa === null ? null : Number(a.etapa) })));
+
+      /*
+       * Una casilla nueva exige que el rol tenga la acción en los permisos
+       * generales de la plataforma. Antes se guardaba y la pantalla solo
+       * avisaba «sin efecto»: quedaba configurado algo que no funcionaba, y
+       * quien leía la matriz creía que el rol podía. Las que ya estaban se
+       * dejan: si el permiso general vuelve, vuelven a valer sin rehacerlas.
+       */
+      const generales: { code: string }[] = await em.query(
+        `SELECT DISTINCT p.code
+           FROM auth.role_permissions rp
+           JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
+          WHERE rp.id_rol::text = $1 AND rp.is_active = true
+            AND p.code = ANY($2::text[])`,
+        [rolId, ACCIONES.map((a) => PERMISO_DE_ACCION[a])],
+      );
+      const permitidas = new Set(ACCIONES.filter((a) => generales.some((g) => g.code === PERMISO_DE_ACCION[a])));
+      const sinPermiso = [
+        ...new Set(nuevos.filter((n) => !habia.has(clave(n)) && !permitidas.has(n.accion)).map((n) => n.accion)),
+      ];
+      if (sinPermiso.length) {
+        throw new BadRequestException(
+          `Este rol no tiene el permiso ${sinPermiso
+            .map((a) => `«${NOMBRE_ACCION[a]}»`)
+            .join(' ni ')} en la administración de roles de la plataforma: asígnaselo allí antes de marcarlo aquí`,
+        );
+      }
 
       const apagar = actuales.filter(
         (a) => !queda.has(clave({ ...a, etapa: a.etapa === null ? null : Number(a.etapa) })),

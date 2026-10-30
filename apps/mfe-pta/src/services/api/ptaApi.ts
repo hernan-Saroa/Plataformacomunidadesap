@@ -26,6 +26,30 @@ export interface PTADecisionListScope {
   cetaps: string[] | null;
 }
 
+export interface PTARoleAccess {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  isSuperUser: boolean;
+}
+
+export async function getPTACurrentRoleAccess() {
+  try {
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/permisos-vigentes`, undefined,
+      { cache: 'no-store', skipErrorToast: true, retries: 0 });
+    const result = normalizeResult<PTARoleAccess | null>(raw, null);
+    const value = result.data;
+    if (!result.success || !value?.userId || !Array.isArray(value.roles)
+      || !Array.isArray(value.permissions) || typeof value.isSuperUser !== 'boolean') {
+      return { success: false, data: null };
+    }
+    return result;
+  } catch {
+    return { success: false, data: null };
+  }
+}
+
 export async function getPTADecisionListScope() {
   try {
     requireConnectionForDecision();
@@ -79,7 +103,7 @@ export async function getActivePeriodoAcademico() {
     const raw = await apiClient.get<any>(`${PTA_BASE}/periodos-academicos`);
     const normalized = normalizeResult<any[]>(raw, []);
     if (normalized.success && Array.isArray(normalized.data)) {
-      const active = normalized.data.find(p => p.estado === 'en_curso');
+      const active = normalized.data.find(p => p.estado === 'en_curso' && !p.extraordinario);
       if (active) return active;
       if (normalized.data.length > 0) return normalized.data[0];
     }
@@ -196,19 +220,26 @@ export async function savePTA(data: any) {
     return { ...asObject(raw), success: normalized.success, data: normalized.data };
   } catch (error: any) {
     console.error('[mfe-pta][savePTA] Error:', error);
-    return { success: false, data: null, message: error?.message || 'Error al guardar el PTA' };
+    return { success: false, data: null, message: error?.message || 'Error al guardar el PTA', status: error?.status ?? error?.response?.status ?? error?.statusCode };
   }
 }
 
 export async function getConfiguracionPTAGlobal() {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/configuracion`);
+    // Lectura operativa para formularios/docentes; no concede administración.
+    const raw = await apiClient.get<any>(`${PTA_BASE}/reglas`);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][getConfiguracionPTAGlobal] Error:', error);
     return { success: false, data: null };
   }
+}
+
+export async function getConfiguracionPTAAdministracion() {
+  const raw = await apiClient.get<any>(`${PTA_BASE}/configuracion`);
+  const normalized = normalizeResult<any>(raw, null);
+  return { success: normalized.success, data: normalized.data };
 }
 
 export async function updateConfiguracionPTAGlobal(rules: any) {
@@ -940,7 +971,8 @@ export async function savePTAUserData(
 
 export async function getAllPtasConEvidencias(periodo?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/evidencias/ptas`, periodo ? { periodo } : undefined);
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/evidencias/ptas`, periodo ? { periodo } : undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -2037,6 +2069,24 @@ export async function syncRUNDDocuments(docenteId: string, documentos: any[]) {
 
 const BD_BASE = `${SERVICE_BASE}/pta/banco-docentes`;
 
+export type RundDeletionSelection = { ids: string[] } | { todosFiltrados: true; filters: Record<string, string>; excluirIds?: string[] };
+export type RundDeletionPreview = { ids: string[]; fingerprint: string; total: number;
+  registros: { id: string; nombre_completo: string; documento_identidad: string; periodo_carga: string | null }[] };
+export async function previewRundDeletion(selection: RundDeletionSelection): Promise<RundDeletionPreview> {
+  const raw = await apiClient.post<any>(`${BD_BASE}/eliminacion/previsualizar`, selection, { retries: 0, skipErrorToast: true });
+  const result = normalizeResult<RundDeletionPreview | null>(raw, null);
+  if (!result.success || !result.data) throw new Error('No fue posible revisar los registros seleccionados.');
+  return result.data;
+}
+export async function confirmRundDeletion(preview: RundDeletionPreview, motivo: string): Promise<{ eliminados: number }> {
+  const raw = await apiClient.post<any>(`${BD_BASE}/eliminacion/confirmar`, {
+    ids: preview.ids, fingerprint: preview.fingerprint, motivo, confirmado: true,
+  }, { retries: 0, skipErrorToast: true });
+  const result = normalizeResult<{ eliminados: number } | null>(raw, null);
+  if (!result.success || !result.data) throw new Error('No fue posible eliminar los registros.');
+  return result.data;
+}
+
 export async function getBancoDocentes(filters?: {
   territorial?: string;
   dedicacion?: string;
@@ -2069,7 +2119,7 @@ export async function getBancoDocenteStats(filters?: { territorial?: string; ded
     if (filters?.estado) params.set('estado', filters.estado);
     if (filters?.periodoCarga) params.set('periodoCarga', filters.periodoCarga);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    const raw = await apiClient.get<any>(`${BD_BASE}/stats${qs}`);
+    const raw = await apiClient.get<any>(`${BD_BASE}/stats${qs}`, undefined, { cache: 'no-store' });
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][getBancoDocenteStats] Error:', error);
@@ -2105,7 +2155,8 @@ export async function getBancoDocenteCabezote(id: string, periodoCarga?: string)
 /** Consulta administrativa: el servidor aplica permiso funcional y alcance por componente. */
 export async function getEvidenciasSeguimientoPTA(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`);
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -2177,6 +2228,39 @@ export async function getBancoDocentesBulkHistory(limit = 50) {
   }
 }
 
+export interface RundRegistrationEvent {
+  id: string; tipo: 'MASIVO' | 'INDIVIDUAL'; periodo: string | null; titulo: string;
+  responsable: string; estado: string; fecha: string; fechaFin: string;
+  origen?: 'REGISTRO' | 'RECUPERACION_INFORMATIVA'; responsableRecuperacion?: string | null;
+  resumen: { total?: number; creados?: number; actualizados?: number; sinCambios?: number; errores?: number; omitidos?: number; recuperados?: number };
+  detalleCompleto: boolean;
+}
+
+export interface RundRegistrationHistoryPage {
+  data: RundRegistrationEvent[]; total: number; page: number; limit: number; pages: number; accesoCompleto: boolean;
+}
+
+export interface RundRegistrationDetail {
+  event: RundRegistrationEvent; registros: { nombre: string; documento_identidad: string | null; correo: string | null;
+    periodo: string | null; resultado: string; fila: number | null; fecha?: string | null; observacion?: string | null }[];
+  total: number; page: number; limit: number; pages: number; detalleCompleto: boolean; accesoCompleto: boolean;
+}
+
+export async function getRundRegistrationHistory(query: { periodoCarga?: string; tipo?: string; search?: string; page?: number }) {
+  const raw = await apiClient.get<any>(`${BD_BASE}/trazabilidad`, query, { cache: 'no-store', retries: 0, skipErrorToast: true });
+  // A paginated page has its own `data` array; it must not be unwrapped again.
+  const page = Array.isArray(raw?.data) ? raw : raw?.data;
+  if (raw?.success === false || !page || !Array.isArray(page.data) || !Number.isFinite(page.total)) throw new Error('No fue posible consultar la trazabilidad.');
+  return page as RundRegistrationHistoryPage;
+}
+
+export async function getRundRegistrationHistoryDetail(tipo: string, id: string, query: { periodoCarga?: string; sinPeriodo?: boolean; search?: string; page?: number }) {
+  const raw = await apiClient.get<any>(`${BD_BASE}/trazabilidad/${encodeURIComponent(tipo)}/${encodeURIComponent(id)}`, query, { cache: 'no-store', retries: 0, skipErrorToast: true });
+  const response = normalizeResult<RundRegistrationDetail | null>(raw, null);
+  if (!response.success || !response.data?.event || !Array.isArray(response.data.registros)) throw new Error('No fue posible consultar las personas de esta operación.');
+  return response.data;
+}
+
 export async function downloadBancoDocentesBulkSupport(cargaId: string): Promise<Blob> {
   return apiClient.getBlob(`${BD_BASE}/bulk/${encodeURIComponent(cargaId)}/soporte`);
 }
@@ -2223,10 +2307,10 @@ export async function getTarjetaRUND(docenteId: string) {
   }
 }
 
-/** BR-043 — Aprobar un bloque (maker-checker) */
-export async function aprobarRundBloque(docenteId: string, bloque: string, aprobadorId: string) {
+/** Aprobar un bloque con permiso de revisión o administración RUND. */
+export async function aprobarRundBloque(docenteId: string, bloque: string, aprobadorId: string, blockVersion?: number) {
   try {
-    const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/aprobar`, { aprobadorId });
+    const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/aprobar`, { aprobadorId, blockVersion });
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][aprobarRundBloque] Error:', error);
@@ -2235,9 +2319,9 @@ export async function aprobarRundBloque(docenteId: string, bloque: string, aprob
 }
 
 /** BR-045 — Devolver un bloque con observación obligatoria */
-export async function devolverRundBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string) {
+export async function devolverRundBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string, blockVersion?: number) {
   try {
-    const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/devolver`, { aprobadorId, observacion });
+    const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/devolver`, { aprobadorId, observacion, blockVersion });
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][devolverRundBloque] Error:', error);

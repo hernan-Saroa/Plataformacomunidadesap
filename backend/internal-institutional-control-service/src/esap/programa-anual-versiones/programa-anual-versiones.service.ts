@@ -29,6 +29,7 @@ const CAMPOS_VERSIONADOS: Array<keyof FilaProgramaAnual> = [
   'fechaFin',
   'semanasExcluidas',
   'unidadesAuditables',
+  'dependenciasAuditadas',
 ];
 
 export interface UsuarioVersion {
@@ -376,6 +377,7 @@ export class ProgramaAnualVersionesService {
         fechaFin: this.aFecha(a.fechaFin),
         semanasExcluidas: Array.isArray(a.semanasExcluidas) ? [...a.semanasExcluidas].sort() : [],
         unidadesAuditables: Array.isArray(a.unidadesAuditables) ? [...a.unidadesAuditables] : [],
+        dependenciasAuditadas: Array.isArray(a.dependenciasAuditadas) ? [...a.dependenciasAuditadas] : [],
       }));
   }
 

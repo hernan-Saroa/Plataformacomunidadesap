@@ -40,6 +40,8 @@ const TIPOS_CON_ACCION_ESTATICOS = [
   'AUTO_FORMULACION_PLIEGO',
   'PLIEGO_CARGOS',
   'AUTO_PRORROGA',
+  'AUTO_REMISION_COMPETENCIA',
+  'AUTO_REMISION',
 ];
 const tieneAccion = (tipo: string): boolean =>
   tipo?.startsWith('AUTO_APERTURA_') || TIPOS_CON_ACCION_ESTATICOS.includes(tipo);

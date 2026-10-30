@@ -133,7 +133,6 @@ export function GraduatesManagementModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
-  const [estructuraPeriodoCatalogo, setEstructuraPeriodoCatalogo] = useState('');
   const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
@@ -926,11 +925,16 @@ export function GraduatesManagementModule() {
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse, programsResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
-          graduadosService.programas.listar().catch((error) => {
+          graduadosService.programas.listar().then((programs) => {
+            // Bulk upload uses its own title catalog, even while the locations request is pending.
+            if (isMounted) setProgramCatalog(programs || []);
+            return programs;
+          }).catch((error) => {
             console.warn('No se pudo cargar el catálogo de programas:', error);
+            if (isMounted) setProgramCatalog([]);
             return [] as GraduateProgramCatalogItem[];
           }),
         ]);
@@ -943,8 +947,6 @@ export function GraduatesManagementModule() {
         if (isMounted) {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
-          setEstructuraPeriodoCatalogo('catálogo maestro');
-          setProgramCatalog(programsResponse || []);
         }
 
         const seccionalByName = new Map<string, Seccional>();
@@ -1288,32 +1290,6 @@ export function GraduatesManagementModule() {
     graduatesOnly,
     territorialBySede,
     knownSedeKeys,
-    normalizeKey,
-  ]);
-
-  const bulkSedeTerritorialOptions = useMemo(() => {
-    const options: Array<{ territorial: string; sede: string }> = [];
-
-    territorialOptions.forEach((territorial) => {
-      const sedes = sedesByTerritorial.get(normalizeKey(territorial)) || [];
-      sedes.forEach((sede) => {
-        options.push({ territorial, sede });
-      });
-    });
-
-    if (options.length === 0) {
-      sedesOptions.forEach((sede) => {
-        const territorial = territorialBySede.get(normalizeKey(sede)) || '';
-        options.push({ territorial, sede });
-      });
-    }
-
-    return options;
-  }, [
-    territorialOptions,
-    sedesByTerritorial,
-    sedesOptions,
-    territorialBySede,
     normalizeKey,
   ]);
 
@@ -2184,15 +2160,12 @@ export function GraduatesManagementModule() {
 
       {/* Modal de Carga Masiva de Graduados */}
       <BulkGraduatesUploadModal
-        open={isBulkUploadModalOpen}
+        open={isBulkUploadModalOpen && canBulkUploadGraduates}
         onOpenChange={setIsBulkUploadModalOpen}
         onImported={handleBulkGraduatesImported}
         createdBy={bulkUploadCreatedBy}
         programOptions={integrationProgramOptions}
-        territorialOptions={territorialOptions}
-        sedeTerritorialOptions={bulkSedeTerritorialOptions}
         programsPeriod={PROGRAM_CATALOG_SOURCE_LABEL}
-        structurePeriod={estructuraPeriodoCatalogo}
       />
 
       <GraduateProgramsModal

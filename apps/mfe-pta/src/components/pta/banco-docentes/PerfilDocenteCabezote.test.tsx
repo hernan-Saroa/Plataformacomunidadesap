@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
+vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn().mockResolvedValue({ id: null, url: null }) } }));
 
 // Sin `globals: true` en vitest.config.ts, @testing-library/react no desmonta
 // el render anterior por su cuenta.

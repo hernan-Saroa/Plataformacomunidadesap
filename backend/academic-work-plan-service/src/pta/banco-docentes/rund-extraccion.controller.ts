@@ -20,22 +20,42 @@ export class RundExtraccionController {
     return actor;
   }
   @Get()
+  @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   @Header('Cache-Control', 'private, no-store')
   async list(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: any) {
     return { success:true, data:await this.service.list(id,this.actor(req)) };
   }
   @Post('documentos/:documentId')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   @HttpCode(202)
   async enqueue(@Param('id', new ParseUUIDPipe()) id: string, @Param('documentId', new ParseUUIDPipe()) doc: string, @Req() req: any) {
     return { success:true, data:await this.service.enqueue(id,doc,this.actor(req)) };
+  }
+  /** Varias evidencias: analizar las seleccionadas en el orden indicado. */
+  @Post('lote')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  @HttpCode(202)
+  async enqueueBatch(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.enqueueBatch(id,body?.documentos,this.actor(req)) };
+  }
+  @Post('reprocesar')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  @HttpCode(202)
+  async reprocess(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.reprocess(id,body?.documentos,this.actor(req)) };
+  }
+  @Post('orden')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  async reorder(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.reorderQueue(id,body?.trabajos,this.actor(req)) };
   }
   @Post('sugerencias/:suggestionId/descartar')
   async discard(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Body() body: any, @Req() req: any) {
     return { success:true, data:await this.service.discard(id,suggestion,body?.motivo,this.actor(req)) };
   }
   @Post('sugerencias/:suggestionId/confirmar')
-  async confirm(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Req() req: any) {
-    return { success:true, data:await this.service.confirm(id,suggestion,this.actor(req)) };
+  async confirm(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Req() req: any, @Body() body?: any) {
+    return { success:true, data:await this.service.confirm(id,suggestion,this.actor(req),body) };
   }
   @Post('trabajos/:jobId/descartar')
   async discardJob(@Param('id', new ParseUUIDPipe()) id: string, @Param('jobId', new ParseUUIDPipe()) job: string, @Body() body: any, @Req() req: any) {
