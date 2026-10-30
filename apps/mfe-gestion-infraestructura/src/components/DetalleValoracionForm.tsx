@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Plus, Trash2, Save, AlertCircle, Clock, Gauge, Zap,
-  UploadCloud, FileText, ClipboardCheck, Package, CheckCircle2, AlertTriangle,
+  UploadCloud, FileText, ClipboardCheck, Package, CheckCircle2, AlertTriangle, Eye,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -33,14 +33,24 @@ const NIVELES_RIESGO: { value: NivelRiesgoValoracion; label: string; clase: stri
   { value: 'ALTO', label: 'Alto', clase: 'bg-rose-100 text-rose-900 border-rose-300 ring-rose-500' },
 ];
 
-const FILA_INSUMO_VACIA = (): ValoracionInsumoPayload & { _key: string } => ({
+type FilaInsumoLocal = ValoracionInsumoPayload & {
+  _key: string;
+  _cantidadStr: string;
+  _costoStr: string;
+  _tiempoStr: string;
+};
+
+const FILA_INSUMO_VACIA = (): FilaInsumoLocal => ({
   _key: Math.random().toString(36).slice(2, 9),
   nombre: '',
   cantidad: 1,
+  _cantidadStr: '1',
   unidadMedida: 'un',
   costoUnitarioCop: 0,
+  _costoStr: '0',
   disponibilidad: 'DISPONIBLE_EN_BODEGA',
   tiempoAdquisicionDias: undefined,
+  _tiempoStr: '',
 });
 
 export interface DetalleValoracionFormProps {
@@ -49,6 +59,7 @@ export interface DetalleValoracionFormProps {
   idSolicitud: string;
   idValoracion?: string | null;
   idCategoria?: number | null;
+  readOnly?: boolean;
   onSaved?: (r: { solicitud: SolicitudMantenimiento; valoracion: SolicitudValoracion }) => void;
 }
 
@@ -58,15 +69,18 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
   idSolicitud,
   idValoracion = null,
   idCategoria = null,
+  readOnly = false,
   onSaved,
 }) => {
+  const [finalizadaInterna, setFinalizadaInterna] = useState(false);
+  const isReadOnly = Boolean(readOnly) || finalizadaInterna;
   const [diagnostico, setDiagnostico] = useState('');
   const [alcance, setAlcance] = useState('');
-  const [tiempoHoras, setTiempoHoras] = useState<number>(1);
+  const [tiempoHoras, setTiempoHoras] = useState<string>('1');
   const [nivelRiesgo, setNivelRiesgo] = useState<NivelRiesgoValoracion>('BAJO');
   const [requiereApagado, setRequiereApagado] = useState<boolean | null>(null);
   const [observaciones, setObservaciones] = useState('');
-  const [insumos, setInsumos] = useState<Array<ValoracionInsumoPayload & { _key: string }>>([]);
+  const [insumos, setInsumos] = useState<FilaInsumoLocal[]>([]);
   const [evidencias, setEvidencias] = useState<SolicitudEvidencia[]>([]);
   const [subiendoEvidencia, setSubiendoEvidencia] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -76,10 +90,14 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
   const esCategoriaElectrica = idCategoria === 48;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setFinalizadaInterna(false);
+      return;
+    }
+    setFinalizadaInterna(false);
     setDiagnostico('');
     setAlcance('');
-    setTiempoHoras(1);
+    setTiempoHoras('1');
     setNivelRiesgo('BAJO');
     setRequiereApagado(esCategoriaElectrica ? null : false);
     setObservaciones('');
@@ -93,9 +111,12 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         .then((lista) => {
           const v = lista.find((x) => x.idValoracion === idValoracion);
           if (v) {
+            if (v.estadoAlFinalizar || v.fechaFinValoracion) {
+              setFinalizadaInterna(true);
+            }
             setDiagnostico(v.diagnostico || '');
             setAlcance(v.alcanceIdentificado || '');
-            setTiempoHoras(v.tiempoEstimadoHoras || 0.5);
+            setTiempoHoras(String(v.tiempoEstimadoHoras || 0.5));
             setNivelRiesgo(v.nivelRiesgo || 'BAJO');
             setRequiereApagado(v.requiereApagadoElectrico ?? (esCategoriaElectrica ? null : false));
             setObservaciones(v.observaciones || '');
@@ -107,10 +128,13 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                   codigoInsumo: ins.codigoInsumo,
                   nombre: ins.nombre,
                   cantidad: ins.cantidad,
+                  _cantidadStr: String(ins.cantidad ?? 1),
                   unidadMedida: ins.unidadMedida,
                   costoUnitarioCop: ins.costoUnitarioCop ?? 0,
+                  _costoStr: String(ins.costoUnitarioCop ?? 0),
                   disponibilidad: ins.disponibilidad,
                   tiempoAdquisicionDias: ins.tiempoAdquisicionDias,
+                  _tiempoStr: ins.tiempoAdquisicionDias != null ? String(ins.tiempoAdquisicionDias) : '',
                 })),
               );
             }
@@ -128,18 +152,18 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     setInsumos((prev) => (prev.length <= 1 ? [FILA_INSUMO_VACIA()] : prev.filter((x) => x._key !== k)));
   };
 
-  const actualizarFila = <K extends keyof ValoracionInsumoPayload>(
+  const actualizarFila = <K extends keyof FilaInsumoLocal>(
     k: string,
     campo: K,
-    valor: ValoracionInsumoPayload[K],
+    valor: FilaInsumoLocal[K],
   ) => {
     setInsumos((prev) => prev.map((f) => (f._key === k ? { ...f, [campo]: valor } : f)));
   };
 
   const totalEstimadoCop = useMemo(() => {
     return insumos.reduce((acc, f) => {
-      const c = Number(f.cantidad || 0);
-      const u = Number(f.costoUnitarioCop || 0);
+      const c = Number(f._cantidadStr || 0);
+      const u = Number(f._costoStr || 0);
       return isFinite(c) && isFinite(u) ? acc + c * u : acc;
     }, 0);
   }, [insumos]);
@@ -174,6 +198,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         const ev = await infraestructuraService.uploadEvidencia(files[i], {
           idSolicitud,
           orden: evidencias.length + subidas.length + 1,
+          notas: 'valoracion_campo',
         });
         subidas.push(ev);
       }
@@ -200,9 +225,9 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     for (let i = 0; i < insumos.length; i++) {
       const f = insumos[i];
       if (!f.nombre || f.nombre.trim().length < 2) return `Fila ${i + 1}: nombre del material requiere al menos 2 caracteres.`;
-      if (!isFinite(Number(f.cantidad)) || Number(f.cantidad) <= 0) return `Fila ${i + 1}: cantidad debe ser mayor que 0.`;
+      if (!isFinite(Number(f._cantidadStr)) || Number(f._cantidadStr) <= 0) return `Fila ${i + 1}: cantidad debe ser mayor que 0.`;
       if (f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR') {
-        const d = Number(f.tiempoAdquisicionDias);
+        const d = Number(f._tiempoStr);
         if (!isFinite(d) || d <= 0) return `Fila ${i + 1}: si requiere solicitar el material, debe indicar el tiempo de adquisición (días > 0).`;
       }
     }
@@ -217,12 +242,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
       setToast({ tipo: 'err', texto: err });
       return;
     }
-    if (!idValoracion) {
-      setToast({ tipo: 'warn', texto: 'No hay valoración abierta. Cancele y use el botón Iniciar Valoración.' });
-      return;
-    }
     setGuardando(true);
     try {
+      // Si no hay valoración abierta (nueva), la creamos primero.
+      // Esto evita que el estado cambie a EN_CAMPO_VALORACION con un solo click
+      // sin que el usuario haya llenado los datos.
+      let valoracionId = idValoracion;
+      if (!valoracionId) {
+        const init = await infraestructuraService.iniciarValoracion(idSolicitud, {});
+        valoracionId = init.valoracion.idValoracion;
+      }
       const payload = {
         diagnostico: diagnostico.trim(),
         alcanceIdentificado: alcance.trim(),
@@ -239,16 +268,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         insumos: insumos.map<ValoracionInsumoPayload>((f) => ({
           codigoInsumo: f.codigoInsumo,
           nombre: f.nombre.trim(),
-          cantidad: Number(f.cantidad),
+          cantidad: Number(f._cantidadStr),
           unidadMedida: f.unidadMedida,
-          costoUnitarioCop: f.costoUnitarioCop == null ? 0 : Number(f.costoUnitarioCop),
+          costoUnitarioCop: Number(f._costoStr) || 0,
           disponibilidad: f.disponibilidad,
           tiempoAdquisicionDias: f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
-            ? Number(f.tiempoAdquisicionDias)
+            ? Number(f._tiempoStr || 0)
             : undefined,
         })),
       };
-      const r = await infraestructuraService.guardarValoracionCompleta(idValoracion, payload);
+      const r = await infraestructuraService.guardarValoracionCompleta(valoracionId, payload);
       setToast({
         tipo: 'ok',
         texto: r.solicitud.estado === 'EN_ESPERA_DE_INSUMOS'
@@ -298,33 +327,47 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isReadOnly ? 'bg-slate-100 text-slate-700' : 'bg-indigo-100 text-indigo-700'}`}>
               <ClipboardCheck className="w-4.5 h-4.5" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 leading-tight">
-                Valoración Técnica en Campo · {idSolicitud.slice(0, 8)}..
-              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-slate-900 leading-tight">
+                  Valoración Técnica en Campo · {idSolicitud.slice(0, 8)}..
+                </h3>
+                {isReadOnly && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 text-[10px] font-bold">
+                    <Eye className="w-3 h-3 text-slate-500" />
+                    Solo lectura
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Registro de diagnóstico, alcance, tiempos e insumos requeridos
+                {isReadOnly
+                  ? 'Consulta inmutable de la valoración registrada (solicitud en ejecución o valoración finalizada)'
+                  : 'Registro de diagnóstico, alcance, tiempos e insumos requeridos'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {algunInsumoNoDisponible && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold">
-                <Package className="w-3 h-3" />
-                Espera materiales · +{maxDiasAdquisicion || 0} d
-              </span>
-            )}
-            {!algunInsumoNoDisponible && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
-                <CheckCircle2 className="w-3 h-3" />
-                Pasa a En ejecución
-              </span>
+            {!isReadOnly && (
+              <>
+                {algunInsumoNoDisponible && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold">
+                    <Package className="w-3 h-3" />
+                    Espera materiales · +{maxDiasAdquisicion || 0} d
+                  </span>
+                )}
+                {!algunInsumoNoDisponible && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Pasa a En ejecución
+                  </span>
+                )}
+              </>
             )}
             <button
-              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"
+              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors"
               onClick={onClose}
               aria-label="Cerrar"
               type="button"
@@ -355,39 +398,45 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
           <section className="grid grid-cols-1 md:grid-cols-12 gap-4">
             <div className="md:col-span-6">
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Diagnóstico técnico <span className="text-rose-600">*</span>
+                Diagnóstico técnico {!isReadOnly && <span className="text-rose-600">*</span>}
               </label>
               <textarea
                 value={diagnostico}
-                onChange={(e) => setDiagnostico(e.target.value)}
+                onChange={(e) => !isReadOnly && setDiagnostico(e.target.value)}
+                readOnly={isReadOnly}
                 rows={3}
-                placeholder="Hallazgos de la inspección, causa probable del daño, evidencia visual..."
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder={isReadOnly ? "Sin diagnóstico registrado." : "Hallazgos de la inspección, causa probable del daño, evidencia visual..."}
+                className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none ${isReadOnly ? 'border-slate-200 bg-slate-50 text-slate-800 cursor-default resize-none' : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
               />
-              <p className="mt-1 text-[11px] text-slate-500">
-                {diagnostico.length}/10 caracteres mínimos
-              </p>
+              {!isReadOnly && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {diagnostico.length}/10 caracteres mínimos
+                </p>
+              )}
             </div>
             <div className="md:col-span-6">
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Alcance identificado <span className="text-rose-600">*</span>
+                Alcance identificado {!isReadOnly && <span className="text-rose-600">*</span>}
               </label>
               <textarea
                 value={alcance}
-                onChange={(e) => setAlcance(e.target.value)}
+                onChange={(e) => !isReadOnly && setAlcance(e.target.value)}
+                readOnly={isReadOnly}
                 rows={3}
-                placeholder="Trabajos concretos a realizar, repuestos, actividades, orden de ejecución..."
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder={isReadOnly ? "Sin alcance registrado." : "Trabajos concretos a realizar, repuestos, actividades, orden de ejecución..."}
+                className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none ${isReadOnly ? 'border-slate-200 bg-slate-50 text-slate-800 cursor-default resize-none' : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
               />
-              <p className="mt-1 text-[11px] text-slate-500">
-                {alcance.length}/10 caracteres mínimos
-              </p>
+              {!isReadOnly && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {alcance.length}/10 caracteres mínimos
+                </p>
+              )}
             </div>
 
             <div className="md:col-span-4">
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 <Clock className="w-3.5 h-3.5 inline mr-1 -mt-0.5 text-slate-500" />
-                Tiempo estimado (horas) <span className="text-rose-600">*</span>
+                Tiempo estimado (horas) {!isReadOnly && <span className="text-rose-600">*</span>}
               </label>
               <input
                 type="number"
@@ -395,10 +444,14 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                 min="0.25"
                 max="240"
                 value={tiempoHoras}
-                onChange={(e) => setTiempoHoras(Number(e.target.value))}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                readOnly={isReadOnly}
+                disabled={isReadOnly}
+                onChange={(e) => !isReadOnly && setTiempoHoras(e.target.value)}
+                className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none ${isReadOnly ? 'border-slate-200 bg-slate-50 text-slate-800 cursor-default' : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
               />
-              <p className="mt-1 text-[11px] text-slate-500">Mínimo 0.25 h (15 min)</p>
+              {!isReadOnly && (
+                <p className="mt-1 text-[11px] text-slate-500">Mínimo 0.25 h (15 min)</p>
+              )}
             </div>
 
             <div className="md:col-span-5">
@@ -413,12 +466,15 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                     <button
                       key={n.value}
                       type="button"
-                      onClick={() => setNivelRiesgo(n.value)}
+                      disabled={isReadOnly}
+                      onClick={() => !isReadOnly && setNivelRiesgo(n.value)}
                       className={[
                         'flex-1 rounded-md px-3 py-2 text-xs font-bold border transition',
                         sel
                           ? `${n.clase} ring-2 ring-offset-1`
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
+                          : isReadOnly
+                            ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-default'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
                       ].join(' ')}
                     >
                       {n.label}
@@ -432,41 +488,48 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 <Zap className="w-3.5 h-3.5 inline mr-1 -mt-0.5 text-slate-500" />
                 Apagado / aislamiento
-                {esCategoriaElectrica && <span className="text-rose-600 ml-1">*</span>}
+                {esCategoriaElectrica && !isReadOnly && <span className="text-rose-600 ml-1">*</span>}
               </label>
               {esCategoriaElectrica ? (
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setRequiereApagado(true)}
+                    disabled={isReadOnly}
+                    onClick={() => !isReadOnly && setRequiereApagado(true)}
                     className={[
                       'flex-1 rounded-md px-2 py-2 text-xs font-bold border transition',
                       requiereApagado === true
                         ? 'bg-amber-100 text-amber-900 border-amber-300 ring-2 ring-amber-500 ring-offset-1'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
+                        : isReadOnly
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-default'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
                     ].join(' ')}
                   >
                     Sí
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRequiereApagado(false)}
+                    disabled={isReadOnly}
+                    onClick={() => !isReadOnly && setRequiereApagado(false)}
                     className={[
                       'flex-1 rounded-md px-2 py-2 text-xs font-bold border transition',
                       requiereApagado === false
                         ? 'bg-emerald-100 text-emerald-800 border-emerald-300 ring-2 ring-emerald-500 ring-offset-1'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
+                        : isReadOnly
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-default'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
                     ].join(' ')}
                   >
                     No
                   </button>
                 </div>
               ) : (
-                <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                <label className={`flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 ${isReadOnly ? 'bg-slate-50 cursor-default' : ''}`}>
                   <input
                     type="checkbox"
                     checked={!!requiereApagado}
-                    onChange={(e) => setRequiereApagado(e.target.checked)}
+                    disabled={isReadOnly}
+                    onChange={(e) => !isReadOnly && setRequiereApagado(e.target.checked)}
                     className="rounded text-blue-600"
                   />
                   Requiere manipulación eléctrica
@@ -489,14 +552,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                   )
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={agregarFila}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Agregar fila
-              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={agregarFila}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Agregar fila
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs">
@@ -512,98 +577,154 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                     <th className="px-3 py-2 text-right font-bold w-32">
                       Tiempo adquisición (días)
                     </th>
-                    <th className="px-3 py-2 w-10"></th>
+                    {!isReadOnly && <th className="px-3 py-2 w-10"></th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {insumos.map((f, idx) => (
-                    <tr key={f._key} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-3 py-2 text-slate-500 font-semibold">{idx + 1}</td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={f.nombre}
-                          onChange={(e) => actualizarFila(f._key, 'nombre', e.target.value)}
-                          placeholder="Ej: Tubería PVC 1/2 pulgada"
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={f.cantidad}
-                          onChange={(e) => actualizarFila(f._key, 'cantidad', Number(e.target.value) as any)}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={f.unidadMedida}
-                          onChange={(e) => actualizarFila(f._key, 'unidadMedida', e.target.value as any)}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          {UNIDADES_MEDIDA.map((u) => (
-                            <option key={u.value} value={u.value}>{u.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={f.costoUnitarioCop ?? 0}
-                          onChange={(e) => actualizarFila(f._key, 'costoUnitarioCop', Number(e.target.value) as any)}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">
-                        $
-                        {((Number(f.cantidad || 0) * Number(f.costoUnitarioCop || 0)) || 0).toLocaleString(
-                          'es-CO',
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={f.disponibilidad}
-                          onChange={(e) => actualizarFila(f._key, 'disponibilidad', e.target.value as any)}
-                          className={[
-                            'w-full rounded border px-2 py-1.5 text-xs font-bold focus:outline-none focus:ring-2',
-                            f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
-                              ? 'bg-amber-50 border-amber-200 text-amber-800 focus:ring-amber-400'
-                              : 'bg-emerald-50 border-emerald-200 text-emerald-800 focus:ring-emerald-400',
-                          ].join(' ')}
-                        >
-                          <option value="DISPONIBLE_EN_BODEGA">Disponible en bodega</option>
-                          <option value="NO_DISPONIBLE_A_SOLICITAR">Requiere compra / solicitar</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          disabled={f.disponibilidad !== 'NO_DISPONIBLE_A_SOLICITAR'}
-                          value={f.tiempoAdquisicionDias ?? ''}
-                          onChange={(e) => actualizarFila(f._key, 'tiempoAdquisicionDias', Number(e.target.value) as any)}
-                          placeholder={f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Ej: 5' : '—'}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-100"
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => eliminarFila(f._key)}
-                          className="p-1.5 rounded-md text-rose-600 hover:bg-rose-50 transition"
-                          title="Eliminar fila"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                  {insumos.length === 0 ? (
+                    <tr className="bg-white">
+                      <td colSpan={isReadOnly ? 8 : 9} className="px-3 py-4 text-center text-slate-400 italic">
+                        No se registraron materiales o repuestos requeridos.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    insumos.map((f, idx) => (
+                      <tr key={f._key} className="border-b border-slate-100 last:border-b-0">
+                        <td className="px-3 py-2 text-slate-500 font-semibold">{idx + 1}</td>
+                        <td className="px-3 py-2">
+                          {isReadOnly ? (
+                            <span className="font-semibold text-slate-800">{f.nombre || '—'}</span>
+                          ) : (
+                            <input
+                              type="text"
+                              value={f.nombre}
+                              onChange={(e) => actualizarFila(f._key, 'nombre', e.target.value)}
+                              placeholder="Ej: Tubería PVC 1/2 pulgada"
+                              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isReadOnly ? (
+                            <span className="text-right block font-medium text-slate-800 tabular-nums">{f._cantidadStr || f.cantidad}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={f._cantidadStr}
+                              onChange={(e) => actualizarFila(f._key, '_cantidadStr', e.target.value)}
+                              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isReadOnly ? (
+                            <span className="text-slate-600 font-medium">
+                              {UNIDADES_MEDIDA.find((u) => u.value === f.unidadMedida)?.label || f.unidadMedida}
+                            </span>
+                          ) : (
+                            <select
+                              value={f.unidadMedida}
+                              onChange={(e) => actualizarFila(f._key, 'unidadMedida', e.target.value as any)}
+                              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              {UNIDADES_MEDIDA.map((u) => (
+                                <option key={u.value} value={u.value}>{u.label}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {isReadOnly ? (
+                            <span className="font-medium text-slate-700 tabular-nums">
+                              ${(Number(f._costoStr || f.costoUnitarioCop || 0)).toLocaleString('es-CO')}
+                            </span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={f._costoStr}
+                              onChange={(e) => actualizarFila(f._key, '_costoStr', e.target.value)}
+                              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-slate-800 tabular-nums">
+                          $
+                          {((Number(f._cantidadStr || 0) * Number(f._costoStr || 0)) || 0).toLocaleString(
+                            'es-CO',
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isReadOnly ? (
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
+                                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}>
+                              {f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Requiere compra / solicitar' : 'Disponible en bodega'}
+                            </span>
+                          ) : (
+                            <select
+                              value={f.disponibilidad}
+                              onChange={(e) => actualizarFila(f._key, 'disponibilidad', e.target.value as any)}
+                              className={[
+                                'w-full rounded border px-2 py-1.5 text-xs font-bold focus:outline-none focus:ring-2',
+                                f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
+                                  ? 'bg-amber-50 border-amber-200 text-amber-800 focus:ring-amber-400'
+                                  : 'bg-emerald-50 border-emerald-200 text-emerald-800 focus:ring-emerald-400',
+                              ].join(' ')}
+                            >
+                              <option value="DISPONIBLE_EN_BODEGA">Disponible en bodega</option>
+                              <option value="NO_DISPONIBLE_A_SOLICITAR">Requiere compra / solicitar</option>
+                            </select>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {isReadOnly ? (
+                            <span className="font-medium text-slate-700">
+                              {f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
+                                ? `${f.tiempoAdquisicionDias ?? f._tiempoStr ?? 0} d`
+                                : '—'}
+                            </span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              disabled={f.disponibilidad !== 'NO_DISPONIBLE_A_SOLICITAR'}
+                              value={f._tiempoStr}
+                              onChange={(e) => {
+                                const valor = e.target.value;
+                                actualizarFila(f._key, '_tiempoStr', valor);
+                                actualizarFila(
+                                  f._key,
+                                  'tiempoAdquisicionDias',
+                                  valor === '' ? undefined : Number(valor),
+                                );
+                              }}
+                              placeholder={f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Ej: 5' : '—'}
+                              className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-100"
+                            />
+                          )}
+                        </td>
+                        {!isReadOnly && (
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => eliminarFila(f._key)}
+                              className="p-1.5 rounded-md text-rose-600 hover:bg-rose-50 transition"
+                              title="Eliminar fila"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -617,10 +738,11 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
             </label>
             <textarea
               value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
+              readOnly={isReadOnly}
+              onChange={(e) => !isReadOnly && setObservaciones(e.target.value)}
               rows={2}
-              placeholder="Notas adicionales, especificaciones de proveedor, instrucciones especiales..."
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder={isReadOnly ? "Sin observaciones técnicas adicionales registradas." : "Notas adicionales, especificaciones de proveedor, instrucciones especiales..."}
+              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none ${isReadOnly ? 'border-slate-200 bg-slate-50 text-slate-800 cursor-default resize-none' : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
             />
           </section>
 
@@ -630,60 +752,78 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
               <label className="block text-xs font-bold text-slate-700">
                 <UploadCloud className="w-3.5 h-3.5 inline mr-1 -mt-0.5 text-slate-500" />
                 Evidencias fotográficas / adjuntos
-                <span className="font-normal text-slate-500 ml-1">(máximo 5)</span>
+                {!isReadOnly && <span className="font-normal text-slate-500 ml-1">(máximo 5)</span>}
               </label>
-              <label
-                className={[
-                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold transition cursor-pointer',
-                  subiendoEvidencia || evidencias.length >= 5
-                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white',
-                ].join(' ')}
-              >
-                <UploadCloud className="w-3.5 h-3.5" />
-                {subiendoEvidencia ? 'Subiendo...' : 'Adjuntar archivos'}
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  multiple
-                  disabled={subiendoEvidencia || evidencias.length >= 5}
-                  onChange={handleUploadEvidencia}
-                  className="hidden"
-                />
-              </label>
+              {!isReadOnly && (
+                <label
+                  className={[
+                    'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold transition cursor-pointer',
+                    subiendoEvidencia || evidencias.length >= 5
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm',
+                  ].join(' ')}
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  {subiendoEvidencia ? 'Subiendo...' : 'Adjuntar archivos'}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo,video/mpeg"
+                    multiple
+                    disabled={subiendoEvidencia || evidencias.length >= 5}
+                    onChange={handleUploadEvidencia}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
             {evidencias.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-500">
-                No hay evidencias adjuntas. Haga clic en Adjuntar archivos para subir hasta 5 fotos o documentos.
+                {isReadOnly ? 'No se adjuntaron evidencias durante la valoración.' : 'No hay evidencias adjuntas. Haga clic en Adjuntar archivos para subir hasta 5 fotos, videos o documentos de hasta 20 MB.'}
               </div>
             ) : (
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {evidencias.map((ev) => (
                   <li
                     key={ev.idEvidencia}
-                    className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5 bg-white text-xs"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5 bg-white text-xs hover:border-slate-300 transition"
                   >
-                    <div className="w-8 h-8 shrink-0 rounded bg-slate-100 text-slate-500 flex items-center justify-center overflow-hidden">
+                    <a
+                      href={ev.urlPresigned || ev.urlPublica || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-8 h-8 shrink-0 rounded bg-slate-100 text-slate-500 flex items-center justify-center overflow-hidden hover:opacity-80"
+                      title="Abrir evidencia"
+                    >
                       {ev.urlPresigned && (ev.mimeType || '').startsWith('image') ? (
                         <img src={ev.urlPresigned} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <FileText className="w-3.5 h-3.5" />
                       )}
-                    </div>
+                    </a>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-800 truncate">{ev.nombreOriginal}</p>
+                      <a
+                        href={ev.urlPresigned || ev.urlPublica || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-slate-800 truncate block hover:underline hover:text-blue-700"
+                        title={ev.nombreOriginal}
+                      >
+                        {ev.nombreOriginal}
+                      </a>
                       <p className="text-[10px] text-slate-500 tabular-nums">
                         {(ev.tamanoBytes ? (ev.tamanoBytes / 1024).toFixed(1) : 0) + ' KB'}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => quitarEvidencia(ev.idEvidencia)}
-                      className="p-1 rounded text-rose-600 hover:bg-rose-50 shrink-0"
-                      title="Quitar evidencia"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => quitarEvidencia(ev.idEvidencia)}
+                        className="p-1 rounded text-rose-600 hover:bg-rose-50 shrink-0"
+                        title="Quitar evidencia"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -704,55 +844,68 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
               <p className="text-slate-500 truncate">
                 Total insumos estimado: <span className="font-semibold text-slate-800">${totalEstimadoCop.toLocaleString('es-CO')} COP</span>
                 {algunInsumoNoDisponible && (
-                  <> · SLA se extiende <span className="font-semibold text-amber-700">{maxDiasAdquisicion || 0} días</span></>
+                  <> · SLA se extiende <span className="font-semibold text-amber-700">+{maxDiasAdquisicion || 0} días</span></>
                 )}
               </p>
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition"
-            >
-              <X className="w-3.5 h-3.5" />
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDiagnostico('');
-                setAlcance('');
-                setTiempoHoras(1);
-                setNivelRiesgo('BAJO');
-                setObservaciones('');
-                setInsumos([FILA_INSUMO_VACIA()]);
-                setEvidencias([]);
-                setErrorForm('');
-                setToast(null);
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition"
-            >
-              Limpiar
-            </button>
-            <button
-              type="button"
-              disabled={guardando}
-              onClick={handleGuardar}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold transition"
-            >
-              {guardando ? (
-                <>
-                  <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  Guardar valoración
-                </>
-              )}
-            </button>
+            {isReadOnly ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-white hover:bg-slate-900 text-gray text-xs font-bold transition shadow-sm"
+              >
+                <X className="w-3.5 h-3.5" />
+                Cerrar consulta
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiagnostico('');
+                    setAlcance('');
+                    setTiempoHoras('1');
+                    setNivelRiesgo('BAJO');
+                    setObservaciones('');
+                    setInsumos([FILA_INSUMO_VACIA()]);
+                    setEvidencias([]);
+                    setErrorForm('');
+                    setToast(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition"
+                >
+                  Limpiar
+                </button>
+                <button
+                  type="button"
+                  disabled={guardando}
+                  onClick={handleGuardar}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold transition shadow-sm"
+                >
+                  {guardando ? (
+                    <>
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      Guardar valoración
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

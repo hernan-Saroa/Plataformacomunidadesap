@@ -3,7 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -12,6 +12,7 @@ import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
+import { MantenimientoHistorico } from './mantenimiento-historico.entity.js';
 import { StorageService } from './storage.service.js';
 import { NotificationClientService, SendNotificationDto } from '../common/notification-client.service.js';
 import { AuthUser } from '../auth/types.js';
@@ -145,6 +146,18 @@ export interface ReporteGestionDto {
   rollupGeografico: ReporteGestionRollupGeograficoItem[];
 }
 
+export interface FiltrosExportarOperacionalDto {
+  estado?: string;
+  prioridad?: string;
+  idCategoria?: number;
+  idSede?: string;
+  areaResponsable?: string;
+  codigoTecnico?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
+  ids?: string[];
+}
+
 function usuarioEsBypassConsolidados(user?: AuthUser | null): boolean {
   if (!user || !Array.isArray(user.roles) || user.roles.length === 0) return false;
   const fallbackLegacy = (user.roles || []).map((r) => String(r).toUpperCase())
@@ -172,6 +185,65 @@ function distribucionVacia(): DistribucionCalificacion {
   return { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 }
 const SEPARADOR_TECNICO = ' · ';
+
+function calcularSemanaDeposito(fecha?: Date | string | null): string {
+  if (!fecha) return 'Sin clasificar';
+  const d = new Date(fecha);
+  if (Number.isNaN(d.getTime())) return 'Sin clasificar';
+
+  // Lunes de la semana (1 = lunes, ..., 0 = domingo)
+  const day = d.getDay();
+  const diffLunes = day === 0 ? -6 : 1 - day;
+  const lunes = new Date(d);
+  lunes.setDate(d.getDate() + diffLunes);
+
+  const viernes = new Date(lunes);
+  viernes.setDate(lunes.getDate() + 4);
+
+  const meses = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+
+  const dLunes = String(lunes.getDate()).padStart(2, '0');
+  const dViernes = String(viernes.getDate()).padStart(2, '0');
+  const mLunes = meses[lunes.getMonth()];
+  const mViernes = meses[viernes.getMonth()];
+
+  if (mLunes === mViernes) {
+    return `Semana ${dLunes} al ${dViernes} de ${mLunes}`;
+  } else {
+    return `Semana ${dLunes} de ${mLunes} al ${dViernes} de ${mViernes}`;
+  }
+}
+
+function homologarEstadoPlanner(estado?: string | null): string {
+  const e = (estado || '').toUpperCase();
+  if (['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION'].includes(e)) return 'Completado';
+  if (['EN_PROGRESO', 'EN_EJECUCION', 'EN_VALORACION', 'EN_CAMPO_VALORACION', 'EN_ANALISIS'].includes(e)) return 'En curso';
+  if (['EN_ESPERA_DE_INSUMOS', 'PENDIENTE_COTIZACION', 'PENDIENTE_APROBACION', 'PENDIENTE_RECURSO'].includes(e)) return 'En espera';
+  if (e === 'RECHAZADA') return 'Rechazado';
+  return 'No iniciado';
+}
+
+function limpiarNombrePersona(texto?: string | null): string {
+  if (!texto) return 'Sin asignar';
+  if (texto.includes('·')) {
+    const parts = texto.split('·');
+    return parts[parts.length - 1].trim();
+  }
+  return texto.trim();
+}
 
 function nuevoItemRemision(args: {
   usuarioId?: string;
@@ -203,9 +275,28 @@ const REGLA_ESCALAMIENTO = 'REGLA_ESCALAMIENTO';
 const PARAMETRO_UMI = 'PARAMETRO_UMI';
 const COD_TIEMPO_GLOBAL = 'TIEMPO_RESPUESTA_DIAS';
 const PREFIX_TIEMPO_CAT = 'TIEMPO_RESP_DIAS_CAT_';
+const COD_PARAM_VOBO_CONFIG = 'PARAM_VOBO_VALORACION_CONFIG';
 const PERMISO_ASIGNAR_SOLICITUD = 'infraestructura.solicitud.assign';
 const PERMISO_VER_BANDEJA_GENERAL = 'infraestructura.view_all';
 const PERMISO_VER_INCLUIDO_TI = 'infraestructura.view_all_ti';
+
+export interface VoBoConfigData {
+  requiereVoBoGlobal: boolean;
+  requiereVoBoMantenimientoMayor: boolean;
+  requiereVoBoInsumos: boolean;
+  montoMinimoInsumosVoBoCop: number;
+  categoriasVoBoObligatorio: number[];
+  requiereVoBoContratacion: boolean;
+}
+
+const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
+  requiereVoBoGlobal: false,
+  requiereVoBoMantenimientoMayor: true,
+  requiereVoBoInsumos: true,
+  montoMinimoInsumosVoBoCop: 500000,
+  categoriasVoBoObligatorio: [48, 54],
+  requiereVoBoContratacion: true,
+};
 
 @Injectable()
 export class MantenimientoService implements OnModuleInit {
@@ -228,13 +319,119 @@ export class MantenimientoService implements OnModuleInit {
     private readonly storage: StorageService,
     @Optional() @Inject(forwardRef(() => NotificationClientService))
     private readonly notificaciones?: NotificationClientService,
+    @Optional() @InjectRepository(MantenimientoHistorico)
+    private readonly historicoRepo?: Repository<MantenimientoHistorico>,
   ) {}
+
+  private getHistoricoRepo(): Repository<MantenimientoHistorico> {
+    return this.historicoRepo || this.dataSource.getRepository(MantenimientoHistorico);
+  }
 
   async onModuleInit(): Promise<void> {
     try {
       await this.asegurarSeedTiemposPorCategoria();
       await this.cargarParametroCache();
     } catch {}
+  }
+
+  private normalizarNombreTecnico(value: unknown): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  private aplicarFiltroTecnicoPorCodigos(
+    qb: any,
+    columnaSql: string,
+    codigosTecnicoFiltro: string[],
+  ): void {
+    const codigos = Array.from(
+      new Set(
+        (codigosTecnicoFiltro || [])
+          .map((x) => String(x || '').trim())
+          .filter((x) => x.length > 0),
+      ),
+    );
+    if (codigos.length === 0) return;
+    const params: Record<string, string> = {};
+    const condiciones = codigos.map((codigo, idx) => {
+      const key = `prefTec${idx}`;
+      params[key] = codigo + SEPARADOR_TECNICO + '%';
+      return `${columnaSql} ILIKE :${key}`;
+    });
+    qb.andWhere(`(${condiciones.join(' OR ')})`, params);
+  }
+
+  private async resolverCodigosTecnicoFiltro(
+    codigoTecnico: string | null,
+  ): Promise<string[]> {
+    const codigoBase = String(codigoTecnico || '').trim();
+    if (!codigoBase) return [];
+
+    const aliases = new Set<string>([codigoBase]);
+    let nombreBase = '';
+
+    try {
+      const tecnicos = await this.listarTecnicos(false);
+      const match = tecnicos.find(
+        (t) => String(t.codigo || '').trim().toUpperCase() === codigoBase.toUpperCase(),
+      );
+      if (match?.nombre) {
+        nombreBase = this.normalizarNombreTecnico(match.nombre);
+      }
+    } catch {
+      // No bloquea el reporte: si falla la resolución del catálogo, se filtra por el código recibido.
+    }
+
+    if (!nombreBase) {
+      try {
+        const rows = await this.dataSource.query(
+          `
+            SELECT TRIM(SPLIT_PART(s.responsable_asignado, $2, 2)) AS nombre
+              FROM "infrastructure-management".solicitud_mantenimiento s
+             WHERE s.responsable_asignado ILIKE $1
+               AND POSITION($2 IN s.responsable_asignado) > 0
+             ORDER BY s.fecha_radicacion DESC NULLS LAST
+             LIMIT 1
+          `,
+          [codigoBase + SEPARADOR_TECNICO + '%', SEPARADOR_TECNICO],
+        );
+        if (Array.isArray(rows) && rows[0]?.nombre) {
+          nombreBase = this.normalizarNombreTecnico(rows[0].nombre);
+        }
+      } catch {
+        // Fallback silencioso: si tampoco sale de histórico, se usa solo el código recibido.
+      }
+    }
+
+    if (!nombreBase) return Array.from(aliases);
+
+    try {
+      const rows = await this.dataSource.query(
+        `
+          SELECT DISTINCT
+                 TRIM(SPLIT_PART(s.responsable_asignado, $1, 1)) AS codigo,
+                 TRIM(SPLIT_PART(s.responsable_asignado, $1, 2)) AS nombre
+            FROM "infrastructure-management".solicitud_mantenimiento s
+           WHERE s.responsable_asignado IS NOT NULL
+             AND POSITION($1 IN s.responsable_asignado) > 0
+             AND (
+               LOWER(REGEXP_REPLACE(TRIM(SPLIT_PART(s.responsable_asignado, $1, 2)), '\\s+', ' ', 'g')) LIKE $2
+               OR $3 LIKE LOWER(REGEXP_REPLACE(TRIM(SPLIT_PART(s.responsable_asignado, $1, 2)), '\\s+', ' ', 'g')) || '%'
+             )
+        `,
+        [SEPARADOR_TECNICO, nombreBase + '%', nombreBase],
+      );
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const codigo = String(row?.codigo || '').trim();
+        if (codigo) aliases.add(codigo);
+      }
+    } catch {
+      // Si el enriquecimiento histórico falla, se conserva el código base sin romper el endpoint.
+    }
+
+    return Array.from(aliases);
   }
 
   private async asegurarSeedTiemposPorCategoria(): Promise<void> {
@@ -539,6 +736,11 @@ export class MantenimientoService implements OnModuleInit {
         'Clasificación TECNOLÓGICA NO puede quedar radicada como responsabilidad de UMI. Area debe ser TI.',
       );
     }
+    if (dto.tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(Number(dto.idCategoria))) {
+      throw new BadRequestException(
+        'La categoría de servicio es obligatoria para radicar solicitudes de atención física.',
+      );
+    }
 
     const anioActual = new Date().getFullYear();
     const inicioAnio = new Date(anioActual, 0, 1);
@@ -553,6 +755,27 @@ export class MantenimientoService implements OnModuleInit {
     const consecutivo = 'MNT-' + anioActual + '-' + String(countAnio + 1).padStart(4, '0');
 
     const ahora = new Date();
+
+    // Obtener nombre completo del solicitante desde auth.personas (Source of Truth)
+    let solicitanteNombreResuelto: string = user.name || user.username || dto.nombreAreaSolicitante || 'Solicitante';
+    try {
+      const personaRows = await this.dataSource.query(
+        `SELECT p.nom_largo AS "nomLargo"
+           FROM auth."user" u
+           JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user = $1
+          LIMIT 1`,
+        [user.userId],
+      );
+      if (Array.isArray(personaRows) && personaRows.length > 0 && personaRows[0]?.nomLargo) {
+        solicitanteNombreResuelto = String(personaRows[0].nomLargo);
+      }
+    } catch (errPersona: any) {
+      Logger.warn(
+        `No se pudo resolver nombre de solicitante desde auth.personas (userId=${user.userId}): ${errPersona?.message || errPersona}. Usando fallback.`,
+        'MantenimientoService.create',
+      );
+    }
 
     const remisionesIniciales: Record<string, any>[] = [];
     if (dto.tipoAtencion === 'TECNOLOGICA') {
@@ -592,9 +815,16 @@ export class MantenimientoService implements OnModuleInit {
       asignaciones: [],
       usuarioSolicitanteId: userIdUuidOrNull(user.userId) ?? undefined,
       usuarioSolicitanteEmail: user.email,
-      solicitanteNombre: user.username ?? dto.nombreAreaSolicitante,
+      solicitanteNombre: solicitanteNombreResuelto,
       solicitanteEmail: user.email || (user.username || 'solicitante') + '@esap.edu.co',
       evidenciaInicialUrl: dto.evidenciaInicialUrl,
+      clasificacionMantenimiento: 'MENOR',
+      requiereContratacion: false,
+      esBienAsignadoFuncionario: dto.esBienAsignadoFuncionario ?? false,
+      nombreFuncionarioBienAsignado: dto.nombreFuncionarioBienAsignado ?? null,
+      placaInventarioBien: dto.placaInventarioBien ?? null,
+      soporteBienAsignadoUrl: dto.soporteBienAsignadoUrl ?? null,
+      requiereVoBo: false,
     };
 
     const saved = await this.mantenimientoRepo.save(solicitudData as any);
@@ -619,6 +849,46 @@ export class MantenimientoService implements OnModuleInit {
     } else {
       saved.evidencias = [];
     }
+
+    if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
+      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA' });
+    }
+    await this.notificarAlSolicitante(saved, {
+      tipo: 'SOLICITUD_RADICADA',
+      titulo: `Solicitud #${saved.consecutivo} radicada`,
+      mensaje: `Tu solicitud de mantenimiento ha sido radicada correctamente con tipo de atención ${saved.tipoAtencion}.`,
+      icono: 'Inbox',
+      color: '#2563eb',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${saved.consecutivo} radicada exitosamente`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#1e40af">Solicitud Radicada con Éxito</h3>
+<p style="margin:0 0 8px">Tu solicitud <strong>#${saved.consecutivo}</strong> ha sido radicada en el sistema.</p>
+<p style="margin:0 0 8px"><strong>Tipo de atención:</strong> ${saved.tipoAtencion}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+    });
+
+    await this.notificarEncargadosUMI(saved, {
+      tipo: 'SOLICITUD_RADICADA_ENCARGADO',
+      titulo: `Nueva solicitud #${saved.consecutivo} pendiente por asignar`,
+      mensaje: `Se ha radicado una nueva solicitud de mantenimiento en ${saved.sede?.nombre ?? saved.idSede ?? 'la sede'}. Tipo: ${saved.tipoAtencion}.`,
+      icono: 'Inbox',
+      color: '#2563eb',
+      prioridad: 'Media',
+      textoAccion: 'Clasificar y Asignar',
+      emailSubject: `[UMI] Nueva solicitud #${saved.consecutivo} para asignar - ${saved.sede?.nombre ?? ''}`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#1e40af">Nueva Solicitud Pendiente de Asignación</h3>
+<p style="margin:0 0 8px">Se ha radicado la solicitud <strong>#${saved.consecutivo}</strong> en estado <strong>RECIBIDA</strong>.</p>
+<p style="margin:0 0 8px"><strong>Solicitante:</strong> ${saved.solicitanteNombre ?? 'N/A'}</p>
+<p style="margin:0 0 8px"><strong>Tipo de atención:</strong> ${saved.tipoAtencion}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
+</div>`,
+    });
 
     return saved;
   }
@@ -681,7 +951,26 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.areaResponsableActual = 'TI';
     solicitud.remisiones = [...(Array.isArray(solicitud.remisiones) ? solicitud.remisiones : []), item];
 
-    return this.mantenimientoRepo.save(solicitud);
+    const savedRemision = await this.mantenimientoRepo.save(solicitud);
+    await this.notificarOTIC(savedRemision, { evento: 'REMITIDA A TECNOLOGÍAS (TI)', motivo: dto.motivo });
+    await this.notificarAlSolicitante(savedRemision, {
+      tipo: 'SOLICITUD_REMITIDA_TI',
+      titulo: `Solicitud #${savedRemision.consecutivo} remitida a TI`,
+      mensaje: `Tu solicitud ha sido canalizada a la Oficina de Tecnologías (TI). Motivo: ${dto.motivo}`,
+      icono: 'Monitor',
+      color: '#0284c7',
+      prioridad: 'Media',
+      textoAccion: 'Ver seguimiento',
+      emailSubject: `[UMI] Solicitud #${savedRemision.consecutivo} canalizada a Atención Tecnológica`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#0284c7">Solicitud remitida a Soporte TI</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedRemision.consecutivo}</strong> fue canalizada a la Oficina de Tecnologías (TI).</p>
+<p style="margin:0 0 8px"><strong>Motivo:</strong> ${dto.motivo}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedRemision)}" style="display:inline-block;padding:6px 14px;background:#0284c7;color:#fff;border-radius:6px;text-decoration:none">Ver seguimiento</a></p>
+</div>`,
+    });
+
+    return savedRemision;
   }
 
   async getRemisionesById(id: string): Promise<Array<Record<string, any>>> {
@@ -1199,9 +1488,10 @@ export class MantenimientoService implements OnModuleInit {
           p.nom_largo AS "nomLargo",
           p.tel_celular AS "telCelular",
           MAX(CASE WHEN r.code = 'TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
-                   WHEN r.code = 'TECNICO_UMI_MULTIPROPOSITO'   THEN 'P4' END) AS "roleCod",
+                   WHEN r.code = 'TECNICO_UMI_MULTIPROPOSITO'   THEN 'P4'
+                   WHEN r.code = 'ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5' END) AS "roleCod",
           u.is_active AS "isActive",
-          ARRAY_AGG(DISTINCT r.code) FILTER (WHERE r.code LIKE 'TECNICO_%') AS "rolesTec"
+          ARRAY_AGG(DISTINCT r.code) FILTER (WHERE r.code LIKE 'TECNICO_%' OR r.code LIKE '%INFRA%') AS "rolesTec"
         FROM auth."user" u
         INNER JOIN auth.personas p
                 ON p.id_person = u.id_person
@@ -1209,7 +1499,7 @@ export class MantenimientoService implements OnModuleInit {
                 ON ur.id_user = u.id_user
         INNER JOIN auth.role r
                 ON r.id = ur.id_rol
-       WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO')
+       WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO', 'ADMINISTRADOR_FUNCIONAL_INFRA')
          AND ($1::boolean = TRUE OR u.is_active = TRUE)
        GROUP BY u.id_user, p.id_person, p.nom_largo, u.username, u.is_active, p.tel_celular
        ORDER BY "nomLargo" ASC;
@@ -1221,10 +1511,13 @@ export class MantenimientoService implements OnModuleInit {
       let ordenSeed = 1;
       for (const r of rows) {
         const isP3 = r.roleCod === 'P3';
+        const isP5 = r.roleCod === 'P5';
         const cod = isP3
           ? `TEC-AUTH-P3-${r.idUser.substring(0, 8).toUpperCase()}`
+          : isP5
+          ? `TEC-AUTH-P5-${r.idUser.substring(0, 8).toUpperCase()}`
           : `TEC-AUTH-P4-${r.idUser.substring(0, 8).toUpperCase()}`;
-        const esp = isP3 ? ['CS_002'] : [];
+        const esp = isP3 ? ['CS_002', 'OBRAS_MAYORES'] : isP5 ? ['COORDINACION_GIM', 'DIAGNOSTICO_MAYOR'] : [];
         const meta: Record<string, any> = {
           email: r.email,
           telefono: r.telCelular ?? null,
@@ -1240,7 +1533,11 @@ export class MantenimientoService implements OnModuleInit {
           catalogo: TECNICO_MANTENIMIENTO,
           codigo: cod,
           nombre: r.nomLargo,
-          descripcion: isP3 ? 'Técnico Eléctrico Especializado (Auth P3)' : 'Técnico UMI Multipropósito (Auth P4)',
+          descripcion: isP5
+            ? 'Coordinador Infraestructura GIM (Auth P5 - Diagnóstico Obras Mayores)'
+            : isP3
+            ? 'Técnico Especializado (Auth P3 - Grupo Obras / Eléctrico)'
+            : 'Técnico UMI Multipropósito (Auth P4)',
           orden: ordenSeed++,
           isActivo: !!r.isActive,
           metadata: meta,
@@ -1393,6 +1690,56 @@ export class MantenimientoService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------------------
+  // Fase 3 Req. #3: Parametrización Visto Bueno (VoBo)
+  // ---------------------------------------------------------------------------
+  async getVoBoConfig(): Promise<VoBoConfigData> {
+    const row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_VOBO_CONFIG },
+    });
+    if (!row || !row.metadata || typeof row.metadata !== 'object') {
+      return { ...DEFAULT_VOBO_CONFIG };
+    }
+    return { ...DEFAULT_VOBO_CONFIG, ...(row.metadata as any) };
+  }
+
+  async updateVoBoConfig(data: Partial<VoBoConfigData>): Promise<VoBoConfigData> {
+    let row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_VOBO_CONFIG },
+    });
+    const current = row?.metadata && typeof row.metadata === 'object' ? (row.metadata as any) : DEFAULT_VOBO_CONFIG;
+    const merged: VoBoConfigData = {
+      ...DEFAULT_VOBO_CONFIG,
+      ...current,
+      ...data,
+      requiereVoBoGlobal: data.requiereVoBoGlobal !== undefined ? Boolean(data.requiereVoBoGlobal) : current.requiereVoBoGlobal,
+      requiereVoBoMantenimientoMayor: data.requiereVoBoMantenimientoMayor !== undefined ? Boolean(data.requiereVoBoMantenimientoMayor) : current.requiereVoBoMantenimientoMayor,
+      requiereVoBoInsumos: data.requiereVoBoInsumos !== undefined ? Boolean(data.requiereVoBoInsumos) : current.requiereVoBoInsumos,
+      requiereVoBoContratacion: data.requiereVoBoContratacion !== undefined ? Boolean(data.requiereVoBoContratacion) : current.requiereVoBoContratacion,
+      categoriasVoBoObligatorio: Array.isArray(data.categoriasVoBoObligatorio)
+        ? data.categoriasVoBoObligatorio.map(Number).filter(Number.isInteger)
+        : (current.categoriasVoBoObligatorio || [48, 54]),
+      montoMinimoInsumosVoBoCop: Number(data.montoMinimoInsumosVoBoCop ?? current.montoMinimoInsumosVoBoCop ?? 500000),
+    };
+
+    if (!row) {
+      row = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: COD_PARAM_VOBO_CONFIG,
+        nombre: 'Configuración Parametrizable de Visto Bueno (VoBo) sobre Valoración',
+        descripcion: 'Reglas institucionales de exigencia de VoBo previo a ejecución (Fase 3 Req. #3).',
+        orden: 120,
+        isActivo: true,
+        metadata: merged,
+      });
+    } else {
+      row.metadata = merged;
+      row.isActivo = true;
+    }
+    await this.catalogoRepo.save(row);
+    return merged;
+  }
+
+  // ---------------------------------------------------------------------------
   // EFDS-1733: Motor sugerir asignación
   //   AC-01 Eléctricas (48) => regla ESPECIALIZACION obligatoria
   //   AC-02 Resto 7 categorías => EQUIDAD_DISPONIBILIDAD_CARGA_MENOR
@@ -1518,22 +1865,28 @@ export class MantenimientoService implements OnModuleInit {
         | 'FINALIZA_VALORACION_EN_ESPERA'
         | 'EXTENSION_SLA_POR_INSUMOS'
         | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
+        | 'RECEPCION_INSUMOS_TECNICO'
         | 'EDICION_VALORACION_POR_ENCARGADO'
         | 'INICIO_EJECUCION_DIRECTA'
         | 'CIERRE_TECNICO'
         | 'CONFORMIDAD_CONFIRMADA'
         | 'CONFORMIDAD_SIN_RESPUESTA'
-        | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA';
+        | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
+        | 'VOBO_VALORACION_APROBADO'
+        | 'VOBO_VALORACION_OBSERVADO'
+        | 'VINCULACION_TRAMITE_CONTRACTUAL';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       idTecnicoAsignado?: string | null;
       motivo?: string | null;
       observaciones?: string | null;
+      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+      requiereContratacion?: boolean;
       user: AuthUser;
     },
   ): void {
     const historial = Array.isArray(solicitud.asignaciones) ? solicitud.asignaciones : [];
-    historial.push({
+    const entry: Record<string, any> = {
       id:
         typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
           ? (crypto as any).randomUUID()
@@ -1548,12 +1901,19 @@ export class MantenimientoService implements OnModuleInit {
       usuario_id: args.user.userId ?? null,
       usuario_email: args.user.email ?? null,
       usuario_roles: Array.isArray(args.user.roles) ? args.user.roles.join(',') : null,
-    });
+    };
+    if (args.clasificacionMantenimiento !== undefined) {
+      entry.clasificacion_mantenimiento = args.clasificacionMantenimiento;
+    }
+    if (args.requiereContratacion !== undefined) {
+      entry.requiere_contratacion = args.requiereContratacion;
+    }
+    historial.push(entry);
     solicitud.asignaciones = historial;
   }
 
   private readonly UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-  private readonly TEC_AUTH_VIRTUAL_RE = /^TEC-AUTH-(P3|P4)-([0-9A-F]{8})$/i;
+  private readonly TEC_AUTH_VIRTUAL_RE = /^TEC-AUTH-(P3|P4|P5)-([0-9A-F]{8})$/i;
 
   private async resolverTecnicoActivo(
     identificador: string,
@@ -1570,7 +1930,7 @@ export class MantenimientoService implements OnModuleInit {
     const virtualMatch = this.TEC_AUTH_VIRTUAL_RE.exec(id);
     if (virtualMatch && !esUuid) {
       try {
-        const esperadoRole = virtualMatch[1].toUpperCase(); // P3 o P4
+        const esperadoRole = virtualMatch[1].toUpperCase(); // P3, P4 o P5
         const prefijoHex = virtualMatch[2].toLowerCase();   // 8 hex de uuid
         const sqlAuth = `
           SELECT u.id_user  AS "idUser",
@@ -1580,22 +1940,24 @@ export class MantenimientoService implements OnModuleInit {
                  p.nom_largo AS "nomLargo",
                  MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
                           WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                          WHEN r.code='ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5'
                           ELSE NULL END) AS "roleCod"
             FROM auth."user" u
             JOIN auth.personas p ON p.id_person = u.id_person
             JOIN auth.user_roles ur ON ur.id_user = u.id_user
             JOIN auth.role r ON r.id = ur.id_rol
            WHERE LOWER(substring(u.id_user::text from 1 for 8)) = $1
-             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO','ADMINISTRADOR_FUNCIONAL_INFRA')
            GROUP BY u.id_user, u.is_active, u.username, p.id_person, p.nom_largo
            ORDER BY (CASE WHEN MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
-                                        WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4' END) = $2 THEN 0 ELSE 1 END)
+                                        WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                                        WHEN r.code='ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5' END) = $2 THEN 0 ELSE 1 END)
            LIMIT 2;
         `;
         const rows = await this.dataSource.query(sqlAuth, [prefijoHex, esperadoRole]);
         if (!Array.isArray(rows) || rows.length === 0) {
           throw new BadRequestException(
-            `Código virtual ${id} no coincide con ningún usuario auth-service con roles P3/P4. Prefijo UUID ${prefijoHex} sin match.`
+            `Código virtual ${id} no coincide con ningún usuario auth-service con roles P3/P4/P5. Prefijo UUID ${prefijoHex} sin match.`
           );
         }
         const r = rows.find((x: any) => String(x.roleCod).toUpperCase() === esperadoRole) || rows[0];
@@ -1644,20 +2006,21 @@ export class MantenimientoService implements OnModuleInit {
                  p.nom_largo AS "nomLargo",
                  MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
                           WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                          WHEN r.code='ADMINISTRADOR_FUNCIONAL_INFRA' THEN 'P5'
                           ELSE NULL END) AS "roleCod"
             FROM auth."user" u
             JOIN auth.personas p ON p.id_person = u.id_person
             JOIN auth.user_roles ur ON ur.id_user = u.id_user
             JOIN auth.role r ON r.id = ur.id_rol
            WHERE u.id_user = $1::uuid
-             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO','ADMINISTRADOR_FUNCIONAL_INFRA')
            GROUP BY u.id_user, u.is_active, u.username, p.id_person, p.nom_largo
            LIMIT 1;
         `;
         const rows = await this.dataSource.query(sqlAuth, [id]);
         if (!rows || rows.length !== 1 || !rows[0].roleCod) {
           throw new BadRequestException(
-            `Usuario UUID ${id} no existe o no tiene roles P3/P4 UMI válidos para ser técnico asignable.`,
+            `Usuario UUID ${id} no existe o no tiene roles P3/P4/P5 UMI válidos para ser técnico o responsable asignable.`,
           );
         }
         const r = rows[0];
@@ -1667,7 +2030,7 @@ export class MantenimientoService implements OnModuleInit {
           );
         }
         const roleCod = String(r.roleCod);
-        const codigoVirtual = roleCod === 'P3' ? 'P3-ELECTRICO' : 'P4-MULTIPROPOSITO';
+        const codigoVirtual = roleCod === 'P3' ? 'P3-ELECTRICO' : roleCod === 'P5' ? 'P5-COORDINADOR' : 'P4-MULTIPROPOSITO';
         const nombreDisplay = String(r.nomLargo || r.email || 'Sin nombre');
         const virtual: any = {
           idCatalogo: -Math.floor(Math.random() * 999999) - 1,
@@ -1706,14 +2069,20 @@ export class MantenimientoService implements OnModuleInit {
       throw new BadRequestException(`Técnico ${id} está inactivo. No se puede asignar o redistribuir a un técnico inactivo.`);
     }
     const md = (tec.metadata && typeof tec.metadata === 'object') ? (tec.metadata as any) : {};
-    (tec as any).idTecnicoAsignado = md.idUserAuth || null;
+    (tec as any).idTecnicoAsignado = md.idUserAuth || (Array.isArray(md.usuarioIdsAutorizados) ? md.usuarioIdsAutorizados[0] : null) || null;
     (tec as any).roleCod = md.roleCod || null;
     return tec as any;
   }
 
   async aprobarYAsignar(
     idSolicitud: string,
-    args: { tecnicoCodigo?: string | null; idTecnicoAsignado?: string | null; observaciones?: string | null },
+    args: {
+      tecnicoCodigo?: string | null;
+      idTecnicoAsignado?: string | null;
+      observaciones?: string | null;
+      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
+      requiereContratacion?: boolean;
+    },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
     const vr = this.validarRolesAsignador(user);
@@ -1724,6 +2093,16 @@ export class MantenimientoService implements OnModuleInit {
     const idTecnicoIdent = String(
       (args.idTecnicoAsignado && String(args.idTecnicoAsignado).trim()) || (args.tecnicoCodigo || '').trim() || '',
     ).trim();
+
+    if (args.clasificacionMantenimiento) {
+      solicitud.clasificacionMantenimiento = args.clasificacionMantenimiento;
+    }
+    if (args.requiereContratacion !== undefined) {
+      solicitud.requiereContratacion = Boolean(args.requiereContratacion);
+    }
+    if (solicitud.clasificacionMantenimiento === 'MAYOR' || solicitud.requiereContratacion) {
+      solicitud.requiereVoBo = true;
+    }
 
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
     // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
@@ -1766,6 +2145,8 @@ export class MantenimientoService implements OnModuleInit {
         idTecnicoAsignado: null,
         motivo: 'Confirmación de recepción de la remisión por la Oficina TI. Flujo interno TIC a partir de este punto.',
         observaciones: args.observaciones ?? null,
+        clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+        requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
     } else {
@@ -1799,13 +2180,105 @@ export class MantenimientoService implements OnModuleInit {
         idTecnicoAsignado: tec.idTecnicoAsignado ?? null,
         motivo: null,
         observaciones: args.observaciones ?? null,
+        clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+        requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
     }
 
     const saved = await this.mantenimientoRepo.save(solicitud);
+    await this.notificarAlSolicitante(saved, {
+      tipo: 'SOLICITUD_ASIGNADA',
+      titulo: `Solicitud #${saved.consecutivo} asignada`,
+      mensaje: `Se ha asignado el técnico ${saved.responsableAsignado ?? 'responsable'} para atender tu solicitud.`,
+      icono: 'UserCheck',
+      color: '#4338ca',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${saved.consecutivo} asignada a técnico`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#4338ca">Solicitud Asignada</h3>
+<p style="margin:0 0 8px">Tu solicitud <strong>#${saved.consecutivo}</strong> ha sido aprobada y asignada a <strong>${saved.responsableAsignado ?? 'un técnico'}</strong>.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#4338ca;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+    });
+    if (saved.areaResponsableActual !== 'TI' && saved.responsableAsignado) {
+      const esMayor = saved.clasificacionMantenimiento === 'MAYOR';
+      await this.notificarTecnicoAsignado(saved, {
+        tipo: 'SOLICITUD_ASIGNADA_TECNICO',
+        titulo: esMayor
+          ? `Mantenimiento Mayor asignado para Diagnóstico #${saved.consecutivo}`
+          : `Nueva solicitud asignada #${saved.consecutivo}`,
+        mensaje: esMayor
+          ? `Se te ha asignado la solicitud de Mantenimiento Mayor #${saved.consecutivo} para realizar el diagnóstico técnico y trámite precontractual. Descripción: ${saved.descripcion}`
+          : `Se te ha asignado la solicitud de mantenimiento #${saved.consecutivo}. Descripción: ${saved.descripcion}`,
+        icono: esMayor ? 'FileText' : 'Wrench',
+        color: esMayor ? '#7c3aed' : '#4338ca',
+        prioridad: esMayor ? 'Alta' : 'Media',
+        textoAccion: esMayor ? 'Diagnóstico técnico' : 'Gestionar solicitud',
+        emailSubject: esMayor
+          ? `[UMI] Mantenimiento Mayor asignado para Diagnóstico: Solicitud #${saved.consecutivo}`
+          : `[UMI] Tarea asignada: Solicitud #${saved.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:${esMayor ? '#7c3aed' : '#4338ca'}">${esMayor ? 'Mantenimiento Mayor - Diagnóstico Requerido' : 'Nueva solicitud asignada'}</h3>
+<p style="margin:0 0 8px">Has sido asignado a la solicitud <strong>#${saved.consecutivo}</strong>${esMayor ? ' clasificada como <strong>Mantenimiento Mayor</strong> (requiere diagnóstico para proceso de contratación).' : '.'}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:${esMayor ? '#7c3aed' : '#4338ca'};color:#fff;border-radius:6px;text-decoration:none">${esMayor ? 'Abrir para diagnóstico técnico' : 'Abrir para valoración'}</a></p>
+</div>`,
+      });
+    }
     if (warning) (saved as any).__meta = { warning };
     return saved as any;
+  }
+
+  async registrarVoBo(
+    idSolicitud: string,
+    body: { aprobado?: boolean; voboAprobado?: boolean; observaciones?: string | null; voboObservaciones?: string | null },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const aprobadoFinal = body.aprobado !== undefined ? Boolean(body.aprobado) : (body.voboAprobado !== undefined ? Boolean(body.voboAprobado) : true);
+    const observacionesFinal = body.observaciones ?? body.voboObservaciones ?? null;
+
+    const solicitud = await this.findById(idSolicitud);
+    solicitud.requiereVoBo = true;
+    solicitud.voboAprobado = aprobadoFinal;
+    solicitud.voboObservaciones = observacionesFinal;
+    solicitud.voboUsuarioId = userIdUuidOrNull((user as any)?.userId) ?? undefined;
+    solicitud.voboFecha = new Date();
+
+    this.pushAsignacion(solicitud, {
+      accion: aprobadoFinal ? 'VOBO_VALORACION_APROBADO' : 'VOBO_VALORACION_OBSERVADO',
+      motivo: observacionesFinal ?? (aprobadoFinal ? 'Visto Bueno aprobado por coordinación / encargado UMI' : 'Valoración técnica observada'),
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: solicitud.requiereContratacion,
+      user: user as AuthUser,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    if (saved.idTecnicoAsignado) {
+      await this.notificarTecnicoAsignado(saved, {
+        tipo: aprobadoFinal ? 'VOBO_VALORACION_APROBADO' : 'VOBO_VALORACION_OBSERVADO',
+        titulo: aprobadoFinal ? `VoBo Aprobado #${saved.consecutivo}` : `VoBo Observado #${saved.consecutivo}`,
+        mensaje: aprobadoFinal
+          ? `La valoración técnica para la solicitud #${saved.consecutivo} ha recibido el visto bueno.`
+          : `La valoración para la solicitud #${saved.consecutivo} ha sido observada: ${observacionesFinal || 'Favor verificar'}.`,
+        icono: aprobadoFinal ? 'CheckCircle2' : 'AlertTriangle',
+        color: aprobadoFinal ? '#059669' : '#d97706',
+        prioridad: 'Media',
+        emailSubject: `[UMI] Visto Bueno ${aprobadoFinal ? 'Aprobado' : 'Observado'} - Solicitud #${saved.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:600px">
+<h3>Visto Bueno ${aprobadoFinal ? 'Aprobado' : 'Observado'}</h3>
+<p>La valoración técnica de la solicitud <strong>#${saved.consecutivo}</strong> ha sido ${aprobadoFinal ? 'aprobada con visto bueno' : 'observada por la coordinación'}.</p>
+${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}</p>` : ''}
+</div>`,
+      });
+    }
+
+    return saved;
   }
 
   async rechazar(
@@ -1929,7 +2402,8 @@ export class MantenimientoService implements OnModuleInit {
     return (
       roles.includes('SUPER_ADMIN') ||
       roles.includes('GESTOR_MANTENIMIENTO') ||
-      roles.includes('ADMINISTRADOR_FUNCIONAL')
+      roles.includes('ADMINISTRADOR_FUNCIONAL') ||
+      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA')
     );
   }
 
@@ -2058,7 +2532,8 @@ export class MantenimientoService implements OnModuleInit {
       } else if (
         categoriasPermitidasIds.includes(ID_CS_002) ||
         especialidadesIds.includes(ID_CS_002) ||
-        tecnico.codigo.toUpperCase().startsWith('TEC-ELEC')
+        tecnico.codigo.toUpperCase().startsWith('TEC-ELEC') ||
+        tecnico.codigo.toUpperCase().startsWith('TEC-ELC')
       ) {
         tecnicoEsElectricoValido = true;
       }
@@ -2172,7 +2647,7 @@ export class MantenimientoService implements OnModuleInit {
       tecnicoCodigo: per.tecnicoCodigo ?? null,
       tecnicoNombreDisplay: per.tecnicoNombre ?? null,
       motivo: 'Inicio de visita de valoración en campo.',
-      observaciones: `idValoracion=${valoracionNonNull.idValoracion}`,
+      observaciones: null,
       user: user as AuthUser,
     });
 
@@ -2308,6 +2783,18 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.estado = estadoFinal;
     solicitud.esperaInsumosFlag = hayNoDisponible;
 
+    // Verificar si requiere VoBo según parametrización institucional (Fase 3 Req. #3)
+    try {
+      const voboConfig = await this.getVoBoConfig();
+      const requiereMayor = voboConfig.requiereVoBoMantenimientoMayor && solicitud.clasificacionMantenimiento === 'MAYOR';
+      const requiereInsumos = voboConfig.requiereVoBoInsumos && (hayNoDisponible || totalEstimado >= voboConfig.montoMinimoInsumosVoBoCop);
+      const requiereCat = Array.isArray(voboConfig.categoriasVoBoObligatorio) && voboConfig.categoriasVoBoObligatorio.includes(Number(solicitud.idCategoria));
+      const requiereContrat = voboConfig.requiereVoBoContratacion && Boolean(solicitud.requiereContratacion);
+      if (voboConfig.requiereVoBoGlobal || requiereMayor || requiereInsumos || requiereCat || requiereContrat) {
+        solicitud.requiereVoBo = true;
+      }
+    } catch {}
+
     if (hayNoDisponible && maxDiasAdquisicion > 0) {
       if (solicitud.fechaLimiteAtencion) {
         solicitud.fechaLimiteOriginalAntesExtension =
@@ -2325,11 +2812,7 @@ export class MantenimientoService implements OnModuleInit {
           tecnicoCodigo: null,
           tecnicoNombreDisplay: null,
           motivo: `Se extiende la fecha límite en ${solicitud.diasExtendidosPorInsumos} días por materiales pendientes.`,
-          observaciones: JSON.stringify({
-            fechaOriginal: solicitud.fechaLimiteOriginalAntesExtension,
-            fechaNueva: nueva.toISOString(),
-            diasAdicionales: maxDiasAdquisicion,
-          }),
+          observaciones: `Nueva fecha límite: ${nueva.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}.`,
           user: user as AuthUser,
         });
       }
@@ -2344,11 +2827,76 @@ export class MantenimientoService implements OnModuleInit {
       motivo: hayNoDisponible
         ? 'Valoración finalizada con insumos pendientes por solicitar.'
         : 'Valoración finalizada; todos los insumos están en bodega. Inicia ejecución.',
-      observaciones: `idValoracion=${savedValoracion.idValoracion} · totalEstimado=$${Math.round(totalEstimado).toLocaleString('es-CO')} COP`,
+      observaciones: `Costo estimado de materiales: $${Math.round(totalEstimado).toLocaleString('es-CO')} COP`,
       user: user as AuthUser,
     });
 
     const savedSol = await this.mantenimientoRepo.save(solicitud);
+    if (hayNoDisponible) {
+      await this.notificarAlSolicitante(savedSol, {
+        tipo: 'SOLICITUD_EN_ESPERA_INSUMOS',
+        titulo: `Solicitud #${savedSol.consecutivo} en espera de insumos`,
+        mensaje: `La valoración técnica fue completada. Se requiere abastecimiento de insumos antes de ejecutar.`,
+        icono: 'Clock',
+        color: '#d97706',
+        prioridad: 'Media',
+        textoAccion: 'Ver detalle',
+        emailSubject: `[UMI] Solicitud #${savedSol.consecutivo} en espera de insumos`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#d97706">Solicitud en Espera de Insumos</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> fue valorada por el técnico.</p>
+<p style="margin:0 0 8px">Se identificaron materiales pendientes por abastecer para iniciar la ejecución.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver detalle</a></p>
+</div>`,
+      });
+      await this.notificarEncargadosUMI(savedSol, {
+        tipo: 'UMI_VALORACION_REQUIERE_INSUMOS',
+        titulo: `Insumos requeridos para solicitud #${savedSol.consecutivo}`,
+        mensaje: `El técnico completó la valoración. Se requiere gestión de abastecimiento de insumos por valor estimado de $${Math.round(totalEstimado).toLocaleString('es-CO')} COP.`,
+        icono: 'Package',
+        color: '#d97706',
+        prioridad: 'Alta',
+        textoAccion: 'Gestionar insumos',
+        emailSubject: `[UMI] Insumos requeridos: Solicitud #${savedSol.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#d97706">Valoración en Campo: Insumos Requeridos</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> requiere adquisición de insumos para continuar.</p>
+<p style="margin:0 0 8px"><strong>Total insumos estimado:</strong> $${Math.round(totalEstimado).toLocaleString('es-CO')} COP</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver detalle y gestionar</a></p>
+</div>`,
+      });
+    } else {
+      await this.notificarAlSolicitante(savedSol, {
+        tipo: 'UMI_SOLICITUD_EN_PROGRESO',
+        titulo: `Solicitud #${savedSol.consecutivo} en ejecución`,
+        mensaje: `La valoración concluyó con insumos disponibles en bodega. El técnico inició la ejecución de los trabajos.`,
+        icono: 'Play',
+        color: '#15803d',
+        prioridad: 'Media',
+        textoAccion: 'Ver seguimiento',
+        emailSubject: `[UMI] Solicitud #${savedSol.consecutivo} en ejecución`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Trabajos en Ejecución</h3>
+<p style="margin:0 0 8px">El técnico ha completado la valoración y dispone de insumos. La solicitud <strong>#${savedSol.consecutivo}</strong> se encuentra en ejecución.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+      });
+      await this.notificarEncargadosUMI(savedSol, {
+        tipo: 'UMI_VALORACION_INICIO_EJECUCION',
+        titulo: `Solicitud #${savedSol.consecutivo} inició ejecución en campo`,
+        mensaje: `La valoración técnica concluyó favorablemente y los trabajos están en marcha (EN_PROGRESO).`,
+        icono: 'Play',
+        color: '#15803d',
+        prioridad: 'Media',
+        textoAccion: 'Ver seguimiento',
+        emailSubject: `[UMI] En ejecución: Solicitud #${savedSol.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Inicio de Ejecución en Campo</h3>
+<p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> pasó a estado <strong>EN_PROGRESO</strong> tras la valoración técnica.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+      });
+    }
     return { solicitud: savedSol, valoracion: savedValoracion };
   }
 
@@ -2376,7 +2924,112 @@ export class MantenimientoService implements OnModuleInit {
       observaciones: null,
       user: user as AuthUser,
     });
-    return this.mantenimientoRepo.save(solicitud);
+    const savedRecepcion = await this.mantenimientoRepo.save(solicitud);
+    await this.notificarAlSolicitante(savedRecepcion, {
+      tipo: 'RECEPCION_INSUMOS_CONFIRMADA',
+      titulo: `Insumos recibidos para solicitud #${savedRecepcion.consecutivo}`,
+      mensaje: `Se ha confirmado la recepción de insumos. La solicitud avanza a ejecución.`,
+      icono: 'PackageCheck',
+      color: '#15803d',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${savedRecepcion.consecutivo}: Insumos recibidos, inicia ejecución`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Insumos Recibidos</h3>
+<p style="margin:0 0 8px">Se confirmó la recepción de materiales para la solicitud <strong>#${savedRecepcion.consecutivo}</strong>.</p>
+<p style="margin:0 0 8px">El trabajo continúa en estado <strong>EN_PROGRESO</strong>.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedRecepcion)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+    });
+    await this.notificarTecnicoAsignado(savedRecepcion, {
+      tipo: 'RECEPCION_INSUMOS_CONFIRMADA_TECNICO',
+      titulo: `Insumos disponibles para solicitud #${savedRecepcion.consecutivo}`,
+      mensaje: `Se confirmó la recepción de materiales. Puedes continuar con la ejecución del trabajo.`,
+      icono: 'Wrench',
+      color: '#15803d',
+      prioridad: 'Media',
+      textoAccion: 'Ejecutar trabajo',
+      emailSubject: `[UMI] Insumos disponibles: Solicitud #${savedRecepcion.consecutivo}`,
+      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#15803d">Insumos Disponibles</h3>
+<p style="margin:0 0 8px">Los materiales para la solicitud <strong>#${savedRecepcion.consecutivo}</strong> ya están disponibles.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedRecepcion)}" style="display:inline-block;padding:6px 14px;background:#15803d;color:#fff;border-radius:6px;text-decoration:none">Proceder con la ejecución</a></p>
+</div>`,
+    });
+    return savedRecepcion;
+  }
+
+  /**
+   * Fase 2 / Req #4 / Sección 5 del Plan:
+   * Micro-registro del técnico al verificar insumos recibidos (COMPLETA | PARCIAL | OBSERVADA).
+   * No bloquea la ejecución. Registra trazabilidad inmutable en asignaciones.
+   */
+  async registrarRecepcionInsumosTecnico(
+    idSolicitud: string,
+    dto: NotaRecepcionInsumosTecnicoDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    if (!user || (!user.userId && !user.email)) {
+      throw new ForbiddenException('Usuario no autenticado.');
+    }
+    const solicitud = await this.findById(idSolicitud);
+
+    const check = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!check.puede) {
+      throw new ForbiddenException(
+        'Solo el técnico asignado a la solicitud o un gestor autorizado puede registrar la verificación de insumos.',
+      );
+    }
+
+    const asignacionesPrevias = Array.isArray(solicitud.asignaciones) ? solicitud.asignaciones : [];
+    const yaRegistrado = asignacionesPrevias.some(
+      (a: any) => String(a?.accion) === 'RECEPCION_INSUMOS_TECNICO',
+    );
+    if (yaRegistrado) {
+      throw new ConflictException(
+        'La verificación técnica de insumos ya fue registrada previamente para esta solicitud.',
+      );
+    }
+
+    const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+    const motivoTexto = `Verificación de entrega de insumos por técnico: ${dto.resultado}`;
+    const obsJson = JSON.stringify({
+      resultado: dto.resultado,
+      observaciones: (dto.observaciones || '').trim(),
+      fecha: new Date().toISOString(),
+    });
+
+    this.pushAsignacion(solicitud, {
+      accion: 'RECEPCION_INSUMOS_TECNICO',
+      tecnicoCodigo: check.tecnicoCodigo || t.codigo || null,
+      tecnicoNombreDisplay: check.tecnicoNombre || t.nombre || null,
+      motivo: motivoTexto,
+      observaciones: obsJson,
+      user: user as AuthUser,
+    });
+
+    const savedVerif = await this.mantenimientoRepo.save(solicitud);
+
+    if (dto.resultado === 'OBSERVADA' || dto.resultado === 'PARCIAL') {
+      await this.notificarEncargadosUMI(savedVerif, {
+        tipo: 'UMI_INSUMOS_VERIFICACION_NOVEDAD',
+        titulo: `Novedad en insumos: Solicitud #${savedVerif.consecutivo} (${dto.resultado})`,
+        mensaje: `El técnico registró verificación técnica de insumos con estado ${dto.resultado}. Obs: ${dto.observaciones || 'Sin detalles'}.`,
+        icono: 'AlertTriangle',
+        color: '#e11d48',
+        prioridad: 'Alta',
+        textoAccion: 'Ver solicitud',
+        emailSubject: `[UMI] Novedad insumos (${dto.resultado}): Solicitud #${savedVerif.consecutivo}`,
+        emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#e11d48">Novedad en Verificación de Insumos</h3>
+<p style="margin:0 0 8px">El técnico asignado reportó novedad con estado <strong>${dto.resultado}</strong> para la solicitud <strong>#${savedVerif.consecutivo}</strong>.</p>
+<p style="margin:0 0 8px"><strong>Observaciones:</strong> ${dto.observaciones || 'Sin observaciones registradas'}</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedVerif)}" style="display:inline-block;padding:6px 14px;background:#e11d48;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`,
+      });
+    }
+
+    return savedVerif;
   }
 
   async obtenerCierreTecnico(
@@ -2406,9 +3059,49 @@ export class MantenimientoService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   private readonly UMI_APP_FRONT_URL: string = (process.env.WEB_APP_URL ?? 'https://app.esap.edu.co').replace(/\/$/, '');
+  private readonly CORREO_OTIC_DESTINO: string = process.env.OTIC_NOTIFICATION_EMAIL ?? 'desarrollo.ccd@esap.edu.co';
 
   private solicitudAccionUrl(solicitud: SolicitudMantenimiento): string {
     return `${this.UMI_APP_FRONT_URL}/umi/solicitudes/${encodeURIComponent(solicitud.idSolicitud)}`;
+  }
+
+  private async notificarOTIC(
+    solicitud: SolicitudMantenimiento,
+    args: { evento: string; motivo?: string; observaciones?: string },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    try {
+      const url = this.solicitudAccionUrl(solicitud);
+      const subject = `[OTIC][Atención Tecnológica] Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} - ${args.evento}`;
+      const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#0369a1">Notificación de Gestión Tecnológica OTIC</h3>
+<p style="margin:0 0 8px"><strong>Solicitud:</strong> #${solicitud.consecutivo ?? solicitud.idSolicitud}</p>
+<p style="margin:0 0 8px"><strong>Evento:</strong> ${args.evento}</p>
+<p style="margin:0 0 8px"><strong>Solicitante:</strong> ${solicitud.solicitanteNombre ?? 'N/A'} (${solicitud.usuarioSolicitanteEmail ?? solicitud.solicitanteEmail ?? 'N/A'})</p>
+<p style="margin:0 0 8px"><strong>Sede:</strong> ${solicitud.sede?.nombre ?? solicitud.idSede ?? 'N/A'}</p>
+<p style="margin:0 0 8px"><strong>Descripción:</strong> ${solicitud.descripcion ?? 'N/A'}</p>
+${args.motivo ? `<p style="margin:0 0 8px"><strong>Motivo:</strong> ${args.motivo}</p>` : ''}
+${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong> ${args.observaciones}</p>` : ''}
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#0369a1;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
+</div>`;
+      this.notifLogger.log(
+        `[EMAIL_DISPATCH][OTIC] Despachando notificación a OTIC (${this.CORREO_OTIC_DESTINO}) | Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud} | Evento: ${args.evento}`,
+      );
+      const ok = await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html);
+      if (ok) {
+        this.notifLogger.log(
+          `[EMAIL_DISPATCH][OTIC][OK] Correo entregado exitosamente a OTIC (${this.CORREO_OTIC_DESTINO}) para evento ${args.evento}`,
+        );
+      } else {
+        this.notifLogger.warn(
+          `[EMAIL_DISPATCH][OTIC][WARN] Despacho de correo a OTIC (${this.CORREO_OTIC_DESTINO}) no se completó. Verifique logs [EMAIL_DISPATCH].`,
+        );
+      }
+    } catch (err: any) {
+      this.notifLogger.error(
+        `[EMAIL_DISPATCH][OTIC] Error en notificación OTIC para solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud}: ${err?.message ?? err}`,
+      );
+    }
   }
 
   private async notificarAlSolicitante(
@@ -2479,16 +3172,74 @@ export class MantenimientoService implements OnModuleInit {
   ): Promise<void> {
     if (!this.notificaciones) return;
     try {
-      const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
-      const codigoTec = (t.codigo || '').toString();
-      if (!codigoTec) return;
-      const catalogo = await this.catalogoRepo.findOne({
-        where: { catalogo: TECNICO_MANTENIMIENTO, codigo: codigoTec, isActivo: true },
-      });
-      const tecUserId: string | undefined =
-        (catalogo?.metadata as any)?.usuarioIdsAutorizados?.[0] ?? (catalogo?.metadata as any)?.usuarioIdAutorizado;
-      const tecEmail: string | undefined = (catalogo?.metadata as any)?.correos?.[0];
-      if (!tecUserId && !tecEmail) return;
+      let tecUserId: string | undefined = solicitud.idTecnicoAsignado;
+      let tecEmail: string | undefined;
+
+      if (tecUserId) {
+        if (typeof (this.notificaciones as any)?.getUserDetailsById === 'function') {
+          try {
+            const detail = await this.notificaciones.getUserDetailsById(tecUserId);
+            if (detail?.email) tecEmail = detail.email;
+          } catch {}
+        }
+      }
+
+      if (!tecUserId) {
+        const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+        const codigoTec = (t.codigo || '').toString().trim();
+        if (codigoTec) {
+          try {
+            const tec = await this.resolverTecnicoActivo(codigoTec);
+            if (tec?.idTecnicoAsignado) {
+              tecUserId = tec.idTecnicoAsignado;
+              const md = (tec.metadata && typeof tec.metadata === 'object') ? (tec.metadata as any) : {};
+              if (!tecEmail && Array.isArray(md.correos) && md.correos[0]) {
+                tecEmail = md.correos[0];
+              }
+              if (typeof (this.notificaciones as any)?.getUserDetailsById === 'function') {
+                try {
+                  const detail = await this.notificaciones.getUserDetailsById(tecUserId);
+                  if (detail?.email) tecEmail = detail.email;
+                } catch {}
+              }
+            }
+          } catch (_e) {
+            // fallback
+          }
+        }
+      }
+
+      if (!tecUserId && solicitud.responsableAsignado) {
+        try {
+          const rows = await this.dataSource.query(
+            `SELECT u.id_user::text AS id_user, COALESCE(p.dir_email, u.username) AS email
+               FROM auth."user" u
+               JOIN auth.personas p ON p.id_person = u.id_person
+               JOIN auth.user_roles ur ON ur.id_user = u.id_user
+               JOIN auth.role r ON r.id = ur.id_rol
+              WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO')
+                AND ($1 ILIKE '%' || p.nom_largo || '%' OR $1 ILIKE '%' || u.username || '%')
+              LIMIT 1`,
+            [solicitud.responsableAsignado],
+          );
+          if (rows && rows.length > 0) {
+            tecUserId = rows[0].id_user;
+            tecEmail = rows[0].email;
+          }
+        } catch (_e) {
+          // fallback
+        }
+      }
+
+      this.notifLogger.log(
+        `[NOTIFICACION_DEBUG][TECNICO] Solicitud #${solicitud.consecutivo} | Evento: ${args.tipo} | tecUserId: ${tecUserId || 'N/A'} | Email: ${tecEmail || 'N/A'}`,
+      );
+
+      if (!tecUserId && !tecEmail) {
+        this.notifLogger.warn(`[NOTIFICACION_DEBUG] No se pudo identificar técnico para solicitud #${solicitud.consecutivo}`);
+        return;
+      }
+
       const url = this.solicitudAccionUrl(solicitud);
       const descripcion = `#${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · ${solicitud.estado ?? 'N/A'}`;
       if (tecUserId) {
@@ -2512,6 +3263,57 @@ export class MantenimientoService implements OnModuleInit {
       }
     } catch (err: any) {
       this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación técnico falló: ${err?.message ?? err}`);
+    }
+  }
+
+  private async notificarEncargadosUMI(
+    solicitud: SolicitudMantenimiento,
+    payload: {
+      tipo: string;
+      titulo: string;
+      mensaje: string;
+      icono?: string;
+      color?: string;
+      prioridad?: SendNotificationDto['prioridad'];
+      textoAccion?: string;
+      emailHtml: string;
+      emailSubject: string;
+    },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    try {
+      this.notifLogger.log(
+        `[NOTIFICACION_DEBUG][EVENTO] Notificando a Encargados UMI (P2) | Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud} | Tipo: ${payload.tipo}`,
+      );
+      const encargados = await this.notificaciones.getEncargadosUmi();
+      const url = this.solicitudAccionUrl(solicitud);
+      const descripcion = `Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · ${solicitud.estado ?? 'N/A'}`;
+
+      if (encargados.length === 0) {
+        this.notifLogger.warn(`[NOTIFICACION_DEBUG] No hay encargados UMI con rol P2/P5 en auth.user_roles.`);
+        return;
+      }
+
+      for (const enc of encargados) {
+        const dtoApp: Omit<SendNotificationDto, 'id_usuario_destinatario'> = {
+          tipo_notificacion: payload.tipo,
+          titulo: payload.titulo,
+          mensaje: payload.mensaje,
+          descripcion_corta: descripcion,
+          icono: payload.icono ?? 'Bell',
+          color: payload.color ?? '#2563eb',
+          prioridad: payload.prioridad ?? 'Media',
+          categoria: 'UMI-MANTENIMIENTO',
+          tiene_accion: true,
+          texto_boton_accion: payload.textoAccion ?? 'Ver solicitud',
+          url_accion: url,
+          datos_adicionales: { modulo: 'UMI', idSolicitud: solicitud.idSolicitud, estado: solicitud.estado, tipo: payload.tipo },
+        };
+        const emailOpts = enc.email ? { subject: payload.emailSubject, html: payload.emailHtml } : undefined;
+        await this.notificaciones.notifyUserById(enc.id_user, dtoApp, emailOpts);
+      }
+    } catch (err: any) {
+      this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación Encargados UMI falló: ${err?.message ?? err}`);
     }
   }
 
@@ -2678,6 +3480,17 @@ export class MantenimientoService implements OnModuleInit {
           emailHtml: email.html,
           emailSubject: email.subject,
         });
+        await this.notificarEncargadosUMI(recienCerrada, {
+          tipo: 'UMI_CIERRE_TECNICO_REGISTRADO_ENCARGADO',
+          titulo: `Cierre técnico registrado para solicitud #${recienCerrada.consecutivo ?? recienCerrada.idSolicitud.slice(0, 8)}`,
+          mensaje: `El técnico ${displayTecnico} completó los trabajos. Solicitud avanza a PENDIENTE_CONFORMIDAD del usuario solicitante.`,
+          icono: 'ClipboardCheck',
+          color: '#0f766e',
+          prioridad: 'Media',
+          textoAccion: 'Ver cierre técnico',
+          emailSubject: `[UMI] Cierre técnico registrado: Solicitud #${recienCerrada.consecutivo ?? recienCerrada.idSolicitud.slice(0, 8)}`,
+          emailHtml: email.html,
+        });
       } catch (err: any) {
         this.notifLogger.warn(`[${recienCerrada.idSolicitud}] notificación cierre técnico falló: ${err?.message ?? err}`);
       }
@@ -2801,6 +3614,17 @@ export class MantenimientoService implements OnModuleInit {
           emailSubject: `[UMI] Conformidad OK solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
           emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px"><h3 style="margin:0 0 8px;color:#115e59">Conformidad confirmada</h3><p style="margin:0 0 8px">El área solicitante (<strong>${user?.username ?? 'Solicitante'}</strong>) aprobó el cierre técnico.</p><p style="margin:0 0 8px">${dto.observacionesConformidad?.trim() ? `Observaciones: ${dto.observacionesConformidad.trim()}` : 'Sin observaciones adicionales.'}</p></div>`,
         });
+        await this.notificarEncargadosUMI(final, {
+          tipo: 'UMI_CONFORMIDAD_CONFIRMADA_ENCARGADO',
+          titulo: `Conformidad aprobada para solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
+          mensaje: `El solicitante dio su visto bueno de conformidad. Calificación del servicio registrada. Estado: COMPLETADA.`,
+          icono: 'CheckCircle2',
+          color: '#115e59',
+          prioridad: 'Baja',
+          textoAccion: 'Ver solicitud',
+          emailSubject: `[UMI] Solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)} finalizada satisfactoriamente`,
+          emailHtml: emailSol.html,
+        });
       } catch (err: any) {
         this.notifLogger.warn(`[${final.idSolicitud}] notificación confirmación falló: ${err?.message ?? err}`);
       }
@@ -2881,6 +3705,17 @@ export class MantenimientoService implements OnModuleInit {
           obs,
           conteo: Number(final.conteoReaperturasConformidad ?? 1),
           slaHoras: REAPERTURA_NUEVO_SLA_HORAS,
+        });
+        await this.notificarEncargadosUMI(final, {
+          tipo: 'UMI_CONFORMIDAD_RECHAZADA_ENCARGADO',
+          titulo: `Conformidad rechazada — Solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)} reabierta`,
+          mensaje: `El solicitante rechazó la conformidad (Reapertura #${final.conteoReaperturasConformidad}). Motivo: ${obs}. Vuelve a EN_PROGRESO con nuevo SLA de ${REAPERTURA_NUEVO_SLA_HORAS}h.`,
+          icono: 'AlertTriangle',
+          color: '#b45309',
+          prioridad: 'Alta',
+          textoAccion: 'Ver solicitud reabierta',
+          emailSubject: `[UMI][URGENTE] Reapertura #${final.conteoReaperturasConformidad}: Solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
+          emailHtml: emailSol.html,
         });
       } catch (err: any) {
         this.notifLogger.warn(`[${final.idSolicitud}] notificación rechazo/reapertura falló: ${err?.message ?? err}`);
@@ -2983,12 +3818,16 @@ export class MantenimientoService implements OnModuleInit {
       typeof filtros.codigoTecnico === 'string' && filtros.codigoTecnico.trim().length > 0
         ? filtros.codigoTecnico.trim()
         : null;
+    const codigosTecnicoFiltro = await this.resolverCodigosTecnicoFiltro(codigoTecnico);
     const idAreaSolicitante =
       typeof filtros.idAreaSolicitante === 'string' && filtros.idAreaSolicitante.trim().length > 0
         ? filtros.idAreaSolicitante.trim()
         : null;
 
     const qb = this.mantenimientoRepo.createQueryBuilder('s');
+    // Evita que TypeORM agregue todas las columnas de la entidad (incluida la PK)
+    // al SELECT; sin esto el GROUP BY de agregación falla con "must appear in the GROUP BY clause".
+    qb.select([]);
 
     // ============ JOINS ESPECÍFICOS SEGÚN AGRUPACIÓN ============
     if (por === 'categoria') {
@@ -3001,30 +3840,26 @@ export class MantenimientoService implements OnModuleInit {
     qb.andWhere("s.estado IN (:...estadosCierre)", {
       estadosCierre: ['CERRADA', 'CERRADA_SIN_ATENCION'],
     });
-    qb.andWhere("s.resultadoConformidad = :resuConform", {
+    qb.andWhere("s.resultado_conformidad = :resuConform", {
       resuConform: 'CONFIRMADA',
     });
-    qb.andWhere('s.calificacionServicio IS NOT NULL');
     qb.andWhere('s.calificacion_servicio IS NOT NULL');
 
     // ============ WHERE DINÁMICOS 5 FILTROS OPCIONALES ============
     if (fechaDesde) {
-      qb.andWhere('s.fechaCalificacion >= :fDesde', { fDesde: fechaDesde });
+      qb.andWhere('s.fecha_calificacion >= :fDesde', { fDesde: fechaDesde });
     }
     if (fechaHasta) {
-      qb.andWhere('s.fechaCalificacion <= :fHasta', { fHasta: fechaHasta });
+      qb.andWhere('s.fecha_calificacion <= :fHasta', { fHasta: fechaHasta });
     }
     if (idCategoria != null) {
-      qb.andWhere('s.idCategoria = :idCat', { idCat: idCategoria });
+      qb.andWhere('s.id_categoria = :idCat', { idCat: idCategoria });
     }
-    if (codigoTecnico) {
-      // responsableAsignado formato "TEC-XXX-001 · Nombre Apellido" → prefix LIKE
-      qb.andWhere("s.responsableAsignado ILIKE :prefTec", {
-        prefTec: codigoTecnico + SEPARADOR_TECNICO + '%',
-      });
+    if (codigosTecnicoFiltro.length > 0) {
+      this.aplicarFiltroTecnicoPorCodigos(qb, 's.responsable_asignado', codigosTecnicoFiltro);
     }
     if (idAreaSolicitante) {
-      qb.andWhere('s.idAreaSolicitante = :idArea', {
+      qb.andWhere('s.id_area_solicitante = :idArea', {
         idArea: idAreaSolicitante,
       });
     }
@@ -3032,29 +3867,29 @@ export class MantenimientoService implements OnModuleInit {
     // ============ GROUP BY + SELECT agregados comunes
     qb
       .addSelect('COUNT(*)::bigint', 'numeroCalificaciones')
-      .addSelect('COALESCE(SUM(s.calificacionServicio), 0)::bigint', 'sumaCalificaciones')
+      .addSelect('COALESCE(SUM(s.calificacion_servicio), 0)::bigint', 'sumaCalificaciones')
       .addSelect(
-        'ROUND(COALESCE(AVG(CASE WHEN s.calificacionServicio IS NOT NULL THEN CAST(s.calificacionServicio AS NUMERIC) END), 0), 2)',
+        'ROUND(COALESCE(AVG(CASE WHEN s.calificacion_servicio IS NOT NULL THEN CAST(s.calificacion_servicio AS NUMERIC) END), 0), 2)',
         'promedio',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 1 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 1 THEN 1 ELSE 0 END), 0)::bigint",
         'd1',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 2 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 2 THEN 1 ELSE 0 END), 0)::bigint",
         'd2',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 3 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 3 THEN 1 ELSE 0 END), 0)::bigint",
         'd3',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 4 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 4 THEN 1 ELSE 0 END), 0)::bigint",
         'd4',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 5 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 5 THEN 1 ELSE 0 END), 0)::bigint",
         'd5',
       );
 
@@ -3063,29 +3898,31 @@ export class MantenimientoService implements OnModuleInit {
       case 'tecnico': {
         // Split prefix "COD · Nombre" = SPLIT_PART (Postgres). Fallback old data = '(sin técnico asignado)'.
         qb.addSelect(
-          `COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 1), ''), '')`,
+          `COALESCE(NULLIF(SPLIT_PART(s.responsable_asignado, :sepTec, 1), ''), '')`,
           'idGrupo',
         ).addSelect(
-          `CASE WHEN s.responsableAsignado IS NULL OR TRIM(s.responsableAsignado) = '' THEN :fallbackSinTec ELSE COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 2), ''), s.responsableAsignado) END`,
+          `CASE WHEN s.responsable_asignado IS NULL OR TRIM(s.responsable_asignado) = '' THEN :fallbackSinTec ELSE COALESCE(NULLIF(SPLIT_PART(s.responsable_asignado, :sepTec, 2), ''), s.responsable_asignado) END`,
           'nombreGrupo',
         ).setParameter('sepTec', SEPARADOR_TECNICO).setParameter('fallbackSinTec', '(sin técnico asignado)');
-        qb.groupBy('1').addGroupBy('s.responsableAsignado');
+        // Agrupar por la columna (no por el ordinal 1, que es COUNT(*) y PostgreSQL rechaza).
+        // Ambas expresiones del SELECT derivan únicamente de s.responsable_asignado.
+        qb.groupBy('s.responsable_asignado');
         break;
       }
       case 'categoria': {
-        qb.addSelect('CAST(s.idCategoria AS TEXT)', 'idGrupo').addSelect(
-          `COALESCE(NULLIF(TRIM(ci.nombre), ''), '') || CASE WHEN s.idCategoria IS NULL THEN :fallbackSinCat ELSE '' END`,
+        qb.addSelect('CAST(s.id_categoria AS TEXT)', 'idGrupo').addSelect(
+          `COALESCE(NULLIF(TRIM(ci.nombre), ''), '') || CASE WHEN s.id_categoria IS NULL THEN :fallbackSinCat ELSE '' END`,
           'nombreGrupo',
         ).setParameter('fallbackSinCat', '(sin categoría)');
-        qb.groupBy('s.idCategoria').addGroupBy('ci.nombre');
+        qb.groupBy('s.id_categoria').addGroupBy('ci.nombre');
         break;
       }
       case 'area': {
-        qb.addSelect('CAST(s.idAreaSolicitante AS TEXT)', 'idGrupo').addSelect(
-          `COALESCE(NULLIF(TRIM(s.nombreAreaSolicitante), ''), s.idAreaSolicitante, :fallbackSinArea)`,
+        qb.addSelect('CAST(s.id_area_solicitante AS TEXT)', 'idGrupo').addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), s.id_area_solicitante, :fallbackSinArea)`,
           'nombreGrupo',
         ).setParameter('fallbackSinArea', '(sin área solicitante)');
-        qb.groupBy('s.idAreaSolicitante').addGroupBy('s.nombreAreaSolicitante');
+        qb.groupBy('s.id_area_solicitante').addGroupBy('s.nombre_area_solicitante');
         break;
       }
       case 'global': {
@@ -3139,7 +3976,7 @@ export class MantenimientoService implements OnModuleInit {
 
   // ---------------------------------------------------------------------------
   // EFDS-1739 RF-INF-010: Reportes e Indicadores de Gestión (6 métricas)
-  // Filtro default últimos 90 días. Rango máximo 12 meses → 400 si excede.
+  // Filtro default día actual. Rango máximo 12 meses → 400 si excede.
   // Guardia permiso infraestructura.reportes.gestion o bypass legacy admin.
   // ---------------------------------------------------------------------------
   async obtenerReporteGestion(
@@ -3149,9 +3986,8 @@ export class MantenimientoService implements OnModuleInit {
     requirePermission('infraestructura.reportes.gestion', user);
 
     const now = new Date();
-    const hastaDefault = new Date(now);
-    const desdeDefault = new Date(now);
-    desdeDefault.setDate(desdeDefault.getDate() - 90);
+    const desdeDefault = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const hastaDefault = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     let fDesde = parsearFechaUTCNullable(filtros.fechaDesde) ?? desdeDefault;
     let fHasta = parsearFechaUTCNullable(filtros.fechaHasta) ?? hastaDefault;
     if (fDesde.getTime() > fHasta.getTime()) {
@@ -3174,6 +4010,7 @@ export class MantenimientoService implements OnModuleInit {
     const areaRaw = String(filtros.areaResponsable || '').trim().toUpperCase();
     const areaResponsable: AreaFiltroReporte = areaRaw === 'TI' || areaRaw === 'TODAS' ? areaRaw as AreaFiltroReporte : 'UMI';
     const codigoTecnico = typeof filtros.codigoTecnico === 'string' && filtros.codigoTecnico.trim() ? filtros.codigoTecnico.trim() : null;
+    const codigosTecnicoFiltro = await this.resolverCodigosTecnicoFiltro(codigoTecnico);
     const estado = typeof filtros.estado === 'string' && filtros.estado.trim() ? filtros.estado.trim().toUpperCase() : null;
 
     const aplicarFiltrosComunes = (qb: any, campoFecha: string, desde: Date, hasta: Date) => {
@@ -3186,8 +4023,8 @@ export class MantenimientoService implements OnModuleInit {
       } else if (areaResponsable === 'TI') {
         qb.andWhere("s.areaResponsableActual = :areaTI", { areaTI: 'TI' });
       }
-      if (codigoTecnico) {
-        qb.andWhere("s.responsableAsignado ILIKE :prefTec", { prefTec: codigoTecnico + SEPARADOR_TECNICO + '%' });
+      if (codigosTecnicoFiltro.length > 0) {
+        this.aplicarFiltroTecnicoPorCodigos(qb, 's.responsableAsignado', codigosTecnicoFiltro);
       }
       if (estado) qb.andWhere('s.estado = :est', { est: estado });
     };
@@ -3376,7 +4213,9 @@ export class MantenimientoService implements OnModuleInit {
       global = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'global' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porCategoriaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'categoria' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porTecnicoCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'tecnico' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
-    } catch { /* si no hay calificaciones, devuelve vacíos */ }
+    } catch (err) {
+      console.error('[reporte-gestion] Error al cargar percepcionServicio:', err?.message || err);
+    }
     const primerGlobal = global?.[0];
     const dist: DistribucionCalificacion = primerGlobal?.distribucion ? { ...distribucionVacia(), ...primerGlobal.distribucion } : distribucionVacia();
     const sumaDist = (dist[1] + dist[2] + dist[3] + dist[4] + dist[5]) || 0;
@@ -3450,6 +4289,39 @@ export class MantenimientoService implements OnModuleInit {
     };
   }
 
+  private formatearFechaReporteLocal(
+    valor: string | Date | null | undefined,
+    opts?: { incluirHora?: boolean },
+  ): string {
+    if (!valor) return '';
+    const incluirHora = opts?.incluirHora !== false;
+    const raw = typeof valor === 'string' ? valor.trim() : valor;
+    let fecha: Date;
+    if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const [yyyy, mm, dd] = raw.split('-').map(Number);
+      fecha = new Date(yyyy, (mm || 1) - 1, dd || 1);
+    } else {
+      fecha = raw instanceof Date ? raw : new Date(raw);
+    }
+    if (Number.isNaN(fecha.getTime())) return '';
+    if (!incluirHora) {
+      return fecha.toLocaleDateString('es-CO', {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+    }
+    return fecha.toLocaleString('es-CO', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
   // ---- ST2 EFDS-1739: Exportador Excel 6 hojas ----
   async generarExcelReporteGestion(
     filtros: FiltrosReporteGestionParams,
@@ -3474,9 +4346,16 @@ export class MantenimientoService implements OnModuleInit {
     wsKpi.getRow(1).values = ['REPORTE DE GESTIÓN DE INFRAESTRUCTURA UMI'];
     wsKpi.getRow(1).font = { bold: true, size: 16, color: { argb: 'FF1E3A8A' } };
     wsKpi.mergeCells('A1:F1');
-    wsKpi.getRow(2).values = ['Fecha generación', hoy.toISOString(), 'Usuario que genera', user?.email || 'N/A', '', ''];
-    wsKpi.getRow(3).values = ['Periodo desde', reporte.periodo.fechaDesdeISO, 'Periodo hasta', reporte.periodo.fechaHastaISO, '', ''];
-    wsKpi.getRow(4).values = ['Periodo anterior desde', reporte.periodo.fechaDesdeAnteriorISO, 'Periodo anterior hasta', reporte.periodo.fechaHastaAnteriorISO, '', ''];
+    wsKpi.getRow(2).values = ['Fecha generación', this.formatearFechaReporteLocal(hoy), 'Usuario que genera', user?.email || 'N/A', '', ''];
+    wsKpi.getRow(3).values = [
+      'Periodo desde',
+      this.formatearFechaReporteLocal(reporte.periodo.fechaDesdeISO, { incluirHora: false }),
+      'Periodo hasta',
+      this.formatearFechaReporteLocal(reporte.periodo.fechaHastaISO, { incluirHora: false }),
+      '',
+      '',
+    ];
+    wsKpi.getRow(4).values = ['', '', '', '', '', ''];
     wsKpi.getRow(5).values = ['', '', '', '', '', ''];
     const casosCompletadosAcum = reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.casosCumplenSLA, 0);
     const casosExcedenAcum = reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.casosExcedenSLA, 0);
@@ -3615,7 +4494,6 @@ export class MantenimientoService implements OnModuleInit {
       { header: 'Fecha cierre técnico', key: 'fechaCierre', width: 24 },
       { header: 'Calificación 1-5', key: 'calif', width: 14 },
       { header: 'Costo final COP', key: 'costo', width: 16 },
-      { header: 'Evidencias (links)', key: 'evidencias', width: 80 },
     ];
     wsDet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     wsDet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -3635,32 +4513,358 @@ export class MantenimientoService implements OnModuleInit {
     const detalleSols = await qbDet.getMany();
     for (const sol of detalleSols) {
       const ubicTxt = [sol.piso, sol.salon].filter(Boolean).join(' / ') || (sol.espacio ? (sol.espacio as any).codigo || '' : '');
-      let evCell: any = 'Sin evidencias';
-      try {
-        const evs = await this.getEvidenciasBySolicitud(sol.idSolicitud, 180);
-        if (evs.length === 1 && (evs[0].urlPresigned || evs[0].urlPublica)) {
-          const url = evs[0].urlPresigned || evs[0].urlPublica || '';
-          const label = `[Ev1] ${evs[0].nombreOriginal || 'adjunto'}`.slice(0, 120);
-          evCell = { text: label, hyperlink: url };
-        } else if (evs.length > 1) {
-          const partes = evs.slice(0, 8).map((e, idx) => `[Ev${idx + 1}] ${e.nombreOriginal || 'adjunto'}: ${e.urlPresigned || e.urlPublica || ''}`);
-          evCell = partes.join(' ; ');
-        }
-      } catch { /* ignore */ }
       wsDet.addRow({
         consecutivo: sol.consecutivo || sol.idSolicitud,
-        fechaRad: sol.fechaRadicacion ? new Date(sol.fechaRadicacion).toISOString() : '',
+        fechaRad: this.formatearFechaReporteLocal(sol.fechaRadicacion),
         sede: (sol.sede as any)?.nombre || '',
         ubicacion: String(ubicTxt || sol.ubicacionDetalle || ''),
         idCat: sol.idCategoria ?? '',
         tecnico: sol.responsableAsignado || '',
         estado: sol.estado || '',
         area: sol.areaResponsableActual || '',
-        fechaCierre: sol.fechaCierreTecnico ? new Date(sol.fechaCierreTecnico).toISOString() : '',
+        fechaCierre: this.formatearFechaReporteLocal(sol.fechaCierreTecnico),
         calif: sol.calificacionServicio ?? '',
         costo: sol.costoFinalEfectivoCop ?? 0,
-        evidencias: evCell,
       });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return { buffer: Buffer.from(buffer), filename };
+  }
+
+  // ---- Fase 4 Req. #9: Exportar Consolidado Operacional Detallado en Excel (.xlsx) ----
+  async generarExcelConsolidadoOperacional(
+    filtros: FiltrosExportarOperacionalDto,
+    user: AuthUser | null | undefined,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const esBypass = usuarioEsBypassConsolidados(user);
+    const tienePermiso =
+      esBypass ||
+      userHasPermission('infraestructura.reportes.gestion', user) ||
+      userHasPermission('infraestructura.reporting.export_excel', user) ||
+      userHasPermission('infraestructura.reportes.consolidados', user) ||
+      userHasPermission('infraestructura.audit.trazabilidad', user) ||
+      userHasPermission('infraestructura.view_all', user);
+    if (!tienePermiso) {
+      requirePermission('infraestructura.reporting.export_excel', user);
+    }
+
+    const hoy = new Date();
+    const fechaYYYYMMDD =
+      hoy.getFullYear() +
+      '-' +
+      String(hoy.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(hoy.getDate()).padStart(2, '0');
+    const filename = `Consolidado_Operacional_Mantenimiento_ESAP_${fechaYYYYMMDD}.xlsx`;
+
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook
+      ? ExcelJSMod
+      : ExcelJSMod.default?.Workbook
+        ? ExcelJSMod.default
+        : (ExcelJSMod.default ?? ExcelJSMod);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = user?.email || 'UMI-ESAP';
+    workbook.created = hoy;
+    workbook.modified = hoy;
+    workbook.calcProperties.fullCalcOnLoad = true;
+
+    // Consulta de solicitudes con joins
+    const qb = this.mantenimientoRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.sede', 'sede')
+      .leftJoinAndSelect('s.espacio', 'espacio')
+      .leftJoinAndSelect('espacio.bloque', 'bloque')
+      .leftJoinAndSelect('s.valoraciones', 'valoraciones');
+
+    if (Array.isArray(filtros.ids) && filtros.ids.length > 0) {
+      qb.andWhere('s.idSolicitud IN (:...ids)', { ids: filtros.ids });
+    } else {
+      if (filtros.estado && filtros.estado !== 'TODOS') {
+        qb.andWhere('s.estado = :estado', { estado: filtros.estado });
+      }
+      if (filtros.prioridad && filtros.prioridad !== 'TODAS') {
+        qb.andWhere('s.prioridad = :prioridad', { prioridad: filtros.prioridad });
+      }
+      if (filtros.idCategoria) {
+        qb.andWhere('s.idCategoria = :idCat', { idCat: Number(filtros.idCategoria) });
+      }
+      if (filtros.idSede) {
+        qb.andWhere('s.sedeId = :idSede', { idSede: filtros.idSede });
+      }
+      if (filtros.areaResponsable) {
+        qb.andWhere('s.areaResponsableActual = :area', { area: filtros.areaResponsable });
+      }
+      if (filtros.codigoTecnico && filtros.codigoTecnico !== 'TODOS') {
+        if (filtros.codigoTecnico === 'SIN_ASIGNAR') {
+          qb.andWhere('(s.responsableAsignado IS NULL OR s.responsableAsignado = \'\')');
+        } else {
+          qb.andWhere('s.responsableAsignado ILIKE :tec', { tec: `%${filtros.codigoTecnico}%` });
+        }
+      }
+      if (filtros.fechaDesde) {
+        qb.andWhere('s.fechaRadicacion >= :fDesde', { fDesde: new Date(filtros.fechaDesde) });
+      }
+      if (filtros.fechaHasta) {
+        qb.andWhere('s.fechaRadicacion <= :fHasta', { fHasta: new Date(filtros.fechaHasta) });
+      }
+    }
+
+    qb.orderBy('s.fechaRadicacion', 'DESC').limit(10000);
+    const solicitudes = await qb.getMany();
+
+    const catMap: Record<number, { codigo: string; nombre: string }> = {
+      47: { codigo: 'CS_001', nombre: 'Cerrajería y Carpintería' },
+      48: { codigo: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
+      49: { codigo: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos' },
+      50: { codigo: 'CS_004', nombre: 'Plomería y Fontanería' },
+      51: { codigo: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores' },
+      52: { codigo: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería' },
+      53: { codigo: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes' },
+      54: { codigo: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos' },
+    };
+
+    // =========================================================================
+    // HOJA 1: Datos consolidados (Estructura Planner + Campos Enriquecidos ESAP)
+    // =========================================================================
+    const ws = workbook.addWorksheet('Datos consolidados', {
+      properties: { tabColor: { argb: 'FF1F3864' } },
+      views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+    });
+
+    ws.columns = [
+      // === COLUMNAS 1 A 12: ESTRUCTURA EXACTA MICROSOFT PLANNER UMI ===
+      { header: 'Nombre de la tarea', key: 'nombreTarea', width: 58 },
+      { header: 'Depósito', key: 'deposito', width: 34 },
+      { header: 'Estado', key: 'estadoPlanner', width: 14 },
+      { header: 'Asignado a', key: 'asignadoA', width: 48 },
+      { header: 'Creado por', key: 'creadoPor', width: 28 },
+      { header: 'Fecha de creación', key: 'fechaCreacion', width: 16 },
+      { header: 'Fecha de vencimiento', key: 'fechaVencimiento', width: 16 },
+      { header: 'Fecha de inicio', key: 'fechaInicio', width: 16 },
+      { header: 'Fecha de finalización', key: 'fechaFinalizacion', width: 16 },
+      { header: 'Completado por', key: 'completadoPor', width: 28 },
+      { header: 'Semana (normalizada)', key: 'semanaNormalizada', width: 34 },
+      { header: 'Cantidad de asignados', key: 'cantidadAsignados', width: 18 },
+
+      // === COLUMNAS 13 A 39: CAMPOS INSTITUCIONALES ENRIQUECIDOS ESAP ===
+      { header: 'Consecutivo ESAP', key: 'consecutivo', width: 18 },
+      { header: 'Estado ESAP (Detallado)', key: 'estadoDetallado', width: 22 },
+      { header: 'Prioridad', key: 'prioridad', width: 14 },
+      { header: 'Tipo Atención', key: 'tipoAtencion', width: 16 },
+      { header: 'Área Responsable', key: 'area', width: 18 },
+      { header: 'Clasificación (Req. #1)', key: 'clasificacion', width: 22 },
+      { header: 'Requiere Contratación (Req. #2)', key: 'contratacion', width: 28 },
+      { header: 'Bien Funcionario (Req. #5)', key: 'esBien', width: 24 },
+      { header: 'Custodio del Bien', key: 'custodio', width: 26 },
+      { header: 'Placa Inventario / Serial', key: 'placa', width: 22 },
+      { header: 'Código CS', key: 'codigoCS', width: 12 },
+      { header: 'Categoría de Servicio', key: 'categoria', width: 44 },
+      { header: 'Sede Territorial', key: 'sede', width: 28 },
+      { header: 'Bloque / Espacio', key: 'ubicacion', width: 32 },
+      { header: 'Solicitante Email', key: 'solicitanteEmail', width: 30 },
+      { header: 'Estado Cumplimiento SLA', key: 'estadoSla', width: 24 },
+      { header: 'Días Extensión Insumos', key: 'diasExt', width: 20 },
+      { header: 'Estado Valoración', key: 'estadoVal', width: 20 },
+      { header: 'Diagnóstico Técnico', key: 'diagnostico', width: 45 },
+      { header: 'Requiere VoBo (Req. #3)', key: 'requiereVoBo', width: 22 },
+      { header: 'Decisión VoBo', key: 'voboDecision', width: 18 },
+      { header: 'Observaciones VoBo', key: 'voboObs', width: 35 },
+      { header: 'Costo Insumos Estimado (COP)', key: 'costoEstimado', width: 26 },
+      { header: 'Fecha Cierre Técnico', key: 'fechaCierre', width: 20 },
+      { header: 'Costo Final Efectivo (COP)', key: 'costoFinal', width: 24 },
+      { header: 'Calificación (1-5)', key: 'calificacion', width: 18 },
+      { header: 'Observaciones Solicitante', key: 'obsConformidad', width: 40 },
+      { header: 'Resumen Traza Histórica', key: 'trazaResumen', width: 60 },
+    ];
+
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Arial' };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+    ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    ws.getRow(1).height = 30;
+
+    const ahoraMs = Date.now();
+
+    for (const sol of solicitudes) {
+      const idCat = sol.idCategoria ?? 0;
+      const catInfo = catMap[idCat] || {
+        codigo: `CS_${String(idCat).padStart(3, '0')}`,
+        nombre: `Categoría ${idCat}`,
+      };
+      const blq = (sol.espacio as any)?.bloque?.codigo || (sol.espacio as any)?.bloque?.nombre || '';
+      const esp = sol.espacio?.nombre || (sol.espacio as any)?.codigo || '';
+      const pisoSalon = [sol.piso, sol.salon].filter(Boolean).join(' - ');
+      const ubicacionTxt = [blq, esp, pisoSalon, sol.ubicacionDetalle].filter(Boolean).join(' · ');
+
+      // SLA
+      let estadoSlaTxt = 'N/A';
+      if (sol.fechaLimiteAtencion) {
+        const limMs = new Date(sol.fechaLimiteAtencion).getTime();
+        if (['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION'].includes(sol.estado)) {
+          const finMs = sol.fechaCierreTecnico ? new Date(sol.fechaCierreTecnico).getTime() : ahoraMs;
+          estadoSlaTxt = finMs <= limMs ? 'CUMPLIDO EN SLA' : 'EXCEDIDO DE SLA';
+        } else {
+          if (ahoraMs > limMs) estadoSlaTxt = 'VENCIDO';
+          else if (limMs - ahoraMs < 24 * 3600 * 1000) estadoSlaTxt = 'ALERTA (Próximo a vencer)';
+          else estadoSlaTxt = 'EN TIEMPO';
+        }
+      }
+
+      // VoBo
+      const voboDecTxt =
+        sol.voboAprobado === true
+          ? 'APROBADO'
+          : sol.voboAprobado === false
+            ? 'OBSERVADO'
+            : sol.requiereVoBo
+              ? 'PENDIENTE'
+              : 'NO APLICA';
+
+      // Traza resumen
+      const trazaStr = Array.isArray(sol.asignaciones)
+        ? sol.asignaciones
+            .map((a: any) => {
+              const f = a.fecha ? this.formatearFechaReporteLocal(a.fecha) : '';
+              return `[${f}] ${a.accion || ''}: ${a.motivo || a.observaciones || ''}`.trim();
+            })
+            .filter(Boolean)
+            .join(' | ')
+        : '';
+
+      const ultimaVal = Array.isArray(sol.valoraciones) && sol.valoraciones.length > 0
+        ? sol.valoraciones[sol.valoraciones.length - 1]
+        : null;
+      const diagnosticoTxt = (ultimaVal?.diagnostico || sol.trabajoRealizado || '—').trim();
+
+      // Campos específicos homologados con Planner
+      const semanaStr = calcularSemanaDeposito(sol.fechaRadicacion || sol.createdAt);
+      const estPlanner = homologarEstadoPlanner(sol.estado);
+      const nombreAsignado = limpiarNombrePersona(sol.responsableAsignado);
+      const cantAsig = sol.responsableAsignado
+        ? (sol.responsableAsignado.includes(';') ? sol.responsableAsignado.split(';').length : 1)
+        : 0;
+      const completadoPor = ['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION'].includes(sol.estado)
+        ? limpiarNombrePersona(sol.responsableCierreDisplay || sol.responsableAsignado || sol.solicitanteNombre)
+        : '—';
+
+      const dCreacion = sol.fechaRadicacion
+        ? new Date(sol.fechaRadicacion)
+        : (sol.createdAt ? new Date(sol.createdAt) : null);
+      const dVencimiento = sol.fechaLimiteAtencion
+        ? new Date(sol.fechaLimiteAtencion)
+        : null;
+      const dInicio = sol.fechaInicioValoracion || sol.fechaProgramada || sol.fechaRadicacion
+        ? new Date(sol.fechaInicioValoracion || sol.fechaProgramada || sol.fechaRadicacion)
+        : null;
+      const dFin = sol.fechaCierreTecnico || sol.fechaEjecucion
+        ? new Date(sol.fechaCierreTecnico || sol.fechaEjecucion)
+        : null;
+
+      const row = ws.addRow({
+        // 1..12 Planner exactos
+        nombreTarea: sol.descripcion || 'Sin descripción',
+        deposito: semanaStr,
+        estadoPlanner: estPlanner,
+        asignadoA: nombreAsignado,
+        creadoPor: sol.solicitanteNombre || sol.usuarioSolicitanteEmail || 'Sistema',
+        fechaCreacion: dCreacion,
+        fechaVencimiento: dVencimiento,
+        fechaInicio: dInicio,
+        fechaFinalizacion: dFin,
+        completadoPor,
+        semanaNormalizada: semanaStr,
+        cantidadAsignados: cantAsig,
+
+        // 13.. ESAP enriquecidos
+        consecutivo: sol.consecutivo || sol.idSolicitud,
+        estadoDetallado: sol.estado || 'RECIBIDA',
+        prioridad: sol.prioridad || 'MEDIA',
+        tipoAtencion: sol.tipoAtencion || 'FISICA',
+        area: sol.areaResponsableActual || 'UMI',
+        clasificacion: sol.clasificacionMantenimiento || 'MENOR',
+        contratacion: sol.requiereContratacion
+          ? 'SÍ (Requiere Contratación Externa)'
+          : 'No (Capacidad Interna)',
+        esBien: sol.esBienAsignadoFuncionario ? 'SÍ (Bien Custodio)' : 'No (Común/General)',
+        custodio: sol.nombreFuncionarioBienAsignado || '—',
+        placa: sol.placaInventarioBien || '—',
+        codigoCS: catInfo.codigo,
+        categoria: catInfo.nombre,
+        sede: (sol.sede as any)?.nombre || '—',
+        ubicacion: ubicacionTxt || '—',
+        solicitanteEmail: sol.solicitanteEmail || sol.usuarioSolicitanteEmail || '—',
+        estadoSla: estadoSlaTxt,
+        diasExt: sol.diasExtendidosPorInsumos || 0,
+        estadoVal: sol.estadoValoracion || 'PENDIENTE',
+        diagnostico: diagnosticoTxt,
+        requiereVoBo: sol.requiereVoBo ? 'SÍ' : 'No',
+        voboDecision: voboDecTxt,
+        voboObs: sol.voboObservaciones || '',
+        costoEstimado: Number(sol.totalEstimadoInsumosCop || 0),
+        fechaCierre: this.formatearFechaReporteLocal(sol.fechaCierreTecnico),
+        costoFinal: Number(sol.costoFinalEfectivoCop || 0),
+        calificacion: sol.calificacionServicio ? `${sol.calificacionServicio} / 5` : 'Pendiente',
+        obsConformidad: sol.observacionesConformidad || '',
+        trazaResumen: trazaStr,
+      });
+
+      if (dCreacion) row.getCell('fechaCreacion').numFmt = 'dd/mm/yyyy';
+      if (dVencimiento) row.getCell('fechaVencimiento').numFmt = 'dd/mm/yyyy';
+      if (dInicio) row.getCell('fechaInicio').numFmt = 'dd/mm/yyyy';
+      if (dFin) row.getCell('fechaFinalizacion').numFmt = 'dd/mm/yyyy';
+      row.getCell('costoEstimado').numFmt = '"$"#,##0';
+      row.getCell('costoFinal').numFmt = '"$"#,##0';
+    }
+
+    // =========================================================================
+    // HOJA 2: Traza Detallada de Eventos
+    // =========================================================================
+    const wsTraza = workbook.addWorksheet('Traza_Detallada_Eventos', {
+      properties: { tabColor: { argb: 'FF059669' } },
+      views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+    });
+
+    wsTraza.columns = [
+      { header: 'Consecutivo Solicitud', key: 'consecutivo', width: 22 },
+      { header: 'Fecha y Hora Evento', key: 'fecha', width: 22 },
+      { header: 'Acción Ejecutada', key: 'accion', width: 34 },
+      { header: 'Técnico / Responsable', key: 'tecnico', width: 34 },
+      { header: 'Motivo / Detalle', key: 'motivo', width: 50 },
+      { header: 'Observaciones', key: 'observaciones', width: 45 },
+      { header: 'Registrado Por', key: 'usuario', width: 30 },
+    ];
+
+    wsTraza.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    wsTraza.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+    wsTraza.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    wsTraza.getRow(1).height = 26;
+
+    for (const sol of solicitudes) {
+      const consecutivo = sol.consecutivo || sol.idSolicitud;
+      if (Array.isArray(sol.asignaciones) && sol.asignaciones.length > 0) {
+        for (const ev of sol.asignaciones) {
+          wsTraza.addRow({
+            consecutivo,
+            fecha: ev.fecha ? this.formatearFechaReporteLocal(ev.fecha) : '',
+            accion: ev.accion || 'ACCION',
+            tecnico: ev.tecnicoNombreDisplay || ev.tecnicoCodigo || '—',
+            motivo: ev.motivo || '—',
+            observaciones: ev.observaciones || '—',
+            usuario: ev.user?.email || ev.user?.nombre || 'Sistema',
+          });
+        }
+      } else {
+        wsTraza.addRow({
+          consecutivo,
+          fecha: this.formatearFechaReporteLocal(sol.fechaRadicacion),
+          accion: 'RADICACION_INICIAL',
+          tecnico: '—',
+          motivo: 'Solicitud radicada en plataforma',
+          observaciones: 'Sin eventos adicionales registrados',
+          usuario: sol.solicitanteEmail || 'Solicitante',
+        });
+      }
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -3696,7 +4900,6 @@ export class MantenimientoService implements OnModuleInit {
     const horasProm = (reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.promedioRealDias * (r.casosCumplenSLA + r.casosExcedenSLA), 0) / Math.max(1, totalSla)) * 24;
 
     const delta = reporte.totalCasos.totalRadicados;
-    const deltaTxt = (delta.variacionPorcentual === 0 ? '0%' : (delta.variacionPorcentual > 0 ? '▲' : '▼') + ' ' + Math.abs(delta.variacionPorcentual).toFixed(2) + '%') + ` (${delta.variacionAbsoluta >= 0 ? '+' : ''}${delta.variacionAbsoluta})`;
 
     const filaHeaderTabla = (arr: string[]) => arr.map((t) => ({ text: t, style: 'tableHeader' }));
 
@@ -3747,7 +4950,7 @@ export class MantenimientoService implements OnModuleInit {
       pageSize: 'LETTER',
       pageMargins: [40, 50, 40, 60],
       footer: (currentPage: number, pageCount: number) => ({
-        text: `Página ${currentPage} / ${pageCount}  ·  Generado: ${hoy.toISOString()}  ·  UMI ESAP`,
+        text: `Página ${currentPage} / ${pageCount}  ·  Generado: ${this.formatearFechaReporteLocal(hoy)}  ·  UMI ESAP`,
         style: 'footer',
         alignment: 'right',
         margin: [0, 20, 30, 0],
@@ -3762,9 +4965,14 @@ export class MantenimientoService implements OnModuleInit {
           table: {
             widths: ['35%', '65%'],
             body: [
-              [{ text: 'Periodo reporte', style: 'k' }, { text: `Desde ${reporte.periodo.fechaDesdeISO?.slice(0, 10)} · Hasta ${reporte.periodo.fechaHastaISO?.slice(0, 10)}` }],
+              [{
+                text: 'Periodo reporte',
+                style: 'k',
+              }, {
+                text: `Desde ${this.formatearFechaReporteLocal(reporte.periodo.fechaDesdeISO, { incluirHora: false })} · Hasta ${this.formatearFechaReporteLocal(reporte.periodo.fechaHastaISO, { incluirHora: false })}`,
+              }],
               [{ text: 'Usuario', style: 'k' }, { text: user?.email || 'Consulta consolidada' }],
-              [{ text: 'Fecha emisión', style: 'k' }, { text: hoy.toISOString() }],
+              [{ text: 'Fecha emisión', style: 'k' }, { text: this.formatearFechaReporteLocal(hoy) }],
               [{ text: 'Versión plan', style: 'k' }, { text: 'EFDS-1739 RF-INF-010 v1.0' }],
             ],
           },
@@ -3787,8 +4995,8 @@ export class MantenimientoService implements OnModuleInit {
                 { text: reporte.percepcionServicio.promedioGlobal.toFixed(2) + ' / 5', style: 'kpiValue', alignment: 'center' },
               ],
               [
-                { text: deltaTxt, style: 'kpiSub', alignment: 'center' },
-                { text: 'vs periodo anterior', style: 'kpiSub', alignment: 'center' },
+                { text: 'Solicitudes dentro del rango consultado', style: 'kpiSub', alignment: 'center' },
+                { text: 'Promedio del periodo consultado', style: 'kpiSub', alignment: 'center' },
                 { text: `${catSlaComp}/${totalSla} casos evaluados`, style: 'kpiSub', alignment: 'center' },
                 { text: `${reporte.percepcionServicio.totalCalificaciones} calificaciones`, style: 'kpiSub', alignment: 'center' },
               ],
@@ -3893,6 +5101,38 @@ export class MantenimientoService implements OnModuleInit {
     orden?: number;
     notas?: string;
   }): Promise<SolicitudEvidencia> {
+    if (params.idSolicitud) {
+      const solicitud = await this.findById(params.idSolicitud);
+      const userIdActual = String(params.user?.userId || '').trim().toLowerCase();
+      const emailActual = String(params.user?.email || params.user?.username || '').trim().toLowerCase();
+      if (!params.user || (!userIdActual && !emailActual)) {
+        throw new ForbiddenException(
+          'Usuario autenticado requerido para adjuntar evidencia a una solicitud existente.',
+        );
+      }
+      const solicitanteUserId = String(solicitud.usuarioSolicitanteId || '').trim().toLowerCase();
+      const solicitanteEmail = String(
+        solicitud.usuarioSolicitanteEmail || solicitud.solicitanteEmail || '',
+      )
+        .trim()
+        .toLowerCase();
+      const esSolicitanteOriginal =
+        (!!userIdActual && !!solicitanteUserId && userIdActual === solicitanteUserId) ||
+        (!!emailActual && !!solicitanteEmail && emailActual === solicitanteEmail);
+      const puedeOperarComoTecnicoAsignado = (await this.usuarioPuedeOperarComoTecnicoAsignado(
+        solicitud,
+        params.user,
+      )).puede;
+      const puedeGestionarSolicitud =
+        userHasPermission(PERMISO_ASIGNAR_SOLICITUD, params.user) ||
+        userHasPermission(PERMISO_VER_BANDEJA_GENERAL, params.user) ||
+        userHasPermission(PERMISO_VER_INCLUIDO_TI, params.user);
+      if (!esSolicitanteOriginal && !puedeOperarComoTecnicoAsignado && !puedeGestionarSolicitud) {
+        throw new ForbiddenException(
+          'No está autorizado para adjuntar evidencias adicionales a esta solicitud.',
+        );
+      }
+    }
     const anio = new Date().getFullYear();
     const mes = String(new Date().getMonth() + 1).padStart(2, '0');
     const radix = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -3917,7 +5157,7 @@ export class MantenimientoService implements OnModuleInit {
       mimeType: params.mimeType,
       tamanoBytes: params.tamanoBytes,
       usuarioQueSubioId: userIdUuidOrNull(params.user?.userId) ?? undefined,
-      usuarioQueSubioEmail: params.user?.email,
+      usuarioQueSubioEmail: params.user?.email ?? params.user?.username,
       orden: params.orden ?? 1,
       notas: params.notas,
     } as any);
@@ -4037,4 +5277,540 @@ export class MantenimientoService implements OnModuleInit {
     const filename = `Evidencias_${consecutivo.replace(/[^A-Za-z0-9_-]/g, '_')}.zip`;
     return { stream: output, filename, totalBytes };
   }
+
+  // ===========================================================================
+  // FASE 4 · REQUERIMIENTO #10: Ingesta y Consulta Histórica (Planner / GLPI)
+  // Segregado completamente de la tabla viva solicitud_mantenimiento
+  // ===========================================================================
+
+  async importarHistoricoExcel(
+    buffer: Buffer,
+    originalname: string,
+    user: AuthUser | null | undefined,
+  ): Promise<{
+    totalFilas: number;
+    insertados: number;
+    actualizados: number;
+    omitidos: number;
+    tiempoMs: number;
+    archivo: string;
+  }> {
+    const inicioMs = Date.now();
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook ? ExcelJSMod : (ExcelJSMod.default?.Workbook ? ExcelJSMod.default : (ExcelJSMod.default ?? ExcelJSMod));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+
+    const sheet = workbook.getWorksheet('Datos consolidados') || workbook.worksheets[0];
+    if (!sheet || sheet.rowCount < 2) {
+      throw new BadRequestException('El archivo Excel no contiene filas de datos para importar.');
+    }
+
+    const parseExcelDate = (val: any): Date | null => {
+      if (!val) return null;
+      if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+      if (typeof val === 'number') {
+        const utcDays = Math.floor(val - 25569);
+        const utcValue = utcDays * 86400;
+        const dateInfo = new Date(utcValue * 1000);
+        const fractionalDay = val - Math.floor(val) + 0.0000001;
+        let totalSeconds = Math.floor(86400 * fractionalDay);
+        const seconds = totalSeconds % 60;
+        totalSeconds -= seconds;
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor(totalSeconds / 60) % 60;
+        return new Date(dateInfo.getFullYear(), dateInfo.getMonth(), dateInfo.getDate(), hours, minutes, seconds);
+      }
+      if (typeof val === 'string') {
+        const s = val.trim();
+        if (!s) return null;
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    };
+
+    const getCleanCell = (cell: any): string => {
+      if (!cell) return '';
+      if (cell.text !== undefined && cell.text !== null) return String(cell.text).trim();
+      if (cell.value !== undefined && cell.value !== null) {
+        if (typeof cell.value === 'object' && cell.value.result !== undefined) {
+          return String(cell.value.result).trim();
+        }
+        return String(cell.value).trim();
+      }
+      return '';
+    };
+
+    // Detectar dinámicamente columnas de encabezado
+    const colIndexes: Record<string, number> = {};
+    const headerRow = sheet.getRow(1);
+    headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const header = getCleanCell(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (header.includes('nombre de la tarea') || header.includes('tarea') || header.includes('titulo')) {
+        colIndexes['titulo'] = colNumber;
+      } else if (header.includes('semana (normalizada)')) {
+        colIndexes['semanaNormalizada'] = colNumber;
+      } else if (header.includes('deposito') || header.includes('semana')) {
+        if (!colIndexes['deposito']) colIndexes['deposito'] = colNumber;
+      } else if (header.includes('estado') || header.includes('progreso')) {
+        colIndexes['estado'] = colNumber;
+      } else if (header.includes('asignado a') || header.includes('responsable')) {
+        colIndexes['asignado'] = colNumber;
+      } else if (header.includes('creado por') || header.includes('solicitante')) {
+        colIndexes['creadoPor'] = colNumber;
+      } else if (header.includes('completado por')) {
+        colIndexes['completadoPor'] = colNumber;
+      } else if (header.includes('fecha de creacion')) {
+        colIndexes['fechaCreacion'] = colNumber;
+      } else if (header.includes('fecha de vencimiento')) {
+        colIndexes['fechaVencimiento'] = colNumber;
+      } else if (header.includes('fecha de inicio')) {
+        colIndexes['fechaInicio'] = colNumber;
+      } else if (header.includes('fecha de finalizacion') || header.includes('completada en')) {
+        colIndexes['fechaFinalizacion'] = colNumber;
+      } else if (header.includes('cantidad de asignados')) {
+        colIndexes['cantidadAsignados'] = colNumber;
+      } else if (header.includes('id. de la tarea') || header.includes('id tarea')) {
+        colIndexes['idTarea'] = colNumber;
+      }
+    });
+
+    if (!colIndexes['titulo']) colIndexes['titulo'] = 1;
+
+    const filasAIngresar: any[] = [];
+    const totalRows = sheet.rowCount;
+
+    for (let r = 2; r <= totalRows; r++) {
+      const row = sheet.getRow(r);
+      const titulo = getCleanCell(row.getCell(colIndexes['titulo'] || 1));
+      if (!titulo) continue;
+
+      const deposito = colIndexes['deposito'] ? getCleanCell(row.getCell(colIndexes['deposito'])) : '';
+      const semanaNorm = colIndexes['semanaNormalizada'] ? getCleanCell(row.getCell(colIndexes['semanaNormalizada'])) : (deposito || '');
+      const estadoOrig = colIndexes['estado'] ? getCleanCell(row.getCell(colIndexes['estado'])) : 'Completado';
+      const asignado = colIndexes['asignado'] ? getCleanCell(row.getCell(colIndexes['asignado'])) : '';
+      const creadoPor = colIndexes['creadoPor'] ? getCleanCell(row.getCell(colIndexes['creadoPor'])) : '';
+      const completadoPor = colIndexes['completadoPor'] ? getCleanCell(row.getCell(colIndexes['completadoPor'])) : '';
+
+      const fCreacion = colIndexes['fechaCreacion'] ? parseExcelDate(row.getCell(colIndexes['fechaCreacion']).value) : null;
+      const fInicio = colIndexes['fechaInicio'] ? parseExcelDate(row.getCell(colIndexes['fechaInicio']).value) : null;
+      const fVenc = colIndexes['fechaVencimiento'] ? parseExcelDate(row.getCell(colIndexes['fechaVencimiento']).value) : null;
+      const fFin = colIndexes['fechaFinalizacion'] ? parseExcelDate(row.getCell(colIndexes['fechaFinalizacion']).value) : null;
+
+      let cantAsignados = 0;
+      if (colIndexes['cantidadAsignados']) {
+        const val = row.getCell(colIndexes['cantidadAsignados']).value;
+        cantAsignados = typeof val === 'object' && (val as any)?.result ? Number((val as any).result) : Number(val || 0);
+      }
+      if (!cantAsignados && asignado) {
+        cantAsignados = asignado.split(';').filter((s) => s.trim().length > 0).length;
+      }
+
+      let idTareaExterna = colIndexes['idTarea'] ? getCleanCell(row.getCell(colIndexes['idTarea'])) : '';
+      if (!idTareaExterna) {
+        idTareaExterna = `PLANNER-2026-ROW-${String(r).padStart(5, '0')}`;
+      }
+
+      let estadoHomologado = 'COMPLETADO';
+      const estLower = estadoOrig.toLowerCase();
+      if (estLower.includes('en curso') || estLower.includes('progreso') || estLower.includes('ejecucion')) {
+        estadoHomologado = 'EN_PROCESO';
+      } else if (estLower.includes('no iniciada') || estLower.includes('pendiente')) {
+        estadoHomologado = 'PENDIENTE';
+      }
+
+      filasAIngresar.push({
+        origenSistema: 'MICROSOFT_PLANNER',
+        idTareaExterna,
+        tituloTarea: titulo,
+        depositoSemana: deposito || semanaNorm,
+        semanaNormalizada: semanaNorm || deposito,
+        estadoOriginal: estadoOrig,
+        estadoHomologado,
+        prioridadOriginal: 'Media',
+        fechaCreacion: fCreacion,
+        fechaInicio: fInicio,
+        fechaVencimiento: fVenc,
+        fechaFinalizacion: fFin,
+        creadoPorTexto: creadoPor,
+        completadoPorTexto: completadoPor,
+        asignadoATexto: asignado,
+        cantidadAsignados: cantAsignados,
+        nombreArchivoOrigen: originalname,
+        numeroFilaOrigen: r,
+        cargadoPorUsuarioId: user?.userId || null,
+        cargadoPorNombre: user?.name || user?.email || 'Administrador',
+        metadata: {
+          hoja: sheet.name,
+          importadoEn: new Date().toISOString(),
+        },
+      });
+    }
+
+    const batchSize = 200;
+    let insertados = 0;
+
+    for (let i = 0; i < filasAIngresar.length; i += batchSize) {
+      const chunk = filasAIngresar.slice(i, i + batchSize);
+      await this.dataSource
+        .createQueryBuilder()
+        .insert()
+        .into(MantenimientoHistorico)
+        .values(chunk)
+        .orUpdate(
+          [
+            'titulo_tarea',
+            'deposito_semana',
+            'semana_normalizada',
+            'estado_original',
+            'estado_homologado',
+            'fecha_creacion',
+            'fecha_inicio',
+            'fecha_vencimiento',
+            'fecha_finalizacion',
+            'creado_por_texto',
+            'completado_por_texto',
+            'asignado_a_texto',
+            'cantidad_asignados',
+            'nombre_archivo_origen',
+            'numero_fila_origen',
+            'cargado_por_usuario_id',
+            'cargado_por_nombre',
+            'metadata',
+          ],
+          ['origen_sistema', 'id_tarea_externa'],
+        )
+        .execute();
+      insertados += chunk.length;
+    }
+
+    return {
+      totalFilas: filasAIngresar.length,
+      insertados,
+      actualizados: 0,
+      omitidos: Math.max(0, totalRows - 1 - filasAIngresar.length),
+      tiempoMs: Date.now() - inicioMs,
+      archivo: originalname,
+    };
+  }
+
+  async importarHistoricoDesdeServidor(user: AuthUser | null | undefined) {
+    const fs = await import('node:fs');
+    const defaultPath = 'c:/Users/Alexander/Desktop/Dev/ESAP/Mantenimientos_Infraestructura_2026.xlsx';
+    if (!fs.existsSync(defaultPath)) {
+      throw new NotFoundException(`No se encontró el archivo de referencia en ${defaultPath}`);
+    }
+    const buffer = fs.readFileSync(defaultPath);
+    return this.importarHistoricoExcel(buffer, 'Mantenimientos_Infraestructura_2026.xlsx', user);
+  }
+
+  async listarHistorico(
+    filtros: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      semana?: string;
+      estado?: string;
+      tecnico?: string;
+      solicitante?: string;
+      fechaDesde?: string;
+      fechaHasta?: string;
+    },
+    user?: AuthUser | null,
+  ) {
+    const page = Math.max(1, Number(filtros.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(filtros.limit || 20)));
+    const skip = (page - 1) * limit;
+
+    const qb = this.getHistoricoRepo().createQueryBuilder('h');
+
+    if (filtros.search && filtros.search.trim().length > 0) {
+      const s = `%${filtros.search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        { s },
+      );
+    }
+
+    if (filtros.semana && filtros.semana !== 'TODAS') {
+      qb.andWhere('(h.semanaNormalizada = :sem OR h.depositoSemana = :sem)', { sem: filtros.semana });
+    }
+
+    if (filtros.estado && filtros.estado !== 'TODOS') {
+      qb.andWhere('(h.estadoHomologado = :est OR h.estadoOriginal = :est)', { est: filtros.estado });
+    }
+
+    if (filtros.tecnico && filtros.tecnico !== 'TODOS') {
+      const t = `%${filtros.tecnico.trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.asignadoATexto) ILIKE :t', { t });
+    }
+
+    if (filtros.solicitante && filtros.solicitante !== 'TODOS') {
+      const sol = `%${filtros.solicitante.trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.creadoPorTexto) ILIKE :sol', { sol });
+    }
+
+    if (filtros.fechaDesde) {
+      qb.andWhere('(h.fechaCreacion >= :fDesde OR h.fechaFinalizacion >= :fDesde)', {
+        fDesde: new Date(filtros.fechaDesde),
+      });
+    }
+
+    if (filtros.fechaHasta) {
+      const fH = new Date(filtros.fechaHasta);
+      fH.setHours(23, 59, 59, 999);
+      qb.andWhere('(h.fechaCreacion <= :fHasta OR h.fechaFinalizacion <= :fHasta)', {
+        fHasta: fH,
+      });
+    }
+
+    qb.orderBy('h.numeroFilaOrigen', 'ASC');
+    qb.addOrderBy('h.fechaCreacion', 'DESC', 'NULLS LAST');
+
+    const [data, total] = await qb.skip(skip).take(limit).getManyAndCount();
+
+    const semanasRaw = await this.dataSource.query(`
+      SELECT DISTINCT COALESCE(semana_normalizada, deposito_semana) as semana, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo
+      WHERE COALESCE(semana_normalizada, deposito_semana) IS NOT NULL
+      GROUP BY COALESCE(semana_normalizada, deposito_semana)
+      ORDER BY semana ASC
+    `);
+
+    const tecnicosRaw = await this.dataSource.query(`
+      SELECT DISTINCT TRIM(item) as tecnico, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo,
+      LATERAL unnest(string_to_array(asignado_a_texto, ';')) as item
+      WHERE asignado_a_texto IS NOT NULL AND TRIM(item) <> ''
+      GROUP BY TRIM(item)
+      ORDER BY cantidad DESC, tecnico ASC
+    `);
+
+    const solicitantesRaw = await this.dataSource.query(`
+      SELECT DISTINCT creado_por_texto as solicitante, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo
+      WHERE creado_por_texto IS NOT NULL AND TRIM(creado_por_texto) <> ''
+      GROUP BY creado_por_texto
+      ORDER BY cantidad DESC, solicitante ASC
+    `);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      semanasDisponibles: semanasRaw,
+      tecnicosDisponibles: tecnicosRaw,
+      solicitantesDisponibles: solicitantesRaw,
+    };
+  }
+
+  async obtenerEstadisticasHistorico(user?: AuthUser | null) {
+    const total = await this.getHistoricoRepo().count();
+    const completados = await this.getHistoricoRepo().count({ where: { estadoHomologado: 'COMPLETADO' } });
+
+    const semanasResult = await this.dataSource.query(`
+      SELECT COUNT(DISTINCT COALESCE(semana_normalizada, deposito_semana))::int as "totalSemanas"
+      FROM "infrastructure-management".mantenimiento_historico_externo
+    `);
+
+    const tecnicosResult = await this.dataSource.query(`
+      SELECT COUNT(DISTINCT TRIM(item))::int as "totalTecnicos"
+      FROM "infrastructure-management".mantenimiento_historico_externo,
+      LATERAL unnest(string_to_array(asignado_a_texto, ';')) as item
+      WHERE asignado_a_texto IS NOT NULL AND TRIM(item) <> ''
+    `);
+
+    const fechasResult = await this.dataSource.query(`
+      SELECT MIN(fecha_creacion) as "fechaMin", MAX(fecha_finalizacion) as "fechaMax"
+      FROM "infrastructure-management".mantenimiento_historico_externo
+    `);
+
+    return {
+      totalRegistros: total,
+      totalCompletados: completados,
+      totalSemanas: parseInt(semanasResult[0]?.totalSemanas || '0', 10),
+      totalTecnicos: parseInt(tecnicosResult[0]?.totalTecnicos || '0', 10),
+      rangoFechas: {
+        desde: fechasResult[0]?.fechaMin || null,
+        hasta: fechasResult[0]?.fechaMax || null,
+      },
+      tasaCumplimiento: total > 0 ? Math.round((completados / total) * 100) : 100,
+    };
+  }
+
+  async exportarHistoricoExcel(
+    filtros: any,
+    user: AuthUser | null | undefined,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook ? ExcelJSMod : (ExcelJSMod.default?.Workbook ? ExcelJSMod.default : (ExcelJSMod.default ?? ExcelJSMod));
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('Histórico Planner 2026');
+
+    ws.columns = [
+      { header: 'Fila', key: 'fila', width: 8 },
+      { header: 'Id. Tarea', key: 'idTarea', width: 25 },
+      { header: 'Nombre de la tarea', key: 'titulo', width: 45 },
+      { header: 'Depósito / Semana', key: 'deposito', width: 28 },
+      { header: 'Estado', key: 'estado', width: 15 },
+      { header: 'Asignado a', key: 'asignado', width: 38 },
+      { header: 'Cant.', key: 'cant', width: 8 },
+      { header: 'Creado por', key: 'creadoPor', width: 28 },
+      { header: 'Fecha de creación', key: 'fCreacion', width: 18 },
+      { header: 'Fecha de inicio', key: 'fInicio', width: 18 },
+      { header: 'Fecha de vencimiento', key: 'fVenc', width: 18 },
+      { header: 'Fecha de finalización', key: 'fFin', width: 18 },
+      { header: 'Completado por', key: 'completadoPor', width: 28 },
+    ];
+
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0284C7' } };
+
+    const qb = this.getHistoricoRepo().createQueryBuilder('h');
+
+    if (filtros?.search && String(filtros.search).trim().length > 0) {
+      const s = `%${String(filtros.search).trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        { s },
+      );
+    }
+    if (filtros?.semana && filtros.semana !== 'TODAS') {
+      qb.andWhere('(h.semanaNormalizada = :sem OR h.depositoSemana = :sem)', { sem: filtros.semana });
+    }
+    if (filtros?.estado && filtros.estado !== 'TODOS') {
+      qb.andWhere('(h.estadoHomologado = :est OR h.estadoOriginal = :est)', { est: filtros.estado });
+    }
+    if (filtros?.tecnico && filtros.tecnico !== 'TODOS') {
+      const t = `%${String(filtros.tecnico).trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.asignadoATexto) ILIKE :t', { t });
+    }
+    if (filtros?.solicitante && filtros.solicitante !== 'TODOS') {
+      const sol = `%${String(filtros.solicitante).trim().toLowerCase()}%`;
+      qb.andWhere('LOWER(h.creadoPorTexto) ILIKE :sol', { sol });
+    }
+    if (filtros?.fechaDesde) {
+      qb.andWhere('(h.fechaCreacion >= :fDesde OR h.fechaFinalizacion >= :fDesde)', {
+        fDesde: new Date(filtros.fechaDesde),
+      });
+    }
+    if (filtros?.fechaHasta) {
+      const fH = new Date(filtros.fechaHasta);
+      fH.setHours(23, 59, 59, 999);
+      qb.andWhere('(h.fechaCreacion <= :fHasta OR h.fechaFinalizacion <= :fHasta)', {
+        fHasta: fH,
+      });
+    }
+
+    qb.orderBy('h.numeroFilaOrigen', 'ASC');
+    qb.addOrderBy('h.fechaCreacion', 'DESC', 'NULLS LAST');
+
+    const items = await qb.getMany();
+
+    for (const it of items) {
+      ws.addRow({
+        fila: it.numeroFilaOrigen || '',
+        idTarea: it.idTareaExterna,
+        titulo: it.tituloTarea,
+        deposito: it.semanaNormalizada || it.depositoSemana,
+        estado: it.estadoHomologado,
+        asignado: it.asignadoATexto,
+        cant: it.cantidadAsignados || 0,
+        creadoPor: it.creadoPorTexto,
+        fCreacion: it.fechaCreacion ? it.fechaCreacion.toISOString().slice(0, 10) : '',
+        fInicio: it.fechaInicio ? it.fechaInicio.toISOString().slice(0, 10) : '',
+        fVenc: it.fechaVencimiento ? it.fechaVencimiento.toISOString().slice(0, 10) : '',
+        fFin: it.fechaFinalizacion ? it.fechaFinalizacion.toISOString().slice(0, 10) : '',
+        completadoPor: it.completadoPorTexto,
+      });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return {
+      buffer: Buffer.from(buffer),
+      filename: `Historico_Mantenimientos_Planner_2026_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  async vaciarHistorico(user?: AuthUser | null): Promise<{ eliminados: number }> {
+    const count = await this.getHistoricoRepo().count();
+    await this.dataSource.query(`TRUNCATE TABLE "infrastructure-management".mantenimiento_historico_externo RESTART IDENTITY CASCADE;`);
+    return { eliminados: count };
+  }
+
+
+  async vincularTramiteContractual(
+    idSolicitud: string,
+    body: {
+      procesoContractual: string;
+      radicadoOrfeo?: string;
+      presupuestoEstimadoCop?: number;
+      observaciones?: string;
+    },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const solicitud = await this.findById(idSolicitud);
+    const proceso = String(body.procesoContractual || '').trim();
+    if (!proceso) {
+      throw new BadRequestException('El código o identificador del proceso contractual es obligatorio.');
+    }
+
+    const radicado = body.radicadoOrfeo ? String(body.radicadoOrfeo).trim() : null;
+    const presupuesto = body.presupuestoEstimadoCop != null ? Number(body.presupuestoEstimadoCop) : null;
+    const obs = body.observaciones ? String(body.observaciones).trim() : null;
+
+    if (presupuesto != null && !isNaN(presupuesto) && presupuesto > 0) {
+      solicitud.costoEstimado = presupuesto;
+    }
+
+    const payloadAudit = {
+      procesoContractual: proceso,
+      radicadoOrfeo: radicado,
+      presupuestoEstimadoCop: presupuesto,
+      observaciones: obs,
+      registradoPor: (user as any)?.email ?? 'Coordinación GIM',
+      fechaRegistro: new Date().toISOString(),
+    };
+
+    this.pushAsignacion(solicitud, {
+      accion: 'VINCULACION_TRAMITE_CONTRACTUAL' as any,
+      motivo: `Trámite Contractual vinculado: ${proceso}${radicado ? ` · Radicado Orfeo: ${radicado}` : ''}`,
+      observaciones: JSON.stringify(payloadAudit),
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: true,
+      user: user as AuthUser,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    await this.notificarAlSolicitante(saved, {
+      tipo: 'SOLICITUD_TRAMITE_CONTRACTUAL',
+      titulo: `Trámite Contractual #${saved.consecutivo}`,
+      mensaje: `Tu solicitud #${saved.consecutivo} de Mantenimiento Mayor ha sido trasladada a proceso contractual (${proceso}).`,
+      icono: 'FileText',
+      color: '#7e22ce',
+      prioridad: 'Media',
+      textoAccion: 'Ver solicitud',
+      emailSubject: `[UMI] Solicitud #${saved.consecutivo} en Trámite Contractual (${proceso})`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:600px">
+<h3>Trámite Contractual Iniciado</h3>
+<p>La solicitud <strong>#${saved.consecutivo}</strong> ha sido radicada formalmente ante el área de Contratación / Compras de la ESAP.</p>
+<p><strong>Proceso:</strong> ${proceso}</p>
+${radicado ? `<p><strong>Radicado Orfeo:</strong> ${radicado}</p>` : ''}
+${presupuesto ? `<p><strong>Presupuesto Oficial Estimado:</strong> $${presupuesto.toLocaleString('es-CO')} COP</p>` : ''}
+${obs ? `<p><strong>Observaciones:</strong> ${obs}</p>` : ''}
+</div>`,
+    });
+
+    return saved;
+  }
 }
+
+
