@@ -123,3 +123,16 @@ INSERT INTO notifications.modulo_alias (alias, codigo_modulo) VALUES
   ('contratacion',      'contratacion'),
   ('control-interno',   'control-interno')
 ON CONFLICT (alias) DO NOTHING;
+
+-- Correos de seguridad que nadie puede apagar (función 5): credenciales,
+-- códigos de acceso y el OTP de firma. Se registran antes de que lleguen
+-- para que nazcan obligatorios; el resto del catálogo se llena solo.
+INSERT INTO notifications.evento_notificacion (clave, codigo_modulo, nombre, descripcion, obligatorio, envia_correo)
+VALUES
+  ('pta_otp_firma',             'pta', 'Código OTP para firmar el PTA',
+   'Correo con el código de un solo uso que valida la firma del PTA. Sin él no se puede firmar.', true, true),
+  ('rund_credenciales_docente', 'pta', 'Credenciales de acceso del docente (RUND)',
+   'Usuario y contraseña temporal que recibe un docente cuando se le crea el acceso desde el Banco de Docentes.', true, true),
+  ('rund_codigo_acceso',        'pta', 'Código de acceso a la invitación RUND',
+   'Código que el docente recibe para entrar a actualizar sus datos en RUND.', true, true)
+ON CONFLICT (clave) DO NOTHING;
