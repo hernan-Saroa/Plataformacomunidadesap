@@ -11,13 +11,13 @@ export class ModuloNotificacion {
   @PrimaryColumn({ length: 60 })
   codigo: string;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150 })
   nombre: string;
 
   @Column({ default: true })
   activo: boolean;
 
-  @Column({ name: 'canal_defecto', length: 12, default: 'ambos' })
+  @Column({ type: 'varchar', name: 'canal_defecto', length: 12, default: 'ambos' })
   canal_defecto: Canal;
 
   @Column({ default: 100 })
@@ -29,7 +29,7 @@ export class ModuloNotificacion {
   @UpdateDateColumn({ name: 'actualizado_en', type: 'timestamptz' })
   actualizado_en: Date;
 
-  @Column({ name: 'actualizado_por', length: 150, nullable: true })
+  @Column({ type: 'varchar', name: 'actualizado_por', length: 150, nullable: true })
   actualizado_por: string | null;
 }
 
@@ -39,7 +39,7 @@ export class ModuloAlias {
   @PrimaryColumn({ length: 100 })
   alias: string;
 
-  @Column({ name: 'codigo_modulo', length: 60 })
+  @Column({ type: 'varchar', name: 'codigo_modulo', length: 60 })
   codigo_modulo: string;
 }
 
@@ -49,10 +49,10 @@ export class EventoNotificacion {
   @PrimaryColumn({ length: 100 })
   clave: string;
 
-  @Column({ name: 'codigo_modulo', length: 60 })
+  @Column({ type: 'varchar', name: 'codigo_modulo', length: 60 })
   codigo_modulo: string;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150 })
   nombre: string;
 
   @Column({ type: 'text', nullable: true })
@@ -62,17 +62,17 @@ export class EventoNotificacion {
   activo: boolean;
 
   /** NULL hereda `canal_defecto` del módulo. */
-  @Column({ length: 12, nullable: true })
+  @Column({ type: 'varchar', length: 12, nullable: true })
   canal: Canal | null;
 
   @Column({ default: false })
   obligatorio: boolean;
 
   /** NULL deja la prioridad que trae el código. */
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   prioridad: Prioridad | null;
 
-  @Column({ name: 'prioridad_codigo', length: 20, nullable: true })
+  @Column({ type: 'varchar', name: 'prioridad_codigo', length: 20, nullable: true })
   prioridad_codigo: string | null;
 
   @Column({ name: 'envia_correo', default: false })
@@ -93,7 +93,7 @@ export class EventoNotificacion {
   @Column({ name: 'verificado_en', type: 'timestamptz', nullable: true })
   verificado_en: Date | null;
 
-  @Column({ name: 'verificado_por', length: 150, nullable: true })
+  @Column({ type: 'varchar', name: 'verificado_por', length: 150, nullable: true })
   verificado_por: string | null;
 
   @CreateDateColumn({ name: 'creado_en', type: 'timestamptz' })
@@ -102,7 +102,7 @@ export class EventoNotificacion {
   @UpdateDateColumn({ name: 'actualizado_en', type: 'timestamptz' })
   actualizado_en: Date;
 
-  @Column({ name: 'actualizado_por', length: 150, nullable: true })
+  @Column({ type: 'varchar', name: 'actualizado_por', length: 150, nullable: true })
   actualizado_por: string | null;
 }
 
@@ -112,10 +112,10 @@ export class ConfiguracionHistorial {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ length: 20 })
+  @Column({ type: 'varchar', length: 20 })
   entidad: 'modulo' | 'evento';
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100 })
   clave: string;
 
   @Column({ type: 'jsonb', nullable: true })
@@ -124,7 +124,7 @@ export class ConfiguracionHistorial {
   @Column({ type: 'jsonb', nullable: true })
   nuevo: Record<string, unknown> | null;
 
-  @Column({ length: 150, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   usuario: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
@@ -137,22 +137,22 @@ export class EnvioOmitido {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ name: 'codigo_modulo', length: 60 })
+  @Column({ type: 'varchar', name: 'codigo_modulo', length: 60 })
   codigo_modulo: string;
 
-  @Column({ name: 'clave_evento', length: 100 })
+  @Column({ type: 'varchar', name: 'clave_evento', length: 100 })
   clave_evento: string;
 
-  @Column({ length: 12 })
+  @Column({ type: 'varchar', length: 12 })
   canal: 'plataforma' | 'correo';
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   destinatario: string | null;
 
-  @Column({ length: 40 })
+  @Column({ type: 'varchar', length: 40 })
   motivo: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   titulo: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
