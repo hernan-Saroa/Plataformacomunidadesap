@@ -851,7 +851,7 @@ export class MantenimientoService implements OnModuleInit {
     }
 
     if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
-      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA' });
+      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA', clave: 'UMI_OTIC_SOLICITUD_RADICADA' });
     }
     await this.notificarAlSolicitante(saved, {
       tipo: 'SOLICITUD_RADICADA',
@@ -952,7 +952,7 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.remisiones = [...(Array.isArray(solicitud.remisiones) ? solicitud.remisiones : []), item];
 
     const savedRemision = await this.mantenimientoRepo.save(solicitud);
-    await this.notificarOTIC(savedRemision, { evento: 'REMITIDA A TECNOLOGÍAS (TI)', motivo: dto.motivo });
+    await this.notificarOTIC(savedRemision, { evento: 'REMITIDA A TECNOLOGÍAS (TI)', motivo: dto.motivo, clave: 'UMI_OTIC_REMITIDA_TI' });
     await this.notificarAlSolicitante(savedRemision, {
       tipo: 'SOLICITUD_REMITIDA_TI',
       titulo: `Solicitud #${savedRemision.consecutivo} remitida a TI`,
@@ -3067,7 +3067,7 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
 
   private async notificarOTIC(
     solicitud: SolicitudMantenimiento,
-    args: { evento: string; motivo?: string; observaciones?: string },
+    args: { evento: string; motivo?: string; observaciones?: string; clave: string },
   ): Promise<void> {
     if (!this.notificaciones) return;
     try {
@@ -3087,7 +3087,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       this.notifLogger.log(
         `[EMAIL_DISPATCH][OTIC] Despachando notificación a OTIC (${this.CORREO_OTIC_DESTINO}) | Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud} | Evento: ${args.evento}`,
       );
-      const ok = await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html);
+      const ok = await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html, false, args.clave);
       if (ok) {
         this.notifLogger.log(
           `[EMAIL_DISPATCH][OTIC][OK] Correo entregado exitosamente a OTIC (${this.CORREO_OTIC_DESTINO}) para evento ${args.evento}`,
@@ -3148,7 +3148,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         this.notifLogger.verbose(`[${solicitud.idSolicitud}] notificación "${payload.tipo}" enviada a solicitante ${destinatarioId}`);
       } else if (destinatarioEmail) {
         // Caso legacy sin usuario registrado (sólo email)
-        await this.notificaciones.sendEmail(destinatarioEmail, payload.emailSubject, payload.emailHtml);
+        await this.notificaciones.sendEmail(destinatarioEmail, payload.emailSubject, payload.emailHtml, false, payload.tipo);
         this.notifLogger.verbose(`[${solicitud.idSolicitud}] correo "${payload.tipo}" enviado a ${destinatarioEmail} (sin id_user)`);
       }
     } catch (err: any) {
@@ -3259,7 +3259,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         };
         await this.notificaciones.notifyUserById(tecUserId, dto, tecEmail ? { subject: args.emailSubject, html: args.emailHtml } : undefined);
       } else if (tecEmail) {
-        await this.notificaciones.sendEmail(tecEmail, args.emailSubject, args.emailHtml);
+        await this.notificaciones.sendEmail(tecEmail, args.emailSubject, args.emailHtml, false, args.tipo);
       }
     } catch (err: any) {
       this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación técnico falló: ${err?.message ?? err}`);
