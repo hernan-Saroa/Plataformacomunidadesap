@@ -48,6 +48,7 @@ describe('LegalNotificationsService — notifyResponsableAsignadoTermino()', () 
             'responsable@esap.edu.co',
             expect.stringContaining('RAD-1'),
             expect.stringContaining('Informe trimestral'),
+            expect.stringMatching(/^TERMINO_(RE)?ASIGNADO$/),
         );
     });
 
@@ -126,6 +127,7 @@ describe('LegalNotificationsService — notifyResponsableAsignadoTermino()', () 
             'juan.perez@esap.edu.co',
             expect.any(String),
             expect.any(String),
+            expect.stringMatching(/^TERMINO_(RE)?ASIGNADO$/),
         );
     });
 });
@@ -174,6 +176,7 @@ describe('LegalNotificationsService — notifyTerminoProximoAVencer()', () => {
             'responsable@esap.edu.co',
             expect.any(String),
             expect.any(String),
+            'TERMINO_PROXIMO_A_VENCER',
         );
         expect(enviado).toBe(true);
     });
@@ -425,6 +428,7 @@ describe('LegalNotificationsService — notifyProfesionalAsignado()', () => {
             'abogado@esap.edu.co',
             expect.stringContaining('RAD-200'),
             expect.stringContaining('RAD-200'),
+            expect.stringMatching(/^PROCESO_(RE)?ASIGNADO$/),
         );
     });
 
@@ -511,6 +515,7 @@ describe('LegalNotificationsService — notifyEtapaAvanzada() [abogado]', () => 
             'abogado@esap.edu.co',
             expect.stringContaining('RAD-300'),
             expect.stringContaining('Contestación'),
+            'EXPEDIENTE_ETAPA_AVANZADA',
         );
     });
 
@@ -561,6 +566,7 @@ describe('LegalNotificationsService — notifyObservacionAgregada()', () => {
             'abogado@esap.edu.co',
             expect.stringContaining('RAD-400'),
             expect.stringContaining('Jefe Jurídico'),
+            'OBSERVACION_PROCESO',
         );
     });
 
@@ -619,11 +625,13 @@ describe('LegalNotificationsService — notifyProfesionalesProcesoAnexado()', ()
             'abogado-principal@esap.edu.co',
             expect.any(String),
             expect.any(String),
+            'PROCESO_ANEXADO',
         );
         expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
             'abogado-anexado@esap.edu.co',
             expect.any(String),
             expect.any(String),
+            'PROCESO_ANEXADO',
         );
         expect(mockNotificationClient.sendEmail).toHaveBeenCalledTimes(2);
     });
@@ -687,6 +695,7 @@ describe('LegalNotificationsService — notifyRiesgoAsignado()', () => {
             'abogado@esap.edu.co',
             expect.stringContaining('R-001'),
             expect.stringContaining('Pérdida de proceso'),
+            expect.stringMatching(/^RIESGO_(RE)?ASIGNADO$/),
         );
     });
 
@@ -744,6 +753,7 @@ describe('LegalNotificationsService — notifyRiesgoZonaCritica()', () => {
             'abogado@esap.edu.co',
             expect.stringContaining('R-001'),
             expect.stringContaining('EXTREMO'),
+            'RIESGO_ZONA_CRITICA',
         );
     });
 
@@ -797,6 +807,7 @@ describe('LegalNotificationsService — notifyRiesgoProvisionModificada()', () =
             'abogado@esap.edu.co',
             expect.stringContaining('R-001'),
             expect.stringContaining('aumentado'),
+            'RIESGO_PROVISION',
         );
     });
 });

@@ -17,7 +17,12 @@ export interface SendNotificationDto {
   texto_boton_accion?: string;
   url_accion?: string;
   datos_adicionales?: Record<string, any>;
+  /** Código del módulo en la configuración de notificaciones (EFDS-2406); si no viene, es este módulo. */
+  modulo?: string;
 }
+
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+export const MODULO_NOTIFICACIONES = 'gestion-legal';
 
 @Injectable()
 export class NotificationClientService {
@@ -132,7 +137,8 @@ export class NotificationClientService {
       if (emails.length > 0) {
         this.logger.log(`Enviando correos electrónicos a ${emails.length} destinatarios`);
         for (const email of emails) {
-          await this.sendEmail(email, emailOptions.subject, emailOptions.html);
+          // El correo es el mismo evento que la campana: la configuración los decide juntos.
+          await this.sendEmail(email, emailOptions.subject, emailOptions.html, dto.tipo_notificacion);
         }
       }
     }
@@ -164,14 +170,15 @@ export class NotificationClientService {
 
   async send(dto: SendNotificationDto): Promise<void> {
     try {
-      await axios.post(`${this.baseUrl}/notifications`, dto, { timeout: 3000 });
+      await axios.post(`${this.baseUrl}/notifications`, { ...dto, modulo: dto.modulo ?? MODULO_NOTIFICACIONES }, { timeout: 3000 });
     } catch (err) {
       this.logger.warn(`No se pudo enviar notificación a ${dto.id_usuario_destinatario}: ${err?.message}`);
     }
   }
 
-  async sendMany(dtos: SendNotificationDto[]): Promise<void> {
-    if (!dtos.length) return;
+  async sendMany(entrada: SendNotificationDto[]): Promise<void> {
+    if (!entrada.length) return;
+    const dtos = entrada.map((dto) => ({ ...dto, modulo: dto.modulo ?? MODULO_NOTIFICACIONES }));
     try {
       await axios.post(`${this.baseUrl}/notifications/bulk`, { notifications: dtos }, { timeout: 3000 });
       this.logger.log(`[notifyByRole] Enviadas ${dtos.length} notificaciones vía HTTP (${this.baseUrl})`);
@@ -183,9 +190,16 @@ export class NotificationClientService {
       );
     }
 
-    // Fallback: insertar directo en notifications.notificacion
+    // Fallback: insertar directo en notifications.notificacion. También obedece
+    // la configuración de notificaciones: un módulo apagado no debe avisar
+    // justo cuando el servicio central falla.
     try {
       for (const dto of dtos) {
+        const decision = await this.permitidoPorConfiguracion(dto);
+        if (!decision.permitido) {
+          await this.registrarOmision(dto, decision.motivo || 'omitida');
+          continue;
+        }
         await this.dataSource.query(
           `INSERT INTO notifications.notificacion
             (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
@@ -199,7 +213,7 @@ export class NotificationClientService {
             dto.descripcion_corta ?? null,
             dto.icono ?? null,
             dto.color ?? null,
-            dto.prioridad ?? 'Media',
+            decision.prioridad ?? dto.prioridad ?? 'Media',
             dto.categoria ?? null,
             dto.tiene_accion ?? false,
             dto.texto_boton_accion ?? null,
@@ -215,14 +229,60 @@ export class NotificationClientService {
   }
 
   /**
-   * Envía un correo electrónico mediante el servicio de notificaciones.
+   * Lee directo el catálogo de la configuración de notificaciones (EFDS-2406),
+   * misma base de datos. Si no existe o falla, deja pasar: el respaldo existe
+   * para no perder avisos.
    */
-  async sendEmail(to: string, subject: string, html: string): Promise<void> {
+  private async permitidoPorConfiguracion(
+    dto: SendNotificationDto,
+  ): Promise<{ permitido: boolean; motivo?: string; prioridad?: string | null }> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT m.activo AS modulo_activo, e.activo AS evento_activo, e.obligatorio,
+                COALESCE(e.canal, m.canal_defecto) AS canal, e.prioridad
+           FROM notifications.modulo_notificacion m
+           LEFT JOIN notifications.evento_notificacion e
+             ON e.clave = $2 AND e.codigo_modulo = m.codigo
+          WHERE m.codigo = $1`,
+        [dto.modulo ?? MODULO_NOTIFICACIONES, dto.tipo_notificacion],
+      );
+      if (!fila) return { permitido: true };
+      if (fila.obligatorio) return { permitido: true, prioridad: fila.prioridad };
+      if (fila.modulo_activo === false) return { permitido: false, motivo: 'modulo_inactivo' };
+      if (fila.evento_activo === false) return { permitido: false, motivo: 'evento_inactivo' };
+      if (fila.canal === 'correo') return { permitido: false, motivo: 'canal_solo_correo' };
+      return { permitido: true, prioridad: fila.prioridad };
+    } catch (err: any) {
+      this.logger.warn(`[notifyByRole][DB] No se pudo leer la configuración de notificaciones: ${err?.message}`);
+      return { permitido: true };
+    }
+  }
+
+  private async registrarOmision(dto: SendNotificationDto, motivo: string): Promise<void> {
+    try {
+      await this.dataSource.query(
+        `INSERT INTO notifications.envio_omitido (codigo_modulo, clave_evento, canal, destinatario, motivo, titulo)
+         VALUES ($1, $2, 'plataforma', $3, $4, $5)`,
+        [dto.modulo ?? MODULO_NOTIFICACIONES, dto.tipo_notificacion, dto.id_usuario_destinatario, motivo, (dto.titulo || '').slice(0, 255)],
+      );
+      this.logger.log(`[notifyByRole][DB] Omitida "${dto.tipo_notificacion}" por configuración (${motivo})`);
+    } catch (err: any) {
+      this.logger.warn(`[notifyByRole][DB] No se registró la omisión: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Envía un correo electrónico mediante el servicio de notificaciones.
+   * `evento` es la clave con la que la configuración de notificaciones
+   * (EFDS-2406) decide si el correo sale; sin él, sale siempre.
+   */
+  async sendEmail(to: string, subject: string, html: string, evento?: string): Promise<void> {
     try {
       await axios.post(`${this.baseUrl}/api/v1/emails/send`, {
         to,
         subject,
-        html
+        html,
+        ...(evento ? { modulo: MODULO_NOTIFICACIONES, evento } : {}),
       }, { timeout: 5000 });
       this.logger.log(`Correo enviado exitosamente a ${to}`);
     } catch (err) {
