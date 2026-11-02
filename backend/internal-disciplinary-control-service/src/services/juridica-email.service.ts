@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { MODULO_NOTIFICACIONES } from './notification-client.service';
 import { firstValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -130,6 +131,8 @@ export class JuridicaEmailService {
           to: destinatario,
           subject: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
           html,
+          modulo: MODULO_NOTIFICACIONES,
+          evento: 'PLIEGO_CARGOS_TRASLADO_JURIDICA',
           ...(adjuntos.length > 0 && { attachments: adjuntos }),
         }),
       );
@@ -449,6 +452,8 @@ export class JuridicaEmailService {
             to,
             subject: `[ENVÍO A JURÍDICA] Proceso ${radicado} - Enviado por ${nombreJefe}`,
             html,
+            modulo: MODULO_NOTIFICACIONES,
+            evento: 'ENVIO_A_JURIDICA',
           }),
         );
         this.logger.log(`Notificación de envío a jurídica enviada a ${to} para proceso ${radicado}`);

@@ -7,6 +7,7 @@ import {
 import { InjectRepository, InjectConnection } from '@nestjs/typeorm';
 import { Repository, Not, Connection } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
+import { MODULO_NOTIFICACIONES } from './notification-client.service';
 import { firstValueFrom } from 'rxjs';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
@@ -2196,7 +2197,7 @@ export class NewsService {
       if (jefesConEmail.length > 0) {
         await Promise.all(
           jefesConEmail.map((jefe) =>
-            this.enviarEmailDirecto(jefe.email.trim(), asunto, html, mensaje).catch((err) =>
+            this.enviarEmailDirecto(jefe.email.trim(), asunto, html, mensaje, tipoNotificacion).catch((err) =>
               console.error(`[NewsService] Error enviando correo a Jefe ${jefe.email}:`, err),
             ),
           ),
@@ -2207,7 +2208,8 @@ export class NewsService {
     }
   }
 
-  private async enviarEmailDirecto(to: string, subject: string, html: string, text?: string): Promise<boolean> {
+  /** `evento` es la clave con la que la configuración de notificaciones (EFDS-2406) decide si el correo sale. */
+  private async enviarEmailDirecto(to: string, subject: string, html: string, text?: string, evento?: string): Promise<boolean> {
     const rawTo = (to || '').trim();
     if (!rawTo) {
       console.warn('[NewsService] enviarEmailDirecto: Destinatario vacío, se omite envío.');
@@ -2252,6 +2254,7 @@ export class NewsService {
               subject,
               html,
               text: plainText,
+              ...(evento ? { modulo: MODULO_NOTIFICACIONES, evento } : {}),
             },
             { timeout: 7000 },
           ),
@@ -2421,7 +2424,7 @@ export class NewsService {
 
       await Promise.all(
         radicadoresConEmail.map((rad) =>
-          this.enviarEmailDirecto(rad.email.trim(), asunto, html, mensaje).catch((err) =>
+          this.enviarEmailDirecto(rad.email.trim(), asunto, html, mensaje, tipoNotificacion).catch((err) =>
             console.error(`[NewsService] Error enviando correo de noticia a Radicador ${rad.email}:`, err),
           ),
         ),
