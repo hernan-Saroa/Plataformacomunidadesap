@@ -62,7 +62,8 @@ const SIN_PERMISOS: PermisosNotificaciones = { gestionar: false, compuerta_encen
 
 const campo =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus:border-[#1e5da8] focus:outline-none disabled:bg-slate-50 disabled:text-slate-400';
-const campoChico = campo.replace('px-3 py-2', 'px-2 py-1.5 text-xs');
+// Sin `w-full`: estos campos miden lo que dice su `style`, no el ancho de la fila.
+const campoChico = campo.replace('w-full ', '').replace('px-3 py-2', 'px-2 py-1.5 text-xs');
 const etiqueta = 'mb-1 block text-xs font-medium text-slate-700';
 const botonPrimario =
   'inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-[#174a87] hover:shadow active:scale-[0.98] disabled:opacity-60';
@@ -141,7 +142,7 @@ function SelectorMultiple({ titulo, opciones, elegidos, onCambio, cargando }: { 
         <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-slate-400" />
-            <input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="Buscar…" className={`${campoChico} pl-7`} />
+            <input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="Buscar…" className={`${campoChico} w-full pl-7`} />
           </div>
           <ul className="mt-2 max-h-44 space-y-0.5 overflow-y-auto">
             {cargando && <li className="px-2 py-1 text-xs text-slate-500">Cargando…</li>}
@@ -191,9 +192,9 @@ function FilaEvento({ evento, modulo, catalogos, cargarCatalogos, onGuardar, onP
           {abierta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
 
-        <div className="min-w-0 flex-1 basis-56">
+        <div className="min-w-0 flex-1 basis-64">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className={`truncate text-sm font-medium ${evento.activo && !apagadoPorModulo ? 'text-slate-900' : 'text-slate-500'}`}>{evento.nombre}</p>
+            <p className={`text-sm font-medium ${evento.activo && !apagadoPorModulo ? 'text-slate-900' : 'text-slate-500'}`}>{evento.nombre}</p>
             {evento.obligatorio && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-100"><Lock className="h-3 w-3" />Obligatorio</span>
             )}
@@ -212,39 +213,53 @@ function FilaEvento({ evento, modulo, catalogos, cargarCatalogos, onGuardar, onP
           <Mail className={`h-4 w-4 ${evento.envia_correo && canalEfectivo !== 'plataforma' ? 'text-[#1e5da8]' : 'text-slate-300'}`} />
         </div>
 
-        <select
-          aria-label="Canal del evento"
-          value={evento.canal ?? ''}
-          onChange={(e) => onGuardar(evento.clave, { canal: (e.target.value || null) as Canal | null })}
-          className={`${campoChico} w-44`}
-        >
-          <option value="">Hereda: {nombreCanal(modulo.canal_defecto)}</option>
-          {CANALES.map((c) => (
-            <option key={c.id} value={c.id} disabled={c.id === 'correo' && !evento.envia_correo}>{c.nombre}</option>
-          ))}
-        </select>
+        {/* Cada control con su nombre a la vista: así se entiende sin abrir el detalle. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className={etiqueta}>Canal</span>
+            <select
+              aria-label="Canal del evento"
+              value={evento.canal ?? ''}
+              onChange={(e) => onGuardar(evento.clave, { canal: (e.target.value || null) as Canal | null })}
+              className={campoChico}
+              style={{ width: '13rem' }}
+            >
+              <option value="">Hereda: {nombreCanal(modulo.canal_defecto)}</option>
+              {CANALES.map((c) => (
+                <option key={c.id} value={c.id} disabled={c.id === 'correo' && !evento.envia_correo}>{c.nombre}</option>
+              ))}
+            </select>
+          </label>
 
-        <select
-          aria-label="Prioridad del evento"
-          value={evento.prioridad ?? ''}
-          onChange={(e) => onGuardar(evento.clave, { prioridad: (e.target.value || null) as Prioridad | null })}
-          className={`${campoChico} w-36`}
-        >
-          <option value="">Del código{evento.prioridad_codigo ? `: ${evento.prioridad_codigo}` : ''}</option>
-          {PRIORIDADES.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
+          <label className="block">
+            <span className={etiqueta}>Prioridad</span>
+            <select
+              aria-label="Prioridad del evento"
+              value={evento.prioridad ?? ''}
+              onChange={(e) => onGuardar(evento.clave, { prioridad: (e.target.value || null) as Prioridad | null })}
+              className={campoChico}
+              style={{ width: '10rem' }}
+            >
+              <option value="">Del código{evento.prioridad_codigo ? `: ${evento.prioridad_codigo}` : ''}</option>
+              {PRIORIDADES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
 
-        <label className="flex items-center gap-1.5 text-xs text-slate-600" title="Nadie puede apagarlo: ni el administrador ni el usuario">
-          <input type="checkbox" checked={evento.obligatorio} onChange={(e) => onGuardar(evento.clave, { obligatorio: e.target.checked })} className="h-3.5 w-3.5 accent-[#1e5da8]" />
-          Obligatorio
-        </label>
+          <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Nadie puede apagarlo: ni el administrador ni el usuario">
+            <input type="checkbox" checked={evento.obligatorio} onChange={(e) => onGuardar(evento.clave, { obligatorio: e.target.checked })} className="h-3.5 w-3.5 accent-[#1e5da8]" />
+            Obligatorio
+          </label>
 
-        <Interruptor
-          activo={evento.activo}
-          deshabilitado={evento.obligatorio}
-          etiqueta={`${evento.activo ? 'Desactivar' : 'Activar'} ${evento.nombre}`}
-          onCambio={(v) => onGuardar(evento.clave, { activo: v })}
-        />
+          <div className="flex flex-col items-center gap-1 pb-0.5">
+            <span className="text-[11px] font-medium text-slate-600">{evento.activo ? 'Activo' : 'Inactivo'}</span>
+            <Interruptor
+              activo={evento.activo}
+              deshabilitado={evento.obligatorio}
+              etiqueta={`${evento.activo ? 'Desactivar' : 'Activar'} ${evento.nombre}`}
+              onCambio={(v) => onGuardar(evento.clave, { activo: v })}
+            />
+          </div>
+        </div>
       </div>
 
       {abierta && (
@@ -388,8 +403,17 @@ export default function NotificacionesConfigPage() {
   useEffect(() => {
     if (!codigoActual) return;
     setEventos(null);
-    notificacionesConfigService.listarEventos(codigoActual).then(setEventos).catch(() => setEventos([]));
+    notificacionesConfigService.listarEventos(codigoActual).then(recibirEventos).catch(() => setEventos([]));
   }, [codigoActual]);
+
+  /** La lista de eventos manda sobre los contadores del módulo: así no quedan desfasados. */
+  const recibirEventos = (lista: EventoNotificaciones[]) => {
+    setEventos(lista);
+    const codigo = lista[0]?.codigo_modulo ?? codigoActual;
+    setModulos((modulosActuales) => modulosActuales?.map((m) => (m.codigo === codigo
+      ? { ...m, eventos: lista.length, eventos_activos: lista.filter((e) => e.activo).length }
+      : m)) ?? null);
+  };
 
   useEffect(() => {
     if (vista?.tipo === 'historial') { setHistorial(null); notificacionesConfigService.historial().then(setHistorial).catch(() => setHistorial([])); }
@@ -402,10 +426,11 @@ export default function NotificacionesConfigPage() {
       dependenciasService.listar().catch(() => []),
       estructuraService.sedes.listar().then((r: any) => (Array.isArray(r?.data) ? r.data : Array.isArray(r) ? r : [])).catch(() => []),
     ]).then(([roles, dependencias, sedes]) => {
+      const porNombre = (a: Opcion, b: Opcion) => a.nombre.localeCompare(b.nombre, 'es');
       setCatalogos({
-        roles: roles.filter((r: any) => r.code).map((r: any) => ({ id: String(r.code).toUpperCase(), nombre: r.name, detalle: r.code })),
-        dependencias: dependencias.map((d: any) => ({ id: String(d.idDependencia), nombre: d.nomDependencia, detalle: d.codDependencia })),
-        sedes: sedes.map((s: any) => ({ id: String(s.idSede ?? s.id), nombre: s.nomSede ?? s.nombre, detalle: s.codSede ?? s.codigo })),
+        roles: roles.filter((r: any) => r.code).map((r: any) => ({ id: String(r.code).toUpperCase(), nombre: r.name, detalle: r.code })).sort(porNombre),
+        dependencias: dependencias.map((d: any) => ({ id: String(d.idDependencia), nombre: d.nomDependencia, detalle: d.codDependencia })).sort(porNombre),
+        sedes: sedes.map((s: any) => ({ id: String(s.idSede ?? s.id), nombre: s.nomSede ?? s.nombre, detalle: s.codSede ?? s.codigo })).sort(porNombre),
       });
     });
   }, []);
@@ -433,10 +458,7 @@ export default function NotificacionesConfigPage() {
   const guardarEvento = async (clave: string, cambios: CambiosEvento) => {
     try {
       const guardado = await notificacionesConfigService.actualizarEvento(clave, cambios);
-      setEventos((lista) => lista?.map((e) => (e.clave === clave ? guardado : e)) ?? null);
-      setModulos((lista) => lista?.map((m) => (m.codigo === guardado.codigo_modulo
-        ? { ...m, eventos_activos: (eventos ?? []).filter((e) => (e.clave === clave ? guardado.activo : e.activo)).length }
-        : m)) ?? null);
+      recibirEventos((eventos ?? []).map((e) => (e.clave === clave ? guardado : e)));
       toast.success('Guardado');
     } catch {
       // apiClient ya muestra el mensaje del servidor
@@ -455,7 +477,7 @@ export default function NotificacionesConfigPage() {
       } else {
         toast.warning('La configuración omitió la prueba', { description: `Campana: ${MOTIVOS[r.plataforma.motivo ?? ''] ?? r.plataforma.motivo} · ${correo}` });
       }
-      if (codigoActual) notificacionesConfigService.listarEventos(codigoActual).then(setEventos).catch(() => undefined);
+      if (codigoActual) notificacionesConfigService.listarEventos(codigoActual).then(recibirEventos).catch(() => undefined);
     } catch {
       // apiClient ya muestra el mensaje del servidor
     }
@@ -577,7 +599,7 @@ export default function NotificacionesConfigPage() {
                         <div className="flex flex-wrap items-center gap-4">
                           <div>
                             <label className={etiqueta} htmlFor="canal-defecto">Canal por defecto</label>
-                            <select id="canal-defecto" value={moduloActual.canal_defecto} onChange={(e) => guardarModulo(moduloActual, { canal_defecto: e.target.value as Canal })} className={`${campoChico} w-44`}>
+                            <select id="canal-defecto" value={moduloActual.canal_defecto} onChange={(e) => guardarModulo(moduloActual, { canal_defecto: e.target.value as Canal })} className={campoChico} style={{ width: '13rem' }}>
                               {CANALES.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                             </select>
                           </div>
@@ -593,7 +615,7 @@ export default function NotificacionesConfigPage() {
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Eventos · {eventos?.length ?? '…'}</p>
                       <div className="relative w-full sm:w-72">
                         <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
-                        <input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="Buscar evento…" aria-label="Buscar evento" className={`${campoChico} pl-8`} />
+                        <input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="Buscar evento…" aria-label="Buscar evento" className={`${campoChico} w-full pl-8`} />
                       </div>
                     </div>
 
