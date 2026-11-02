@@ -5135,6 +5135,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     if (this.notificationClient && typeof this.notificationClient.sendEmail === 'function') {
       await this.notificationClient.sendEmail({
+        evento: 'VIATICOS_OTP_FIRMA',
         to: input.to,
         subject: `Código de validación (${code}) — Firma Digital Viáticos ESAP`,
         text,
@@ -6171,6 +6172,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
             });
 
             await this.notificationClient.sendEmail({
+              evento: 'RECORDATORIO_FIRMA_PENDIENTE',
               to: email,
               subject: `[ESAP Viáticos] Recordatorio: Firma de aprobación requerida en solicitud ${consecutivo}`,
               html: emailHtml,
@@ -10754,6 +10756,7 @@ if (itinerarioGeneral) {
       `;
 
       await this.notificationClient.sendEmail({
+        evento: 'VIATICOS_DEVOLUCION_ANALISTA',
         to: correoDestino,
         subject,
         text: `Comisión ${solicitud.consecutivoUnico} devuelta por Control Viáticos. Motivo: ${observaciones}`,
@@ -12251,6 +12254,7 @@ if (itinerarioGeneral) {
       // 2. Correo directo al Comisionado si tiene email configurado
       if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
           to: solicitud.comisionado.email,
           subject: emailRechazo.asunto,
           html: emailRechazo.html,
@@ -13035,6 +13039,7 @@ if (itinerarioGeneral) {
       // Notificación directa por correo al comisionado si tiene email registrado
       if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_COMISION_CANCELADA',
           to: solicitud.comisionado.email,
           subject: emailCancelacion.asunto,
           html: emailCancelacion.html,
@@ -14109,6 +14114,7 @@ async registrarRP(
       // Notificación directa por email al comisionado si tiene correo registrado
       if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_RP_EXPEDIDO',
           to: guardada.comisionado.email,
           subject: emailRp.asunto,
           html: emailRp.html,
@@ -14528,6 +14534,7 @@ async registrarRP(
           // Notificación directa por email al comisionado si tiene correo registrado
           if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
             await this.notificationClient.sendEmail({
+              evento: 'OBLIGACION_SIIF_REGISTRADA',
               to: guardada.comisionado.email,
               subject: emailObligacion.asunto,
               html: emailObligacion.html,
@@ -14819,6 +14826,7 @@ async registrarRP(
           if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
             if (typeof this.notificationClient.sendEmail === 'function') {
               await this.notificationClient.sendEmail({
+                evento: 'COMISION_PAGADA',
                 to: guardada.comisionado.email,
                 subject: emailPago.asunto,
                 html: emailPago.html,

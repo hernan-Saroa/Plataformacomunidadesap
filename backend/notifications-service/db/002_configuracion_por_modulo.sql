@@ -134,5 +134,7 @@ VALUES
   ('rund_credenciales_docente', 'pta', 'Credenciales de acceso del docente (RUND)',
    'Usuario y contraseña temporal que recibe un docente cuando se le crea el acceso desde el Banco de Docentes.', true, true),
   ('rund_codigo_acceso',        'pta', 'Código de acceso a la invitación RUND',
-   'Código que el docente recibe para entrar a actualizar sus datos en RUND.', true, true)
+   'Código que el docente recibe para entrar a actualizar sus datos en RUND.', true, true),
+  ('VIATICOS_OTP_FIRMA',        'viaticos', 'Código OTP para la firma digital de viáticos',
+   'Correo con el código de un solo uso que valida la firma de una solicitud de viáticos. Sin él no se puede firmar.', true, true)
 ON CONFLICT (clave) DO NOTHING;

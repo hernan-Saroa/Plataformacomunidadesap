@@ -16,13 +16,21 @@ export interface SendNotificationDto {
   texto_boton_accion?: string;
   url_accion?: string;
   datos_adicionales?: Record<string, any>;
+  /** Código del módulo en la configuración de notificaciones (EFDS-2406); si no viene, es este módulo. */
+  modulo?: string;
 }
+
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+export const MODULO_NOTIFICACIONES = 'viaticos';
 
 export interface SendEmailDto {
   to: string;
   subject: string;
   text?: string;
   html?: string;
+  /** Clave con la que la configuración de notificaciones decide si el correo sale; sin ella, sale siempre. */
+  evento?: string;
+  modulo?: string;
 }
 
 export interface RecipientInfo {
@@ -613,7 +621,8 @@ export class NotificationClientService {
    * Intenta primero por HTTP hacia el microservicio de notificaciones y,
    * en caso de contingencia, inserta directamente en la tabla notifications.notificacion.
    */
-  async send(dto: SendNotificationDto): Promise<void> {
+  async send(entrada: SendNotificationDto): Promise<void> {
+    const dto = { ...entrada, modulo: entrada.modulo ?? MODULO_NOTIFICACIONES };
     const urls: string[] = [];
     for (const b of this.getCandidateBaseUrls()) {
       urls.push(`${b}/notifications`);
@@ -637,8 +646,15 @@ export class NotificationClientService {
       }
     }
 
-    // Fallback: inserción directa en la base de datos de notificaciones
+    // Fallback: inserción directa en la base de datos de notificaciones. También
+    // obedece la configuración de notificaciones: un módulo apagado no debe
+    // avisar justo cuando el servicio central falla.
     try {
+      const decision = await this.permitidoPorConfiguracion(dto);
+      if (!decision.permitido) {
+        await this.registrarOmision(dto, decision.motivo || 'omitida');
+        return;
+      }
       await this.dataSource.query(
         `INSERT INTO notifications.notificacion
           (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
@@ -652,7 +668,7 @@ export class NotificationClientService {
           dto.descripcion_corta ?? null,
           dto.icono ?? null,
           dto.color ?? null,
-          dto.prioridad ?? 'Media',
+          decision.prioridad ?? dto.prioridad ?? 'Media',
           dto.categoria ?? null,
           dto.tiene_accion ?? false,
           dto.texto_boton_accion ?? null,
@@ -675,10 +691,11 @@ export class NotificationClientService {
   /**
    * Envía un correo electrónico institucional a través del servicio de correos/notificaciones.
    */
-  async sendEmail(dto: SendEmailDto): Promise<void> {
-    if (!dto.to || !dto.subject) {
+  async sendEmail(entrada: SendEmailDto): Promise<void> {
+    if (!entrada.to || !entrada.subject) {
       return;
     }
+    const dto = entrada.evento ? { ...entrada, modulo: entrada.modulo ?? MODULO_NOTIFICACIONES } : entrada;
     const urls: string[] = [];
     for (const b of this.getCandidateBaseUrls()) {
       urls.push(`${b}/api/v1/emails/send`);
@@ -708,8 +725,9 @@ export class NotificationClientService {
     }
   }
 
-  async sendMany(dtos: SendNotificationDto[]): Promise<void> {
-    if (!dtos.length) return;
+  async sendMany(entrada: SendNotificationDto[]): Promise<void> {
+    if (!entrada.length) return;
+    const dtos = entrada.map((dto) => ({ ...dto, modulo: dto.modulo ?? MODULO_NOTIFICACIONES }));
     const urls: string[] = [];
     for (const b of this.getCandidateBaseUrls()) {
       urls.push(`${b}/notifications/bulk`);
@@ -741,6 +759,11 @@ export class NotificationClientService {
 
     try {
       for (const dto of dtos) {
+        const decision = await this.permitidoPorConfiguracion(dto);
+        if (!decision.permitido) {
+          await this.registrarOmision(dto, decision.motivo || 'omitida');
+          continue;
+        }
         await this.dataSource.query(
           `INSERT INTO notifications.notificacion
             (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
@@ -754,7 +777,7 @@ export class NotificationClientService {
             dto.descripcion_corta ?? null,
             dto.icono ?? null,
             dto.color ?? null,
-            dto.prioridad ?? 'Media',
+            decision.prioridad ?? dto.prioridad ?? 'Media',
             dto.categoria ?? null,
             dto.tiene_accion ?? false,
             dto.texto_boton_accion ?? null,
@@ -772,6 +795,49 @@ export class NotificationClientService {
       this.logger.error(
         `[NotificationClient] Falló insert directo en BD: ${err?.message}`,
       );
+    }
+  }
+
+  /**
+   * Lee directo el catálogo de la configuración de notificaciones (EFDS-2406),
+   * misma base de datos. Si no existe o falla, deja pasar: el respaldo existe
+   * para no perder avisos.
+   */
+  private async permitidoPorConfiguracion(
+    dto: SendNotificationDto,
+  ): Promise<{ permitido: boolean; motivo?: string; prioridad?: string | null }> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT m.activo AS modulo_activo, e.activo AS evento_activo, e.obligatorio,
+                COALESCE(e.canal, m.canal_defecto) AS canal, e.prioridad
+           FROM notifications.modulo_notificacion m
+           LEFT JOIN notifications.evento_notificacion e
+             ON e.clave = $2 AND e.codigo_modulo = m.codigo
+          WHERE m.codigo = $1`,
+        [dto.modulo ?? MODULO_NOTIFICACIONES, dto.tipo_notificacion],
+      );
+      if (!fila) return { permitido: true };
+      if (fila.obligatorio) return { permitido: true, prioridad: fila.prioridad };
+      if (fila.modulo_activo === false) return { permitido: false, motivo: 'modulo_inactivo' };
+      if (fila.evento_activo === false) return { permitido: false, motivo: 'evento_inactivo' };
+      if (fila.canal === 'correo') return { permitido: false, motivo: 'canal_solo_correo' };
+      return { permitido: true, prioridad: fila.prioridad };
+    } catch (err: any) {
+      this.logger.warn(`[NotificationClient] No se pudo leer la configuración de notificaciones: ${err?.message}`);
+      return { permitido: true };
+    }
+  }
+
+  private async registrarOmision(dto: SendNotificationDto, motivo: string): Promise<void> {
+    try {
+      await this.dataSource.query(
+        `INSERT INTO notifications.envio_omitido (codigo_modulo, clave_evento, canal, destinatario, motivo, titulo)
+         VALUES ($1, $2, 'plataforma', $3, $4, $5)`,
+        [dto.modulo ?? MODULO_NOTIFICACIONES, dto.tipo_notificacion, dto.id_usuario_destinatario, motivo, (dto.titulo || '').slice(0, 255)],
+      );
+      this.logger.log(`[NotificationClient] Omitida "${dto.tipo_notificacion}" por configuración (${motivo})`);
+    } catch (err: any) {
+      this.logger.warn(`[NotificationClient] No se registró la omisión: ${err?.message}`);
     }
   }
 
