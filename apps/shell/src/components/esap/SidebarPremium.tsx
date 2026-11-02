@@ -151,6 +151,7 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'ajustes-generales': { name: 'Ajustes Generales', description: 'Salario mínimo y festivos nacionales' },
   'trd': { name: 'Retención Documental (TRD)', description: 'TRD, TVD, series y subseries' },
   'centro-ayuda': { name: 'Centro de Ayuda', description: 'Manuales, videos y recursos de ayuda' },
+  'notificaciones': { name: 'Notificaciones', description: 'Qué avisa cada módulo, por qué canal y a quién' },
   'chatbot': { name: 'ChatBot Institucional', description: 'Asistente virtual y consultas inteligentes' },
 };
 
@@ -1188,6 +1189,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 canShowModule('ajustes-generales') ||
                 canShowModule('trd') ||
                 canShowModule('centro-ayuda') ||
+                canShowModule('notificaciones') ||
                 canShowModule('modules') ||
                 canShowModule('dependencias')
               ) && (
@@ -1208,6 +1210,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         {renderMenuItem('ajustes-generales', <SlidersHorizontal className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('trd', <FolderArchive className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('centro-ayuda', <LifeBuoy className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                        {renderMenuItem('notificaciones', <Bell className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('dependencias', <BriefcaseBusiness className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       </motion.div>

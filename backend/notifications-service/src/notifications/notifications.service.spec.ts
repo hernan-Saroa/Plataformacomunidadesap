@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotificationsService } from './notifications.service';
 import { Notification } from './entities/notification.entity';
+import { CompuertaService } from '../configuracion/compuerta.service';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
@@ -26,6 +27,16 @@ describe('NotificationsService', () => {
       providers: [
         NotificationsService,
         { provide: getRepositoryToken(Notification), useValue: mockRepo },
+        // La compuerta deja pasar todo: estas pruebas son de la campana, no de la configuración.
+        {
+          provide: CompuertaService,
+          useValue: {
+            evaluar: jest.fn(async (e: any) => ({
+              permitido: true, modulo: 'pta', clave: e.clave, prioridad: e.prioridad ?? 'Media', canal: 'ambos', evento: null,
+            })),
+            destinatariosAdicionales: jest.fn(async () => []),
+          },
+        },
       ],
     }).compile();
 

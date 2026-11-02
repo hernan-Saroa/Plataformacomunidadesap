@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { ClientSecretCredential } from '@azure/identity';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
@@ -7,6 +7,12 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
 import { SendEmailAttachmentDto } from './dto/send-email-attachment.dto';
 import { EmailAttachmentDto, SendEmailDto } from './dto/send-email.dto';
+import { CompuertaService } from '../configuracion/compuerta.service';
+
+/** Resultado de un correo que pasó por la configuración de notificaciones. */
+export type ResultadoCorreo =
+  | { sent: true; omitida?: false; message: string }
+  | { sent: false; omitida: true; motivo: string; modulo: string; evento: string };
 
 type SmtpConfig = {
   host: string;
@@ -44,6 +50,36 @@ export class EmailsService {
   private readonly logger = new Logger(EmailsService.name);
   private transporter: nodemailer.Transporter | null = null;
   private graphClient: Client | null = null;
+
+  constructor(@Optional() private readonly compuerta?: CompuertaService) {}
+
+  /**
+   * Correo de un evento de la plataforma (EFDS-2406): antes de salir pasa por
+   * la configuración de notificaciones. Sin `evento` es un correo del sistema
+   * (clave, contraseña, OTP) y sale siempre.
+   */
+  async enviarSiPermitido(data: SendEmailDto): Promise<ResultadoCorreo> {
+    if (data.evento && this.compuerta) {
+      const decision = await this.compuerta.evaluar({
+        clave: data.evento,
+        canal: 'correo',
+        modulo: data.modulo,
+        destinatario: data.to,
+        titulo: data.subject,
+      });
+      if (!decision.permitido) {
+        return {
+          sent: false,
+          omitida: true,
+          motivo: decision.motivo || 'omitida',
+          modulo: decision.modulo,
+          evento: data.evento,
+        };
+      }
+    }
+    await this.sendEmail(data);
+    return { sent: true, message: 'Correo enviado' };
+  }
 
   private decodeAttachments(items: EmailAttachmentDto[] = []): EmailAttachment[] {
     return items.map((item) => ({
