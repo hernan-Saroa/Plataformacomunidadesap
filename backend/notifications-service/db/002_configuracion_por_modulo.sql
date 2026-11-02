@@ -109,6 +109,8 @@ INSERT INTO notifications.modulo_notificacion (codigo, nombre, orden) VALUES
   ('viaticos',                'Viáticos y Gastos de Viaje',       50),
   ('contratacion',            'Contratación',                     60),
   ('control-interno',         'Control Interno de Gestión',       70),
+  ('certificados-laborales',  'Certificados Laborales',           80),
+  ('graduates-certificates',  'Verificación de títulos',          85),
   ('sistema',                 'Correos del sistema',              90),
   ('otros',                   'Sin módulo identificado',          999)
 ON CONFLICT (codigo) DO NOTHING;
@@ -136,5 +138,9 @@ VALUES
   ('rund_codigo_acceso',        'pta', 'Código de acceso a la invitación RUND',
    'Código que el docente recibe para entrar a actualizar sus datos en RUND.', true, true),
   ('VIATICOS_OTP_FIRMA',        'viaticos', 'Código OTP para la firma digital de viáticos',
-   'Correo con el código de un solo uso que valida la firma de una solicitud de viáticos. Sin él no se puede firmar.', true, true)
+   'Correo con el código de un solo uso que valida la firma de una solicitud de viáticos. Sin él no se puede firmar.', true, true),
+  ('auth_recuperacion_contrasena', 'sistema', 'Código para recuperar la contraseña',
+   'Correo con el código de verificación que permite restablecer la contraseña. Sin él el usuario no puede volver a entrar.', true, true),
+  ('auth_otp_firma',            'sistema', 'Código OTP de firma electrónica',
+   'Correo con el código de un solo uso que valida una firma electrónica en la plataforma.', true, true)
 ON CONFLICT (clave) DO NOTHING;
