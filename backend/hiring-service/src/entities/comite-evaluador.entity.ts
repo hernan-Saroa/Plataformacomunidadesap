@@ -17,16 +17,23 @@ export class ComiteEvaluador {
   @Column({ name: 'proceso_id' })
   procesoId: string;
 
-  /** El acto que designa. Sin memorando no hay comité, solo una lista de nombres. */
-  @Column({ name: 'memorando_documento_id' })
-  memorandoDocumentoId: string;
+  /**
+   * El acto que designa. Nulo mientras no llega: depende de firmas que tardan,
+   * así que no frena el proceso, pero genera alerta (117, EFDS-1156).
+   */
+  @Column({ name: 'memorando_documento_id', type: 'uuid', nullable: true })
+  memorandoDocumentoId: string | null;
 
-  /** La del memorando, no la del registro: es cuando la entidad designó. */
-  @Column({ name: 'fecha_designacion', type: 'date' })
-  fechaDesignacion: string;
+  /** La del memorando, no la del registro: llega con él. */
+  @Column({ name: 'fecha_designacion', type: 'date', nullable: true })
+  fechaDesignacion: string | null;
 
   @Column({ name: 'designado_por', length: 200, nullable: true })
   designadoPor: string | null;
+
+  /** A quién le llega la alerta del memorando si la 6.2 no tiene puesto que la haga. */
+  @Column({ name: 'designado_por_id', length: 120, nullable: true })
+  designadoPorId: string | null;
 
   @Column({ length: 20, default: 'VIGENTE' })
   estado: EstadoComite;

@@ -8,15 +8,17 @@ import {
   Post,
   Req,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { LegalizacionService } from './legalizacion.service';
 import {
+  AgregarAmparoDto,
   AprobarGarantiaDto,
   CargarGarantiaDto,
   RechazarGarantiaDto,
@@ -27,14 +29,20 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
-import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import {
+  MIME_DOCUMENTOS,
+  MIME_IMAGENES,
+  opcionesDeCarga,
+  sha256Archivo,
+  STORAGE_PATH,
+} from '../archivos';
 
 /**
  * Pólizas, garantías y ARL — actividades 8.4 y 8.5 (EFDS-1164).
  *
- * Cargar y aprobar son dos actuaciones distintas y por eso tienen roles
- * distintos: el contratista presenta —a través del gestor— y la entidad
- * verifica. Que quien carga pudiera aprobar dejaría la revisión sin sentido.
+ * Desde la revisión de QA (2026-10-16) la póliza se aprueba en SECOP II y aquí
+ * se registra con esa fecha y su evidencia. Aprobar y devolver se quedan para
+ * las pólizas que se cargaron antes del cambio.
  */
 @ApiTags('Etapa 8 · Legalización')
 @Controller('procesos/:id/legalizacion')
@@ -55,39 +63,67 @@ export class LegalizacionController {
   @Post('garantias')
   @Puede('editar', '8.4')
   @UseInterceptors(
-    FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'La póliza se carga en PDF, Word o Excel')),
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'evidencia', maxCount: 1 },
+      ],
+      opcionesDeCarga(
+        [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
+        'La póliza y la evidencia se cargan en PDF, Word, Excel o imagen',
+      ),
+    ),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 8.4 · Cargar una garantía con sus amparos',
+    summary: 'Actividad 8.4 · Registrar una póliza con sus amparos',
     description:
-      'Los amparos van desglosados con su propia vigencia, para poder controlar el que vence primero.',
+      'Con la fecha en que se aprobó en SECOP II y la evidencia (campo `evidencia`), la póliza queda aprobada: ya no se aprueba otra vez en la plataforma. Los amparos van desglosados con su propia vigencia.',
   })
   async cargarGarantia(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Body() dto: CargarGarantiaDto,
-    @UploadedFile() file: any,
+    @UploadedFiles() files: { file?: any[]; evidencia?: any[] },
     @Req() req: any,
   ) {
-    if (!file) {
-      throw new BadRequestException(
-        'Adjunta la póliza: aprobar una garantía que nadie ve no cubre nada',
-      );
-    }
+    const file = files?.file?.[0];
+    const evidencia = files?.evidencia?.[0];
+    const rutas = [file, evidencia].filter(Boolean).map((f) => join(STORAGE_PATH, f.filename));
 
-    const ruta = join(STORAGE_PATH, file.filename);
     try {
+      if (!file) {
+        throw new BadRequestException('Adjunta la póliza: una garantía que nadie ve no cubre nada');
+      }
+      if (!evidencia) {
+        throw new BadRequestException('Adjunta la evidencia de la aprobación de la póliza en SECOP II');
+      }
       return await this.service.cargarGarantia(
         procesoId,
         dto,
         file,
-        await sha256Archivo(ruta),
+        await sha256Archivo(join(STORAGE_PATH, file.filename)),
         getHiringAccess(req),
+        { archivo: evidencia, hash: await sha256Archivo(join(STORAGE_PATH, evidencia.filename)) },
       );
     } catch (error) {
-      await unlink(ruta).catch(() => undefined);
+      await Promise.all(rutas.map((r) => unlink(r).catch(() => undefined)));
       throw error;
     }
+  }
+
+  @Post('garantias/:garantiaId/amparos')
+  @Puede('editar', '8.4')
+  @ApiOperation({
+    summary: 'Agregar un amparo a una póliza ya registrada',
+    description: 'Una póliza de cumplimiento trae varios amparos; un anexo puede sumar uno después.',
+  })
+  agregarAmparo(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('garantiaId', ParseUUIDPipe) garantiaId: string,
+    @Body() dto: AgregarAmparoDto,
+    @Req() req: any,
+  ) {
+    return this.service.agregarAmparo(procesoId, garantiaId, dto, getHiringAccess(req));
   }
 
   @Post('garantias/:garantiaId/aprobar')

@@ -1,4 +1,5 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
+import { dataReviewContext, loadDataReviewProfile, loadDataReviews } from './rund-data-review';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
@@ -3025,7 +3026,9 @@ export class BancoDocentesService implements OnModuleInit {
       // Mensaje de corrección dirigido al titular autenticado; no incluye URL ni contenido del original.
       this.dataSource.query(`SELECT bloque, tipo_soporte, nombre_archivo, estado, observacion AS correccion_requerida
         FROM academic_work_plan."RundSoporteCampo"
-        WHERE docente_id::text = $1 AND tipo_soporte NOT IN ('soporte_edicion_perfil', 'soporte_cambio_estado_perfil')`,
+        WHERE docente_id::text = $1 AND tipo_soporte NOT IN ('soporte_edicion_perfil', 'soporte_cambio_estado_perfil')
+        ORDER BY "createdAt" ASC, id ASC`,
+        // Oldest first: with several evidences per support, the portal keeps the most recent one.
         [String(match.docente_id)]),
       this.dataSource.query(`SELECT bloque, estado, observacion, fecha_revision
         FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1`, [String(match.docente_id)]),
@@ -3196,7 +3199,7 @@ export class BancoDocentesService implements OnModuleInit {
   /**
    * BR-044 — Obtener estados de aprobación por bloque para un docente.
    */
-  async getBloques(docenteId: string) {
+  async getBloques(docenteId: string, includeDataReview = false) {
     docenteId = await this.resolveDocenteId(docenteId);
 
     let bloques = await this.dataSource.query(
@@ -3217,8 +3220,11 @@ export class BancoDocentesService implements OnModuleInit {
     ));
 
     const soportesPorBloque: Record<string, any[]> = {};
+    const dataProfile = includeDataReview ? await loadDataReviewProfile(this.dataSource,docenteId) : null;
+    const dataReviews = includeDataReview ? await loadDataReviews(this.dataSource,docenteId) : [];
     const names = await resolveRundActorNames(this.dataSource, [
       ...bloques.flatMap((block: any) => [block.cargado_por, block.revisado_por]),
+      ...dataReviews.map((review: any) => review.actor_id),
       ...soportes.flatMap((support: any) => [support.cargado_por,
         ...Object.values(support.revisiones_campos || {}).map((decision: any) => decision.revisadoPor)]),
     ]);
@@ -3236,6 +3242,8 @@ export class BancoDocentesService implements OnModuleInit {
       ...b,
       cargadoPorNombre: b.cargado_por ? rundActorName(names, b.cargado_por) : null,
       revisadoPorNombre: b.revisado_por ? rundActorName(names, b.revisado_por) : null,
+      ...(includeDataReview ? {revisionDatos:Object.fromEntries(Object.entries(dataReviewContext(b.bloque,dataProfile,soportesPorBloque[b.bloque] || [],dataReviews,b.estado))
+        .map(([key,value])=>[key,{...value,revisadoPorNombre:value.revisadoPor ? rundActorName(names,value.revisadoPor):null}]))}:{}),
       soportes: soportesPorBloque[b.bloque] || [],
       puedeDevolver: canReturnEvidenceBlock(b.bloque, soportesPorBloque[b.bloque] || []),
       tiposSoporteRequeridos: BancoDocentesService.CATALOGO_SOPORTE[b.bloque] || [],
@@ -3282,6 +3290,9 @@ export class BancoDocentesService implements OnModuleInit {
 
   async revisarSoporte(docenteId: string, bloque: string, soporteId: string, data: any, actorId: string, ip?: string) {
     return new RundEvidenceWorkflow(this.dataSource).reviewSupport(await this.resolveDocenteId(docenteId), bloque, soporteId, data, actorId, ip);
+  }
+  async revisarDato(docenteId: string, bloque: string, campo: string, data: any, actorId: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewData(await this.resolveDocenteId(docenteId),bloque,campo,data,actorId,ip);
   }
 
   /**

@@ -48,6 +48,27 @@ export class Revision {
   @Column({ name: 'soportes_documento_ids', type: 'uuid', array: true, default: () => "'{}'" })
   soportesDocumentoIds: string[];
 
+  /**
+   * La ronda y el escalón en que se decidió (migración 101). Nulos en las
+   * decisiones anteriores, que fueron de un solo nivel, y en las de la 3.4,
+   * que decide el abogado del proceso y no una cadena.
+   */
+  @Column({ name: 'aprobacion_id', type: 'uuid', nullable: true })
+  aprobacionId: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  escalon: number | null;
+
+  /** La persona que decidió: así se designa en la configuración, no por la cuenta. */
+  @Column({ name: 'persona_id', type: 'uuid', nullable: true })
+  personaId: string | null;
+
+  @Column({ name: 'estado_anterior', length: 30, nullable: true })
+  estadoAnterior: string | null;
+
+  @Column({ name: 'estado_resultante', length: 30, nullable: true })
+  estadoResultante: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

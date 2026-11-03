@@ -4,12 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
 import { ETAPA_RECEPCION, RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { Oferente } from '../../entities/oferente.entity';
 import { PlazoOfertas } from '../../entities/plazo-ofertas.entity';
 import { AperturaProceso } from '../../entities/apertura-proceso.entity';
+import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -22,9 +23,12 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { festivosEntre } from '../publicacion/festivos-colombia';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from '../publicacion/dias-habiles';
 import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
+import { RiesgosService } from '../riesgos/riesgos.service';
 
 /** Actividad 6.1 de la matriz: la recepción de ofertas y su cierre. */
 export const NUMERAL_OFERTAS = '6.1';
+/** La apertura (5.7): de ella corre el plazo de ofertas donde la modalidad la tiene. */
+const NUMERAL_APERTURA = '5.7';
 
 /**
  * Hora a la que vence el plazo cuando lo calcula la plataforma.
@@ -49,7 +53,11 @@ interface ArchivoCargado {
 
 @Injectable()
 export class OfertasService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /** La audiencia de riesgos obligatoria condiciona el cierre (EFDS-1153, 112). */
+    private readonly riesgos: RiesgosService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -68,9 +76,7 @@ export class OfertasService {
 
     const recepcion = await this.recepcionDe(procesoId);
     const plazoModalidad = await this.plazoDeLaModalidad(proceso.modalidad);
-    const apertura = await this.dataSource
-      .getRepository(AperturaProceso)
-      .findOne({ where: { procesoId } });
+    const inicio = await this.inicioDelPlazo(this.dataSource.manager, proceso);
 
     const oferentes = recepcion
       ? await this.dataSource.getRepository(Oferente).find({
@@ -80,6 +86,7 @@ export class OfertasService {
       : [];
 
     const documentos = await this.archivosDe(oferentes.map((o) => o.soporteDocumentoId));
+    const audiencia = await this.riesgos.requisitoParaCerrarOfertas(procesoId);
 
     return {
       aplica: !excluida,
@@ -88,7 +95,7 @@ export class OfertasService {
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
       etapa: ETAPA_RECEPCION,
       // Sin resolución de apertura no hay convocatoria a la que presentarse.
-      abierto: !!apertura,
+      abierto: !!inicio,
       // La ausencia de recepción con el proceso ya abierto significa que la
       // modalidad no tiene plazo parametrizado y hay que fijarlo a mano.
       plazoParametrizado: !!plazoModalidad,
@@ -104,7 +111,11 @@ export class OfertasService {
         !excluida &&
         !!recepcion &&
         recepcion.estado === 'ABIERTA' &&
-        Date.now() > recepcion.vencimiento.getTime(),
+        Date.now() > recepcion.vencimiento.getTime() &&
+        audiencia.cumplido,
+      // La audiencia de riesgos donde es obligatoria: desde la 112 va después
+      // de la apertura y lo que no puede pasar sin ella es este cierre.
+      audienciaRiesgos: audiencia,
       // Lo que vuelve pública la lista es el cierre: a partir de ahí ya no
       // admite cambios.
       listaPublicada: recepcion?.estado === 'CERRADA',
@@ -135,6 +146,32 @@ export class OfertasService {
    * proceso por un parámetro que el equipo no ha confirmado castigaría al
    * usuario por una tarea pendiente nuestra, con el criterio de EFDS-1385.
    */
+  /**
+   * Desde cuándo corre el plazo de ofertas.
+   *
+   * Desde la resolución de apertura (5.7). Donde la matriz excluye la apertura
+   * —mínima cuantía—, desde la publicación de la invitación en SECOP II (5.3):
+   * antes solo se miraba la apertura, y en mínima cuantía la recepción no se
+   * abría nunca, con lo que el proceso no llegaba a evaluar ni a contratar.
+   */
+  private async inicioDelPlazo(
+    em: EntityManager,
+    proceso: Proceso,
+  ): Promise<{ fecha: string; desde: 'APERTURA' | 'PUBLICACION' } | null> {
+    const apertura = await em.getRepository(AperturaProceso).findOne({ where: { procesoId: proceso.id } });
+    if (apertura) return { fecha: apertura.resolucionFecha, desde: 'APERTURA' };
+
+    const sinApertura = await em.getRepository(ActividadExcluida).findOne({
+      where: { numeral: NUMERAL_APERTURA, modalidad: proceso.modalidad ?? '' },
+    });
+    if (!sinApertura) return null;
+
+    const publicacion = await em
+      .getRepository(PublicacionPliego)
+      .findOne({ where: { procesoId: proceso.id, anuladaAt: IsNull() } });
+    return publicacion ? { fecha: publicacion.fechaPublicacion, desde: 'PUBLICACION' } : null;
+  }
+
   async abrirRecepcion(procesoId: string, acceso: HiringAccess, em: EntityManager) {
     const proceso = await this.exigirProceso(em, procesoId);
 
@@ -151,14 +188,14 @@ export class OfertasService {
     const yaExiste = await this.recepcionDe(procesoId, em);
     if (yaExiste) return yaExiste;
 
-    const apertura = await em.getRepository(AperturaProceso).findOne({ where: { procesoId } });
-    if (!apertura) return null;
+    const inicio = await this.inicioDelPlazo(em, proceso);
+    if (!inicio) return null;
 
     const plazo = await this.plazoDeLaModalidad(proceso.modalidad, em);
     if (!plazo) return null;
 
-    const festivos = await this.calendario(em, apertura.resolucionFecha);
-    const ultimoDia = sumarDiasHabiles(apertura.resolucionFecha, plazo.diasHabiles, festivos);
+    const festivos = await this.calendario(em, inicio.fecha);
+    const ultimoDia = sumarDiasHabiles(inicio.fecha, plazo.diasHabiles, festivos);
 
     const recepcion = await em.save(
       em.create(RecepcionOfertas, {
@@ -173,7 +210,8 @@ export class OfertasService {
 
     await this.traza(em, procesoId, recepcion.id, 'CREAR', acceso, {
       actividad: NUMERAL_OFERTAS,
-      desde: apertura.resolucionFecha,
+      desde: inicio.fecha,
+      contadoDesde: inicio.desde,
       diasHabiles: plazo.diasHabiles,
       vencimiento: recepcion.vencimiento,
     });
@@ -194,10 +232,9 @@ export class OfertasService {
       const proceso = await this.exigirProceso(em, procesoId);
       await this.exigirQueAplique(em, proceso);
 
-      const apertura = await em.getRepository(AperturaProceso).findOne({ where: { procesoId } });
-      if (!apertura) {
+      if (!(await this.inicioDelPlazo(em, proceso))) {
         throw new ConflictException(
-          'El proceso todavía no se ha abierto: el plazo de ofertas corre desde la apertura',
+          'El proceso todavía no se ha abierto: el plazo de ofertas corre desde la apertura (5.7), o desde la publicación (5.3) donde la modalidad no tiene apertura',
         );
       }
 
@@ -388,6 +425,14 @@ export class OfertasService {
       // cierre, que es la que prueba cuándo dejó de recibirse.
       if (recepcion.estado === 'CERRADA') return;
 
+      // RF-PUB-04 y EFDS-1153: la audiencia obligatoria se celebra antes de que
+      // se cierre la recepción. Se comprueba aquí y no solo en la pantalla: un
+      // cliente que llame la API directamente tampoco puede saltarla.
+      const audiencia = await this.riesgos.requisitoParaCerrarOfertas(procesoId, em);
+      if (!audiencia.cumplido) {
+        throw new ConflictException(`No se puede cerrar la recepción de ofertas: ${audiencia.motivo}`);
+      }
+
       if (Date.now() <= recepcion.vencimiento.getTime()) {
         const { diasHabilesRestantes: faltan } = await this.plazoConDias(recepcion);
         throw new ConflictException(
@@ -509,7 +554,7 @@ export class OfertasService {
   }
 
   /**
-   * Días no hábiles del rango, con el mismo criterio de la actividad 5.2: los
+   * Días no hábiles del rango, con el mismo criterio de la actividad 5.3: los
    * festivos nacionales se calculan y la tabla aporta los que declare la
    * entidad por su cuenta.
    */

@@ -201,7 +201,8 @@ export const campo =
 export const ARCHIVOS_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
 
 /** El tope que aplica multer en el servidor. */
-const MAX_BYTES = 25 * 1024 * 1024;
+/** El mismo de `MAX_BYTES_ADJUNTO` en el servidor (EFDS-1155). */
+const MAX_BYTES = 50 * 1024 * 1024;
 
 const pesoLegible = (bytes: number) =>
   bytes >= 1024 * 1024
@@ -250,7 +251,7 @@ export const SelectorArchivo = ({
       return;
     }
     if (elegido.size > MAX_BYTES) {
-      setError(`El archivo pesa ${pesoLegible(elegido.size)} y el máximo son 25 MB.`);
+      setError(`El archivo pesa ${pesoLegible(elegido.size)} y el máximo son 50 MB.`);
       return;
     }
 
@@ -331,7 +332,7 @@ export const SelectorArchivo = ({
             Quitar
           </button>
         ) : null}
-        <span className="text-[11px] text-slate-500">PDF, Word o Excel · máx. 25 MB</span>
+        <span className="text-[11px] text-slate-500">PDF, Word o Excel · máx. 50 MB</span>
       </div>
     </div>
   );

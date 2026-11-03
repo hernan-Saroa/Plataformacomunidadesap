@@ -1,0 +1,96 @@
+/* Checkpoint row: data · evidences · aggregated state. Stacks on narrow screens. */
+.rund-checkpoint-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.rund-checkpoint-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr);background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.02);min-width:0}
+.rund-checkpoint-row__data{min-width:0;padding:18px 20px;background:#fafbfc;border-right:1px solid #f1f5f9}
+.rund-checkpoint-row__evidence{min-width:0;padding:18px 20px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:8px;border-right:1px solid #f1f5f9}
+.rund-checkpoint-row__status{min-width:0;padding:18px 20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;text-align:center}
+.rund-checkpoint-reference{font-size:11px;line-height:1.5;color:#64748b;overflow-wrap:anywhere}
+.rund-support-review{border:1px solid #dbe4ef;border-radius:12px;background:#fff;margin-bottom:24px;overflow:hidden;min-width:0}
+.rund-support-review>header{padding:16px 18px;background:#eff6ff;border-bottom:1px solid #dbe4ef}
+.rund-support-review h5{margin:0;font-size:14px;color:#0f172a}
+.rund-support-review header p{margin:6px 0 0;font-size:12px;color:#475569;line-height:1.6}
+.rund-support-review__group{padding:16px 18px;border-bottom:1px solid #e2e8f0;min-width:0}
+.rund-support-review__group:last-child{border-bottom:0}
+.rund-support-review__covers{margin:0 0 10px;font-size:11px;color:#64748b;line-height:1.5;overflow-wrap:anywhere}
+.rund-support-review__missing{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:12px;color:#64748b}
+.rund-support-review__missing strong{color:#334155}
+.rund-validation-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:flex-end}
+.rund-validation-actions>span{flex:1 1 240px;min-width:0;line-height:1.5;text-align:right;overflow-wrap:anywhere}
+.rund-validation-actions>button{flex-shrink:0}
+.rund-data-decision{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px;width:100%}
+.rund-data-decision>strong{color:#92400e}
+.rund-data-decision>strong[data-state=Aprobado]{color:#047857}
+.rund-data-decision>strong[data-state=Rechazado],.rund-data-decision>p{color:#b91c1c}
+.rund-data-decision>p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
+.rund-data-decision>small{color:#64748b}
+.rund-data-decision>div{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}
+.rund-data-decision button,.rund-data-sources button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;border:1px solid #cbd5e1;border-radius:7px;padding:7px 10px;background:#fff;font:inherit;font-size:11px;font-weight:700;color:#1d4ed8;cursor:pointer}
+.rund-data-decision button[data-variant=approve]{border-color:#10b981;color:#047857}
+.rund-data-decision button[data-variant=return]{border-color:#ef4444;color:#b91c1c}
+.rund-data-decision button:disabled{opacity:.45;cursor:not-allowed}
+.rund-data-decision button:focus-visible,.rund-data-sources button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.rund-data-sources{font-size:11px;min-width:0;width:100%}
+.rund-data-sources>summary{color:#1d4ed8;cursor:pointer;line-height:1.5}
+.rund-data-sources>div{display:flex;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid #e2e8f0;padding:7px 0}
+.rund-data-sources>div>span{min-width:0;overflow-wrap:anywhere}
+.rund-data-sources button{flex-shrink:0}
+.rund-data-return{position:fixed;inset:0;z-index:10001;display:grid;place-items:center;background:#0f172a99;padding:16px}
+.rund-data-return>div{box-sizing:border-box;width:min(540px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#fff;border-radius:14px;padding:24px;color:#334155}
+.rund-data-return h3{margin-top:0;color:#991b1b}
+.rund-data-return p{font-size:13px;line-height:1.6}
+.rund-data-return label{display:block;font-size:12px;font-weight:700}
+.rund-data-return textarea{box-sizing:border-box;width:100%;margin-top:8px;padding:12px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;resize:vertical}
+.rund-data-return footer{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}
+.rund-data-return button{min-height:40px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;background:#fff;color:#334155;cursor:pointer}
+.rund-data-return button:last-child{background:#b91c1c;color:#fff;border-color:#b91c1c}
+.rund-data-return button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:900px){
+  .rund-checkpoint-row{display:flex;flex-direction:column}
+  .rund-checkpoint-row__data,.rund-checkpoint-row__evidence,.rund-checkpoint-row__status{flex:1 1 auto;border-right:0;padding:14px 16px}
+  .rund-checkpoint-row__evidence{border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9}
+  .rund-checkpoint-row__status{flex-direction:row;flex-wrap:wrap;justify-content:flex-start;text-align:left}
+}
+
+.rund-checkpoint-upload{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;color:#475569;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
+.rund-checkpoint-upload:disabled{background:#e2e8f0;opacity:.7;cursor:not-allowed}
+.rund-checkpoint-upload:focus-visible,.rund-checkpoint-evidence__button:focus-visible,.rund-checkpoint-evidence__add:focus-visible{outline:2px solid #003da5;outline-offset:2px}
+.rund-checkpoint-evidence{width:100%;min-width:0;display:flex;flex-direction:column;gap:10px}
+.rund-checkpoint-evidence__heading{display:flex;align-items:center;gap:10px;min-width:0}
+.rund-checkpoint-evidence__heading strong{display:block;font-size:12px;font-weight:600;color:#1e293b}
+.rund-checkpoint-evidence__heading small{display:block;font-size:10px;font-weight:600;color:#10b981;margin-top:2px}
+.rund-checkpoint-evidence__heading small.rund-checkpoint-evidence__shared{color:#64748b;font-weight:500}
+.rund-checkpoint-evidence__icon{width:32px;height:32px;border-radius:8px;background:#eff6ff;color:#2563eb;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.rund-checkpoint-evidence__list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.rund-checkpoint-evidence__item{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid #e2e8f0;border-left:3px solid #fcd34d;border-radius:8px;background:#fff;min-width:0}
+.rund-checkpoint-evidence__item[data-state=Aprobado]{border-left-color:#10b981;background:#f8fffb}
+.rund-checkpoint-evidence__item[data-state=Rechazado]{border-left-color:#ef4444;background:#fffafa}
+.rund-checkpoint-evidence__main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 200px}
+.rund-checkpoint-evidence__number{align-self:flex-start;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:1px 8px}
+.rund-checkpoint-evidence__file{font-size:12px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.rund-checkpoint-evidence__meta{font-size:10px;color:#64748b;overflow-wrap:anywhere}
+.rund-checkpoint-evidence__state{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#92400e;overflow-wrap:anywhere}
+.rund-checkpoint-evidence__state[data-state=Aprobado]{color:#047857}
+.rund-checkpoint-evidence__state[data-state=Rechazado]{color:#b91c1c}
+.rund-checkpoint-evidence__note{margin:2px 0 0;font-size:11px;line-height:1.45;color:#b91c1c;white-space:pre-wrap;overflow-wrap:anywhere}
+.rund-checkpoint-evidence__actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.rund-checkpoint-evidence__button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:30px;padding:5px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#eff6ff;color:#2563eb;font:inherit;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+.rund-checkpoint-evidence__button:disabled,.rund-checkpoint-evidence__button[aria-disabled=true]{opacity:.55;cursor:not-allowed}
+.rund-checkpoint-evidence__button[data-variant=approve]{background:#fff;border-color:#10b981;color:#047857}
+.rund-checkpoint-evidence__button[data-variant=return]{background:#fff;border-color:#ef4444;color:#dc2626}
+.rund-checkpoint-evidence__icon-button{width:30px;padding:0;background:#fff;color:#6b7280}
+.rund-checkpoint-evidence__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rund-checkpoint-evidence__add{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:6px 12px;border-radius:6px;border:1px dashed #93b4ed;background:#f8fbff;color:#003da5;font-size:11px;font-weight:700;cursor:pointer}
+.rund-checkpoint-evidence__add{font:inherit;font-size:11px;font-weight:700}
+.rund-checkpoint-evidence__add:disabled{opacity:.6;cursor:not-allowed}
+.rund-checkpoint-evidence__limit{margin:0;font-size:11px;color:#92400e}
+@media(max-width:600px){
+  .rund-validation-actions>span{flex-basis:100%;text-align:left}
+  .rund-validation-actions>button{flex:1 1 160px;min-height:44px;justify-content:center}
+  /* nowrap: a wrapping column would size itself to the longest file name. */
+  .rund-checkpoint-evidence__item{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
+  .rund-checkpoint-evidence__main{flex:0 0 auto;width:100%}
+  .rund-checkpoint-evidence__actions{justify-content:flex-start;width:100%}
+  .rund-checkpoint-evidence__button{min-height:40px;flex:1 1 auto}
+  .rund-checkpoint-evidence__icon-button{flex:0 0 40px;width:40px}
+  .rund-checkpoint-evidence__add{align-self:stretch;justify-content:center;min-height:44px}
+}

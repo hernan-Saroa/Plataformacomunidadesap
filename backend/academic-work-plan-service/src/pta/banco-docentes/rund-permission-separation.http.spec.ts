@@ -33,6 +33,7 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     aprobarBloque: jest.fn().mockResolvedValue({ estado: 'Aprobado' }),
     devolverBloque: jest.fn().mockResolvedValue({ estado: 'Devuelto' }),
     revisarSoporte: jest.fn().mockResolvedValue({ estado: 'Aprobado' }),
+    revisarDato: jest.fn().mockResolvedValue({estado:'Aprobado'}),
     logSensitiveDataAccess: jest.fn(),
     logSensitiveResourceAccess: jest.fn(),
     getRegistrationHistory: jest.fn().mockResolvedValue({ data: [{ id, tipo: 'MASIVO', titulo: 'docentes.xlsx', responsable: 'Gestora de Prueba' }], total: 1, page: 1, pages: 1 }),
@@ -48,8 +49,12 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
   const ocr = {
     list: jest.fn().mockResolvedValue({ jobs: [], enabled: true }),
     enqueue: jest.fn().mockResolvedValue({ queued: true }),
+    enqueueBatch: jest.fn().mockResolvedValue({ queued: 2 }),
+    reprocess: jest.fn().mockResolvedValue({ queued: 2, reprocessed: true }),
+    reorderQueue: jest.fn().mockResolvedValue({ reordered: 2 }),
     confirm: jest.fn().mockResolvedValue({ confirmed: true }),
     discard: jest.fn().mockResolvedValue({ discarded: true }),
+    discardJob: jest.fn().mockResolvedValue({ discarded: 1 }),
   };
   const documents = {
     create: jest.fn().mockResolvedValue({ id: 'version-ficticia' }),
@@ -152,7 +157,7 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     const forged = { roles: ['SUPER_ADMIN'], permissions: [P.REVISOR, P.MANAGE], rundPermissions: [P.MANAGE], actorId: 'OTRO', blockVersion: 1 };
     for (const base of ['/banco-docentes', '/pta/banco-docentes']) {
       for (const block of ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL']) {
-        for (const action of ['aprobar', 'devolver', `soportes/${id}/revision`]) {
+        for (const action of ['aprobar', 'devolver', `soportes/${id}/revision`, 'datos/NOMBRE_COMPLETO/revision']) {
           await request(app.getHttpServer()).post(`${base}/${id}/bloques/${block}/${action}`).send(forged).expect(403);
         }
       }
@@ -160,6 +165,7 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     expect(service.aprobarBloque).not.toHaveBeenCalled();
     expect(service.devolverBloque).not.toHaveBeenCalled();
     expect(service.revisarSoporte).not.toHaveBeenCalled();
+    expect(service.revisarDato).not.toHaveBeenCalled();
   });
 
   it('la carga y edición atribuyen el actor al sub de la sesión, no al body', async () => {
@@ -260,21 +266,76 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     expect(service.aprobarBloque).not.toHaveBeenCalled();
     expect(service.revisarSoporte).not.toHaveBeenCalled();
   });
-  it('el aprobador valida filas y bloques pero no modifica el OCR ni carga archivos', async () => {
+  it('el aprobador revisa soportes y organiza el OCR sin editar datos ni cargar archivos', async () => {
     role = 'APROBADOR';
     for (const action of ['aprobar', 'devolver', 'soportes/soporte/revision']) {
       await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/bloques/IDENTIDAD/${action}`).send({ blockVersion: 1, observacion: 'Corrija el documento' }).expect(201);
     }
-    for (const action of [`sugerencias/${suggestionId}/confirmar`, `sugerencias/${suggestionId}/descartar`, `documentos/${id}`]) {
+    for (const action of [`sugerencias/${suggestionId}/confirmar`, `sugerencias/${suggestionId}/descartar`]) {
       await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/extracciones/${action}`).send({}).expect(403);
     }
     await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/bloques/IDENTIDAD/soportes`).expect(403);
     expect(ocr.confirm).not.toHaveBeenCalled();
-    expect(ocr.enqueue).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/extracciones/documentos/${id}`).send({}).expect(202);
+    await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/extracciones/lote`).send({documentos:[id,suggestionId]}).expect(202);
+    await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/extracciones/orden`).send({trabajos:[id,suggestionId]}).expect(201);
+    expect(ocr.enqueue).toHaveBeenCalledWith(id,id,expect.objectContaining({fullAccess:true,actorId:'ACTOR_AUTENTICADO'}));
+    expect(ocr.enqueueBatch).toHaveBeenCalled();
+    expect(ocr.reorderQueue).toHaveBeenCalled();
   });
   it('quitar validate a GGP también impide aprobar por API', async () => {
     role = 'GESTION_PROFESORAL';
     await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/bloques/IDENTIDAD/aprobar`).send({ blockVersion: 1 }).expect(403);
+  });
+  it.each([
+    ['IDENTIDAD','DOCUMENTO_IDENTIDAD'],['CONTACTO','CORREO_INSTITUCIONAL'],['FORMACION','diploma_pregrado'],
+    ['VINCULACION','ACTO_ADMINISTRATIVO'],['ACADEMICO','acto_asignacion_nucleo'],['TRANSVERSAL','autorizacion_habeas_data'],
+  ])('el Revisor valida un dato de %s con actor autenticado por ambos alias',async(block,field)=>{
+    role='RUND_APROBADOR';
+    const body={estado:'Aprobado',huella:'a'.repeat(64),blockVersion:3,actorId:'FALSO'};
+    for(const base of ['/banco-docentes','/pta/banco-docentes']){
+      await request(app.getHttpServer()).post(`${base}/${id}/bloques/${block}/datos/${field}/revision`).send(body).expect(201);
+      expect(service.revisarDato).toHaveBeenLastCalledWith(id,block,field,body,'ACTOR_AUTENTICADO',expect.anything());
+    }
+    expect(service.revisarSoporte).not.toHaveBeenCalled();
+  });
+  it.each(['/banco-docentes','/pta/banco-docentes'])('el perfil Revisor solo necesita su permiso principal para revisar las seis pestañas por %s', async base => {
+    role='RUND_APROBADOR';
+    for(const block of ['IDENTIDAD','CONTACTO','FORMACION','VINCULACION','ACADEMICO','TRANSVERSAL']){
+      await request(app.getHttpServer()).post(`${base}/${id}/bloques/${block}/aprobar`).send({blockVersion:1}).expect(201);
+      await request(app.getHttpServer()).post(`${base}/${id}/bloques/${block}/devolver`).send({blockVersion:2,observacion:'Corrija la información del bloque'}).expect(201);
+      if(block!=='CONTACTO'){
+        const decision={estado:'Aprobado',alcance:'documento',documentoVersionId:suggestionId,blockVersion:3};
+        await request(app.getHttpServer()).post(`${base}/${id}/bloques/${block}/soportes/${id}/revision`).send(decision).expect(201);
+        expect(service.revisarSoporte).toHaveBeenLastCalledWith(id,block,id,decision,'ACTOR_AUTENTICADO',expect.anything());
+      }
+    }
+    expect(service.aprobarBloque).toHaveBeenCalledTimes(6);
+    expect(service.devolverBloque).toHaveBeenCalledTimes(6);
+    expect(service.revisarSoporte).toHaveBeenCalledTimes(5);
+    expect(service.updateDocente).not.toHaveBeenCalled();
+    expect(documents.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['RUND_CARGADOR',true,true], ['RUND_APROBADOR',true,false],
+    ['RUND_INCORPORADOR',false,false], ['SIN_PERMISOS',false,false],
+  ])('separa organizar análisis y editar sugerencias para el perfil principal %s', async (assignedRole,analyze,edit) => {
+    role=String(assignedRole);
+    for(const base of ['/banco-docentes','/pta/banco-docentes']){
+      await request(app.getHttpServer()).post(`${base}/${id}/extracciones/documentos/${id}`).send({}).expect(analyze?202:403);
+      await request(app.getHttpServer()).post(`${base}/${id}/extracciones/lote`).send({documentos:[id,suggestionId]}).expect(analyze?202:403);
+      await request(app.getHttpServer()).post(`${base}/${id}/extracciones/reprocesar`).send({documentos:[id,suggestionId]}).expect(analyze?202:403);
+      await request(app.getHttpServer()).post(`${base}/${id}/extracciones/orden`).send({trabajos:[id,suggestionId]}).expect(analyze?201:403);
+      for(const action of [`sugerencias/${suggestionId}/confirmar`,`sugerencias/${suggestionId}/descartar`,`trabajos/${id}/descartar`]){
+        await request(app.getHttpServer()).post(`${base}/${id}/extracciones/${action}`).send({motivo:'Verificado en el documento'}).expect(edit?201:403);
+      }
+    }
+    expect(ocr.enqueue).toHaveBeenCalledTimes(analyze?2:0);
+    expect(ocr.reprocess).toHaveBeenCalledTimes(analyze?2:0);
+    expect(ocr.confirm).toHaveBeenCalledTimes(edit?2:0);
+    expect(ocr.discard).toHaveBeenCalledTimes(edit?2:0);
+    expect(ocr.discardJob).toHaveBeenCalledTimes(edit?2:0);
   });
   it('consultar RUND no concede acceso implícito al contenido OCR sensible', async () => {
     role = 'CONSULTOR';

@@ -26,7 +26,7 @@ import { CierreActividadService } from '../cierre-actividad/cierre-actividad.ser
 
 /**
  * Audiencia de adjudicación y apertura del sobre económico — actividades 7.1 y
- * 7.2 (EFDS-1159, RF-ADJ-01).
+ * 7.1.1 (EFDS-1159, RF-ADJ-01).
  *
  * La audiencia es donde se oyen las observaciones al informe y, en licitación de
  * obra pública, donde se abre el sobre económico delante de todos. La plataforma
@@ -49,7 +49,7 @@ export class AudienciaService extends AdjudicacionBase {
     const proceso = await this.exigirProceso(em, procesoId);
 
     const excluidaAudiencia = await this.excluida(em, proceso, NUMERAL_AUDIENCIA);
-    const excluidaSobre = await this.excluida(em, proceso, NUMERAL_SOBRE_ECONOMICO);
+    const noAplicaSobre = await this.motivoNoAplica(em, proceso, NUMERAL_SOBRE_ECONOMICO);
 
     const modalidad = proceso.modalidad
       ? await em.getRepository(Modalidad).findOne({ where: { codigo: proceso.modalidad } })
@@ -81,10 +81,10 @@ export class AudienciaService extends AdjudicacionBase {
       modalidad: proceso.modalidad,
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
       trasladoCerrado,
-      // El sobre económico es de la licitación de obra pública: dónde aplica lo
-      // dice la matriz, no una lista en el código.
-      aplicaSobreEconomico: !excluidaSobre,
-      motivoNoAplicaSobre: excluidaSobre?.motivo ?? null,
+      // El sobre económico es de la licitación de obra pública: la modalidad la
+      // dice la matriz y la obra, la tipología de la 3.1.
+      aplicaSobreEconomico: !noAplicaSobre,
+      motivoNoAplicaSobre: noAplicaSobre,
       puedeCelebrar: !excluidaAudiencia && trasladoCerrado && !vigente,
       audiencia: vigente
         ? this.presentar(vigente, documentos, piezas, sobres, porOferta)
@@ -240,8 +240,8 @@ export class AudienciaService extends AdjudicacionBase {
   /**
    * Abre el sobre económico de una oferta en la audiencia.
    *
-   * Solo donde la modalidad lo tenga: la matriz deja la 7.2 para la licitación
-   * de obra pública, y la aplicabilidad se lee de `actividades_excluidas`.
+   * Solo en la licitación de obra pública: la matriz deja la 7.1.1 para la
+   * licitación y la tipología de la 3.1 dice si es obra (`motivoNoAplica`).
    */
   async abrirSobre(
     procesoId: string,
@@ -282,7 +282,7 @@ export class AudienciaService extends AdjudicacionBase {
             em,
             procesoId,
             NUMERAL_SOBRE_ECONOMICO,
-            `Apertura del sobre económico de ${oferta.nombre}`,
+            `Oferta económica de ${oferta.nombre}`,
             evidencia,
             hash as string,
             acceso,

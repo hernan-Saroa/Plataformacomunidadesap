@@ -8,6 +8,7 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
   const subject = (territorialId: string, sede = 'granada', nivel = 'pregrado') => ({ territorialId, nivel, cetaps: [sede], programas: [] });
   function setup(approve: string[] = [], review: string[] = []) {
     const service = Object.create(PtaService.prototype) as any;
+    service.historialRepo = { find: jest.fn().mockResolvedValue([]) };
     service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
     service.resolveNombresSeccionales = jest.fn().mockResolvedValue(['Meta', 'Caldas']);
     service.getTerritorialNivelPairsDelComponente = jest.fn(async p => p.subjects);

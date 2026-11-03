@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   BellRing,
@@ -9,7 +9,6 @@ import {
   CalendarClock,
   FileSignature,
   ClipboardCheck,
-  Landmark,
   FileText,
   Store,
   Settings,
@@ -32,20 +31,19 @@ import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
-import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
 import { RevisionDeActividad } from './revision/RevisionDeActividad';
+import { RevisionDelPaa } from './paa/RevisionDelPaa';
 import { PestanaTrabajo, VistaMiTrabajo } from './trabajo/VistaMiTrabajo';
 import { useMiTrabajo } from '../hooks/useMiTrabajo';
 import { PERMISOS } from '../auth/permisos';
-import { esSoloPresupuesto, useAlcance } from '../auth/alcance';
+import { useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
   | 'mi-trabajo'
   | 'revision'
   | 'alertas'
-  | 'bandeja-cdp'
   | 'expedientes'
   | 'estadisticas'
   | 'umbrales'
@@ -73,48 +71,11 @@ const SECCIONES_DE_CONFIGURACION: Seccion[] = [
   'configuracion',
 ];
 
-/**
- * Por dónde se entra al módulo.
- *
- * «Procesos» para casi todo el mundo, porque casi todo el mundo trabaja un
- * expediente. La excepción es quien solo mueve presupuesto: la Dirección
- * Financiera no radica ni diligencia nada, así que una lista de procesos no le
- * dice qué hacer hoy —su trabajo es la cola de solicitudes de CDP—. Entrar por
- * ahí le ahorra un clic que iba a dar siempre.
- *
- * Se decide por lo que *no* tiene, y no por el rol: alguien que gestione
- * presupuesto y además diligencie procesos sigue entrando por «Procesos»,
- * porque entonces la lista sí es su trabajo. La regla vive en `esSoloPresupuesto`,
- * que responde que no mientras el alcance no ha llegado: ante la duda se entra
- * por «Procesos», como siempre.
- */
-function seccionDeEntrada(): Seccion {
+export default function ContratacionModulePremium() {
   // «Mi trabajo» y no el listado (reestructuración del flujo): quien entra
   // quiere saber qué le toca hoy, no qué procesos existen.
-  return esSoloPresupuesto() ? 'bandeja-cdp' : 'mi-trabajo';
-}
-
-export default function ContratacionModulePremium() {
-  // Solo el valor inicial: a partir de ahí manda el menú, y recalcularlo en
-  // cada render devolvería al usuario a la bandeja cada vez que algo refresca.
-  const [seccion, setSeccionElegida] = useState<Seccion>(seccionDeEntrada);
-  const { cargado, puede, tiene } = useAlcance();
-
-  /**
-   * La sección de entrada se decide otra vez cuando llega el alcance.
-   *
-   * Al montar todavía no se sabe qué puede hacer quien entra —el alcance viene
-   * del servicio— y sin esto la Financiera nunca aterrizaría en su bandeja. Solo
-   * si no ha navegado: sacarlo de donde ya eligió ir sería peor que el clic.
-   */
-  const navego = useRef(false);
-  const setSeccion = (nueva: Seccion) => {
-    navego.current = true;
-    setSeccionElegida(nueva);
-  };
-  useEffect(() => {
-    if (cargado && !navego.current) setSeccionElegida(seccionDeEntrada());
-  }, [cargado]);
+  const [seccion, setSeccion] = useState<Seccion>('mi-trabajo');
+  const { puede, tiene } = useAlcance();
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
@@ -131,12 +92,22 @@ export default function ContratacionModulePremium() {
   } | null>(null);
 
   /**
+   * La revisión del PAA abierta, si hay una (migración 097).
+   *
+   * No es una actividad del riel sino una decisión sobre el proceso entero —si
+   * sigue, se devuelve, se migra o se cancela—, así que tiene su propia pantalla.
+   */
+  const [revisionPaa, setRevisionPaa] = useState<string | null>(null);
+
+  /**
    * «Mi trabajo»: lo que le toca a quien mira, y el número del menú.
    *
    * Se relee al cambiar de sección y al cerrar una revisión o un proceso: el
    * contador tiene que bajar en cuanto algo se resuelve.
    */
-  const miTrabajo = useMiTrabajo(`${seccion}|${revision === null}|${procesoId === null}`);
+  const miTrabajo = useMiTrabajo(
+    `${seccion}|${revision === null}|${revisionPaa === null}|${procesoId === null}`,
+  );
   const [pestanaTrabajo, setPestanaTrabajo] = useState<PestanaTrabajo | null>(null);
   /** La pestaña con algo pendiente, si nadie ha elegido otra. */
   const pestanaVisible: PestanaTrabajo =
@@ -150,14 +121,6 @@ export default function ContratacionModulePremium() {
           : 'hacer');
 
   const puedeConfigurar = tiene(PERMISOS.configurar);
-  /**
-   * Quien mueve el presupuesto de la entidad: la Dirección Financiera.
-   *
-   * Su trabajo en el módulo no es un proceso sino una cola —las solicitudes de
-   * CDP que esperan—, así que tiene sección propia. Nadie más la ve: para el
-   * resto no hay nada que recoger en ella.
-   */
-  const gestionaPresupuesto = puede('editar', '4.2');
   const puedeVerReportes = tiene(PERMISOS.reporteVer);
   /*
    * El expediente lo consulta quien ve alguna parte del proceso: el servicio
@@ -218,23 +181,6 @@ export default function ContratacionModulePremium() {
                 subtitle: 'Vencimientos y aprobaciones',
                 icon: <BellRing className="w-5 h-5" />,
                 color: '#DC2626',
-              },
-            ]),
-        /* La cola de la Financiera, junto a Alertas y por lo mismo: las dos
-           dicen qué reclama atención hoy. Aparte de «Procesos» porque no se
-           navega igual —no se busca un expediente, se recoge lo que llegó—, y
-           porque a quien solo gestiona presupuesto la lista de procesos no le
-           dice qué hacer. */
-        ...(!gestionaPresupuesto
-          ? []
-          : [
-              {
-                id: 'bandeja-cdp' as Seccion,
-                label: 'Solicitudes de CDP',
-                subtitle: 'Bandeja de la Financiera',
-                icon: <Landmark className="w-5 h-5" />,
-                // El mismo cian con el que las alertas ya marcan el CDP y el RP.
-                color: '#0891B2',
               },
             ]),
         ...(!puedeVerExpedientes
@@ -330,6 +276,25 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (revisionPaa) {
+      return (
+        <RevisionDelPaa
+          revisionId={revisionPaa}
+          volverA={seccion === 'mi-trabajo' ? 'Mi trabajo' : 'Procesos'}
+          onVolver={() => {
+            setRevisionPaa(null);
+            if (seccion === 'mi-trabajo') setPestanaTrabajo('revisar');
+          }}
+          onVerProceso={(id) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(null);
+            setRevisionPaa(null);
+          }}
+        />
+      );
+    }
+
     if (revision) {
       return (
         <RevisionDeActividad
@@ -365,7 +330,9 @@ export default function ContratacionModulePremium() {
           pestana={pestanaVisible}
           onPestana={setPestanaTrabajo}
           onRevisar={(e) =>
-            setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
+            e.tipo === 'REVISION_PAA' && e.referencia
+              ? setRevisionPaa(e.referencia)
+              : setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
           }
           // El proceso se abre sin salir de la sección: «volver» regresa a la
           // bandeja, que es de donde vino.
@@ -470,33 +437,6 @@ export default function ContratacionModulePremium() {
           }}
         />
       );
-    /* Se comprueba aunque el menú ya la esconda, por lo mismo que las demás:
-       la sección sobrevive en el estado si le retiran el permiso con la
-       pantalla abierta. */
-    if (seccion === 'bandeja-cdp') {
-      return gestionaPresupuesto ? (
-        // Lleva al proceso y a la actividad que toca atender —verificar o
-        // expedir—: quien recoge una solicitud quiere resolverla, no buscarla.
-        <VistaBandejaCdp
-          onAbrir={(id, numeral) => {
-            setSeccion('estudios-previos');
-            setProcesoId(id);
-            setActividad(numeral ?? null);
-          }}
-        />
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
-          <p className="text-[13px] font-bold text-slate-700 m-0">
-            No tienes acceso a las solicitudes de CDP
-          </p>
-          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
-            Las atiende la Dirección Financiera, que es quien compromete el presupuesto de la
-            entidad.
-          </p>
-        </div>
-      );
-    }
-
     if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;

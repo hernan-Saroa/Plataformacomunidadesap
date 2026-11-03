@@ -65,7 +65,9 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
     const ofertas = await this.ofertasDe(em, procesoId);
     const acto = await this.actoVigente(em, procesoId);
     const resultado = await this.resultadoVigente(em, procesoId);
-    const ganadora = resultado ? await this.ofertaDe(em, resultado.oferenteId) : null;
+    // Solo los resultados de antes de la 120 nombran ganadora: desde entonces la
+    // evaluación de la 6.3 es preliminar (EFDS-1157).
+    const ganadora = resultado?.oferenteId ? await this.ofertaDe(em, resultado.oferenteId) : null;
 
     const documentos = await this.documentosDe(
       declaratorias.flatMap((d) => [
@@ -98,6 +100,9 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
       ganadoraDelComite: ganadora
         ? { oferenteId: ganadora.id, numero: ganadora.numero, nombre: ganadora.nombre }
         : null,
+      // Con el informe preliminar de la 6.3 cargado, ese es el del comité y no se
+      // pide otra vez (EFDS-1157).
+      informePreliminarCargado: !!resultado,
       puedeDeclarar:
         !excluida && recepcion?.estado === 'CERRADA' && !acto && !vigente,
       declaratoria: vigente ? this.presentar(vigente, documentos) : null,
@@ -171,7 +176,10 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
           'El proceso no recibió ninguna oferta: la causal es que no se presentó nadie',
         );
       }
-      if (dto.causal === 'SIN_OFERTAS_HABILITADAS' && !informeComite) {
+      // El informe preliminar de la 6.3 ya es el del comité (EFDS-1157): declarar
+      // desierto desde la etapa 6 no obliga a subirlo otra vez.
+      const resultado = await this.resultadoVigente(em, procesoId);
+      if (dto.causal === 'SIN_OFERTAS_HABILITADAS' && !informeComite && !resultado) {
         throw new BadRequestException(
           'Adjunta el informe del comité: es lo que sustenta que ninguna oferta quedó habilitada',
         );
@@ -180,9 +188,9 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
       // El comité nombró una ganadora y aun así se declara desierto. Puede
       // haber razones —mismo criterio de adjudicar a alguien distinto del
       // ganador (EFDS-1487)— pero no puede pasar en silencio.
-      const resultado = await this.resultadoVigente(em, procesoId);
-      if (resultado && !dto.justificacion?.trim()) {
-        const ganadora = await this.ofertaDe(em, resultado.oferenteId);
+      const contradicho = resultado?.oferenteId ? resultado : null;
+      if (contradicho && !dto.justificacion?.trim()) {
+        const ganadora = await this.ofertaDe(em, contradicho.oferenteId);
         throw new BadRequestException(
           `El comité registró a ${ganadora?.nombre ?? 'una oferta'} como ganadora: si aun así se declara desierto, di por qué`,
         );
@@ -222,9 +230,11 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
           numeroActo: dto.numeroActo.trim(),
           fechaActo: dto.fechaActo,
           actoDocumentoId: docActo.id,
-          informeComiteDocumentoId: docInforme?.id ?? null,
+          informeComiteDocumentoId:
+            docInforme?.id ??
+            (dto.causal === 'SIN_OFERTAS_HABILITADAS' ? (resultado?.informeDocumentoId ?? null) : null),
           ofertasRecibidas: ofertas.length,
-          resultadoContradichoId: resultado?.id ?? null,
+          resultadoContradichoId: contradicho?.id ?? null,
           estado: 'VIGENTE' as const,
           declaradaPor: acceso.userName,
         }),
@@ -246,8 +256,8 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
           ofertasRecibidas: ofertas.length,
           // Que la declaratoria se apartara del comité es lo primero que se
           // busca cuando alguien revisa el expediente.
-          seApartaDelResultado: !!resultado,
-          justificacion: resultado ? dto.justificacion?.trim() : null,
+          seApartaDelResultado: !!contradicho,
+          justificacion: contradicho ? dto.justificacion?.trim() : null,
         },
       );
     });
@@ -334,7 +344,11 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
       await em.save(declaratoria);
 
       await this.cerrarProceso(em, proceso, 'EN_CURSO');
+      // Vuelve a BORRADOR solo lo que el proceso adelanta: la 7.1.1 de una
+      // licitación que no es de obra, o lo que la modalidad excluye, sigue en
+      // NO_APLICA en vez de quedar como pendiente para siempre.
       for (const numeral of NUMERALES_ETAPA_7) {
+        if (await this.motivoNoAplica(em, proceso, numeral)) continue;
         await this.marcarActividad(em, procesoId, numeral, false, acceso);
       }
 

@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { FlujoService } from '../flujo/flujo.service';
+import { AprobacionGuardada, LaHaceGuardada } from '../../flujo/lectura';
+
+/** Quien guarda cuando el llamador no lo dice (pruebas, siembras). */
+const SISTEMA = { userName: 'Sistema', userId: '', roles: [] as string[] };
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import {
@@ -24,6 +29,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   GuardarAprobacionDto,
+  GuardarLaHaceDto,
   GuardarFirmaDto,
   ActualizarCampoDto,
   CrearCampoDto,
@@ -39,6 +45,7 @@ import {
   reglasAplicables,
 } from './evaluador-reglas';
 import { descripcion, proyectarFormulario } from './evaluador-condiciones';
+import { excluidasPorElProceso } from './aplicabilidad';
 
 /**
  * En qué queda una actividad cuando el proceso cambia de modalidad.
@@ -76,7 +83,11 @@ function sinDatos(datos: Record<string, any> | null | undefined): boolean {
  */
 @Injectable()
 export class ConfiguracionService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    /** Quién hace y quién aprueba viven en las versiones del flujo (111). */
+    private readonly flujo: FlujoService,
+  ) {}
 
   // ------------------------------------------------------------ catálogo ---
 
@@ -313,7 +324,10 @@ export class ConfiguracionService {
       order: { etapa: 'ASC', orden: 'ASC' },
     });
     const excluidas = await em.find(ActividadExcluida, { where: { modalidad } });
-    const noAplica = new Set(excluidas.map((e) => e.numeral));
+    const noAplica = new Set([
+      ...excluidas.map((e) => e.numeral),
+      ...(await excluidasPorElProceso(em, procesoId)).keys(),
+    ]);
 
     const existentes = await em.find(ProcesoActividad, { where: { procesoId } });
     const yaCreadas = new Set(existentes.map((a) => a.numeral));
@@ -345,9 +359,12 @@ export class ConfiguracionService {
     const activas = new Set(
       (await em.find(Actividad, { where: { activa: true } })).map((a) => a.numeral),
     );
-    const excluidas = new Set(
-      (await em.find(ActividadExcluida, { where: { modalidad } })).map((e) => e.numeral),
-    );
+    // Lo que excluye la modalidad y lo que excluye el propio proceso (la 7.1.1
+    // fuera de obra pública): las dos cosas cambian desde la 3.1.
+    const excluidas = new Set([
+      ...(await em.find(ActividadExcluida, { where: { modalidad } })).map((e) => e.numeral),
+      ...(await excluidasPorElProceso(em, procesoId)).keys(),
+    ]);
 
     const propias = await em.find(ProcesoActividad, { where: { procesoId } });
     const cambiadas: string[] = [];
@@ -794,110 +811,156 @@ export class ConfiguracionService {
   /**
    * Si la actividad requiere aprobación y quién la da (EFDS-1183).
    *
-   * Devuelve los aprobadores con su nombre legible y no solo el código: la
-   * pantalla los pinta y no debería tener que resolver un `DIRECTOR_CONTRATACION`
-   * a «Director de Contratación» por su cuenta.
+   * Sale de la versión del flujo que se está editando —el borrador si lo hay,
+   * si no la activa— (111). Con modalidad, lo que rige en ella y si lo hereda
+   * de la general. Los aprobadores van con su nombre legible: la pantalla no
+   * debería resolver un `DIRECTOR_CONTRATACION` por su cuenta.
    */
-  async aprobacionDe(numeral: string) {
-    const regla = await this.dataSource.getRepository(ReglaActividad).findOne({
-      where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
-    });
+  async aprobacionDe(numeral: string, modalidad: string | null = null) {
+    const { aprobacion, propiaDeLaModalidad, editando } = await this.flujo.asignacion(numeral, modalidad);
+    const base = { editando, heredada: !!modalidad && !propiaDeLaModalidad.aprobacion };
 
-    if (!regla) return { requiereAprobacion: false, aprobadores: [] };
+    if (aprobacion.tipo === 'NINGUNA') return { ...base, requiereAprobacion: false, aprobadores: [], cadena: null };
 
-    const config = (regla.config ?? {}) as Record<string, unknown>;
-    const codigos = Array.isArray(config.roles) ? (config.roles as string[]) : [];
-    const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
+    if (aprobacion.tipo === 'CADENA') {
+      const [plantilla] = await this.dataSource.query(
+        `SELECT id, nombre, activa, jsonb_array_length(escalones) AS escalones
+           FROM hiring.cadenas_aprobacion WHERE id::text = $1`,
+        [aprobacion.cadenaId],
+      );
+      return {
+        ...base,
+        requiereAprobacion: true,
+        aprobadores: [],
+        cadena: plantilla
+          ? { id: plantilla.id, nombre: plantilla.nombre, escalones: Number(plantilla.escalones), activa: plantilla.activa }
+          : { id: aprobacion.cadenaId, nombre: 'Cadena que ya no existe', escalones: 0, activa: false },
+      };
+    }
 
+    const codigos = aprobacion.roles ?? [];
+    const personas = aprobacion.personas ?? [];
+    const puestos = aprobacion.puestos ?? [];
     const nombres: { code: string; name: string }[] = codigos.length
-      ? await this.dataSource.query(
-          `SELECT code, name FROM auth.role WHERE code = ANY($1::text[])`,
-          [codigos],
-        )
+      ? await this.dataSource.query(`SELECT code, name FROM auth.role WHERE code = ANY($1::text[])`, [codigos])
       : [];
-
-    // La pantalla listaba el identificador de la persona, que no dice nada:
-    // quien administra no puede comprobar a quién designó.
     const quienes: { id: string; nombre: string }[] = personas.length
       ? await this.dataSource.query(
-          `SELECT p.id_person AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
-             FROM auth.personas p
-            WHERE p.id_person = ANY($1::uuid[])`,
+          `SELECT p.id_person::text AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
+             FROM auth.personas p WHERE p.id_person::text = ANY($1::text[])`,
           [personas],
+        )
+      : [];
+    const nombresDePuestos: { id: string; nombre: string; activo: boolean }[] = puestos.length
+      ? await this.dataSource.query(
+          `SELECT id::text AS id, nombre, activo FROM hiring.puestos_proceso WHERE id::text = ANY($1::text[])`,
+          [puestos],
         )
       : [];
 
     return {
+      ...base,
       requiereAprobacion: true,
+      cadena: null,
       aprobadores: [
-        ...codigos.map((code) => ({
-          clase: 'rol' as const,
-          id: code,
-          // Si el rol se borró después de configurarlo, se muestra su código en
-          // vez de nada: quien administra necesita ver que ahí hay algo roto.
-          nombre: nombres.find((n) => n.code === code)?.name ?? code,
-        })),
-        ...personas.map((id) => ({
-          clase: 'persona' as const,
-          id,
-          nombre: quienes.find((q) => q.id === id)?.nombre ?? id,
-        })),
+        // Si el rol se borró después de configurarlo, se muestra su código en
+        // vez de nada: quien administra necesita ver que ahí hay algo roto.
+        ...codigos.map((code) => ({ clase: 'rol' as const, id: code, nombre: nombres.find((n) => n.code === code)?.name ?? code })),
+        ...personas.map((id) => ({ clase: 'persona' as const, id, nombre: quienes.find((q) => q.id === id)?.nombre ?? id })),
+        ...puestos.map((id) => {
+          const puesto = nombresDePuestos.find((x) => x.id === id);
+          return {
+            clase: 'puesto' as const,
+            id,
+            nombre: puesto ? `${puesto.nombre}${puesto.activo ? '' : ' (archivado)'}` : 'Puesto que ya no existe',
+          };
+        }),
       ],
     };
   }
 
   /**
-   * Fija quién aprueba la actividad, o retira la exigencia.
-   *
-   * La regla anterior se deroga con `vigenteHasta` en vez de borrarse: un
-   * proceso aprobado en marzo debe seguir auditándose con la regla de marzo, y
-   * borrar el registro haría que la trazabilidad apuntara a algo que ya no
-   * existe.
+   * Fija quién aprueba la actividad, o retira la exigencia, en el borrador
+   * del flujo (111). Rige cuando se active la versión; los procesos en curso
+   * siguen con la suya. Con `usarGeneral`, la modalidad vuelve a heredar.
    */
-  /*
-   * El estudio previo se configura como las demás.
-   *
-   * Aquí se rechazaba la 3.1: su ciclo estaba escrito en el código —el envío
-   * la dejaba en revisión siempre— y una segunda aprobación habría creado dos
-   * trámites peleándose por la misma columna de estado.
-   *
-   * Ya no: el envío consulta esta configuración, igual que las otras treinta y
-   * siete actividades. Sin regla, el estudio previo se cierra al enviarlo; con
-   * regla, entra en revisión. El trámite es uno solo, así que el bloqueo
-   * protegía de un problema que ya no existe e impedía justo lo que la
-   * pantalla ofrece.
-   */
-  async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto) {
-
-    return this.dataSource.transaction(async (em) => {
-      const repo = em.getRepository(ReglaActividad);
-
-      const vigente = await repo.findOne({
-        where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
-      });
-
-      if (vigente) {
-        vigente.vigenteHasta = new Date();
-        await repo.save(vigente);
-      }
-
-      if (!dto.requiereAprobacion) {
-        return { requiereAprobacion: false, aprobadores: [] };
-      }
-
-      await repo.save(
-        repo.create({
-          numeral,
-          modalidad: null,
-          tipo: 'EXIGE_APROBACION',
-          config: { roles: dto.roles ?? [], personas: dto.personas ?? [] },
-          mensaje: 'Esta actividad requiere aprobación antes de darse por terminada',
-          orden: 100,
-        } as Partial<ReglaActividad>),
+  async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto, acceso?: { userName: string; userId: string; roles: string[] }) {
+    const modalidad = dto.modalidad || null;
+    const aprobacion: AprobacionGuardada | null =
+      modalidad && dto.usarGeneral
+        ? null
+        : !dto.requiereAprobacion
+          ? { tipo: 'NINGUNA' }
+          : dto.cadenaId
+            ? { tipo: 'CADENA', cadenaId: dto.cadenaId }
+            : { tipo: 'ESCALON', roles: dto.roles ?? [], personas: dto.personas ?? [], puestos: dto.puestos ?? [] };
+    if (aprobacion?.tipo === 'ESCALON' && aprobacion.puestos.length) {
+      const activos: { id: string }[] = await this.dataSource.query(
+        `SELECT id::text AS id FROM hiring.puestos_proceso WHERE activo AND id::text = ANY($1::text[])`,
+        [aprobacion.puestos],
       );
+      if (activos.length !== new Set(aprobacion.puestos).size) {
+        throw new BadRequestException('Alguno de los puestos elegidos no existe o está archivado');
+      }
+    }
+    await this.flujo.guardarAsignacion(numeral, modalidad, { aprobacion }, acceso ?? SISTEMA);
+    return this.aprobacionDe(numeral, modalidad);
+  }
 
-      return this.aprobacionDe(numeral);
-    });
+  // --------------------------------------------- quién hace la actividad ---
+
+  /**
+   * Quién hace la actividad (109): un puesto del proceso, unas personas o,
+   * sin regla, quien tenga el permiso. De la versión que se está editando
+   * (111); con modalidad, si lo hereda de la general.
+   */
+  async laHaceDe(numeral: string, modalidad: string | null = null) {
+    const { laHace, propiaDeLaModalidad, editando } = await this.flujo.asignacion(numeral, modalidad);
+    const base = { editando, heredada: !!modalidad && !propiaDeLaModalidad.laHace };
+    if (laHace.tipo === 'PUESTO') {
+      const [puesto] = await this.dataSource.query(
+        `SELECT id::text AS id, nombre, activo FROM hiring.puestos_proceso WHERE id::text = $1`,
+        [laHace.puestoId],
+      );
+      return {
+        ...base,
+        tipo: 'PUESTO' as const,
+        puesto: puesto
+          ? { id: puesto.id, nombre: puesto.nombre, activo: puesto.activo }
+          : { id: laHace.puestoId, nombre: 'Puesto que ya no existe', activo: false },
+        personas: [],
+      };
+    }
+    if (laHace.tipo === 'PERSONAS' && laHace.personas.length) {
+      const quienes: { id: string; nombre: string }[] = await this.dataSource.query(
+        `SELECT p.id_person::text AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
+           FROM auth.personas p WHERE p.id_person::text = ANY($1::text[])`,
+        [laHace.personas],
+      );
+      return {
+        ...base,
+        tipo: 'PERSONAS' as const,
+        puesto: null,
+        personas: laHace.personas.map((id) => ({ id, nombre: quienes.find((q) => q.id === id)?.nombre ?? id })),
+      };
+    }
+    return { ...base, tipo: 'PERMISO' as const, puesto: null, personas: [] };
+  }
+
+  /** Cambia quién hace la actividad, en el borrador del flujo (111). */
+  async guardarLaHace(numeral: string, dto: GuardarLaHaceDto, acceso?: { userName: string; userId: string; roles: string[] }) {
+    const modalidad = dto.modalidad || null;
+    const personas = [...new Set((dto.personas ?? []).map((x) => x.trim()).filter(Boolean))];
+    const laHace: LaHaceGuardada | null =
+      modalidad && dto.usarGeneral
+        ? null
+        : dto.puestoId
+          ? { tipo: 'PUESTO', puestoId: dto.puestoId }
+          : personas.length
+            ? { tipo: 'PERSONAS', personas }
+            : { tipo: 'PERMISO' };
+    await this.flujo.guardarAsignacion(numeral, modalidad, { laHace }, acceso ?? SISTEMA);
+    return this.laHaceDe(numeral, modalidad);
   }
 
   // ---------------------------------------------------- firma de la actividad ---

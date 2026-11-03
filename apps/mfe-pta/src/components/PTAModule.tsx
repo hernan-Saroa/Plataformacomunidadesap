@@ -47,6 +47,7 @@ export function PTAModule({
 
   return (
     <AuthProvider
+      syncPtaRoles
       userPersonId={userPersonId}
       userEmail={userEmail}
       userName={userName}

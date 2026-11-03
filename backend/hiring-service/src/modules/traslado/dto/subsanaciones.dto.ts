@@ -9,7 +9,6 @@ import {
   IsString,
   IsUUID,
   MaxLength,
-  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -34,18 +33,6 @@ export class RegistrarSubsanacionDto {
   })
   tipo: TipoSubsanacion;
 
-  @ApiProperty({ description: 'Quién la presenta, tal como firma el escrito' })
-  @IsString()
-  @IsNotEmpty({ message: 'Di quién presenta el escrito' })
-  @MaxLength(200)
-  presentadoPor: string;
-
-  @ApiPropertyOptional({ description: 'NIT o cédula de quien presenta' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  identificacion?: string;
-
   /**
    * Cuándo lo presentó el oferente, no cuándo se registra.
    *
@@ -61,12 +48,6 @@ export class RegistrarSubsanacionDto {
   @IsNotEmpty({ message: 'Ponle un asunto: es lo que se lee en la lista' })
   @MaxLength(300)
   asunto: string;
-
-  @ApiProperty({ description: 'Lo que el oferente dice' })
-  @IsString()
-  @IsNotEmpty({ message: 'Transcribe lo que presentó el oferente' })
-  @MinLength(10, { message: 'El contenido tiene que decir qué presentó el oferente' })
-  contenido: string;
 }
 
 /**
@@ -97,7 +78,6 @@ export class ResponderSubsanacionDto {
   @ApiProperty({ description: 'La respuesta de la entidad' })
   @IsString()
   @IsNotEmpty({ message: 'Escribe la respuesta: es la que se le notifica al oferente' })
-  @MinLength(10, { message: 'La respuesta tiene que sustentarse, no basta con aceptar o negar' })
   respuesta: string;
 
   /** Solo si la 6.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */

@@ -35,7 +35,11 @@ export const NUMERALES_CON_REGISTRO = [
   // la 3.1; la 3.6 es elegir la causal del catálogo
   // de esa modalidad; y la 3.7 es lo que el comité decidió, que son tres
   // desenlaces y no un adjunto.
-  // Etapa 5 · participación previa a la apertura
+  // Etapa 5 · el cronograma y la publicación en la web de la ESAP (112), que
+  // se cumplen adjuntando el soporte, y la participación de la menor cuantía
+  // y del concurso con precalificación
+  '5.2',
+  '5.4',
   '5.9',
   '5.10',
   '5.11',

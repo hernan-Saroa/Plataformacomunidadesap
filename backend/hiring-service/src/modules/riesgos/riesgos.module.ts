@@ -9,6 +9,7 @@ import {
   AudienciaRiesgosConfig,
 } from '../../entities/audiencia-riesgos.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
+import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -24,6 +25,7 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
       AudienciaRiesgos,
       AudienciaRiesgosConfig,
       ActividadExcluida,
+      AperturaProceso,
       Modalidad,
       Proceso,
       ProcesoActividad,
@@ -34,8 +36,8 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
   ],
   controllers: [RiesgosController],
   providers: [RiesgosService],
-  // Lo consume la apertura (EFDS-1402): sin la audiencia obligatoria celebrada
-  // el proceso no puede abrirse.
+  // Lo consume la recepción de ofertas: desde la 112 la audiencia va después de
+  // la apertura, y sin la obligatoria celebrada no se cierran las ofertas.
   exports: [RiesgosService],
 })
 export class RiesgosModule {}

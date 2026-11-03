@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AprobacionController } from './aprobacion.controller';
 import { AprobacionService } from './aprobacion.service';
 import { CdpModule } from '../cdp/cdp.module';
+import { CadenaAprobacionModule } from '../cadena-aprobacion/cadena-aprobacion.module';
 import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 import { DocumentosActividadModule } from '../documentos-actividad/documentos-actividad.module';
 
@@ -18,7 +19,7 @@ import { DocumentosActividadModule } from '../documentos-actividad/documentos-ac
   // CDP: la aprobación configurable es el tercero de los caminos por los que
   // una actividad de esa etapa queda cerrada.
   // El catálogo único dice qué documentos le faltan a la actividad (EFDS-2066).
-  imports: [CdpModule, CierreActividadModule, DocumentosActividadModule],
+  imports: [CdpModule, CierreActividadModule, DocumentosActividadModule, CadenaAprobacionModule],
   controllers: [AprobacionController],
   providers: [AprobacionService],
   exports: [AprobacionService],

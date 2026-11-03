@@ -74,12 +74,7 @@ export function LecturaEstudioPrevio({ estudio, procesoId }: { estudio: EstudioP
       {/* La modalidad, que se ratifica al aprobar el estudio previo: es contra
           ella que se lee la lista de documentos. */}
       <div className="px-4 pt-3">
-        <ModalidadDelEstudioPrevio
-          procesoId={procesoId}
-          proceso={estudio.proceso}
-          puedeCambiar={false}
-          onCambiada={() => undefined}
-        />
+        <ModalidadDelEstudioPrevio proceso={estudio.proceso} />
       </div>
       <div className="px-4 pt-3 flex gap-1 border-b border-gray-200">
         {(

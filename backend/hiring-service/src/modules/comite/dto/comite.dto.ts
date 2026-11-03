@@ -39,10 +39,14 @@ export class MiembroComiteDto {
 }
 
 export class DesignarComiteDto {
-  /** La del memorando, no la del registro: es cuando la entidad designó. */
-  @ApiProperty({ description: 'Fecha del memorando de designación (YYYY-MM-DD)' })
+  /**
+   * La del memorando, no la del registro: es cuando la entidad designó. Solo
+   * si el memorando viene con la designación; si llega después, trae la suya.
+   */
+  @ApiPropertyOptional({ description: 'Fecha del memorando de designación (YYYY-MM-DD)' })
+  @IsOptional()
   @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
-  fechaDesignacion: string;
+  fechaDesignacion?: string;
 
   /**
    * Llega como texto JSON dentro del multipart, porque la petición lleva
@@ -81,6 +85,12 @@ export class DesignarComiteDto {
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
+}
+
+export class CargarMemorandoDto {
+  @ApiProperty({ description: 'Fecha del memorando de designación (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
+  fechaDesignacion: string;
 }
 
 export class RevocarComiteDto {

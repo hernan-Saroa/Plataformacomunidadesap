@@ -5,24 +5,32 @@ import userEvent from '@testing-library/user-event';
 
 import { PanelEvaluacion } from './PanelEvaluacion';
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoEvaluacion, ResultadoEvaluacion } from '../../types';
+import { EstadoDeclaratoriaDesierta, EstadoEvaluacion, ResultadoEvaluacion } from '../../types';
 
 vi.mock('../../services/contratacionService', () => ({
   contratacionService: {
     evaluacion: vi.fn(),
+    declaratoriaDesierta: vi.fn(),
     registrarResultadoEvaluacion: vi.fn(),
-    rectificarResultadoEvaluacion: vi.fn(),
+    actualizarInformeEvaluacion: vi.fn(),
     cargarEvidenciaEvaluacion: vi.fn(),
     urlDescarga: (url: string) => `https://gateway${url}`,
     firmaDeActividad: vi.fn().mockResolvedValue({ requiereFirma: false }),
   },
 }));
 
+// La declaratoria tiene sus propias pruebas: aquí basta con saber que se abre.
+vi.mock('../adjudicacion/PanelDesierta', () => ({
+  PanelDesierta: () => <div>Formulario de la declaratoria desierta</div>,
+}));
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const servicio = contratacionService as unknown as {
   evaluacion: ReturnType<typeof vi.fn>;
+  declaratoriaDesierta: ReturnType<typeof vi.fn>;
   registrarResultadoEvaluacion: ReturnType<typeof vi.fn>;
+  actualizarInformeEvaluacion: ReturnType<typeof vi.fn>;
 };
 
 const OFERTAS = [
@@ -42,21 +50,37 @@ const OFERTAS = [
   },
 ];
 
+/** Un informe preliminar como los de la 120: sin ganadora ni puntajes. */
 const resultado = (parcial: Partial<ResultadoEvaluacion> = {}): ResultadoEvaluacion => ({
   id: 'r-1',
   estado: 'VIGENTE',
-  ganadora: OFERTAS[1],
-  puntajeObtenido: 92,
-  puntajeMaximo: 100,
-  valorEvaluado: 48_000_000,
-  justificacion: 'Cumplió los habilitantes y obtuvo el mayor puntaje técnico del comparativo.',
-  informe: { id: 'd-1', nombre: 'informe-evaluacion.pdf', archivoUrl: '/documentos/d-1' },
+  ganadora: null,
+  puntajeObtenido: null,
+  puntajeMaximo: null,
+  valorEvaluado: null,
+  justificacion: null,
+  informe: { id: 'd-1', nombre: 'Evaluación jurídica', archivoUrl: '/documentos/d-1' },
   registradoPor: 'Evaluadora jurídica',
   registradoAt: '2026-08-19T15:00:00.000Z',
   rectificadoPor: null,
   rectificadoAt: null,
   motivoRectificacion: null,
-  evidencias: [],
+  evidencias: [
+    {
+      id: 'e-1',
+      descripcion: 'Evaluación jurídica',
+      cargadaPor: 'Evaluadora jurídica',
+      cargadaAt: '2026-08-19T15:00:00.000Z',
+      archivoUrl: '/documentos/d-1',
+    },
+    {
+      id: 'e-2',
+      descripcion: 'Evaluación financiera y económica',
+      cargadaPor: 'Evaluadora jurídica',
+      cargadaAt: '2026-08-19T15:00:00.000Z',
+      archivoUrl: '/documentos/d-2',
+    },
+  ],
   ...parcial,
 });
 
@@ -70,124 +94,187 @@ const estado = (parcial: Partial<EstadoEvaluacion> = {}): EstadoEvaluacion => ({
   misDimensiones: [],
   esMiembroDelComite: false,
   puedeRegistrar: false,
+  puedeActualizar: false,
   ofertas: OFERTAS,
   resultado: null,
   rectificados: [],
   ...parcial,
 });
 
+const desierta = (parcial: Partial<EstadoDeclaratoriaDesierta> = {}): EstadoDeclaratoriaDesierta => ({
+  aplica: true,
+  motivoNoAplica: null,
+  recepcionCerrada: true,
+  ofertasRecibidas: 2,
+  causalesPosibles: ['SIN_OFERTAS_HABILITADAS'],
+  adjudicado: false,
+  ganadoraDelComite: null,
+  informePreliminarCargado: false,
+  puedeDeclarar: true,
+  declaratoria: null,
+  revocadas: [],
+  ...parcial,
+});
+
+const miembro = {
+  misDimensiones: ['JURIDICO' as const],
+  esMiembroDelComite: true,
+};
+
 /**
- * La evaluación se hace por fuera (EFDS-1157): esta pantalla recibe la decisión
- * del comité, no la produce. Lo que no puede hacer es dejar a alguien mirando
- * un panel que no explica qué falta para registrar, quién puede hacerlo, ni de
- * dónde salió el resultado que se ve.
+ * La evaluación de la 6.3 es preliminar (EFDS-1157): el comité carga su
+ * informe consolidado, en uno o varios archivos, sin puntajes ni ganadora. La
+ * pantalla tiene que dejarlo cargar, volver a cargar con historial y, si no
+ * hubo ofertas o ninguna cumple, declarar desierto el proceso.
  */
 describe('PanelEvaluacion · actividad 6.3', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    servicio.declaratoriaDesierta.mockResolvedValue(desierta());
   });
 
-  it('muestra la ganadora con su puntaje, su justificación y el informe', async () => {
-    servicio.evaluacion.mockResolvedValue(estado({ resultado: resultado() }));
-    render(<PanelEvaluacion procesoId="p1" />);
+  it('no pide ganadora ni puntajes al cargar el informe (QA, EFDS-1157)', async () => {
+    servicio.evaluacion.mockResolvedValue(estado({ ...miembro, puedeRegistrar: true }));
+    render(<PanelEvaluacion procesoId="p-1" />);
 
-    expect(await screen.findByText(/Ganadora: Completa SAS/i)).toBeInTheDocument();
-    expect(screen.getByText(/Puntaje 92 de 100/i)).toBeInTheDocument();
-    expect(screen.getByText(/mayor puntaje técnico del comparativo/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /informe-evaluacion.pdf/i })).toHaveAttribute(
-      'href',
-      'https://gateway/documentos/d-1',
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Cargar el informe de evaluación preliminar/i }),
     );
+
+    expect(screen.queryByLabelText(/Oferta ganadora/i)).toBeNull();
+    expect(screen.queryByLabelText(/Puntaje/i)).toBeNull();
+    expect(screen.getByLabelText('Archivos del informe')).toHaveAttribute('multiple');
   });
 
-  it('dice que la modalidad no puntúa en vez de mostrar un puntaje vacío', async () => {
-    servicio.evaluacion.mockResolvedValue(
-      estado({ resultado: resultado({ puntajeObtenido: null, puntajeMaximo: null }) }),
+  it('carga el informe en varios archivos, cada uno con su dimensión', async () => {
+    const usuario = userEvent.setup();
+    servicio.evaluacion.mockResolvedValue(estado({ ...miembro, puedeRegistrar: true }));
+    servicio.registrarResultadoEvaluacion.mockResolvedValue(estado({ resultado: resultado() }));
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    await usuario.click(
+      await screen.findByRole('button', { name: /Cargar el informe de evaluación preliminar/i }),
     );
-    render(<PanelEvaluacion procesoId="p1" />);
+    const cargar = screen.getByRole('button', { name: 'Cargar informe' });
+    expect(cargar).toBeDisabled();
 
-    expect(await screen.findByText(/La modalidad no puntúa/i)).toBeInTheDocument();
-  });
-
-  it('explica que falta el comité en vez de dejar el panel vacío', async () => {
-    servicio.evaluacion.mockResolvedValue(estado({ comiteDesignado: false }));
-    render(<PanelEvaluacion procesoId="p1" />);
-
-    expect(await screen.findByText(/Pendiente del paso 6.2/i)).toBeInTheDocument();
-  });
-
-  it('quien no integra el comité consulta pero no registra', async () => {
-    servicio.evaluacion.mockResolvedValue(estado());
-    render(<PanelEvaluacion procesoId="p1" />);
-
-    expect(await screen.findByText('Barata SAS', { exact: false })).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /Registrar el resultado/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/no la registras/i)).toBeInTheDocument();
-  });
-
-  it('el miembro del comité registra el resultado con el informe adjunto', async () => {
-    servicio.evaluacion.mockResolvedValue(
-      estado({ esMiembroDelComite: true, misDimensiones: ['JURIDICO'], puedeRegistrar: true }),
-    );
-    servicio.registrarResultadoEvaluacion.mockResolvedValue(
-      estado({ esMiembroDelComite: true, misDimensiones: ['JURIDICO'], resultado: resultado() }),
-    );
-
-    render(<PanelEvaluacion procesoId="p1" />);
-    await userEvent.click(await screen.findByRole('button', { name: /Registrar el resultado/i }));
-
-    await userEvent.selectOptions(screen.getByLabelText(/Oferta ganadora/i), 'of-2');
-    await userEvent.type(
-      screen.getByLabelText(/Por qué esa oferta/i),
-      'Obtuvo el mayor puntaje del cuadro comparativo del comité.',
-    );
-    await userEvent.upload(
-      screen.getByLabelText(/Informe de evaluación del comité/i),
-      new File(['x'], 'informe.pdf', { type: 'application/pdf' }),
-    );
-    await userEvent.click(screen.getByRole('button', { name: /^Registrar resultado$/i }));
+    await usuario.upload(screen.getByLabelText('Archivos del informe'), [
+      new File(['j'], 'juridico.pdf', { type: 'application/pdf' }),
+      new File(['f'], 'financiero.xlsx'),
+    ]);
+    await usuario.selectOptions(screen.getByLabelText('De qué es juridico.pdf'), 'JURIDICO');
+    await usuario.selectOptions(screen.getByLabelText('De qué es financiero.xlsx'), 'FINANCIERO');
+    await usuario.click(cargar);
 
     await waitFor(() => expect(servicio.registrarResultadoEvaluacion).toHaveBeenCalled());
-    const [, datos] = servicio.registrarResultadoEvaluacion.mock.calls[0];
-    expect(datos.oferenteId).toBe('of-2');
-    // En blanco no es cero: sin puntaje digitado no se reporta ninguno.
-    expect(datos.puntajeObtenido).toBeUndefined();
-    expect(datos.puntajeMaximo).toBeUndefined();
+    const [, datos, archivos] = servicio.registrarResultadoEvaluacion.mock.calls[0];
+    expect(datos.dimensiones).toEqual(['JURIDICO', 'FINANCIERO']);
+    expect(archivos.map((a: File) => a.name)).toEqual(['juridico.pdf', 'financiero.xlsx']);
   });
 
-  it('los resultados rectificados quedan a la vista con su motivo', async () => {
+  it('muestra el informe vigente con todos sus archivos', async () => {
+    servicio.evaluacion.mockResolvedValue(estado({ resultado: resultado() }));
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    expect(await screen.findByText('Informe de evaluación preliminar')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Evaluación jurídica/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Evaluación financiera y económica/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Ganadora/)).toBeNull();
+  });
+
+  it('volver a cargar el informe pide motivo', async () => {
+    const usuario = userEvent.setup();
+    servicio.evaluacion.mockResolvedValue(
+      estado({ ...miembro, puedeActualizar: true, resultado: resultado() }),
+    );
+    servicio.actualizarInformeEvaluacion.mockResolvedValue(estado({ resultado: resultado() }));
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    await usuario.click(await screen.findByRole('button', { name: /Volver a cargar el informe/i }));
+    await usuario.upload(
+      screen.getByLabelText('Archivos del informe'),
+      new File(['c'], 'informe-corregido.pdf', { type: 'application/pdf' }),
+    );
+    const enviar = screen.getByRole('button', { name: 'Volver a cargar' });
+    expect(enviar).toBeDisabled();
+
+    await usuario.type(
+      screen.getByLabelText(/Por qué se vuelve a cargar/i),
+      'Faltaba la verificación financiera',
+    );
+    await usuario.click(enviar);
+
+    await waitFor(() => expect(servicio.actualizarInformeEvaluacion).toHaveBeenCalled());
+    expect(servicio.actualizarInformeEvaluacion.mock.calls[0][1].motivo).toBe(
+      'Faltaba la verificación financiera',
+    );
+  });
+
+  it('las versiones anteriores quedan a la vista con quién, cuándo y por qué', async () => {
     servicio.evaluacion.mockResolvedValue(
       estado({
+        resultado: resultado({ id: 'r-2' }),
         rectificados: [
           resultado({
-            id: 'r-0',
             estado: 'RECTIFICADO',
-            ganadora: OFERTAS[0],
             rectificadoPor: 'Evaluador técnico',
-            rectificadoAt: '2026-08-18T15:00:00.000Z',
-            motivoRectificacion: 'El cuadro comparativo traía un error aritmético',
+            rectificadoAt: '2026-08-20T15:00:00.000Z',
+            motivoRectificacion: 'Faltaba la verificación financiera',
           }),
         ],
       }),
     );
-    render(<PanelEvaluacion procesoId="p1" />);
+    render(<PanelEvaluacion procesoId="p-1" />);
 
-    expect(await screen.findByText('Resultados rectificados')).toBeInTheDocument();
-    expect(screen.getByText(/error aritmético/i)).toBeInTheDocument();
+    expect(await screen.findByText('Versiones anteriores del informe')).toBeInTheDocument();
+    expect(screen.getByText(/Reemplazado por Evaluador técnico/)).toBeInTheDocument();
+    expect(screen.getByText(/Faltaba la verificación financiera/)).toBeInTheDocument();
+  });
+
+  it('desde la 6.3 se declara desierto el proceso (QA, EFDS-1157)', async () => {
+    servicio.evaluacion.mockResolvedValue(estado());
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Declarar desierto el proceso/i }),
+    );
+
+    expect(screen.getByText('Formulario de la declaratoria desierta')).toBeInTheDocument();
+  });
+
+  it('no ofrece declarar desierto con el proceso adjudicado', async () => {
+    servicio.evaluacion.mockResolvedValue(estado());
+    servicio.declaratoriaDesierta.mockResolvedValue(
+      desierta({ adjudicado: true, puedeDeclarar: false }),
+    );
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    await screen.findByText('Evaluación de las ofertas');
+    expect(screen.queryByRole('button', { name: /Declarar desierto/i })).toBeNull();
+  });
+
+  it('explica que falta el comité en vez de dejar el panel vacío', async () => {
+    servicio.evaluacion.mockResolvedValue(estado({ comiteDesignado: false }));
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    expect(await screen.findByText(/No hay comité evaluador designado/)).toBeInTheDocument();
+  });
+
+  it('quien no integra el comité consulta pero no carga', async () => {
+    servicio.evaluacion.mockResolvedValue(estado());
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    expect(await screen.findByText(/no cargas el informe/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cargar el informe/i })).toBeNull();
   });
 
   it('no muestra las ofertas cuando la modalidad no evalúa', async () => {
     servicio.evaluacion.mockResolvedValue(
-      estado({
-        aplica: false,
-        motivoNoAplica: 'La contratación directa no evalúa ofertas en competencia',
-      }),
+      estado({ aplica: false, motivoNoAplica: 'La contratación directa no evalúa ofertas.' }),
     );
-    render(<PanelEvaluacion procesoId="p1" />);
+    render(<PanelEvaluacion procesoId="p-1" />);
 
-    expect(await screen.findByText(/no evalúa ofertas en competencia/i)).toBeInTheDocument();
-    expect(screen.queryByText('Barata SAS', { exact: false })).not.toBeInTheDocument();
+    expect(await screen.findByText(/La contratación directa no evalúa ofertas/)).toBeInTheDocument();
+    expect(screen.queryByText('Barata SAS')).toBeNull();
   });
 });

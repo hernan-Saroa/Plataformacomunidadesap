@@ -35,7 +35,8 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   puedeElegir: false,
   motivoNoElige: null,
   motivoNoDecide: null,
-  abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co' },
+  responsable: { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co' },
+  puesto: 'Abogado',
   ...cambios,
 });
 
@@ -86,7 +87,7 @@ describe('PanelCausal · elegir la causal', () => {
   it('a quien no le toca le dice de quién es', async () => {
     pintar(estado({ motivoNoDecide: 'NO_ES_TUYO' }));
 
-    expect(await screen.findByText(/La elige Andrés Rojas/)).toBeInTheDocument();
+    expect(await screen.findByText(/La elige Andrés Rojas \(Abogado\)/)).toBeInTheDocument();
   });
 
   it('el abogado elige de la lista de su modalidad y solo de esa', async () => {

@@ -5,6 +5,26 @@ import { ResultadoInforme } from './informe-evaluacion.entity';
 export type EstadoInformeDefinitivo = 'BORRADOR' | 'PUBLICADO' | 'ANULADO';
 
 /**
+ * Una versión del informe definitivo (119, EFDS-1159).
+ *
+ * El informe cambia después de la audiencia y se actualiza sin anularlo: cada
+ * versión queda con quién la generó, cuándo, por qué y, si llegó a publicarse,
+ * dónde. La última es la vigente.
+ */
+export interface VersionDefinitivo {
+  numero: number;
+  documentoId: string | null;
+  generadoAt: string;
+  generadoPor: string | null;
+  /** Nulo en la primera: actualizar exige decir por qué. */
+  motivo: string | null;
+  evidenciaDocumentoId: string | null;
+  enlacePublicacion: string | null;
+  publicadoAt: string | null;
+  publicadoPor: string | null;
+}
+
+/**
  * Qué cambió entre el informe preliminar y el definitivo.
  *
  * Se guarda resuelto y no se deduce comparando dos jsonb a mano: es la pregunta
@@ -74,6 +94,14 @@ export class InformeDefinitivo {
   /** Soporte de la publicación: no hay integración con SECOP II. */
   @Column({ name: 'evidencia_documento_id', type: 'uuid', nullable: true })
   evidenciaDocumentoId: string | null;
+
+  /** Enlace de la publicación en SECOP (119). */
+  @Column({ name: 'enlace_publicacion', type: 'varchar', length: 1000, nullable: true })
+  enlacePublicacion: string | null;
+
+  /** Cada versión generada, en orden; la última es la vigente (119). */
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  versiones: VersionDefinitivo[];
 
   @Column({ name: 'generado_por', length: 200, nullable: true })
   generadoPor: string | null;

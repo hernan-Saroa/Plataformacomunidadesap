@@ -16,7 +16,7 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { ComiteService } from './comite.service';
-import { DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
+import { CargarMemorandoDto, DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -60,7 +60,7 @@ export class ComiteController {
   @ApiOperation({
     summary: 'Actividad 6.2 · Designar el comité evaluador',
     description:
-      'Con el memorando firmado y los miembros con su rol. Solo sobre una recepción ya cerrada y con oferentes.',
+      'Los miembros con su rol y, si ya está firmado, el memorando. Sin memorando el comité queda registrado y se alerta hasta que se cargue. Solo sobre una recepción ya cerrada y con oferentes.',
   })
   async designar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -68,15 +68,52 @@ export class ComiteController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
+    // Sin memorando es un caso legítimo: depende de firmas que tardan, y el
+    // proceso no se detiene por eso (EFDS-1156).
     if (!file) {
-      throw new BadRequestException(
-        'Adjunta el memorando: sin él la designación es una lista de nombres, no un comité',
-      );
+      return this.service.designar(procesoId, dto, null, null, getHiringAccess(req));
     }
 
     const ruta = join(STORAGE_PATH, file.filename);
     try {
       return await this.service.designar(
+        procesoId,
+        dto,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  @Post('memorando')
+  @Puede('decidir', '6.2')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El memorando se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Cargar el memorando de un comité ya designado',
+    description:
+      'Para el comité vigente que se registró sin memorando. Una vez cargado no se reemplaza: corregirlo es revocar y designar otro.',
+  })
+  async cargarMemorando(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: CargarMemorandoDto,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('Adjunta el memorando firmado');
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.cargarMemorando(
         procesoId,
         dto,
         file,

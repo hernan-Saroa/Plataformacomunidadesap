@@ -131,6 +131,7 @@ const definitivo = (
 const adjudicacion = (parcial: Partial<EstadoAdjudicacion> = {}): EstadoAdjudicacion => ({
   aplica: true,
   motivoNoAplica: null,
+  sinConvocatoria: false,
   informeDefinitivoPublicado: true,
   ganadoraPropuesta: { oferenteId: 'of-2', nombre: 'Completa SAS', valorEvaluado: 48_000_000 },
   puedeAdjudicar: true,
@@ -206,7 +207,7 @@ describe('PanelAdjudicacion · etapa 7', () => {
     expect(boton).toBeDisabled();
   });
 
-  it('sin informe definitivo publicado remite a la 7.3', async () => {
+  it('sin informe definitivo publicado remite a la 7.2', async () => {
     servicio.adjudicacion.mockResolvedValue(
       adjudicacion({ informeDefinitivoPublicado: false, puedeAdjudicar: false, ganadoraPropuesta: null }),
     );
@@ -286,18 +287,19 @@ describe('PanelAdjudicacion · etapa 7', () => {
     expect(screen.getByText(/Aporta certificación/)).toBeInTheDocument();
   });
 
-  it('en una modalidad sin sobre económico lo dice en vez de ofrecerlo', async () => {
+  it('en una licitación que no es de obra lo dice en vez de ofrecerlo', async () => {
     servicio.audienciaAdjudicacion.mockResolvedValue(
       audiencia({
         aplicaSobreEconomico: false,
-        motivoNoAplicaSobre: 'Aplica solo para la licitación de obra pública',
+        motivoNoAplicaSobre:
+          'Este proceso no adelanta la actividad 7.1.1: el sobre económico solo se abre en audiencia en la licitación de obra pública, y la tipología del estudio previo es «Suministro»',
       }),
     );
 
     render(<PanelAdjudicacion procesoId="p-1" />);
 
     await waitFor(() =>
-      expect(screen.getByText(/no abre sobre económico en audiencia/i)).toBeInTheDocument(),
+      expect(screen.getByText(/la tipología del estudio previo es «Suministro»/i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('button', { name: /Abrir un sobre económico/i })).not.toBeInTheDocument();
   });
@@ -353,5 +355,194 @@ describe('PanelAdjudicacion · etapa 7', () => {
     );
     expect(screen.getByText(/RES-2026-114/)).toBeInTheDocument();
     expect(screen.getByText(/Todavía sin notificar ni publicar/i)).toBeInTheDocument();
+  });
+
+  // ------------------------------------------- revisión de QA (EFDS-1159) --
+
+  it('la 7.1.1 pide la oferta económica del proveedor antes de abrir el sobre', async () => {
+    const usuario = userEvent.setup();
+    servicio.audienciaAdjudicacion.mockResolvedValue(audiencia());
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    await usuario.click(await screen.findByRole('button', { name: /Abrir un sobre económico/i }));
+    await usuario.selectOptions(screen.getByDisplayValue('¿De qué oferta es el sobre?'), 'of-1');
+    await usuario.type(screen.getByPlaceholderText('Valor que traía el sobre'), '40000000');
+
+    const abrir = screen.getByRole('button', { name: /^Abrir sobre$/ });
+    expect(abrir).toBeDisabled();
+    expect(screen.getByText(/No se pide video/i)).toBeInTheDocument();
+
+    await usuario.upload(
+      screen.getByLabelText('Oferta económica del proveedor'),
+      new File(['o'], 'oferta-economica.xlsx'),
+    );
+    expect(abrir).toBeEnabled();
+  });
+
+  it('publica el definitivo con el enlace de SECOP y su evidencia', async () => {
+    const usuario = userEvent.setup();
+    const borrador = definitivo();
+    borrador.informe = { ...borrador.informe!, estado: 'BORRADOR', publicadoAt: null };
+    servicio.informeDefinitivo.mockResolvedValue({ ...borrador, puedePublicar: true });
+    (contratacionService.publicarInformeDefinitivo as any).mockResolvedValue(definitivo());
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    const enlace = await screen.findByLabelText('Enlace de la publicación en SECOP');
+    const publicar = screen.getByRole('button', { name: /Publicar informe definitivo/i });
+
+    await usuario.type(enlace, 'en secop');
+    expect(screen.getByText(/dirección completa, con https/i)).toBeInTheDocument();
+    await usuario.clear(enlace);
+    await usuario.type(enlace, 'https://community.secop.gov.co/Public/Tendering/1');
+
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
+    await usuario.upload(inputs[inputs.length - 1], new File(['e'], 'pantallazo.png'));
+    expect(publicar).toBeEnabled();
+    await usuario.click(publicar);
+
+    await waitFor(() => expect(contratacionService.publicarInformeDefinitivo).toHaveBeenCalled());
+    expect((contratacionService.publicarInformeDefinitivo as any).mock.calls[0][1]).toBe(
+      'https://community.secop.gov.co/Public/Tendering/1',
+    );
+  });
+
+  it('actualizar el definitivo pide motivo y muestra el historial', async () => {
+    const usuario = userEvent.setup();
+    const conVersiones = definitivo({ puedeGenerar: true, actualizarPideMotivo: true });
+    conVersiones.informe = {
+      ...conVersiones.informe!,
+      versiones: [
+        {
+          numero: 1,
+          generadoAt: '2026-09-02T14:00:00.000Z',
+          generadoPor: 'Gestora',
+          motivo: null,
+          informe: { id: 'd-1', nombre: 'definitivo-v1.pdf', archivoUrl: '/documentos/d-1' },
+          evidencia: null,
+          enlacePublicacion: 'https://community.secop.gov.co/1',
+          publicadoAt: '2026-09-02T15:00:00.000Z',
+          publicadoPor: 'Gestora',
+        },
+        {
+          numero: 2,
+          generadoAt: '2026-09-03T14:00:00.000Z',
+          generadoPor: 'Gestora',
+          motivo: 'Fórmulas aplicadas a la oferta económica',
+          informe: { id: 'd-2', nombre: 'definitivo.pdf', archivoUrl: '/documentos/d-2' },
+          evidencia: null,
+          enlacePublicacion: null,
+          publicadoAt: null,
+          publicadoPor: null,
+        },
+      ],
+    };
+    servicio.informeDefinitivo.mockResolvedValue(conVersiones);
+    (contratacionService.generarInformeDefinitivo as any).mockResolvedValue(conVersiones);
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    expect(await screen.findByText('Historial de versiones')).toBeInTheDocument();
+    expect(screen.getByText(/Fórmulas aplicadas a la oferta económica/)).toBeInTheDocument();
+
+    await usuario.click(screen.getByRole('button', { name: /Actualizar informe definitivo/i }));
+    await usuario.type(
+      await screen.findByLabelText(/Motivo de la actualización/i),
+      'Llegó una observación nueva después de la audiencia',
+    );
+    await usuario.click(screen.getByRole('button', { name: /Actualizar el informe/i }));
+
+    await waitFor(() => expect(contratacionService.generarInformeDefinitivo).toHaveBeenCalled());
+    expect((contratacionService.generarInformeDefinitivo as any).mock.calls[0][2]).toBe(
+      'Llegó una observación nueva después de la audiencia',
+    );
+  });
+
+  it('avisa que el correo al adjudicatario es solo informativo', async () => {
+    const usuario = userEvent.setup();
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    await usuario.click(await screen.findByRole('button', { name: 'Adjudicar el proceso' }));
+
+    expect(screen.getByText(/correo informativo/i)).toBeInTheDocument();
+    expect(screen.getByText(/No reemplaza la notificación/i)).toBeInTheDocument();
+  });
+
+  it('el informe definitivo pide elegir la ganadora (QA, EFDS-1157)', async () => {
+    const usuario = userEvent.setup();
+    servicio.informeDefinitivo.mockResolvedValue(
+      definitivo({ informe: null, puedeGenerar: true, actualizarPideMotivo: false }),
+    );
+    servicio.adjudicacion.mockResolvedValue(
+      adjudicacion({ informeDefinitivoPublicado: false, puedeAdjudicar: false, ganadoraPropuesta: null }),
+    );
+    (contratacionService.generarInformeDefinitivo as any).mockResolvedValue(definitivo());
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    const generar = await screen.findByRole('button', { name: /Generar informe definitivo/i });
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
+    const delDefinitivo = inputs.find((i) =>
+      i.parentElement?.textContent?.includes('Adjuntar el informe definitivo'),
+    )!;
+    await usuario.upload(delDefinitivo, new File(['d'], 'definitivo.pdf'));
+    // Sin ganadora no se genera: la evaluación preliminar no la nombra.
+    expect(generar).toBeDisabled();
+
+    await usuario.selectOptions(screen.getByLabelText('Oferta ganadora del informe definitivo'), 'of-1');
+    await usuario.type(screen.getByLabelText('Valor evaluado de la ganadora'), '39500000');
+    await usuario.click(generar);
+
+    await waitFor(() => expect(contratacionService.generarInformeDefinitivo).toHaveBeenCalled());
+    expect((contratacionService.generarInformeDefinitivo as any).mock.calls[0][3]).toEqual({
+      oferenteId: 'of-1',
+      valorEvaluado: 39_500_000,
+    });
+  });
+});
+
+/**
+ * La 7.3 en contratación directa: no hay ofertas, traslado ni informe
+ * definitivo. Antes la pantalla mandaba a la 6.6 y a la 7.2, que en directa no
+ * existen, y el proceso no llegaba nunca al contrato.
+ */
+describe('PanelAdjudicacion · sin convocatoria', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.audienciaAdjudicacion.mockResolvedValue(
+      audiencia({ aplica: false, trasladoCerrado: false, audiencia: null, puedeCelebrar: false }),
+    );
+    servicio.informeDefinitivo.mockResolvedValue(definitivo({ aplica: false, informe: null }));
+    servicio.adjudicacion.mockResolvedValue(
+      adjudicacion({
+        sinConvocatoria: true,
+        informeDefinitivoPublicado: false,
+        ganadoraPropuesta: null,
+        ofertas: [],
+      }),
+    );
+    servicio.declaratoriaDesierta.mockResolvedValue(desierta());
+  });
+
+  it('no remite al traslado ni al informe definitivo', async () => {
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Adjudicar el proceso/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/El traslado del informe de evaluación sigue abierto/i)).toBeNull();
+    expect(screen.queryByText(/El informe definitivo no se ha publicado/i)).toBeNull();
+  });
+
+  it('pide al contratista en vez de la lista de ofertas', async () => {
+    const usuario = userEvent.setup();
+    render(<PanelAdjudicacion procesoId="p-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Adjudicar el proceso/i })).toBeInTheDocument(),
+    );
+    await usuario.click(screen.getByRole('button', { name: /Adjudicar el proceso/i }));
+
+    expect(screen.getByLabelText('Nombre del contratista')).toBeInTheDocument();
+    expect(screen.getByLabelText('Documento del contratista')).toBeInTheDocument();
+    expect(screen.queryByText('¿A quién se adjudica?')).toBeNull();
+    expect(await screen.findByRole('button', { name: /^Adjudicar$/i })).toBeDisabled();
   });
 });

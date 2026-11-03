@@ -12,8 +12,17 @@ const fixture = `
 const suggestion={id:'11111111-1111-4111-8111-111111111111',campo:'pregrado',label:'Pregrado',valor:'Administración Pública',valor_previo:'Título anterior',pagina:1,evidencia:'Título: Administración Pública',estado:'PENDIENTE',baja_confianza:true};
 const job={id:'job',documento_id:'documento',nombre_archivo:'diploma-ficticio.pdf',version:1,estado:'COMPLETADO',documento_estado:'ACTIVO',sugerencias:[suggestion]};
 const progressJob={id:'job-progress',documento_id:'documento-progress',nombre_archivo:'documento-en-analisis.pdf',version:1,estado:'PROCESANDO',etapa:'MODELO',iniciado_en:new Date(Date.now()-65000).toISOString(),documento_estado:'ACTIVO',sugerencias:[]};
+const secondJob={...job,id:'job-second',documento_id:'documento-second',nombre_archivo:'otro-diploma-con-nombre-muy-largo-para-verificar-el-selector.pdf',sugerencias:[{...suggestion,id:'second-suggestion'}]};
+let jobs=[progressJob,job,secondJob],documents=[job,secondJob].map(item=>({id:item.documento_id,nombre_archivo:item.nombre_archivo,analizado_previamente:true,bloque:'FORMACION',tipo_soporte:'diploma_pregrado'}));
 window.fixtureCalls=[];
-export const apiClient={get:async()=>({enabled:true,documents:[],jobs:[structuredClone(progressJob),structuredClone(job)]}),post:async(url,body)=>{window.fixtureCalls.push({url,body});suggestion.estado='CORREGIDA';suggestion.valor_confirmado=body.valorCorregido;return {confirmed:true,changed:true};}};
+export const apiClient={get:async()=>({enabled:true,documents:structuredClone(documents),jobs:structuredClone(jobs)}),post:async(url,body)=>{
+ window.fixtureCalls.push({url,body});
+ if(url.endsWith('/reprocesar')){for(const [index,id] of body.documentos.entries()){
+  const document=documents.find(item=>item.id===id);jobs.filter(item=>item.documento_id===id).forEach(item=>item.sugerencias.forEach(proposal=>{if(proposal.estado==='PENDIENTE')proposal.estado='DESCARTADA';}));
+  jobs.unshift({id:'queued-'+id,documento_id:id,nombre_archivo:document.nombre_archivo,version:1,estado:'PENDIENTE',documento_estado:'ACTIVO',posicion_cola:index+1,sugerencias:[]});
+ }documents=documents.filter(item=>!body.documentos.includes(item.id));return {queued:body.documentos.length,reprocessed:true};}
+ if(url.endsWith('/orden')){body.trabajos.forEach((id,index)=>{jobs.find(item=>item.id===id).posicion_cola=index+1;});return {reordered:body.trabajos.length};}
+ suggestion.estado='CORREGIDA';suggestion.valor_confirmado=body.valorCorregido;return {confirmed:true,changed:true};}};
 export const createBancoDocente=async()=>{throw new Error('No se permite crear docentes en esta prueba');};
 export const updateBancoDocente=async(id,body)=>{window.fixtureCalls.push({url:'update',body});suggestion.estado='CORREGIDA';suggestion.valor_confirmado=body.pregrado;return {success:true};};
 export const vincularRundSoporte=async()=>({success:true,data:{id:'soporte-ficticio'}});
@@ -52,15 +61,20 @@ try{
   await page.setRequestInterception(true);
   page.on('request',request=>request.url().startsWith(origin)||request.url().startsWith('data:')?request.continue():request.abort());
   await page.setViewport({width:1400,height:950});await page.goto(origin+'/extraction-fixture',{waitUntil:'domcontentloaded',timeout:60000});
-  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Revisar sugerencias'));
-  await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Revisar sugerencias').click());
-  await page.waitForSelector('.rund-extraction-suggestion');
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Organizar análisis'));
+  await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Organizar análisis').click());
+  await page.waitForSelector('[role=progressbar]');
   assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuetext')),'Extraer datos');
   const artifacts=path.join(root,'.local/rund-extraction-preview');await fs.mkdir(artifacts,{recursive:true});
   await page.screenshot({path:path.join(artifacts,'desktop.png'),fullPage:true});
   await page.setViewport({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'El panel no debe desbordar en móvil');
   await page.screenshot({path:path.join(artifacts,'mobile.png'),fullPage:true});
+  await page.select('[aria-label="Archivo para revisar"]','job');
+  await page.waitForSelector('.rund-extraction-suggestion');
+  assert.equal(await page.$('.rund-extraction-progress'),null,'Solo debe mostrarse el resultado del archivo seleccionado');
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'El selector y los resultados no deben desbordar en móvil');
+  await page.screenshot({path:path.join(artifacts,'mobile-results.png'),fullPage:true});
   await page.setViewport({width:1400,height:950});
   const click=label=>page.evaluate(text=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);if(!b||b.disabled)throw new Error('Botón no disponible: '+text);b.click();},label);
   await page.evaluate(()=>window.setFixtureRole(false));
@@ -86,6 +100,30 @@ try{
   assert(!saved.url.includes('/aprobar')&&!saved.url.includes('/revision'));
   await page.waitForFunction(()=>document.body.textContent.includes('Corregido y confirmado'));
   await page.screenshot({path:path.join(artifacts,'correccion-registrada.png'),fullPage:true});
+  await page.select('[aria-label="Archivo para revisar"]','job-second');
+  await click('Volver a procesar este PDF');
+  await page.waitForSelector('[aria-label="Confirmar nuevo análisis OCR"]');
+  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),1);
+  await click('Cancelar nuevo análisis');
+  await page.click('[aria-label="Incluir diploma-ficticio.pdf en el análisis"]');
+  await page.click('[aria-label="Incluir otro-diploma-con-nombre-muy-largo-para-verificar-el-selector.pdf en el análisis"]');
+  await page.click('[aria-label="Analizar antes otro-diploma-con-nombre-muy-largo-para-verificar-el-selector.pdf"]');
+  await click('Analizar seleccionadas (2)');
+  for(const width of [320,390,768,1400]){
+    await page.setViewport({width,height:900});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'El reprocesado no debe desbordar a '+width+'px');
+    await page.screenshot({path:path.join(artifacts,'reprocesar-'+width+'.png'),fullPage:true});
+  }
+  await click('Confirmar nuevo análisis');
+  await page.waitForFunction(()=>window.fixtureCalls.length===2);
+  const reprocess=await page.evaluate(()=>window.fixtureCalls[1]);
+  assert(reprocess.url.endsWith('/reprocesar'));
+  assert.deepEqual(reprocess.body.documentos,['documento-second','documento']);
+  await page.waitForSelector('[aria-label="Orden de análisis en espera"]');
+  await page.click('[aria-label="Orden de análisis en espera"] [aria-label="Analizar antes diploma-ficticio.pdf"]');
+  await click('Guardar orden');
+  await page.waitForFunction(()=>window.fixtureCalls.length===3);
+  assert.deepEqual((await page.evaluate(()=>window.fixtureCalls[2])).body.trabajos,['queued-documento','queued-documento-second']);
   assert.deepEqual(errors,[]);
-  console.log('F014 navegador: escritorio/móvil, permisos separados, corrección humana con motivo, sin aprobación de soportes y actualización de estado verificados (API simulada).');
+  console.log('F014 navegador: selector visible, reprocesado individual y por lote ordenado, confirmación/cancelación, cola, escritorio/móvil y permisos separados verificados (API simulada).');
 }finally{if(browser)await browser.close();await server.close();}

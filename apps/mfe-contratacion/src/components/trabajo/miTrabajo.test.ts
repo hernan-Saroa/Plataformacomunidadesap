@@ -53,7 +53,7 @@ describe('Mi trabajo · cada proceso en su pestaña', () => {
         proceso: proceso('abogado', {
           participacion: {
             contratacion: null,
-            abogado: { nombre: 'Yo', usuarioNombre: 'yo', esMio: true },
+            puestos: [{ puesto: 'Abogado', nombre: 'Yo', esMio: true }],
             enBandeja: false,
           },
         }),

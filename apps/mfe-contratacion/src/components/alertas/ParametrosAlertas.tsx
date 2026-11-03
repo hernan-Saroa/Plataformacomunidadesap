@@ -13,8 +13,19 @@ const PLAZO: Record<string, { nombre: string; valor: (n: number) => string }> = 
   anticipacion_cdp: { nombre: 'CDP', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
   anticipacion_rp: { nombre: 'Registro presupuestal', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
   anticipacion_liquidacion: { nombre: 'Liquidación', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
-  tolerancia_sin_abogado: { nombre: 'Proceso sin abogado', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} de espera` },
+  tolerancia_sin_abogado: { nombre: 'Puesto obligatorio vacío', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} de espera` },
+  plazo_acta_comite: { nombre: 'Acta del comité', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} calendario` },
+  plazo_memorando_comite: {
+    nombre: 'Memorando del comité evaluador',
+    valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} calendario`,
+  },
   hora_aviso: { nombre: 'Aviso diario', valor: (n) => `${n}:00, hora de Bogotá` },
+  // No es un plazo, pero es el mismo tipo de dato: un entero que gobierna una
+  // regla y que la Dirección ajusta sin desplegar (EFDS-1147).
+  cuantia_minima_comite: {
+    nombre: 'Cuantía para ir al Comité de Contratación',
+    valor: (n) => `más de ${n.toLocaleString('es-CO')} SMMLV`,
+  },
 };
 
 const nombreDe = (p: ParametroAlerta) => PLAZO[p.clave]?.nombre ?? p.clave;
@@ -163,7 +174,11 @@ function EditorParametro({
     <div className="space-y-3">
       <label className="block">
         <span className="block text-xs font-bold text-slate-600 mb-1">
-          {parametro.clave === 'hora_aviso' ? 'Hora' : 'Días'}
+          {parametro.clave === 'hora_aviso'
+            ? 'Hora'
+            : parametro.clave === 'cuantia_minima_comite'
+              ? 'SMMLV'
+              : 'Días'}
         </span>
         <input
           value={texto}

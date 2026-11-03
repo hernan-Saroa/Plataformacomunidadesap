@@ -34,7 +34,10 @@ export class EmitirAdendaDto {
    * veces abriría la puerta a que el documento y el sistema no coincidan.
    */
   @ApiPropertyOptional({ description: 'Nuevo vencimiento del plazo (YYYY-MM-DD)' })
-  @ValidateIf((dto: EmitirAdendaDto) => dto.tipo === 'CRONOGRAMA')
+  // Opcional desde la revisión de QA de EFDS-1154: cerrada la recepción, la de
+  // cronograma no mueve una fecha que la plataforma controle. El servicio la
+  // exige mientras haya plazo que prorrogar.
+  @ValidateIf((dto: EmitirAdendaDto) => dto.tipo === 'CRONOGRAMA' && !!dto.vencimientoNuevo)
   @IsDateString(
     {},
     { message: 'Una adenda de cronograma necesita la nueva fecha de vencimiento (YYYY-MM-DD)' },
@@ -48,7 +51,7 @@ export class PublicarAdendaDto {
   @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
   fechaPublicacion: string;
 
-  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 5.13 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @FirmaDelMultipart()
@@ -65,7 +68,7 @@ export class AnularAdendaDto {
   @MaxLength(1000)
   motivo: string;
 
-  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 5.13 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @ValidateNested()

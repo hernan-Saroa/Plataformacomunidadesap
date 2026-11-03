@@ -42,6 +42,7 @@ const { HealthModule } = require('../src/modules/health/health.module.ts');
 const { ChatbotEnabledGuard } = require('../src/auth/chatbot-enabled.guard.ts');
 const { IsolucionService } = require('../src/modules/isolucion/isolucion.service.ts');
 const { getChatbotCorsOptions } = require('../src/config/cors.config.ts');
+const { getTypeOrmConfig } = require('../src/config/typeorm.config.ts');
 
 process.env.JWT_SECRET = `chatbot-test-${randomUUID()}`;
 const alice = randomUUID(), bob = randomUUID(), admin = randomUUID();
@@ -168,17 +169,39 @@ test('rechaza el acceso directo sin JWT aunque se suplanten headers del gateway'
   }
 });
 test('rechaza JWT inválido, vencido, con otro algoritmo o sin cuenta válida', async () => {
-  for (const token of ['invalid', tokenFor(alice, {}, { expiresIn: -1 }), tokenFor(alice, {}, { algorithm: 'HS384' }), tokenFor('not-a-uuid'), tokenFor(randomUUID())]) {
+  for (const token of ['invalid', tokenFor(alice, {}, { expiresIn: -1 }), tokenFor(alice, {}, { algorithm: 'HS384' }), tokenFor(alice, {}, { secret: 'synthetic-other-environment' }), tokenFor('not-a-uuid'), tokenFor(randomUUID())]) {
     assert.equal((await request('/chat/conversaciones', { token })).status, 401);
   }
 });
 
-test('sin JWT_SECRET no acepta una clave implícita ni ejecuta operaciones privadas', async () => {
+test('la conexión admite los nombres de variables de desarrollo, QA, backend y producción', () => {
+  const keys = ['DB_USERNAME', 'DB_PASSWORD', 'DB_DATABASE', 'DB_USER', 'DB_PASS', 'DB_NAME'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  try {
+    for (const variant of [
+      { DB_USERNAME: 'fixture-user', DB_PASSWORD: 'fixture-password', DB_DATABASE: 'fixture-database' },
+      { DB_USER: 'fixture-user', DB_PASS: 'fixture-password', DB_NAME: 'fixture-database' },
+      { DB_USERNAME: 'fixture-user', DB_PASSWORD: 'fixture-password', DB_DATABASE: 'fixture-database', DB_USER: 'ignored', DB_PASS: 'ignored', DB_NAME: 'ignored' },
+    ]) {
+      for (const key of keys) delete process.env[key];
+      Object.assign(process.env, variant);
+      const config = getTypeOrmConfig();
+      assert.equal(config.username, 'fixture-user');assert.equal(config.password, 'fixture-password');assert.equal(config.database, 'fixture-database');
+      assert.equal(config.synchronize, false);assert.equal(config.logging, false);
+    }
+  } finally {
+    for (const key of keys) { if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key]; }
+  }
+});
+
+test('sin JWT_SECRET informa un servicio no disponible sin aceptar claves implícitas ni ejecutar operaciones privadas', async () => {
   const token = tokenFor(alice);
   const secret = process.env.JWT_SECRET;
   try {
     delete process.env.JWT_SECRET;
-    assert.equal((await request('/chat/conversaciones', { token })).status, 401);
+    const response = await request('/chat/conversaciones', { token });
+    assert.equal(response.status, 503);
+    assert(!JSON.stringify(response.data).includes('JWT_SECRET'));
     assert.equal(messages.length, 0);
   } finally { process.env.JWT_SECRET = secret; }
 });
@@ -412,6 +435,19 @@ test('valida las consultas públicas antes de procesarlas', async () => {
     assert.equal((await request('/public/consultas', { method: 'POST', body: { contenido } })).status, 400);
   }
   assert.equal((await request('/public/consultas', { method: 'POST', body: {} })).status, 400);
+});
+
+test('las consultas temporales funcionan sin JWT configurado y sin crear conversaciones', async () => {
+  const secret = process.env.JWT_SECRET;
+  const before = structuredClone([...conversations]);
+  try {
+    delete process.env.JWT_SECRET;
+    for (const [contenido, expected] of [['Solicitar viáticos', 'Viáticos'], ['Mi Plan de Trabajo Académico', 'PTA'], ['Programación de aulas', 'Programación Académica']]) {
+      const response = await request('/public/consultas', { method: 'POST', headers: { Authorization: 'Bearer invalid' }, body: { contenido } });
+      assert.equal(response.status, 200);assert(response.data.respuesta.includes(expected));
+    }
+    assert.deepEqual([...conversations], before);assert.equal(messages.length, 0);assert.equal(documentSearchCalls, 0);
+  } finally { process.env.JWT_SECRET = secret; }
 });
 
 test('el gateway abre exclusivamente los dos métodos públicos del chatbot', async () => {

@@ -1,19 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Plus, Search, ShieldCheck, X } from 'lucide-react';
+import { Check, ListOrdered, Plus, Search, ShieldCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { campo } from '../shared/PiezasPanel';
+import { AvisoDeVersion } from './LaHaceActividad';
 
-/** Un aprobador ya elegido, sea un rol o una persona. */
+/** Un aprobador ya elegido: un rol, una persona o un puesto del proceso (109). */
 interface Aprobador {
-  clase: 'rol' | 'persona';
+  clase: 'rol' | 'persona' | 'puesto';
   id: string;
   nombre: string;
 }
 
 interface Props {
   numeral: string;
+  /** Una modalidad (111); sin ella, la configuración general. */
+  modalidad?: string | null;
+  nombreModalidad?: string;
+  /** Algo cambió en el borrador: el diagrama relee. */
+  onCambio?: () => void;
 }
 
 /**
@@ -24,23 +30,35 @@ interface Props {
  * Osorio»— y no códigos de permiso. La regla que se guarda sí los lleva, pero
  * eso es asunto del backend.
  *
- * El buscador separa roles y personas en dos pestañas. La primera versión los
+ * Un puesto del proceso (109) —«Abogado», «Jefe»— es el tercer tipo: lo aprueba
+ * quien lo ocupe en cada proceso, asignado en la 3.3.
+ *
+ * El buscador separa roles, personas y puestos en pestañas. La primera versión los
  * mezclaba en una lista —parecía más simple, porque quien configura piensa en
  * «que lo apruebe la Dirección»— pero en pantalla no se distinguían: «Super
  * Administrador» y «Super User» aparecían seguidos sin nada que dijera cuál era
  * cuál.
  */
-export function AprobacionActividad({ numeral }: Props) {
+export function AprobacionActividad({ numeral, modalidad = null, nombreModalidad, onCambio }: Props) {
   const [requiere, setRequiere] = useState(false);
   const [aprobadores, setAprobadores] = useState<Aprobador[]>([]);
+  /**
+   * La cadena de escalones que la aprueba, si se eligió una (migración 101).
+   * Es la tercera forma, junto a «no requiere» y «uno de estos aprueba».
+   */
+  const [cadena, setCadena] = useState<{ id: string; nombre: string; escalones: number } | null>(null);
+  const [cadenas, setCadenas] = useState<{ id: string; nombre: string; escalones: number }[] | null>(null);
+  const [eligiendoCadena, setEligiendoCadena] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [heredada, setHeredada] = useState(false);
 
   const [buscando, setBuscando] = useState(false);
   const [texto, setTexto] = useState('');
   const [roles, setRoles] = useState<{ code: string; name: string }[]>([]);
   const [personas, setPersonas] = useState<{ id: string; nombre: string; cargo?: string }[]>([]);
+  const [puestos, setPuestos] = useState<{ id: string; nombre: string }[]>([]);
 
   /**
    * Roles o personas, en pestañas y no en una lista mezclada.
@@ -50,22 +68,25 @@ export function AprobacionActividad({ numeral }: Props) {
    * «Super User» aparecían seguidos sin que nada dijera cuál era el rol y cuál
    * la persona. Elegir primero acota la búsqueda y deja claro qué se elige.
    */
-  const [donde, setDonde] = useState<'roles' | 'personas'>('roles');
+  const [donde, setDonde] = useState<'roles' | 'personas' | 'puestos'>('roles');
 
   const leer = () => {
     setCargando(true);
     contratacionService
-      .aprobacionDeActividad(numeral)
+      .aprobacionDeActividad(numeral, modalidad)
       .then((r) => {
+        setHeredada(!!r.heredada);
         setRequiere(r.requiereAprobacion);
         setAprobadores(r.aprobadores ?? []);
+        setCadena(r.cadena ?? null);
+        setEligiendoCadena(false);
         setError(null);
       })
       .catch((e: any) => setError(e.message))
       .finally(() => setCargando(false));
   };
 
-  useEffect(leer, [numeral]);
+  useEffect(leer, [numeral, modalidad]);
 
   // Los roles se piden una vez al abrir el buscador y no al montar: la mayoría
   // de las veces se entra a esta pestaña solo a mirar.
@@ -73,6 +94,12 @@ export function AprobacionActividad({ numeral }: Props) {
     setBuscando(true);
     if (!roles.length) {
       contratacionService.rolesAprobadores().then(setRoles).catch(() => setRoles([]));
+    }
+    if (!puestos.length) {
+      contratacionService
+        .puestos()
+        .then((l) => setPuestos(l.map((x) => ({ id: x.id, nombre: x.nombre }))))
+        .catch(() => setPuestos([]));
     }
   };
 
@@ -127,12 +154,53 @@ export function AprobacionActividad({ numeral }: Props) {
         requiereAprobacion: nuevoRequiere,
         roles: nuevos.filter((a) => a.clase === 'rol').map((a) => a.id),
         personas: nuevos.filter((a) => a.clase === 'persona').map((a) => a.id),
+        puestos: nuevos.filter((a) => a.clase === 'puesto').map((a) => a.id),
+        modalidad,
       });
       setRequiere(nuevoRequiere);
       setAprobadores(nuevos);
+      setCadena(null);
+      setEligiendoCadena(false);
+      setHeredada(false);
+      onCambio?.();
       toast.success(
         nuevoRequiere ? 'La actividad requiere aprobación' : 'La actividad ya no requiere aprobación',
       );
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo guardar');
+      leer();
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const verCadenas = () => {
+    setEligiendoCadena(true);
+    if (!cadenas) {
+      contratacionService
+        .cadenasDeAprobacion()
+        .then((c) => setCadenas(c.map((x) => ({ id: x.id, nombre: x.nombre, escalones: x.escalones.length }))))
+        .catch(() => setCadenas([]));
+    }
+  };
+
+  const elegirCadena = async (elegida: { id: string; nombre: string; escalones: number }) => {
+    setGuardando(true);
+    try {
+      await contratacionService.guardarAprobacionDeActividad(numeral, {
+        requiereAprobacion: true,
+        roles: [],
+        personas: [],
+        cadenaId: elegida.id,
+        modalidad,
+      });
+      setRequiere(true);
+      setAprobadores([]);
+      setCadena(elegida);
+      setEligiendoCadena(false);
+      setHeredada(false);
+      onCambio?.();
+      toast.success(`La aprueba la cadena «${elegida.nombre}»`);
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo guardar');
       leer();
@@ -151,12 +219,35 @@ export function AprobacionActividad({ numeral }: Props) {
 
   return (
     <div className="space-y-3">
-      <div>
+      <div className="space-y-1">
         <p className="text-xs text-slate-600 m-0 leading-relaxed">
           Si esta actividad necesita el visto bueno de alguien antes de darse por terminada.
-          Los procesos ya aprobados no cambian: lo que se configure aquí rige de ahora en
-          adelante.
         </p>
+        <AvisoDeVersion
+          heredada={heredada}
+          modalidad={modalidad}
+          nombreModalidad={nombreModalidad}
+          ocupado={guardando}
+          onUsarGeneral={async () => {
+            setGuardando(true);
+            try {
+              await contratacionService.guardarAprobacionDeActividad(numeral, {
+                requiereAprobacion: requiere,
+                roles: [],
+                personas: [],
+                modalidad,
+                usarGeneral: true,
+              });
+              toast.success('Vuelve a usar lo general');
+              onCambio?.();
+              leer();
+            } catch (e: any) {
+              toast.error(e.message ?? 'No se pudo guardar');
+            } finally {
+              setGuardando(false);
+            }
+          }}
+        />
       </div>
 
       <div className="space-y-2">
@@ -168,17 +259,61 @@ export function AprobacionActividad({ numeral }: Props) {
           ayuda="El gestor la cierra cuando termina."
         />
         <Opcion
-          marcada={requiere}
+          marcada={requiere && !cadena && !eligiendoCadena}
           disabled={guardando}
-          onClick={() => requiere || guardar(true, aprobadores)}
+          onClick={() => (requiere && !cadena ? setEligiendoCadena(false) : guardar(true, aprobadores))}
           titulo="Requiere aprobación de:"
           ayuda={
             aprobadores.length > 1 ? 'Basta con que uno de ellos apruebe.' : undefined
           }
         />
+        <Opcion
+            marcada={!!cadena || eligiendoCadena}
+            disabled={guardando}
+            onClick={verCadenas}
+            titulo={cadena ? `Requiere la cadena «${cadena.nombre}»` : 'Requiere una cadena de escalones'}
+            ayuda={
+              cadena
+                ? `${cadena.escalones} escalones en orden: solo el último la deja aprobada.`
+                : 'Varias revisiones en orden, configuradas en Cadenas de aprobación. Un escalón puede ser un puesto del proceso, como el Abogado.'
+            }
+          />
       </div>
 
-      {requiere && (
+      {eligiendoCadena && (
+        <div className="ml-6 space-y-1.5">
+          {cadenas === null ? (
+            <p className="text-xs text-slate-400 m-0">Cargando las cadenas…</p>
+          ) : cadenas.length === 0 ? (
+            <p className="text-xs text-amber-700 m-0">
+              Todavía no hay cadenas: créalas en la pestaña Cadenas de aprobación de Configuraciones.
+            </p>
+          ) : (
+            cadenas.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                disabled={guardando || c.id === cadena?.id}
+                onClick={() => elegirCadena(c)}
+                className="w-full flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50"
+              >
+                <ListOrdered className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" aria-hidden="true" />
+                <span className="text-xs text-slate-800 flex-1 min-w-0 truncate">{c.nombre}</span>
+                <span className="text-[10px] text-slate-400">{c.escalones} escalones</span>
+              </button>
+            ))
+          )}
+          <button
+            type="button"
+            onClick={() => setEligiendoCadena(false)}
+            className="text-xs font-bold text-slate-500 hover:text-gray-700 px-2 pt-1"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {requiere && !cadena && !eligiendoCadena && (
         <div className="ml-6 space-y-2">
           {aprobadores.map((a) => (
             <div
@@ -188,7 +323,7 @@ export function AprobacionActividad({ numeral }: Props) {
               <ShieldCheck className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" aria-hidden="true" />
               <span className="text-xs text-slate-800 flex-1 min-w-0 truncate">{a.nombre}</span>
               <span className="text-[10px] text-slate-400">
-                {a.clase === 'rol' ? 'Rol' : 'Persona'}
+                {a.clase === 'rol' ? 'Rol' : a.clase === 'puesto' ? 'Puesto del proceso' : 'Persona'}
               </span>
               <button
                 type="button"
@@ -221,6 +356,7 @@ export function AprobacionActividad({ numeral }: Props) {
                   [
                     ['roles', 'Roles'],
                     ['personas', 'Personas'],
+                    ['puestos', 'Puestos'],
                   ] as const
                 ).map(([id, etiqueta]) => (
                   <button
@@ -239,6 +375,7 @@ export function AprobacionActividad({ numeral }: Props) {
                 ))}
               </div>
 
+              {donde !== 'puestos' && (
               <label className="relative block">
                 <Search
                   className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -256,8 +393,35 @@ export function AprobacionActividad({ numeral }: Props) {
                   className={`${campo} pl-8`}
                 />
               </label>
+              )}
 
-              {donde === 'roles' ? (
+              {donde === 'puestos' ? (
+                puestos.filter((x) => !yaElegidos.has(x.id)).length > 0 ? (
+                  puestos
+                    .filter((x) => !yaElegidos.has(x.id))
+                    .map((x) => (
+                      <button
+                        key={x.id}
+                        type="button"
+                        onClick={() => {
+                          guardar(true, [...aprobadores, { clase: 'puesto', id: x.id, nombre: x.nombre }]);
+                          setBuscando(false);
+                          setTexto('');
+                        }}
+                        className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        {x.nombre}
+                        <span className="block text-[10px] text-slate-400">
+                          La aprueba quien ocupe este puesto en cada proceso
+                        </span>
+                      </button>
+                    ))
+                ) : (
+                  <p className="text-xs text-slate-400 m-0 px-1 py-2">
+                    No hay más puestos: créalos en Puestos del proceso, en la pestaña Flujo.
+                  </p>
+                )
+              ) : donde === 'roles' ? (
                 coincidencias.length > 0 ? (
                   coincidencias.map((r) => (
                     <button

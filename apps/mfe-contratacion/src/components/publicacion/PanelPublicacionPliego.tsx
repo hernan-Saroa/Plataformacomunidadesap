@@ -66,7 +66,7 @@ const SEMAFORO: Record<
 };
 
 /**
- * Actividad 5.2 · Publicación del proyecto de pliego (EFDS-1150).
+ * Actividad 5.3 · Publicación del proyecto de pliego (EFDS-1150).
  *
  * No publica en SECOP II: registra que se publicó, guarda la evidencia y lleva
  * la cuenta del plazo legal de publicidad. Mientras no exista la integración
@@ -152,10 +152,10 @@ export function PanelPublicacionPliego({ procesoId, onCambio }: Props) {
 
     return (
       <Marco>
-        <Titulo>Registrar la publicación del proyecto de pliego</Titulo>
+        <Titulo>Registrar la publicación en SECOP II</Titulo>
         <Ayuda>
-          Publica el proyecto de pliego en SECOP II y registra aquí la fecha en que quedó publicado.
-          Desde ese día corre el plazo legal de publicidad.
+          Crea el proceso en SECOP II con sus documentos y registra aquí la fecha en que quedó
+          publicado. Donde hay proyecto de pliego, desde ese día corre el plazo legal de publicidad.
         </Ayuda>
 
         <PlazoPrevisto estado={estado} />

@@ -802,7 +802,7 @@ function Formulario({
                   ? 'Sustituirá al documento actual al guardar.'
                   : yaTieneArchivo
                     ? 'Es el que el gestor descarga para diligenciar.'
-                    : 'Word, PDF o Excel · máximo 25 MB'}
+                    : 'Word, PDF o Excel · máximo 50 MB'}
               </p>
 
               {/* Verlo antes de sustituirlo: es la única forma de comprobar

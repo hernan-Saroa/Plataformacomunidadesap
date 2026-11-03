@@ -30,9 +30,10 @@ export class AperturaController {
   })
   actividades(
     @Param('id', ParseUUIDPipe) procesoId: string,
+    @Req() req: any,
     @Query('etapa') etapa?: string,
   ) {
-    return this.cdp.actividadesDelProceso(procesoId, etapa ? Number(etapa) : undefined);
+    return this.cdp.actividadesDelProceso(procesoId, etapa ? Number(etapa) : undefined, getHiringAccess(req));
   }
 
   @Post(':id/documentos/iniciar')

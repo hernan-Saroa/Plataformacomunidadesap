@@ -18,12 +18,19 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
+import { CargarMemorandoDto, DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 6.2 de la matriz: la designación del comité evaluador. */
 export const NUMERAL_COMITE = '6.2';
+
+/** Cómo se nombra cada rol en mensajes de negocio. */
+export const NOMBRE_ROL_EVALUADOR = {
+  JURIDICO: 'jurídico',
+  TECNICO: 'técnico',
+  FINANCIERO: 'financiero y económico',
+} as const;
 
 interface ArchivoCargado {
   filename: string;
@@ -61,7 +68,9 @@ export class ComiteService {
 
     const comite = await this.comiteVigente(procesoId);
     const miembros = comite ? await this.miembrosDe(this.dataSource.manager, comite.id) : [];
-    const memorando = comite
+    // Sin id no se consulta: `findOne` con `id: null` no filtra y devolvería
+    // cualquier documento.
+    const memorando = comite?.memorandoDocumentoId
       ? await this.dataSource
           .getRepository(Documento)
           .findOne({ where: { id: comite.memorandoDocumentoId } })
@@ -92,6 +101,9 @@ export class ComiteService {
             fechaDesignacion: comite.fechaDesignacion,
             designadoPor: comite.designadoPor,
             designadoAt: comite.createdAt,
+            // Sin memorando el comité vale y la evaluación sigue: la pantalla
+            // ofrece cargarlo y la alerta lo reclama.
+            puedeCargarMemorando: !comite.memorandoDocumentoId,
             memorando: memorando
               ? { nombre: memorando.archivoNombreOriginal ?? memorando.nombre, url: memorando.archivoUrl }
               : null,
@@ -109,7 +121,12 @@ export class ComiteService {
   // ---------------------------------------------------------- designación --
 
   /**
-   * Registra la designación del comité con su memorando.
+   * Registra la designación del comité, con su memorando si ya está firmado.
+   *
+   * El memorando no es condición (EFDS-1156): tarda por las firmas de la
+   * subdirección, y esperar por él detenía la evaluación. Se carga después
+   * con `cargarMemorando` y mientras falte hay alerta, igual que con el acta
+   * del Comité de Contratación.
    *
    * Se exige la recepción cerrada porque designar antes sería nombrar
    * evaluadores para una lista de ofertas que todavía puede cambiar; y se exige
@@ -119,8 +136,8 @@ export class ComiteService {
   async designar(
     procesoId: string,
     dto: DesignarComiteDto,
-    memorando: ArchivoCargado,
-    hash: string,
+    memorando: ArchivoCargado | null,
+    hash: string | null,
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
@@ -146,7 +163,12 @@ export class ComiteService {
         );
       }
 
-      this.validarFecha(dto.fechaDesignacion);
+      if (memorando) {
+        if (!dto.fechaDesignacion) {
+          throw new BadRequestException('Di la fecha del memorando que adjuntas');
+        }
+        this.validarFecha(dto.fechaDesignacion);
+      }
       this.validarMiembros(dto);
 
       if (await this.cierre.exigeFirma(em, NUMERAL_COMITE)) {
@@ -156,21 +178,24 @@ export class ComiteService {
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
-      const doc = await this.guardarDocumento(
-        em,
-        expediente.id,
-        'Memorando de designación del comité evaluador',
-        memorando,
-        hash,
-        acceso,
-      );
+      const doc = memorando
+        ? await this.guardarDocumento(
+            em,
+            expediente.id,
+            'Memorando de designación del comité evaluador',
+            memorando,
+            hash as string,
+            acceso,
+          )
+        : null;
 
       const comite = await em.save(
         em.create(ComiteEvaluador, {
           procesoId,
-          memorandoDocumentoId: doc.id,
-          fechaDesignacion: dto.fechaDesignacion,
+          memorandoDocumentoId: doc?.id ?? null,
+          fechaDesignacion: doc ? dto.fechaDesignacion : null,
           designadoPor: acceso.userName,
+          designadoPorId: acceso.userId || null,
           estado: 'VIGENTE' as const,
         }),
       );
@@ -190,8 +215,59 @@ export class ComiteService {
 
       await this.traza(em, procesoId, comite.id, 'DESIGNAR', acceso, {
         actividad: NUMERAL_COMITE,
-        fechaDesignacion: dto.fechaDesignacion,
+        fechaDesignacion: doc ? dto.fechaDesignacion : null,
+        conMemorando: !!doc,
         miembros: dto.miembros.map((m) => ({ personaId: m.personaId, rol: m.rol })),
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Carga el memorando de un comité que se designó sin él.
+   *
+   * Solo sobre el vigente y solo si le falta: uno ya cargado no se reemplaza
+   * aquí, porque cambiar el acto que designa es revocar y designar otro.
+   */
+  async cargarMemorando(
+    procesoId: string,
+    dto: CargarMemorandoDto,
+    memorando: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const comite = await this.comiteVigente(procesoId, em);
+      if (!comite) throw new NotFoundException('El proceso no tiene comité designado');
+      if (comite.memorandoDocumentoId) {
+        throw new ConflictException(
+          'El comité ya tiene su memorando: para cambiarlo se revoca la designación y se hace otra',
+        );
+      }
+
+      this.validarFecha(dto.fechaDesignacion);
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        'Memorando de designación del comité evaluador',
+        memorando,
+        hash,
+        acceso,
+      );
+
+      comite.memorandoDocumentoId = doc.id;
+      comite.fechaDesignacion = dto.fechaDesignacion;
+      await em.save(comite);
+
+      await this.traza(em, procesoId, comite.id, 'GUARDAR', acceso, {
+        actividad: NUMERAL_COMITE,
+        accion: 'CARGAR_MEMORANDO',
+        fechaDesignacion: dto.fechaDesignacion,
       });
     });
 
@@ -327,7 +403,7 @@ export class ComiteService {
       const clave = `${miembro.personaId}|${miembro.rol}`;
       if (vistos.has(clave)) {
         throw new BadRequestException(
-          `${miembro.nombre} aparece dos veces como evaluador ${miembro.rol.toLowerCase()}`,
+          `${miembro.nombre} aparece dos veces como evaluador ${NOMBRE_ROL_EVALUADOR[miembro.rol]}`,
         );
       }
       vistos.add(clave);

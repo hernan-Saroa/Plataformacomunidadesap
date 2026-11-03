@@ -25,7 +25,7 @@ import { Puede } from '../../auth/puede.guard';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
- * Audiencia de asignación de riesgos — actividad 5.5 (EFDS-1153).
+ * Audiencia de asignación de riesgos — actividad 5.12 (EFDS-1153).
  *
  * El sistema no celebra la audiencia: registra que se celebró y guarda lo que
  * produjo, que es el acta y la matriz de riesgos consolidada. Donde la
@@ -37,18 +37,18 @@ export class RiesgosController {
   constructor(private readonly service: RiesgosService) {}
 
   @Get()
-  @Puede('ver', '5.5')
+  @Puede('ver', '5.12')
   @ApiOperation({
     summary: 'Estado de la audiencia de riesgos del proceso',
     description:
-      'Dice si la actividad aplica a la modalidad, si la audiencia es obligatoria y si ya se celebró, con sus documentos. Distingue aplicable de obligatoria: donde aplica sin serlo, la audiencia no bloquea la apertura.',
+      'Dice si la actividad aplica a la modalidad, si la audiencia es obligatoria y si ya se celebró, con sus documentos. Distingue aplicable de obligatoria: donde aplica sin serlo, la audiencia no bloquea el cierre de ofertas. Desde la 112 se registra después de la apertura.',
   })
   estado(@Param('id', ParseUUIDPipe) procesoId: string) {
     return this.service.estado(procesoId);
   }
 
   @Post()
-  @Puede('editar', '5.5')
+  @Puede('editar', '5.12')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -66,7 +66,7 @@ export class RiesgosController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 5.5 · Registrar la audiencia celebrada',
+    summary: 'Actividad 5.12 · Registrar la audiencia celebrada',
     description:
       'El acta y la matriz consolidada van en la misma petición: la historia exige la audiencia y la consolidación de su resultado, y un acta sin matriz dejaría la actividad a medias. La fecha es la de celebración y no puede ser futura.',
   })
@@ -104,7 +104,7 @@ export class RiesgosController {
   }
 
   @Post('anular')
-  @Puede('editar', '5.5')
+  @Puede('editar', '5.12')
   @ApiOperation({
     summary: 'Anular la audiencia registrada para corregirla',
     description:

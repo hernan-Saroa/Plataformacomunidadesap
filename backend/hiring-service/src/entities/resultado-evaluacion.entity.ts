@@ -10,13 +10,12 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 export type EstadoResultado = 'VIGENTE' | 'RECTIFICADO';
 
 /**
- * Resultado de la evaluación del proceso (actividad 6.3, EFDS-1157).
+ * Evaluación preliminar del proceso (actividad 6.3, EFDS-1157).
  *
- * El comité evalúa por fuera de la plataforma, con sus formatos y su cuadro
- * comparativo, y elige la ganadora. Aquí no se califica nada: se recibe la
- * decisión ya tomada, su valoración y el informe que la sustenta. Los números
- * entran como los reporta el comité y la plataforma no los recalcula, porque no
- * tiene con qué.
+ * El comité evalúa por fuera de la plataforma y entrega un informe consolidado,
+ * en uno o varios archivos. Aquí no se califica nada ni se nombra ganadora
+ * (120): se recibe el informe, que es el soporte de la 6.3 y de la 6.4. Los
+ * puntajes y la ganadora de antes de la 120 se conservan como se registraron.
  */
 @Entity('resultados_evaluacion', { schema: 'hiring' })
 export class ResultadoEvaluacion {
@@ -26,9 +25,14 @@ export class ResultadoEvaluacion {
   @Column({ name: 'proceso_id' })
   procesoId: string;
 
-  /** La oferta que el comité eligió, de entre las que el proceso recibió. */
-  @Column({ name: 'oferente_id' })
-  oferenteId: string;
+  /**
+   * La ganadora que nombraba el comité antes de la 120.
+   *
+   * Nula desde entonces: la evaluación de la 6.3 es preliminar y todavía no se
+   * sabe qué oferta gana. La ganadora se decide en el informe definitivo (7.2).
+   */
+  @Column({ name: 'oferente_id', type: 'uuid', nullable: true })
+  oferenteId: string | null;
 
   /** El informe del comité. Sin él sería la opinión de quien digitó. */
   @Column({ name: 'informe_documento_id' })
@@ -57,9 +61,9 @@ export class ResultadoEvaluacion {
   @Column({ name: 'valor_evaluado', type: 'numeric', precision: 18, scale: 2, nullable: true })
   valorEvaluado: string | null;
 
-  /** Por qué esa y no otra: es lo que el traslado del informe le muestra a los demás. */
-  @Column({ type: 'text' })
-  justificacion: string;
+  /** Observación del informe preliminar; opcional desde la 120. */
+  @Column({ type: 'text', nullable: true })
+  justificacion: string | null;
 
   @Column({ length: 20, default: 'VIGENTE' })
   estado: EstadoResultado;

@@ -1,6 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 
-import { ExpedirCdpConSoporteDto } from '../cdp/dto/cdp.dto';
+import { CargarCdpDto } from '../cdp/dto/cdp.dto';
 import { RegistrarSesionComiteDto } from '../comite-contratacion/dto/comite-contratacion.dto';
 import { RegistrarActividadDto } from '../registro-actividad/dto/registro-actividad.dto';
 
@@ -17,19 +17,19 @@ describe('Firma dentro de un multipart', () => {
 
   const casos: Array<[string, any, Record<string, string>]> = [
     [
-      'expedición del CDP',
-      ExpedirCdpConSoporteDto,
-      { numero: 'CDP-1', valor: '1000', fechaExpedicion: '2026-10-05' },
+      'el cargue del CDP',
+      CargarCdpDto,
+      { rubro: 'A-02', numero: 'CDP-1', valor: '1000', fechaExpedicion: '2026-10-05' },
     ],
-    ['sesión del comité', RegistrarSesionComiteDto, { fecha: '2026-10-05', decision: 'APROBADO' }],
+    ['la sesión del comité', RegistrarSesionComiteDto, { fecha: '2026-10-05', decision: 'APROBADO' }],
     [
-      'registro de actividad',
+      'el registro de actividad',
       RegistrarActividadDto,
       { fecha: '2026-10-05', nota: 'Se registró la actividad con su soporte' },
     ],
   ];
 
-  it.each(casos)('conserva los campos de la firma en la %s', async (_, metatype, cuerpo) => {
+  it.each(casos)('conserva los campos de la firma en %s', async (_, metatype, cuerpo) => {
     const dto = await pipe.transform(
       { ...cuerpo, firma: JSON.stringify(firma) },
       { type: 'body', metatype },
@@ -42,7 +42,7 @@ describe('Firma dentro de un multipart', () => {
     await expect(
       pipe.transform(
         { numero: 'CDP-1', valor: '1000', fechaExpedicion: '2026-10-05', firma: '{"id":"x"}' },
-        { type: 'body', metatype: ExpedirCdpConSoporteDto },
+        { type: 'body', metatype: CargarCdpDto },
       ),
     ).rejects.toThrow();
   });

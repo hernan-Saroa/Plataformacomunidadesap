@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoParticipacion, EstadoSupervision, PlazoDeActividad } from '../../types';
+import { EstadoParticipacion, EstadoSupervision, PlazoDeActividad, PuestosDelProceso } from '../../types';
 import { ETAPAS } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { EntradaSituacion, responsableDelPaso, Situacion } from './situacionDelProceso';
@@ -22,7 +22,10 @@ import { Modal } from '../shared/Modal';
 import { SoloLectura, AvisoSoloLectura } from '../shared/SoloLectura';
 import { momento as fechaDelMomento } from '../shared/fechas';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
+import { VersionDelFlujo } from './VersionDelFlujo';
+import { cuentaEnElAvance } from './formaDeLaActividad';
 import { PanelSupervision } from '../supervision/PanelSupervision';
+import { OrigenEnElPaa } from '../paa/OrigenEnElPaa';
 
 interface Props {
   procesoId: string;
@@ -32,6 +35,8 @@ interface Props {
   situacion: Situacion;
   etapaActual: number;
   participacion: EstadoParticipacion | null;
+  /** Quién ocupa cada puesto del proceso (109). */
+  puestos?: PuestosDelProceso | null;
   plazos: PlazoDeActividad[];
   /** Lleva a trabajar esa actividad. */
   onAbrir: (numeral: string) => void;
@@ -60,6 +65,7 @@ export function FichaDelProceso({
   situacion,
   etapaActual,
   participacion,
+  puestos = null,
   plazos,
   onAbrir,
   onCambio,
@@ -91,11 +97,14 @@ export function FichaDelProceso({
     return ETAPAS.filter((e) => mapa.has(e.numero)).map((e) => {
       const lista = mapa.get(e.numero)!;
       const aplicables = lista.filter((a) => a.estado !== 'no_aplica');
+      // Las permanentes y las eventuales se listan, pero no cuentan en el «x de y».
+      const enLaFila = aplicables.filter((a) => cuentaEnElAvance(a.numeral));
       return {
         etapa: e,
         actividades: aplicables,
         noAplican: lista.length - aplicables.length,
-        hechas: aplicables.filter((a) => a.estado === 'aprobada').length,
+        hechas: enLaFila.filter((a) => a.estado === 'aprobada').length,
+        total: enLaFila.length,
       };
     });
   }, [actividades]);
@@ -145,8 +154,8 @@ export function FichaDelProceso({
           Recorrido del proceso
         </h3>
         <ol className="m-0 p-0 list-none">
-          {porEtapa.map(({ etapa, actividades: lista, noAplican, hechas }) => {
-            const completa = lista.length > 0 && hechas === lista.length;
+          {porEtapa.map(({ etapa, actividades: lista, noAplican, hechas, total }) => {
+            const completa = total > 0 && hechas === total;
             const actual = etapa.numero === etapaActual;
             const abierta = abiertas.has(etapa.numero);
             return (
@@ -171,7 +180,7 @@ export function FichaDelProceso({
                       Etapa {etapa.numero} · {etapa.nombre}
                     </span>
                     <span className="block text-[12px] text-slate-500">
-                      {lista.length ? `${hechas} de ${lista.length} hechas` : 'Nada aplica a esta modalidad'}
+                      {lista.length ? `${hechas} de ${total} hechas` : 'Nada aplica a esta modalidad'}
                       {actual ? ' · aquí va el proceso' : ''}
                     </span>
                   </span>
@@ -228,85 +237,96 @@ export function FichaDelProceso({
         </ol>
       </section>
 
-      {/* El equipo. */}
-      <aside className="bg-white border border-gray-200 rounded-xl overflow-hidden" aria-label="Equipo del proceso">
-        <h3 className="m-0 px-4 py-3 border-b border-gray-100 text-sm font-bold text-slate-900 flex items-center gap-1.5">
-          <Users className="w-4 h-4 text-slate-500" aria-hidden="true" />
-          Equipo del proceso
-        </h3>
-        <ul className="m-0 p-0 list-none divide-y divide-gray-100">
-          <Miembro
-            Icono={UserCog}
-            papel="Área solicitante"
-            nombre={entrada.radicadoPorMi ? 'Tú radicaste el proceso' : 'Radicó el proceso'}
-          />
-          <Miembro
-            Icono={Landmark}
-            papel="Dirección de Contratación"
-            nombre={participacion?.contratacion?.nombre ?? null}
-            vacio={participacion?.contratacion ? null : 'Sin recibir: está en la bandeja'}
-            esMio={participacion?.contratacion?.esMio}
-            accion={
-              participacion?.puedeTomar
-                ? { texto: 'Recibir', hacer: () => setEquipo('radicacion') }
-                : undefined
-            }
-          />
-          <Miembro
-            Icono={Scale}
-            papel="Abogado"
-            nombre={participacion?.abogado?.nombre ?? null}
-            vacio="Sin asignar"
-            esMio={participacion?.abogado?.esMio}
-            accion={
-              participacion?.puedeRepartir
-                ? {
-                    texto: participacion.abogado ? 'Reasignar' : 'Asignar',
-                    hacer: () => setEquipo('radicacion'),
-                  }
-                : undefined
-            }
-          />
-          {etapaActual >= 4 || participacion?.financiera ? (
+      {/* El equipo y, debajo, de qué línea del PAA salió el proceso. */}
+      <div className="space-y-3">
+        <aside className="bg-white border border-gray-200 rounded-xl overflow-hidden" aria-label="Equipo del proceso">
+          <h3 className="m-0 px-4 py-3 border-b border-gray-100 text-sm font-bold text-slate-900 flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-slate-500" aria-hidden="true" />
+            Equipo del proceso
+          </h3>
+          <ul className="m-0 p-0 list-none divide-y divide-gray-100">
+            <Miembro
+              Icono={UserCog}
+              papel="Área solicitante"
+              nombre={entrada.radicadoPorMi ? 'Tú radicaste el proceso' : 'Radicó el proceso'}
+            />
             <Miembro
               Icono={Landmark}
-              papel="Dirección Financiera"
-              nombre={participacion?.financiera?.nombre ?? null}
-              vacio="Nadie ha tomado el CDP"
-              esMio={participacion?.financiera?.esMio}
-              accion={{ texto: 'Ver el CDP', hacer: () => onAbrir('4.2') }}
-            />
-          ) : null}
-          {etapaActual >= 8 ? (
-            <Miembro
-              Icono={ShieldCheck}
-              papel="Supervisor"
-              nombre={supervision?.supervisor?.nombre ?? null}
-              vacio={supervision?.admiteSupervisor === false ? 'Aún no hay contrato' : 'Sin designar'}
+              papel="Dirección de Contratación"
+              nombre={participacion?.contratacion?.nombre ?? null}
+              vacio={participacion?.contratacion ? null : 'Sin recibir: está en la bandeja'}
+              esMio={participacion?.contratacion?.esMio}
               accion={
-                supervision?.puedeDesignar
-                  ? {
-                      texto: supervision.supervisor ? 'Reasignar' : 'Designar',
-                      hacer: () => setEquipo('supervision'),
-                    }
+                participacion?.puedeTomar
+                  ? { texto: 'Recibir', hacer: () => setEquipo('radicacion') }
                   : undefined
               }
             />
+            {/* Los puestos que configuró la Dirección (109): ya no hay un
+                abogado fijo, hay los lugares que el área decidió. */}
+            {/* El del supervisor va en su propia fila, con la designación. */}
+            {(puestos?.puestos ?? []).filter((p) => p.seOcupaEn !== '8.2').map((p) => (
+              <Miembro
+                key={p.id}
+                Icono={Scale}
+                papel={p.nombre}
+                nombre={p.ocupante?.nombre ?? null}
+                vacio="Sin asignar"
+                esMio={p.ocupante?.esMio}
+                accion={
+                  puestos?.puedeAsignar
+                    ? { texto: p.ocupante ? 'Cambiar' : 'Asignar', hacer: () => setEquipo('radicacion') }
+                    : undefined
+                }
+              />
+            ))}
+            {/* Solo si alguien tomó la solicitud antes de la 103: desde entonces
+                el CDP se tramita por fuera y la Financiera no entra al equipo. */}
+            {participacion?.financiera ? (
+              <Miembro
+                Icono={Landmark}
+                papel="Dirección Financiera"
+                nombre={participacion.financiera.nombre}
+                esMio={participacion.financiera.esMio}
+                accion={{ texto: 'Ver el CDP', hacer: () => onAbrir('4.2') }}
+              />
+            ) : null}
+            {/* Con supervisor designado se muestra siempre: la etapa guardada
+                del proceso se queda atrás y lo escondía (revisión de QA de
+                EFDS-1165). */}
+            {etapaActual >= 8 || supervision?.supervisor ? (
+              <Miembro
+                Icono={ShieldCheck}
+                papel="Supervisor del contrato"
+                nombre={supervision?.supervisor?.nombre ?? null}
+                vacio={supervision?.admiteSupervisor === false ? 'Aún no hay contrato' : 'Sin designar'}
+                accion={
+                  supervision?.puedeDesignar
+                    ? {
+                        texto: supervision.supervisor ? 'Reasignar' : 'Designar',
+                        hacer: () => setEquipo('supervision'),
+                      }
+                    : undefined
+                }
+              />
+            ) : null}
+          </ul>
+          <VersionDelFlujo procesoId={procesoId} onCambio={onCambio} />
+          {!puedeGestionarReparto && !supervision?.puedeDesignar ? (
+            <p className="m-0 px-4 py-2.5 border-t border-gray-100 text-[12px] text-slate-500 flex items-start gap-1.5">
+              <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
+              Las asignaciones las hace la Dirección de Contratación.
+            </p>
           ) : null}
-        </ul>
-        {!puedeGestionarReparto && !supervision?.puedeDesignar ? (
-          <p className="m-0 px-4 py-2.5 border-t border-gray-100 text-[12px] text-slate-500 flex items-start gap-1.5">
-            <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-            Las asignaciones las hace la Dirección de Contratación.
-          </p>
-        ) : null}
-      </aside>
+        </aside>
+        <OrigenEnElPaa procesoId={procesoId} version={equipo} />
+      </div>
 
       {/* Asignar sin salir de la ficha: los paneles de siempre, en un modal. */}
       <Modal
         isOpen={equipo !== null}
         onClose={cerrarEquipo}
-        title={equipo === 'supervision' ? 'Supervisor del contrato' : 'Recibir y asignar abogado'}
+        title={equipo === 'supervision' ? 'Supervisor del contrato' : 'Recibir el proceso y asignar los puestos'}
         size="large"
         sinPadding
       >

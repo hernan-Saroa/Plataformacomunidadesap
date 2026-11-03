@@ -1,7 +1,7 @@
 import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
 /**
- * Apertura del sobre económico en audiencia — actividad 7.2 (EFDS-1159).
+ * Apertura del sobre económico en audiencia — actividad 7.1.1 (EFDS-1159).
  *
  * La matriz deja esta actividad para la licitación de obra pública: allí la
  * oferta económica llega en sobre cerrado y se abre delante de todos. Dónde

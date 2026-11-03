@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, UploadCloud, FileText, AlertCircle, CheckCircle2, Image as ImageIcon, Trash2, Clock, Banknote, Eye, CheckSquare, Square,
+  X, UploadCloud, FileText, AlertCircle, CheckCircle2, AlertTriangle, ShieldCheck, Image as ImageIcon, Trash2, Clock, Banknote, Eye, CheckSquare, Square,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -111,6 +111,10 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
           idSolicitud,
           notas: 'cierre_tecnico',
         });
+        const defaultCat = solicitud?.requiereContratacion
+          ? (evidencias.length === 0 && subidas.length === 0 ? 'SOPORTE_CONTRATACION' : 'EJECUCION_TECNICA')
+          : 'EJECUCION_TECNICA';
+
         subidas.push({
           name: ev.nombreOriginal || `foto-${Date.now()}-${i}.jpg`,
           size: Number(ev.tamanoBytes || 0),
@@ -118,6 +122,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
           url: (ev.urlPresigned || ev.url || ev.nombreOriginal || '') as string,
           bucket: (ev as any).bucket,
           key: (ev as any).objectKey || (ev as any).key,
+          categoria: defaultCat,
         });
       }
       setEvidencias((prev) => [...prev, ...subidas]);
@@ -140,13 +145,53 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
     setEvidencias((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const tieneRecepcionInsumos = useMemo(() => {
+    if (!solicitud?.requiereContratacion) return true;
+    const asignaciones = Array.isArray(solicitud?.asignaciones) ? (solicitud.asignaciones as any[]) : [];
+    return asignaciones.some((a) => {
+      if (a.accion === 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION') return true;
+      if (a.accion === 'RECEPCION_INSUMOS_TECNICO') {
+        try {
+          const parsed = typeof a.observaciones === 'string' ? JSON.parse(a.observaciones) : a.observaciones;
+          return parsed?.resultado === 'COMPLETA';
+        } catch {
+          return String(a.motivo || '').includes('COMPLETA');
+        }
+      }
+      return false;
+    });
+  }, [solicitud]);
+
+  const tieneSoporteContratacion = useMemo(() => {
+    return evidencias.some(
+      (e) => e.categoria === 'SOPORTE_CONTRATACION' || e.categoria === 'ACTA_RECEPCION_INSUMOS'
+    );
+  }, [evidencias]);
+
+  const tieneRecepcionOActaInsumos = useMemo(() => {
+    return tieneRecepcionInsumos || evidencias.some((e) => e.categoria === 'ACTA_RECEPCION_INSUMOS');
+  }, [tieneRecepcionInsumos, evidencias]);
+
+  const faltaSoporteContratacion = Boolean(solicitud?.requiereContratacion && !tieneSoporteContratacion);
+  const faltaRecepcionInsumos = Boolean(solicitud?.requiereContratacion && !tieneRecepcionOActaInsumos);
+  const faltaVoBo = Boolean(solicitud?.requiereVoBo && !solicitud?.voboAprobado);
+
   const validar = (): string | null => {
+    if (faltaVoBo) {
+      return 'Requisito EFDS-2355: Esta solicitud requiere Visto Bueno institucional (VoBo) sobre la valoración técnica. Coordinación debe aprobar la valoración técnica antes de formalizar el cierre.';
+    }
     if (evidencias.length < MIN_EVIDENCIAS) return `Evidencia fotográfica obligatoria (mínimo ${MIN_EVIDENCIAS} archivo).`;
     if (trabajoRealizado.trim().length < MIN_TRABAJO_LEN) {
       return `Trabajo realizado requiere al menos ${MIN_TRABAJO_LEN} caracteres.`;
     }
     if (!isFinite(Number(costoFinalCop || 0)) || Number(costoFinalCop || 0) < 0) {
       return 'Costo final efectivo debe ser 0 o positivo.';
+    }
+    if (faltaSoporteContratacion) {
+      return 'Requisito EFDS-2354: Esta solicitud requiere contratación. Es obligatorio adjuntar al menos un archivo clasificado como "Soporte Contratación / OC / Factura" o "Acta Recepción Insumos".';
+    }
+    if (faltaRecepcionInsumos) {
+      return 'Requisito EFDS-2354: Esta solicitud requiere contratación. Se debe contar con la recepción técnica conforme de insumos o adjuntar un archivo clasificado como "Acta Recepción Insumos".';
     }
     return null;
   };
@@ -218,12 +263,17 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-200">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="shrink-0 mt-0.5 p-2 rounded-lg bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
-                <CheckCircle2 className="w-5 h-5" strokeWidth={2.2} />
+              <div
+                className="shrink-0 mt-0.5 p-2 rounded-lg ring-1 ring-emerald-200"
+                style={{ backgroundColor: '#d1fae5', color: '#047857' }}
+              >
+                <CheckCircle2 className="w-5 h-5" style={{ color: '#047857' }} strokeWidth={2.2} />
               </div>
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 flex-wrap">
-                  Cierre técnico de ejecución
+                  {solicitud?.clasificacionMantenimiento === 'MAYOR'
+                    ? 'Cierre Técnico y Recibo a Satisfacción de Obra'
+                    : 'Cierre técnico de ejecución'}
                   <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700 ring-1 ring-slate-200">
                     {consecutivoDisplay}
                   </span>
@@ -266,7 +316,77 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                   {modoLectura ? 'COMPLETADA / Cierre registrado' : solicitud?.estado || '—'}
                 </p>
               </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Modalidad de Atención</p>
+                <p className="text-xs font-semibold text-slate-800">
+                  {solicitud?.clasificacionMantenimiento === 'MAYOR' ? 'Obra Mayor (EFDS-2353)' : 'Mantenimiento Menor'}
+                </p>
+              </div>
             </section>
+
+            {/* Banner Requisito VoBo EFDS-2355 */}
+            {faltaVoBo && (
+              <section style={{ padding: '1.25rem' }} className="rounded-2xl border border-amber-300 bg-amber-50/80 space-y-3 text-xs text-amber-900 shadow-sm">
+                <div className="flex items-center justify-between gap-2 font-bold text-amber-800">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Requisito Bloqueante: Visto Bueno Pendiente (EFDS-2355)</span>
+                  </div>
+                  <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
+                    VoBo Requerido
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Esta solicitud tiene configurado Visto Bueno institucional obligatorio sobre la valoración técnica. No es posible formalizar ni guardar el cierre técnico hasta que la Coordinación UMI o Jefatura emita el aval de Visto Bueno.
+                </p>
+              </section>
+            )}
+
+            {/* Banner Requisitos Contractuales EFDS-2354 */}
+            {solicitud?.requiereContratacion && (
+              <section style={{ padding: '1.25rem' }} className="rounded-2xl border border-amber-300 bg-amber-50/80 space-y-3 text-xs text-amber-900 shadow-sm">
+                <div className="flex items-center justify-between gap-2 font-bold text-amber-800">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Requisitos Bloqueantes de Cierre Contractual (EFDS-2354)</span>
+                  </div>
+                  <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
+                    Requiere Contratación
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Esta intervención requirió contratación o compra externa. Para autorizar y formalizar el cierre técnico se requiere cumplir:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] pt-2">
+                  <div style={{ padding: '0.85rem' }} className={`rounded-xl border flex items-start gap-2.5 ${
+                    tieneSoporteContratacion
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-white border-amber-200 text-amber-800'
+                  }`}>
+                    <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      tieneSoporteContratacion ? 'text-emerald-600' : 'text-slate-300'
+                    }`} />
+                    <div>
+                      <span className="font-bold">1. Soporte de Compra / Contrato:</span>
+                      <p className="text-[10px] opacity-90 mt-0.5">Orden de compra, contrato SECOP II o factura clasificada.</p>
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.85rem' }} className={`rounded-xl border flex items-start gap-2.5 ${
+                    tieneRecepcionOActaInsumos
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-white border-amber-200 text-amber-800'
+                  }`}>
+                    <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      tieneRecepcionOActaInsumos ? 'text-emerald-600' : 'text-slate-300'
+                    }`} />
+                    <div>
+                      <span className="font-bold">2. Recepción Conforme de Insumos:</span>
+                      <p className="text-[10px] opacity-90 mt-0.5">Verificación técnica de materiales completa o acta de entrega adjunta.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
 
             {/* Trabajo realizado */}
             <section>
@@ -402,41 +522,34 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                 </div>
               )}
 
-              {/* Preview grid */}
+              {/* Preview grid con clasificador de evidencias EFDS-2354 */}
               {evidencias.length > 0 && (
-                <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {evidencias.map((ev, idx) => (
                     <li
                       key={idx}
-                      className="group relative rounded-lg overflow-hidden ring-1 ring-slate-200 bg-white aspect-square"
+                      className="group rounded-xl border border-slate-200 bg-white p-2.5 flex flex-col justify-between shadow-sm space-y-2 hover:border-slate-300 transition-all"
                     >
-                      {String(ev.type || '').startsWith('image/') && ev.url ? (
-                        <img
-                          src={ev.url}
-                          alt={ev.name || `evidencia-${idx + 1}`}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-500 p-2 text-center">
-                          <ImageIcon className="w-6 h-6 mb-1 text-slate-400" />
-                          <p className="text-[10px] font-medium truncate max-w-full">
-                            {ev.name || `Archivo ${idx + 1}`}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {Math.max(0, Math.round(Number(ev.size || 0) / 1024))} KB
-                          </p>
-                        </div>
-                      )}
-                      {/* Caption overlay */}
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/75 to-transparent px-2 py-1.5">
-                        <p className="text-[10px] text-white truncate font-medium">
-                          {idx + 1}. {ev.name || `evidencia-${idx + 1}`}
-                        </p>
-                      </div>
-                      {/* Ver / Eliminar */}
-                      {!modoLectura && (
-                        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="relative aspect-video w-full rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
+                        {String(ev.type || '').startsWith('image/') && ev.url ? (
+                          <img
+                            src={ev.url}
+                            alt={ev.name || `evidencia-${idx + 1}`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-500 p-2 text-center">
+                            <FileText className="w-6 h-6 mb-1 text-slate-500" />
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                              {ev.type ? ev.type.split('/')[1] : 'DOCUMENTO'}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {Math.max(0, Math.round(Number(ev.size || 0) / 1024))} KB
+                            </p>
+                          </div>
+                        )}
+                        <div className="absolute top-1.5 right-1.5 flex gap-1">
                           {ev.url && (
                             <a
                               href={ev.url}
@@ -450,30 +563,69 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                               <Eye className="w-3.5 h-3.5" />
                             </a>
                           )}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); quitarEvidencia(idx); }}
-                            disabled={subiendoEvidencia}
-                            className="p-1.5 rounded-md bg-white/95 shadow ring-1 ring-slate-200 text-slate-700 hover:text-rose-700 disabled:opacity-50"
-                            title="Quitar evidencia"
-                            aria-label="Eliminar evidencia"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!modoLectura && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                quitarEvidencia(idx);
+                              }}
+                              disabled={subiendoEvidencia}
+                              className="p-1.5 rounded-md bg-white/95 shadow ring-1 ring-slate-200 text-slate-700 hover:text-rose-700 disabled:opacity-50"
+                              title="Quitar evidencia"
+                              aria-label="Eliminar evidencia"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
-                      )}
-                      {modoLectura && ev.url && (
-                        <a
-                          href={ev.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="absolute top-1.5 right-1.5 p-1.5 rounded-md bg-white/95 shadow ring-1 ring-slate-200 text-slate-700 hover:text-blue-700"
-                          aria-label="Ver"
-                          title="Abrir en nueva pestaña"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      </div>
+
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center justify-between gap-1 text-[11px]">
+                          <span className="font-semibold text-slate-800 truncate" title={ev.name}>
+                            {idx + 1}. {ev.name || `Archivo-${idx + 1}`}
+                          </span>
+                        </div>
+
+                        {!modoLectura ? (
+                          <div>
+                            <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
+                              Tipo de soporte:
+                            </label>
+                            <select
+                              value={ev.categoria || 'EJECUCION_TECNICA'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEvidencias((prev) =>
+                                  prev.map((item, i) => (i === idx ? { ...item, categoria: val } : item))
+                                );
+                              }}
+                              className="w-full text-[11px] bg-slate-50 hover:bg-white border border-slate-300 focus:border-indigo-500 rounded-lg px-2 py-1 font-medium text-slate-800 outline-none transition-colors"
+                            >
+                              <option value="EJECUCION_TECNICA">Foto Ejecución Técnica</option>
+                              <option value="SOPORTE_CONTRATACION">Soporte Contratación / OC / Factura</option>
+                              <option value="ACTA_RECEPCION_INSUMOS">Acta Recepción Insumos</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="pt-0.5">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              ev.categoria === 'SOPORTE_CONTRATACION'
+                                ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                : ev.categoria === 'ACTA_RECEPCION_INSUMOS'
+                                ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}>
+                              {ev.categoria === 'SOPORTE_CONTRATACION'
+                                ? 'Soporte Contratación'
+                                : ev.categoria === 'ACTA_RECEPCION_INSUMOS'
+                                ? 'Acta Insumos'
+                                : 'Ejecución Técnica'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -516,15 +668,31 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                 <button
                   type="button"
                   onClick={handleConfirmarCierre}
-                  disabled={ejecutandoCierre || subiendoEvidencia || evidencias.length < MIN_EVIDENCIAS}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-900/10 inline-flex items-center gap-2 disabled:bg-emerald-400 disabled:shadow-none"
+                  disabled={
+                    ejecutandoCierre ||
+                    subiendoEvidencia ||
+                    evidencias.length < MIN_EVIDENCIAS ||
+                    faltaSoporteContratacion ||
+                    faltaRecepcionInsumos ||
+                    faltaVoBo
+                  }
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-sm inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50 hover:opacity-95 transition-all"
+                  style={{ backgroundColor: '#059669', color: '#ffffff' }}
                 >
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-4 h-4 text-white" />
                   {ejecutandoCierre
                     ? 'Registrando cierre…'
                     : evidencias.length < MIN_EVIDENCIAS
                       ? `Cargar ${MIN_EVIDENCIAS - evidencias.length} evidencia(s)`
-                      : 'Confirmar cierre técnico'}
+                      : faltaSoporteContratacion
+                        ? 'Falta Soporte de Contratación'
+                        : faltaVoBo
+                        ? 'En espera de VoBo de Coordinación'
+                        : faltaRecepcionInsumos
+                          ? 'Falta Recepción / Acta Insumos'
+                          : solicitud?.clasificacionMantenimiento === 'MAYOR'
+                            ? 'Firmar y Registrar Recibo a Satisfacción'
+                            : 'Confirmar cierre técnico'}
                 </button>
               )}
             </div>

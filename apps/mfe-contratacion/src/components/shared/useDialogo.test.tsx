@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useDialogo, PeticionDialogo } from './useDialogo';
+import { SoloLectura } from './SoloLectura';
 
 /**
  * El diálogo que sustituyó a `window.prompt` en veintitrés acciones del módulo
@@ -192,5 +193,24 @@ describe('useDialogo · pedir un motivo sin el cuadro gris del navegador', () =>
 
     await abrir();
     expect(screen.getByLabelText(/Motivo/)).toHaveValue('');
+  });
+
+  it('confirma aunque el panel que lo abre esté en solo lectura', async () => {
+    // En la revisión el panel va en solo lectura y los botones de decidir lo
+    // atraviesan; el de confirmar el diálogo heredaba el bloqueo y el aval de
+    // la 9.4 se quedaba en gris.
+    const resultado = vi.fn();
+    render(
+      <SoloLectura motivo="Estás revisando lo que se envió">
+        <Panel modo="motivo" peticion={{ opcional: true, confirmar: 'Avalar la cuenta' }} onResultado={resultado} />
+      </SoloLectura>,
+    );
+    await abrir();
+
+    const confirmar = screen.getByRole('button', { name: 'Avalar la cuenta' });
+    expect(confirmar).toBeEnabled();
+    await userEvent.click(confirmar);
+
+    expect(resultado).toHaveBeenCalledWith('');
   });
 });

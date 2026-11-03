@@ -1,59 +1,61 @@
-import { BadRequestException } from '@nestjs/common';
-
 import { ConfiguracionService } from './configuracion.service';
 
 /**
- * Qué actividades admiten que se les configure una aprobación (EFDS-1183).
+ * Configurar la aprobación de una actividad (EFDS-1183, 111).
  *
- * El caso interesante es el estudio previo, que ya tiene la suya y guarda el
- * estado en la misma columna: si además se le configurara la genérica, la
- * pantalla mostraría dos trámites disputándose un único estado.
+ * Desde la 111 no se escribe en las reglas: se escribe en el borrador del
+ * flujo, que rige cuando se activa. Aquí se comprueba que la ficha traduce lo
+ * que pide la pantalla a la forma que guarda el flujo.
  */
 describe('ConfiguracionService · guardarAprobacion', () => {
-  /**
-   * Sin base de datos: lo que se comprueba ocurre antes de abrir la
-   * transacción, y montar el DataSource solo para eso probaría TypeORM.
-   */
-  const servicio = () => new ConfiguracionService({} as never);
+  const montar = () => {
+    const flujo = {
+      guardarAsignacion: jest.fn(async () => undefined),
+      asignacion: jest.fn(async () => ({
+        laHace: { tipo: 'PERMISO' },
+        aprobacion: { tipo: 'NINGUNA' },
+        propiaDeLaModalidad: { laHace: false, aprobacion: false },
+        editando: 'BORRADOR',
+      })),
+    };
+    const srv = new ConfiguracionService({ query: jest.fn(async () => []) } as never, flujo as never);
+    return { srv, flujo };
+  };
 
-  it('deja configurarle aprobación al estudio previo, como a las demás', async () => {
-    // Antes se rechazaba: su ciclo estaba escrito en el código y el envío la
-    // dejaba en revisión siempre, así que una segunda aprobación habría creado
-    // dos trámites sobre la misma columna de estado. Ya no: el envío consulta
-    // esta configuración, de modo que el trámite es uno solo.
-    const transaccion = jest.fn().mockResolvedValue({ requiereAprobacion: true });
-    const srv = new ConfiguracionService({ transaction: transaccion } as never);
+  it('un escalón de roles se guarda en el borrador, como en cualquier actividad (también la 3.1)', async () => {
+    const { srv, flujo } = montar();
 
-    await srv.guardarAprobacion('3.1', {
-      requiereAprobacion: true,
-      roles: ['DIRECTOR_CONTRATACION'],
-    } as never);
+    await srv.guardarAprobacion('3.1', { requiereAprobacion: true, roles: ['DIRECTOR_CONTRATACION'] } as never);
 
-    expect(transaccion).toHaveBeenCalled();
+    expect(flujo.guardarAsignacion).toHaveBeenCalledWith(
+      '3.1',
+      null,
+      { aprobacion: { tipo: 'ESCALON', roles: ['DIRECTOR_CONTRATACION'], personas: [], puestos: [] } },
+      expect.anything(),
+    );
   });
 
-  it('deja retirarla, que no crea ningún conflicto', async () => {
-    // Guardar `requiereAprobacion: false` sobre la 3.1 solo deroga lo que
-    // hubiera: negarlo dejaría sin salida a quien la marcó por error. Se
-    // comprueba que la guarda deja pasar —llega a la transacción, que aquí no
-    // existe— y no que la escritura funcione, que es cosa de la base.
-    const transaccion = jest.fn().mockResolvedValue({ requiereAprobacion: false });
-    const srv = new ConfiguracionService({ transaction: transaccion } as never);
+  it('retirarla es «no requiere»', async () => {
+    const { srv, flujo } = montar();
 
     await srv.guardarAprobacion('3.1', { requiereAprobacion: false } as never);
 
-    expect(transaccion).toHaveBeenCalled();
+    expect(flujo.guardarAsignacion).toHaveBeenCalledWith('3.1', null, { aprobacion: { tipo: 'NINGUNA' } }, expect.anything());
   });
 
-  it('no estorba a las demás actividades', async () => {
-    const transaccion = jest.fn().mockResolvedValue({ requiereAprobacion: true });
-    const srv = new ConfiguracionService({ transaction: transaccion } as never);
+  it('una cadena se guarda como cadena', async () => {
+    const { srv, flujo } = montar();
 
-    await srv.guardarAprobacion('5.9', {
-      requiereAprobacion: true,
-      roles: ['DIRECTOR_CONTRATACION'],
-    } as never);
+    await srv.guardarAprobacion('5.9', { requiereAprobacion: true, cadenaId: 'c-1' } as never);
 
-    expect(transaccion).toHaveBeenCalled();
+    expect(flujo.guardarAsignacion).toHaveBeenCalledWith('5.9', null, { aprobacion: { tipo: 'CADENA', cadenaId: 'c-1' } }, expect.anything());
+  });
+
+  it('en una modalidad, «usar la general» deja de reemplazarla', async () => {
+    const { srv, flujo } = montar();
+
+    await srv.guardarAprobacion('5.9', { requiereAprobacion: true, modalidad: 'MINIMA_CUANTIA', usarGeneral: true } as never);
+
+    expect(flujo.guardarAsignacion).toHaveBeenCalledWith('5.9', 'MINIMA_CUANTIA', { aprobacion: null }, expect.anything());
   });
 });

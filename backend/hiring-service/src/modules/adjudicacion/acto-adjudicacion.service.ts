@@ -2,9 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, Not } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Not } from 'typeorm';
+
+import { Cdp } from '../../entities/cdp.entity';
 
 import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
 import { InformeDefinitivo } from '../../entities/informe-definitivo.entity';
@@ -16,12 +19,16 @@ import {
   ArchivoCargado,
   NUMERAL_ACTO,
   NUMERAL_INFORME_DEFINITIVO,
+  NUMERAL_RECEPCION,
 } from './adjudicacion.base';
+import { Proceso } from '../../entities/proceso.entity';
 import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { Campana } from '../notificaciones/campana';
+import { motorDeAvisosEncendido } from '../notificaciones/notificador.service';
 
 /**
- * Acto de adjudicación — actividad 7.4 (EFDS-1159, RF-ADJ-01).
+ * Acto de adjudicación — actividad 7.3 (EFDS-1159, RF-ADJ-01).
  *
  * La resolución del Ordenador del Gasto. Aquí termina el proceso de selección:
  * lo que sigue es contrato.
@@ -31,8 +38,13 @@ import { CierreActividadService } from '../cierre-actividad/cierre-actividad.ser
  * trámite, pero comprometer a la entidad con un tercero es de quien ordena el
  * gasto. Aquí sí lo dice la historia, y no es un supuesto del equipo.
  */
+/** El cargue del CDP: la matriz lo excluye donde la entidad no compromete gasto. */
+const NUMERAL_CDP = '4.2';
+
 @Injectable()
 export class ActoAdjudicacionService extends AdjudicacionBase {
+  private readonly logger = new Logger('ActoAdjudicacion');
+
   constructor(dataSource: DataSource, cierre: CierreActividadService) {
     super(dataSource, cierre);
   }
@@ -53,6 +65,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     const definitivo = await this.definitivoPublicado(em, procesoId);
     const ofertas = await this.ofertasDe(em, procesoId);
     const porOferta = new Map(ofertas.map((o) => [o.id, o]));
+    const sinConvocatoria = await this.sinConvocatoria(em, proceso);
 
     const documentos = await this.documentosDe(
       actos.flatMap((a) => [a.actoDocumentoId, a.evidenciaDocumentoId]),
@@ -61,19 +74,22 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     return {
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
+      // Directa: no hay ofertas ni informe definitivo, y el acto trae al
+      // contratista. La pantalla pide sus datos en vez de la lista de ofertas.
+      sinConvocatoria,
       // Sin informe definitivo publicado no se adjudica: firmar sobre una
       // evaluación que todavía se puede mover es lo que hay que evitar.
       informeDefinitivoPublicado: !!definitivo,
       // La ganadora que propone el informe. El acto puede apartarse de ella,
       // pero entonces tiene que decir por qué.
-      ganadoraPropuesta: definitivo
+      ganadoraPropuesta: definitivo?.resultado.ganadora
         ? {
             oferenteId: definitivo.resultado.ganadora.oferenteId,
             nombre: definitivo.resultado.ganadora.nombre,
             valorEvaluado: definitivo.resultado.valorEvaluado,
           }
         : null,
-      puedeAdjudicar: !excluida && !!definitivo && !vigente,
+      puedeAdjudicar: !excluida && (sinConvocatoria || !!definitivo) && !vigente,
       acto: vigente ? this.presentar(vigente, documentos, porOferta) : null,
       // Los revocados se muestran: explican que el proceso se adjudicara dos
       // veces, y a un tercero le consta el primero.
@@ -100,17 +116,12 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     hash: string,
     acceso: HiringAccess,
   ) {
+    let aviso: { correo: string; radicado: string | null; objeto: string | null } | null = null;
+
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
       await this.exigirQueNoEsteDesierto(em, procesoId);
       await this.exigirQueAplique(em, proceso, NUMERAL_ACTO);
-
-      const definitivo = await this.definitivoPublicado(em, procesoId);
-      if (!definitivo) {
-        throw new ConflictException(
-          `El informe de evaluación definitivo no se ha publicado: adjudicar sin él sería firmar sobre una evaluación que todavía se puede mover (${NUMERAL_INFORME_DEFINITIVO})`,
-        );
-      }
 
       if (await this.actoVigente(em, procesoId)) {
         throw new ConflictException(
@@ -118,22 +129,75 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
         );
       }
 
-      const ofertas = await this.ofertasDe(em, procesoId);
-      const adjudicatario = ofertas.find((o) => o.id === dto.oferenteId);
-      if (!adjudicatario) {
-        throw new NotFoundException(
-          'Esa oferta no está en la lista de este proceso: solo se adjudica a quien presentó oferta',
+      // Adjudicar es comprometer a la entidad por ese valor: no puede pasar lo
+      // que el CDP certificó. Antes se adjudicaron $50 M sobre un CDP de $37 M.
+      // Donde la modalidad no lleva CDP (enajenación: la entidad recibe, no
+      // gasta) no hay con qué comparar.
+      const sinCdp = await this.excluida(em, proceso, NUMERAL_CDP);
+      const cdp = sinCdp ? null : await this.cdpDelProceso(em, procesoId);
+      if (!sinCdp && !cdp) {
+        throw new ConflictException(
+          'El proceso no tiene CDP expedido: sin respaldo presupuestal no se adjudica (4.2)',
+        );
+      }
+      if (cdp && cdp.valor != null && Number(dto.valorAdjudicado) > Number(cdp.valor)) {
+        throw new BadRequestException(
+          `El valor adjudicado ($ ${Number(dto.valorAdjudicado).toLocaleString('es-CO')}) supera ` +
+            `lo que certificó el CDP ${cdp.numero ?? ''} ($ ${Number(cdp.valor).toLocaleString('es-CO')})`,
         );
       }
 
-      // Apartarse de la ganadora es legítimo —el ganador que no firma, por
-      // ejemplo— pero no puede pasar sin que quede dicho por qué. El sistema no
-      // lo impide: pone la contradicción delante y exige sustentarla.
-      const esLaGanadora = definitivo.resultado.ganadora.oferenteId === adjudicatario.id;
-      if (!esLaGanadora && !dto.justificacion?.trim()) {
-        throw new BadRequestException(
-          `El informe definitivo propone a ${definitivo.resultado.ganadora.nombre}: si se adjudica a otro, di por qué`,
-        );
+      // Sin convocatoria (directa) no hay ofertas ni informe definitivo: el
+      // acto dice él mismo a quién se adjudica. Con convocatoria, se adjudica a
+      // una oferta y sobre el informe definitivo publicado.
+      const sinConvocatoria = await this.sinConvocatoria(em, proceso);
+
+      let definitivo: InformeDefinitivo | null = null;
+      let adjudicatario: Oferente | null = null;
+      let esLaGanadora = true;
+      let contratista: { nombre: string; documento: string; tipo: 'NATURAL' | 'JURIDICA' } | null =
+        null;
+
+      if (sinConvocatoria) {
+        const nombre = dto.contratistaNombre?.trim();
+        const documento = dto.contratistaDocumento?.trim();
+        if (!nombre || !documento || !dto.contratistaTipo) {
+          throw new BadRequestException(
+            'Sin convocatoria el acto dice a quién se adjudica: nombre, documento y tipo de persona del contratista',
+          );
+        }
+        contratista = { nombre, documento, tipo: dto.contratistaTipo };
+      } else {
+        definitivo = await this.definitivoPublicado(em, procesoId);
+        if (!definitivo) {
+          throw new ConflictException(
+            `El informe de evaluación definitivo no se ha publicado: adjudicar sin él sería firmar sobre una evaluación que todavía se puede mover (${NUMERAL_INFORME_DEFINITIVO})`,
+          );
+        }
+
+        const ofertas = await this.ofertasDe(em, procesoId);
+        adjudicatario = ofertas.find((o) => o.id === dto.oferenteId) ?? null;
+        if (!adjudicatario) {
+          throw new NotFoundException(
+            'Esa oferta no está en la lista de este proceso: solo se adjudica a quien presentó oferta',
+          );
+        }
+
+        // Apartarse de la ganadora es legítimo —el ganador que no firma, por
+        // ejemplo— pero no puede pasar sin que quede dicho por qué. El sistema no
+        // lo impide: pone la contradicción delante y exige sustentarla.
+        const propuesta = definitivo.resultado.ganadora;
+        if (!propuesta) {
+          throw new ConflictException(
+            'El informe definitivo no dice cuál oferta gana: actualízalo con la ganadora antes de adjudicar (7.2)',
+          );
+        }
+        esLaGanadora = propuesta.oferenteId === adjudicatario.id;
+        if (!esLaGanadora && !dto.justificacion?.trim()) {
+          throw new BadRequestException(
+            `El informe definitivo propone a ${propuesta.nombre}: si se adjudica a otro, di por qué`,
+          );
+        }
       }
 
       const doc = await this.guardarDocumento(
@@ -149,8 +213,11 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       const guardado = await em.save(
         em.create(ActoAdjudicacion, {
           procesoId,
-          informeDefinitivoId: definitivo.id,
-          oferenteId: adjudicatario.id,
+          informeDefinitivoId: definitivo?.id ?? null,
+          oferenteId: adjudicatario?.id ?? null,
+          contratistaNombre: contratista?.nombre ?? null,
+          contratistaDocumento: contratista?.documento ?? null,
+          contratistaTipo: contratista?.tipo ?? null,
           numeroActo: dto.numeroActo.trim(),
           fechaActo: dto.fechaActo,
           valorAdjudicado: String(dto.valorAdjudicado),
@@ -170,16 +237,58 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       await this.traza(em, procesoId, guardado.id, 'acto_adjudicacion', 'ADJUDICAR', acceso, {
         actividad: NUMERAL_ACTO,
         numeroActo: dto.numeroActo.trim(),
-        adjudicatario: adjudicatario.numero,
+        adjudicatario: adjudicatario?.numero ?? contratista?.documento,
+        sinConvocatoria,
         valorAdjudicado: dto.valorAdjudicado,
         // Que el acto se apartara del informe es lo primero que se busca
         // cuando alguien revisa el expediente.
-        esLaGanadoraDelInforme: esLaGanadora,
+        esLaGanadoraDelInforme: sinConvocatoria ? null : esLaGanadora,
         justificacion: esLaGanadora ? null : dto.justificacion?.trim(),
       });
+
+      if (guardado.correoContratista) {
+        aviso = {
+          correo: guardado.correoContratista,
+          radicado: proceso.radicado ?? null,
+          objeto: proceso.objeto ?? null,
+        };
+      }
     });
 
+    // Fuera de la transacción: un correo que no sale no deshace la adjudicación.
+    if (aviso) await this.avisarAlAdjudicatario(aviso);
+
     return this.estado(procesoId);
+  }
+
+  /**
+   * El correo al proveedor adjudicado (EFDS-1159).
+   *
+   * Sale siempre que el acto traiga su correo, sin configurarlo como aviso: la
+   * sesión con Contratación confirmó que adjudicar avisa al ganador. Es solo
+   * informativo, y el texto lo dice: la notificación oficial es el acto
+   * administrativo. La redacción está pendiente de confirmar con Contratación.
+   */
+  private async avisarAlAdjudicatario(aviso: {
+    correo: string;
+    radicado: string | null;
+    objeto: string | null;
+  }) {
+    if (!motorDeAvisosEncendido()) return;
+
+    const proceso = aviso.radicado ? `el proceso ${aviso.radicado}` : 'el proceso de contratación';
+    const objeto = aviso.objeto ? `, cuyo objeto es «${aviso.objeto}»,` : '';
+    try {
+      await new Campana(this.dataSource, this.logger).aCorreosExternos([aviso.correo], {
+        titulo: 'Adjudicación del proceso',
+        mensaje:
+          `La Escuela Superior de Administración Pública le informa que ${proceso}${objeto} ` +
+          'le fue adjudicado. Este correo es solo informativo: no reemplaza la notificación ' +
+          'oficial, que se surte con el acto administrativo de adjudicación.',
+      });
+    } catch (error: any) {
+      this.logger.warn(`No salió el correo al adjudicatario: ${error.message}`);
+    }
   }
 
   /** Registra la notificación y la publicación del acto, con su evidencia. */
@@ -269,7 +378,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     documentos: Map<string, Documento>,
     ofertas: Map<string, Oferente>,
   ) {
-    const adjudicatario = ofertas.get(acto.oferenteId);
+    const adjudicatario = acto.oferenteId ? ofertas.get(acto.oferenteId) : undefined;
     const doc = documentos.get(acto.actoDocumentoId);
     const evidencia = acto.evidenciaDocumentoId
       ? documentos.get(acto.evidenciaDocumentoId)
@@ -286,7 +395,15 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
             nombre: adjudicatario.nombre,
             identificacion: adjudicatario.identificacion,
           }
-        : null,
+        : acto.contratistaNombre
+          ? {
+              id: null,
+              numero: null,
+              nombre: acto.contratistaNombre,
+              identificacion: acto.contratistaDocumento,
+            }
+          : null,
+      contratistaTipo: acto.contratistaTipo ?? null,
       numeroActo: acto.numeroActo,
       fechaActo: acto.fechaActo,
       valorAdjudicado: Number(acto.valorAdjudicado),
@@ -303,6 +420,23 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       revocadoAt: acto.revocadoAt,
       motivoRevocacion: acto.motivoRevocacion,
     };
+  }
+
+  /**
+   * Si la modalidad adjudica sin convocatoria: no recibe ofertas (6.1).
+   *
+   * Se pregunta por la exclusión de la 6.1 y no por el código de la modalidad,
+   * para que lo decida la matriz y no una lista escrita en el código.
+   */
+  private async sinConvocatoria(em: EntityManager, proceso: Proceso) {
+    return !!(await this.excluida(em, proceso, NUMERAL_RECEPCION));
+  }
+
+  /** El CDP expedido del proceso; el de una adición no respalda la adjudicación. */
+  private cdpDelProceso(em: EntityManager, procesoId: string) {
+    return em
+      .getRepository(Cdp)
+      .findOne({ where: { procesoId, estado: 'EXPEDIDO', modificacionId: IsNull() } });
   }
 
   private actoVigente(em: EntityManager, procesoId: string) {

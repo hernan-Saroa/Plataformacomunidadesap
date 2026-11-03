@@ -13,7 +13,6 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { CdpModule } from '../cdp/cdp.module';
 import { DocumentosModule } from '../documentos/documentos.module';
-import { RiesgosModule } from '../riesgos/riesgos.module';
 import { OfertasModule } from '../ofertas/ofertas.module';
 
 @Module({
@@ -31,8 +30,6 @@ import { OfertasModule } from '../ofertas/ofertas.module';
     CdpModule,
     // Para informar si la elaboración de documentos quedó a medias (EFDS-1149).
     DocumentosModule,
-    // La audiencia de riesgos obligatoria condiciona la apertura (EFDS-1153).
-    RiesgosModule,
     // Abrir el proceso arranca el plazo de ofertas de la etapa 6 (EFDS-1155).
     OfertasModule,
   ],

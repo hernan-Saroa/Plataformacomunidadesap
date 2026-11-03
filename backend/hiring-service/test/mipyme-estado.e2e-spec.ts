@@ -8,7 +8,7 @@ import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-prev
 import { HiringAccess } from '../src/auth/hiring-access';
 
 /**
- * Regresión de la actividad 5.4 (EFDS-1151).
+ * Regresión de la actividad 5.5 (EFDS-1151).
  *
  * La entidad LimitacionMipyme declara `smmlv_aplicado` desde EFDS-1390, pero la
  * migración que crea la columna puede no haberse aplicado en un entorno
@@ -19,7 +19,7 @@ import { HiringAccess } from '../src/auth/hiring-access';
  * Esta prueba la lee. Si al esquema le falta una columna que la entidad espera,
  * falla aquí en vez de en la pantalla del gestor.
  */
-describe('Actividad 5.4 · el estado de MIPYME se puede consultar', () => {
+describe('Actividad 5.5 · el estado de MIPYME se puede consultar', () => {
   let app: INestApplication;
   let mipyme: MipymeService;
   let procesos: EstudioPrevioService;

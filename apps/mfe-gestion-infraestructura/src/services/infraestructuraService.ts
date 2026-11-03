@@ -246,7 +246,12 @@ export interface HistoricoAsignacionEntry {
     | 'CONFORMIDAD_SIN_RESPUESTA'
     | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
     | 'VOBO_VALORACION_APROBADO'
-    | 'VOBO_VALORACION_OBSERVADO';
+    | 'VOBO_VALORACION_OBSERVADO'
+    | 'VOBO_REVISION_TECNICA_FAVORABLE'
+    | 'VOBO_REVISION_TECNICA_OBSERVADA'
+    | 'VINCULACION_TRAMITE_CONTRACTUAL'
+    | 'CIERRE_POR_FALTA_DE_INSUMOS'
+    | 'CIERRE_TECNICO_CONTRATACION_VALIDADO';
   tecnico_codigo: string | null;
   tecnico_nombre_display: string | null;
   motivo: string | null;
@@ -327,6 +332,9 @@ export interface GuardarValoracionCompletaPayload {
   observaciones?: string;
   evidencias?: Array<Record<string, any>>;
   insumos: ValoracionInsumoPayload[];
+  requiereContratacion?: boolean;
+  cerrarPorFaltaInsumos?: boolean;
+  motivoCierreFaltaInsumos?: string;
 }
 
 export interface ConfirmarRecepcionInsumosPayload {
@@ -345,6 +353,7 @@ export interface EvidenciaCierreFoto {
   url: string;
   bucket?: string;
   key?: string;
+  categoria?: 'EJECUCION_TECNICA' | 'SOPORTE_CONTRATACION' | 'ACTA_RECEPCION_INSUMOS' | string;
 }
 
 export interface CierreTecnicoPayload {
@@ -577,11 +586,15 @@ export interface SesionUsuarioUMI {
   permissions: string[];
 }
 
-const normPerm = (s: unknown): string =>
-  String(s ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '');
+const normPerm = (s: unknown): string => {
+  if (s == null) return '';
+  if (typeof s === 'object') {
+    const obj = s as any;
+    const c = obj.code || obj.codigo || obj.role || obj.rol || obj.name || '';
+    return String(c).trim().toUpperCase().replace(/\s+/g, '');
+  }
+  return String(s).trim().toUpperCase().replace(/\s+/g, '');
+};
 
 const FE_GRUPOS: Record<string, string[]> = {
   INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES: [
@@ -685,9 +698,28 @@ const FE_LEGACY_MAP: Record<string, string[]> = {
   SUPER_ADMIN: ['__ALL__'],
   ADMIN: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
   GESTOR_MANTENIMIENTO: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
-  ADMINISTRADOR_FUNCIONAL: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
-  ADMINISTRADOR_FUNCIONAL_INFRA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
-  COORDINADOR_INFRAESTRUCTURA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  ADMINISTRADOR_FUNCIONAL: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  ADMINISTRADOR_FUNCIONAL_INFRA: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  COORDINADOR_INFRAESTRUCTURA: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  P5: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
+    'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  P3: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  P2: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
   UMI: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
   INFRAESTRUCTURA: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
   TECNICO_UMI: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
@@ -1575,7 +1607,9 @@ export const infraestructuraService = {
     requiereVoBoInsumos: boolean;
     montoMinimoInsumosVoBoCop: number;
     categoriasVoBoObligatorio: number[];
+    categoriasCodigosVoBoObligatorio?: string[];
     requiereVoBoContratacion: boolean;
+    modalidadVoBo?: 'UN_ACTOR' | 'DOS_ACTORES';
   }> {
     try {
       const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/vobo-config`, { credentials: 'include' });
@@ -1588,8 +1622,10 @@ export const infraestructuraService = {
         requiereVoBoMantenimientoMayor: true,
         requiereVoBoInsumos: true,
         montoMinimoInsumosVoBoCop: 500000,
-        categoriasVoBoObligatorio: [48, 54],
+        categoriasVoBoObligatorio: [25, 31, 48, 54],
+        categoriasCodigosVoBoObligatorio: ['CS_002', 'CS_008'],
         requiereVoBoContratacion: true,
+        modalidadVoBo: 'UN_ACTOR',
       };
     }
   },
@@ -1803,6 +1839,24 @@ export const infraestructuraService = {
   // EFDS-1735 RF-INF-006: Valoración campo + insumos
   // 6 endpoints nuevos implementados en mantenimiento.controller.ts
   // ---------------------------------------------------------------------------
+  async cerrarPorFaltaDeInsumos(
+    idSolicitud: string,
+    payload: { insumosFaltantes?: string; motivo: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/cerrar-falta-insumos`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al cerrar solicitud por falta de insumos';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return res.json();
+  },
+
   async iniciarEjecucionDirecta(idSolicitud: string): Promise<SolicitudMantenimiento> {
     const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/iniciar-ejecucion-directa`, {
       method: 'POST',
@@ -1896,6 +1950,26 @@ export const infraestructuraService = {
     }
     const data = await res.json();
     notificarEventoFrontend('RECEPCION_INSUMOS_TECNICO', idSolicitud, payload);
+    return data;
+  },
+
+  async registrarRevisionVoBo(
+    idSolicitud: string,
+    payload: { concepto: 'FAVORABLE' | 'CON_OBSERVACIONES'; observaciones: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/vobo-revision`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al registrar la revisión técnica de la valoración';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('VOBO_REVISION_TECNICA', idSolicitud, payload);
     return data;
   },
 
@@ -2358,6 +2432,52 @@ export const infraestructuraService = {
       throw new Error(m);
     }
     return await res.json();
+  },
+
+
+  async vincularTramiteContractual(
+    idSolicitud: string,
+    payload: {
+      procesoContractual: string;
+      radicadoOrfeo?: string;
+      presupuestoEstimadoCop?: number;
+      observaciones?: string;
+    },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/tramite-contractual`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al vincular trámite contractual';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('TRAMITE_CONTRACTUAL', idSolicitud, payload);
+    return data;
+  },
+
+  async marcarRequiereContratacion(
+    idSolicitud: string,
+    payload: { motivo: string; insumosRequeridos?: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/marcar-requiere-contratacion`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al marcar requerimiento de contratación';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('VALORACION_GUARDADA', idSolicitud, payload);
+    return data;
   },
 };
 

@@ -4,21 +4,29 @@ import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
 import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
+import { AperturaService } from '../src/modules/apertura/apertura.service';
+import { CdpService } from '../src/modules/cdp/cdp.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
- * HU EFDS-1153 · Audiencia de asignación de riesgos (actividad 5.5).
+ * HU EFDS-1153 · Audiencia de asignación de riesgos (actividad 5.12).
  *
  * El primer criterio es que en licitación pública el sistema exija la audiencia
  * y permita consolidar la matriz de riesgos. Se prueba contra la base porque la
  * regla de en qué modalidades es obligatoria vive en tabla, y una fila mal
  * cargada no la detecta ninguna prueba unitaria.
+ *
+ * Desde la 112 va después de la apertura, como en la matriz: se registra con
+ * el proceso abierto y lo que no puede pasar sin ella es cerrar las ofertas.
  */
-describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
+describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.12)', () => {
   let app: INestApplication;
   let riesgos: RiesgosService;
   let procesos: EstudioPrevioService;
+  let apertura: AperturaService;
+  let cdp: CdpService;
   let dataSource: DataSource;
 
   const OBJETO = 'Audiencia de riesgos para pruebas';
@@ -29,17 +37,47 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
     roles: ['GESTOR_CONTRATACION'],
   };
 
+  const financiero: HiringAccess = {
+    userId: '00000000-0000-0000-0000-000000000002',
+    userName: 'prueba.financiero',
+    roles: ['ESTRUCTURADOR_FINANCIERO'],
+  };
+
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
-  const archivo = (nombre: string) => ({
+  const archivo = (nombre: string, mimetype = 'application/pdf') => ({
     filename: `${nombre}-en-disco`,
     originalname: nombre,
-    mimetype: 'application/pdf',
+    mimetype,
     size: 1024,
   });
 
   const crear = (modalidad: string) =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
+
+  /** Crea el proceso y lo abre: la audiencia se celebra con el proceso abierto. */
+  const abierto = async (modalidad = 'LICITACION_PUBLICA') => {
+    const proceso = await crear(modalidad);
+    await cdp.cargar(
+      proceso.id,
+      { rubro: 'A-02-02', numero: 'CDP-2026-153', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
+      financiero,
+    );
+    await aprobarSegundaSesion(dataSource, proceso.id);
+    await apertura.registrar(
+      proceso.id,
+      { resolucionNumero: 'RES-2026-153', resolucionFecha: hoy() },
+      archivo('resolucion.pdf'),
+      'c'.repeat(64),
+      archivo('pliego-definitivo.pdf'),
+      'd'.repeat(64),
+      archivo('captura-secop.png', 'image/png'),
+      'e'.repeat(64),
+      gestor,
+    );
+    return proceso;
+  };
 
   const celebrar = (procesoId: string, fecha = hoy()) =>
     riesgos.registrar(
@@ -59,10 +97,15 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
 
     riesgos = app.get(RiesgosService);
     procesos = app.get(EstudioPrevioService);
+    apertura = app.get(AperturaService);
+    cdp = app.get(CdpService);
     dataSource = app.get(DataSource);
   });
 
   afterAll(async () => {
+    const deProceso = `proceso_id IN (SELECT id FROM hiring.procesos WHERE objeto = $1)`;
+    await dataSource.query(`DELETE FROM hiring.recepciones_ofertas WHERE ${deProceso}`, [OBJETO]);
+    await dataSource.query(`DELETE FROM hiring.cdp WHERE ${deProceso}`, [OBJETO]);
     await dataSource.query(`DELETE FROM hiring.procesos WHERE objeto = $1`, [OBJETO]);
     await app.close();
   });
@@ -80,7 +123,7 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
     });
 
     it('registra el acta y la matriz de riesgos consolidada', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       const estado = await celebrar(proceso.id);
 
       expect(estado.celebrada).toBe(true);
@@ -89,13 +132,13 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
     });
 
     it('deja los dos documentos en el expediente', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       await celebrar(proceso.id);
 
       const documentos = await dataSource.query(
         `SELECT d.nombre FROM hiring.documentos d
            JOIN hiring.expedientes e ON e.id = d.expediente_id
-          WHERE e.proceso_id = $1 AND d.numeral = '5.5'
+          WHERE e.proceso_id = $1 AND d.numeral = '5.12'
           ORDER BY d.nombre`,
         [proceso.id],
       );
@@ -107,35 +150,52 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
     });
 
     it('da la actividad por cumplida al registrarla', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       await celebrar(proceso.id);
 
       const [actividad] = await dataSource.query(
         `SELECT estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral = '5.5'`,
+          WHERE proceso_id = $1 AND numeral = '5.12'`,
         [proceso.id],
       );
       expect(actividad.estado).toBe('APROBADO');
     });
 
     it('no admite dos audiencias vigentes', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       await celebrar(proceso.id);
 
       await expect(celebrar(proceso.id)).rejects.toThrow(/ya tiene una audiencia/i);
     });
 
     it('rechaza una audiencia con fecha futura', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       const manana = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
-      // Una fecha adelantada permitiría abrir el proceso apoyándose en una
+      // Una fecha adelantada permitiría cerrar las ofertas apoyándose en una
       // audiencia que todavía no se celebró.
       await expect(celebrar(proceso.id, manana)).rejects.toThrow(/no puede ser posterior a hoy/i);
     });
 
-    it('al anularla la actividad vuelve a estar pendiente', async () => {
+    it('no se registra antes de la apertura', async () => {
+      // La matriz la pone después de la apertura (su 5.12): se celebra sobre
+      // el pliego definitivo.
       const proceso = await crear('LICITACION_PUBLICA');
+
+      await expect(celebrar(proceso.id)).rejects.toThrow(/después de la apertura/i);
+    });
+
+    it('no puede ser anterior a la resolución de apertura', async () => {
+      const proceso = await abierto();
+      const ayer = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', {
+        timeZone: 'America/Bogota',
+      });
+
+      await expect(celebrar(proceso.id, ayer)).rejects.toThrow(/anterior a la resolución de apertura/i);
+    });
+
+    it('al anularla la actividad vuelve a estar pendiente', async () => {
+      const proceso = await abierto();
       await celebrar(proceso.id);
 
       const tras = await riesgos.anular(
@@ -156,7 +216,7 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
     });
 
     it('tras anular se puede registrar otra', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       await celebrar(proceso.id);
       await riesgos.anular(proceso.id, { motivo: 'Se corrige la fecha de celebración' }, gestor);
 
@@ -182,48 +242,47 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
       await expect(celebrar(proceso.id)).rejects.toThrow(/no adelanta audiencia/i);
     });
 
-    it('donde aplica sin ser obligatoria, se puede celebrar pero no bloquea', async () => {
-      // Mínima cuantía no está excluida y no figura como obligatoria: la
-      // audiencia puede registrarse, pero el proceso no depende de ella.
+    it('fuera de la licitación pública no aplica ni bloquea el cierre de ofertas', async () => {
+      // La matriz solo la adelanta en licitación pública (104): en mínima
+      // cuantía no se registra y el cierre de ofertas no la espera.
       const proceso = await crear('MINIMA_CUANTIA');
       const estado = await riesgos.estado(proceso.id);
 
-      expect(estado.aplica).toBe(true);
+      expect(estado.aplica).toBe(false);
       expect(estado.obligatoria).toBe(false);
 
-      const requisito = await riesgos.requisitoParaApertura(proceso.id);
+      const requisito = await riesgos.requisitoParaCerrarOfertas(proceso.id);
       expect(requisito.cumplido).toBe(true);
 
-      const tras = await celebrar(proceso.id);
-      expect(tras.celebrada).toBe(true);
+      await expect(celebrar(proceso.id)).rejects.toThrow(/no adelanta audiencia/i);
     });
   });
 
   // ------------------------------------------------------------ criterio 2 --
 
-  describe('Criterio 2 · el requisito para avanzar', () => {
+  describe('Criterio 2 · el requisito para cerrar las ofertas', () => {
     it('sin la audiencia obligatoria el requisito no se cumple', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
-      const requisito = await riesgos.requisitoParaApertura(proceso.id);
+      const proceso = await abierto();
+      const requisito = await riesgos.requisitoParaCerrarOfertas(proceso.id);
 
       expect(requisito.cumplido).toBe(false);
       expect(requisito.motivo).toMatch(/audiencia/i);
     });
 
     it('con la audiencia celebrada el requisito se cumple', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       await celebrar(proceso.id);
 
-      const requisito = await riesgos.requisitoParaApertura(proceso.id);
+      const requisito = await riesgos.requisitoParaCerrarOfertas(proceso.id);
       expect(requisito.cumplido).toBe(true);
     });
 
     it('anularla vuelve a dejar el requisito sin cumplir', async () => {
-      const proceso = await crear('LICITACION_PUBLICA');
+      const proceso = await abierto();
       await celebrar(proceso.id);
       await riesgos.anular(proceso.id, { motivo: 'La matriz consolidada estaba incompleta' }, gestor);
 
-      const requisito = await riesgos.requisitoParaApertura(proceso.id);
+      const requisito = await riesgos.requisitoParaCerrarOfertas(proceso.id);
       expect(requisito.cumplido).toBe(false);
     });
   });

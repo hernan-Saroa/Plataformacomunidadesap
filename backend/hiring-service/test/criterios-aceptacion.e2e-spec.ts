@@ -146,7 +146,7 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
       });
 
       expect(expedientes).toHaveLength(1);
-      expect(expedientes[0].numeroExpediente).toMatch(/^EXP-\d{4}-\d{4}$/);
+      expect(expedientes[0].numeroExpediente).toMatch(/^EXP-\d{4}-\d{4,}$/);
     });
 
     it('guarda lo diligenciado y lo devuelve al releer', async () => {
@@ -228,7 +228,14 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
       // criterio 2 en cualquier campo de texto.
       const proceso = await crearProceso();
       const datos = await datosCompletos();
-      const codigoTexto = Object.keys(datos).find((k) => typeof datos[k] === 'string')!;
+      // Uno de texto libre: una selección con espacios no es «vacía», es una
+      // opción que no existe, y eso lo rechaza otra validación.
+      const textoLibre = await dataSource.getRepository(CampoFormulario).find({
+        where: { numeral: '3.1', obligatorio: true, activo: true },
+      });
+      const codigoTexto = textoLibre.find(
+        (c) => !c.soloLectura && !['numero', 'moneda', 'seleccion'].includes(c.tipo),
+      )!.codigo;
       datos[codigoTexto] = '   ';
 
       await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);

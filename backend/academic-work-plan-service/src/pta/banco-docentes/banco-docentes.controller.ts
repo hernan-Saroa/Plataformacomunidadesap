@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
@@ -16,7 +16,7 @@ import { RundDocumentosService } from './rund-documentos.service';
 import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
-import { validateEvidenceType } from './rund-evidence-workflow';
+import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 import {
@@ -692,7 +692,9 @@ export class BancoDocentesController {
   ) {
     this.assertIncorporationUpload(body, req);
     const actor = this.requestActor(req);
-    const data = await this.documentos.create(id, body, file, actor.actorId, actor.ip);
+    // modo=agregar: the document library adds another evidence (it never overwrites a legacy one).
+    const data = await this.documentos.create(id, { ...body, nuevaEvidencia: body?.modo === 'agregar', soporteHistoricoId: undefined },
+      file, actor.actorId, actor.ip);
     return { success: true, data: this.documentos.protectMetadata(data, actor.fullAccess) };
   }
 
@@ -875,7 +877,7 @@ export class BancoDocentesController {
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   async getBloques(@Param('id') id: string, @Req() req: any) {
     await this.assertOwnProfileForDocente(id, undefined, req);
-    const result = await this.service.getBloques(id);
+    const result = await this.service.getBloques(id,this.requestActor(req).fullAccess);
     return { success: true, data: await this.protectSensitiveResponse(result, req, 'BLOQUES_PERFIL_RUND') };
   }
 
@@ -920,6 +922,14 @@ export class BancoDocentesController {
     return { success: true, data: await this.service.revisarSoporte(id, bloque, soporteId, body, actor.actorId, actor.ip) };
   }
 
+  @Post(':id/bloques/:bloque/datos/:campo/revision')
+  @RequireRundPermissions(RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  async revisarDato(@Param('id') id: string, @Param('bloque') bloque: string, @Param('campo') campo: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    if (!actor.fullAccess) throw new ForbiddenException('La revisión de datos requiere acceso al perfil y sus soportes originales.');
+    return {success:true,data:await this.service.revisarDato(id,bloque,campo,body,actor.actorId,actor.ip)};
+  }
+
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
@@ -961,13 +971,25 @@ export class BancoDocentesController {
       });
       return { success: true, data: protectRundSensitiveData({ ...result, validacionTipo }, actor.fullAccess) };
     }
-    const existing = technical ? undefined : (await this.documentos.list(id))
-      .find(document => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
-    const document = existing
-      ? await this.documentos.replace(id, existing.id, file, actor.actorId, body.descripcion, actor.ip, body.campo)
+    // modo=agregar adds another evidence to the checkpoint; documentoId replaces that exact evidence.
+    // Without either, existing callers keep replacing the most recent current file.
+    // soporteHistoricoId replaces a legacy evidence that only has a folder file (no document version).
+    const adding = !technical && body.modo === 'agregar';
+    const legacySupportId = !technical && !adding && typeof body.soporteHistoricoId === 'string' ? body.soporteHistoricoId : undefined;
+    // CC, CE and passport share the identity checkpoint, so an exact evidence is matched within its group.
+    const target = technical || adding || legacySupportId ? undefined : (await this.documentos.list(id))
+      .find(document => document.estado === 'ACTIVO' && (body.documentoId
+        ? document.id === body.documentoId && evidenceGroup(body.tipoSoporte).includes(document.tipoSoporte || '')
+        : document.tipoSoporte === body.tipoSoporte));
+    if (!technical && !adding && body.documentoId && !target) {
+      throw new ConflictException('La evidencia seleccionada fue reemplazada o retirada. Actualice el expediente.');
+    }
+    const document = target
+      ? await this.documentos.replace(id, target.id, file, actor.actorId, body.descripcion, actor.ip, body.campo)
       : await this.documentos.create(id, {
           categoria: technical ? 'OTROS' : body.categoria || this.supportCategory(bloque, body.tipoSoporte),
           bloque, tipoSoporte: body.tipoSoporte, campo: body.campo, descripcion: body.descripcion,
+          nuevaEvidencia: adding, soporteHistoricoId: legacySupportId,
         }, file, actor.actorId, actor.ip);
     const data = this.documentos.protectMetadata(document, actor.fullAccess);
     // Los modales de edición/estado esperan el ID del soporte, no el del archivo.

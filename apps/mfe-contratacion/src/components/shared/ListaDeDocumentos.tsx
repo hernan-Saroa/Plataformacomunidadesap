@@ -759,7 +759,8 @@ function ObservacionesDelRevisor({
               {s.nombre}
             </p>
             <p className="text-[10.5px] text-amber-800 m-0 tabular-nums">
-              Devolución de {s.revisadoPor} · {dia(s.devueltaAt)}
+              {s.decision === 'APROBADO' ? 'Aprobación' : 'Devolución'} de {s.revisadoPor} ·{' '}
+              {dia(s.devueltaAt)}
             </p>
           </div>
           <AccionesArchivo

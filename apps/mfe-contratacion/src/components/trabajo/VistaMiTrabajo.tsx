@@ -62,7 +62,7 @@ export function VistaMiTrabajo({ estado, pestana, onPestana, onRevisar, onTrabaj
       etiqueta: 'Por asignar',
       n: trabajo.porAsignar.length,
       Icono: UserPlus,
-      ayuda: 'Hay que recibirlos en la Dirección o asignarles abogado.',
+      ayuda: 'Hay que recibirlos en la Dirección o asignarles los puestos.',
     },
     {
       id: 'espera',

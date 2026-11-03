@@ -57,6 +57,8 @@
 .rund-documents__supported-data dt { color: #52647b; font-size: 11px; line-height: 1.5; }
 .rund-documents__supported-data dd { margin: 3px 0 0; color: #0f172a; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .rund-documents__destination .rund-documents__shared-hint { margin-top: 12px; padding-top: 10px; border-top: 1px solid #dbeafe; color: #52647b; font-size: 11px; }
+.rund-documents__destination .rund-documents__evidence-note { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 11px; line-height: 1.45; }
+.rund-documents__evidence-number { color: #1d4ed8; font-weight: 700; }
 .rund-documents__destination > small { flex-shrink: 0; padding: 4px 7px; border: 1px solid #bfdbfe; border-radius: 6px; background: #fff; color: #1d4ed8; font-size: 10px; }
 .rund-documents__upload-empty { padding: 16px; border: 1px dashed #cbd5e1; border-radius: 9px; background: #fff; color: #475569; font-size: 12px; line-height: 1.6; }
 .rund-documents__upload-empty p { margin: 5px 0 0; color: #64748b; }

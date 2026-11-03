@@ -36,11 +36,11 @@ import {
 } from '../archivos';
 
 /**
- * Audiencia de adjudicación y sobre económico — actividades 7.1 y 7.2.
+ * Audiencia de adjudicación y sobre económico — actividades 7.1 y 7.1.1.
  *
  * Escribe el gestor del proceso: registrar que la audiencia se celebró y cargar
  * su acta es documentar un hecho, no decidir. Adjudicar sí es decidir, y eso es
- * del Ordenador del Gasto en la 7.4.
+ * del Ordenador del Gasto en la 7.3.
  */
 @ApiTags('Etapa 7 · Audiencia de adjudicación')
 @Controller('procesos/:id/adjudicacion/audiencia')
@@ -136,21 +136,21 @@ export class AudienciaController {
   }
 
   @Post('sobres')
-  @Puede('editar', '7.2')
+  @Puede('editar', '7.1.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
       opcionesDeCarga(
         [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
-        'La evidencia de la apertura se carga en PDF, Word, Excel o imagen',
+        'La oferta económica se carga en PDF, Word, Excel o imagen',
       ),
     ),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 7.2 · Abrir el sobre económico de una oferta',
+    summary: 'Actividad 7.1.1 · Abrir el sobre económico de una oferta',
     description:
-      'Solo donde la modalidad lo exige. El valor que traía el sobre se guarda aparte del que la oferta declaró.',
+      'Solo en licitación de obra pública. Con la oferta económica del proveedor en el formato diligenciado; el valor que traía el sobre se guarda aparte del que la oferta declaró.',
   })
   async abrirSobre(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -158,10 +158,13 @@ export class AudienciaController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    // La evidencia es opcional: el acta de la audiencia ya documenta la
-    // apertura, y exigir un soporte por sobre duplicaría el mismo hecho.
+    // La evidencia de la 7.1.1 es la oferta económica de cada proveedor en el
+    // formato diligenciado, más el acta de la audiencia (7.1), que ya se exige
+    // al registrarla. Sin video (EFDS-1159).
     if (!file) {
-      return this.service.abrirSobre(procesoId, dto, null, null, getHiringAccess(req));
+      throw new BadRequestException(
+        'Adjunta la oferta económica del proveedor, en el formato diligenciado',
+      );
     }
 
     const ruta = join(STORAGE_PATH, file.filename);

@@ -3,6 +3,7 @@ import { AlertTriangle, Check, MessageSquareText } from 'lucide-react';
 
 import { Modal } from './Modal';
 import { Boton, campo } from './PiezasPanel';
+import { SoloLectura } from './SoloLectura';
 
 /** Un dato que hay que pedir antes de ejecutar la acción. */
 export interface CampoDialogo {
@@ -163,7 +164,11 @@ export function useDialogo() {
 
   const peligro = peticion?.tono === 'peligro';
 
+  // El diálogo lo abre una acción que ya se permitió, y el modal hereda el
+  // contexto de quien lo pinta: en la revisión, que es solo lectura, el botón
+  // de confirmar nacía apagado y el aval de la 9.4 no se podía dar nunca.
   const elemento = (
+    <SoloLectura motivo={null}>
     <Modal
       isOpen={peticion !== null}
       onClose={cerrar}
@@ -250,6 +255,7 @@ export function useDialogo() {
         </div>
       )}
     </Modal>
+    </SoloLectura>
   );
 
   return { pedirMotivo, pedirDatos, confirmar, elemento };

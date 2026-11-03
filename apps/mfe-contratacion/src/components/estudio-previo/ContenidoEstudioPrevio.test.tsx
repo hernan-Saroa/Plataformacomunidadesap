@@ -25,14 +25,13 @@ const estudioPrevio = (cambios: Record<string, unknown> = {}) => ({
   datos: {},
   definicionCampos: [],
   editable: false,
-  revision: { abogado: null, puedeDecidir: false, motivo: 'SIN_ABOGADO' },
+  revision: { puedeDecidir: false, motivo: null, espera: null, ronda: null, acciones: [] },
   ...cambios,
 });
 
-const abogado = { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co', cargo: null };
 
 /**
- * La 3.4 la resuelve el abogado asignado en la 3.3 (EFDS-1183).
+ * La 3.4 la resuelve el escalón que espera en la ronda de la 3.1 (EFDS-1183, 109).
  *
  * La pantalla no controla el acceso —lo hace el guard del backend— pero sí
  * decide qué ofrece, y ofrecer una decisión que la API va a rechazar es
@@ -66,12 +65,12 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     render(<ContenidoEstudioPrevio procesoId="p-1" />);
   };
 
-  it('al abogado asignado lo lleva a la revisión, sin decidir aquí', async () => {
+  it('a quien le toca decidir lo lleva a la revisión, sin decidir aquí', async () => {
     // La decisión solo se toma en la pantalla de revisión: aquí queda el
     // formulario de quien redactó, en solo lectura.
     const onRevisar = vi.fn();
     vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
-      estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }) as never,
+      estudioPrevio({ revision: { puedeDecidir: true, motivo: null, acciones: ['APROBAR', 'DEVOLVER', 'NEGAR'] } }) as never,
     );
     render(<ContenidoEstudioPrevio procesoId="p-1" onRevisar={onRevisar} />);
 
@@ -81,20 +80,36 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     expect(screen.queryByRole('button', { name: /Negar/ })).toBeNull();
   });
 
-  it('a otro abogado no le ofrece ninguna, y le dice de quién es', async () => {
-    pintar(estudioPrevio({ revision: { abogado, puedeDecidir: false, motivo: 'NO_ES_TUYO' } }));
+  it('a quien no le toca no le ofrece ninguna, y le dice a quién espera', async () => {
+    pintar(
+      estudioPrevio({
+        revision: {
+          puedeDecidir: false,
+          motivo: 'EN_CADENA',
+          espera: 'Espera al escalón 1, Abogado: Andrés Rojas (Abogado).',
+          acciones: [],
+        },
+      }),
+    );
 
-    expect(await screen.findByText(/Lo revisa Andrés Rojas/)).toBeInTheDocument();
+    expect(await screen.findByText(/Espera al escalón 1, Abogado: Andrés Rojas/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Negar/ })).toBeNull();
   });
 
-  it('sin abogado repartido explica que falta la 3.3', async () => {
-    // Una franja vacía donde otros ven tres botones no dice nada; el aviso
-    // señala el paso que falta.
-    pintar(estudioPrevio());
+  it('con el puesto del escalón vacío dice que falta asignarlo en la 3.3', async () => {
+    pintar(
+      estudioPrevio({
+        revision: {
+          puedeDecidir: false,
+          motivo: 'EN_CADENA',
+          espera: 'Falta asignar en la 3.3 quién ocupa el puesto Abogado',
+          acciones: [],
+        },
+      }),
+    );
 
-    expect(await screen.findByText(/se asigna abogado en la actividad 3.3/)).toBeInTheDocument();
+    expect(await screen.findByText(/Falta asignar en la 3.3/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
   });
 
@@ -121,7 +136,7 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     pintar(
       estudioPrevio({
         estado: 'NEGADO',
-        revision: { abogado, puedeDecidir: true, motivo: null },
+        revision: { puedeDecidir: true, motivo: null, acciones: ['APROBAR', 'DEVOLVER', 'NEGAR'] },
       }),
     );
 
@@ -153,7 +168,7 @@ describe('ContenidoEstudioPrevio · la decisión se toma en la revisión', () =>
 
   it('ofrece abrir la revisión en vez de las tres decisiones', async () => {
     vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
-      estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }) as never,
+      estudioPrevio({ revision: { puedeDecidir: true, motivo: null, acciones: ['APROBAR', 'DEVOLVER', 'NEGAR'] } }) as never,
     );
     const onRevisar = vi.fn();
     render(<ContenidoEstudioPrevio procesoId="p-1" onRevisar={onRevisar} />);

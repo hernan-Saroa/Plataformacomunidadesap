@@ -9,6 +9,10 @@ interface Props {
   onCambio: (archivos: File[]) => void;
   /** El texto del enlace cuando todavía no hay ninguno. */
   etiqueta?: string;
+  /** Cómo lo nombra un lector de pantalla. */
+  nombreAccesible?: string;
+  /** Formatos que ofrece el selector; por defecto, los ofimáticos. */
+  formatos?: string;
 }
 
 /**
@@ -22,6 +26,8 @@ export function ElegirSoportes({
   archivos,
   onCambio,
   etiqueta = 'Adjuntar las correcciones (opcional)',
+  nombreAccesible = 'Documentos con las correcciones',
+  formatos = MIME_SOPORTES,
 }: Props) {
   return (
     <div className="space-y-1">
@@ -58,8 +64,8 @@ export function ElegirSoportes({
           type="file"
           multiple
           className="sr-only"
-          aria-label="Documentos con las correcciones"
-          accept={MIME_SOPORTES}
+          aria-label={nombreAccesible}
+          accept={formatos}
           onChange={(e) => {
             const elegidos = Array.from(e.target.files ?? []);
             // Se limpia para que elegir otra vez el mismo archivo dispare el cambio.

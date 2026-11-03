@@ -1,84 +1,74 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
+  IsIn,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
-  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 
 import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
-/**
- * Los números llegan como texto dentro del multipart —la petición trae también
- * el informe— y `FormData` no distingue tipos. Se convierten antes de validar;
- * sin esto `IsNumber` rechazaría siempre. Vacío es "no viene", no cero: un
- * puntaje en blanco significa que la modalidad no puntúa, no que sacó cero.
- */
-const aNumero = ({ value }: { value: unknown }) => {
-  if (value === '' || value === null || value === undefined) return undefined;
-  const numero = Number(value);
-  return Number.isNaN(numero) ? value : numero;
+/** De qué es cada archivo del informe preliminar (EFDS-1157). */
+export const DIMENSIONES_INFORME = ['CONSOLIDADO', 'JURIDICO', 'TECNICO', 'FINANCIERO'] as const;
+export type DimensionInforme = (typeof DIMENSIONES_INFORME)[number];
+
+/** Cómo se nombra cada archivo en el expediente. */
+export const NOMBRE_DIMENSION: Record<DimensionInforme, string> = {
+  CONSOLIDADO: 'Informe de evaluación preliminar',
+  JURIDICO: 'Evaluación jurídica',
+  TECNICO: 'Evaluación técnica',
+  FINANCIERO: 'Evaluación financiera y económica',
 };
 
+/**
+ * Las dimensiones llegan en el multipart, una por archivo y en el mismo orden:
+ * repetidas como campo o como un JSON. Se normalizan a lista antes de validar.
+ */
+const aLista = ({ value }: { value: unknown }) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim().startsWith('[')) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return [value];
+};
+
+/**
+ * El informe de evaluación preliminar — actividad 6.3 (EFDS-1157).
+ *
+ * En este punto la evaluación es preliminar: todavía no se sabe qué oferta
+ * gana, así que no se registran puntajes ni ganadora. Se carga el informe del
+ * comité, en uno o varios archivos, y ese mismo soporte alimenta la 6.4.
+ */
 export class RegistrarResultadoDto {
-  @ApiProperty({ description: 'Oferta que el comité eligió como ganadora' })
-  @IsUUID('4', { message: 'La ganadora se identifica con el id de la oferta registrada' })
-  oferenteId: string;
-
-  /**
-   * La nota que reporta el comité, sobre el total que él mismo usó.
-   *
-   * Opcionales porque no toda modalidad puntúa —en mínima cuantía suele bastar
-   * con el menor precio que cumple—, y siempre las dos juntas: el servicio
-   * rechaza una sin la otra, porque un 85 sin saber sobre cuánto no dice nada.
-   */
-  @ApiPropertyOptional({ description: 'Puntaje obtenido por la ganadora' })
+  @ApiPropertyOptional({ description: 'Observación sobre el informe preliminar' })
   @IsOptional()
-  @Transform(aNumero)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El puntaje obtenido debe ser un número' })
-  @Min(0, { message: 'El puntaje obtenido no puede ser negativo' })
-  puntajeObtenido?: number;
-
-  @ApiPropertyOptional({ description: 'Puntaje máximo de la escala que aplicó el comité' })
-  @IsOptional()
-  @Transform(aNumero)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El puntaje máximo debe ser un número' })
-  @Min(0.01, { message: 'El puntaje máximo tiene que ser mayor que cero' })
-  puntajeMaximo?: number;
-
-  /**
-   * El valor por el que se evalúa la ganadora.
-   *
-   * Puede no ser el que el oferente presentó: una corrección aritmética del
-   * comité cambia la cifra sin reescribir la oferta.
-   */
-  @ApiPropertyOptional({ description: 'Valor evaluado de la oferta ganadora' })
-  @IsOptional()
-  @Transform(aNumero)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor evaluado debe ser un número' })
-  @Min(0.01, { message: 'El valor evaluado tiene que ser mayor que cero' })
-  valorEvaluado?: number;
-
-  /**
-   * Por qué esa y no otra.
-   *
-   * Obligatoria y con largo mínimo: es lo que el traslado del informe (6.4) le
-   * muestra a los oferentes que no ganaron, y "cumple" no explica nada.
-   */
-  @ApiProperty({ description: 'Por qué el comité eligió esa oferta' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por qué el comité eligió esa oferta' })
-  @MinLength(20, {
-    message: 'La justificación tiene que explicar la decisión, no una palabra suelta',
-  })
   @MaxLength(4000)
-  justificacion: string;
+  observacion?: string;
+
+  @ApiPropertyOptional({
+    description: 'De qué es cada archivo, en el orden en que se adjuntan',
+    enum: DIMENSIONES_INFORME,
+    isArray: true,
+  })
+  @IsOptional()
+  @Transform(aLista)
+  @IsArray({ message: 'Las dimensiones van como una lista, una por archivo' })
+  @IsIn(DIMENSIONES_INFORME as unknown as string[], {
+    each: true,
+    message: 'Cada archivo es el consolidado o la evaluación jurídica, técnica o financiera y económica',
+  })
+  dimensiones?: DimensionInforme[];
 
   /** Solo si la 6.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
@@ -87,6 +77,20 @@ export class RegistrarResultadoDto {
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
+}
+
+/**
+ * Volver a cargar el informe preliminar (EFDS-1157).
+ *
+ * Si tiene un error u omisión se carga otro: el anterior queda en el historial
+ * con la fecha, el usuario y este motivo.
+ */
+export class ActualizarInformeDto extends RegistrarResultadoDto {
+  @ApiProperty({ description: 'Por qué se vuelve a cargar el informe' })
+  @IsString()
+  @IsNotEmpty({ message: 'Di por qué se vuelve a cargar el informe: queda en su historial' })
+  @MaxLength(1000)
+  motivo: string;
 }
 
 export class RectificarResultadoDto {

@@ -94,8 +94,7 @@ describe('esSoloPresupuesto', () => {
   it('la Financiera, aunque apruebe el respaldo de la 9.5', () => {
     fijarAlcance({
       alcances: [
-        { accion: 'editar', lugar: '4.2' },
-        { accion: 'editar', lugar: '4.3' },
+        { accion: 'decidir', lugar: '8.3' },
         { accion: 'aprobar', lugar: '9.5' },
         { accion: 'decidir', lugar: '9.4' },
       ],
@@ -107,11 +106,16 @@ describe('esSoloPresupuesto', () => {
   it('no quien además trabaja procesos', () => {
     fijarAlcance({
       alcances: [
-        { accion: 'editar', lugar: 'E4' },
+        { accion: 'decidir', lugar: '8.3' },
         { accion: 'editar', lugar: '3.1' },
       ],
       transversales: [],
     });
+    expect(esSoloPresupuesto()).toBe(false);
+  });
+
+  it('cargar el CDP no es mover presupuesto: desde la 103 la 4.2 es del área', () => {
+    fijarAlcance({ alcances: [{ accion: 'editar', lugar: '4.2' }], transversales: [] });
     expect(esSoloPresupuesto()).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { admiteInicio } from './acta-inicio.service';
+import { admiteInicio, anteriorAlPerfeccionamiento } from './acta-inicio.service';
 
 /**
  * Criterio de EFDS-1167: «dado un contrato legalizado con supervisor designado,
@@ -31,5 +31,25 @@ describe('admiteInicio', () => {
 
   it('tampoco sobre una minuta rechazada', () => {
     expect(admiteInicio('RECHAZADO')).toBe(false);
+  });
+});
+
+/**
+ * Quedó un acta de inicio veinte días anterior a la firma del contrato.
+ */
+describe('anteriorAlPerfeccionamiento', () => {
+  // El ordenador firmó el 15 y el contratista el 21: se perfeccionó el 21.
+  const firmas = ['2026-10-15', '2026-10-21'];
+
+  it('rechaza un inicio anterior a la última firma', () => {
+    expect(anteriorAlPerfeccionamiento('2026-10-18', firmas)).toMatch(/2026-10-21/);
+  });
+
+  it('acepta el mismo día de la última firma', () => {
+    expect(anteriorAlPerfeccionamiento('2026-10-21', firmas)).toBeNull();
+  });
+
+  it('sin firmas registradas no inventa la regla', () => {
+    expect(anteriorAlPerfeccionamiento('2026-10-01', [])).toBeNull();
   });
 });

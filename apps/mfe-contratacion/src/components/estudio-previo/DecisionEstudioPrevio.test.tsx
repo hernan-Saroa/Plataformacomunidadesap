@@ -47,6 +47,31 @@ describe('DecisionEstudioPrevio', () => {
     expect(onDecidido).toHaveBeenCalled();
   });
 
+  it('un escalón que aprueba adjunta varios documentos a su decisión', async () => {
+    const aprobar = vi.spyOn(contratacionService, 'aprobar').mockResolvedValue({} as never);
+    const subir = vi
+      .spyOn(contratacionService, 'subirSoporteDevolucion')
+      .mockResolvedValue({} as never);
+    render(
+      <DecisionEstudioPrevio
+        procesoId="p-1"
+        onDecidido={vi.fn()}
+        variante="tarjeta"
+        siguiente="2. Jefe de la oficina jurídica"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Aprobar y pasar al siguiente/ }));
+    const concepto = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
+    const visto = new File(['y'], 'visto-bueno.docx', { type: 'application/msword' });
+    await userEvent.upload(screen.getByLabelText('Documentos con las correcciones'), [concepto, visto]);
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    expect(aprobar).toHaveBeenCalledWith('p-1', undefined, undefined);
+    expect(subir).toHaveBeenNthCalledWith(1, 'p-1', '3.1', concepto);
+    expect(subir).toHaveBeenNthCalledWith(2, 'p-1', '3.1', visto);
+  });
+
   it('al aprobar dice a dónde pasa el proceso', async () => {
     render(
       <DecisionEstudioPrevio
@@ -77,6 +102,25 @@ describe('DecisionEstudioPrevio', () => {
     // La tercera es la que faltaba: sin ella un proceso rechazado de plano se
     // devolvía, y el área se quedaba esperando saber qué corregir.
     expect(screen.getByRole('button', { name: /Negar/ })).toBeInTheDocument();
+  });
+
+  it('negar adjunta los documentos que fundan la negativa', async () => {
+    const negar = vi.spyOn(contratacionService, 'negar').mockResolvedValue({} as never);
+    const subir = vi
+      .spyOn(contratacionService, 'subirSoporteDevolucion')
+      .mockResolvedValue({} as never);
+    render(<DecisionEstudioPrevio procesoId="p-1" onDecidido={vi.fn()} variante="tarjeta" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /Negar/ }));
+    await userEvent.type(screen.getByLabelText(/Motivo de la negativa/), 'No procede.');
+    const concepto = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
+    const oficio = new File(['y'], 'oficio.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText('Documentos con las correcciones'), [concepto, oficio]);
+    await userEvent.click(screen.getByRole('button', { name: /Negar el proceso/ }));
+
+    expect(negar).toHaveBeenCalledWith('p-1', 'No procede.');
+    expect(subir).toHaveBeenNthCalledWith(1, 'p-1', '3.1', concepto);
+    expect(subir).toHaveBeenNthCalledWith(2, 'p-1', '3.1', oficio);
   });
 
   it('negar exige motivo antes de dejar confirmar', async () => {

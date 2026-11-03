@@ -11,6 +11,13 @@ export interface AvisoCampana {
   datos_adicionales?: Record<string, unknown>;
 }
 
+/** Un archivo que viaja en el correo, como lo pide notifications-service. */
+export interface AdjuntoCorreo {
+  filename: string;
+  contentBase64: string;
+  contentType?: string;
+}
+
 /**
  * La campana del portal, vista desde contratación.
  *
@@ -185,6 +192,39 @@ export class Campana {
       }
     }
     return enviados;
+  }
+
+  /**
+   * Un correo con documentos adjuntos, a una sola persona (124).
+   *
+   * Para lo que no cabe en un aviso: la designación del supervisor va con el
+   * acto y lo que necesita para empezar a vigilar. notifications-service
+   * recibe los adjuntos en base64 dentro del JSON; devuelve si salió.
+   */
+  async correoConAdjuntos(
+    para: string,
+    aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>,
+    adjuntos: AdjuntoCorreo[],
+  ): Promise<boolean> {
+    const url = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:3009';
+    try {
+      const respuesta = await fetch(`${url}/api/v1/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: para,
+          subject: `Contratación · ${aviso.titulo}`,
+          text: aviso.mensaje,
+          html: htmlDelAviso(aviso),
+          attachments: adjuntos,
+        }),
+      });
+      if (!respuesta.ok) this.logger.warn(`El correo a ${para} no salió: ${respuesta.status}`);
+      return respuesta.ok;
+    } catch (error: any) {
+      this.logger.warn(`El correo a ${para} no salió: ${error.message}`);
+      return false;
+    }
   }
 
   /** Descarta los avisos idénticos que el destinatario todavía no ha leído. */

@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { isOlderPtaWorkflow } from './shared/ptaWorkflowSync';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -75,6 +76,7 @@ import {
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
   hasComponentPermission,
+  hasDocumentTrackingComponentPermission,
   labelDeComponente,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
@@ -1004,15 +1006,13 @@ function SeguimientoDocumentosAdmin({
   rolLabel: string;
   periodo: string;
 }) {
-  // Alcance POR COMPONENTE basado exclusivamente en los permisos granulares
-  // pta.approve.<componente> (+ pta.approve.all y superuser). La entrada a esta
-  // vista ya fue autorizada aparte con el permiso funcional de Seguimiento. No se usa
-  // permisos.componentesAprobables porque muchos roles mapean a 'admin' por defecto y
-  // devolverían todos los componentes, ignorando los permisos reales del rol.
+  // El permiso funcional abre la vista; los permisos vigentes de revisión y
+  // aprobación delimitan los componentes, sin depender del nombre del rol.
   const { puede } = usePermisosPTAGranulares();
-  const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
-  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puede, key);
-  const tieneAlcanceSeguimiento = apruebaTodo || PTA_COMPONENT_KEYS.some(isComponentAuthorized);
+  const { session: authSession, refreshPermissions } = useAuth();
+  const isComponentAuthorized = (key: PTAComponentKey) => hasDocumentTrackingComponentPermission(puede, key);
+  const trackingScopeKey = PTA_COMPONENT_KEYS.filter(isComponentAuthorized).join('|');
+  const tieneAlcanceSeguimiento = PTA_COMPONENT_KEYS.some(isComponentAuthorized);
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {
@@ -1034,6 +1034,8 @@ function SeguimientoDocumentosAdmin({
   const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
   const loadRequestRef = useRef(0);
 
+  useEffect(() => { void refreshPermissions?.(); }, [refreshPermissions]);
+
   const load = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
     if (!periodo) {
@@ -1042,6 +1044,7 @@ function SeguimientoDocumentosAdmin({
       return;
     }
     setLoading(true);
+    setPtasData([]);
     const res = await getAllPtasConEvidencias(periodo);
     if (requestId !== loadRequestRef.current) return;
     if (res.success) {
@@ -1053,7 +1056,7 @@ function SeguimientoDocumentosAdmin({
       toast.error(res.message || 'No fue posible consultar el Seguimiento documental.');
     }
     setLoading(false);
-  }, [periodo]);
+  }, [periodo, authSession, trackingScopeKey]);
 
   useEffect(() => {
     void load();
@@ -1169,12 +1172,12 @@ function SeguimientoDocumentosAdmin({
         <div style={{ textAlign: 'center', padding: 60, background: '#F9FAFB', borderRadius: 14 }}>
           <FolderOpen style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
           <p style={{ fontSize: '0.9rem', color: '#9CA3AF', margin: 0 }}>
-            {tieneAlcanceSeguimiento ? 'Sin documentos para revisar' : 'Sin componentes de aprobación asignados'}
+            {tieneAlcanceSeguimiento ? 'Sin documentos para revisar' : 'Sin componentes de seguimiento asignados'}
           </p>
           <p style={{ fontSize: '0.75rem', color: '#9CA3AF', margin: '4px 0 0' }}>
             {tieneAlcanceSeguimiento
               ? 'Los docentes aún no han subido soportes a sus PTAs aprobados'
-              : 'El acceso a Seguimiento está activo, pero el rol necesita al menos un permiso de aprobación por componente.'}
+              : 'El acceso a Seguimiento está activo, pero los roles necesitan al menos un permiso de revisión o aprobación por componente.'}
           </p>
         </div>
       ) : (
@@ -1503,6 +1506,7 @@ type EstadoEtapaPersonal = 'sin_alcance' | 'pendiente' | 'resuelto';
 
 /** Combina el detalle general con las tareas personales ya autorizadas. */
 function mergePtaWorkflowUpdate(pta: any, update: any) {
+  if (isOlderPtaWorkflow(update, pta)) return pta;
   const merged = { ...pta, ...update };
   for (const etapa of ['revision', 'aprobacion']) {
     const personal = `componentes_${etapa}_usuario`;
@@ -2043,6 +2047,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (!canAccessPTAView(moduleView, tieneVista)) setModuleView(fallbackModuleView);
   }, [moduleView, tieneVista, fallbackModuleView]);
 
+  useEffect(() => {
+    if (tieneVista('gestion')) return;
+    setSelectedPTA(null);
+    setConcertacionPtaId(null);
+    setShowApproval(false);
+    setShowDevolucion(false);
+    setShowFirmaDigital(false);
+    setShowReporteR01(false);
+  }, [tieneVista]);
+
   // ── Listener: abrir detalle de PTA desde una notificación (bandeja/correo) ──
   // El backend (`pta-notifications.service.ts`) emite notificaciones con
   // url_accion='/pta?ptaId=<id>'. NotificationsPanelV2 despacha el evento
@@ -2571,7 +2585,13 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     
     // Validación robusta: asegurar que siempre sean arrays
     if (ptaRes.success && Array.isArray(ptaRes.data)) {
-      setPtas(ptaRes.data);
+      setPtas(previous => {
+        const byId = new Map(previous.map(pta => [pta.id, pta]));
+        return ptaRes.data.map(pta => {
+          const current = byId.get(pta.id);
+          return current && isOlderPtaWorkflow(pta, current) ? current : pta;
+        });
+      });
     } else {
       console.warn('[PtaBackoffice] PTA data is not an array:', ptaRes);
       // Keep the last valid list on transient failures, including pending PTAs.
@@ -2585,7 +2605,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const actualizado = ptaRes.success && Array.isArray(ptaRes.data)
         ? ptaRes.data.find((item: any) => item.id === current.id && item.periodo === current.periodo) : null;
       const reporte = current.id === reportPtaId && reportRes?.success ? reportRes.data : null;
-      return actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+      const next = actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+      return isOlderPtaWorkflow(next, current) ? current : next;
     });
     setLoading(false);
     setLastRefreshed(new Date());
@@ -3265,6 +3286,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       ],
     },
   ];
+
+  if (!canAccessPTAView(moduleView, tieneVista)) {
+    return <div role="status">Sus roles activos no tienen acceso a esta vista del PTA.</div>;
+  }
 
   if (concertacionPtaId) {
     return (

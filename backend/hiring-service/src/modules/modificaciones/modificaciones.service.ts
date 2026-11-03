@@ -23,6 +23,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { AlcanceService } from '../../auth/alcance.service';
 import { puedeTransicionar as cdpPuedeTransicionar } from '../cdp/cdp.service';
 import { puedeTransicionar as rpPuedeTransicionar } from '../registro-presupuestal/registro-presupuestal.service';
 import { margenDeAdicion, MargenDeAdicion } from './margen-de-adicion';
@@ -102,11 +103,12 @@ export class ModificacionesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string, _acceso: HiringAccess) {
+  async estado(procesoId: string, acceso: HiringAccess) {
     const em = this.dataSource.manager;
     const contrato = await this.contratoDelProceso(em, procesoId);
     const tope = await this.topeConfigurado();
@@ -178,6 +180,10 @@ export class ModificacionesService {
       margen: this.margenDe(contrato, modificaciones, 0, tope.porcentaje),
       puedeSolicitar: admite,
       motivoNoPuede: admite ? null : this.porQueNoAdmite(contrato.estado),
+      // Desde EFDS-1176 el supervisor también registra solicitudes, pero la
+      // decisión sigue en Contratación: la pantalla solo lleva a la revisión
+      // a quien puede aprobar la 9.5.
+      puedeAprobar: await this.alcance.puedeEn(acceso, 'aprobar', '9.5'),
       modificaciones: await Promise.all(
         modificaciones.map((m) => this.verModificacion(em, m)),
       ),
@@ -1206,7 +1212,7 @@ export class ModificacionesService {
     if (estado === 'TERMINADO') {
       return 'el contrato está terminado anticipadamente: lo que queda es liquidar lo ejecutado';
     }
-    return 'el contrato todavía no está en ejecución: falta el acta de inicio (9.1)';
+    return 'el contrato todavía no está en ejecución: falta el acta de inicio (8.7)';
   }
 
   private hoy() {

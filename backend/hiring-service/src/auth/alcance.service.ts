@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { Accion, Alcance, Destino, etapaDe, puede } from './alcance';
+import { accionQueHace, motivoParaNoHacer, MotivoNoHace, reglaLaHace } from './la-hace';
 
 /**
  * Los alcances de cada rol, leídos de `hiring.alcances_permiso`.
@@ -94,6 +95,90 @@ export class AlcanceService {
       [accion, numeral, etapa],
     );
     return filas.map((f) => f.id);
+  }
+
+  /**
+   * Quién hace la actividad en este proceso y, si no es quien pregunta, por
+   * qué (regla `LA_HACE`, migración 109).
+   *
+   * Permiso primero: sin él no hace nada, ocupe el puesto que ocupe. Después
+   * la regla: sin regla basta el permiso; con un puesto, solo quien lo ocupa;
+   * con personas, solo ellas. El SUPER_ADMIN pasa siempre: es la llave de
+   * pruebas.
+   */
+  async quienHace(
+    acceso: { userId?: string | null; userName?: string | null; roles?: string[] } | undefined,
+    procesoId: string,
+    numeral: string,
+    accion: Exclude<Accion, 'ver'> = accionQueHace(numeral),
+  ): Promise<{
+    motivo: MotivoNoHace | null;
+    /** Quién la hace, cuando la regla lo dice: el ocupante del puesto o las personas. */
+    responsable: { nombre: string; usuarioNombre: string | null; usuarioId: string | null } | null;
+    /** El puesto que la hace, si la regla es de puesto. */
+    puesto: string | null;
+  }> {
+    const tienePermiso = await this.puedeEn(acceso, accion, numeral);
+    const [proceso] = await this.dataSource.query(`SELECT modalidad FROM hiring.procesos WHERE id = $1`, [procesoId]);
+    const regla = await reglaLaHace(this.dataSource.manager, numeral, proceso?.modalidad ?? null, procesoId);
+    const superAdmin = (acceso?.roles ?? []).includes('SUPER_ADMIN');
+
+    if (regla && 'puestoId' in regla) {
+      const [fila] = await this.dataSource.query(
+        `SELECT pu.nombre AS puesto, a.nombre, a.usuario_nombre AS "usuarioNombre", a.usuario_id::text AS "usuarioId"
+           FROM hiring.puestos_proceso pu
+           LEFT JOIN hiring.asignaciones_puesto a
+                  ON a.puesto_id = pu.id AND a.proceso_id = $2 AND a.estado = 'VIGENTE'
+          WHERE pu.id::text = $1`,
+        [regla.puestoId, procesoId],
+      );
+      const igual = (x?: string | null, y?: string | null) =>
+        !!x && !!y && x.trim().toLowerCase() === y.trim().toLowerCase();
+      const esElOcupante =
+        !!fila?.nombre && (igual(fila.usuarioId, acceso?.userId) || igual(fila.usuarioNombre, acceso?.userName));
+      const motivo = motivoParaNoHacer({
+        tienePermiso,
+        regla,
+        hayOcupante: !!fila?.nombre,
+        esElOcupante,
+        estaEntreLasPersonas: false,
+      });
+      return {
+        motivo: superAdmin ? null : motivo,
+        responsable: fila?.nombre
+          ? { nombre: fila.nombre, usuarioNombre: fila.usuarioNombre, usuarioId: fila.usuarioId }
+          : null,
+        puesto: fila?.puesto ?? 'un puesto que ya no existe',
+      };
+    }
+
+    if (regla && 'personas' in regla) {
+      const [cuenta] = acceso?.userId
+        ? await this.dataSource.query(`SELECT id_person::text AS id FROM auth."user" WHERE id_user::text = $1`, [
+            acceso.userId,
+          ])
+        : [];
+      const nombres: { nombre: string }[] = await this.dataSource.query(
+        `SELECT COALESCE(nom_largo, nom_tercero) AS nombre FROM auth.personas WHERE id_person::text = ANY($1::text[])`,
+        [regla.personas],
+      );
+      const motivo = motivoParaNoHacer({
+        tienePermiso,
+        regla,
+        hayOcupante: true,
+        esElOcupante: false,
+        estaEntreLasPersonas: !!cuenta?.id && regla.personas.includes(cuenta.id),
+      });
+      return {
+        motivo: superAdmin ? null : motivo,
+        responsable: nombres.length
+          ? { nombre: nombres.map((n) => n.nombre).join(' o '), usuarioNombre: null, usuarioId: null }
+          : null,
+        puesto: null,
+      };
+    }
+
+    return { motivo: tienePermiso || superAdmin ? null : 'SIN_PERMISO', responsable: null, puesto: null };
   }
 
   /** Vacía la caché; la usan las pruebas y la pantalla al guardar la matriz. */

@@ -35,14 +35,14 @@ import {
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
-/** Actividad 5.4 de la matriz: la limitación de la convocatoria a MIPYME. */
-export const NUMERAL_MIPYME = '5.4';
+/** Actividad 5.5 de la matriz: la limitación de la convocatoria a MIPYME. */
+export const NUMERAL_MIPYME = '5.5';
 
 @Injectable()
 export class MipymeService {
   constructor(
     private readonly dataSource: DataSource,
-    /** Si la 5.4 exige firmar con el token institucional al decidir (EFDS-2070). */
+    /** Si la 5.5 exige firmar con el token institucional al decidir (EFDS-2070). */
     private readonly cierre: CierreActividadService,
     /** Quién puede gestionar la limitación a MIPYME (migración 083). */
     private readonly alcance: AlcanceService,

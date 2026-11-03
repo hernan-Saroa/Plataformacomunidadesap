@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FilePen,
+  PauseCircle,
   UserPlus,
   Workflow,
 } from 'lucide-react';
@@ -59,6 +60,18 @@ export const RASGOS_DEL_MOMENTO: Record<
   },
   negado: {
     etiqueta: 'Negado',
+    clase: 'bg-red-50 text-red-700',
+    color: 'text-red-700',
+    Icono: Ban,
+  },
+  detenido: {
+    etiqueta: 'Detenido',
+    clase: 'bg-amber-50 text-amber-700',
+    color: 'text-amber-700',
+    Icono: PauseCircle,
+  },
+  cancelado: {
+    etiqueta: 'Cancelado',
     clase: 'bg-red-50 text-red-700',
     color: 'text-red-700',
     Icono: Ban,

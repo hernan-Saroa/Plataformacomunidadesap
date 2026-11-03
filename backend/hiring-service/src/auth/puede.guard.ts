@@ -8,10 +8,11 @@ import {
   applyDecorators,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { isUUID } from 'class-validator';
 
 import { Accion, Destino, esDestinoValido, puede } from './alcance';
 import { AlcanceService } from './alcance.service';
-import { normalizeRoles } from './hiring-access';
+import { getHiringAccess, normalizeRoles } from './hiring-access';
 import { permisosDelUsuario } from './permisos';
 import { PermisosService } from './permisos.service';
 
@@ -99,7 +100,11 @@ export class PuedeGuard implements CanActivate {
 
     const alcances = await this.alcanceService.deRoles(roles);
     const acciones = Array.isArray(exigencia.accion) ? exigencia.accion : [exigencia.accion];
-    if (acciones.some((accion) => puede(alcances, accion, destino))) return true;
+    const conPermiso = acciones.filter((accion) => puede(alcances, accion, destino));
+    if (conPermiso.length) {
+      await this.exigirQueLaHaga(conPermiso, destino, request, roles);
+      return true;
+    }
 
     const alternativo = exigencia.opciones?.oPermiso;
     if (alternativo) {
@@ -113,6 +118,38 @@ export class PuedeGuard implements CanActivate {
         ? `No tienes permiso para ${que} en ${destino}`
         : `No tienes permiso para ${que} en este módulo`,
     );
+  }
+
+  /**
+   * Si la actividad tiene regla «quién la hace» (109), editarla en un proceso
+   * es solo de quien la regla dice: el ocupante del puesto o las personas
+   * nombradas. Solo cuando entra por editar: quien entra por decidir o aprobar
+   * hace otra cosa en el mismo endpoint, y esa la sigue cuidando el service.
+   */
+  private async exigirQueLaHaga(conPermiso: Accion[], destino: Destino | undefined, request: any, roles: string[]) {
+    if (conPermiso.some((a) => a !== 'editar')) return;
+    const procesoId = request.params?.id;
+    if (!destino || !/^\d{1,2}\.\d{1,2}$/.test(destino) || typeof procesoId !== 'string' || !isUUID(procesoId)) {
+      return;
+    }
+    const { motivo, responsable, puesto } = await this.alcanceService.quienHace(
+      getHiringAccess(request),
+      procesoId,
+      destino,
+      'editar',
+    );
+    if (motivo === 'SIN_ASIGNAR') {
+      throw new ForbiddenException(
+        `La ${destino} la hace quien ocupe el puesto ${puesto} y en este proceso todavía no hay nadie: se asigna en la 3.3`,
+      );
+    }
+    if (motivo === 'NO_ES_TUYO') {
+      throw new ForbiddenException(
+        responsable
+          ? `La ${destino} la hace ${responsable.nombre}${puesto ? ` (${puesto})` : ''}`
+          : `La ${destino} la hacen solo las personas que nombra Configuración`,
+      );
+    }
   }
 
   private resolverDestino(

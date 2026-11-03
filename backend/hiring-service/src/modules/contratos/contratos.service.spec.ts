@@ -1,5 +1,7 @@
 import {
   actividadCumplida,
+  AdjudicacionVigente,
+  contradiceElActo,
   estaSuscrito,
   evaluarAdjudicacion,
   puedeFirmarse,
@@ -10,57 +12,53 @@ import { EstadoContrato } from '../../entities/contrato.entity';
 /**
  * Criterio 1 de EFDS-1161: el contrato se genera sobre un proceso adjudicado.
  *
- * La adjudicación formal es la etapa 7 y todavía no tiene módulo, así que la
- * condición se comprueba contra la recepción de ofertas cerrada con oferentes.
- * Cuando exista el acto de adjudicación (7.4), lo que cambia es esta función y
- * estas pruebas, no el resto del servicio.
+ * Lo dice el acto de adjudicación vigente de la 7.3, con convocatoria o sin
+ * ella. Antes se miraba la recepción de ofertas, y la contratación directa, que
+ * no recibe ofertas, no llegaba nunca al contrato.
  */
+const ACTO: AdjudicacionVigente = {
+  fuente: 'el acto RES-001',
+  valor: 37_248_000,
+  contratista: { nombre: 'Ana Pérez', documento: '1.020.304.050', tipo: 'NATURAL' },
+};
+
 describe('evaluarAdjudicacion', () => {
-  it('da por adjudicado el proceso que cerró con ofertas', () => {
-    expect(evaluarAdjudicacion({ existe: true, cerrada: true, totalOferentes: 2 })).toEqual({
-      adjudicado: true,
-      motivo: null,
-    });
+  it('da por adjudicado el proceso con acto vigente', () => {
+    expect(evaluarAdjudicacion(ACTO)).toEqual({ adjudicado: true, motivo: null });
   });
 
-  it('no deja contratar mientras la recepción siga abierta', () => {
-    // Generar el contrato antes del cierre sería elegir contratista sobre una
-    // lista de ofertas que todavía puede cambiar.
-    const resultado = evaluarAdjudicacion({ existe: true, cerrada: false, totalOferentes: 3 });
+  it('sin acto no deja contratar, y dice qué falta', () => {
+    const resultado = evaluarAdjudicacion(null);
 
     expect(resultado.adjudicado).toBe(false);
-    expect(resultado.motivo).toBe('la recepción de ofertas sigue abierta');
+    expect(resultado.motivo).toMatch(/falta el acto de adjudicación vigente \(7\.3\)/);
+  });
+});
+
+describe('contradiceElActo', () => {
+  it('acepta el contrato por lo adjudicado y con el mismo contratista', () => {
+    // Los puntos y guiones del documento no lo hacen otro.
+    expect(
+      contradiceElActo({ valor: 37_248_000, contratistaDocumento: '1020304050' }, ACTO),
+    ).toBeNull();
   });
 
-  it('no deja contratar si el proceso cerró desierto', () => {
-    // Un contrato sin proponente no tiene con quién formalizarse.
-    const resultado = evaluarAdjudicacion({ existe: true, cerrada: true, totalOferentes: 0 });
-
-    expect(resultado.adjudicado).toBe(false);
-    expect(resultado.motivo).toBe('el proceso cerró sin ofertas recibidas');
+  it('acepta un contrato por menos de lo adjudicado', () => {
+    expect(
+      contradiceElActo({ valor: 30_000_000, contratistaDocumento: '1020304050' }, ACTO),
+    ).toBeNull();
   });
 
-  it('no deja contratar un proceso que ni siquiera abrió la recepción', () => {
-    const resultado = evaluarAdjudicacion({ existe: false, cerrada: false, totalOferentes: 0 });
-
-    expect(resultado.adjudicado).toBe(false);
-    expect(resultado.motivo).toBe('el proceso todavía no ha recibido ofertas');
+  it('rechaza el contrato por más de lo adjudicado', () => {
+    expect(
+      contradiceElActo({ valor: 123_213_213, contratistaDocumento: '1020304050' }, ACTO),
+    ).toMatch(/supera el adjudicado/);
   });
 
-  it('siempre explica por qué no se puede', () => {
-    // La pantalla muestra este motivo. Un `false` sin explicación dejaría al
-    // usuario ante un botón apagado sin saber qué le falta.
-    const casos = [
-      { existe: false, cerrada: false, totalOferentes: 0 },
-      { existe: true, cerrada: false, totalOferentes: 1 },
-      { existe: true, cerrada: true, totalOferentes: 0 },
-    ];
-
-    for (const caso of casos) {
-      const resultado = evaluarAdjudicacion(caso);
-      expect(resultado.adjudicado).toBe(false);
-      expect(resultado.motivo).toBeTruthy();
-    }
+  it('rechaza el contrato con otro contratista', () => {
+    expect(contradiceElActo({ valor: 37_248_000, contratistaDocumento: '3213' }, ACTO)).toMatch(
+      /no es a quien se adjudicó/,
+    );
   });
 });
 
@@ -97,20 +95,21 @@ describe('puedeResponder', () => {
 });
 
 /**
- * La actividad 8.1 se cumple con la aceptación, no con la generación.
+ * La actividad 8.1 se cumple con el contrato suscrito, no con la generación ni
+ * con la aceptación.
  *
- * Un contrato que el proponente no ha aceptado todavía no formaliza nada: darlo
- * por cumplido haría que el riel del proceso mostrara como terminada una etapa
- * que sigue pendiente de respuesta.
+ * Las firmas del ordenador y del contratista se registran en la misma
+ * actividad: darla por cumplida antes haría que el riel mostrara como terminado
+ * algo que todavía hay que diligenciar.
  */
 describe('actividadCumplida', () => {
-  it('solo la aceptación cierra la actividad', () => {
-    expect(actividadCumplida('ACEPTADO')).toBe(true);
+  it('aceptar no la cierra: faltan las firmas de las dos partes', () => {
+    // Cerrarla aquí ponía la 8.1 en verde y mandaba a la 8.2 con el contrato
+    // todavía sin suscribir.
+    expect(actividadCumplida('ACEPTADO')).toBe(false);
   });
 
-  it('firmar no la reabre', () => {
-    // Perfeccionado se alcanza desde aceptado: si dejara de contar como
-    // cumplida, el riel retrocedería justo cuando el contrato se suscribe.
+  it('la cierra el contrato suscrito por las dos partes', () => {
     expect(actividadCumplida('PERFECCIONADO')).toBe(true);
   });
 

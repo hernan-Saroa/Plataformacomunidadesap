@@ -34,6 +34,7 @@ import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelCausal } from '../causal/PanelCausal';
 import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
+import { PanelSegundaSesion } from '../comite-contratacion/PanelSegundaSesion';
 import {
   NUMERALES_ADJUDICACION,
   NUMERALES_CDP,
@@ -62,11 +63,13 @@ import {
   NUMERAL_OFERTAS,
   NUMERAL_PAGOS,
   NUMERAL_PUBLICACION,
+  NUMERAL_PUBLICACION_WEB,
   NUMERAL_PUBLICACION_CONTRATO,
   NUMERAL_RADICACION,
   NUMERAL_RIESGOS,
   NUMERAL_RP,
   NUMERAL_SEGUIMIENTO,
+  NUMERAL_SEGUNDA_SESION,
 } from './actividadesConPanel';
 
 interface Props {
@@ -116,6 +119,10 @@ export function PanelDeLaActividad({
         // La 3.7 deja de ser constancia: lo que el comité decidió son
         // tres desenlaces, y observar devuelve los documentos.
         <PanelComiteContratacion procesoId={procesoId} onCambio={onCambio} />
+      ) : numeral === NUMERAL_SEGUNDA_SESION ? (
+        // La segunda sesión del comité con el pliego definitivo (113): sube
+        // versiones a la 5.1, va por la cadena y registra lo que decidió.
+        <PanelSegundaSesion procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_RADICACION ? (
         // La 3.3 deja de ser el panel genérico de constancia: radicar es
         // recibir el proceso y ponerle responsable, no anotar una fecha.
@@ -144,7 +151,13 @@ export function PanelDeLaActividad({
       ) : numeral === NUMERAL_CIERRE_FINANCIERO ? (
         <PanelCierreFinanciero procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_LIQUIDACION ? (
-        <PanelLiquidacion procesoId={procesoId} onCambio={onCambio} />
+        /* El balance financiero y el cierre del saldo van con la liquidación,
+           no en la etapa de cierre, que queda solo para publicar y archivar
+           (revisión de QA de EFDS-1172). La 10.3 sigue guardando el cierre. */
+        <div className="space-y-3">
+          <PanelLiquidacion procesoId={procesoId} onCambio={onCambio} />
+          <PanelCierreFinanciero procesoId={procesoId} onCambio={onCambio} />
+        </div>
       ) : numeral === NUMERAL_INFORME_FINAL ? (
         <PanelInformeFinal procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_MODIFICACIONES ? (
@@ -203,7 +216,18 @@ export function PanelDeLaActividad({
       ) : numeral === NUMERAL_DOCUMENTOS ? (
         <PanelDocumentosProceso procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_PUBLICACION ? (
-        <PanelPublicacionPliego procesoId={procesoId} onCambio={onCambio} />
+        /* Una sola actividad de publicación con dos evidencias: SECOP II y
+           el soporte de que se pidió o se hizo la publicación en la página
+           web de la ESAP a la OTIC (revisión de QA de EFDS-1150). */
+        <div className="space-y-3">
+          <PanelPublicacionPliego procesoId={procesoId} onCambio={onCambio} />
+          <PanelRegistroActividad
+            procesoId={procesoId}
+            numeral={NUMERAL_PUBLICACION_WEB}
+            onCambio={onCambio}
+            recargarToken={recargarToken}
+          />
+        </div>
       ) : numeral === NUMERAL_OBSERVACIONES ? (
         <PanelObservaciones procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_MIPYME ? (

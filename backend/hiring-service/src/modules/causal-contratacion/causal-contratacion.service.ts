@@ -114,7 +114,7 @@ export class CausalContratacionService {
     const estadoModalidad = await this.estadoDeLaModalidad(em, procesoId);
 
     const noElige = motivoParaNoElegir(estadoActual, estadoModalidad, proceso.etapa);
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_CAUSAL);
+    const { responsable, puesto, motivo } = await this.participacion.quienHace(procesoId, acceso, NUMERAL_CAUSAL);
 
     const causales = await this.causalesDe(em, proceso.modalidad);
     const elegida = proceso.causal
@@ -153,13 +153,13 @@ export class CausalContratacionService {
       puedeElegir: noElige === null && motivo === null,
       motivoNoElige: noElige,
       motivoNoDecide: motivo,
-      abogado: abogado
-        ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre }
-        : null,
+      /** Quién la elige, si la regla «quién la hace» lo dice (109). */
+      responsable: responsable ? { nombre: responsable.nombre, usuarioNombre: responsable.usuarioNombre } : null,
+      puesto,
     };
   }
 
-  // ----------------------------------------------------------- el abogado --
+  // ------------------------------------------------------- quien la elige --
 
   /**
    * Elige la causal, o rectifica la elegida mientras la etapa siga abierta.
@@ -171,15 +171,15 @@ export class CausalContratacionService {
    * habría provocado.
    */
   async elegir(procesoId: string, dto: ElegirCausalDto, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_CAUSAL);
-    if (motivo === 'SIN_ABOGADO') {
+    const { responsable, puesto, motivo } = await this.participacion.quienHace(procesoId, acceso, NUMERAL_CAUSAL);
+    if (motivo === 'SIN_ASIGNAR') {
       throw new ConflictException(
-        'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se elige la causal',
+        `La causal la elige quien ocupe el puesto ${puesto} y en este proceso todavía no hay nadie: se asigna en la 3.3`,
       );
     }
     if (motivo === 'NO_ES_TUYO') {
       throw new ForbiddenException(
-        `Este proceso lo lleva ${abogado!.nombre}: la causal la elige el abogado al que se le asignó`,
+        `La causal de este proceso la elige ${responsable?.nombre ?? 'otra persona'}${puesto ? ` (${puesto})` : ''}`,
       );
     }
     if (motivo === 'SIN_PERMISO') {
@@ -269,8 +269,8 @@ export class CausalContratacionService {
 
       // En menor cuantía esta es la última actividad de la etapa 3 que aplica:
       // la matriz excluye ahí el comité. Sin esta llamada, esa modalidad
-      // cerraría la etapa sin que nadie radicara el CDP.
-      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      // cerraría la etapa sin pasar a la del CDP.
+      await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, acceso);

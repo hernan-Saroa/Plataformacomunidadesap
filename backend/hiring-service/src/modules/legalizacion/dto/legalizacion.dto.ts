@@ -83,7 +83,18 @@ export class CargarGarantiaDto {
   @ValidateNested({ each: true })
   @Type(() => AmparoDto)
   amparos: AmparoDto[];
+
+  /**
+   * Cuándo se aprobó en SECOP II (revisión de QA de EFDS-1164): la póliza ya
+   * no pasa por otra aprobación dentro de la plataforma. Va con su evidencia.
+   */
+  @ApiProperty({ description: 'Fecha de aprobación de la póliza en SECOP II (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'Registra la fecha en que se aprobó la póliza en SECOP II (YYYY-MM-DD)' })
+  fechaAprobacionSecop?: string;
 }
+
+/** Un amparo más para una póliza ya registrada (revisión de QA de EFDS-1164). */
+export class AgregarAmparoDto extends AmparoDto {}
 
 export class RechazarGarantiaDto {
   @ApiProperty({ description: 'Por qué se devuelve la póliza' })

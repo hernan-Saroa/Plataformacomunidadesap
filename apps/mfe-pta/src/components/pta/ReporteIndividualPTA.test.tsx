@@ -7,6 +7,35 @@ vi.mock('../../services/api/ptaApi', () => ({ getComponentesAprobacion: vi.fn().
 afterEach(cleanup);
 
 describe('aprobaciones del reporte R-01 (vista y exportación)', () => {
+  it('retira la firma docente anterior durante la edición y la recupera al reenviar sin perder otros avales', () => {
+    const pta = {
+      docente_nombre: 'Docente Prueba', horas_investigacion: 32,
+      fecha_envio_revision: '2026-10-20T10:00:00Z',
+      firma_digital: { certificado_id: 'certificado-anterior' },
+      componentes_aprobacion: [
+        { componente: 'investigacion', estado: 'aprobado', horas: 32, aprobadorNombre: 'Aval conservado' },
+      ],
+    };
+    const reporte = (estado: string, extra: any = {}) => <ReporteIndividualPTA pta={{ ...pta, estado, ...extra }} onClose={() => {}} />;
+    const { rerender } = render(reporte('Aprobado'));
+    expect(screen.getByText(/Enviado y firmado el/)).toBeTruthy();
+
+    rerender(reporte('REVISION_DOCENTE_N1'));
+    expect(screen.queryByText(/Enviado y firmado el/)).toBeNull();
+    expect(screen.queryByText('Firma Digital Verificada')).toBeNull();
+    expect(screen.queryByText('certificado-anterior')).toBeNull();
+    expect(screen.getByText('Aval conservado')).toBeTruthy();
+
+    rerender(reporte('Pendiente Jefatura', {
+      fecha_envio_revision: '2026-10-28T10:00:00Z',
+      firma_digital: { certificado_id: 'certificado-nuevo' },
+    }));
+    expect(screen.getByText(/Enviado y firmado el/).textContent).toContain('28');
+    expect(screen.getByText('certificado-nuevo')).toBeTruthy();
+    expect(screen.queryByText('certificado-anterior')).toBeNull();
+    expect(screen.getByText('Aval conservado')).toBeTruthy();
+  });
+
   it('actualiza la firma de una aprobación mientras el mismo reporte permanece abierto', async () => {
     const pta = { id: 'pta-1', estado: 'Pendiente Jefatura', horas_docencia: 384 };
     vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [] });

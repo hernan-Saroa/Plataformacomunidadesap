@@ -158,9 +158,10 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
     );
   }
 
-  // Dos requisitos bloquean: el CDP (RF-EST-05) y la audiencia de riesgos donde
-  // es obligatoria (RF-PUB-04). Se listan los que falten, con la actividad en
-  // que se resuelven, en vez de dejar el formulario muerto sin explicación.
+  // El CDP bloquea (RF-EST-05). Se dice en qué actividad se resuelve, en vez de
+  // dejar el formulario muerto sin explicación. La audiencia de riesgos ya no
+  // está aquí: desde la 112 va después de la apertura, como en la matriz, y lo
+  // que espera por ella es el cierre de ofertas.
   const bloqueos = [
     estado.requisitos.cdp.cumplido
       ? null
@@ -170,13 +171,15 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
             ? `${estado.requisitos.cdp.motivo}. El proceso no puede abrirse sin el CDP expedido.`
             : 'El proceso no puede abrirse mientras el CDP no esté expedido.',
         },
-    estado.requisitos.audienciaRiesgos.cumplido
+    // En licitación, la resolución de apertura va después de que el comité
+    // apruebe el pliego definitivo en su segunda sesión (5.6.1, 113).
+    !estado.requisitos.comite || estado.requisitos.comite.cumplido
       ? null
       : {
-          falta: '5.5',
+          falta: '5.6.1',
           texto:
-            estado.requisitos.audienciaRiesgos.motivo ??
-            'La audiencia de asignación de riesgos es obligatoria en esta modalidad y no se ha celebrado.',
+            estado.requisitos.comite.motivo ??
+            'El pliego definitivo todavía no pasa por la segunda sesión del comité.',
         },
   ].filter((b): b is { falta: string; texto: string } => b !== null);
 

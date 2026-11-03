@@ -44,8 +44,8 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
   const servicio = (aprobadores: unknown) =>
     new RegistroActividadService(
       {} as never,
-      { aprobadoresDe: async () => aprobadores } as never,
-      { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
+      { aprobadoresDe: async () => aprobadores, abrirRonda: async () => null } as never,
+      { abrirEtapa4SiCerroLaEtapa3: async () => null } as never,
       {} as never,
     ) as never as {
       marcarActividad(

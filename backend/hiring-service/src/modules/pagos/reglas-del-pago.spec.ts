@@ -1,5 +1,5 @@
 import { EstadoContrato } from '../../entities/contrato.entity';
-import { admitePagos, cobradoCabeEnElContrato } from './pagos.service';
+import { admitePagos, cobradoCabeEnElContrato, excedeElContrato } from './pagos.service';
 
 /**
  * Las dos reglas puras de la actividad 9.4 (EFDS-1170).
@@ -54,5 +54,23 @@ describe('cobradoCabeEnElContrato · el aviso por exceso', () => {
     // la cuenta a mano, que es justo lo que estaba mal.
     expect(resultado.advertencia).toContain('5.000.000');
     expect(resultado.advertencia).toMatch(/adición/i);
+  });
+});
+
+/**
+ * Un contrato de $37 M terminó con $60 M pagados: el aviso no frenaba nada.
+ * Radicar, avalar y tramitar se bloquean cuando el pago pasa el contrato.
+ */
+describe('excedeElContrato · el pago que no cabe se bloquea', () => {
+  it('deja pasar lo que cabe, incluido el último peso', () => {
+    expect(excedeElContrato(30_000_000, 7_248_000, 37_248_000)).toBeNull();
+  });
+
+  it('bloquea el pago que, con lo ya comprometido, pasa el contrato', () => {
+    expect(excedeElContrato(30_000_000, 10_000_000, 37_248_000)).toMatch(/tramita primero una adición/);
+  });
+
+  it('bloquea un solo pago por encima del contrato', () => {
+    expect(excedeElContrato(0, 60_000_000, 37_248_000)).toMatch(/supera el valor del contrato/);
   });
 });

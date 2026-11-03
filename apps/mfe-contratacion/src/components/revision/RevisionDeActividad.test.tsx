@@ -10,7 +10,6 @@ import { olvidarResponsables } from '../../auth/responsables';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
-const abogado = { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', cargo: null };
 
 const estudio = (cambios: Record<string, unknown> = {}) => ({
   proceso: {
@@ -38,7 +37,7 @@ const estudio = (cambios: Record<string, unknown> = {}) => ({
     },
   ],
   editable: false,
-  revision: { abogado, puedeDecidir: true, motivo: null },
+  revision: { puedeDecidir: true, motivo: null, acciones: ['APROBAR', 'DEVOLVER', 'NEGAR'] },
   ...cambios,
 });
 
@@ -60,7 +59,6 @@ describe('RevisionDeActividad · estudio previo', () => {
     ] as never);
     vi.spyOn(contratacionService, 'participacion').mockResolvedValue({
       contratacion: { nombre: 'Laura Pineda', esMio: false },
-      abogado: { nombre: 'Andrés Rojas', esMio: true },
       financiera: null,
     } as never);
     vi.spyOn(contratacionService, 'responsables').mockResolvedValue([
@@ -101,10 +99,14 @@ describe('RevisionDeActividad · estudio previo', () => {
     ).toBeInTheDocument();
   });
 
-  it('a quien no le toca le dice de quién es', async () => {
-    pintar(estudio({ revision: { abogado, puedeDecidir: false, motivo: 'NO_ES_TUYO' } }));
+  it('a quien no le toca le dice a quién espera', async () => {
+    pintar(
+      estudio({
+        revision: { puedeDecidir: false, motivo: 'EN_CADENA', espera: 'Espera al escalón 1, Abogado: Andrés Rojas (Abogado).' },
+      }),
+    );
 
-    expect(await screen.findByText(/Lo revisa Andrés Rojas/)).toBeInTheDocument();
+    expect(await screen.findByText(/Espera al escalón 1, Abogado: Andrés Rojas/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
   });
 

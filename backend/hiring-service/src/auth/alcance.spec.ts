@@ -124,6 +124,18 @@ describe('los lugares', () => {
     expect(puede(supervisor, 'editar', 'INC.2')).toBe(false);
   });
 
+  it('cargar el PAA no es decidir qué pasa con los procesos', () => {
+    const planeacion = [tramite('editar', 'PAA'), tramite('aprobar', 'PAA')];
+    expect(puede(planeacion, 'aprobar', 'PAA')).toBe(true);
+    expect(puede(planeacion, 'decidir', 'PAA.R')).toBe(false);
+    expect(puede([tramite('decidir', 'PAA.R')], 'editar', 'PAA')).toBe(false);
+  });
+
+  it('el PAA no cuelga de la etapa 3, aunque de ahí nazcan los procesos', () => {
+    expect(cubre(etapa('editar', 3), 'PAA')).toBe(false);
+    expect(cubre(etapa('editar', 3), 'PAA.R')).toBe(false);
+  });
+
   it('un destino mal escrito no lo cubre nada salvo todo el módulo', () => {
     expect(cubre(etapa('ver', 3), 'tres')).toBe(false);
     expect(cubre(punto('ver', '3.1'), '3.1.1')).toBe(false);

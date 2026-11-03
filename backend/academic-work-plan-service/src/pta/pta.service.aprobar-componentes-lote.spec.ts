@@ -9,6 +9,7 @@ describe('PtaService.aprobarComponentesLote', () => {
     // tocar getComponentesAprobacion); los tests que necesiten simular un PTA
     // inexistente sobreescriben este mock.
     service.ptaRepo = { exists: jest.fn().mockResolvedValue(true) };
+    service.historialRepo = { find: jest.fn().mockResolvedValue([]) };
     return service;
   }
 

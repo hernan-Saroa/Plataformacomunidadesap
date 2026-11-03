@@ -1,17 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Award,
+  Ban,
   ClipboardList,
   Download,
   FileText,
   Paperclip,
-  Undo2,
+  RefreshCw,
   UploadCloud,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import {
+  DimensionInforme,
+  EstadoDeclaratoriaDesierta,
   EstadoEvaluacion,
   EvidenciaFirmaOtp,
   ResultadoEvaluacion,
@@ -29,7 +32,7 @@ import {
 } from '../shared/PiezasPanel';
 import { momentoConHora } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
-import { useDialogo } from '../shared/useDialogo';
+import { PanelDesierta } from '../adjudicacion/PanelDesierta';
 
 interface Props {
   procesoId: string;
@@ -40,8 +43,16 @@ const NUMERAL = '6.3';
 
 const ETIQUETA_DIMENSION: Record<RolEvaluador, string> = {
   JURIDICO: 'jurídica',
-  FINANCIERO: 'financiera',
+  FINANCIERO: 'financiera y económica',
   TECNICO: 'técnica',
+};
+
+/** De qué es cada archivo del informe, como lo nombra el expediente. */
+const NOMBRE_DIMENSION: Record<DimensionInforme, string> = {
+  CONSOLIDADO: 'Informe consolidado',
+  JURIDICO: 'Evaluación jurídica',
+  TECNICO: 'Evaluación técnica',
+  FINANCIERO: 'Evaluación financiera y económica',
 };
 
 const pesos = (valor: number | null) =>
@@ -53,50 +64,55 @@ const pesos = (valor: number | null) =>
         maximumFractionDigits: 0,
       }).format(valor);
 
-/** Vacío es "no viene", no cero: el puntaje en blanco significa que no se puntuó. */
-const aNumero = (texto: string): number | undefined => {
-  const limpio = texto.trim();
-  if (!limpio) return undefined;
-  const numero = Number(limpio);
-  return Number.isNaN(numero) ? undefined : numero;
-};
+/** Un archivo del informe con la dimensión que sustenta. */
+interface ArchivoDelInforme {
+  archivo: File;
+  dimension: DimensionInforme;
+}
 
 /**
- * Actividad 6.3 · Evaluación de las ofertas (EFDS-1157).
+ * Actividad 6.3 · Evaluación preliminar de las ofertas (EFDS-1157).
  *
- * **Aquí no se califica.** El comité evalúa por fuera, con sus formatos y su
- * cuadro comparativo, y elige la ganadora; esta pantalla recibe la decisión ya
- * tomada, el informe que la sustenta y las evidencias que la acompañan. Así lo
- * dice la matriz de roles del Comité Evaluador: consulta y cargue de archivos.
+ * **Aquí no se califica ni se nombra ganadora.** La evaluación de este punto es
+ * preliminar: el comité entrega un informe consolidado, en uno o varios
+ * archivos (jurídico, técnico, financiero y económico), y ese mismo soporte
+ * alimenta la publicación y el traslado (6.4). La ganadora se decide en el
+ * informe definitivo (7.2).
  *
- * Quién puede registrar no lo decide el rol del token sino la membresía del
- * comité de este proceso —lo que devuelve `esMiembroDelComite`—, porque un
- * evaluador designado en otro proceso entra a mirar y nada más.
+ * Si el informe tiene un error se vuelve a cargar, y el anterior queda en el
+ * historial con su motivo. Si no hubo ofertas o ninguna cumple, desde aquí se
+ * declara desierto el proceso.
+ *
+ * Quién puede cargar no lo decide el rol del token sino la membresía del
+ * comité de este proceso —lo que devuelve `esMiembroDelComite`—.
  */
 export function PanelEvaluacion({ procesoId, onCambio }: Props) {
-  const dialogo = useDialogo();
-  const firma = useFirma(NUMERAL, 'Registrar el resultado de la evaluación');
+  const firma = useFirma(NUMERAL, 'Cargar el informe de evaluación preliminar');
   const [estado, setEstado] = useState<EstadoEvaluacion | null>(null);
+  const [desierta, setDesierta] = useState<EstadoDeclaratoriaDesierta | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [registrando, setRegistrando] = useState(false);
 
-  const [ganadora, setGanadora] = useState('');
-  const [puntajeObtenido, setPuntajeObtenido] = useState('');
-  const [puntajeMaximo, setPuntajeMaximo] = useState('');
-  const [valorEvaluado, setValorEvaluado] = useState('');
-  const [justificacion, setJustificacion] = useState('');
-  const [informe, setInforme] = useState<File | null>(null);
+  /** Qué formulario está abierto: cargar, volver a cargar o ninguno. */
+  const [formulario, setFormulario] = useState<'cargar' | 'actualizar' | null>(null);
+  const [archivos, setArchivos] = useState<ArchivoDelInforme[]>([]);
+  const [observacion, setObservacion] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [declarando, setDeclarando] = useState(false);
 
   const [descripcion, setDescripcion] = useState('');
   const [evidencia, setEvidencia] = useState<File | null>(null);
 
   const leer = () =>
-    contratacionService
-      .evaluacion(procesoId)
-      .then((datos) => {
+    Promise.all([
+      contratacionService.evaluacion(procesoId),
+      // La declaratoria es de otra actividad: si no se puede leer, la 6.3 sigue.
+      contratacionService.declaratoriaDesierta(procesoId).catch(() => null),
+    ])
+      .then(([datos, laDesierta]) => {
         setEstado(datos);
+        setDesierta(laDesierta);
         setError(null);
       })
       .catch((err: any) => setError(err.message))
@@ -108,58 +124,38 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
   }, [procesoId]);
 
   const limpiar = () => {
-    setGanadora('');
-    setPuntajeObtenido('');
-    setPuntajeMaximo('');
-    setValorEvaluado('');
-    setJustificacion('');
-    setInforme(null);
-    setRegistrando(false);
+    setArchivos([]);
+    setObservacion('');
+    setMotivo('');
+    setFormulario(null);
   };
 
-  const registrar = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    if (!ganadora || !informe || !justificacion.trim()) return;
+  const enviar = async (firmaOtp?: EvidenciaFirmaOtp) => {
+    if (!archivos.length) return;
+    const datos = {
+      observacion: observacion.trim() || undefined,
+      dimensiones: archivos.map((a) => a.dimension),
+      firma: firmaOtp,
+    };
+    const lista = archivos.map((a) => a.archivo);
 
     setGuardando(true);
     try {
-      setEstado(
-        await contratacionService.registrarResultadoEvaluacion(
-          procesoId,
-          {
-            oferenteId: ganadora,
-            puntajeObtenido: aNumero(puntajeObtenido),
-            puntajeMaximo: aNumero(puntajeMaximo),
-            valorEvaluado: aNumero(valorEvaluado),
-            justificacion: justificacion.trim(),
-            firma: firmaOtp,
-          },
-          informe,
-        ),
-      );
+      if (formulario === 'actualizar') {
+        if (!motivo.trim()) return;
+        setEstado(
+          await contratacionService.actualizarInformeEvaluacion(
+            procesoId,
+            { ...datos, motivo: motivo.trim() },
+            lista,
+          ),
+        );
+        toast.success('Informe preliminar actualizado; el anterior quedó en el historial');
+      } else {
+        setEstado(await contratacionService.registrarResultadoEvaluacion(procesoId, datos, lista));
+        toast.success('Informe de evaluación preliminar cargado');
+      }
       limpiar();
-      toast.success('Resultado de la evaluación registrado');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const rectificar = async () => {
-    const motivo = await dialogo.pedirMotivo({
-      titulo: 'Rectificar el resultado',
-      descripcion: 'El resultado anterior se conserva: rectificar añade uno nuevo, no borra el que había.',
-      etiqueta: 'Motivo de la rectificación',
-      placeholder: 'La subsanación aceptada cambia la habilitación del oferente…',
-      confirmar: 'Rectificar el resultado',
-    });
-    if (!motivo) return;
-
-    setGuardando(true);
-    try {
-      setEstado(await contratacionService.rectificarResultadoEvaluacion(procesoId, motivo));
-      toast.success('Resultado rectificado; el proceso queda sin resultado vigente');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -182,7 +178,7 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
       );
       setDescripcion('');
       setEvidencia(null);
-      toast.success('Evidencia cargada');
+      toast.success('Documento cargado');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -221,44 +217,52 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
   }
 
   const resultado = estado.resultado;
+  const actualizando = formulario === 'actualizar';
+  const listoParaEnviar = archivos.length > 0 && (!actualizando || motivo.trim().length > 0);
+
+  // Declarar desierto desde aquí: sin ofertas, o ninguna cumple (EFDS-1157).
+  const declaratoria = desierta?.declaratoria ?? null;
+  const puedeOfrecerDesierto =
+    !!desierta?.aplica && (desierta.puedeDeclarar || !!declaratoria);
 
   return (
     <Marco>
       <Titulo>Evaluación de las ofertas</Titulo>
       <Ayuda>
-        El comité evalúa las ofertas por fuera de la plataforma, con sus propios formatos y su
-        cuadro comparativo, y elige la ganadora. Aquí se registra esa decisión con el informe que la
-        sustenta; la aplicación no califica ni recalcula lo que el comité reportó.
+        La evaluación de este punto es preliminar: el comité evalúa por fuera de la plataforma y
+        carga aquí su informe consolidado, en uno o varios archivos. No se registran puntajes ni
+        ganadora; la oferta que gana se define en el informe definitivo (7.2). Este mismo informe es
+        el que se publica y se traslada en la 6.4.
       </Ayuda>
 
-      {/* Lo que impide registrar se dice por separado, en vez de dejar el panel
+      {/* Lo que impide cargar se dice por separado, en vez de dejar el panel
           vacío sin explicación. */}
       {!estado.recepcionCerrada ? (
         <Pendiente
           falta="6.1"
-          texto="La recepción de ofertas sigue abierta: no hay resultado que registrar mientras la lista pueda cambiar."
+          texto="La recepción de ofertas sigue abierta: no hay nada que evaluar mientras la lista pueda cambiar."
         />
-      ) : !estado.comiteDesignado ? (
+      ) : !estado.comiteDesignado && estado.ofertas.length > 0 ? (
         <Pendiente
           falta="6.2"
           texto="No hay comité evaluador designado. Sin comité no hay quién responda por la evaluación."
         />
       ) : estado.ofertas.length === 0 ? (
         <Aviso tono="aviso" titulo="El proceso cerró sin ofertas">
-          No se recibió ninguna oferta, así que no hay nada que evaluar.
+          No se recibió ninguna oferta, así que no hay nada que evaluar: lo que sigue es declarar
+          desierto el proceso.
         </Aviso>
       ) : null}
 
       {estado.esMiembroDelComite && (
         <Aviso tono="ok" titulo="Integras el comité de este proceso">
           Fuiste designado para la evaluación{' '}
-          {estado.misDimensiones.map((d) => ETIQUETA_DIMENSION[d]).join(' y ')}. El resultado lo
-          registra cualquiera de los miembros, en nombre del comité.
+          {estado.misDimensiones.map((d) => ETIQUETA_DIMENSION[d]).join(' y ')}. El informe lo
+          carga cualquiera de los miembros, en nombre del comité.
         </Aviso>
       )}
 
-      {/* Las ofertas que se evaluaron: sin ellas el resultado es un nombre
-          suelto, y son la lista de la que sale la ganadora. */}
+      {/* Las ofertas que se evaluaron. */}
       {estado.ofertas.length > 0 && (
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
           <table className="w-full text-left border-collapse">
@@ -278,11 +282,6 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
                   <td className="px-3 py-2.5">
                     <p className="text-[12.5px] font-bold text-slate-800 m-0 break-words">
                       {oferta.numero}. {oferta.nombre}
-                      {resultado?.ganadora?.id === oferta.id && (
-                        <span className="ml-2 inline-block px-2 py-0.5 text-[10.5px] font-bold rounded-md border bg-emerald-50 text-emerald-800 border-emerald-200">
-                          Ganadora
-                        </span>
-                      )}
                     </p>
                     <p className="text-[11px] text-slate-500 m-0 mt-0.5">{oferta.identificacion}</p>
                   </td>
@@ -298,92 +297,28 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
 
       {resultado && (
         <>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3">
-            <div className="flex items-start gap-2.5">
-              <Award className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-900" />
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-[12.5px] font-bold text-emerald-900 m-0 break-words">
-                  Ganadora: {resultado.ganadora?.nombre ?? 'oferta no encontrada'}
-                </p>
-                <p className="text-[11.5px] text-emerald-900 m-0 leading-relaxed">
-                  {resultado.puntajeObtenido != null
-                    ? `Puntaje ${resultado.puntajeObtenido} de ${resultado.puntajeMaximo}. `
-                    : 'La modalidad no puntúa: el comité no reportó calificación. '}
-                  Valor evaluado: {pesos(resultado.valorEvaluado)}.
-                </p>
-                <p className="text-[11.5px] text-emerald-900 m-0 leading-relaxed break-words">
-                  {resultado.justificacion}
-                </p>
-                <p className="text-[11px] text-emerald-900 m-0 leading-relaxed">
-                  Registrado por {resultado.registradoPor ?? 'el comité'} el{' '}
-                  {momentoConHora(resultado.registradoAt)}.
-                </p>
-                {resultado.informe && (
-                  <a
-                    href={contratacionService.urlDescarga(resultado.informe.archivoUrl)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-900 hover:underline"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {resultado.informe.nombre}
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
+          <InformeCargado resultado={resultado} />
 
-          <div className="space-y-2">
-            <p className="text-[11.5px] font-bold text-slate-700 m-0">
-              Evidencias de la evaluación
-            </p>
-            {resultado.evidencias.length === 0 ? (
-              <p className="text-[11.5px] text-slate-500 m-0 leading-relaxed">
-                Todavía no se ha cargado ninguna: las verificaciones jurídica, financiera y técnica,
-                el cuadro comparativo y las actas del comité van aquí.
-              </p>
-            ) : (
-              resultado.evidencias.map((e) => (
-                <div
-                  key={e.id}
-                  className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 flex items-start gap-2.5"
-                >
-                  <FileText className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-500" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] font-bold text-slate-800 m-0 break-words">
-                      {e.descripcion}
-                    </p>
-                    <p className="text-[11px] text-slate-500 m-0 mt-0.5">
-                      {e.cargadaPor ? `${e.cargadaPor} · ` : ''}
-                      {momentoConHora(e.cargadaAt)}
-                    </p>
-                  </div>
-                  {e.archivoUrl && (
-                    <a
-                      href={contratacionService.urlDescarga(e.archivoUrl)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1 rounded text-slate-400 hover:text-[#003DA5] flex-shrink-0"
-                      aria-label={`Descargar ${e.descripcion}`}
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+          {/* Volver a cargarlo si tiene un error u omisión (EFDS-1157). */}
+          {estado.puedeActualizar && !formulario && (
+            <BotonSecundario
+              icono={<RefreshCw className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={() => setFormulario('actualizar')}
+            >
+              Volver a cargar el informe
+            </BotonSecundario>
+          )}
 
-          {/* El cargue de evidencias no se cierra con el registro: las
-              verificaciones y las actas llegan en momentos distintos. */}
-          {estado.esMiembroDelComite && (
+          {/* Otros soportes del comité: actas de reunión y similares. */}
+          {estado.esMiembroDelComite && !formulario && (
             <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
               <div>
                 <label
                   htmlFor="evidencia-descripcion"
                   className="block text-xs font-bold text-gray-600 mb-1.5"
                 >
-                  Qué documento cargas <span className="text-red-600">*</span>
+                  Otro documento del comité
                 </label>
                 <input
                   id="evidencia-descripcion"
@@ -391,13 +326,13 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
                   maxLength={300}
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Verificación financiera, cuadro comparativo, acta del comité…"
+                  placeholder="Acta de reunión del comité, cuadro comparativo…"
                   className={campo}
                 />
               </div>
 
               <SelectorArchivo
-                etiqueta="Archivo de la evidencia"
+                etiqueta="Archivo del documento"
                 acepta=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                 archivo={evidencia}
                 onElegir={setEvidencia}
@@ -408,154 +343,81 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
                 disabled={guardando || !evidencia || !descripcion.trim()}
                 onClick={cargarEvidencia}
               >
-                {guardando ? 'Cargando…' : 'Cargar evidencia'}
+                {guardando ? 'Cargando…' : 'Cargar documento'}
               </Boton>
             </div>
-          )}
-
-          {estado.esMiembroDelComite && (
-            <BotonSecundario
-              icono={<Undo2 className="w-3.5 h-3.5" />}
-              disabled={guardando}
-              onClick={rectificar}
-            >
-              Rectificar el resultado
-            </BotonSecundario>
           )}
         </>
       )}
 
-      {estado.puedeRegistrar && !registrando && (
-        <Boton icono={<Award className="w-3.5 h-3.5" />} onClick={() => setRegistrando(true)}>
-          Registrar el resultado
+      {estado.puedeRegistrar && !formulario && (
+        <Boton
+          icono={<UploadCloud className="w-3.5 h-3.5" />}
+          onClick={() => setFormulario('cargar')}
+        >
+          Cargar el informe de evaluación preliminar
         </Boton>
       )}
 
-      {estado.puedeRegistrar && registrando && (
+      {formulario && (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
           <p className="text-[12.5px] font-bold text-slate-800 m-0">
-            Resultado de la evaluación del comité
+            {actualizando
+              ? 'Volver a cargar el informe de evaluación preliminar'
+              : 'Informe de evaluación preliminar'}
           </p>
 
-          <div>
-            <label
-              htmlFor="resultado-ganadora"
-              className="block text-xs font-bold text-gray-600 mb-1.5"
-            >
-              Oferta ganadora <span className="text-red-600">*</span>
-            </label>
-            <select
-              id="resultado-ganadora"
-              value={ganadora}
-              onChange={(e) => setGanadora(e.target.value)}
-              className={campo}
-            >
-              <option value="">Elige la oferta que el comité seleccionó…</option>
-              {estado.ofertas.map((oferta) => (
-                <option key={oferta.id} value={oferta.id}>
-                  {oferta.numero}. {oferta.nombre} — {pesos(oferta.valorOfertado)}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ArchivosDelInforme archivos={archivos} onCambio={setArchivos} />
 
-          <div className="grid grid-cols-2 gap-2">
+          {actualizando && (
             <div>
               <label
-                htmlFor="resultado-puntaje"
+                htmlFor="informe-motivo"
                 className="block text-xs font-bold text-gray-600 mb-1.5"
               >
-                Puntaje obtenido
+                Por qué se vuelve a cargar <span className="text-red-600">*</span>
               </label>
-              <input
-                id="resultado-puntaje"
-                type="number"
-                min={0}
-                step="0.01"
-                value={puntajeObtenido}
-                onChange={(e) => setPuntajeObtenido(e.target.value)}
+              <textarea
+                id="informe-motivo"
+                rows={2}
+                maxLength={1000}
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Faltaba la verificación financiera de una oferta, había un error en…"
                 className={campo}
               />
+              <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
+                El informe anterior queda en el historial con la fecha, quién lo cambió y este
+                motivo. Lo que ya se trasladó a los oferentes no cambia.
+              </p>
             </div>
-            <div>
-              <label
-                htmlFor="resultado-escala"
-                className="block text-xs font-bold text-gray-600 mb-1.5"
-              >
-                Sobre un máximo de
-              </label>
-              <input
-                id="resultado-escala"
-                type="number"
-                min={0}
-                step="0.01"
-                value={puntajeMaximo}
-                onChange={(e) => setPuntajeMaximo(e.target.value)}
-                className={campo}
-              />
-            </div>
-          </div>
-          {/* Los dos o ninguno: es la regla del servidor, dicha aquí antes de
-              enviar. Un 85 sin saber sobre cuánto no dice nada. */}
-          <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
-            Déjalos en blanco si la modalidad no puntúa —en mínima cuantía suele bastar con el menor
-            precio que cumple—. Si reportas puntaje, va con la escala que usó el comité.
-          </p>
+          )}
 
           <div>
             <label
-              htmlFor="resultado-valor"
+              htmlFor="informe-observacion"
               className="block text-xs font-bold text-gray-600 mb-1.5"
             >
-              Valor evaluado
-            </label>
-            <input
-              id="resultado-valor"
-              type="number"
-              min={0}
-              step="0.01"
-              value={valorEvaluado}
-              onChange={(e) => setValorEvaluado(e.target.value)}
-              className={campo}
-            />
-            <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
-              Solo si el comité corrigió la cifra que presentó el oferente. En blanco se toma el
-              valor ofertado.
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor="resultado-justificacion"
-              className="block text-xs font-bold text-gray-600 mb-1.5"
-            >
-              Por qué esa oferta <span className="text-red-600">*</span>
+              Observación
             </label>
             <textarea
-              id="resultado-justificacion"
-              rows={3}
+              id="informe-observacion"
+              rows={2}
               maxLength={4000}
-              value={justificacion}
-              onChange={(e) => setJustificacion(e.target.value)}
-              placeholder="Lo que el traslado del informe le tiene que poder mostrar a los demás oferentes."
+              value={observacion}
+              onChange={(e) => setObservacion(e.target.value)}
+              placeholder="Opcional."
               className={campo}
             />
           </div>
-
-          <SelectorArchivo
-            etiqueta="Informe de evaluación del comité"
-            acepta=".pdf,.doc,.docx,.xls,.xlsx"
-            archivo={informe}
-            onElegir={setInforme}
-          />
 
           <div className="flex items-center gap-2">
             <Boton
-              icono={<Award className="w-3.5 h-3.5" />}
-              disabled={guardando || !ganadora || !informe || !justificacion.trim()}
-              onClick={() => firma.conFirma(registrar)}
+              icono={<UploadCloud className="w-3.5 h-3.5" />}
+              disabled={guardando || !listoParaEnviar}
+              onClick={() => firma.conFirma(enviar)}
             >
-              {guardando ? 'Registrando…' : 'Registrar resultado'}
+              {guardando ? 'Cargando…' : actualizando ? 'Volver a cargar' : 'Cargar informe'}
             </Boton>
             <button
               type="button"
@@ -568,61 +430,247 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
         </div>
       )}
 
-      {/* Los rectificados quedan a la vista: son los que explican que el
-          expediente tenga dos informes de evaluación del mismo proceso. */}
+      {/* Las versiones anteriores quedan a la vista, con su motivo. */}
       {estado.rectificados.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[11.5px] font-bold text-slate-700 m-0">Resultados rectificados</p>
+          <p className="text-[11.5px] font-bold text-slate-700 m-0">Versiones anteriores del informe</p>
           {estado.rectificados.map((previo) => (
-            <RectificadoAnterior key={previo.id} resultado={previo} />
+            <VersionAnterior key={previo.id} resultado={previo} />
           ))}
+        </div>
+      )}
+
+      {/* Declarar desierto desde la evaluación: no hubo ofertas, o ninguna cumple. */}
+      {puedeOfrecerDesierto && estado.recepcionCerrada && (
+        <div className="space-y-2 pt-1">
+          {declaratoria || declarando ? (
+            <PanelDesierta
+              procesoId={procesoId}
+              estado={desierta!}
+              onCambio={async () => {
+                await leer();
+                onCambio?.();
+              }}
+            />
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-2">
+              <p className="text-[12px] text-slate-700 m-0 leading-relaxed">
+                Si no se recibieron ofertas, o ninguna cumple y todas están en causal de rechazo, el
+                proceso se declara desierto y pasa a la resolución de declaratoria.
+              </p>
+              <BotonSecundario
+                icono={<Ban className="w-3.5 h-3.5" />}
+                onClick={() => setDeclarando(true)}
+              >
+                Declarar desierto el proceso
+              </BotonSecundario>
+            </div>
+          )}
+          {declarando && !declaratoria && (
+            <button
+              type="button"
+              onClick={() => setDeclarando(false)}
+              className="inline-flex items-center gap-1 text-[11.5px] font-bold text-slate-500 hover:underline"
+            >
+              <X className="w-3 h-3" /> No declarar desierto
+            </button>
+          )}
         </div>
       )}
 
       {estado.comiteDesignado && !estado.esMiembroDelComite && estado.ofertas.length > 0 && (
         <p className="text-[11px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
           <ClipboardList className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-          Consultas la evaluación, pero no la registras: el resultado lo reporta el comité designado
-          en este proceso, que es el que responde por él.
+          Consultas la evaluación, pero no cargas el informe: lo carga el comité designado en este
+          proceso, que es el que responde por él.
         </p>
       )}
       {firma.modal}
-      {dialogo.elemento}
     </Marco>
   );
 }
 
-/** Un resultado que se dejó sin efecto, con el motivo y el informe que tuvo. */
-function RectificadoAnterior({ resultado }: { resultado: ResultadoEvaluacion }) {
+/** El informe vigente, con todos sus archivos. */
+function InformeCargado({ resultado }: { resultado: ResultadoEvaluacion }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-2.5">
-      <p className="text-[12px] font-bold text-slate-700 m-0 break-words">
-        {resultado.ganadora?.nombre ?? 'Oferta no encontrada'}
-        {resultado.puntajeObtenido != null
-          ? ` · ${resultado.puntajeObtenido} de ${resultado.puntajeMaximo}`
-          : ''}
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3 space-y-1.5">
+      <p className="text-[12.5px] font-bold text-emerald-900 m-0">
+        Informe de evaluación preliminar
       </p>
-      <p className="text-[11px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
-        Rectificado{resultado.rectificadoPor ? ` por ${resultado.rectificadoPor}` : ''}
-        {resultado.rectificadoAt ? ` el ${momentoConHora(resultado.rectificadoAt)}` : ''}:{' '}
-        {resultado.motivoRectificacion}
-      </p>
-      {resultado.informe && (
-        <a
-          href={contratacionService.urlDescarga(resultado.informe.archivoUrl)}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-bold text-slate-600 hover:underline"
-        >
-          <Download className="w-3 h-3" />
-          {resultado.informe.nombre}
-        </a>
+      {/* Los resultados de antes de la 120 nombraban ganadora: se siguen mostrando. */}
+      {resultado.ganadora && (
+        <p className="text-[11.5px] text-emerald-900 m-0">
+          Registro anterior: el comité nombró a {resultado.ganadora.nombre}
+          {resultado.puntajeObtenido != null
+            ? ` (${resultado.puntajeObtenido} de ${resultado.puntajeMaximo})`
+            : ''}
+          .
+        </p>
       )}
+      {resultado.justificacion && (
+        <p className="text-[11.5px] text-emerald-900 m-0 leading-relaxed break-words">
+          {resultado.justificacion}
+        </p>
+      )}
+      <ListaDeArchivos resultado={resultado} />
+      <p className="text-[11px] text-emerald-900 m-0 leading-relaxed">
+        Cargado por {resultado.registradoPor ?? 'el comité'} el{' '}
+        {momentoConHora(resultado.registradoAt)}.
+      </p>
     </div>
   );
 }
 
-/** Adjunto obligatorio, con su nombre cuando ya está elegido. */
+/** Una versión anterior del informe, con quién la cambió, cuándo y por qué. */
+function VersionAnterior({ resultado }: { resultado: ResultadoEvaluacion }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-2.5 space-y-1">
+      <p className="text-[11.5px] text-slate-700 m-0 leading-relaxed break-words">
+        <span className="font-bold">
+          Cargado el {momentoConHora(resultado.registradoAt)}
+          {resultado.registradoPor ? ` por ${resultado.registradoPor}` : ''}
+        </span>
+        {' · '}
+        Reemplazado{resultado.rectificadoPor ? ` por ${resultado.rectificadoPor}` : ''}
+        {resultado.rectificadoAt ? ` el ${momentoConHora(resultado.rectificadoAt)}` : ''}:{' '}
+        {resultado.motivoRectificacion}
+      </p>
+      <ListaDeArchivos resultado={resultado} />
+    </div>
+  );
+}
+
+/** Los archivos del informe; los de antes de la 120 tenían uno solo. */
+function ListaDeArchivos({ resultado }: { resultado: ResultadoEvaluacion }) {
+  const archivos = resultado.evidencias.length
+    ? resultado.evidencias.map((e) => ({
+        id: e.id,
+        nombre: e.descripcion,
+        archivoUrl: e.archivoUrl,
+      }))
+    : resultado.informe
+      ? [{ id: resultado.informe.id, nombre: resultado.informe.nombre, archivoUrl: resultado.informe.archivoUrl }]
+      : [];
+
+  return (
+    <ul className="list-none p-0 m-0 space-y-0.5">
+      {archivos.map((a) => (
+        <li key={a.id}>
+          {a.archivoUrl ? (
+            <a
+              href={contratacionService.urlDescarga(a.archivoUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {a.nombre}
+            </a>
+          ) : (
+            <span className="text-[11.5px] text-slate-600">{a.nombre}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Los archivos del informe, cada uno con la dimensión que sustenta.
+ *
+ * Se suman a los ya elegidos: el informe puede llegar en varias tandas y
+ * elegir de nuevo no debe borrar lo anterior.
+ */
+function ArchivosDelInforme({
+  archivos,
+  onCambio,
+}: {
+  archivos: ArchivoDelInforme[];
+  onCambio: (archivos: ArchivoDelInforme[]) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+
+  return (
+    <div
+      className={`rounded-lg border px-3.5 py-3 space-y-2 ${
+        archivos.length ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <p className="text-xs font-bold m-0 flex items-start gap-1.5 text-slate-700">
+        <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+        Archivos del informe <span className="text-red-600">*</span>
+      </p>
+      <p className="text-[11px] text-slate-500 m-0 leading-relaxed">
+        Uno consolidado, o uno por dimensión: jurídica, técnica y financiera y económica.
+      </p>
+
+      {archivos.length > 0 && (
+        <ul className="list-none p-0 m-0 space-y-1.5">
+          {archivos.map((a, i) => (
+            <li key={`${a.archivo.name}-${i}`} className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12px] text-slate-800 truncate min-w-0 flex-1">
+                {a.archivo.name}
+              </span>
+              <select
+                aria-label={`De qué es ${a.archivo.name}`}
+                value={a.dimension}
+                onChange={(e) =>
+                  onCambio(
+                    archivos.map((x, j) =>
+                      j === i ? { ...x, dimension: e.target.value as DimensionInforme } : x,
+                    ),
+                  )
+                }
+                className="text-[11.5px] border border-gray-300 rounded-md px-2 py-1 bg-white"
+              >
+                {(Object.keys(NOMBRE_DIMENSION) as DimensionInforme[]).map((d) => (
+                  <option key={d} value={d}>
+                    {NOMBRE_DIMENSION[d]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                aria-label={`Quitar ${a.archivo.name}`}
+                onClick={() => onCambio(archivos.filter((_, j) => j !== i))}
+                className="text-slate-400 hover:text-red-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <input
+        ref={input}
+        type="file"
+        multiple
+        aria-label="Archivos del informe"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx"
+        onChange={(e) => {
+          const elegidos = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          onCambio([
+            ...archivos,
+            ...elegidos.map((archivo) => ({ archivo, dimension: 'CONSOLIDADO' as DimensionInforme })),
+          ]);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => input.current?.click()}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] transition-all"
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        {archivos.length ? 'Agregar otro archivo' : 'Seleccionar archivos'}
+      </button>
+    </div>
+  );
+}
+
+/** Un adjunto, con su nombre cuando ya está elegido. */
 function SelectorArchivo({
   etiqueta,
   acepta,
@@ -648,7 +696,7 @@ function SelectorArchivo({
         }`}
       >
         <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-        {etiqueta} <span className="text-red-600">*</span>
+        {etiqueta}
       </p>
       <p
         className={`text-[11.5px] m-0 leading-relaxed break-words ${

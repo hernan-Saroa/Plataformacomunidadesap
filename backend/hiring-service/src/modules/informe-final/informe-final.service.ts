@@ -27,6 +27,7 @@ import {
   AnularInformeFinalDto,
   ElaborarInformeFinalDto,
 } from './dto/informe-final.dto';
+import { PuestosService } from '../participacion/puestos.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
@@ -82,6 +83,7 @@ export class InformeFinalService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    private readonly puestos: PuestosService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -130,7 +132,7 @@ export class InformeFinalService {
       supervisor: supervisor
         ? { nombre: supervisor.nombre, cargo: supervisor.cargo, personaId: supervisor.personaId }
         : null,
-      esSupervisor: this.esElSupervisor(supervisor, acceso),
+      esSupervisor: await this.esElSupervisor(procesoId, acceso),
       puedeElaborar: admite && !!supervisor && !vigente,
       balanceActual,
       /**
@@ -186,7 +188,7 @@ export class InformeFinalService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, contrato.id, acceso);
+      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
 
       if (await this.informeVigente(contrato.id, em)) {
         throw new ConflictException(
@@ -250,7 +252,7 @@ export class InformeFinalService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, contrato.id, acceso);
+      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
 
       const informe = await this.informeVigente(contrato.id, em);
       if (!informe) {
@@ -305,7 +307,7 @@ export class InformeFinalService {
   async anular(procesoId: string, dto: AnularInformeFinalDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, contrato.id, acceso);
+      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
 
       const informe = await this.informeVigente(contrato.id, em);
       if (!informe) throw new NotFoundException('El contrato no tiene informe final vigente');
@@ -401,13 +403,8 @@ export class InformeFinalService {
    * la petición real se la fuera a aceptar (EFDS-1170, mismo caso en
    * `pagos.service.ts`).
    */
-  private esElSupervisor(
-    supervisor: SupervisionContrato | null,
-    acceso: HiringAccess,
-  ): boolean {
-    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
-    if (!supervisor) return false;
-    return supervisor.personaId === acceso.userId || supervisor.nombre === acceso.userName;
+  private esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+    return this.puestos.esElSupervisor(procesoId, acceso, em);
   }
 
   /**
@@ -416,7 +413,12 @@ export class InformeFinalService {
    * Misma regla del aval del pago (EFDS-1170): el informe final es la
    * conclusión de su vigilancia, y quien no vigiló no la puede firmar.
    */
-  private async exigirSupervisor(em: EntityManager, contratoId: string, acceso: HiringAccess) {
+  private async exigirSupervisor(
+    em: EntityManager,
+    procesoId: string,
+    contratoId: string,
+    acceso: HiringAccess,
+  ) {
     if (acceso.roles?.includes('SUPER_ADMIN')) return;
 
     const supervisor = await this.supervisorVigente(contratoId, em);
@@ -426,7 +428,7 @@ export class InformeFinalService {
       );
     }
 
-    if (!this.esElSupervisor(supervisor, acceso)) {
+    if (!(await this.esElSupervisor(procesoId, acceso, em))) {
       throw new ForbiddenException(
         'No eres el supervisor de este contrato: el informe final lo firma quien vigiló la ejecución',
       );

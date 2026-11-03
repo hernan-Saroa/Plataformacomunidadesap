@@ -1,4 +1,9 @@
-import { admiteRp, cubreElContrato, puedeTransicionar } from './registro-presupuestal.service';
+import {
+  admiteRp,
+  contradiceElCdp,
+  cubreElContrato,
+  puedeTransicionar,
+} from './registro-presupuestal.service';
 import { EstadoRp } from '../../entities/registro-presupuestal.entity';
 
 /**
@@ -88,5 +93,24 @@ describe('cubreElContrato', () => {
   it('un RP sin valor no cubre nada', () => {
     // Mientras está solicitado el valor puede venir nulo.
     expect(cubreElContrato(null, 48000000)).toBe(false);
+  });
+});
+
+/**
+ * Un RP de $50 M quedó expedido sobre un CDP de $37 M y contra otro rubro.
+ */
+describe('contradiceElCdp', () => {
+  const cdp = { numero: 'CDP-1', valor: 37_248_000, rubro: 'A-02-02-02-008' };
+
+  it('acepta el RP por lo certificado y contra el mismo rubro', () => {
+    expect(contradiceElCdp({ valor: 37_248_000, rubro: ' a-02-02-02-008' }, cdp)).toBeNull();
+  });
+
+  it('rechaza el RP por encima del CDP', () => {
+    expect(contradiceElCdp({ valor: 50_000_000, rubro: null }, cdp)).toMatch(/supera lo que certificó/);
+  });
+
+  it('rechaza el RP contra otro rubro', () => {
+    expect(contradiceElCdp({ valor: 37_248_000, rubro: 'Z-99' }, cdp)).toMatch(/certificó el A-02/);
   });
 });

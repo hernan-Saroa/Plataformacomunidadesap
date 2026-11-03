@@ -59,6 +59,7 @@ vi.mock('./PTADetallePanelBackoffice', () => ({
   },
 }));
 vi.mock('./ProgramacionAcademica', () => ({ ProgramacionAcademica: () => null }));
+vi.mock('./banco-docentes/BancoDocentesPTA', () => ({ BancoDocentesPTA: () => <div>Banco de Docentes independiente</div> }));
 vi.mock('./MesaConcertacion', () => ({ MesaConcertacion: () => null }));
 vi.mock('./ConfiguracionReglasPTA', () => ({ default: () => <div>Editor exclusivo de configuración</div> }));
 vi.mock('./TableroControlUnificadoPTA', () => ({ TableroControlUnificadoPTA: () => <div>Panel de reportes autorizado</div> }));
@@ -88,6 +89,29 @@ beforeEach(() => {
 });
 
 describe('acceso exclusivo a Configuración desde el módulo', () => {
+  it('abre Banco de Docentes con su acceso independiente, sin habilitar Gestión o Seguimiento', async () => {
+    sync.visibleViews = new Set(['banco_docentes']);
+    sync.permissions.puedeAprobar = false;
+    render(<PtaBackofficeModule initialView="banco_docentes" />);
+    expect(await screen.findByText('Banco de Docentes independiente')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Gestión' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Seguimiento' })).toBeNull();
+  });
+  it('oculta el contenido anterior al retirar todas las vistas autorizadas', async () => {
+    const mounted = render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    sync.visibleViews = new Set();
+    mounted.rerender(<PtaBackofficeModule />);
+    expect(screen.getByText('Sus roles activos no tienen acceso a esta vista del PTA.')).toBeTruthy();
+    expect(screen.queryByText('Docente uno')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Seguimiento' })).toBeNull();
+    sync.visibleViews = new Set(['seguimiento_docs']);
+    mounted.rerender(<PtaBackofficeModule />);
+    await screen.findByRole('button', { name: 'Seguimiento' });
+    expect(screen.queryByText('Resolver caso')).toBeNull();
+  });
   it('con solo Configuración abre el editor y oculta Gestión, Solicitudes, Seguimiento y Reportes', async () => {
     sync.visibleViews = new Set(['configuracion']);
     sync.permissions.puedeAprobar = false;
@@ -688,7 +712,7 @@ describe('listado y contadores del backoffice', () => {
 
     render(<PtaBackofficeModule />);
 
-    expect(await screen.findByText('Sin componentes de aprobación asignados')).toBeTruthy();
+    expect(await screen.findByText('Sin componentes de seguimiento asignados')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Seguimiento' })).toBeTruthy();
     expect(screen.queryByText('Docente uno')).toBeNull();
   });
@@ -701,8 +725,46 @@ describe('listado y contadores del backoffice', () => {
     await screen.findByText('Docente uno');
     fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
 
-    expect(await screen.findByText('Sin componentes de aprobación asignados')).toBeTruthy();
-    expect(screen.getByText(/necesita al menos un permiso de aprobación por componente/)).toBeTruthy();
+    expect(await screen.findByText('Sin componentes de seguimiento asignados')).toBeTruthy();
+    expect(screen.getByText(/necesitan al menos un permiso de revisión o aprobación por componente/)).toBeTruthy();
+  });
+
+  it.each([
+    ['pta.review.academica.territorial.pregrado', 'docencia'],
+    ['pta.review.investigacion', 'investigacion'],
+    ['pta.review.extension.capacitacion', 'extension'],
+    ['pta.review.complementarias.docencia', 'complementarias'],
+  ])('Seguimiento hereda %s sin requerir permisos de aprobación', async (permission, component) => {
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, permission]);
+    sync.permissions.puedeAprobar = false;
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{
+      id: 'pta-revisor', pta_id: 'pta-revisor', periodo: '2026-1', estado: 'Aprobado',
+      docente_nombre: 'Docente de la territorial autorizada',
+      evidencias: [{ id: 'ev-revisor', componentePta: component, seccionExtension: component === 'extension' ? 'capacitacion' : null,
+        estadoRevision: 'pendiente', nombre: 'soporte-rol.pdf', horasAvance: 10 }],
+    }] });
+    render(<PtaBackofficeModule initialView="seguimiento_docs" />);
+    fireEvent.click(await screen.findByText('Docente de la territorial autorizada'));
+    expect(await screen.findByText('soporte-rol.pdf')).toBeTruthy();
+    expect(screen.queryByText('Sin componentes de seguimiento asignados')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await waitFor(() => expect(revisarEvidenciaPTA).toHaveBeenCalledWith('pta-revisor', 'ev-revisor',
+      expect.objectContaining({ decision: 'rechazado' })));
+  });
+
+  it('consulta de nuevo al cambiar el alcance de los roles y retira los documentos anteriores', async () => {
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, 'pta.review.investigacion']);
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValueOnce({ success: true, data: [{
+      id: 'pta-rol', pta_id: 'pta-rol', periodo: '2026-1', estado: 'Aprobado', docente_nombre: 'Docente anterior',
+      evidencias: [{ id: 'ev', componentePta: 'investigacion', estadoRevision: 'pendiente' }],
+    }] }).mockResolvedValue({ success: true, data: [] });
+    const mounted = render(<PtaBackofficeModule initialView="seguimiento_docs" />);
+    await screen.findByText('Docente anterior');
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION]);
+    mounted.rerender(<PtaBackofficeModule initialView="seguimiento_docs" />);
+    await screen.findByText('Sin componentes de seguimiento asignados');
+    expect(screen.queryByText('Docente anterior')).toBeNull();
+    expect(getAllPtasConEvidencias).toHaveBeenCalledTimes(2);
   });
 
   it('muestra y resuelve solamente los componentes de solicitud entregados al revisor', async () => {
@@ -1352,6 +1414,38 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Todos').textContent).toContain('1');
   });
 
+  it.each(['revision', 'aprobacion'] as const)('mantiene la confirmación de %s ante consultas posteriores atrasadas y acepta una reapertura nueva', async etapa => {
+    sync.rol = 'docente';
+    sync.permissions.puedeRevisar = etapa === 'revision';
+    sync.permissions.puedeAprobar = etapa === 'aprobacion';
+    sync.permissions.componentesAprobables = etapa === 'aprobacion' ? ['academica_pregrado'] : [];
+    sync.permissions.componentesRevisables = etapa === 'revision' ? ['academica_pregrado:general'] : [];
+    const campo = `componentes_${etapa}_usuario`;
+    const row = { componente: 'academica_pregrado', subseccion: 'general', estado: 'pendiente', revision_completa: true };
+    const pta = { ...pendientes[0], flujo_actualizado_en: '2026-10-28T10:00:00Z',
+      componentes_en_alcance: ['academica_pregrado'],
+      componentes_revision_usuario: [], componentes_aprobacion_usuario: [], [campo]: [row] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    sync.updatedPta = { ...pta, flujo_actualizado_en: '2026-10-28T10:01:00Z',
+      [campo]: [{ ...row, estado: etapa === 'revision' ? 'revisado' : 'aprobado' }] };
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(2));
+    const pendientesTab = etapa === 'revision' ? 'Por revisar' : 'Por aprobar';
+    const resueltosTab = etapa === 'revision' ? 'Revisados' : 'Aprobados';
+    expect(tab(pendientesTab).textContent).not.toMatch(/\d/);
+    expect(tab(resueltosTab).textContent).toContain('1');
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab(resueltosTab).textContent).toContain('1');
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{ ...pta,
+      version: 2, flujo_actualizado_en: '2026-10-28T10:02:00Z' }] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab(pendientesTab).textContent).toContain('1');
+    expect(tab(resueltosTab).textContent).not.toMatch(/\d/);
+  });
+
   it('vuelve a una página con registros cuando la última página de pendientes queda vacía', async () => {
     const many = Array.from({ length: 51 }, (_, i) => ({ ...pendientes[0], id: `pta-${i}`, docente_nombre: `Docente número ${i}` }));
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: many });
@@ -1689,6 +1783,8 @@ describe('listado y contadores del backoffice', () => {
     };
     const pendingReview = {
       ...pendientes[0],
+      componentes_total: 1, componentes_aprobados: 0,
+      componentes_estado: [{ key: 'extension', label: 'Extensión', estado: 'en_revision', horas: 40 }],
       componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente' }],
       componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente', revision_completa: false }],
     };
@@ -1701,8 +1797,13 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
     expect(tab('Aprobados').textContent).toContain('1');
 
+    // El desglose permanece abierto mientras cambian las tarjetas y pestañas.
+    fireEvent.click(screen.getByTitle(/^Ver componentes: 0 de 1 componentes aprobados/));
+    expect(screen.getByText('En Revisión (1)')).toBeTruthy();
+
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
       ...pendingReview,
+      componentes_estado: [{ key: 'extension', label: 'Extensión', estado: 'pendiente', horas: 40 }],
       componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'revisado' }],
       componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente', revision_completa: true }],
     }, other] });
@@ -1711,9 +1812,13 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Revisados').textContent).toContain('1');
     expect(tab('Por aprobar').textContent).toContain('1');
     expect(tab('Aprobados').textContent).toContain('1');
+    expect(screen.queryByText('En Revisión (1)')).toBeNull();
+    expect(screen.getByText('Pendiente de aprobación (1)')).toBeTruthy();
 
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
       ...pendingReview, estado: 'Aprobado',
+      componentes_aprobados: 1,
+      componentes_estado: [{ key: 'extension', label: 'Extensión', estado: 'aprobado', horas: 40 }],
       componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'revisado' }],
       componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'aprobado', revision_completa: true }],
     }, other] });
@@ -1722,6 +1827,8 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Revisados').textContent).toContain('1');
     expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
     expect(tab('Aprobados').textContent).toContain('2');
+    expect(screen.getByText('Aprobados (1)')).toBeTruthy();
+    expect(screen.queryByText('Pendiente de aprobación (1)')).toBeNull();
     fireEvent.click(tab('Aprobados'));
     expect(screen.getByText('Docente uno')).toBeTruthy();
     expect(screen.getByText('Docente dos')).toBeTruthy();

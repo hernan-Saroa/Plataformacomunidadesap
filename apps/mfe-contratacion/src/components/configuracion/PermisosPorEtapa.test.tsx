@@ -87,19 +87,37 @@ describe('PermisosPorEtapa', () => {
     expect(casilla('Ver en 3.1').disabled).toBe(true);
   });
 
-  it('avisa cuando marca una acción que el backoffice no le dio al rol', async () => {
-    const usuario = userEvent.setup();
+  it('no deja marcar una acción que el backoffice no le dio al rol', async () => {
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Editar en 7.2')).toBeTruthy());
 
-    await usuario.click(casilla('Editar en 7.2'));
+    expect(casilla('Editar en 7.2').disabled).toBe(true);
+    expect(casilla('Editar en 7.2').title).toMatch(/«Editar»/);
+    expect(casilla('Ver en 7.1').disabled).toBe(false);
+  });
 
-    expect(screen.getByText(/Sin efecto todavía/)).toBeInTheDocument();
-    expect(screen.getByText(/«Editar»/)).toBeInTheDocument();
+  it('señala las casillas que quedaron sin permiso general y deja quitarlas', async () => {
+    const usuario = userEvent.setup();
+    servicio.alcanceRoles.mockResolvedValue([
+      { ...LEGAL, alcances: [...LEGAL.alcances, { accion: 'editar', lugar: '7.2', confirmado: true }] },
+    ]);
+    render(<PermisosPorEtapa />);
+    await waitFor(() => expect(casilla('Editar en 7.2').checked).toBe(true));
+
+    expect(screen.getByText(/Casillas sin efecto/)).toBeInTheDocument();
+    // La que ya estaba no se bloquea: se tiene que poder quitar.
+    expect(casilla('Editar en 7.2').disabled).toBe(false);
+
+    await usuario.click(screen.getByRole('button', { name: 'Quitarlas' }));
+
+    expect(casilla('Editar en 7.2').checked).toBe(false);
+    expect(casilla('Editar en 7.2').disabled).toBe(true);
+    expect(casilla('Ver en 7.2').checked).toBe(true);
   });
 
   it('avisa cuando el mismo rol diligencia y aprueba el mismo punto', async () => {
     const usuario = userEvent.setup();
+    servicio.alcanceRoles.mockResolvedValue([{ ...LEGAL, acciones: ['ver', 'editar', 'aprobar'] }]);
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Editar en 7.2')).toBeTruthy());
 
@@ -158,7 +176,9 @@ describe('PermisosPorEtapa', () => {
     await usuario.click(screen.getByRole('button', { name: 'Abogado' }));
 
     expect(casilla('Ver en todo el módulo').checked).toBe(true);
-    expect(casilla('Aprobar en la etapa 3').checked).toBe(true);
+    // Área Legal no tiene «Aprobar» en la plataforma: esa casilla no se copia.
+    expect(casilla('Aprobar en la etapa 3').checked).toBe(false);
+    expect(screen.getByText(/salvo 1 casilla/)).toBeInTheDocument();
     // No lo guarda solo: queda para revisar.
     expect(servicio.guardarAlcanceRol).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled();

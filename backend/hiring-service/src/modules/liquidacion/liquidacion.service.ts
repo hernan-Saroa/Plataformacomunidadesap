@@ -25,6 +25,7 @@ import { AnularLiquidacionDto, LiquidarDto } from './dto/liquidacion.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import { estadoDeEjecucion } from '../modificaciones/estado-de-ejecucion';
+import { asignacionPara } from '../../flujo/lectura';
 import {
   alertaDelPlazo,
   MESES_BILATERAL,
@@ -113,6 +114,7 @@ export class LiquidacionService {
 
     const admite = admiteLiquidacion(contrato.estado);
     const informe = await this.informeFinalVigente(contrato.id);
+    const exigeInforme = await this.exigeInformeFinal(this.dataSource.manager, procesoId);
     const vigente = await this.actaVigente(contrato.id);
 
     const ventana = await this.ventanaDelContrato(this.dataSource.manager, contrato);
@@ -126,7 +128,7 @@ export class LiquidacionService {
 
     // Sin informe final no hay nada que liquidar, y sin ventana no hay cómo
     // saber si la unilateral está habilitada.
-    const base = admite && !!informe && !vigente && !!ventana;
+    const base = admite && (!!informe || !exigeInforme) && !vigente && !!ventana;
 
     return {
       admiteLiquidacion: admite,
@@ -138,14 +140,19 @@ export class LiquidacionService {
         valor: contrato.valor,
       },
       tieneInformeFinal: !!informe,
+      /** Falso si el flujo dejó la 10.1 opcional: basta el acta de recibo (EFDS-1171). */
+      exigeInformeFinal: exigeInforme,
       ventana,
       /** La alerta de RF-SIS-03, resuelta aquí para que nadie la recalcule. */
       alerta,
       puedeLiquidarBilateral: base,
-      puedeLiquidarUnilateral: base && alerta?.momento !== 'BILATERAL',
-      motivoNoUnilateral:
+      // Revisión de QA de EFDS-1172: la unilateral se puede registrar siempre;
+      // dentro del plazo del acuerdo se advierte, no se impide.
+      puedeLiquidarUnilateral: base,
+      motivoNoUnilateral: null as string | null,
+      advertenciaUnilateral:
         base && alerta?.momento === 'BILATERAL'
-          ? `La liquidación unilateral se habilita cuando venza el plazo del acuerdo, el ${ventana!.bilateralHasta}`
+          ? `Todavía corre el plazo para liquidar de común acuerdo, hasta el ${ventana!.bilateralHasta}: la unilateral procede normalmente cuando el contratista no se presenta o no hay acuerdo`
           : null,
       balanceActual: await this.calcularBalance(this.dataSource.manager, contrato),
       acta: vigente
@@ -199,9 +206,12 @@ export class LiquidacionService {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoLiquidable(em, procesoId);
 
-      if (!(await this.informeFinalVigente(contrato.id, em))) {
+      if (
+        (await this.exigeInformeFinal(em, procesoId)) &&
+        !(await this.informeFinalVigente(contrato.id, em))
+      ) {
         throw new ConflictException(
-          'El contrato no tiene informe final: la liquidación va sobre el informe que dice cómo se ejecutó (10.1)',
+          'El contrato no tiene informe final de supervisión: la liquidación va sobre el informe que dice cómo se ejecutó (10.1). Si en esta modalidad basta el acta de recibo, la 10.1 se configura como opcional',
         );
       }
 
@@ -220,14 +230,11 @@ export class LiquidacionService {
 
       const alerta = alertaDelPlazo(this.hoy(), ventana);
 
-      // Lo único que se bloquea: antes de que venza el acuerdo la potestad
-      // unilateral no existe, y un acto dictado sin ella nace viciado.
-      if (dto.tipo === 'UNILATERAL' && alerta.momento === 'BILATERAL') {
-        throw new ConflictException(
-          `Todavía corre el plazo para liquidar de común acuerdo, hasta el ${ventana.bilateralHasta}: ` +
-            'la liquidación unilateral solo procede cuando ese plazo vence',
-        );
-      }
+      // Antes se bloqueaba la unilateral dentro del plazo del acuerdo. Desde la
+      // revisión de QA de EFDS-1172 se registra con la resolución o la
+      // evidencia de su publicación, y la pantalla advierte del plazo: la
+      // entidad sabe si el contratista se negó o no se presentó.
+      void alerta;
 
       if (dto.pazYSalvo && !pazYSalvo) {
         throw new BadRequestException(
@@ -558,6 +565,18 @@ export class LiquidacionService {
         usuarioId: acceso.userId,
       } as Partial<Trazabilidad>),
     );
+  }
+  /**
+   * Si el flujo exige el informe final de supervisión (10.1) para liquidar.
+   *
+   * No siempre se produce: en algunos contratos basta el acta de recibo
+   * (revisión de QA de EFDS-1171). Se configura como cualquier actividad
+   * opcional, con «no detiene el flujo», por modalidad.
+   */
+  private async exigeInformeFinal(em: EntityManager, procesoId: string): Promise<boolean> {
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    const rige = await asignacionPara(em, '10.1', proceso?.modalidad ?? null, procesoId);
+    return !rige.secuencia.noBloquea;
   }
 }
 

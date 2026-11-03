@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { AlcanceService } from '../src/auth/alcance.service';
 import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
@@ -103,8 +104,10 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  // Sobre la fecha de Bogotá, como los servicios: en UTC, de las 7 p. m. en
+  // adelante «ayer» caía en hoy y los términos no se vencían.
   const enDias = (d: number) => {
-    const f = new Date();
+    const f = new Date(`${hoy()}T12:00:00Z`);
     f.setUTCDate(f.getUTCDate() + d);
     return f.toISOString().slice(0, 10);
   };
@@ -161,11 +164,20 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
       },
     };
 
-    // El supervisor se designa con esta misma persona, así que su `userId` es
-    // el que el servicio compara para autorizar el aval.
+    // El supervisor es una cuenta que puede ocupar su puesto (121): la que
+    // avala la 9.4 y elabora la 10.1. La 8.2 la designa por su `id_user`, que
+    // es el mismo con el que inicia sesión.
+    const alcance = app.get(AlcanceService);
+    const avalan = await alcance.cuentasQuePueden('aprobar', '9.4');
+    const elaboran = new Set(await alcance.cuentasQuePueden('editar', '10.1'));
+    const [candidata] = await dataSource.query(
+      `SELECT id_user::text AS id, username FROM auth."user"
+        WHERE is_active AND id_user::text = ANY($1::text[]) ORDER BY id_user`,
+      [avalan.filter((id) => elaboran.has(id))],
+    );
     supervisor = {
-      userId: cuenta.id_person,
-      userName: 'Supervisora del contrato',
+      userId: candidata.id,
+      userName: candidata.username,
       roles: ['SUPERVISOR_CONTRATO'],
     };
   });
@@ -245,11 +257,10 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: VALOR_CONTRATO }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: `CDP-2026-175-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: `CDP-2026-175-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 
@@ -295,14 +306,8 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
 
     await evaluacion.registrar(
       proceso.id,
-      {
-        oferenteId: cierre.oferentes[0].id,
-        puntajeObtenido: 95,
-        puntajeMaximo: 100,
-        justificacion: 'Cumplió los requisitos habilitantes y obtuvo el mayor puntaje del comité.',
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      {},
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
 
@@ -321,10 +326,12 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
     );
     await escritos.cerrar(proceso.id, {}, gestor);
 
-    await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
+    await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor, undefined, {
+      oferenteId: cierre.oferentes[0].id,
+    });
     await definitivo.publicar(
       proceso.id,
-      { medioPublicacion: 'Publicado en SECOP II para conocimiento de los oferentes' },
+      { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
       archivo('pub-definitivo.png', 'image/png'),
       'w'.repeat(64),
       gestor,
@@ -362,14 +369,14 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
     await contratos.aceptar(proceso.id, { aceptadoPor: 'Representante legal' }, gestor);
     await contratos.firmar(
       proceso.id,
-      { parte: 'ORDENADOR', firmanteNombre: 'Ordenadora del gasto', fechaFirma: hoy() },
+      { parte: 'ORDENADOR', firmanteNombre: 'Ordenadora del gasto', fechaFirma: haceDias(1000) },
       archivo('firma-entidad.pdf'),
       'f'.repeat(64),
       ordenador,
     );
     await contratos.firmar(
       proceso.id,
-      { parte: 'CONTRATISTA', firmanteNombre: 'Representante legal', fechaFirma: hoy() },
+      { parte: 'CONTRATISTA', firmanteNombre: 'Representante legal', fechaFirma: haceDias(1000) },
       archivo('firma-contratista.pdf'),
       'g'.repeat(64),
       gestor,
@@ -399,8 +406,7 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
     await supervision.designar(
       proceso.id,
       {
-        personaId: juridica.personaId,
-        nombre: supervisor.userName,
+        usuarioId: supervisor.userId,
         cargo: 'Profesional especializada',
         fechaDesignacion: hoy(),
       },
@@ -415,6 +421,20 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
   /** El contrato ya corriendo, que es la condición de entrada de la 9.4. */
   const contratoEnEjecucion = async (fechaInicio = haceDias(30)) => {
     const proceso = await hastaContratoLegalizado();
+    // El RP es requisito de ejecución: sin él no arranca la reunión de inicio.
+    await dataSource.query(
+      `INSERT INTO hiring.registros_presupuestales
+         (contrato_id, numero, valor, rubro, fecha_expedicion, estado, solicitado_por, expedido_por)
+       SELECT c.id, 'RP-E2E-' || left(c.id::text, 8), c.valor, 'A-02-02', CURRENT_DATE - 900,
+              'EXPEDIDO', 'e2e', 'e2e'
+         FROM hiring.contratos c
+        WHERE c.proceso_id = $1 AND c.estado <> 'RECHAZADO'
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.registros_presupuestales r
+             WHERE r.contrato_id = c.id AND r.modificacion_id IS NULL
+               AND r.estado NOT IN ('RECHAZADO', 'ANULADO'))`,
+      [proceso.id],
+    );
 
     await actaInicio.suscribir(
       proceso.id,
@@ -448,7 +468,7 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
       procesoId,
       pagoId,
       { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
-      financiero,
+      gestor,
     );
     return pagoId;
   };
@@ -478,6 +498,20 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
    */
   const conInformeFinal = async (diasDesdeInicio = 200) => {
     const proceso = await hastaContratoLegalizado();
+    // El RP es requisito de ejecución: sin él no arranca la reunión de inicio.
+    await dataSource.query(
+      `INSERT INTO hiring.registros_presupuestales
+         (contrato_id, numero, valor, rubro, fecha_expedicion, estado, solicitado_por, expedido_por)
+       SELECT c.id, 'RP-E2E-' || left(c.id::text, 8), c.valor, 'A-02-02', CURRENT_DATE - 900,
+              'EXPEDIDO', 'e2e', 'e2e'
+         FROM hiring.contratos c
+        WHERE c.proceso_id = $1 AND c.estado <> 'RECHAZADO'
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.registros_presupuestales r
+             WHERE r.contrato_id = c.id AND r.modificacion_id IS NULL
+               AND r.estado NOT IN ('RECHAZADO', 'ANULADO'))`,
+      [proceso.id],
+    );
     const inicio = haceDias(diasDesdeInicio);
 
     await actaInicio.suscribir(

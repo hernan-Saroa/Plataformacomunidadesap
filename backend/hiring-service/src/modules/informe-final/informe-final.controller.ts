@@ -35,7 +35,7 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
  * servicio exige que sea el supervisor vigente de ese contrato, con la misma
  * regla del aval del pago.
  */
-@ApiTags('Etapa 10 · Informe final de ejecución')
+@ApiTags('Etapa 10 · Informe final de supervisión')
 @Controller('procesos/:id/informe-final')
 export class InformeFinalController {
   constructor(private readonly service: InformeFinalService) {}

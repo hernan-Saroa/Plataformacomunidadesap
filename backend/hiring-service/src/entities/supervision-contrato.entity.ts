@@ -33,8 +33,17 @@ export class SupervisionContrato {
   fechaDesignacion: string;
 
   /** `id_person` de auth.personas; sin FK porque ese esquema es de otro equipo. */
-  @Column({ name: 'persona_id' })
-  personaId: string;
+  /** La persona del directorio, si la cuenta tiene una. */
+  @Column({ name: 'persona_id', type: 'uuid', nullable: true })
+  personaId: string | null;
+
+  /** La cuenta designada (121): es la que ocupa el puesto e inicia sesión. */
+  @Column({ name: 'usuario_id', type: 'uuid', nullable: true })
+  usuarioId: string | null;
+
+  /** El puesto que llenó la designación, si la 9.4 nombra uno. */
+  @Column({ name: 'puesto_id', type: 'uuid', nullable: true })
+  puestoId: string | null;
 
   /** Copia del nombre al designar: el acto nombró a esa persona ese día. */
   @Column({ length: 200 })
@@ -58,12 +67,20 @@ export class SupervisionContrato {
   /**
    * Cuándo se le avisó de su designación.
    *
-   * Nulo mientras el aviso siga pendiente. El módulo no envía correos todavía,
-   * y marcarlo como enviado sin haberlo enviado dejaría al supervisor sin
-   * enterarse y al expediente afirmando lo contrario.
+   * Nulo mientras el aviso siga pendiente. Lo marca el correo que sale al
+   * designar (124) o, si no salió, quien deja constancia de que le avisó por
+   * fuera: marcarlo sin aviso dejaría al expediente afirmando lo que no pasó.
    */
   @Column({ name: 'alerta_enviada_at', type: 'timestamptz', nullable: true })
   alertaEnviadaAt: Date | null;
+
+  /** Los documentos del expediente que acompañan el acto en el correo (124). */
+  @Column({ name: 'anexos_correo', type: 'uuid', array: true, default: () => "'{}'" })
+  anexosCorreo: string[];
+
+  /** Lo que quien designa le escribió en el correo (124). */
+  @Column({ name: 'mensaje_correo', type: 'text', nullable: true })
+  mensajeCorreo: string | null;
 
   @Column({ name: 'relevado_at', type: 'timestamptz', nullable: true })
   relevadoAt: Date | null;

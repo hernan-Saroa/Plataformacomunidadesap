@@ -2,13 +2,12 @@ import { laEtapaCerro } from './cdp.service';
 import { EstadoActividad } from '../../entities/proceso-actividad.entity';
 
 /**
- * Cuándo se da por cerrada la etapa 3, que es lo que radica el CDP.
+ * Cuándo se da por cerrada la etapa 3, que es lo que pasa el proceso a la 4.
  *
- * El estudio previo aprobado es la solicitud formal, así que la 4.1 nace sola
- * al terminar la etapa anterior. De esta regla depende que el CDP se pida ni
- * antes —sobre una modalidad que aún puede cambiar en la 3.5, o un proceso que
- * el comité todavía no ha aprobado— ni después, que es lo que obligaba a que
- * alguien lo radicara a mano.
+ * De esta regla depende que el proceso llegue a la etapa del CDP ni antes
+ * —sobre una modalidad que aún puede cambiar, o un proceso que el comité
+ * todavía no ha aprobado— ni después, y que un CDP cargado desde el estudio
+ * previo dé por atendida la 4.2 en el momento justo.
  *
  * Se prueba sobre la función pura y no contra la base: qué cuenta como
  * «cerrada» es una decisión del flujo, y tiene que poder fijarse aquí.

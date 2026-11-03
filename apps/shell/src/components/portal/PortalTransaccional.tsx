@@ -1,3 +1,6 @@
+import { usePublishedPhoto } from '../../../../shared/profile-photos';
+import { RundPhotoPanel } from '../../../../mfe-pta/src/components/pta/banco-docentes/RundPhotoPanel';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 /**
  * Portal Transaccional - Vista principal del usuario autenticado (Legacy PTA)
  *
@@ -50,7 +53,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { colors, radius } from '../esap/shared/designTokens';
 import { CardSkeleton, EmptyStateIllustration } from '../ui/CardSkeleton';
 import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
-import { getEstadisticasPortal, inicializarDatosPortal, uploadFotoPerfil, getPerfilPortal } from './portalApi';
+import { getEstadisticasPortal, inicializarDatosPortal } from './portalApi';
 import { MisCertificadosLaborales } from './recursos-humanos/MisCertificadosLaborales';
 import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
@@ -263,9 +266,8 @@ export function PortalTransaccional({
   const [statsData, setStatsData] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const initRef = useRef(false);
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
-  const fotoInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingFoto, setUploadingFoto] = useState(false);
+  const fotoUrl = usePublishedPhoto(userPersonId);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
   const [ptaVista, setPtaVista] = useState<string>('v01_dashboard');
 
@@ -303,12 +305,9 @@ export function PortalTransaccional({
     async function loadPortalData() {
       try {
         await inicializarDatosPortal(userPersonId);
-        const [statsRes, perfilRes] = await Promise.all([
-          getEstadisticasPortal(userPersonId),
-          getPerfilPortal(userPersonId).catch(() => null),
-        ]);
+        const statsRes = await getEstadisticasPortal(userPersonId);
         if (statsRes?.success) setStatsData(statsRes.data);
-        if (perfilRes?.data?.perfil?.fotoUrl) setFotoUrl(perfilRes.data.perfil.fotoUrl);
+
       } catch (err) {
         console.error('[Portal] Error cargando datos:', err);
       } finally {
@@ -329,42 +328,7 @@ export function PortalTransaccional({
     }
   }, [currentView.type]);
 
-  const handleFotoUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setUploadingFoto(true);
-      try {
-        const res = await uploadFotoPerfil(file, userPersonId);
-        if (res?.data?.url) {
-          setFotoUrl(res.data.url);
-          toast.success('Foto de perfil actualizada');
-        } else {
-          // Backend may not support photo upload yet — fail silently
-          console.info('[Portal] Foto upload: endpoint no disponible o no retornó URL');
-          toast.info('La funcionalidad de foto de perfil estará disponible próximamente');
-        }
-      } catch (err) {
-        console.info('[Portal] Foto upload no disponible:', (err as Error)?.message);
-        toast.info('La funcionalidad de foto de perfil estará disponible próximamente');
-      } finally {
-        setUploadingFoto(false);
-      }
-    },
-    [userPersonId],
-  );
-
-  const triggerFotoPicker = useCallback(() => {
-    if (uploadingFoto) return;
-    const el = fotoInputRef.current;
-    if (!el) return;
-    try {
-      el.value = '';
-    } catch {
-      // ignore
-    }
-    el.click();
-  }, [uploadingFoto]);
+  const triggerFotoPicker = useCallback(() => setPhotoOpen(true), []);
 
   const iniciales = (userName || 'Usuario')
     .split(' ')
@@ -944,10 +908,7 @@ export function PortalTransaccional({
           <button
             type="button"
             onClick={triggerFotoPicker}
-            disabled={uploadingFoto}
-            className={`hidden sm:inline-flex w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 items-center justify-center ${
-              uploadingFoto ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-100'
-            }`}
+            className="hidden sm:inline-flex w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 items-center justify-center hover:bg-gray-100"
             title="Cambiar foto"
           >
             <Camera className="w-4 h-4 text-gray-600" />
@@ -1284,7 +1245,12 @@ export function PortalTransaccional({
   return (
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
         <div className="w-full max-w-[1000px] mx-auto px-6 sm:px-10 md:px-14 lg:px-16 py-5 sm:py-6 md:py-8">
-          <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
+          <Dialog open={photoOpen} onOpenChange={setPhotoOpen}>
+            <DialogContent style={{ width: 'calc(100vw - 32px)', maxWidth: 720, maxHeight: '90dvh', overflowY: 'auto' }}>
+              <DialogHeader><DialogTitle>Actualizar foto de perfil</DialogTitle><DialogDescription>Consulta la foto publicada y el estado de tu solicitud.</DialogDescription></DialogHeader>
+              <RundPhotoPanel own name={userName} />
+            </DialogContent>
+          </Dialog>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView.type}

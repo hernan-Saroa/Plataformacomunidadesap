@@ -71,9 +71,9 @@ export const GestionInfraestructuraModule: React.FC = () => {
     rolesNorm.has('COORDINADOR_INFRAESTRUCTURA');
   const esAdminModuloInfra = rolesNorm.has('ADMINISTRADOR_MODULO_INFRA');
   const esConsultaCalidadInfra = rolesNorm.has('CONSULTA_CALIDAD_INFRA');
-  const bloquearInventarioEspacios = !esSuperAdmin && (esAdminFuncionalInfra || esAdminModuloInfra || esConsultaCalidadInfra);
-  const bloquearSedesTerritoriales = !esSuperAdmin && (esAdminFuncionalInfra || esAdminModuloInfra || esConsultaCalidadInfra);
-  const bloquearMantenimiento = !esSuperAdmin && (esAdminFuncionalInfra || esAdminModuloInfra);
+  const bloquearInventarioEspacios = !esSuperAdmin && !esAdminFuncionalInfra && (esAdminModuloInfra || esConsultaCalidadInfra);
+  const bloquearSedesTerritoriales = !esSuperAdmin && !esAdminFuncionalInfra && (esAdminModuloInfra || esConsultaCalidadInfra);
+  const bloquearMantenimiento = !esSuperAdmin && esAdminModuloInfra;
   const bloquearReportes =
     !esSuperAdmin &&
     (
@@ -95,7 +95,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
   const parametrosSoloLectura = !esSuperAdmin && puedeAprobarConfig && !puedeEditarParametros;
   const puedeVerInventarioGlobal =
     esSuperAdmin ||
-    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
+    (!esAdminModuloInfra && (esAdminFuncionalInfra || hasPerm(sesionUmi, [
       'infraestructura.view_all',
       'infraestructura.view_all_ti',
       'infraestructura.param.espacios_cru',
@@ -103,46 +103,46 @@ export const GestionInfraestructuraModule: React.FC = () => {
       'infraestructura.param.territorial_crud',
       'infraestructura.param.categories_cru',
       'infraestructura.param.categories_crud',
-    ]));
+    ])));
   const puedeVerEspacios =
     (esSuperAdmin ||
-    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
-      'infraestructura.view_all',
-      'infraestructura.view_all_ti',
-      'infraestructura.param.espacios_cru',
-      'infraestructura.param.territorial_crud',
-    ]))) && !bloquearInventarioEspacios;
+      (!esAdminModuloInfra && (esAdminFuncionalInfra || hasPerm(sesionUmi, [
+        'infraestructura.view_all',
+        'infraestructura.view_all_ti',
+        'infraestructura.param.espacios_cru',
+        'infraestructura.param.territorial_crud',
+      ])))) && !bloquearInventarioEspacios;
   const puedeVerSedes =
     (esSuperAdmin ||
-    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
-      'infraestructura.view_all',
-      'infraestructura.view_all_ti',
-      'infraestructura.param.sedes_cru',
-      'infraestructura.param.territorial_crud',
-    ]))) && !bloquearSedesTerritoriales;
+      (!esAdminModuloInfra && (esAdminFuncionalInfra || hasPerm(sesionUmi, [
+        'infraestructura.view_all',
+        'infraestructura.view_all_ti',
+        'infraestructura.param.sedes_cru',
+        'infraestructura.param.territorial_crud',
+      ])))) && !bloquearSedesTerritoriales;
   const puedeVerMantenimiento =
     (esSuperAdmin ||
-    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
-    'infraestructura.view_all',
-    'infraestructura.view_all_ti',
-    'infraestructura.solicitud.create',
-    'infraestructura.solicitud.read',
-    'infraestructura.solicitud.read_all',
-    'infraestructura.solicitud.read_assigned',
-    'infraestructura.solicitud.read_own',
-    'infraestructura.solicitud.read_rejection_reason_own',
-    'infraestructura.solicitud.edit',
-    'infraestructura.solicitud.assign',
-    'infraestructura.solicitud.reject',
-    'infraestructura.solicitud.redistribute',
-    'infraestructura.solicitud.forward_ti',
-    'infraestructura.solicitud.confirmar_recepcion_insumos',
-    'infraestructura.solicitud.cierre_tecnico',
-    'infraestructura.solicitud.close_with_evidence',
-    'infraestructura.solicitud.execute_assigned',
-    'infraestructura.solicitud.conformidad',
-    'infraestructura.solicitud.calificacion',
-  ]))) && !bloquearMantenimiento;
+      (!esAdminModuloInfra && (esAdminFuncionalInfra || hasPerm(sesionUmi, [
+        'infraestructura.view_all',
+        'infraestructura.view_all_ti',
+        'infraestructura.solicitud.create',
+        'infraestructura.solicitud.read',
+        'infraestructura.solicitud.read_all',
+        'infraestructura.solicitud.read_assigned',
+        'infraestructura.solicitud.read_own',
+        'infraestructura.solicitud.read_rejection_reason_own',
+        'infraestructura.solicitud.edit',
+        'infraestructura.solicitud.assign',
+        'infraestructura.solicitud.reject',
+        'infraestructura.solicitud.redistribute',
+        'infraestructura.solicitud.forward_ti',
+        'infraestructura.solicitud.confirmar_recepcion_insumos',
+        'infraestructura.solicitud.cierre_tecnico',
+        'infraestructura.solicitud.close_with_evidence',
+        'infraestructura.solicitud.execute_assigned',
+        'infraestructura.solicitud.conformidad',
+        'infraestructura.solicitud.calificacion',
+      ])))) && !bloquearMantenimiento;
   const puedeVerCategorias = esSuperAdmin || puedeEditarCategorias || puedeAprobarConfig;
   const puedeVerParametros = esSuperAdmin || puedeEditarParametros || puedeAprobarConfig;
   const puedeVerReportes = !bloquearReportes && (esSuperAdmin || esAdminFuncionalInfra || esConsultaCalidadInfra || hasPerm(sesionUmi, [

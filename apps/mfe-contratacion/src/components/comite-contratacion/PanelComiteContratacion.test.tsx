@@ -29,7 +29,8 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   puedeRegistrar: false,
   puedeDejarConstancia: false,
   motivoNoDecide: null,
-  abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co' },
+  responsable: { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co' },
+  puesto: 'Abogado',
   ...cambios,
 });
 
@@ -131,7 +132,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     await userEvent.type(screen.getByLabelText(/Fecha de la sesión/), '2026-09-01');
 
     expect(screen.getByText(/A qué actividades vuelve el proceso/)).toBeInTheDocument();
-    // Con todo lo demás lleno, sigue bloqueado hasta el acta o los numerales.
+    // Con todo lo demás lleno, sigue bloqueado hasta marcar los numerales.
     expect(screen.getByRole('button', { name: /Registrar la sesión/ })).toBeDisabled();
   });
 
@@ -307,7 +308,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     expect(screen.getByLabelText(/A qué queda condicionada/)).toBeInTheDocument();
   });
 
-  it('aprobar sin más no pide texto, pero sí el acta', async () => {
+  it('aprobar sin más no pide texto, y el acta puede llegar después', async () => {
     pintar(estado({ puedeRegistrar: true }));
 
     await userEvent.click(
@@ -316,10 +317,23 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
 
     expect(screen.queryByLabelText(/Observaciones de fondo/)).toBeNull();
     expect(screen.getByText(/Acta de la sesión/)).toBeInTheDocument();
-    // Con fecha pero sin acta sigue bloqueado: el acta es lo único que prueba
-    // que un cuerpo colegiado sesionó.
+    // El acta tarda hasta diez días y no frena el proceso (113): con la fecha
+    // basta para registrar.
     await userEvent.type(screen.getByLabelText(/Fecha de la sesión/), '2026-09-01');
-    expect(screen.getByRole('button', { name: /Registrar la sesión/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Registrar la sesión/ })).toBeEnabled();
+  });
+
+  it('una sesión sin acta lo dice y deja cargarla a quien le toca', async () => {
+    pintar(
+      estado({
+        estado: 'APROBADO',
+        puedeCargarActa: true,
+        sesiones: [sesion({ decision: 'APROBADO', tieneActa: false })],
+      }),
+    );
+
+    expect(await screen.findByText(/Falta el acta de esta sesión/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Cargar el acta/ })).toBeInTheDocument();
   });
 
   it('una devolución del comité se ve, y dice que hay que volver', async () => {
@@ -380,6 +394,6 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
   it('a quien no le toca le dice de quién es', async () => {
     pintar(estado({ motivoNoDecide: 'NO_ES_TUYO' }));
 
-    expect(await screen.findByText(/Lo transcribe Andrés Rojas/)).toBeInTheDocument();
+    expect(await screen.findByText(/Lo registra Andrés Rojas \(Abogado\)/)).toBeInTheDocument();
   });
 });

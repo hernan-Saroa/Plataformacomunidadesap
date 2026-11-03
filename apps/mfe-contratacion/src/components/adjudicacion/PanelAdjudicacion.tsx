@@ -24,7 +24,9 @@ import {
   EstadoInformeDefinitivoProceso,
   EvidenciaFirmaOtp,
   InformeDefinitivo,
+  TipoPersonaContratista,
   TipoPiezaAudiencia,
+  VersionInformeDefinitivo,
 } from '../../types';
 import {
   Aviso,
@@ -47,9 +49,9 @@ interface Props {
 }
 
 const NUMERAL_AUDIENCIA = '7.1';
-const NUMERAL_SOBRE = '7.2';
-const NUMERAL_INFORME_DEFINITIVO = '7.3';
-const NUMERAL_ACTO = '7.4';
+const NUMERAL_SOBRE = '7.1.1';
+const NUMERAL_INFORME_DEFINITIVO = '7.2';
+const NUMERAL_ACTO = '7.3';
 
 const pesos = (valor: number | null) =>
   valor == null
@@ -121,7 +123,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
 
   // Informe definitivo
   const [documentoDefinitivo, setDocumentoDefinitivo] = useState<File | null>(null);
-  const [medioDefinitivo, setMedioDefinitivo] = useState('');
+  // La ganadora se decide en el definitivo (EFDS-1157).
+  const [ganadoraDefinitivo, setGanadoraDefinitivo] = useState('');
+  const [valorDefinitivo, setValorDefinitivo] = useState('');
+  const [enlaceDefinitivo, setEnlaceDefinitivo] = useState('');
   const [evidenciaDefinitivo, setEvidenciaDefinitivo] = useState<File | null>(null);
 
   // Acto
@@ -132,6 +137,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const [valorAdjudicado, setValorAdjudicado] = useState('');
   const [correoContratista, setCorreoContratista] = useState('');
   const [justificacion, setJustificacion] = useState('');
+  // Sin convocatoria (directa) no hay ofertas: el acto nombra al contratista.
+  const [contratistaNombre, setContratistaNombre] = useState('');
+  const [contratistaDocumento, setContratistaDocumento] = useState('');
+  const [contratistaTipo, setContratistaTipo] = useState<TipoPersonaContratista>('NATURAL');
   const [actoArchivo, setActoArchivo] = useState<File | null>(null);
   const [medioActo, setMedioActo] = useState('');
   const [evidenciaActo, setEvidenciaActo] = useState<File | null>(null);
@@ -208,21 +217,43 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setSobreEvidencia(null);
     }, 'Sobre económico abierto');
 
-  const generarDefinitivo = () =>
-    conGuardado(async () => {
-      await contratacionService.generarInformeDefinitivo(procesoId, documentoDefinitivo);
+  const generarDefinitivo = async () => {
+    // Actualizar deja una versión nueva en el historial: tiene que decir por qué.
+    let motivo: string | undefined;
+    if (definitivo?.actualizarPideMotivo) {
+      const pedido = await dialogo.pedirMotivo({
+        titulo: 'Actualizar el informe definitivo',
+        descripcion:
+          definitivo.informe?.estado === 'PUBLICADO'
+            ? 'La versión publicada queda en el historial y la nueva hay que publicarla otra vez en SECOP.'
+            : 'La versión anterior queda en el historial con este motivo.',
+        etiqueta: 'Motivo de la actualización',
+        confirmar: 'Actualizar el informe',
+      });
+      if (!pedido) return;
+      motivo = pedido;
+    }
+
+    await conGuardado(async () => {
+      await contratacionService.generarInformeDefinitivo(procesoId, documentoDefinitivo, motivo, {
+        oferenteId: ganadoraDefinitivo || undefined,
+        valorEvaluado: aNumero(valorDefinitivo),
+      });
       setDocumentoDefinitivo(null);
-    }, 'Informe definitivo generado');
+      setGanadoraDefinitivo('');
+      setValorDefinitivo('');
+    }, motivo ? 'Informe definitivo actualizado' : 'Informe definitivo generado');
+  };
 
   const publicarDefinitivo = (firmaOtp?: EvidenciaFirmaOtp) =>
     conGuardado(async () => {
       await contratacionService.publicarInformeDefinitivo(
         procesoId,
-        medioDefinitivo.trim(),
+        enlaceDefinitivo.trim(),
         evidenciaDefinitivo as File,
         firmaOtp,
       );
-      setMedioDefinitivo('');
+      setEnlaceDefinitivo('');
       setEvidenciaDefinitivo(null);
     }, 'Informe definitivo publicado');
 
@@ -231,7 +262,13 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       await contratacionService.adjudicar(
         procesoId,
         {
-          oferenteId: adjudicatario,
+          ...(acto?.sinConvocatoria
+            ? {
+                contratistaNombre: contratistaNombre.trim(),
+                contratistaDocumento: contratistaDocumento.trim(),
+                contratistaTipo,
+              }
+            : { oferenteId: adjudicatario }),
           numeroActo: numeroActo.trim(),
           fechaActo,
           valorAdjudicado: aNumero(valorAdjudicado) as number,
@@ -248,6 +285,8 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setValorAdjudicado('');
       setCorreoContratista('');
       setJustificacion('');
+      setContratistaNombre('');
+      setContratistaDocumento('');
       setActoArchivo(null);
     }, 'Proceso adjudicado');
 
@@ -314,6 +353,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const laAudiencia = audiencia.audiencia;
   const elDefinitivo = definitivo.informe;
   const elActo = acto.acto;
+  const sinConvocatoria = acto.sinConvocatoria;
+  const faltaAdjudicatario = sinConvocatoria
+    ? !contratistaNombre.trim() || !contratistaDocumento.trim()
+    : !adjudicatario;
 
   // El adjudicatario elegido contra el que propone el informe: la contradicción
   // se muestra mientras se llena el formulario, no después de guardar.
@@ -341,21 +384,31 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   return (
     <Marco>
       <Titulo>Adjudicación del proceso</Titulo>
-      <Ayuda>
-        Cerrado el traslado, la entidad celebra la audiencia —donde la modalidad lo exige, allí se
-        abre el sobre económico—, produce el informe de evaluación definitivo y adjudica por acto
-        del Ordenador del Gasto. El informe propone; el acto decide.
-      </Ayuda>
+      {sinConvocatoria ? (
+        <Ayuda>
+          Esta modalidad no recibe ofertas: no hay traslado, audiencia ni informe de evaluación
+          definitivo. El Ordenador del Gasto emite el acto y en él dice a quién se adjudica y por
+          cuánto; el contrato de la 8.1 parte de ahí.
+        </Ayuda>
+      ) : (
+        <Ayuda>
+          Cerrado el traslado, la entidad celebra la audiencia —donde la modalidad lo exige, allí
+          se abre el sobre económico—, produce el informe de evaluación definitivo y adjudica por
+          acto del Ordenador del Gasto. El informe propone; el acto decide.
+        </Ayuda>
+      )}
 
-      {!audiencia.trasladoCerrado && (
+      {!sinConvocatoria && !audiencia.trasladoCerrado && (
         <Pendiente
           falta="6.6"
           texto="El traslado del informe de evaluación sigue abierto: mientras corra, la evaluación todavía se puede mover."
         />
       )}
 
-      {/* ------------------------------------------ 7.1 y 7.2 · audiencia --- */}
+      {/* ------------------------------------------ 7.1 y 7.1.1 · audiencia --- */}
 
+      {!sinConvocatoria && (
+      <>
       {audiencia.aplica ? (
         <div className="space-y-2.5">
           <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">
@@ -466,19 +519,26 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                   <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
                     <UploadCloud size={15} className="text-slate-400" />
                     <span>
-                      {sobreEvidencia?.name ?? 'Adjuntar evidencia de la apertura (opcional)'}
+                      {sobreEvidencia?.name ??
+                        'Adjuntar la oferta económica del proveedor, en el formato diligenciado'}
                     </span>
                     <input
                       type="file"
+                      aria-label="Oferta económica del proveedor"
                       className="hidden"
                       onChange={(e) => setSobreEvidencia(e.target.files?.[0] ?? null)}
                     />
                   </label>
+                  <p className="text-[11px] text-slate-500 m-0">
+                    El acta de la audiencia es la que se cargó al registrarla (7.1). No se pide video.
+                  </p>
                   <div className="flex gap-2">
                     <Boton
                       icono={<Plus className="w-3.5 h-3.5" />}
                       onClick={() => firmaSobre.conFirma(abrirSobre)}
-                      disabled={guardando || !sobreOferta || aNumero(sobreValor) == null}
+                      disabled={
+                        guardando || !sobreOferta || aNumero(sobreValor) == null || !sobreEvidencia
+                      }
                     >
                       Abrir sobre
                     </Boton>
@@ -500,8 +560,8 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
               )
             ) : (
               <p className="text-[11.5px] text-slate-500 m-0">
-                Esta modalidad no abre sobre económico en audiencia
-                {audiencia.motivoNoAplicaSobre ? `: ${audiencia.motivoNoAplicaSobre}` : '.'}
+                {audiencia.motivoNoAplicaSobre ??
+                  'El sobre económico solo se abre en audiencia en la licitación de obra pública.'}
               </p>
             ))}
         </div>
@@ -511,7 +571,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         </Aviso>
       )}
 
-      {/* ----------------------------------- 7.3 · informe definitivo ------- */}
+      {/* ----------------------------------- 7.2 · informe definitivo ------- */}
 
       <div className="space-y-2.5">
         <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">
@@ -534,9 +594,44 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         {definitivo.puedeGenerar && (
           <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
             <p className="text-[11.5px] text-slate-500 m-0">
-              Congela el resultado vigente del comité —no el que se trasladó— y resuelve qué cambió
-              desde el preliminar.
+              Aquí se define la oferta ganadora: la evaluación preliminar no la nombra. Toma el
+              informe vigente del comité —no el que se trasladó— y resuelve qué cambió desde el
+              preliminar.
+              {elDefinitivo &&
+                ' Se puede actualizar después de la audiencia, también ya publicado, mientras no haya acto de adjudicación: cada versión queda en el historial con su motivo.'}
             </p>
+            <label className="block">
+              <span className="text-[11.5px] text-slate-600">
+                Oferta ganadora{' '}
+                {elDefinitivo?.resultado.ganadora ? (
+                  <>(se conserva {elDefinitivo.resultado.ganadora.nombre} si no eliges otra)</>
+                ) : (
+                  <span className="text-red-600">*</span>
+                )}
+              </span>
+              <select
+                className={campo}
+                aria-label="Oferta ganadora del informe definitivo"
+                value={ganadoraDefinitivo}
+                onChange={(e) => setGanadoraDefinitivo(e.target.value)}
+              >
+                <option value="">
+                  {elDefinitivo?.resultado.ganadora ? 'La misma' : 'Elige la oferta que gana…'}
+                </option>
+                {acto.ofertas.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.numero}. {o.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              className={campo}
+              aria-label="Valor evaluado de la ganadora"
+              placeholder="Valor evaluado (en blanco, el valor ofertado)"
+              value={valorDefinitivo}
+              onChange={(e) => setValorDefinitivo(e.target.value)}
+            />
             <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
               <UploadCloud size={15} className="text-slate-400" />
               <span>{documentoDefinitivo?.name ?? 'Adjuntar el informe definitivo'}</span>
@@ -549,7 +644,11 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
             <Boton
               icono={<FileText className="w-3.5 h-3.5" />}
               onClick={generarDefinitivo}
-              disabled={guardando || (!elDefinitivo && !documentoDefinitivo)}
+              disabled={
+                guardando ||
+                (!elDefinitivo && !documentoDefinitivo) ||
+                (!elDefinitivo?.resultado.ganadora && !ganadoraDefinitivo)
+              }
             >
               {elDefinitivo ? 'Actualizar informe definitivo' : 'Generar informe definitivo'}
             </Boton>
@@ -559,14 +658,21 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         {definitivo.puedePublicar && (
           <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
             <input
+              type="url"
               className={campo}
-              placeholder="Dónde se publicó el informe definitivo"
-              value={medioDefinitivo}
-              onChange={(e) => setMedioDefinitivo(e.target.value)}
+              aria-label="Enlace de la publicación en SECOP"
+              placeholder="Enlace de la publicación en SECOP (https://…)"
+              value={enlaceDefinitivo}
+              onChange={(e) => setEnlaceDefinitivo(e.target.value)}
             />
+            {enlaceDefinitivo.trim() && !esEnlace(enlaceDefinitivo) && (
+              <span className="text-[11px] text-red-600">
+                El enlace tiene que ser una dirección completa, con https://
+              </span>
+            )}
             <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
               <UploadCloud size={15} className="text-slate-400" />
-              <span>{evidenciaDefinitivo?.name ?? 'Adjuntar el soporte de la publicación'}</span>
+              <span>{evidenciaDefinitivo?.name ?? 'Adjuntar el archivo de evidencia de la publicación'}</span>
               <input
                 type="file"
                 className="hidden"
@@ -576,22 +682,24 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Megaphone className="w-3.5 h-3.5" />}
               onClick={() => firmaInformeDefinitivo.conFirma(publicarDefinitivo)}
-              disabled={guardando || !evidenciaDefinitivo || medioDefinitivo.trim().length < 10}
+              disabled={guardando || !evidenciaDefinitivo || !esEnlace(enlaceDefinitivo)}
             >
               Publicar informe definitivo
             </Boton>
           </div>
         )}
       </div>
+      </>
+      )}
 
-      {/* -------------------------------------------- 7.4 · el acto --------- */}
+      {/* -------------------------------------------- 7.3 · el acto --------- */}
 
       <div className="space-y-2.5">
         <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">Acto de adjudicación</p>
 
-        {!acto.informeDefinitivoPublicado && (
+        {!sinConvocatoria && !acto.informeDefinitivoPublicado && (
           <Pendiente
-            falta="7.3"
+            falta="7.2"
             texto="El informe definitivo no se ha publicado: adjudicar sin él sería firmar sobre una evaluación que todavía se puede mover."
           />
         )}
@@ -611,18 +719,46 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         {acto.puedeAdjudicar &&
           (adjudicando ? (
             <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-              <select
-                className={campo}
-                value={adjudicatario}
-                onChange={(e) => setAdjudicatario(e.target.value)}
-              >
-                <option value="">¿A quién se adjudica?</option>
-                {acto.ofertas.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.numero}. {o.nombre}
-                  </option>
-                ))}
-              </select>
+              {sinConvocatoria ? (
+                <>
+                  <input
+                    className={campo}
+                    aria-label="Nombre del contratista"
+                    placeholder="A quién se adjudica: nombre o razón social"
+                    value={contratistaNombre}
+                    onChange={(e) => setContratistaNombre(e.target.value)}
+                  />
+                  <input
+                    className={campo}
+                    aria-label="Documento del contratista"
+                    placeholder="Cédula o NIT"
+                    value={contratistaDocumento}
+                    onChange={(e) => setContratistaDocumento(e.target.value)}
+                  />
+                  <select
+                    className={campo}
+                    aria-label="Tipo de persona del contratista"
+                    value={contratistaTipo}
+                    onChange={(e) => setContratistaTipo(e.target.value as TipoPersonaContratista)}
+                  >
+                    <option value="NATURAL">Persona natural</option>
+                    <option value="JURIDICA">Persona jurídica</option>
+                  </select>
+                </>
+              ) : (
+                <select
+                  className={campo}
+                  value={adjudicatario}
+                  onChange={(e) => setAdjudicatario(e.target.value)}
+                >
+                  <option value="">¿A quién se adjudica?</option>
+                  {acto.ofertas.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.numero}. {o.nombre}
+                    </option>
+                  ))}
+                </select>
+              )}
               <input
                 className={campo}
                 placeholder="Número de la resolución"
@@ -658,6 +794,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                 {correoContratista.trim() && !correoValido(correoContratista) && (
                   <span className="text-[11px] text-red-600">No parece un correo válido</span>
                 )}
+                <span className="block text-[11px] text-slate-500 mt-1">
+                  Al adjudicar se le envía un correo informativo. No reemplaza la notificación
+                  oficial, que es el acto administrativo.
+                </span>
               </label>
 
               {seApartaDelInforme && (
@@ -692,7 +832,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                   onClick={() => firmaActo.conFirma(adjudicar)}
                   disabled={
                     guardando ||
-                    !adjudicatario ||
+                    faltaAdjudicatario ||
                     !numeroActo.trim() ||
                     !fechaActo ||
                     aNumero(valorAdjudicado) == null ||
@@ -767,7 +907,11 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
           </div>
         )}
       </div>
-      <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
+      {/* Desierto es no recibir ofertas o que ninguna quede habilitada: sin
+          convocatoria no hay ofertas que lo hagan posible. */}
+      {!sinConvocatoria && (
+        <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
+      )}
       {firmaAudiencia.modal}
       {firmaSobre.modal}
       {firmaInformeDefinitivo.modal}
@@ -850,7 +994,7 @@ function ResumenDefinitivo({ informe }: { informe: InformeDefinitivo }) {
     <div className="border border-gray-200 rounded-lg p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-[12.5px] font-bold text-slate-800 m-0">
-          Ganadora: {resultado.ganadora.nombre}
+          Ganadora: {resultado.ganadora?.nombre ?? 'sin definir'}
           <span className="ml-2 inline-block px-2 py-0.5 text-[10.5px] font-bold rounded-md border bg-slate-50 text-slate-700 border-slate-200">
             {informe.estado}
           </span>
@@ -897,10 +1041,66 @@ function ResumenDefinitivo({ informe }: { informe: InformeDefinitivo }) {
       {informe.publicadoAt && (
         <p className="text-[11.5px] text-slate-500 m-0">
           Publicado el {momentoConHora(informe.publicadoAt)} por {informe.publicadoPor}.
+          {informe.enlacePublicacion && (
+            <>
+              {' '}
+              <a
+                className="text-blue-700"
+                href={informe.enlacePublicacion}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Ver en SECOP
+              </a>
+            </>
+          )}
         </p>
       )}
+
+      {(informe.versiones?.length ?? 0) > 1 && <HistorialDefinitivo versiones={informe.versiones!} />}
     </div>
   );
+}
+
+/** Las versiones del informe definitivo, de la más reciente a la primera (EFDS-1159). */
+function HistorialDefinitivo({ versiones }: { versiones: VersionInformeDefinitivo[] }) {
+  return (
+    <div>
+      <p className="text-[11.5px] font-bold text-slate-600 m-0">Historial de versiones</p>
+      <ul className="list-none p-0 m-0 mt-1 space-y-1">
+        {[...versiones].reverse().map((v) => (
+          <li key={v.numero} className="text-[11.5px] text-slate-600">
+            <span className="font-bold">Versión {v.numero}</span> ·{' '}
+            {momentoConHora(v.generadoAt)}
+            {v.generadoPor ? ` · ${v.generadoPor}` : ''}
+            {v.motivo ? ` · ${v.motivo}` : ' · primera versión'}
+            {v.informe && (
+              <>
+                {' · '}
+                <a
+                  className="text-blue-700"
+                  href={contratacionService.urlDescarga(v.informe.archivoUrl)}
+                >
+                  {v.informe.nombre}
+                </a>
+              </>
+            )}
+            {v.publicadoAt && ` · publicada el ${momentoConHora(v.publicadoAt)}`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Un enlace completo: es lo que prueba dónde quedó publicado. */
+function esEnlace(texto: string) {
+  try {
+    const url = new URL(texto.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 /** El acto vigente: a quién, por cuánto y con qué resolución. */

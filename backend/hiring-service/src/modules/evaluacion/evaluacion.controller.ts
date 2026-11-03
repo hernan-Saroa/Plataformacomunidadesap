@@ -8,15 +8,17 @@ import {
   Post,
   Req,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { EvaluacionService } from './evaluacion.service';
 import {
+  ActualizarInformeDto,
   CargarEvidenciaDto,
   RectificarResultadoDto,
   RegistrarResultadoDto,
@@ -43,6 +45,9 @@ import {
  * alcance de la 6.3, y un evaluador designado en otro proceso llega hasta aquí
  * y no escribe nada.
  */
+/** Archivos del informe: el consolidado y uno por dimensión, con holgura. */
+const MAX_ARCHIVOS_INFORME = 10;
+
 @ApiTags('Etapa 6 · Evaluación de ofertas')
 @Controller('procesos/:id/evaluacion')
 export class EvaluacionController {
@@ -62,41 +67,54 @@ export class EvaluacionController {
   @Post('resultado')
   @PuedeOEsDelComite('editar', '6.3')
   @UseInterceptors(
-    FileInterceptor(
-      'file',
+    FilesInterceptor(
+      'files',
+      MAX_ARCHIVOS_INFORME,
       // Solo ofimáticos: el informe de evaluación es una pieza firmada.
       opcionesDeCarga(MIME_DOCUMENTOS, 'El informe de evaluación se carga en PDF, Word o Excel'),
     ),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 6.3 · Registrar el resultado de la evaluación',
+    summary: 'Actividad 6.3 · Cargar el informe de evaluación preliminar',
     description:
-      'La oferta que el comité eligió, su valoración y el informe que la sustenta. La evaluación se hace por fuera; aquí se recibe.',
+      'El informe consolidado del comité, en uno o varios archivos (jurídico, técnico, financiero y económico). Sin puntajes ni ganadora: la evaluación es preliminar.',
   })
   async registrar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Body() dto: RegistrarResultadoDto,
-    @UploadedFile() file: any,
+    @UploadedFiles() files: any[],
     @Req() req: any,
   ) {
-    if (!file) {
-      throw new BadRequestException(
-        'Adjunta el informe del comité: sin él el resultado es la opinión de quien lo digitó',
-      );
-    }
+    return this.conArchivos(files, (informes) =>
+      this.service.registrar(procesoId, dto, informes, getHiringAccess(req)),
+    );
+  }
 
-    const ruta = join(STORAGE_PATH, file.filename);
-
-    try {
-      const hash = await sha256Archivo(ruta);
-      return await this.service.registrar(procesoId, dto, file, hash, getHiringAccess(req));
-    } catch (error) {
-      // El archivo ya está en disco cuando la regla de negocio lo rechaza: se
-      // borra para no dejar huérfanos en el almacenamiento.
-      await unlink(ruta).catch(() => undefined);
-      throw error;
-    }
+  @Post('resultado/actualizar')
+  @PuedeOEsDelComite('editar', '6.3')
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      MAX_ARCHIVOS_INFORME,
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El informe de evaluación se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Volver a cargar el informe de evaluación preliminar',
+    description:
+      'Si tiene un error u omisión. El anterior queda en el historial con la fecha, el usuario y el motivo.',
+  })
+  async actualizar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: ActualizarInformeDto,
+    @UploadedFiles() files: any[],
+    @Req() req: any,
+  ) {
+    return this.conArchivos(files, (informes) =>
+      this.service.actualizar(procesoId, dto, informes, getHiringAccess(req)),
+    );
   }
 
   @Post('resultado/rectificar')
@@ -148,6 +166,32 @@ export class EvaluacionController {
       return await this.service.agregarEvidencia(procesoId, dto, file, hash, getHiringAccess(req));
     } catch (error) {
       await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /**
+   * Calcula el hash de cada archivo y, si la regla de negocio los rechaza, los
+   * borra del disco para no dejar huérfanos en el almacenamiento.
+   */
+  private async conArchivos<T>(
+    files: any[],
+    accion: (informes: { archivo: any; hash: string }[]) => Promise<T>,
+  ): Promise<T> {
+    if (!files?.length) {
+      throw new BadRequestException(
+        'Adjunta el informe del comité: sin él la evaluación es la opinión de quien la digitó',
+      );
+    }
+
+    const rutas = files.map((f) => join(STORAGE_PATH, f.filename));
+    try {
+      const informes = await Promise.all(
+        files.map(async (archivo, i) => ({ archivo, hash: await sha256Archivo(rutas[i]) })),
+      );
+      return await accion(informes);
+    } catch (error) {
+      await Promise.all(rutas.map((r) => unlink(r).catch(() => undefined)));
       throw error;
     }
   }

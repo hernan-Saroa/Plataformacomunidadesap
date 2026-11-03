@@ -13,6 +13,7 @@
 
 import { Fragment, useRef, useState, useEffect, useCallback } from 'react';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
+import { getPtaSignatureStatus } from './shared/ptaSignatureStatus';
 import { motion } from 'motion/react';
 import {
   FileText, Download, ChevronLeft, CheckCircle2, X,
@@ -147,7 +148,8 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
 
   // Historial: accept both camelCase (historialEstados) and legacy snake_case
   const historial: any[] = pta.historialEstados || pta.historial || pta.historial_aprobaciones || [];
-  const firmaDigital = pta.firma_digital || null;
+  const firmas = getPtaSignatureStatus(pta);
+  const firmaDigital = firmas.docente ? pta.firma_digital || null : null;
 
   // Calculate hours — prefer pre-computed from backend
   const horasDocencia = pta.horas_docencia
@@ -814,20 +816,11 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         {/* Section 7: Firmas y Aprobaciones */}
         <SectionHeader icon={Award} label="7. FIRMAS Y APROBACIONES" color="#003DA5" />
         <div style={{ padding: '16px 32px 28px' }}>
-          {/* Firma del docente (concertación): el docente firma al ENVIAR el PTA para
-              aprobación; lo que ocurre después (revisión y aprobación) es firma del
-              aprobador, no suya. Gatear esto por pta.estado==='Aprobado' hacía que
-              Revisor y Aprobador vieran "Pendiente" mientras revisaban un PTA que el
-              docente ya había enviado y firmado.
-              Fuente de verdad: fecha_envio_revision, que el backend deriva del
-              historial (transición hacia un estado "Pendiente ..."; ver
-              attachPtaReferenceDates). Si no está —snapshots históricos, PTAs sin
-              historial— se cae a la misma regla que usa el backend para saber si un
-              PTA ya salió del borrador. */}
+          {/* El envío firma la versión vigente. Al habilitar correcciones o una
+              edición autorizada, la firma anterior deja de mostrarse hasta el reenvío. */}
           {(() => {
-            const fechaFirmaDocente = pta.fecha_envio_revision || null;
-            const estadoNorm = String(pta.estado || '').trim().toLowerCase();
-            const docenteFirmo = Boolean(fechaFirmaDocente) || (estadoNorm !== '' && estadoNorm !== 'borrador');
+            const fechaFirmaDocente = firmas.fechaDocente;
+            const docenteFirmo = firmas.docente;
             return (
               <div style={{
                 padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,

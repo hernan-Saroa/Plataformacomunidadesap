@@ -44,6 +44,9 @@ import {
   ConfirmarRecepcionInsumosDto,
   NotaRecepcionInsumosTecnicoDto,
   RegistrarVoBoDto,
+  RegistrarRevisionVoBoDto,
+  VincularTramiteContractualDto,
+  MarcarRequiereContratacionDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
@@ -527,6 +530,21 @@ export class MantenimientoController {
     return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
   }
 
+  @Post(':idSolicitud/vobo-revision')
+  @ApiOperation({
+    summary:
+      'EFDS-2355: Registrar Revisión Técnica previa (modalidad 2 actores) sobre la valoración de una solicitud.',
+  })
+  @ApiResponse({ status: 200, description: 'Revisión técnica registrada exitosamente.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente.' })
+  registrarRevisionVoBo(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: RegistrarRevisionVoBoDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarRevisionVoBoTecnico(idSolicitud, body, req?.user);
+  }
+
   @Post(':idSolicitud/vobo')
   @ApiOperation({
     summary:
@@ -540,6 +558,21 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.registrarVoBo(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/tramite-contractual')
+  @ApiOperation({
+    summary:
+      'EFDS-2353 / RF-INF-012: Vincular proceso contractual / SECOP II para solicitudes de Mantenimiento Mayor con diagnóstico y VoBo.',
+  })
+  @ApiResponse({ status: 200, description: 'Trámite contractual vinculado exitosamente.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente (requiere rol de asignador o coordinación GIM).' })
+  vincularTramiteContractual(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: VincularTramiteContractualDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.vincularTramiteContractual(idSolicitud, body, req?.user);
   }
 
   @Post(':idSolicitud/rechazar')
@@ -620,6 +653,29 @@ export class MantenimientoController {
   // EFDS-1735 RF-INF-006: Acciones sobre una solicitud (:idSolicitud)
   // Declaradas ANTES de :id wildcard para evitar colisiones con GET /:id.
   // ---------------------------------------------------------------------------
+  
+  @Post(':idSolicitud/marcar-requiere-contratacion')
+  @ApiOperation({ summary: 'Técnico o gestor marca la solicitud como requirente de contratación / compra externa (EFDS-2354)' })
+  async marcarRequiereContratacion(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: MarcarRequiereContratacionDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.marcarRequiereContratacion(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/cerrar-falta-insumos')
+  @ApiOperation({
+    summary: 'EFDS-1735: Cierre formal de solicitud por no disponibilidad de insumos y sin alternativa viable de compra oportuna',
+  })
+  async cerrarPorFaltaDeInsumos(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: { insumosFaltantes?: string; motivo: string },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.cerrarPorFaltaDeInsumosDirecto(idSolicitud, body, req?.user);
+  }
+
   @Post(':idSolicitud/iniciar-ejecucion-directa')
   @ApiOperation({
     summary:

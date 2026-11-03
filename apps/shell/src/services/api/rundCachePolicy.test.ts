@@ -2,6 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { excludesRundCache, isRundRequest } from './rundCachePolicy';
 
 describe('Caché de respuestas RUND', () => {
+  it('no almacena fotos ni decisiones de revisión para uso sin conexión', () => {
+    for (const url of ['/pta/api/v1/pta/fotos-perfil/mia', '/pta/fotos-perfil/docentes/persona/versiones/id', '/pta/api/v1/pta/fotos-perfil/personas/id/publicada']) {
+      expect(isRundRequest(url)).toBe(true);
+      expect(excludesRundCache(url)).toBe(true);
+    }
+  });
   it.each(['/pta/api/v1/banco-docentes?page=1', '/pta/api/v1/pta/banco-docentes/drafts/token', '/pta/api/v1/macro-docente', '/pta/api/v1/pta/docentes-disponibles'])('requiere servidor para %s', (url) => {
     expect(isRundRequest(url)).toBe(true);
     expect(excludesRundCache(url)).toBe(true);

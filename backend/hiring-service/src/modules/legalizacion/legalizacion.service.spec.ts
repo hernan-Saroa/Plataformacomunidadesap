@@ -183,3 +183,22 @@ describe('garantiasVigentes', () => {
     ).toBe(false);
   });
 });
+
+/** Enajenación: la matriz excluye las garantías y el contrato no llegaba a legalizado. */
+describe('estaLegalizado sin garantías en la modalidad', () => {
+  const sinGarantias = {
+    totalGarantias: 0,
+    garantiasAprobadas: 0,
+    requiereArl: false,
+    arlRegistrada: false,
+    requiereGarantias: false,
+  };
+
+  it('queda legalizado sin pólizas si la modalidad no las pide', () => {
+    expect(estaLegalizado(sinGarantias)).toBe(true);
+  });
+
+  it('pero si pide ARL, la sigue exigiendo', () => {
+    expect(estaLegalizado({ ...sinGarantias, requiereArl: true })).toBe(false);
+  });
+});

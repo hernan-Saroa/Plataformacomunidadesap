@@ -96,7 +96,7 @@ export class AbrirSobreDto {
   @MaxLength(1000)
   observacion?: string;
 
-  /** Solo si la 7.2 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 7.1.1 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @FirmaDelMultipart()

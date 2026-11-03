@@ -20,7 +20,10 @@ export function estadoDeActividad(
   alcanzada = true,
 ): EstadoActividadUI {
   if (!aplica) return 'no_aplica';
-  if (estadoBackend === 'APROBADO') return 'aprobada';
+  // NO_APLICA en una que la modalidad sí adelanta es una constancia (la 3.7
+  // cuando el proceso no pasó por comité): quedó resuelta, igual que en
+  // `estaTerminada`. Pintarla en curso dejaba la etapa 3 en «3 de 4» para siempre.
+  if (estadoBackend === 'APROBADO' || estadoBackend === 'NO_APLICA') return 'aprobada';
   // El proceso instancia las sesenta y tres al crearse, así que todas tienen
   // estado desde el primer día: sin esto el riel las encendería todas en azul
   // y el color dejaría de decir por dónde va el proceso.

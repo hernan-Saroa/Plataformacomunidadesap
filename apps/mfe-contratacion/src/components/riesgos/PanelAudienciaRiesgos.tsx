@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoAudienciaRiesgos, EvidenciaFirmaOtp } from '../../types';
-import { Aviso, Ayuda, Boton, campo, Marco, Titulo } from '../shared/PiezasPanel';
+import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
@@ -15,10 +15,10 @@ interface Props {
   onCambio?: () => void;
 }
 
-const NUMERAL = '5.5';
+const NUMERAL = '5.12';
 
 /**
- * Actividad 5.5 · Audiencia de asignación de riesgos (EFDS-1153).
+ * Actividad 5.12 · Audiencia de asignación de riesgos (EFDS-1153).
  *
  * El sistema no celebra la audiencia: registra que se celebró y guarda lo que
  * produjo. Donde la audiencia es obligatoria, ese registro es lo que habilita
@@ -188,6 +188,20 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
     );
   }
 
+  // Desde la 112 va después de la apertura, como en la matriz: se celebra sobre
+  // el pliego definitivo. El servidor lo rechaza antes; aquí se dice por qué.
+  if (!estado.abierto) {
+    return (
+      <Marco>
+        <Titulo>Audiencia de asignación de riesgos</Titulo>
+        <Pendiente
+          falta="5.7"
+          texto="La audiencia se celebra después de la apertura del proceso, sobre el pliego definitivo."
+        />
+      </Marco>
+    );
+  }
+
   const listo = !!fecha && !!acta && !!matriz;
 
   return (
@@ -198,9 +212,9 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
         quedan en el expediente con su huella digital.
       </Ayuda>
 
-      {/* Que sea obligatoria se dice aquí y no solo al bloquear la apertura: es
-          la diferencia entre planear la audiencia y descubrir en la 5.7 que el
-          proceso no puede abrirse. */}
+      {/* Que sea obligatoria se dice aquí y no solo al bloquear el cierre: es
+          la diferencia entre planear la audiencia y descubrir en la 6.1 que las
+          ofertas no pueden cerrarse. */}
       {estado.obligatoria ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 flex items-start gap-2.5">
           <ShieldAlert className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
@@ -209,7 +223,7 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
               Obligatoria en esta modalidad
             </p>
             <p className="text-[11.5px] text-amber-900 m-0 mt-0.5 leading-relaxed">
-              {estado.fundamento ?? 'El proceso no puede abrirse mientras no se celebre.'}
+              {estado.fundamento ?? 'Las ofertas no pueden cerrarse mientras no se celebre.'}
               {estado.confirmado
                 ? ''
                 : ' Regla pendiente de confirmar con la Dirección de Contratación.'}
@@ -259,7 +273,7 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
         onElegir={setMatriz}
       />
 
-      <Permitido accion="editar" punto="5.5" quien="el gestor de contratación">
+      <Permitido accion="editar" punto="5.12" quien="el gestor de contratación">
         <Boton
           icono={<ShieldAlert className="w-3.5 h-3.5" />}
           disabled={!listo || guardando}

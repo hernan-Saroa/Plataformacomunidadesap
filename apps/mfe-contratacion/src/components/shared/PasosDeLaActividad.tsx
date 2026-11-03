@@ -34,8 +34,7 @@ const ETIQUETA: Record<EstadoDelPaso, string> = {
 /**
  * Una actividad dicha como la lista corta de pasos que la componen.
  *
- * Hacerse cargo de un proceso en la 3.3 o de la solicitud de CDP en la 4.1 no
- * es un acto suelto: es el primero de una cadena —tomarlo, repartirlo, que lo
+ * Hacerse cargo de un proceso en la 3.3 no es un acto suelto: es el primero de una cadena —tomarlo, repartirlo, que lo
  * revisen— y la pantalla anterior mostraba cada pieza como un aviso aparte.
  * Quien entraba veía un «Todavía no lo lleva nadie» y un botón, pero no qué
  * venía después ni en cuál de los pasos estaba. Numerados, con quién hizo cada

@@ -307,7 +307,7 @@ export function ModuleLayout({
       </aside>
 
       {/* Contenido */}
-      <main className="flex-1 min-w-0 overflow-x-hidden">
+      <main className="contenido-modulo">
         {esMovil && (
           <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2">
             <button

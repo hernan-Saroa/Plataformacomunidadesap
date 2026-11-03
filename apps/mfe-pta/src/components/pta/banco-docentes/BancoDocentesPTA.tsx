@@ -20,6 +20,7 @@ import { RundExtractionNotificationDetail } from './RundExtractionNotificationDe
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { hasRundPermission } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
+import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import './BancoDocentesStatistics.css';
 import { RundDeleteModal } from './RundDeleteModal';
 import type { RundDeletionSelection } from '../../../services/api/ptaApi';
@@ -745,7 +746,7 @@ export function BancoDocentesPTA() {
                               fontSize: '14px', fontWeight: 600,
                               transition: 'all 0.2s',
                             }}>
-                              {(d.nombre_completo || '').split(' ').slice(0, 2).map((n: string) => n[0]).join('')}
+                              <PublishedAvatar personaId={d.persona_id || d.personaId} name={d.nombre_completo} />
                             </div>
                             <div>
                               <p style={{ margin: 0, fontSize: '14px', lineHeight: '20px', fontWeight: 600, color: '#1F2937' }}>

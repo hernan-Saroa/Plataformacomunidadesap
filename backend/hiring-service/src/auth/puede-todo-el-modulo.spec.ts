@@ -19,6 +19,7 @@ const TRANSVERSALES = [
   'contratacion.config.manage',
   'contratacion.reporte.view',
   'contratacion.plazo.terminar',
+  'contratacion.proceso.delete',
 ];
 
 /**
@@ -31,13 +32,24 @@ const SIN_DECORADOR: Record<string, string> = {
   'CausalContratacionController.elegir': 'quienDecide · aprobar 3.6',
   'ComiteContratacionController.registrar': 'quienDecide · aprobar 3.7',
   'ComiteContratacionController.noVa': 'quienDecide · aprobar 3.7',
+  // El acta llega después y la carga quien hace la actividad de la sesión (113).
+  'ComiteContratacionController.cargarActa': 'quienHace · 3.7 o 5.6.1 según la sesión',
+  // La 5.6.1 la hace el puesto que diga su regla, como la 3.7 (113).
+  'SegundaSesionController.nuevaVersion': 'quienHace · aprobar 5.6.1',
+  'SegundaSesionController.registrar': 'quienHace · aprobar 5.6.1',
+  'SegundaSesionController.enviar': 'quienHace · aprobar 5.6.1',
+  'SegundaSesionController.retirar': 'quienHace · aprobar 5.6.1, y quien la envió',
+  // Pasar el proceso a la versión activa del flujo (111): quien lo lleva.
+  'FlujoDelProcesoController.actualizar': 'quien lleva el proceso o proceso.assign',
+  // Poner o quitar a alguien en un puesto del proceso (109).
   'ParticipacionController.asignar': 'quien tomó el proceso o proceso.assign',
-  'ParticipacionController.reasignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.quitar': 'quien tomó el proceso o proceso.assign',
   // Los aprobadores los nombra la regla EXIGE_APROBACION, que admite personas
   // concretas: un guard por alcance dejaría fuera a quien la regla nombra.
   'AprobacionController.aprobar': 'la regla EXIGE_APROBACION del punto',
   'AprobacionController.devolver': 'la regla EXIGE_APROBACION del punto',
+  // Negar lo decide el escalón de la cadena que tenga esa acción (101).
+  'AprobacionController.negar': 'la regla EXIGE_APROBACION del punto',
   // La consulta del estudio previo y del proceso filtra por participación en
   // el service. Protegerla por etapa quedó pendiente de decisión (EFDS, 083).
   'EstudioPrevioController.listar': 'participación · pendiente de decidir',

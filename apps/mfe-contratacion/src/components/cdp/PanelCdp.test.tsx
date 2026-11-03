@@ -9,139 +9,43 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const cdp = (cambios: Record<string, unknown> = {}) => ({
   id: 'cdp-1',
-  numero: null,
+  numero: 'CDP-12',
   valor: 2_000_000,
-  rubro: null,
-  fechaExpedicion: null,
+  rubro: 'A-02',
+  fechaExpedicion: '2026-10-05',
   vigenciaFiscal: 2026,
-  estado: 'SOLICITADO',
+  estado: 'EXPEDIDO',
   observaciones: null,
-  documentoId: null,
-  solicitadoPor: 'laura.pineda@esap.edu.co',
-  expedidoPor: null,
+  documentoId: 'doc-1',
+  solicitadoPor: 'ana.area@esap.edu.co',
+  expedidoPor: 'ana.area@esap.edu.co',
+  origen: 'ETAPA_4',
   ...cambios,
 });
 
 const respaldo = (cambios: Record<string, unknown> = {}) => ({
   aplica: true,
-  cdp: cdp(),
+  cdp: null,
   expedido: false,
   soporteAdjunto: false,
   puedeAbrirse: false,
-  motivo: null,
-  puedeSolicitar: false,
-  puedeGestionar: false,
+  motivo: 'El proceso no tiene CDP cargado',
+  puedeCargar: true,
   ...cambios,
 });
 
-const financiera = (cambios: Record<string, unknown> = {}) => ({
-  nombre: 'Marta Ruiz',
-  usuarioNombre: 'marta.ruiz@esap.edu.co',
-  asignadoAt: '2026-09-30T14:00:00.000Z',
-  esMio: false,
-  ...cambios,
-});
-
-const pintar = (
-  estadoRespaldo: unknown,
-  participacion: Record<string, unknown> = {},
-  numeral = '4.1',
-  valorEstimado: number | null = null,
-) => {
+const pintar = (estadoRespaldo: unknown, valorEstimado: number | null = 2_000_000) => {
   vi.spyOn(contratacionService, 'respaldoCdp').mockResolvedValue(estadoRespaldo as never);
-  vi.spyOn(contratacionService, 'participacion').mockResolvedValue({
-    financiera: null,
-    puedeTomarFinanciera: false,
-    ...participacion,
-  } as never);
-  render(<PanelCdp numeral={numeral} procesoId="p-1" valorEstimado={valorEstimado} />);
+  render(<PanelCdp numeral="4.2" procesoId="p-1" valorEstimado={valorEstimado} />);
 };
 
 /**
- * Actividad 4.1 · la solicitud de CDP, dicha como sus pasos: se radica sola,
- * alguien de la Financiera se hace cargo y sigue la verificación en la 4.2.
+ * Desde la 103 el CDP se tramita por fuera y el área lo carga en la 4.2: rubro,
+ * certificado y soporte en un solo formulario, con una confirmación que dice
+ * antes de cargar si el valor queda por encima o por debajo del estimado.
  */
-describe('PanelCdp · 4.1, hacerse cargo de la solicitud', () => {
+describe('PanelCdp · cargar el CDP', () => {
   beforeEach(() => vi.restoreAllMocks());
-
-  it('sin radicar, los tres pasos esperan a que se cierre la etapa 3', async () => {
-    pintar(respaldo({ cdp: null }));
-
-    expect(await screen.findByText(/Se radica sola/)).toBeInTheDocument();
-    expect(screen.getAllByText('En espera')).toHaveLength(3);
-    expect(screen.queryByRole('button', { name: /Hacerme cargo/ })).toBeNull();
-  });
-
-  it('radicada y sin tomar, a la Financiera le toca hacerse cargo', async () => {
-    pintar(respaldo(), { puedeTomarFinanciera: true });
-
-    expect(await screen.findByText('Hecho')).toBeInTheDocument();
-    expect(screen.getByText('Te toca')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
-  });
-
-  it('quien no es de la Financiera ve que espera, sin botón', async () => {
-    pintar(respaldo());
-
-    expect(
-      await screen.findByText(/alguien de la Dirección Financiera se haga cargo\.$/),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Hacerme cargo/ })).toBeNull();
-  });
-
-  it('tomada, dice quién la lleva y que sigue en la 4.2', async () => {
-    pintar(respaldo(), { financiera: financiera() });
-
-    expect(await screen.findByText(/Marta Ruiz · desde el/)).toBeInTheDocument();
-    expect(screen.getByText('Sigue en 4.2')).toBeInTheDocument();
-  });
-});
-
-/**
- * La 4.1 se aprueba sola al radicarse, así que al entrar al proceso se abre la
- * 4.2. Hacerse cargo tiene que estar ahí también, o la Financiera tendría que
- * volver a la 4.1 a buscar el botón.
- */
-describe('PanelCdp · 4.2, antes de que alguien la tome', () => {
-  beforeEach(() => vi.restoreAllMocks());
-
-  it('ofrece hacerse cargo ahí mismo y deja la verificación en espera', async () => {
-    pintar(respaldo({ puedeGestionar: true }), { puedeTomarFinanciera: true }, '4.2');
-
-    expect(await screen.findByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
-    expect(screen.getByText('En espera')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Expedir el CDP/ })).toBeNull();
-  });
-
-  it('tomada, muestra el formulario de expedición', async () => {
-    pintar(
-      respaldo({ puedeGestionar: true }),
-      { financiera: financiera({ esMio: true }) },
-      '4.2',
-    );
-
-    expect(
-      await screen.findByRole('button', { name: /Expedir el CDP/ }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Hacerme cargo/ })).toBeNull();
-  });
-});
-
-/**
- * Desde la 096 la 4.2 recoge lo que eran la 4.3 y la 4.4: rubro, certificado y
- * soporte en un solo formulario, con una confirmación que dice antes de
- * expedir si el valor queda por encima o por debajo del estimado.
- */
-describe('PanelCdp · 4.2, expedir en una sola pantalla', () => {
-  beforeEach(() => vi.restoreAllMocks());
-
-  const tomada = () =>
-    pintar(
-      respaldo({ puedeGestionar: true }),
-      { financiera: financiera({ esMio: true }) },
-      '4.2',
-      2_000_000,
-    );
 
   const diligenciar = async (valor: string) => {
     fireEvent.change(await screen.findByLabelText('Rubro presupuestal'), {
@@ -158,17 +62,32 @@ describe('PanelCdp · 4.2, expedir en una sola pantalla', () => {
     });
   };
 
-  it('no deja expedir sin el soporte', async () => {
-    tomada();
+  it('no ofrece solicitarlo: dice que se tramita por fuera', async () => {
+    pintar(respaldo());
+
+    expect(await screen.findByText(/se solicita y se expide por fuera del aplicativo/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Solicitar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hacerme cargo/ })).toBeNull();
+  });
+
+  it('quien no puede cargarlo ve que le toca al área', async () => {
+    pintar(respaldo({ puedeCargar: false }));
+
+    expect(await screen.findByText(/Este paso lo realiza el área solicitante/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Número del CDP')).toBeNull();
+  });
+
+  it('no deja cargar sin el soporte', async () => {
+    pintar(respaldo());
     await diligenciar('2000000');
 
-    expect(screen.getByRole('button', { name: /Expedir el CDP/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Cargar el CDP/ })).toBeDisabled();
     adjuntar();
-    expect(screen.getByRole('button', { name: /Expedir el CDP/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Cargar el CDP/ })).toBeEnabled();
   });
 
   it('avisa que el valor queda por debajo antes de confirmar', async () => {
-    tomada();
+    pintar(respaldo());
     await diligenciar('1500000');
 
     expect(screen.getByText('No coincide con el valor estimado')).toBeInTheDocument();
@@ -176,7 +95,7 @@ describe('PanelCdp · 4.2, expedir en una sola pantalla', () => {
   });
 
   it('no compara mientras el valor se está tecleando', async () => {
-    tomada();
+    pintar(respaldo());
     await diligenciar('1');
     const valor = screen.getByLabelText('Valor certificado');
 
@@ -188,46 +107,73 @@ describe('PanelCdp · 4.2, expedir en una sola pantalla', () => {
     expect(screen.getByText(/\$\s15 queda .* por debajo/)).toBeInTheDocument();
   });
 
-  it('avisa que el valor queda por encima antes de confirmar', async () => {
-    tomada();
-    await diligenciar('2500000');
-
-    expect(screen.getByText(/queda .* por encima/)).toBeInTheDocument();
-  });
-
-  it('pide confirmación y no expide si se cancela', async () => {
-    const expedir = vi
-      .spyOn(contratacionService, 'expedirCdpConSoporte')
-      .mockResolvedValue({} as never);
-    tomada();
+  it('pide confirmación y no carga si se cancela', async () => {
+    const cargar = vi.spyOn(contratacionService, 'cargarCdp').mockResolvedValue({} as never);
+    pintar(respaldo());
     await diligenciar('1500000');
     adjuntar();
 
-    fireEvent.click(screen.getByRole('button', { name: /Expedir el CDP/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Cargar el CDP/ }));
     const dialogo = await screen.findByRole('dialog');
     expect(within(dialogo).getByText('El valor no coincide con el estimado del proceso')).toBeInTheDocument();
 
     fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
-    expect(expedir).not.toHaveBeenCalled();
+    expect(cargar).not.toHaveBeenCalled();
   });
 
-  it('al confirmar, expide con el soporte en una sola llamada', async () => {
-    const expedir = vi
-      .spyOn(contratacionService, 'expedirCdpConSoporte')
-      .mockResolvedValue({} as never);
-    tomada();
+  it('al confirmar, carga con el soporte en una sola llamada', async () => {
+    const cargar = vi.spyOn(contratacionService, 'cargarCdp').mockResolvedValue({} as never);
+    pintar(respaldo());
     await diligenciar('2000000');
     adjuntar();
 
-    fireEvent.click(screen.getByRole('button', { name: /Expedir el CDP/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Cargar el CDP/ }));
     const dialogo = await screen.findByRole('dialog');
-    fireEvent.click(within(dialogo).getByRole('button', { name: /Expedir el CDP/ }));
+    fireEvent.click(within(dialogo).getByRole('button', { name: /Cargar el CDP/ }));
 
-    await vi.waitFor(() => expect(expedir).toHaveBeenCalled());
-    const [procesoId, datos, archivo] = expedir.mock.calls[0];
+    await vi.waitFor(() => expect(cargar).toHaveBeenCalled());
+    const [procesoId, datos, archivo] = cargar.mock.calls[0];
     expect(procesoId).toBe('p-1');
     expect(datos).toMatchObject({ rubro: 'A-02-02-02-008', numero: 'CDP-12', valor: 2_000_000 });
     expect((archivo as File).name).toBe('cdp.pdf');
+  });
+
+  it('una solicitud de antes de la 103 se completa cargando el certificado', async () => {
+    pintar(respaldo({ cdp: cdp({ estado: 'SOLICITADO', numero: null, rubro: 'A-01' }) }));
+
+    expect(await screen.findByText('Quedó una solicitud de antes')).toBeInTheDocument();
+    expect(screen.getByLabelText('Rubro presupuestal')).toHaveValue('A-01');
+  });
+});
+
+describe('PanelCdp · ya cargado', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('muestra el certificado y quién lo cargó', async () => {
+    pintar(respaldo({ cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true }));
+
+    expect(await screen.findByText('CDP CDP-12 cargado')).toBeInTheDocument();
+    expect(screen.getByText(/Cargado por ana\.area@esap\.edu\.co/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Número del CDP')).toBeNull();
+  });
+
+  it('dice si lo cargó el área desde el estudio previo', async () => {
+    pintar(
+      respaldo({
+        cdp: cdp({ origen: 'REGISTRADO_EN_ETAPA_3' }),
+        expedido: true,
+        soporteAdjunto: true,
+        puedeAbrirse: true,
+      }),
+    );
+
+    expect(await screen.findByText(/desde el estudio previo/)).toBeInTheDocument();
+  });
+
+  it('sin soporte, deja adjuntarlo a quien puede cargar', async () => {
+    pintar(respaldo({ cdp: cdp({ documentoId: null }), expedido: true, puedeAbrirse: true }));
+
+    expect(await screen.findByRole('button', { name: /Adjuntar soporte/ })).toBeInTheDocument();
   });
 });
 

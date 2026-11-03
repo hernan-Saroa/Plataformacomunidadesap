@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,10 +7,10 @@ import {
   ParseUUIDPipe,
   Post,
   Req,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
@@ -19,6 +20,7 @@ import {
   CerrarSinObservacionesDto,
   RegistrarObservacionDto,
   ResponderObservacionDto,
+  ResponderTodasDto,
 } from './dto/observacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
@@ -33,8 +35,11 @@ import {
   STORAGE_PATH,
 } from '../archivos';
 
+/** Archivos por interesado y por documento de respuestas (127). */
+const MAX_ARCHIVOS = 10;
+
 /**
- * Observaciones al proyecto de pliego — actividad 5.3 (EFDS-1151).
+ * Observaciones al proyecto de pliego — actividad 5.6 (EFDS-1151).
  *
  * Las observaciones llegan por SECOP II y la plataforma no habla con SECOP
  * (EFDS-1386), así que el gestor las transcribe con su soporte. Lo que la
@@ -46,7 +51,7 @@ export class ObservacionesController {
   constructor(private readonly service: ObservacionesService) {}
 
   @Get()
-  @Puede('ver', '5.3')
+  @Puede('ver', '5.6')
   @ApiOperation({
     summary: 'Observaciones del proceso con su resumen',
     description:
@@ -57,10 +62,11 @@ export class ObservacionesController {
   }
 
   @Post()
-  @Puede('editar', '5.3')
+  @Puede('editar', '5.6')
   @UseInterceptors(
-    FileInterceptor(
-      'file',
+    FilesInterceptor(
+      'files',
+      MAX_ARCHIVOS,
       opcionesDeCarga(
         [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
         'Solo se admiten archivos PDF, Word, Excel o imágenes PNG y JPG',
@@ -69,35 +75,55 @@ export class ObservacionesController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 5.3 · Registrar una observación recibida',
+    summary: 'Actividad 5.6 · Registrar lo que presentó un interesado',
     description:
-      'El soporte es opcional: la observación pudo llegar por un canal que no deja documento. La fecha es la de presentación, no la del registro.',
+      'Una fila por interesado: observación general, identificación como aparece en SECOP (opcional) y hasta diez archivos con el detalle. La fecha es la de presentación; si no se dice, hoy.',
   })
   async registrar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Body() dto: RegistrarObservacionDto,
-    @UploadedFile() file: any,
+    @UploadedFiles() files: any[],
     @Req() req: any,
   ) {
-    const ruta = file ? join(STORAGE_PATH, file.filename) : null;
-    try {
-      const hash = ruta ? await sha256Archivo(ruta) : null;
-      return await this.service.registrar(
-        procesoId,
-        dto,
-        file ?? null,
-        hash,
-        getHiringAccess(req),
-      );
-    } catch (error) {
-      // Multer ya escribió el archivo antes de que el servicio validara nada.
-      if (ruta) await unlink(ruta).catch(() => undefined);
-      throw error;
+    return this.conArchivos(files ?? [], (soportes) =>
+      this.service.registrar(procesoId, dto, soportes, getHiringAccess(req)),
+    );
+  }
+
+  @Post('responder-todas')
+  @Puede('editar', '5.6')
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      MAX_ARCHIVOS,
+      opcionesDeCarga(
+        [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
+        'Solo se admiten archivos PDF, Word, Excel o imágenes PNG y JPG',
+      ),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Responder a todos los interesados pendientes con un solo documento',
+    description:
+      'Lo habitual: un documento de respuestas para toda la actividad. Cada observación pendiente queda respondida con él.',
+  })
+  async responderTodas(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: ResponderTodasDto,
+    @UploadedFiles() files: any[],
+    @Req() req: any,
+  ) {
+    if (!files?.length) {
+      throw new BadRequestException('Adjunta el documento de respuestas');
     }
+    return this.conArchivos(files, (soportes) =>
+      this.service.responderTodas(procesoId, dto, soportes, getHiringAccess(req)),
+    );
   }
 
   @Post(':observacionId/responder')
-  @Puede('editar', '5.3')
+  @Puede('editar', '5.6')
   @ApiOperation({
     summary: 'Responder una observación',
     description:
@@ -113,7 +139,7 @@ export class ObservacionesController {
   }
 
   @Post('cerrar')
-  @Puede('editar', '5.3')
+  @Puede('editar', '5.6')
   @ApiOperation({
     summary: 'Dar por cumplida la recepción cuando no hubo observaciones',
     description:
@@ -125,5 +151,23 @@ export class ObservacionesController {
     @Req() req: any,
   ) {
     return this.service.cerrarSinObservaciones(procesoId, getHiringAccess(req), dto?.firma);
+  }
+
+  /** Calcula la huella de cada archivo y los borra del disco si la regla los rechaza. */
+  private async conArchivos<T>(
+    files: any[],
+    accion: (soportes: { archivo: any; hash: string }[]) => Promise<T>,
+  ): Promise<T> {
+    const rutas = files.map((f) => join(STORAGE_PATH, f.filename));
+    try {
+      const soportes = await Promise.all(
+        files.map(async (archivo, i) => ({ archivo, hash: await sha256Archivo(rutas[i]) })),
+      );
+      return await accion(soportes);
+    } catch (error) {
+      // Multer ya escribió los archivos antes de que el servicio validara nada.
+      await Promise.all(rutas.map((r) => unlink(r).catch(() => undefined)));
+      throw error;
+    }
   }
 }

@@ -28,7 +28,11 @@ function guardCon(alcances: Alcance[], dimensiones: string[]) {
   const comite = { dimensionesDe: jest.fn().mockResolvedValue(dimensiones) };
   const guard = new PuedeOEsDelComiteGuard(
     new Reflector(),
-    { deRoles: jest.fn().mockResolvedValue(alcances) } as unknown as AlcanceService,
+    {
+      deRoles: jest.fn().mockResolvedValue(alcances),
+      // Sin regla «quién la hace» en la 6.3: basta el alcance.
+      quienHace: jest.fn().mockResolvedValue({ motivo: null, responsable: null, puesto: null }),
+    } as unknown as AlcanceService,
     { alguno: jest.fn().mockResolvedValue(false) } as unknown as PermisosService,
     comite as unknown as ComiteService,
   );

@@ -33,9 +33,13 @@ describe('quienLaHace', () => {
     expect(quienLaHace('9.4')?.papeles).toEqual(['SUPERVISOR']);
   });
 
-  it('lo demás de la Dirección, al abogado del proceso', () => {
-    expect(quienLaHace('5.2')?.papeles).toEqual(['ABOGADO']);
-    expect(quienLaHace('10.2')?.papeles).toEqual(['ABOGADO']);
+  it('lo demás de la Dirección, a quien hace la actividad según su regla (109)', () => {
+    expect(quienLaHace('5.2')?.papeles).toEqual(['QUIEN_LA_HACE']);
+    expect(quienLaHace('10.2')?.papeles).toEqual(['QUIEN_LA_HACE']);
+  });
+
+  it('la 3.4 es la aprobación de la 3.1: le toca a quien la aprueba', () => {
+    expect(quienLaHace('3.4')?.papeles).toEqual(['QUIEN_APRUEBA']);
   });
 
   it('antes de que exista el proceso no hay a quién sugerir', () => {

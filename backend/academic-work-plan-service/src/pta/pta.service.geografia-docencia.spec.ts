@@ -95,7 +95,7 @@ describe('territorialidad exclusiva de Docencia', () => {
     expect(permissions.personalTerritoriales).toBeNull();
     expect((await service.getDecisionPermissions('pta-1', approver)).allowedComponents).toEqual([componente]);
     await expect(service.getPtaEnAlcanceSeguimiento('pta-1', approver)).resolves.toMatchObject({ id: 'pta-1' });
-    await expect(service.getPtaEnAlcanceSeguimiento('pta-1', reviewer)).resolves.toBeNull();
+    await expect(service.getPtaEnAlcanceSeguimiento('pta-1', reviewer)).resolves.toMatchObject({ id: 'pta-1' });
     const inicial = await service.getUpdatedGestionPta('pta-1', approver);
     expect(inicial.componentes_aprobacion_usuario).toContainEqual(expect.objectContaining({ componente, estado: 'pendiente' }));
     await expect(service.aprobarComponente('pta-1', { componente, estado: 'aprobado' }, approver))

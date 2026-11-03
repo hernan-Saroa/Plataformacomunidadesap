@@ -22,6 +22,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { AlcanceService } from '../../auth/alcance.service';
 import {
   AnularPagoDto,
   AvalarPagoDto,
@@ -30,6 +31,7 @@ import {
   RadicarPagoDto,
   TramitarPagoDto,
 } from './dto/pagos.dto';
+import { PuestosService } from '../participacion/puestos.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
@@ -85,11 +87,9 @@ export function admitePagos(estado: EstadoContrato): boolean {
 /**
  * Si lo cobrado supera el valor del contrato.
  *
- * Se avisa en vez de bloquear, con el mismo criterio del CDP (EFDS-1148): un
- * cobro por encima del valor casi siempre es un error de digitación, pero la
- * decisión de pagarlo o no es de la entidad, no del sistema. Cuando existan las
- * adiciones (EFDS-1176) el tope dejará de ser el valor original y esta función
- * es el único sitio que cambia.
+ * Es el aviso del resumen. Radicar, avalar y tramitar ya no lo dejan pasar
+ * (`excedeElContrato`); el aviso queda para los contratos que se pasaron antes
+ * de ese bloqueo.
  */
 export function cobradoCabeEnElContrato(
   cobrado: number,
@@ -104,6 +104,28 @@ export function cobradoCabeEnElContrato(
       `Lo cobrado supera el valor del contrato en ${exceso.toLocaleString('es-CO')} pesos; ` +
       'confirma la cifra o tramita primero una adición',
   };
+}
+
+/**
+ * Por qué este pago no cabe en el contrato, o nulo si cabe.
+ *
+ * `yaComprometido` es lo que ya cuenta en el mismo punto del trámite: al radicar,
+ * todo lo vivo; al avalar, lo avalado y tramitado; al tramitar, lo tramitado.
+ * Antes solo se avisaba, y un contrato de $37 M terminó con $60 M pagados: un
+ * pago por encima del valor no tiene respaldo presupuestal, así que se bloquea
+ * y lo que corresponde es tramitar primero la adición (el valor ya la incluye).
+ */
+export function excedeElContrato(
+  yaComprometido: number,
+  valorPago: number,
+  valorContrato: number,
+): string | null {
+  const total = yaComprometido + valorPago;
+  if (total <= valorContrato) return null;
+  return (
+    `Con este pago lo cobrado ($ ${total.toLocaleString('es-CO')}) supera el valor del contrato ` +
+    `($ ${valorContrato.toLocaleString('es-CO')}): tramita primero una adición`
+  );
 }
 
 /** Un documento tal como lo devuelve la consulta. */
@@ -174,6 +196,8 @@ export class PagosService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    private readonly puestos: PuestosService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -231,7 +255,9 @@ export class PagosService {
        * tener el rol no basta, y un botón que siempre falla es peor que no
        * mostrarlo. La regla de verdad la aplica `exigirSupervisor`.
        */
-      esSupervisor: this.esElSupervisor(supervisor, acceso),
+      esSupervisor: await this.esElSupervisor(procesoId, acceso),
+      /** Si quien consulta puede registrar el trámite: lo aplica `exigirQuienTramita`. */
+      puedeTramitar: await this.puedeTramitar(procesoId, acceso),
       /** Mientras sea falso, los soportes se cargan a mano. */
       integracionClick: false,
       pagos: pagos.map((pago): PagoResumen => ({
@@ -294,6 +320,8 @@ export class PagosService {
 
       const acta = await this.actaVigente(contrato.id, em);
       this.validarPeriodo(dto, acta?.fechaInicio ?? null);
+
+      await this.exigirQueQuepa(em, contrato, Number(dto.valor), ESTADOS_VIVOS);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
@@ -417,10 +445,11 @@ export class PagosService {
   async avalar(procesoId: string, pagoId: string, dto: AvalarPagoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, contrato.id, acceso);
+      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
 
       const pago = await this.exigirPago(em, contrato.id, pagoId);
       this.exigirEstado(pago, ['RADICADO'], 'avalar');
+      await this.exigirQueQuepa(em, contrato, Number(pago.valor), ['AVALADO', 'TRAMITADO']);
 
       pago.estado = 'AVALADO';
       pago.avaladoAt = new Date();
@@ -456,7 +485,7 @@ export class PagosService {
   async devolver(procesoId: string, pagoId: string, dto: DevolverPagoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, contrato.id, acceso);
+      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
 
       const pago = await this.exigirPago(em, contrato.id, pagoId);
       this.exigirEstado(pago, ['RADICADO', 'AVALADO'], 'devolver');
@@ -495,6 +524,11 @@ export class PagosService {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
       const pago = await this.exigirPago(em, contrato.id, pagoId);
+      if (!(await this.puedeTramitar(procesoId, acceso, em))) {
+        throw new ForbiddenException(
+          'No eres el supervisor de este contrato: el trámite del pago lo registra su supervisor o la Dirección de Contratación',
+        );
+      }
 
       if (pago.estado !== 'AVALADO') {
         throw new ConflictException(
@@ -503,6 +537,7 @@ export class PagosService {
             : `No se puede tramitar una cuenta ${EN_FEMENINO[pago.estado]}`,
         );
       }
+      await this.exigirQueQuepa(em, contrato, Number(pago.valor), ['TRAMITADO']);
 
       pago.estado = 'TRAMITADO';
       pago.tramitadoAt = new Date();
@@ -556,6 +591,18 @@ export class PagosService {
 
   // ----------------------------------------------------------- auxiliares --
 
+  /** Bloquea el pago que, sumado a lo ya comprometido en `estados`, pasa el contrato. */
+  private async exigirQueQuepa(
+    em: EntityManager,
+    contrato: Contrato,
+    valorPago: number,
+    estados: EstadoPago[],
+  ) {
+    const pagos = await em.getRepository(PagoContrato).find({ where: { contratoId: contrato.id } });
+    const motivo = excedeElContrato(this.sumar(pagos, estados), valorPago, Number(contrato.valor));
+    if (motivo) throw new BadRequestException(motivo);
+  }
+
   private sumar(pagos: PagoContrato[], estados: EstadoPago[]): number {
     return pagos
       .filter((p) => estados.includes(p.estado))
@@ -603,29 +650,49 @@ export class PagosService {
   /**
    * Si el usuario que consulta es el supervisor vigente del contrato.
    *
+   * Por la cuenta que ocupa el puesto del supervisor, no por la persona del
+   * directorio (ver `PuestosService.esElSupervisor`).
+   *
    * Incluye al super admin, igual que `exigirSupervisor`: si aquí no lo
    * contara, el botón de avalar nunca se le mostraría aunque la petición real
    * se la fuera a aceptar —el soporte que tiene que poder destrabar un
    * contrato sin supervisor con acceso se quedaría viendo solo "radicar", sin
    * forma de llegar al botón que sí puede usar.
    */
-  private esElSupervisor(
-    supervisor: SupervisionContrato | null,
-    acceso: HiringAccess,
-  ): boolean {
+  private esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+    return this.puestos.esElSupervisor(procesoId, acceso, em);
+  }
+
+  /**
+   * Si quien consulta puede registrar el trámite del pago (decidir la 9.4).
+   *
+   * El supervisor lo tiene por su rol, pero solo sobre el contrato que vigila:
+   * el permiso es del rol y el contrato es del puesto, como en el aval. Quien
+   * lo tiene por otro rol —el gestor de Contratación— lo registra en
+   * cualquiera.
+   */
+  private async puedeTramitar(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
     if (acceso.roles?.includes('SUPER_ADMIN')) return true;
-    if (!supervisor) return false;
-    return supervisor.personaId === acceso.userId || supervisor.nombre === acceso.userName;
+    if (!(await this.alcance.puedeEn(acceso, 'decidir', NUMERAL_PAGOS))) return false;
+    const otros = (acceso.roles ?? []).filter((r) => r !== 'SUPERVISOR_CONTRATO');
+    if (await this.alcance.puedeEn({ roles: otros }, 'decidir', NUMERAL_PAGOS)) return true;
+    return this.esElSupervisor(procesoId, acceso, em);
   }
 
   /**
    * Exige que quien actúa sea el supervisor vigente de este contrato.
    *
-   * La membresía manda sobre el rol, como en la evaluación (EFDS-1438). Se
-   * acepta también al super admin, que es rol de soporte y tiene que poder
-   * destrabar un contrato cuyo supervisor perdió el acceso.
+   * La membresía manda sobre el rol, como en la evaluación (EFDS-1438): avala
+   * quien ocupa en el proceso el puesto que aprueba la 9.4 (121). Se acepta
+   * también al super admin, que es rol de soporte y tiene que poder destrabar
+   * un contrato cuyo supervisor perdió el acceso.
    */
-  private async exigirSupervisor(em: EntityManager, contratoId: string, acceso: HiringAccess) {
+  private async exigirSupervisor(
+    em: EntityManager,
+    procesoId: string,
+    contratoId: string,
+    acceso: HiringAccess,
+  ) {
     if (acceso.roles?.includes('SUPER_ADMIN')) return;
 
     const supervisor = await this.supervisorVigente(contratoId, em);
@@ -635,7 +702,7 @@ export class PagosService {
       );
     }
 
-    if (!this.esElSupervisor(supervisor, acceso)) {
+    if (!(await this.esElSupervisor(procesoId, acceso, em))) {
       throw new ForbiddenException(
         'No eres el supervisor de este contrato: el aval lo da quien vigila su ejecución',
       );
@@ -695,7 +762,7 @@ export class PagosService {
     const manager = em ?? this.dataSource.manager;
     return manager
       .getRepository(SupervisionContrato)
-      .findOne({ where: { contratoId } });
+      .findOne({ where: { contratoId, estado: 'VIGENTE' } });
   }
 
   private actaVigente(contratoId: string, em?: EntityManager) {
@@ -795,6 +862,8 @@ export class PagosService {
       proceso?.modalidad ?? null,
       acceso,
       firma,
+      // Quien aprueba la 9.4 ya aprobó: avaló cada cuenta antes de tramitarla.
+      { aprobadaEnElPanel: true },
     );
   }
 

@@ -10,7 +10,9 @@ export type TipoRegla =
   /** La actividad no se cierra sin que alguien la apruebe (EFDS-1183). */
   | 'EXIGE_APROBACION'
   /** La actividad no se cierra sin que quien la trabaja la firme con el token institucional. */
-  | 'EXIGE_FIRMA';
+  | 'EXIGE_FIRMA'
+  // Quién hace la actividad: un puesto del proceso o unas personas (109).
+  | 'LA_HACE';
 
 
 /** Como se compara un dato del formulario con un valor esperado. */
