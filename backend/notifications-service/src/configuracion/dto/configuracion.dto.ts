@@ -25,6 +25,15 @@ export class ActualizarModuloDto {
   @IsString()
   @MaxLength(150)
   nombre?: string;
+
+  /**
+   * Buzón de desvío. null o '' lo borra. El formato y el dominio permitido
+   * (NOTIFICACIONES_DOMINIOS_DESVIO) los valida el servicio, que da el mensaje.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  correo_desvio?: string | null;
 }
 
 export class ActualizarEventoDto {

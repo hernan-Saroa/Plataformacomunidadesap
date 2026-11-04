@@ -37,14 +37,20 @@ export class ConfiguracionController {
     return this.configuracion.listarEventos(codigo);
   }
 
-  @Patch('eventos/:clave')
-  actualizarEvento(@Param('clave') clave: string, @Body() dto: ActualizarEventoDto, @Req() req: any) {
-    return this.configuracion.actualizarEvento(clave, dto, usuarioDe(req));
+  // El aviso se identifica por módulo + clave: la misma clave puede existir en dos módulos.
+  @Patch('modulos/:codigo/eventos/:clave')
+  actualizarEvento(
+    @Param('codigo') codigo: string,
+    @Param('clave') clave: string,
+    @Body() dto: ActualizarEventoDto,
+    @Req() req: any,
+  ) {
+    return this.configuracion.actualizarEvento(codigo, clave, dto, usuarioDe(req));
   }
 
-  @Post('eventos/:clave/prueba')
-  prueba(@Param('clave') clave: string, @Req() req: any) {
-    return this.configuracion.enviarPrueba(clave, usuarioDe(req));
+  @Post('modulos/:codigo/eventos/:clave/prueba')
+  prueba(@Param('codigo') codigo: string, @Param('clave') clave: string, @Req() req: any) {
+    return this.configuracion.enviarPrueba(codigo, clave, usuarioDe(req));
   }
 
   @Get('historial')

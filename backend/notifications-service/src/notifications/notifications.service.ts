@@ -1,10 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { CompuertaService, Decision } from '../configuracion/compuerta.service';
+import { EmailsService } from '../emails/emails.service';
 
 /** Respuesta cuando la configuración de notificaciones no dejó pasar el aviso (EFDS-2406). */
 export interface NotificacionOmitida {
@@ -12,6 +13,8 @@ export interface NotificacionOmitida {
   motivo: string;
   modulo: string;
   tipo_notificacion: string;
+  /** Buzón al que se mandó en su lugar cuando el motivo es 'desviado'. */
+  desviado_a?: string;
 }
 
 export const esOmitida = (r: unknown): r is NotificacionOmitida =>
@@ -19,10 +22,13 @@ export const esOmitida = (r: unknown): r is NotificacionOmitida =>
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     @InjectRepository(Notification)
     private readonly repo: Repository<Notification>,
     private readonly compuerta: CompuertaService,
+    @Optional() private readonly correos?: EmailsService,
   ) {}
 
   async getUserNotifications(
@@ -92,7 +98,10 @@ export class NotificationsService {
    */
   async create(dto: CreateNotificationDto): Promise<Notification | NotificacionOmitida> {
     const decision = await this.evaluar(dto);
-    if (!decision.permitido) return this.omitida(dto, decision);
+    if (!decision.permitido) {
+      await this.desviar(dto, decision);
+      return this.omitida(dto, decision);
+    }
     const guardada = await this.guardar(dto, decision);
     await this.notificarAdicionales(dto, decision);
     return guardada;
@@ -100,13 +109,17 @@ export class NotificationsService {
 
   async createBulk(
     dtos: CreateNotificationDto[],
-  ): Promise<{ success: boolean; created: number; omitidas: number }> {
+  ): Promise<{ success: boolean; created: number; omitidas: number; desviadas: number }> {
     const permitidos: Array<{ dto: CreateNotificationDto; decision: Decision }> = [];
     let omitidas = 0;
+    let desviadas = 0;
     for (const dto of dtos) {
       const decision = await this.evaluar(dto);
       if (decision.permitido) permitidos.push({ dto, decision });
-      else omitidas++;
+      else {
+        omitidas++;
+        if (await this.desviar(dto, decision)) desviadas++;
+      }
     }
     const notifications = permitidos.map(({ dto, decision }) => this.armar(dto, decision));
     const saved = notifications.length ? await this.repo.save(notifications) : [];
@@ -115,7 +128,8 @@ export class NotificationsService {
     const porEvento = new Map<string, { dto: CreateNotificationDto; decision: Decision }>();
     for (const item of permitidos) porEvento.set(item.decision.clave, item);
     for (const { dto, decision } of porEvento.values()) await this.notificarAdicionales(dto, decision);
-    return { success: true, created: saved.length, omitidas };
+    // `omitidas` incluye las desviadas: ninguna se guardó en la campana.
+    return { success: true, created: saved.length, omitidas, desviadas };
   }
 
   private evaluar(dto: CreateNotificationDto): Promise<Decision> {
@@ -131,12 +145,44 @@ export class NotificationsService {
   }
 
   private omitida(dto: CreateNotificationDto, decision: Decision): NotificacionOmitida {
+    if (decision.desvio) {
+      return {
+        omitida: true,
+        motivo: 'desviado',
+        modulo: decision.modulo,
+        tipo_notificacion: dto.tipo_notificacion,
+        desviado_a: decision.desvio,
+      };
+    }
     return {
       omitida: true,
       motivo: decision.motivo || 'omitida',
       modulo: decision.modulo,
       tipo_notificacion: dto.tipo_notificacion,
     };
+  }
+
+  /**
+   * La campana apagada no se crea, pero si el módulo tiene buzón de desvío lo
+   * que habría salido llega allí por correo. Un fallo del correo se registra y
+   * no tumba al emisor: la campana ya se omitió de todos modos.
+   */
+  private async desviar(dto: CreateNotificationDto, decision: Decision): Promise<boolean> {
+    if (!decision.desvio || !this.correos) return false;
+    try {
+      const correo = await this.compuerta.resolverCorreoDeUsuario(dto.id_usuario_destinatario);
+      await this.correos.enviarDesviado({
+        decision,
+        destinatario: correo || dto.id_usuario_destinatario,
+        canal: 'campana',
+        asunto: dto.titulo,
+        texto: dto.mensaje,
+      });
+      return true;
+    } catch (error: any) {
+      this.logger.warn(`No se pudo mandar al buzón de desvío "${dto.tipo_notificacion}": ${error?.message || error}`);
+      return false;
+    }
   }
 
   private armar(dto: CreateNotificationDto, decision: Decision): Notification {

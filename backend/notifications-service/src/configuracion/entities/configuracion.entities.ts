@@ -23,6 +23,13 @@ export class ModuloNotificacion {
   @Column({ default: 100 })
   orden: number;
 
+  /**
+   * Buzón que recibe lo que habría salido mientras el módulo o un aviso suyo
+   * estén apagados. NULL: lo apagado no sale a ningún lado.
+   */
+  @Column({ type: 'varchar', name: 'correo_desvio', length: 150, nullable: true })
+  correo_desvio: string | null;
+
   @CreateDateColumn({ name: 'creado_en', type: 'timestamptz' })
   creado_en: Date;
 
@@ -43,14 +50,18 @@ export class ModuloAlias {
   codigo_modulo: string;
 }
 
-/** Un renglón por `tipo_notificacion`; se registra solo la primera vez que llega. */
+/**
+ * Un renglón por módulo + `tipo_notificacion`; se registra solo la primera vez
+ * que llega. La clave sola no basta: dos módulos pueden emitir la misma y cada
+ * uno se gobierna por separado.
+ */
 @Entity('evento_notificacion', { schema: 'notifications' })
 export class EventoNotificacion {
-  @PrimaryColumn({ length: 100 })
-  clave: string;
-
-  @Column({ type: 'varchar', name: 'codigo_modulo', length: 60 })
+  @PrimaryColumn({ type: 'varchar', name: 'codigo_modulo', length: 60 })
   codigo_modulo: string;
+
+  @PrimaryColumn({ type: 'varchar', length: 100 })
+  clave: string;
 
   @Column({ type: 'varchar', length: 150 })
   nombre: string;
@@ -77,6 +88,10 @@ export class EventoNotificacion {
 
   @Column({ name: 'envia_correo', default: false })
   envia_correo: boolean;
+
+  /** true cuando el código guarda campana para este evento; con envia_correo sin esto, es solo correo. */
+  @Column({ name: 'envia_campana', default: false })
+  envia_campana: boolean;
 
   @Column({ name: 'roles_adicionales', type: 'text', array: true, default: '{}' })
   roles_adicionales: string[];
@@ -115,6 +130,10 @@ export class ConfiguracionHistorial {
   @Column({ type: 'varchar', length: 20 })
   entidad: 'modulo' | 'evento';
 
+  /** Módulo del cambio (para 'modulo' es el mismo código que `clave`). */
+  @Column({ type: 'varchar', name: 'codigo_modulo', length: 60, nullable: true })
+  codigo_modulo: string | null;
+
   @Column({ type: 'varchar', length: 100 })
   clave: string;
 
@@ -149,8 +168,13 @@ export class EnvioOmitido {
   @Column({ type: 'varchar', length: 255, nullable: true })
   destinatario: string | null;
 
+  /** 'modulo_inactivo', 'evento_inactivo', 'canal_solo_*' o 'desviado'. */
   @Column({ type: 'varchar', length: 40 })
   motivo: string;
+
+  /** Buzón al que fue a parar el aviso cuando el motivo es 'desviado'. */
+  @Column({ type: 'varchar', name: 'desviado_a', length: 150, nullable: true })
+  desviado_a: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   titulo: string | null;

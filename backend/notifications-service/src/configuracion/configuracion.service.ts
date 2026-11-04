@@ -28,13 +28,45 @@ export interface ModuloResumen extends ModuloNotificacion {
   omitidas_7d: number;
 }
 
-const CAMPOS_MODULO: Array<keyof ActualizarModuloDto> = ['activo', 'canal_defecto', 'nombre'];
+const CAMPOS_MODULO: Array<keyof ActualizarModuloDto> = ['activo', 'canal_defecto', 'nombre', 'correo_desvio'];
 const CAMPOS_EVENTO: Array<keyof ActualizarEventoDto> = [
   'activo', 'canal', 'obligatorio', 'prioridad', 'nombre', 'descripcion',
   'roles_adicionales', 'dependencias_adicionales', 'sedes_adicionales',
 ];
 
 const quien = (u: UsuarioConsola): string => u.username || u.email || u.userId;
+
+const DOMINIO_DESVIO_POR_DEFECTO = 'esap.edu.co';
+const FORMATO_CORREO = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+/** Dominios que pueden recibir lo desviado: NOTIFICACIONES_DOMINIOS_DESVIO, separados por comas. */
+export const dominiosDesvioPermitidos = (): string[] => {
+  const lista = (process.env.NOTIFICACIONES_DOMINIOS_DESVIO || '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+    .filter(Boolean);
+  return lista.length ? lista : [DOMINIO_DESVIO_POR_DEFECTO];
+};
+
+/**
+ * El buzón de desvío recibe lo que habría ido a personas reales: solo puede
+ * ser una dirección válida de un dominio de la institución, para que un error
+ * de tipeo (o un abuso) no saque avisos a un correo ajeno. Vacío lo borra.
+ */
+export function validarCorreoDesvio(valor: string | null | undefined): string | null {
+  const correo = String(valor ?? '').trim().toLowerCase();
+  if (!correo) return null;
+  if (!FORMATO_CORREO.test(correo) || correo.length > 150) {
+    throw new BadRequestException('El buzón de desvío no es un correo válido.');
+  }
+  const permitidos = dominiosDesvioPermitidos();
+  if (!permitidos.includes(correo.slice(correo.lastIndexOf('@') + 1))) {
+    throw new BadRequestException(
+      `El buzón de desvío debe ser de un dominio permitido: ${permitidos.map((d) => `@${d}`).join(', ')}.`,
+    );
+  }
+  return correo;
+}
 
 /** La consola de administración (EFDS-2406): lo que lee y escribe la pantalla. */
 @Injectable()
@@ -74,12 +106,16 @@ export class ConfiguracionService {
     const modulo = await this.modulos.findOneBy({ codigo });
     if (!modulo) throw new NotFoundException('El módulo no existe en la configuración de notificaciones.');
 
+    if (cambios.correo_desvio !== undefined) {
+      cambios = { ...cambios, correo_desvio: validarCorreoDesvio(cambios.correo_desvio) };
+    }
+
     const { anterior, nuevo } = diferencias(modulo, cambios, CAMPOS_MODULO);
     if (Object.keys(nuevo).length === 0) return modulo;
 
     Object.assign(modulo, nuevo, { actualizado_por: quien(usuario) });
     await this.modulos.save(modulo);
-    await this.registrarCambio('modulo', codigo, anterior, nuevo, usuario);
+    await this.registrarCambio('modulo', codigo, codigo, anterior, nuevo, usuario);
     this.compuerta.invalidar();
     return modulo;
   }
@@ -88,8 +124,13 @@ export class ConfiguracionService {
     return this.eventos.find({ where: { codigo_modulo: codigoModulo }, order: { clave: 'ASC' } });
   }
 
-  async actualizarEvento(clave: string, cambios: ActualizarEventoDto, usuario: UsuarioConsola): Promise<EventoNotificacion> {
-    const evento = await this.eventos.findOneBy({ clave });
+  async actualizarEvento(
+    codigoModulo: string,
+    clave: string,
+    cambios: ActualizarEventoDto,
+    usuario: UsuarioConsola,
+  ): Promise<EventoNotificacion> {
+    const evento = await this.eventos.findOneBy({ codigo_modulo: codigoModulo, clave });
     if (!evento) throw new NotFoundException('El evento no existe en la configuración de notificaciones.');
 
     if (cambios.canal === 'correo' && !evento.envia_correo) {
@@ -109,19 +150,20 @@ export class ConfiguracionService {
 
     Object.assign(evento, nuevo, { actualizado_por: quien(usuario) });
     await this.eventos.save(evento);
-    await this.registrarCambio('evento', clave, anterior, nuevo, usuario);
+    await this.registrarCambio('evento', codigoModulo, clave, anterior, nuevo, usuario);
     this.compuerta.invalidar();
     return evento;
   }
 
   private registrarCambio(
     entidad: 'modulo' | 'evento',
+    codigoModulo: string,
     clave: string,
     anterior: Record<string, unknown>,
     nuevo: Record<string, unknown>,
     usuario: UsuarioConsola,
   ): Promise<unknown> {
-    return this.historial.insert({ entidad, clave, anterior: anterior as any, nuevo: nuevo as any, usuario: quien(usuario) });
+    return this.historial.insert({ entidad, codigo_modulo: codigoModulo, clave, anterior: anterior as any, nuevo: nuevo as any, usuario: quien(usuario) });
   }
 
   listarHistorial(limite = 100): Promise<ConfiguracionHistorial[]> {
@@ -141,8 +183,8 @@ export class ConfiguracionService {
    * consola, por el camino normal, así que respeta módulo, evento y canal. Si
    * la plataforma lo recibió, el evento queda marcado como verificado.
    */
-  async enviarPrueba(clave: string, usuario: UsuarioConsola) {
-    const evento = await this.eventos.findOneBy({ clave });
+  async enviarPrueba(codigoModulo: string, clave: string, usuario: UsuarioConsola) {
+    const evento = await this.eventos.findOneBy({ codigo_modulo: codigoModulo, clave });
     if (!evento) throw new NotFoundException('El evento no existe en la configuración de notificaciones.');
 
     const titulo = `Prueba: ${evento.nombre}`;
@@ -179,7 +221,7 @@ export class ConfiguracionService {
 
     const recibida = !esOmitida(plataforma);
     if (recibida) {
-      await this.eventos.update({ clave }, { verificado_en: new Date(), verificado_por: quien(usuario) });
+      await this.eventos.update({ codigo_modulo: codigoModulo, clave }, { verificado_en: new Date(), verificado_por: quien(usuario) });
       this.compuerta.invalidar();
     }
 

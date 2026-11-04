@@ -7,12 +7,27 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
 import { SendEmailAttachmentDto } from './dto/send-email-attachment.dto';
 import { EmailAttachmentDto, SendEmailDto } from './dto/send-email.dto';
-import { CompuertaService } from '../configuracion/compuerta.service';
+import { CompuertaService, Decision } from '../configuracion/compuerta.service';
 
 /** Resultado de un correo que pasó por la configuración de notificaciones. */
 export type ResultadoCorreo =
   | { sent: true; omitida?: false; message: string }
-  | { sent: false; omitida: true; motivo: string; modulo: string; evento: string };
+  | { sent: false; omitida: true; motivo: string; modulo: string; evento: string; desviado_a?: string };
+
+/** Lo que hace falta para mandar al buzón de desvío un aviso que la configuración apagó. */
+export interface AvisoDesviado {
+  decision: Decision;
+  /** A quién iba dirigido: correo, o el id del usuario si no se pudo resolver. */
+  destinatario: string;
+  canal: 'campana' | 'correo';
+  asunto: string;
+  texto?: string;
+  html?: string;
+  attachments?: EmailAttachmentDto[];
+}
+
+const escaparHtml = (t: string): string =>
+  t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 type SmtpConfig = {
   host: string;
@@ -68,6 +83,25 @@ export class EmailsService {
         titulo: data.subject,
       });
       if (!decision.permitido) {
+        if (decision.desvio) {
+          await this.enviarDesviado({
+            decision,
+            destinatario: data.to,
+            canal: 'correo',
+            asunto: data.subject,
+            texto: data.text,
+            html: data.html,
+            attachments: data.attachments,
+          });
+          return {
+            sent: false,
+            omitida: true,
+            motivo: 'desviado',
+            modulo: decision.modulo,
+            evento: data.evento,
+            desviado_a: decision.desvio,
+          };
+        }
         return {
           sent: false,
           omitida: true,
@@ -79,6 +113,39 @@ export class EmailsService {
     }
     await this.sendEmail(data);
     return { sent: true, message: 'Correo enviado' };
+  }
+
+  /**
+   * Manda al buzón de desvío del módulo lo que la configuración apagó (EFDS-2406).
+   * El asunto lleva el prefijo [Desviado · módulo · aviso] y arriba del cuerpo
+   * va quién era el destinatario real y por qué no salió. Los adjuntos del
+   * aviso original viajan tal cual; no se agrega ninguno.
+   */
+  async enviarDesviado(aviso: AvisoDesviado): Promise<void> {
+    const { decision } = aviso;
+    const buzon = decision.desvio;
+    if (!buzon) return;
+    const nombreModulo = decision.modulo_nombre || decision.modulo;
+    const causa =
+      decision.motivo === 'modulo_inactivo'
+        ? `el módulo ${nombreModulo} está apagado`
+        : `el aviso ${decision.evento?.nombre || decision.clave} está apagado`;
+    const nota = `Este aviso era para ${aviso.destinatario} (${aviso.canal}). Se desvió porque ${causa}.`;
+
+    const cuerpoHtml =
+      aviso.html ??
+      `<p style="font-family:Arial,sans-serif;font-size:14px;color:#374151;line-height:1.6;">${escaparHtml(aviso.texto || '').replace(/\n/g, '<br>')}</p>`;
+    const bloqueHtml =
+      `<div style="background-color:#fef3c7;border:1px solid #fcd34d;padding:12px;margin-bottom:20px;font-family:sans-serif;color:#92400e;border-radius:6px;">` +
+      `<strong>Aviso desviado.</strong> ${escaparHtml(nota)}</div>`;
+
+    await this.sendEmail({
+      to: buzon,
+      subject: `[Desviado · ${nombreModulo} · ${decision.clave}] ${aviso.asunto}`,
+      text: `${nota}\n\n${aviso.texto || ''}`,
+      html: bloqueHtml + cuerpoHtml,
+      attachments: aviso.attachments,
+    });
   }
 
   private decodeAttachments(items: EmailAttachmentDto[] = []): EmailAttachment[] {

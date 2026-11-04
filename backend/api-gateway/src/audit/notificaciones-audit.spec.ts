@@ -10,9 +10,11 @@ describe('Gateway: Auditoría de la configuración de notificaciones', () => {
     expect(accionNotificaciones('PATCH', `${BASE}/modulos/pta`, { activo: false })).toBe('desactivar módulo de notificaciones');
     expect(accionNotificaciones('PATCH', `${BASE}/modulos/pta`, { activo: true })).toBe('activar módulo de notificaciones');
     expect(accionNotificaciones('PATCH', `${BASE}/modulos/pta`, { canal_defecto: 'correo' })).toBe('configurar módulo de notificaciones');
-    expect(accionNotificaciones('PATCH', `${BASE}/eventos/pta_aprobado`, { activo: false })).toBe('desactivar evento de notificación');
-    expect(accionNotificaciones('PATCH', `${BASE}/eventos/pta_aprobado`, { canal: 'plataforma' })).toBe('configurar evento de notificación');
-    expect(accionNotificaciones('POST', `${BASE}/eventos/pta_aprobado/prueba`)).toBe('enviar notificación de prueba');
+    expect(accionNotificaciones('PATCH', `${BASE}/modulos/pta`, { correo_desvio: 'buzon@esap.edu.co' })).toBe('configurar módulo de notificaciones');
+    expect(accionNotificaciones('PATCH', `${BASE}/modulos/pta/eventos/pta_aprobado`, { activo: false })).toBe('desactivar evento de notificación');
+    expect(accionNotificaciones('PATCH', `${BASE}/modulos/pta/eventos/pta_aprobado`, { canal: 'plataforma' })).toBe('configurar evento de notificación');
+    expect(accionNotificaciones('POST', `${BASE}/modulos/pta/eventos/pta_aprobado/prueba`)).toBe('enviar notificación de prueba');
+    expect(accionNotificaciones('GET', `${BASE}/modulos/pta/eventos`)).toBeUndefined();
   });
 
   it('no toca el resto del servicio de notificaciones ni otros módulos', () => {

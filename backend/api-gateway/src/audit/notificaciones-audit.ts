@@ -5,10 +5,11 @@
  */
 export function accionNotificaciones(method: string, url: string, body?: unknown): string | undefined {
   const ruta = url.split('?')[0].toLowerCase();
-  const m = ruta.match(/\/notificaciones\/api\/v\d+\/configuracion\/(modulos|eventos)\/([^/]+)(?:\/(prueba))?\/?$/);
+  // El aviso se identifica por módulo y clave: /modulos/:codigo/eventos/:clave[/prueba].
+  const m = ruta.match(/\/notificaciones\/api\/v\d+\/configuracion\/modulos\/[^/]+(?:\/(eventos)\/[^/]+)?(?:\/(prueba))?\/?$/);
   if (!m) return undefined;
-  const [, coleccion, , accion] = m;
-  const entidad = coleccion === 'modulos' ? 'módulo de notificaciones' : 'evento de notificación';
+  const [, eventos, accion] = m;
+  const entidad = eventos ? 'evento de notificación' : 'módulo de notificaciones';
 
   if (accion === 'prueba' && method === 'POST') return 'enviar notificación de prueba';
   if (method !== 'PATCH') return undefined;

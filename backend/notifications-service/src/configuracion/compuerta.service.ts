@@ -31,13 +31,22 @@ export interface EntradaCompuerta {
 
 export interface Decision {
   permitido: boolean;
+  /** Con `permitido: false` es la razón original (apagado, canal); el desvío no la reemplaza. */
   motivo?: MotivoOmision | 'compuerta_apagada' | 'sin_catalogo';
   modulo: string;
+  /** Nombre legible del módulo, para el asunto y el aviso de los correos desviados. */
+  modulo_nombre?: string;
   clave: string;
   /** La que debe llevar la notificación: la de la consola o, si no, la del código. */
   prioridad: string;
   canal: Canal;
   evento: EventoNotificacion | null;
+  /**
+   * Buzón al que debe ir lo que la configuración apagó. Solo viene cuando el
+   * motivo es módulo o evento apagado y el módulo tiene `correo_desvio`; los
+   * obligatorios y los motivos de canal nunca se desvían.
+   */
+  desvio?: string;
 }
 
 export interface DestinatarioAdicional {
@@ -48,7 +57,10 @@ export interface DestinatarioAdicional {
 interface Catalogo {
   modulos: Map<string, ModuloNotificacion>;
   alias: Map<string, string>;
+  /** Indexado por `${codigo_modulo}:${clave}`: la misma clave puede vivir en varios módulos. */
   eventos: Map<string, EventoNotificacion>;
+  /** Módulos donde existe cada clave, para los avisos que llegan sin módulo. */
+  modulosPorClave: Map<string, string[]>;
   cargadoEn: number;
 }
 
@@ -57,6 +69,8 @@ const PREFIJOS_DE_MODULO: Array<[string, string]> = [['contratacion_', 'contrata
 
 export const compuertaEncendida = (): boolean =>
   !['0', 'false', 'off', 'no'].includes((process.env.NOTIFICACIONES_COMPUERTA || '').trim().toLowerCase());
+
+export const llaveEvento = (modulo: string, clave: string): string => `${modulo}:${clave}`;
 
 export const normalizarCodigo = (valor: string | null | undefined): string =>
   String(valor ?? '').trim().toLowerCase();
@@ -79,6 +93,12 @@ export const nombreDesdeClave = (clave: string): string => {
  *      obligatorio.
  *   4. El canal del evento (o el del módulo si el evento no define uno)
  *      decide si se guarda en la campana, se manda el correo, o ambos.
+ *   5. Si lo apagado es el módulo o el evento (no el canal) y el módulo tiene
+ *      buzón de desvío, la decisión lo trae en `desvio` para que quien llama
+ *      mande allí lo que habría salido. Los obligatorios nunca se desvían.
+ *
+ * El aviso se identifica por módulo + clave: la misma clave en dos módulos son
+ * dos avisos distintos.
  */
 @Injectable()
 export class CompuertaService {
@@ -122,7 +142,7 @@ export class CompuertaService {
 
       const canal: Canal = evento.canal ?? modulo.canal_defecto ?? 'ambos';
       const prioridad = evento.prioridad ?? prioridadCodigo;
-      const base = { modulo: modulo.codigo, clave, prioridad, canal, evento };
+      const base = { modulo: modulo.codigo, modulo_nombre: modulo.nombre, clave, prioridad, canal, evento };
 
       let motivo: MotivoOmision | null = null;
       if (!evento.obligatorio) {
@@ -133,8 +153,12 @@ export class CompuertaService {
       }
 
       if (motivo) {
-        await this.registrarOmision(entrada, modulo.codigo, clave, motivo);
-        return { ...base, permitido: false, motivo };
+        const desvio =
+          (motivo === 'modulo_inactivo' || motivo === 'evento_inactivo') && modulo.correo_desvio
+            ? modulo.correo_desvio
+            : undefined;
+        await this.registrarOmision(entrada, modulo.codigo, clave, desvio ? 'desviado' : motivo, desvio);
+        return { ...base, permitido: false, motivo, ...(desvio ? { desvio } : {}) };
       }
       return { ...base, permitido: true };
     } catch (error: any) {
@@ -197,10 +221,34 @@ export class CompuertaService {
     this.catalogo = {
       modulos: new Map(modulos.map((m) => [m.codigo, m])),
       alias: new Map(alias.map((a) => [normalizarCodigo(a.alias), a.codigo_modulo])),
-      eventos: new Map(eventos.map((e) => [e.clave, e])),
+      eventos: new Map(eventos.map((e) => [llaveEvento(e.codigo_modulo, e.clave), e])),
+      modulosPorClave: indexarPorClave(eventos),
       cargadoEn: Date.now(),
     };
     return this.catalogo;
+  }
+
+  /**
+   * Correo del usuario para decirle al buzón de desvío a quién iba dirigida una
+   * campana. Si no se encuentra (o la base falla) devuelve null y el aviso
+   * nombra el id.
+   */
+  async resolverCorreoDeUsuario(idUsuario: string): Promise<string | null> {
+    if (!idUsuario) return null;
+    try {
+      const filas: Array<{ email: string | null }> = await this.dataSource.query(
+        `SELECT COALESCE(p.dir_email, u.username) AS email
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user::text = $1
+          LIMIT 1`,
+        [String(idUsuario)],
+      );
+      return filas[0]?.email || null;
+    } catch (error: any) {
+      this.logger.warn(`No se resolvió el correo del usuario ${idUsuario}: ${error?.message}`);
+      return null;
+    }
   }
 
   private resolverModulo(catalogo: Catalogo, entrada: EntradaCompuerta, clave: string): string {
@@ -218,7 +266,12 @@ export class CompuertaService {
     for (const [prefijo, modulo] of PREFIJOS_DE_MODULO) {
       if (claveNormalizada.startsWith(prefijo)) return modulo;
     }
-    return MODULO_SIN_IDENTIFICAR;
+
+    // Sin pistas del emisor: si la clave existe en un solo módulo es de ese.
+    // En varios no se adivina (cada uno la gobierna por separado) y en ninguno
+    // no hay a quién asignarla: cae en "otros".
+    const duenos = catalogo.modulosPorClave.get(clave) ?? [];
+    return duenos.length === 1 ? duenos[0] : MODULO_SIN_IDENTIFICAR;
   }
 
   private async asegurarModulo(catalogo: Catalogo, codigo: string): Promise<ModuloNotificacion> {
@@ -243,7 +296,8 @@ export class CompuertaService {
     entrada: EntradaCompuerta,
   ): Promise<EventoNotificacion> {
     const repo = this.dataSource.getRepository(EventoNotificacion);
-    let evento = catalogo.eventos.get(clave);
+    const llave = llaveEvento(modulo.codigo, clave);
+    let evento = catalogo.eventos.get(llave);
 
     if (!evento) {
       await repo
@@ -257,13 +311,16 @@ export class CompuertaService {
           obligatorio: false,
           prioridad_codigo: entrada.prioridad || null,
           envia_correo: entrada.canal === 'correo',
+          envia_campana: entrada.canal === 'plataforma',
           visto_en: new Date(),
         })
         .orIgnore()
         .execute();
-      evento = await repo.findOneByOrFail({ clave });
-      catalogo.eventos.set(clave, evento);
-      this.vistos.set(clave, Date.now());
+      evento = await repo.findOneByOrFail({ codigo_modulo: modulo.codigo, clave });
+      catalogo.eventos.set(llave, evento);
+      const duenos = catalogo.modulosPorClave.get(clave) ?? [];
+      if (!duenos.includes(modulo.codigo)) catalogo.modulosPorClave.set(clave, [...duenos, modulo.codigo]);
+      this.vistos.set(llave, Date.now());
       this.logger.log(`Evento nuevo en el catálogo: ${modulo.codigo} / ${clave}`);
       return evento;
     }
@@ -273,14 +330,18 @@ export class CompuertaService {
       cambios.envia_correo = true;
       evento.envia_correo = true;
     }
+    if (entrada.canal === 'plataforma' && !evento.envia_campana) {
+      cambios.envia_campana = true;
+      evento.envia_campana = true;
+    }
     // `visto_en` se refresca cada tanto, no en cada aviso, para no escribir por gusto.
-    const ultimo = this.vistos.get(clave) ?? 0;
+    const ultimo = this.vistos.get(llave) ?? 0;
     if (Date.now() - ultimo > 5 * 60_000) {
       cambios.visto_en = new Date();
-      this.vistos.set(clave, Date.now());
+      this.vistos.set(llave, Date.now());
     }
     if (Object.keys(cambios).length) {
-      repo.update({ clave }, cambios).catch(() => undefined);
+      repo.update({ codigo_modulo: modulo.codigo, clave }, cambios).catch(() => undefined);
     }
     return evento;
   }
@@ -289,7 +350,8 @@ export class CompuertaService {
     entrada: EntradaCompuerta,
     codigoModulo: string,
     clave: string,
-    motivo: MotivoOmision,
+    motivo: MotivoOmision | 'desviado',
+    desviadoA?: string,
   ): Promise<void> {
     try {
       await this.dataSource.getRepository(EnvioOmitido).insert({
@@ -298,10 +360,17 @@ export class CompuertaService {
         canal: entrada.canal,
         destinatario: entrada.destinatario ? String(entrada.destinatario).slice(0, 255) : null,
         motivo,
+        desviado_a: desviadoA ?? null,
         titulo: entrada.titulo ? String(entrada.titulo).slice(0, 255) : null,
       });
     } catch (error: any) {
       this.logger.warn(`No se registró la omisión de "${clave}": ${error?.message}`);
     }
   }
+}
+
+function indexarPorClave(eventos: EventoNotificacion[]): Map<string, string[]> {
+  const porClave = new Map<string, string[]>();
+  for (const e of eventos) porClave.set(e.clave, [...(porClave.get(e.clave) ?? []), e.codigo_modulo]);
+  return porClave;
 }

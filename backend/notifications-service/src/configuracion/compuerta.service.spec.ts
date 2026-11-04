@@ -22,11 +22,12 @@ function baseFalsa(semilla: Semilla = {}) {
     [EventoNotificacion, semilla.eventos ?? []],
     [EnvioOmitido, []],
   ]);
-  const llave = (E: any) =>
-    E === ModuloNotificacion ? 'codigo' : E === ModuloAlias ? 'alias' : E === EventoNotificacion ? 'clave' : 'id';
+  // El evento se identifica por módulo + clave.
+  const llaves = (E: any): string[] =>
+    E === ModuloNotificacion ? ['codigo'] : E === ModuloAlias ? ['alias'] : E === EventoNotificacion ? ['codigo_modulo', 'clave'] : ['id'];
   const getRepository = (E: any) => {
     const filas = tablas.get(E)!;
-    const buscar = (w: any) => filas.find((x) => x[llave(E)] === w[llave(E)]);
+    const buscar = (w: any) => filas.find((x) => llaves(E).every((k) => x[k] === w[k]));
     return {
       find: async () => filas.map((f) => ({ ...f })),
       findOneByOrFail: async (w: any) => {
@@ -55,9 +56,9 @@ function baseFalsa(semilla: Semilla = {}) {
 }
 
 const modulos = (extra: Partial<ModuloNotificacion>[] = []) => [
-  { codigo: 'pta', nombre: 'PTA', activo: true, canal_defecto: 'ambos', orden: 10 },
-  { codigo: 'gestion-infraestructura', nombre: 'Infra', activo: true, canal_defecto: 'ambos', orden: 20 },
-  { codigo: 'otros', nombre: 'Otros', activo: true, canal_defecto: 'ambos', orden: 999 },
+  { codigo: 'pta', nombre: 'PTA', activo: true, canal_defecto: 'ambos', orden: 10, correo_desvio: null },
+  { codigo: 'gestion-infraestructura', nombre: 'Infra', activo: true, canal_defecto: 'ambos', orden: 20, correo_desvio: null },
+  { codigo: 'otros', nombre: 'Otros', activo: true, canal_defecto: 'ambos', orden: 999, correo_desvio: null },
   ...extra,
 ];
 const alias = [
@@ -182,6 +183,118 @@ describe('CompuertaService — la puerta por la que pasa cada aviso (EFDS-2406)'
     expect(ds.query.mock.calls[0][1]).toEqual([['JEFE_OCI'], ['3'], []]);
     ds.query.mockRejectedValueOnce(new Error('caída'));
     expect(await s.destinatariosAdicionales(con)).toEqual([]);
+  });
+
+  describe('clave compuesta: la misma clave en dos módulos', () => {
+    const dosModulos = () =>
+      baseFalsa({
+        modulos: modulos([
+          { codigo: 'control-disciplinario', nombre: 'Disc', activo: true, canal_defecto: 'ambos', orden: 30 },
+          { codigo: 'gestion-legal', nombre: 'Legal', activo: true, canal_defecto: 'ambos', orden: 40 },
+        ]),
+        alias,
+        eventos: [
+          eventoBase({ clave: 'PROCESO_ASIGNADO', codigo_modulo: 'control-disciplinario', activo: false }),
+          eventoBase({ clave: 'PROCESO_ASIGNADO', codigo_modulo: 'gestion-legal', activo: true }),
+        ],
+      });
+
+    it('se gobiernan por separado: apagar uno no apaga el otro', async () => {
+      const { ds } = dosModulos();
+      const s = new CompuertaService(ds);
+      expect(await s.evaluar({ clave: 'PROCESO_ASIGNADO', canal: 'plataforma', modulo: 'control-disciplinario' }))
+        .toMatchObject({ permitido: false, motivo: 'evento_inactivo', modulo: 'control-disciplinario' });
+      expect(await s.evaluar({ clave: 'PROCESO_ASIGNADO', canal: 'plataforma', modulo: 'gestion-legal' }))
+        .toMatchObject({ permitido: true, modulo: 'gestion-legal' });
+    });
+
+    it('un módulo nuevo con una clave que ya existe en otro registra su propia fila', async () => {
+      const { ds, tablas } = baseFalsa({
+        modulos: modulos([{ codigo: 'viaticos', nombre: 'V', activo: true, canal_defecto: 'ambos', orden: 50 }]),
+        alias,
+        eventos: [eventoBase({ clave: 'PROCESO_ASIGNADO', codigo_modulo: 'pta' })],
+      });
+      await new CompuertaService(ds).evaluar({ clave: 'PROCESO_ASIGNADO', canal: 'plataforma', modulo: 'viaticos' });
+      const filas = tablas.get(EventoNotificacion)!;
+      expect(filas.map((f) => `${f.codigo_modulo}:${f.clave}`).sort()).toEqual(['pta:PROCESO_ASIGNADO', 'viaticos:PROCESO_ASIGNADO']);
+    });
+
+    it('sin módulo: si la clave está en uno solo es de ese; en varios o en ninguno, "otros"', async () => {
+      const { ds } = baseFalsa({
+        modulos: modulos([
+          { codigo: 'control-disciplinario', nombre: 'D', activo: true, canal_defecto: 'ambos', orden: 30 },
+          { codigo: 'gestion-legal', nombre: 'L', activo: true, canal_defecto: 'ambos', orden: 40 },
+        ]),
+        alias,
+        eventos: [
+          eventoBase({ clave: 'PROCESO_ASIGNADO', codigo_modulo: 'control-disciplinario' }),
+          eventoBase({ clave: 'PROCESO_ASIGNADO', codigo_modulo: 'gestion-legal' }),
+          eventoBase({ clave: 'SOLO_LEGAL', codigo_modulo: 'gestion-legal' }),
+        ],
+      });
+      const s = new CompuertaService(ds);
+      expect((await s.evaluar({ clave: 'SOLO_LEGAL', canal: 'plataforma' })).modulo).toBe('gestion-legal');
+      expect((await s.evaluar({ clave: 'PROCESO_ASIGNADO', canal: 'plataforma' })).modulo).toBe('otros');
+      expect((await s.evaluar({ clave: 'NUNCA_VISTA', canal: 'plataforma' })).modulo).toBe('otros');
+    });
+  });
+
+  describe('buzón de desvío', () => {
+    const conBuzon = (activo: boolean, eventos: any[] = []) =>
+      baseFalsa({
+        modulos: modulos([{ codigo: 'viaticos', nombre: 'Viáticos', activo, canal_defecto: 'ambos', orden: 50, correo_desvio: 'buzon@esap.edu.co' } as any]),
+        alias,
+        eventos,
+      });
+
+    it('módulo apagado con buzón: la decisión trae el desvío y la omisión queda como "desviado"', async () => {
+      const { ds, tablas } = conBuzon(false);
+      const d = await new CompuertaService(ds).evaluar({ clave: 'v_x', canal: 'correo', modulo: 'viaticos', destinatario: 'a@x.co', titulo: 'T' });
+      expect(d).toMatchObject({ permitido: false, motivo: 'modulo_inactivo', desvio: 'buzon@esap.edu.co', modulo_nombre: 'Viáticos' });
+      expect(tablas.get(EnvioOmitido)![0]).toMatchObject({
+        motivo: 'desviado', desviado_a: 'buzon@esap.edu.co', destinatario: 'a@x.co', codigo_modulo: 'viaticos', clave_evento: 'v_x',
+      });
+    });
+
+    it('evento apagado con buzón: también se desvía', async () => {
+      const { ds } = conBuzon(true, [eventoBase({ clave: 'v_x', codigo_modulo: 'viaticos', activo: false })]);
+      expect(await new CompuertaService(ds).evaluar({ clave: 'v_x', canal: 'plataforma', modulo: 'viaticos' }))
+        .toMatchObject({ permitido: false, motivo: 'evento_inactivo', desvio: 'buzon@esap.edu.co' });
+    });
+
+    it('sin buzón no hay desvío y la omisión conserva su motivo', async () => {
+      const { ds, tablas } = baseFalsa({
+        modulos: modulos([{ codigo: 'viaticos', nombre: 'V', activo: false, canal_defecto: 'ambos', orden: 50, correo_desvio: null } as any]),
+        alias,
+      });
+      const d = await new CompuertaService(ds).evaluar({ clave: 'v_x', canal: 'correo', modulo: 'viaticos' });
+      expect(d.desvio).toBeUndefined();
+      expect(tablas.get(EnvioOmitido)![0]).toMatchObject({ motivo: 'modulo_inactivo', desviado_a: null });
+    });
+
+    it('un aviso obligatorio nunca se desvía: sale al destinatario real', async () => {
+      const { ds, tablas } = conBuzon(false, [eventoBase({ clave: 'v_otp', codigo_modulo: 'viaticos', obligatorio: true, activo: false })]);
+      const d = await new CompuertaService(ds).evaluar({ clave: 'v_otp', canal: 'correo', modulo: 'viaticos' });
+      expect(d).toMatchObject({ permitido: true });
+      expect(d.desvio).toBeUndefined();
+      expect(tablas.get(EnvioOmitido)).toHaveLength(0);
+    });
+
+    it('los motivos de canal no se desvían', async () => {
+      const { ds } = conBuzon(true, [eventoBase({ clave: 'v_c', codigo_modulo: 'viaticos', canal: 'correo', envia_correo: true })]);
+      const d = await new CompuertaService(ds).evaluar({ clave: 'v_c', canal: 'plataforma', modulo: 'viaticos' });
+      expect(d).toMatchObject({ permitido: false, motivo: 'canal_solo_correo' });
+      expect(d.desvio).toBeUndefined();
+    });
+  });
+
+  it('resuelve el correo del usuario para el aviso de desvío y devuelve null si no lo halla', async () => {
+    const { ds } = baseFalsa();
+    ds.query.mockResolvedValueOnce([{ email: 'u@esap.edu.co' }]).mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('x'));
+    const s = new CompuertaService(ds);
+    expect(await s.resolverCorreoDeUsuario('u1')).toBe('u@esap.edu.co');
+    expect(await s.resolverCorreoDeUsuario('u2')).toBeNull();
+    expect(await s.resolverCorreoDeUsuario('u3')).toBeNull();
   });
 
   it('nombra los eventos nuevos a partir de la clave', () => {
