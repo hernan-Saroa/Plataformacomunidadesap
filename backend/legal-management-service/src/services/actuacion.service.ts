@@ -352,7 +352,7 @@ export class ActuacionService {
           </div>
         `;
 
-        await this.notificationClient.sendEmail(userEmail, emailSubject, emailHtml, 'AUTORIZACION_PENDIENTE');
+        await this.notificationClient.sendEmail(userEmail, emailSubject, emailHtml, 'legal_otp_firma');
         return { message: 'OTP enviado con éxito' };
     }
 
