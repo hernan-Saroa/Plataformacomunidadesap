@@ -108,39 +108,46 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
     expect(await screen.findByText('Notificaciones apagadas')).toBeInTheDocument();
     expect(screen.getByText(/No sale ningún aviso, salvo los obligatorios/)).toBeInTheDocument();
     expect(modulos.updateModule).not.toHaveBeenCalled();
+    // Los avisos se ven apagados y bloqueados, sin tocar su estado propio.
+    const interruptorAviso = screen.getByRole('switch', { name: /Pta aprobado: apagado con el módulo/ });
+    expect(interruptorAviso).toHaveAttribute('aria-checked', 'false');
+    expect(interruptorAviso).toBeDisabled();
+    expect(screen.getByText('Apagado con el módulo')).toBeInTheDocument();
+    expect(servicio.actualizarEvento).not.toHaveBeenCalled();
   });
 
-  it('un aviso obligatorio no se puede apagar (CA3) y "solo correo" no se ofrece si el aviso no manda correo', async () => {
+  it('un aviso obligatorio no se puede apagar (CA3) y el canal que el aviso no usa queda bloqueado', async () => {
     servicio.listarEventos.mockResolvedValue([evento(), evento({ clave: 'pta_otp', nombre: 'Otp', obligatorio: true, envia_correo: false, envia_campana: true })]);
     await abrirConfiguracionDePta();
     expect(screen.getByRole('switch', { name: /Desactivar Otp/ })).toBeDisabled();
-    const selects = screen.getAllByRole('combobox', { name: 'Canal del evento' });
-    expect(Array.from((selects[1] as HTMLSelectElement).options).find((o) => o.value === 'correo')?.disabled).toBe(true);
-    expect(Array.from((selects[0] as HTMLSelectElement).options).find((o) => o.value === 'correo')?.disabled).toBe(false);
+    expect(screen.getByRole('button', { name: 'Este aviso no manda correo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Quitar el correo' })).toBeEnabled();
   });
 
   it('a la vista solo van nombre, canal e interruptor; lo demás está en «Más opciones»', async () => {
     await abrirConfiguracionDePta();
-    expect(screen.queryByRole('combobox', { name: 'Prioridad del evento' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Destinatarios adicionales/)).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Más opciones' })[0]);
-    expect(screen.getByRole('combobox', { name: 'Prioridad del evento' })).toBeInTheDocument();
     expect(screen.getByText(/Destinatarios adicionales/)).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /Obligatorio/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviarme una prueba/ })).toBeInTheDocument();
+    // La prioridad es opcional en la historia y no se ofrece.
+    expect(screen.queryByRole('combobox', { name: 'Prioridad del evento' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Marcar obligatorio/ }));
+    await waitFor(() => expect(servicio.actualizarEvento).toHaveBeenCalledWith('pta', 'pta_aprobado', { obligatorio: true }));
   });
 
-  it('un aviso solo de correo no ofrece prioridad ni destinatarios adicionales', async () => {
+  it('un aviso solo de correo no ofrece destinatarios adicionales', async () => {
     await abrirConfiguracionDePta();
     // pta_otp (el segundo) solo manda correo.
     fireEvent.click(screen.getAllByRole('button', { name: 'Más opciones' })[1]);
-    expect(screen.getByText(/no admite destinatarios adicionales ni prioridad/)).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Prioridad del evento' })).not.toBeInTheDocument();
+    expect(screen.getByText(/no admite destinatarios adicionales/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Agregar' })).not.toBeInTheDocument();
   });
 
-  it('cambiar el canal de un aviso guarda solo ese campo en la ruta del módulo (CA2)', async () => {
+  it('apagar el sobre deja el aviso solo en la campana y guarda solo ese campo en la ruta del módulo (CA2)', async () => {
     servicio.actualizarEvento.mockResolvedValue(evento({ canal: 'plataforma' }));
     await abrirConfiguracionDePta();
-    fireEvent.change(screen.getAllByRole('combobox', { name: 'Canal del evento' })[0], { target: { value: 'plataforma' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Quitar el correo' })[0]);
     await waitFor(() => expect(servicio.actualizarEvento).toHaveBeenCalledWith('pta', 'pta_aprobado', { canal: 'plataforma' }));
   });
 

@@ -17,8 +17,7 @@ import {
   AlertTriangle,
   Users,
   UserPlus,
-  Rows4,
-  Bell
+  Rows4
 } from 'lucide-react';
 import { modulesService, type ModuleWithPermissions, type UpdateModuleDto } from '../../services/api/modules.service';
 import { ResponsiveHeader } from '@esap-mfe/shared-ui';
@@ -406,22 +405,16 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
 
                     {consola.puede && (
                       <td className="py-4 px-4 text-center">
-                        <EstadoNotificaciones modulo={consola.porCodigo(mod.code)} />
+                        <EstadoNotificaciones
+                          modulo={consola.porCodigo(mod.code)}
+                          nombre={mod.name}
+                          onAbrir={() => setNotifCodigo(consola.porCodigo(mod.code)!.codigo)}
+                        />
                       </td>
                     )}
 
                     <td className="py-4 px-4 text-right">
                       <div className="inline-flex flex-wrap items-center justify-end gap-2">
-                      {consola.puede && consola.porCodigo(mod.code) && (
-                        <button
-                          onClick={() => setNotifCodigo(consola.porCodigo(mod.code)!.codigo)}
-                          aria-label={`Configurar notificaciones de ${mod.name}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition-all border border-gray-300 active:scale-95"
-                        >
-                          <Bell className="w-3.5 h-3.5" />
-                          <span>Notificaciones</span>
-                        </button>
-                      )}
                       <button
                         onClick={() => handleOpenEditModal(mod)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-all border border-blue-200 active:scale-95"

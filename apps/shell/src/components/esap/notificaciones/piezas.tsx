@@ -43,9 +43,14 @@ export function Interruptor({ activo, onCambio, deshabilitado, etiqueta: aria }:
       aria-label={aria}
       disabled={deshabilitado}
       onClick={() => onCambio(!activo)}
-      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#1e5da8]/40 disabled:cursor-not-allowed disabled:opacity-50 ${activo ? 'bg-emerald-500' : 'bg-slate-300'}`}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#1e5da8]/40 disabled:cursor-not-allowed disabled:opacity-50 ${activo ? 'bg-emerald-500' : 'bg-gray-300'}`}
     >
-      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${activo ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      {/* El Tailwind del shell está precompilado y no trae translate-x-5 ni la sombra base:
+          la posición y la sombra de la perilla van en línea para que se vea en los dos estados. */}
+      <span
+        className="inline-block h-5 w-5 rounded-full bg-white transition-transform"
+        style={{ transform: `translateX(${activo ? 22 : 2}px)`, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.3)' }}
+      />
     </button>
   );
 }

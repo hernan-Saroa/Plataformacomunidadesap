@@ -7,7 +7,7 @@
  * pide ni se muestra nada (el acceso lo da el permiso, no un rol).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Bell, BellOff, Settings2, X } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, X } from 'lucide-react';
 import {
   notificacionesConfigService,
   type ModuloNotificaciones,
@@ -65,20 +65,31 @@ export function useConsolaNotificaciones(): ConsolaNotificaciones {
 }
 
 /** Estado de las notificaciones de un módulo: activas / apagadas / sin avisos, con su número de avisos. */
-export function EstadoNotificaciones({ modulo }: { modulo: ModuloNotificaciones | undefined }) {
-  if (!modulo || modulo.eventos === 0) {
+/**
+ * Estado de las notificaciones del módulo en la tabla. Es también el botón que
+ * abre su configuración: así la fila no necesita un botón aparte.
+ */
+export function EstadoNotificaciones({ modulo, nombre, onAbrir }: { modulo: ModuloNotificaciones | undefined; nombre: string; onAbrir: () => void }) {
+  if (!modulo) {
     return <span className="inline-flex rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-500">Sin avisos</span>;
   }
+  const color = modulo.eventos === 0
+    ? 'border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200'
+    : modulo.activo ? 'border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200';
   return (
-    <div className="flex flex-col items-center gap-1">
-      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-        modulo.activo ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-amber-300 bg-amber-100 text-amber-800'
-      }`}>
+    <button
+      type="button"
+      onClick={onAbrir}
+      aria-label={`Configurar notificaciones de ${nombre}`}
+      title="Configurar sus notificaciones"
+      className="inline-flex flex-col items-center gap-1 rounded-lg p-1"
+    >
+      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${color}`}>
         {modulo.activo ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
-        {modulo.activo ? 'Activas' : 'Apagadas'}
+        {modulo.eventos === 0 ? 'Sin avisos' : modulo.activo ? 'Activas' : 'Apagadas'}
       </span>
-      <span className="text-[11px] text-gray-500">{modulo.eventos} {modulo.eventos === 1 ? 'aviso' : 'avisos'}</span>
-    </div>
+      {modulo.eventos > 0 && <span className="text-[11px] text-gray-500">{modulo.eventos} {modulo.eventos === 1 ? 'aviso' : 'avisos'}</span>}
+    </button>
   );
 }
 
@@ -100,7 +111,8 @@ export function ModalNotificacionesModulo({ modulo, onCerrar, onModulo, onRecarg
   onRecargar: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`Notificaciones de ${modulo.nombre}`}>
+    // z-[9999]: la barra superior y el menú del backoffice van por encima de z-50 y tapaban el encabezado del modal.
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`Notificaciones de ${modulo.nombre}`}>
       <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
         <div className="bg-gradient-to-r from-[#003DA5] to-[#1e5da8] px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -137,20 +149,8 @@ export function BloqueOtrosRemitentes({ remitentes, onConfigurar }: {
           <li key={m.codigo} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-blue-50/30 transition-colors">
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 leading-tight">{m.nombre}</p>
-              <p className="font-mono text-[11px] text-gray-400">{m.codigo}</p>
             </div>
-            <div className="flex items-center gap-4">
-              <EstadoNotificaciones modulo={m} />
-              <button
-                type="button"
-                onClick={() => onConfigurar(m.codigo)}
-                aria-label={`Configurar notificaciones de ${m.nombre}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-all border border-blue-200 active:scale-95"
-              >
-                <Settings2 className="w-3.5 h-3.5" />
-                <span>Configurar</span>
-              </button>
-            </div>
+            <EstadoNotificaciones modulo={m} nombre={m.nombre} onAbrir={() => onConfigurar(m.codigo)} />
           </li>
         ))}
       </ul>
