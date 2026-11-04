@@ -23,6 +23,8 @@ export interface Indicador {
   descripcion: string;
   ejeEstrategico: EjeEstrategico;
   responsable: string;
+  /** id_user del responsable (auth-service); null en indicadores históricos con responsable en texto libre. */
+  responsableId?: string | null;
   meta: number;
   valorActual: number;
   avance: number; // % de cumplimiento

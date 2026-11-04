@@ -41,6 +41,8 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 // Importar modales ESAP 2025
 import { ModalNuevoIndicador } from './ModalNuevoIndicador';
 import { ModalEditarIndicador } from './ModalEditarIndicador';
+import { useResponsablesProcesoLegal } from './SelectorResponsable';
+import { ResponsableOpcion, estadoResponsable, requiereReasignacion } from './responsablesIndicador';
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
 import {
@@ -218,6 +220,9 @@ export function ModuloPlanAccionV4() {
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [indicadorSeleccionado, setIndicadorSeleccionado] = useState<Indicador | null>(null);
 
+  // Usuarios activos del proceso legal: permiten identificar indicadores cuyo responsable requiere reasignación
+  const { responsables: responsablesActivos } = useResponsablesProcesoLegal();
+
   // Fetch Data
   const fetchData = async () => {
     setLoading(true);
@@ -232,6 +237,7 @@ export function ModuloPlanAccionV4() {
         descripcion: ind.descripcion || '',
         ejeEstrategico: mapEjeFromBackend(ind.ejeEstrategico),
         responsable: ind.responsableNombre || 'Sin Asignar',
+        responsableId: ind.responsableId ?? null,
         meta: Number(ind.metaObjetivo) || 0,
         valorActual: Number(ind.valorActual) || 0,
         avance: Number(ind.avanceActual) || 0,
@@ -306,6 +312,7 @@ export function ModuloPlanAccionV4() {
           descripcion: ind.descripcion || '',
           ejeEstrategico: mapEjeFromBackend(ind.ejeEstrategico),
           responsable: ind.responsableNombre || 'Sin Asignar',
+          responsableId: ind.responsableId ?? null,
           meta: Number(ind.metaObjetivo) || 0,
           valorActual: Number(ind.valorActual) || 0,
           avance: Number(ind.avanceActual) || 0,
@@ -416,6 +423,7 @@ export function ModuloPlanAccionV4() {
         frecuenciaMedicion: data.periodicidad,
         prioridad: data.prioridad,
         tipoIndicador: data.tipoIndicador,
+        responsableId: data.responsableId,
         responsableNombre: data.responsable,
         estado: 'ACTIVO'
       };
@@ -444,6 +452,7 @@ export function ModuloPlanAccionV4() {
         frecuenciaMedicion: data.periodicidad,
         prioridad: data.prioridad,
         tipoIndicador: data.tipoIndicador,
+        responsableId: data.responsableId,
         responsableNombre: data.responsable
       };
 
@@ -761,6 +770,7 @@ export function ModuloPlanAccionV4() {
               indicadoresAgrupados={ejesVisibles}
               expandedGroups={expandedGroups}
               toggleGroup={toggleGroup}
+              responsablesActivos={responsablesActivos}
               onVerDetalles={handleVerDetalles}
               onEditarIndicador={canMutatePlanAccion ? handleEditarIndicador : undefined}
               onCargarAvance={canMutatePlanAccion ? handleCargarAvance : undefined}
@@ -835,6 +845,8 @@ interface VistaListaProps {
   indicadoresAgrupados: Record<string, Indicador[]>;
   expandedGroups: Set<string>;
   toggleGroup: (eje: string) => void;
+  /** null mientras carga: no se marca ningún indicador para reasignar. */
+  responsablesActivos: ResponsableOpcion[] | null;
   onVerDetalles: (indicador: Indicador) => void;
   onEditarIndicador?: (indicador: Indicador) => void;
   onCargarAvance?: (indicador: Indicador) => void;
@@ -846,6 +858,7 @@ function VistaLista({
   indicadoresAgrupados,
   expandedGroups,
   toggleGroup,
+  responsablesActivos,
   onVerDetalles,
   onEditarIndicador,
   onCargarAvance,
@@ -945,6 +958,16 @@ function VistaLista({
                                 </AvatarFallback>
                               </Avatar>
                               <span className="text-sm text-gray-700 max-w-[150px] truncate">{ind.responsable}</span>
+                              {requiereReasignacion(ind, responsablesActivos) && (
+                                <Badge
+                                  className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                                  title={estadoResponsable(ind, responsablesActivos) === 'INACTIVO'
+                                    ? 'El responsable ya no está activo en el proceso'
+                                    : 'Responsable sin referencia a un usuario de la plataforma'}
+                                >
+                                  Reasignar
+                                </Badge>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">

@@ -11,6 +11,7 @@ vi.mock('../../../../services/api/legal.service', () => ({
   legalService: {
     getPeiDashboard: vi.fn(),
     getPeiArchivados: vi.fn().mockResolvedValue([]),
+    getUsuariosResponsablesIndicador: vi.fn().mockResolvedValue([]),
     exportPeiZip: vi.fn(),
   },
 }));
