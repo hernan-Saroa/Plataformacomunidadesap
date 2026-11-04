@@ -202,6 +202,29 @@ export class CompuertaService {
     }
   }
 
+  /**
+   * Reserva la copia de un correo para un destinatario adicional (EFDS-2406).
+   * Muchos módulos mandan el mismo correo a varias personas en llamadas
+   * separadas; la tabla copia_correo deja pasar solo la primera del día por
+   * (módulo, aviso, asunto, correo). Devuelve true si esta llamada la reservó.
+   * Si la base falla devuelve false: es mejor perder una copia que repetirla.
+   */
+  async reservarCopiaCorreo(modulo: string, clave: string, huella: string, correo: string): Promise<boolean> {
+    try {
+      const filas = await this.dataSource.query(
+        `INSERT INTO notifications.copia_correo (codigo_modulo, clave, huella, correo, dia)
+         VALUES ($1, $2, $3, $4, (now() AT TIME ZONE 'America/Bogota')::date)
+         ON CONFLICT DO NOTHING
+         RETURNING 1`,
+        [modulo, clave, huella, correo.toLowerCase()],
+      );
+      return Array.isArray(filas) && filas.length > 0;
+    } catch (error: any) {
+      this.logger.warn(`No se pudo reservar la copia de "${clave}" para ${correo}; no se envía: ${error?.message}`);
+      return false;
+    }
+  }
+
   // ── Catálogo en memoria ───────────────────────────────────────────────────
 
   private async obtenerCatalogo(): Promise<Catalogo> {

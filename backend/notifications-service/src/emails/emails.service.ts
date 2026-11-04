@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, InternalServerErrorException, Logger, 
 import { ClientSecretCredential } from '@azure/identity';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
+import { createHash } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
@@ -74,6 +75,7 @@ export class EmailsService {
    * (clave, contraseña, OTP) y sale siempre.
    */
   async enviarSiPermitido(data: SendEmailDto): Promise<ResultadoCorreo> {
+    let decisionPermitida: Decision | null = null;
     if (data.evento && this.compuerta) {
       const decision = await this.compuerta.evaluar({
         clave: data.evento,
@@ -110,9 +112,55 @@ export class EmailsService {
           evento: data.evento,
         };
       }
+      decisionPermitida = decision;
     }
     await this.sendEmail(data);
+    if (decisionPermitida) await this.copiarAdicionales(data, decisionPermitida);
     return { sent: true, message: 'Correo enviado' };
+  }
+
+  /**
+   * Copia del correo para los destinatarios adicionales que el administrador
+   * sumó al aviso (EFDS-2406, función 4). Nunca tumba el correo original: todo
+   * fallo se registra y se sigue. Cada adicional recibe una sola copia por día
+   * del mismo asunto aunque el módulo mande el correo a varias personas.
+   */
+  private async copiarAdicionales(data: SendEmailDto, decision: Decision): Promise<void> {
+    try {
+      const adicionales = await this.compuerta!.destinatariosAdicionales(decision.evento);
+      if (!adicionales?.length) return;
+      const original = data.to.trim().toLowerCase();
+      const vistos = new Set<string>([original]);
+      const huella = createHash('sha256').update(data.subject).digest('hex');
+      const nota = 'Recibe esta copia porque la configuración de notificaciones lo incluye en este aviso.';
+      const cuerpoHtml =
+        data.html ??
+        `<p style="font-family:Arial,sans-serif;font-size:14px;color:#374151;line-height:1.6;">${escaparHtml(data.text || '').replace(/\n/g, '<br>')}</p>`;
+      const bloqueHtml =
+        `<div style="background-color:#eff6ff;border:1px solid #bfdbfe;padding:12px;margin-bottom:20px;font-family:sans-serif;color:#1e40af;border-radius:6px;">` +
+        `<strong>Copia del aviso.</strong> ${escaparHtml(nota)}</div>`;
+
+      for (const adicional of adicionales) {
+        const correo = (adicional?.email || '').trim();
+        const clave = correo.toLowerCase();
+        if (!correo || !correo.includes('@') || vistos.has(clave)) continue;
+        vistos.add(clave);
+        try {
+          if (!(await this.compuerta!.reservarCopiaCorreo(decision.modulo, decision.clave, huella, correo))) continue;
+          await this.sendEmail({
+            to: correo,
+            subject: data.subject,
+            text: `${nota}\n\n${data.text || ''}`,
+            html: bloqueHtml + cuerpoHtml,
+            attachments: data.attachments,
+          });
+        } catch (error: any) {
+          this.logger.warn(`No se pudo enviar la copia de "${decision.clave}" a ${correo}: ${error?.message || error}`);
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(`No se pudieron enviar las copias de "${data.evento}": ${error?.message || error}`);
+    }
   }
 
   /**
