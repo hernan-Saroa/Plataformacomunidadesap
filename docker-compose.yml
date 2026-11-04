@@ -520,6 +520,8 @@ services:
     container_name: chatbot-service
     env_file:
       - ./backend/chatbot-service/.env
+      - path: ${CHATBOT_KNOWLEDGE_ENV_FILE:-./backend/chatbot-service/.env.knowledge}
+        required: false
     environment:
       NODE_ENV: development
       PORT: 3015

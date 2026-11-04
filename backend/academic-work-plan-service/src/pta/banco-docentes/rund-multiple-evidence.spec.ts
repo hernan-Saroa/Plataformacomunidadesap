@@ -90,7 +90,7 @@ describe('Varias evidencias por punto de control: reglas', () => {
       if (sql.includes('SELECT * FROM academic_work_plan."Docente"')) return [{ id: 'docente' }];
       if (sql.includes('FROM academic_work_plan."RundSoporteCampo" WHERE id = $1')) return [first];
       if (sql.includes('SELECT id, estado FROM academic_work_plan."RundDocumentoPerfil"')) return [{ id: 'v1', estado: 'ACTIVO' }];
-      if (sql.includes('SELECT version FROM')) return [{ version: 4 }];
+      if (sql.includes('SELECT version')) return [{ version: 4, estado:'En revisión' }];
       if (sql.startsWith('UPDATE academic_work_plan."RundSoporteCampo"')) { first.estado = params[0]; first.revisiones_campos = JSON.parse(params[3]); return []; }
       if (sql.includes('UPDATE academic_work_plan."RundCampoEstado" SET estado')) {
         states.push(sql.includes("'Devuelto'") ? 'Devuelto' : params[0]);
@@ -313,7 +313,7 @@ describe('Varias evidencias por punto de control: OCR por selección y orden', (
     const suggestion = (id: string, valor_previo: string) => ({ id, campo: 'maestria', valor: 'Maestría X', valor_previo, estado: 'PENDIENTE' });
     const query = jest.fn(async (sql: string) => {
       if (sql.includes('FROM academic_work_plan."RundExtraccionTrabajo" j JOIN')) return [
-        { id: 'job-2', estado: 'PENDIENTE', creado_en: '2026-10-02T00:00:00Z', sugerencias: [] },
+        { id: 'job-2', estado: 'PENDIENTE', creado_en: '2026-10-02T00:00:00Z', posicion_cola:1, sugerencias: [] },
         { id: 'job-1', estado: 'COMPLETADO', creado_en: '2026-10-01T00:00:00Z', sugerencias: [suggestion('s-old', 'Sin título'), suggestion('s-new', 'Maestría actual')] },
       ];
       if (sql.includes('d."personaId"') || sql.includes('FROM academic_work_plan."Docente"')) return [{ maestria: 'Maestría actual' }];
@@ -444,14 +444,19 @@ describe('Correcciones de la revisión: identidad, soportes históricos y filas 
 });
 
 describe('Motivo de devolución a nivel de bloque', () => {
-  it('una devolución sin otra evidencia que respalde el dato deja el bloque devuelto con su motivo', async () => {
+  it.each([
+    {explicitReturn:false,currentState:'En revisión'},
+    {explicitReturn:true,currentState:'Devuelto'},
+    {explicitReturn:true,currentState:'En revisión'},
+  ])('devolver un archivo respeta solo las correcciones del bloque que siguen vigentes: %p', async ({explicitReturn,currentState}) => {
     const only = decided('autorizacion_habeas_data', 'Pendiente', 'v1', { id: 'unica', createdAt: '2026-10-01T10:00:00Z', revisiones_campos: {} });
     const updates: any[] = [];
     const query = jest.fn(async (sql: string, params: any[] = []) => {
       if (sql.includes('SELECT * FROM academic_work_plan."Docente"')) return [{ id: 'docente' }];
       if (sql.includes('FROM academic_work_plan."RundSoporteCampo" WHERE id = $1')) return [only];
       if (sql.includes('SELECT id, estado FROM academic_work_plan."RundDocumentoPerfil"')) return [{ id: 'v1', estado: 'ACTIVO' }];
-      if (sql.includes('SELECT version FROM')) return [{ version: 2 }];
+      if (sql.includes('SELECT version')) return [{ version: 2, estado:currentState }];
+      if (sql.includes('SELECT accion, observacion FROM')) return explicitReturn?[{accion:'DEVOLVER',observacion:'Corrija los datos del bloque.'}]:[];
       if (sql.startsWith('UPDATE academic_work_plan."RundSoporteCampo"')) { only.estado = params[0]; only.revisiones_campos = JSON.parse(params[3]); return []; }
       if (sql.includes('UPDATE academic_work_plan."RundCampoEstado" SET estado')) { updates.push({ sql, params }); return []; }
       if (sql.includes('FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2')) return [only];
@@ -461,7 +466,13 @@ describe('Motivo de devolución a nivel de bloque', () => {
     await new RundEvidenceWorkflow({ createQueryRunner: () => runner } as any).reviewSupport('docente', 'TRANSVERSAL', 'unica',
       { estado: 'Rechazado', observacion: 'Falta la firma.', documentoVersionId: 'v1', blockVersion: 2 }, 'revisor');
     const returned = updates.find(update => update.sql.includes("'Devuelto'"));
-    expect(returned.params).toEqual(['docente', 'TRANSVERSAL', 'Falta la firma.']);
+    if(explicitReturn&&currentState==='Devuelto')expect(returned.params).toEqual(['docente', 'TRANSVERSAL', 'Corrija los datos del bloque.']);
+    else {
+      expect(returned).toBeUndefined();
+      expect(updates[0].params[0]).toBe('En revisión');
+    }
+    expect(only.estado).toBe('Rechazado');
+    expect(only.revisiones_campos.autorizacion_habeas_data.observacion).toBe('Falta la firma.');
   });
 });
 
@@ -476,7 +487,7 @@ describe('Revisión conjunta por documento', () => {
       if(sql.includes('SELECT * FROM academic_work_plan."Docente"'))return [{id:'docente'}];
       if(sql.includes('FROM academic_work_plan."RundSoporteCampo" WHERE id = $1'))return [support];
       if(sql.includes('SELECT id, estado FROM academic_work_plan."RundDocumentoPerfil"'))return [{id:'v1',estado:'ACTIVO'}];
-      if(sql.includes('SELECT version FROM'))return [{version:4}];
+      if(sql.includes('SELECT version'))return [{version:4,estado:'En revisión'}];
       if(sql.startsWith('UPDATE academic_work_plan."RundSoporteCampo"')){support.estado=params[0];support.revisiones_campos=JSON.parse(params[3]);return [];}
       if(sql.includes('FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text'))return [support];
       return [];

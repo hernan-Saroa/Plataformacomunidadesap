@@ -56,6 +56,8 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
   private busy = false;
   private heartbeat?: NodeJS.Timeout;
   private activeJob?: any;
+  // OCR (3 min) + modelo (10 min), con margen para lectura y validación.
+  private readonly processingTimeoutMs = 15 * 60 * 1000;
   get enabled() { return process.env.RUND_OCR_ENABLED === 'true'; }
   constructor(private readonly db: DataSource, private readonly storage: RundDocumentStorageService) {}
 
@@ -77,14 +79,16 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     if (!this.enabled) return { enabled: false, jobs: [], documents: [] };
     await recordRundAccess(this.db, { ...actor, endpoint: 'RUND_EXTRACCION_CONSULTA', docenteIds: [docenteId], fields: ['DOCUMENTO_IDENTIDAD'] });
     const jobs = await this.db.query(`SELECT j.id, j.estado, j.intentos, j.error_codigo, j.motor, j.creado_en,
+      CASE WHEN j.estado='PENDIENTE' THEN (row_number() OVER (PARTITION BY j.estado ORDER BY j.creado_en,j.id))::int END AS posicion_cola,
       j.etapa,j.etapa_desde,j.iniciado_en,j.actualizado_en,j.disponible_en,
+      (j.estado='PROCESANDO' AND j.lease_hasta>now()) AS worker_activo,
       d.id AS documento_id, d.nombre_archivo, d.version, d.estado AS documento_estado, d.bloque, d.tipo_soporte, d.categoria_codigo,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s.id,'campo',s.campo,'valor',s.valor,'valor_previo',s.valor_previo,
         'pagina',s.pagina,'evidencia',s.evidencia,'confianza',s.confianza,'baja_confianza',s.baja_confianza,
         'estado',s.estado,'valor_confirmado',s.valor_confirmado,'revisado_por',s.revisado_por,'revisado_en',s.revisado_en,'motivo',s.motivo) ORDER BY s.campo)
         FROM academic_work_plan."RundExtraccionSugerencia" s WHERE s.trabajo_id = j.id), '[]'::jsonb) AS sugerencias
       FROM academic_work_plan."RundExtraccionTrabajo" j JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
-      WHERE j.docente_id::text = $1 ORDER BY j.creado_en DESC LIMIT 100`, [docenteId]);
+      WHERE j.docente_id::text = $1 AND d.estado = 'ACTIVO' ORDER BY j.creado_en DESC LIMIT 100`, [docenteId]);
     const documents = await this.db.query(`SELECT d.id, d.nombre_archivo, d.bloque, d.tipo_soporte, d.categoria_codigo, d.version, d."createdAt" AS creado_en,
       EXISTS (SELECT 1 FROM academic_work_plan."RundExtraccionTrabajo" previous WHERE previous.documento_id=d.id) AS analizado_previamente
       FROM academic_work_plan."RundDocumentoPerfil" d
@@ -95,10 +99,9 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
     // With several evidences, another document (or an edit) may already have changed the row.
     const hasPending = jobs.some((j: any) => j.sugerencias.some((s: any) => s.estado === 'PENDIENTE'));
     const profile = hasPending ? await extractionProfile(this.db, docenteId) : {};
-    const queue = jobs.filter((j: any) => j.estado === 'PENDIENTE')
-      .sort((a: any, b: any) => new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime() || String(a.id).localeCompare(String(b.id)));
     return { enabled: true, automatico: process.env.RUND_EXTRACCION_AUTOMATICA === 'true', jobs: jobs.map((j: any) => ({ ...j,
-      posicion_cola: j.estado === 'PENDIENTE' ? queue.indexOf(j) + 1 : null,
+      // PostgreSQL preserves microseconds used when reordering; JavaScript Date does not.
+      posicion_cola: j.estado === 'PENDIENTE' ? j.posicion_cola : null,
       sugerencias: j.sugerencias.map((s: any) => ({ ...s, label: EXTRACTION_FIELDS[s.campo]?.label || s.campo,
         desactualizada: s.estado === 'PENDIENTE' && comparable((profile as any)[s.campo]) !== comparable(s.valor_previo),
         // The source document does not accredit this row (older analyses of general attachments).
@@ -390,7 +393,7 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
         lease_id=$1, lease_hasta=now()+interval '90 seconds', actualizado_en=now(),
         etapa='LEYENDO',etapa_desde=now(),iniciado_en=COALESCE(iniciado_en,now())
         WHERE id=(SELECT id FROM academic_work_plan."RundExtraccionTrabajo" WHERE estado='PENDIENTE' AND disponible_en<=now()
-          ORDER BY creado_en FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *) SELECT * FROM reservado`, [randomUUID()]);
+          ORDER BY creado_en, id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *) SELECT * FROM reservado`, [randomUUID()]);
       if (!job) return;
       this.activeJob = job;
       this.heartbeat = setInterval(() => {
@@ -398,11 +401,22 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
           WHERE id=$1 AND lease_id=$2 AND estado='PROCESANDO'`,[job.id,job.lease_id]).catch(() => undefined);
       },20000);
       this.heartbeat.unref();
-      await this.process(job);
+      let deadline: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          this.process(job),
+          new Promise<never>((_, reject) => {
+            deadline = setTimeout(() => reject(new Error('EXTRACCION_TIMEOUT')), this.processingTimeoutMs);
+            deadline.unref();
+          }),
+        ]);
+      } finally {
+        if (deadline) clearTimeout(deadline);
+      }
     } catch (error) {
       // Nunca registrar el texto OCR, el PDF ni la respuesta del modelo en logs.
       const knownErrors = new Set(['TOKEN_OCR_REQUERIDO','PROVEEDOR_OCR_INVALIDO','CONFIGURACION_LOCAL_INVALIDA',
-        'OCR_CONEXION_FALLIDA','OCR_NO_DISPONIBLE','OCR_INVALIDO','MODELO_LOCAL_REQUERIDO','MODELO_NO_DISPONIBLE',
+        'OCR_CONEXION_FALLIDA','OCR_TIMEOUT','OCR_NO_DISPONIBLE','OCR_INVALIDO','MODELO_LOCAL_REQUERIDO','MODELO_NO_DISPONIBLE','MODELO_CONEXION_FALLIDA','EXTRACCION_TIMEOUT',
         'MODELO_TIMEOUT','RESPUESTA_MODELO_INVALIDA','RESPUESTA_MODELO_DEMASIADO_GRANDE','PDF_INVALIDO','DOCUMENTO_MODIFICADO']);
       const failureCode = error instanceof Error && knownErrors.has(error.message) ? error.message : 'EXTRACCION_NO_DISPONIBLE';
       if (job) await this.db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET estado=CASE WHEN intentos<3 THEN 'PENDIENTE' ELSE 'ERROR' END,

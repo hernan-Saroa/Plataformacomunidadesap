@@ -155,3 +155,41 @@ test('escapa identificadores SQL y el driver instalado respeta timeout por petic
   const request = new sql.Request(new sql.ConnectionPool({ server: 'unused.invalid' }), { requestTimeout: 1234 });
   assert.equal(request.overrides.requestTimeout, 1234);
 });
+
+test('el acceso público exige habilitación y un filtro independiente parametrizado', async () => {
+  const disabled = fixture();
+  await assert.rejects(disabled.service.search('Procedimiento', 'public'), { code: 'PUBLIC_SOURCE_DISABLED' });
+  assert.equal(disabled.pools.length, 0);
+  const missing = fixture({ PUBLIC_ENABLED: 'true' });
+  await assert.rejects(missing.service.search('Procedimiento', 'public'), { code: 'PUBLIC_FILTER_REQUIRED' });
+  assert.equal(missing.pools.length, 0);
+  const f = fixture({ PUBLIC_ENABLED: 'true', PUBLIC_ALLOWED_COLUMN: 'Publicacion', PUBLIC_ALLOWED_VALUE: 'Autorizado-publico' });
+  await f.service.search('Viáticos para una comisión', 'public');
+  assert.equal(f.calls.at(-1).params.publicAllowed, 'Autorizado-publico');
+  assert.equal(f.calls.at(-1).params.term0, '%viatic%');
+  assert(f.calls.at(-1).query.includes('COLLATE Latin1_General_CI_AI'));
+  assert(f.calls.at(-1).query.includes('= @publicAllowed'));
+  await f.service.onModuleDestroy();
+});
+
+test('conserva fichas sin texto y resuelve rutas documentales contra el origen configurado', async () => {
+  const f = fixture({ DOCUMENT_BASE_URL: 'https://docs.example.invalid/' }, { rows: [
+    { id: '17', titulo: 'Ficha de prueba', extracto: '', url: '/BancoConocimientoIsolucionEsap/test.asp' },
+  ] });
+  const sources = await f.service.search('Prueba');
+  assert.equal(sources.length, 1); assert.equal(sources[0].extracto, '');
+  assert.equal(sources[0].url, 'https://docs.example.invalid/BancoConocimientoIsolucionEsap/test.asp');
+  assert.equal(safeDocumentUrl('/BancoConocimientoIsolucionEsap/test.asp', 'https://docs.example.invalid', '/IsolucionEsap'), 'https://docs.example.invalid/IsolucionEsap/BancoConocimientoIsolucionEsap/test.asp');
+  await f.service.onModuleDestroy();
+});
+
+test('certificados laborales requieren ambos conceptos en la búsqueda SQL', async () => {
+  const f = fixture();
+  assert.deepEqual(searchTerms('donde puedo solicitar un certificado laboral?'), ['certific', 'labor']);
+  assert.deepEqual(searchTerms('Que dice GF-PT-008?'), ['gf-pt-008']);
+  await f.service.search('certificado laboral');
+  const last = f.calls.at(-1);
+  assert.equal(last.params.term0, '%certific%'); assert.equal(last.params.term1, '%labor%');
+  assert(/@term0\) AND \(/.test(last.query));
+  await f.service.onModuleDestroy();
+});

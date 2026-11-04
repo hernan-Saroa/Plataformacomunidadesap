@@ -1,0 +1,45 @@
+name: Validate RUND AI deployment
+on:
+  pull_request:
+    paths:
+      - 'backend/rund-ocr-service/**'
+      - 'backend/academic-work-plan-service/**'
+      - 'scripts/rund-ai/**'
+      - 'scripts/setup-rund-ocr.ps1'
+      - 'docker-compose.rund-ai*.yml'
+      - 'deploy.*.sh'
+      - '.github/workflows/validate-rund-ai.yml'
+  push:
+    branches: [dev, qa, pre, prod]
+    paths:
+      - 'backend/rund-ocr-service/**'
+      - 'backend/academic-work-plan-service/**'
+      - 'scripts/rund-ai/**'
+      - 'scripts/setup-rund-ocr.ps1'
+      - 'docker-compose.rund-ai*.yml'
+      - 'deploy.*.sh'
+      - '.github/workflows/validate-rund-ai.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/academic-work-plan-service/package-lock.json
+      - name: Install PTA dependencies
+        run: npm ci --prefix backend/academic-work-plan-service --no-audit --no-fund
+      - name: Build PTA and diagnostic
+        run: npm run build --prefix backend/academic-work-plan-service
+      - name: OCR and extraction regression (synthetic documents)
+        working-directory: backend/academic-work-plan-service
+        run: node node_modules/jest/bin/jest.js --runInBand --runTestsByPath src/pta/banco-docentes/rund-ocr-client.spec.ts src/pta/banco-docentes/rund-local-http.spec.ts src/pta/banco-docentes/rund-extraccion.spec.ts src/pta/banco-docentes/rund-multiple-evidence.spec.ts
+      - name: Environment profiles, read-only preflight and Compose isolation
+        env:
+          RUND_AI_COMPOSE_RENDER_TEST: 'true'
+        run: node --test scripts/rund-ai/*.test.cjs scripts/verify-deploy-service-selection.test.cjs scripts/rund-documental/deploy-guard.test.cjs

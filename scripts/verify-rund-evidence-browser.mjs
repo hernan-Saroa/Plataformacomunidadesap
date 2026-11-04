@@ -38,11 +38,14 @@ get:async url=>{
 post:async(url,body)=>{
  window.fixtureCalls.push({url,body});
  if(url.includes('/datos/')){const parts=url.split('/');const campo=parts.at(-2),bloque=parts.at(-4);savedData[bloque+':'+campo]=body;sessionStorage.setItem('data-review-fixture',JSON.stringify(savedData));blocks.find(b=>b.bloque===bloque).estado=body.estado==='Rechazado'?'Devuelto':'En revisión';return {success:true};}
- if(url.endsWith('/revision')){const fields=body.alcance==='documento'?['DOCUMENTO_IDENTIDAD','NOMBRE_COMPLETO','GENERO','SEXO_BIOLOGICO','FECHA_NACIMIENTO']:[body.campo];support.revisiones_campos={...support.revisiones_campos,...Object.fromEntries(fields.map(field=>[field,{estado:body.estado,observacion:body.observacion,documentoVersionId:body.documentoVersionId}]))};const decisions=Object.values(support.revisiones_campos);support.estado=decisions.some(d=>d.estado==='Rechazado')?'Rechazado':decisions.length===5?'Aprobado':'Pendiente';sessionStorage.setItem('review-fixture',JSON.stringify(support));blocks[0].estado=body.estado==='Rechazado'?'Devuelto':'En revisión';logs.unshift({id:String(logs.length+1),accion:body.estado==='Aprobado'?'APROBAR_SOPORTE':'DEVOLVER_SOPORTE',bloque:'IDENTIDAD',actorId:'Revisor de prueba',createdAt:new Date().toISOString(),observacion:body.observacion,metadata:{nombreArchivo:support.nombre_archivo}});}
+ if(url.endsWith('/revision')){const fields=body.alcance==='documento'?['DOCUMENTO_IDENTIDAD','NOMBRE_COMPLETO','GENERO','SEXO_BIOLOGICO','FECHA_NACIMIENTO']:[body.campo];support.revisiones_campos={...support.revisiones_campos,...Object.fromEntries(fields.map(field=>[field,{estado:body.estado,observacion:body.observacion,documentoVersionId:body.documentoVersionId}]))};const decisions=Object.values(support.revisiones_campos);support.estado=decisions.some(d=>d.estado==='Rechazado')?'Rechazado':decisions.length===5?'Aprobado':'Pendiente';sessionStorage.setItem('review-fixture',JSON.stringify(support));blocks[0].estado=Object.entries(savedData).some(([key,decision])=>key.startsWith('IDENTIDAD:')&&decision.estado==='Rechazado')?'Devuelto':'En revisión';logs.unshift({id:String(logs.length+1),accion:body.estado==='Aprobado'?'APROBAR_SOPORTE':'DEVOLVER_SOPORTE',bloque:'IDENTIDAD',actorId:'Revisor de prueba',createdAt:new Date().toISOString(),observacion:body.observacion,metadata:{nombreArchivo:support.nombre_archivo}});}
  if(url.endsWith('/aprobar')){blocks[0].estado='Aprobado';blocks[0].fecha_revision=new Date().toISOString();}
  sessionStorage.setItem('review-logs',JSON.stringify(logs));return {success:true};
 },getBlob:async()=>new Blob(['%PDF-1.7\\n%%EOF'],{type:'application/pdf'})};`;
-const server = await createServer({ root, configFile: false, logLevel: 'error', server: { host: '127.0.0.1', port: 0 }, plugins: [
+const server = await createServer({ root, configFile: false, logLevel: 'error',
+  cacheDir:path.join(root,'.local/rund-review/vite-evidence'),
+  optimizeDeps:{noDiscovery:true,include:['react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime','lucide-react','sonner','framer-motion','@radix-ui/react-alert-dialog']},
+  server: { host: '127.0.0.1', port: 0 }, plugins: [
   { name: 'evidence-fixture', enforce: 'pre',
     resolveId(source) {
       if (source.endsWith('/services/api')) return '\0fixture-api';
@@ -77,6 +80,7 @@ try {
   await page.setViewport({ width: 1500, height: 1000, deviceScaleFactor: 1 });
   await page.goto(`${origin}/evidence-fixture`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Validar soporte'));
+  assert.equal((await page.$$('.rund-data-sources')).length,0,'Los soportes pendientes no deben contarse como respaldo del dato');
   const click = text => page.evaluate(label => { const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === label); if (!button || button.disabled) throw new Error('Button unavailable: '+label); button.click(); }, text);
   await click('Devolver soporte');
   await page.waitForSelector('#support-return-reason');
@@ -84,6 +88,9 @@ try {
   await page.type('#support-return-reason','El archivo no corresponde a la información registrada. Adjunte el soporte correcto.');
   await click('Confirmar devolución');
   await page.waitForFunction(() => document.body.textContent.includes('El archivo no corresponde'));
+  assert.equal((await page.$$('.rund-data-sources')).length,0,'Los soportes devueltos no deben aparecer en el contador de respaldos');
+  assert(await page.evaluate(()=>[...document.querySelectorAll('[role=status]')].some(el=>el.textContent==='Pendiente de revisión')));
+  assert.equal(await page.evaluate(()=>document.body.textContent.includes('Pendiente de corrección')),false);
   const artifactDir = path.join(root, '.local/rund-row-review-preview');
   await fs.mkdir(artifactDir, { recursive: true });
   await page.screenshot({ path: path.join(artifactDir,'devuelto.png'), fullPage: true });
@@ -94,6 +101,7 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Validar soporte'));
   await click('Validar soporte');
   await page.waitForFunction(() => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Validar soporte').length === 0);
+  assert.equal((await page.$$('.rund-data-sources')).length,5,'El soporte aceptado respalda los cinco datos de identidad');
   assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Aprobar bloque').disabled),true);
   // Admitting one identity document never approves its five independent data checks.
   for(let remaining=5;remaining>0;remaining--){

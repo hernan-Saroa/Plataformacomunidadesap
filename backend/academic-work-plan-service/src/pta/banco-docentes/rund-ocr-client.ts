@@ -36,16 +36,18 @@ export async function extractRundPdf(content: Buffer, baseUrl: string) {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(content)], { type: 'application/pdf' }), 'documento.pdf');
   let response: Response;
+  const signal = AbortSignal.timeout(180000);
   try {
     response = await fetch(`${baseUrl}${provider === 'RUND' ? '/extract-text' : '/extract'}`, {
-      method: 'POST', headers, body: form, signal: AbortSignal.timeout(180000), redirect: 'error',
+      method: 'POST', headers, body: form, signal, redirect: 'error',
     });
   } catch {
+    if (signal.aborted) throw new Error('OCR_TIMEOUT');
     throw new Error('OCR_CONEXION_FALLIDA');
   }
   if (!response.ok) throw new Error('OCR_NO_DISPONIBLE');
   let result: unknown;
   try { result = await response.json(); }
-  catch { throw new Error('OCR_INVALIDO'); }
+  catch { throw new Error(signal.aborted ? 'OCR_TIMEOUT' : 'OCR_INVALIDO'); }
   return normalizeRundOcrResult(result, provider);
 }

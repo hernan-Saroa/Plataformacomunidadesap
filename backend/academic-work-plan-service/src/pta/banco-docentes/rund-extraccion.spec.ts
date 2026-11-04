@@ -281,4 +281,21 @@ describe('F014: cola independiente del flujo documental',()=>{
       await jest.advanceTimersByTimeAsync(40000);expect(db.query).toHaveBeenCalledTimes(count);
     }finally{await service.onModuleDestroy();jest.useRealTimers();}
   });
+  it('libera el worker y registra un reintento si una operación de procesamiento nunca termina',async()=>{
+    jest.useFakeTimers();process.env.RUND_OCR_ENABLED='true';
+    const job={id,lease_id:id};
+    const db={query:jest.fn(async(sql:string)=>sql.includes('SELECT * FROM reservado')?[job]:[])};
+    const service=new RundExtraccionService(db as any,{} as any);
+    (service as any).processingTimeoutMs=100;
+    const processJob=jest.spyOn(service as any,'process')
+      .mockImplementationOnce(()=>new Promise(()=>undefined)).mockResolvedValueOnce(undefined);
+    try {
+      const pending=service.tick();
+      await jest.advanceTimersByTimeAsync(101);await pending;
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining("disponible_en=now()+interval '1 minute'"),[id,id,'EXTRACCION_TIMEOUT']);
+      const calls=db.query.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(20000);expect(db.query).toHaveBeenCalledTimes(calls);
+      await service.tick();expect(processJob).toHaveBeenCalledTimes(2);
+    }finally{await service.onModuleDestroy();jest.useRealTimers();}
+  });
 });

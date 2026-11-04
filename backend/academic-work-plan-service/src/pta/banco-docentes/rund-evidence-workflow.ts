@@ -100,15 +100,21 @@ export function evidenceApprovalProblem(block: string, docente: any, supports: a
   return null;
 }
 
-/** Marks the block returned while a return stays open; only then the reason is shown at block level. */
-async function blockStateAfterReturn(runner: Pick<QueryRunner, 'query'>, docenteId: string, block: string, note?: string) {
-  const supports = await runner.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
-  if (hasOpenEvidenceReturn(supports)) {
-    await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = 'Devuelto', observacion = COALESCE($3, observacion)
-      WHERE docente_id::text = $1 AND bloque = $2`, [docenteId, block, note || null]);
+/** Only data or an explicit block return requests profile correction. Files are optional. */
+async function blockStateAfterReturn(runner: Pick<QueryRunner, 'query'>, docenteId: string, block: string, preserveBlockReturn = false) {
+  if (preserveBlockReturn) {
+    const [lastBlockReview] = await runner.query(`SELECT accion, observacion FROM academic_work_plan."RundAprobacionLog"
+      WHERE docente_id::text=$1 AND bloque=$2 AND accion IN ('APROBAR','DEVOLVER','REABRIR_POR_EDICION')
+      ORDER BY "createdAt" DESC, id DESC LIMIT 1`,[docenteId,block]);
+    if (lastBlockReview?.accion === 'DEVOLVER') {
+      await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado='Devuelto', observacion=$3 WHERE docente_id::text=$1 AND bloque=$2`,
+        [docenteId,block,lastBlockReview.observacion]);
+      return;
+    }
   }
   const reviews = await loadDataReviews(runner, docenteId);
   if (reviews.some((review: any) => review.bloque === block && review.metadata?.estado === 'Rechazado')) {
+    const supports = await runner.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
     const context = dataReviewContext(block, await loadDataReviewProfile(runner, docenteId), await withCurrentEvidenceDocuments(runner, docenteId, supports), reviews);
     const returned = Object.values(context).find(decision => decision.estado === 'Rechazado');
     if (returned) await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado='Devuelto', observacion=$3 WHERE docente_id::text=$1 AND bloque=$2`,[docenteId,block,returned.observacion]);
@@ -188,7 +194,7 @@ export async function resetEvidenceBlock(runner: Pick<QueryRunner, 'query'>, doc
   await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = $1, cargado_por = $2,
     revisado_por = NULL, fecha_revision = NULL, observacion = NULL, version = version + 1, "updatedAt" = NOW()
     WHERE docente_id::text = $3 AND bloque = $4`, [missing ? 'Soporte faltante' : 'En revisión', actorId, docenteId, block]);
-  // A different returned support must remain visible until it is corrected or covered by another evidence.
+  // A still-current data return survives a change to an optional file.
   await blockStateAfterReturn(runner, docenteId, block);
   await syncEvidenceSummary(runner, docenteId);
 }
@@ -228,7 +234,7 @@ export class RundEvidenceWorkflow {
         throw new BadRequestException('El soporte no tiene un documento disponible en este bloque. Cargue una versión actual antes de revisarlo.');
       }
       if (!data.documentoVersionId || data.documentoVersionId !== (support.documento_perfil_id || support.documento_carpeta_id)) throw new ConflictException('El documento cambió. Actualice y revise la versión vigente.');
-      const [currentBlock] = await runner.query('SELECT version FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
+      const [currentBlock] = await runner.query('SELECT version, estado FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
       if (!currentBlock || data.blockVersion !== Number(currentBlock.version)) throw new ConflictException('La información del espacio cambió. Actualice los datos antes de revisar el soporte.');
       if (data.estado === 'Aprobado' && support.fecha_vencimiento && new Date(support.fecha_vencimiento) < new Date()) throw new BadRequestException('El soporte está vencido. Cargue una versión vigente.');
       const fields = evidenceFields(support.tipo_soporte);
@@ -249,9 +255,9 @@ export class RundEvidenceWorkflow {
       await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = $1, revisado_por = $2,
         fecha_revision = NOW(), observacion = $3, version = version + 1, "updatedAt" = NOW() WHERE docente_id::text = $4 AND bloque = $5`,
         ['En revisión', actorId, null, docenteId, block]);
-      // Returning one of several evidences is final only when no other evidence can accredit the row;
-      // otherwise the reason stays on that evidence and the block remains in review.
-      await blockStateAfterReturn(runner, docenteId, block, data.estado === 'Rechazado' ? data.observacion!.trim() : undefined);
+      // The file's reason stays on the evidence; preserve actual data/block returns.
+      // Uploads/replacements already reopen the block: do not revive an older return.
+      await blockStateAfterReturn(runner, docenteId, block, currentBlock.estado === 'Devuelto');
       const checkpoint = (await runner.query('SELECT id, tipo_soporte, "createdAt" FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]))
         .filter((s: any) => evidenceGroup(support.tipo_soporte).includes(s.tipo_soporte))
         .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || String(a.id).localeCompare(String(b.id)));

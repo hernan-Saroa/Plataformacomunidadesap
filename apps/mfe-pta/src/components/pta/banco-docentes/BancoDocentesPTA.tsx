@@ -753,7 +753,8 @@ export function BancoDocentesPTA() {
                                 {d.nombre_completo}
                               </p>
                               {rundReviewStatus(d.completitud).approved && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#047857', fontSize: 11, fontWeight: 700, marginTop: 3 }}><CheckCircle size={13} /> Perfil RUND aprobado</span>}
-                              {rundReviewStatus(d.completitud).returned && <span style={{ display: 'block', color: '#B91C1C', fontSize: 11, marginTop: 3 }}>Pendiente de corrección</span>}
+                              {!rundReviewStatus(d.completitud).approved && <span title={rundReviewStatus(d.completitud).description}
+                                style={{ display: 'block', color: rundReviewStatus(d.completitud).returned ? '#B91C1C' : '#64748B', fontSize: 11, marginTop: 3 }}>{rundReviewStatus(d.completitud).label}</span>}
                               {d.correo_institucional && (
                                 <p style={{ margin: 0, fontSize: '12px', lineHeight: '16px', color: '#6B7280' }}>
                                   {d.correo_institucional}

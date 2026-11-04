@@ -41,6 +41,8 @@ export class ChatbotServiceError extends Error {
 }
 
 export const CHATBOT_REQUEST_TIMEOUT_MS = 20_000;
+export const CHATBOT_ANSWER_TIMEOUT_MS = 4_000;
+export interface ChatTurn { pregunta: string; respuesta: string }
 
 const sessionRefreshes = new Map<string, Promise<void>>();
 
@@ -129,7 +131,8 @@ async function request<T>(apiBaseUrl: string | undefined, path: string, validate
   const baseUrl = `${gateway}/chatbot/api/v1`;
   const isPublic = path.startsWith('/public/');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CHATBOT_REQUEST_TIMEOUT_MS);
+  const isAnswer = init.method === 'POST' && (path === '/public/consultas' || /\/mensajes$/.test(path));
+  const timeout = setTimeout(() => controller.abort(), isAnswer ? CHATBOT_ANSWER_TIMEOUT_MS : CHATBOT_REQUEST_TIMEOUT_MS);
   try {
     const send = () => fetch(`${baseUrl}${path}`, {
       ...init,
@@ -166,10 +169,10 @@ export const createChatbotService = (apiBaseUrl?: string) => ({
     return request(apiBaseUrl, '/public/config', (value): value is { activo: boolean } => isRecord(value) && typeof value.activo === 'boolean');
   },
 
-  consultarPublico(contenido: string): Promise<{ respuesta: string }> {
+  consultarPublico(contenido: string, historial: ChatTurn[] = []): Promise<{ respuesta: string }> {
     return request(apiBaseUrl, '/public/consultas', (value): value is { respuesta: string } => isRecord(value)
       && typeof value.respuesta === 'string' && value.respuesta.trim().length > 0,
-    { method: 'POST', body: JSON.stringify({ contenido }) });
+    { method: 'POST', body: JSON.stringify({ contenido, ...(historial.length ? { historial: historial.slice(-2).map((turn) => ({ pregunta: turn.pregunta.slice(0, 500), respuesta: turn.respuesta.slice(0, 1500) })) } : {}) }) });
   },
 
   obtenerAcceso(): Promise<{ puedeVerTodas: boolean }> {

@@ -33,7 +33,10 @@ import {RundExtractionPanel} from '/apps/mfe-pta/src/components/pta/banco-docent
 function Fixture(){const [canEdit,setCanEdit]=useState(true),[revision,setRevision]=useState(0);window.setFixtureRole=setCanEdit;return React.createElement(RundExtractionPanel,{docenteId:'docente-ficticio',canEdit,revision,onConfirmed:()=>setRevision(n=>n+1),onView:()=>{window.sourceOpened=true;}});}
 createRoot(document.getElementById('root')).render(React.createElement(Fixture));`;
 
-const server = await createServer({root,configFile:false,logLevel:'error',server:{host:'127.0.0.1',port:0},plugins:[{
+const server = await createServer({root,configFile:false,logLevel:'error',
+  cacheDir:path.join(root,'.local/rund-review/vite-ocr'),
+  optimizeDeps:{noDiscovery:true,include:['react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime','lucide-react','sonner']},
+  server:{host:'127.0.0.1',port:0},plugins:[{
   name:'rund-extraction-fixture',enforce:'pre',
   resolveId(source){
     if(source.endsWith('/services/api')||source.endsWith('/services/api/ptaApi'))return '\0fixture-api';
@@ -65,6 +68,8 @@ try{
   await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Organizar análisis').click());
   await page.waitForSelector('[role=progressbar]');
   assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuetext')),'Extraer datos');
+  assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuenow')),'50');
+  assert.equal((await page.$$('[role=tab]')).length,3);
   const artifacts=path.join(root,'.local/rund-extraction-preview');await fs.mkdir(artifacts,{recursive:true});
   await page.screenshot({path:path.join(artifacts,'desktop.png'),fullPage:true});
   await page.setViewport({width:390,height:844});
@@ -72,7 +77,12 @@ try{
   await page.screenshot({path:path.join(artifacts,'mobile.png'),fullPage:true});
   await page.select('[aria-label="Archivo para revisar"]','job');
   await page.waitForSelector('.rund-extraction-suggestion');
-  assert.equal(await page.$('.rund-extraction-progress'),null,'Solo debe mostrarse el resultado del archivo seleccionado');
+  assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuenow')),'100');
+  assert.equal(await page.$eval('[role=tab][aria-selected=true]',el=>el.textContent.includes('diploma-ficticio.pdf')),true);
+  await page.click('[role=tab]:first-child');
+  assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuenow')),'50');
+  assert.equal(await page.$('.rund-extraction-suggestion'),null,'Las pestañas deben separar los resultados de cada archivo');
+  await page.select('[aria-label="Archivo para revisar"]','job');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'El selector y los resultados no deben desbordar en móvil');
   await page.screenshot({path:path.join(artifacts,'mobile-results.png'),fullPage:true});
   await page.setViewport({width:1400,height:950});

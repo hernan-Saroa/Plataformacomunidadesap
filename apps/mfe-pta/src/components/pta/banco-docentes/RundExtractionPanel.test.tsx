@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RundExtractionPanel } from './RundExtractionPanel';
+import { RundExtractionPanel, RundExtractionProgress } from './RundExtractionPanel';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../../shell/src/utils/connectivity';
 
@@ -211,8 +211,45 @@ describe('revisión humana de OCR',()=>{
   it('no permite aplicar una sugerencia cuyo PDF fue reemplazado',async()=>{
     vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],documento_estado:'REEMPLAZADO'}]});
     render(<RundExtractionPanel {...props}/>);
-    await openAssistant();
+    await waitFor(()=>expect(screen.queryByText('Consultando análisis…')).toBeNull());
     expect(screen.queryByText('Aplicar al perfil')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Organizar análisis'})).toBeNull();
+  });
+
+  it.each([
+    ['IDENTIDAD','nombreCompleto'],['FORMACION','pregrado'],
+    ['VINCULACION','actoAdministrativoVinculacion'],['ACADEMICO','ultimaEvaluacion'],
+  ])('excluye los archivos eliminados y reemplazados de las pestañas, el selector y los contadores de %s',async(activeBlock,campo)=>{
+    const current={...data.jobs[0],bloque:activeBlock,nombre_archivo:'vigente.pdf',sugerencias:[{...suggestion,campo}]};
+    const removed={...current,id:'deleted-job',documento_id:'deleted-file',nombre_archivo:'eliminado.pdf',documento_estado:'ELIMINADO'};
+    const replaced={...current,id:'replaced-job',documento_id:'replaced-file',nombre_archivo:'reemplazado.pdf',documento_estado:'REEMPLAZADO',estado:'PROCESANDO'};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[removed,current,replaced]});
+    const onPendingChange=vi.fn();
+    render(<RundExtractionPanel {...props} activeBlock={activeBlock} onPendingChange={onPendingChange}/>);
+    await openAssistant();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option').textContent).toContain('vigente.pdf');
+    expect(screen.queryByRole('tablist',{name:'Análisis por archivo'})).toBeNull();
+    expect(screen.queryByText(/eliminado.pdf|reemplazado.pdf/)).toBeNull();
+    expect(onPendingChange).toHaveBeenLastCalledWith(activeBlock,1,false);
+    expect(screen.getByText('1 pendientes')).toBeTruthy();
+  });
+  it('si se elimina el archivo seleccionado cambia al vigente y actualiza sus contadores',async()=>{
+    const other={...data.jobs[0],id:'j-2',documento_id:'d-2',nombre_archivo:'otro-vigente.pdf',sugerencias:[{...suggestion,id:'s-2'}]};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],other]});
+    const view=render(<RundExtractionPanel {...props}/>);await openAssistant();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-1'}});
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],documento_estado:'ELIMINADO'},other]});
+    view.rerender(<RundExtractionPanel {...props} revision={1}/>);
+    await waitFor(()=>expect(screen.getAllByRole('option')).toHaveLength(1));
+    expect((screen.getByLabelText('Archivo para revisar') as HTMLSelectElement).value).toBe('j-2');
+    expect(screen.queryByText(/diploma.pdf/)).toBeNull();
+    expect(screen.getByText('1 pendientes')).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...other,documento_estado:'ELIMINADO'}]});
+    view.rerender(<RundExtractionPanel {...props} revision={2}/>);
+    await waitFor(()=>expect(screen.queryByLabelText('Archivo para revisar')).toBeNull());
+    expect(screen.queryByText(/otro-vigente.pdf/)).toBeNull();
+    expect(screen.queryByText('1 pendientes')).toBeNull();
   });
 
   it('muestra claramente el dato confirmado por el operador',async()=>{
@@ -277,6 +314,27 @@ describe('revisión humana de OCR',()=>{
 });
 
 describe('OCR con varias evidencias',()=>{
+  it('cada pestaña conserva el porcentaje y las propuestas de su propio archivo al actualizarse',async()=>{
+    const running={...data.jobs[0],estado:'PROCESANDO',etapa:'OCR',sugerencias:[],worker_activo:true};
+    const complete={...data.jobs[0],id:'j-2',documento_id:'d-2',nombre_archivo:'segundo.pdf'};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[running,complete]});
+    render(<RundExtractionPanel {...props}/>);await openAssistant();
+    const first=screen.getByRole('tab',{name:/diploma.pdf/});
+    const second=screen.getByRole('tab',{name:/segundo.pdf/});
+    expect(first.textContent).toContain('25%');expect(second.textContent).toContain('100%');
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+    fireEvent.click(second);
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(second.id);
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+    expect(screen.getByRole('button',{name:'Aplicar al perfil'})).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...running,etapa:'MODELO'},complete]});
+    fireEvent.click(screen.getByRole('button',{name:'Actualizar sugerencias'}));
+    await waitFor(()=>expect(screen.getByRole('tab',{name:/diploma.pdf/}).textContent).toContain('50%'));
+    expect(screen.getByRole('tab',{name:/segundo.pdf/}).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(screen.getByRole('tab',{name:/segundo.pdf/}),{key:'ArrowLeft'});
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50');
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+  });
   const documents=[
     {id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',nombre_archivo:'maestria-1.pdf',bloque:'FORMACION',tipo_soporte:'diploma_maestria'},
     {id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',nombre_archivo:'maestria-2.pdf',bloque:'FORMACION',tipo_soporte:'diploma_maestria'},
@@ -385,6 +443,43 @@ describe('OCR con varias evidencias',()=>{
     expect(screen.getByText(/El dato del perfil cambió después de este análisis/)).toBeTruthy();
     expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
     expect(screen.getAllByRole('button',{name:'Rechazar sugerencia'})).toHaveLength(1);
+  });
+});
+
+describe('información de procesamiento sin avances ficticios',()=>{
+  it('explica el error y cuenta la espera antes del siguiente intento',()=>{
+    vi.useFakeTimers();
+    render(<RundExtractionProgress job={{id:'retry',estado:'PENDIENTE',intentos:1,error_codigo:'OCR_TIMEOUT',disponible_en:new Date(Date.now()+60000).toISOString()}}/>);
+    expect(screen.getByText(/motor OCR superó los 3 minutos/)).toBeTruthy();
+    expect(screen.getByText(/Próximo intento en 60 s/)).toBeTruthy();
+    act(()=>vi.advanceTimersByTime(1000));
+    expect(screen.getByText(/Próximo intento en 59 s/)).toBeTruthy();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+  });
+  it('conserva el avance por etapas mientras espera al motor y advierte si pierde el worker',()=>{
+    vi.useFakeTimers();
+    const job={id:'slow',estado:'PROCESANDO',etapa:'OCR',worker_activo:true,etapa_desde:new Date(Date.now()-61000).toISOString()};
+    const view=render(<RundExtractionProgress job={job}/>);
+    expect(screen.getByText(/Esta etapa lleva 1 min/)).toBeTruthy();
+    act(()=>vi.advanceTimersByTime(15000));
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+    view.rerender(<RundExtractionProgress job={{...job,worker_activo:false}}/>);
+    expect(screen.getByRole('status').textContent).toContain('Procesamiento interrumpido');
+    view.rerender(<RundExtractionProgress job={job} unavailable/>);
+    expect(screen.getByRole('status').textContent).toContain('Sin actualización del servidor');
+    expect(screen.getByText(/último estado recibido/)).toBeTruthy();
+  });
+  it('una consulta bloqueada muestra el fallo y permite la siguiente actualización',async()=>{
+    vi.useFakeTimers();
+    let resume!:(value:any)=>void;
+    vi.mocked(apiClient.get).mockReturnValueOnce(new Promise(()=>undefined))
+      .mockReturnValueOnce(new Promise(resolve=>{resume=resolve;}));
+    render(<RundExtractionPanel {...props}/>);
+    await act(async()=>{await vi.advanceTimersByTimeAsync(30001);});
+    expect(screen.getByText('No fue posible actualizar el análisis')).toBeTruthy();
+    await act(async()=>{resume(data);});
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(1);
+    expect(screen.queryByText('No fue posible actualizar el análisis')).toBeNull();
   });
 });
 

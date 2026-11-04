@@ -88,6 +88,8 @@ const engineResponses=[];
     assert.equal((await db.query('SELECT "estadoAprobacion" FROM academic_work_plan."Docente"'))[0].estadoAprobacion,'ACTIVO_RUND');
     if(realEngines)fs.writeFileSync(path.join(artifacts,'sugerencias-pendientes.json'),JSON.stringify(response,null,2));
     const suggestion=response.jobs[0].sugerencias[0];
+    assert.equal(suggestion.campo,'pregrado');
+    assert.equal(suggestion.valor.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(),'ADMINISTRACION PUBLICA');
     assert.equal(suggestion.estado,'PENDIENTE');
     assert.equal((await db.query('SELECT pregrado FROM academic_work_plan."Docente"'))[0].pregrado,'Título anterior');
     // Un error después de aplicar revierte el perfil y la decisión humana juntos.
@@ -113,10 +115,16 @@ const engineResponses=[];
     assert.equal((await db.query('SELECT * FROM academic_work_plan."RundExtraccionTrabajo"')).length,2);
     const [pending]=await db.query(`SELECT * FROM academic_work_plan."RundExtraccionSugerencia" WHERE estado='PENDIENTE'`);
     await db.query(`UPDATE academic_work_plan."RundDocumentoPerfil" SET estado='REEMPLAZADO' WHERE id=$1`,[document]);
+    assert.equal((await service.list(docente,actor)).jobs.length,0,'Un archivo reemplazado no debe aparecer en el asistente OCR.');
+    assert.equal((await db.query('SELECT * FROM academic_work_plan."RundExtraccionTrabajo" WHERE documento_id=$1',[document])).length,2,'El historial de análisis se conserva.');
+    await db.query(`UPDATE academic_work_plan."RundDocumentoPerfil" SET estado='ELIMINADO' WHERE id=$1`,[document]);
+    assert.equal((await service.list(docente,actor)).jobs.length,0,'Un archivo eliminado tampoco debe aparecer en el asistente OCR.');
     await assert.rejects(()=>db.transaction(tx=>lockExtractionSuggestions(tx,docente,[pending.id],{pregrado:'Administración Pública'})));
     await service.discard(docente,pending.id,'Documento reemplazado',actor);
     assert.equal((await db.query('SELECT estado FROM academic_work_plan."RundExtraccionSugerencia" WHERE id=$1',[pending.id]))[0].estado,'DESCARTADA');
     // La marca persistente sobrevive a reinicios: nuevas cargas sí, legado solo a petición.
+    // Este escenario comprueba el modo automático optativo, no el valor predeterminado.
+    process.env.RUND_EXTRACCION_AUTOMATICA='true';
     const legacy=randomUUID(),fresh=randomUUID();
     for(const [docId,age] of [[legacy,'-1 day'],[fresh,'1 second']])await db.query(`INSERT INTO academic_work_plan."RundDocumentoPerfil"
       VALUES($1,$2,'TITULOS','diploma_pregrado','nuevo.pdf',1,'ACTIVO','TEST',now()+$3::interval,'MEMORY','test',$4)`,[docId,docente,age,createHash('sha256').update(pdf).digest('hex')]);
@@ -133,13 +141,25 @@ const engineResponses=[];
       await restarted.tick();
     }
     assert.deepEqual((await db.query('SELECT estado,intentos FROM academic_work_plan."RundExtraccionTrabajo" WHERE documento_id=$1',[legacy]))[0],{estado:'ERROR',intentos:3});
-    assert.equal((await db.query('SELECT pregrado FROM academic_work_plan."Docente"'))[0].pregrado,'Administración Pública');
-    console.log(`F014: cola, extracción ${realEngines?'REAL OCR + Ollama':'simulada'}, revisión humana, rollback, reanálisis, obsolescencia, nuevas cargas tras reinicio y reintentos acotados verificados en PostgreSQL TEMP.`);
+    assert.equal((await db.query('SELECT pregrado FROM academic_work_plan."Docente"'))[0].pregrado,suggestion.valor);
+    // Reordering equal timestamps uses microseconds: Date in JavaScript would lose the chosen order.
+    const queueDocs=[randomUUID(),randomUUID()];
+    for(const docId of queueDocs)await db.query(`INSERT INTO academic_work_plan."RundDocumentoPerfil"
+      VALUES($1,$2,'TITULOS','diploma_pregrado','cola.pdf',1,'ACTIVO','TEST',now(),'MEMORY','test',$3,'FORMACION')`,[docId,docente,createHash('sha256').update(pdf).digest('hex')]);
+    await service.enqueueBatch(docente,queueDocs,actor);
+    const queueJobs=await db.query(`SELECT id FROM academic_work_plan."RundExtraccionTrabajo" WHERE documento_id::text=ANY($1::text[])`,[queueDocs]);
+    const queueOrder=queueJobs.map(job=>job.id).sort().reverse();
+    await db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET creado_en='2026-11-03T00:00:00Z' WHERE id::text=ANY($1::text[])`,[queueOrder]);
+    await service.reorderQueue(docente,queueOrder,actor);
+    const ordered=(await service.list(docente,actor)).jobs.filter(job=>queueOrder.includes(job.id)).sort((a,b)=>a.posicion_cola-b.posicion_cola);
+    assert.deepEqual(ordered.map(job=>job.id),queueOrder,'El orden visible debe conservar los microsegundos de la cola real.');
+    assert.deepEqual(ordered.map(job=>job.posicion_cola),[1,2]);
+    console.log(`F014: cola con precisión de microsegundos, extracción ${realEngines?'REAL OCR + Ollama':'simulada'}, revisión humana, rollback, reanálisis, obsolescencia, nuevas cargas tras reinicio y reintentos acotados verificados en PostgreSQL TEMP.`);
   }finally{
     global.fetch=originalFetch;
     localHttp.postLocalJson=originalPost;
     if(realEngines)fs.writeFileSync(path.join(artifacts,'motores.json'),JSON.stringify(engineResponses,null,2));
-    for(const key of ['RUND_OCR_ENABLED','RUND_OCR_PROVIDER','RUND_OCR_TOKEN','RUND_OCR_URL','RUND_OLLAMA_URL','RUND_OLLAMA_MODEL']){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}
+    for(const key of ['RUND_OCR_ENABLED','RUND_OCR_PROVIDER','RUND_OCR_TOKEN','RUND_OCR_URL','RUND_OLLAMA_URL','RUND_OLLAMA_MODEL','RUND_EXTRACCION_AUTOMATICA']){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}
     await client.query('ROLLBACK');await runner.release();await source.destroy();
   }
 })().catch(e=>{console.error(e.message);process.exitCode=1;});
