@@ -68,4 +68,45 @@ describe('NotificacionesService (Control Interno) · campana global', () => {
     const insert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO notifications.notificacion'));
     expect(insert?.[1][4]).toBe('Crítica');
   });
+
+  describe('campana y correo salen con la misma clave de evento', () => {
+    function armarCreate() {
+      const posts: any[] = [];
+      global.fetch = jest.fn(async (url: string, init: any) => {
+        posts.push({ url: String(url), body: JSON.parse(init.body) });
+        return { ok: true, status: 201, text: async () => '' };
+      }) as never;
+      const repo = {
+        create: jest.fn((x: any) => x),
+        findOne: jest.fn(async () => null),
+        save: jest.fn(async (x: any) => ({ id: 'n1', ...x })),
+      };
+      const configService = { get: jest.fn((k: string, d?: string) => (k === 'NOTIFICATIONS_SERVICE_URL' ? 'http://notif:3009' : d)) };
+      const service: any = new NotificacionesService(repo as any, repo as any, { query: jest.fn(async () => []) } as any, configService as any);
+      // El envío real elige destinatario por preferencias; aquí solo importa el cuerpo del correo.
+      service.enviarNotificacion = (n: any) => service.enviarCorreoReal(n, 'dest@esap.edu.co');
+      return { service, posts };
+    }
+
+    it.each([
+      ['recordatorio_plazo', 'EVT-AUD-003'],
+      ['aprobacion_plan', 'EVT-APR-001'],
+      ['rechazo_plan', 'EVT-APR-002'],
+    ])('%s: campana y correo llevan %s', async (tipo, codigo) => {
+      const { service, posts } = armarCreate();
+      await service.create({ usuarioId: 'u1', tipoNotificacion: tipo, titulo: 'T', mensaje: 'M' });
+      const campana = posts.find((p) => p.url.endsWith('/notifications'));
+      const correo = posts.find((p) => p.url.endsWith('/api/v1/emails/send'));
+      expect(campana.body.tipo_notificacion).toBe(codigo);
+      expect(correo.body.evento).toBe(codigo);
+      expect(correo.body.evento).toBe(campana.body.tipo_notificacion);
+    });
+
+    it('si el creador pasa metadata.eventoCode, ambos canales lo respetan', async () => {
+      const { service, posts } = armarCreate();
+      await service.create({ usuarioId: 'u1', tipoNotificacion: 'recordatorio_plazo', titulo: 'T', mensaje: 'M', metadata: { eventoCode: 'EVT-XYZ-009' } });
+      expect(posts.find((p) => p.url.endsWith('/notifications')).body.tipo_notificacion).toBe('EVT-XYZ-009');
+      expect(posts.find((p) => p.url.endsWith('/api/v1/emails/send')).body.evento).toBe('EVT-XYZ-009');
+    });
+  });
 });

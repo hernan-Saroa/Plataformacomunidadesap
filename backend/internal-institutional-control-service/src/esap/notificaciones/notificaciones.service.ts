@@ -700,9 +700,11 @@ export class NotificacionesService implements OnModuleInit {
   async create(createDto: CreateNotificacionDto, opciones?: { adjuntos?: AdjuntoCorreo[] }): Promise<Notificacion> {
     const tipoOriginal = String(createDto.tipoNotificacion || '');
     const tipoBd = this.mapTipoNotificacionParaBd(tipoOriginal, createDto.metadata);
+    // Campana y correo salen con la misma clave: la que pasó el creador o la traducida del tipo.
+    const evtCode = String((createDto.metadata as any)?.eventoCode || CODIGO_EVENTO[tipoOriginal] || tipoOriginal);
     const metadataConEvento = {
       ...(createDto.metadata || {}),
-      eventoCode: (createDto.metadata as any)?.eventoCode || tipoOriginal,
+      eventoCode: evtCode,
     };
 
     // ✅ NORMALIZACIÓN AGRESIVA: Limpiar caracteres corruptos
@@ -710,7 +712,6 @@ export class NotificacionesService implements OnModuleInit {
     const mensajeNormalizado = this.normalizarTexto(createDto.mensaje);
     
     const usuarioIdFinal = createDto.usuarioId;
-    const evtCode = CODIGO_EVENTO[tipoOriginal] || tipoOriginal;
 
     // ✅ SINCRONIZACIÓN TOTAL: Obtener configuración con fallback a valores reales del sistema
     let canalFinal = createDto.canal || CanalNotificacion.SISTEMA;
