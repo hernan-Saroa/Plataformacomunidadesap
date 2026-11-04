@@ -766,6 +766,11 @@ const CLAVES_LISTAS_TERMINOS_INFORMES = {
   rolesResponsablesTermino: 'sigl-roles-responsables-termino',
 } as const;
 
+// Los ejes estratégicos del PEI alimentan el formulario de Nuevo Indicador. Igual que
+// las listas anteriores, viven en el backend para que apliquen a todos los usuarios y
+// se reutiliza la misma clave de la caché local.
+const CLAVE_EJES_ESTRATEGICOS = 'sigl-ejes-estrategicos';
+
 // Lee una lista de caché local. Devuelve null si no existe o está corrupta.
 function leerListaLocal<T>(clave: string): T[] | null {
   const guardado = localStorage.getItem(clave);
@@ -793,6 +798,22 @@ type LecturaLista<T> =
   | { estado: 'ok'; lista: T[] }
   | { estado: 'sin-fila' }
   | { estado: 'error' };
+
+// Foto de todo lo parametrizable en pantalla; sirve para que Restablecer devuelva la
+// configuración al último estado guardado.
+interface EstadoConfiguraciones {
+  configuraciones: ConfiguracionModulo[];
+  ejesEstrategicos: EjeEstrategico[];
+  tiposIndicadores: TipoIndicador[];
+  tiposRequerimientos: TipoRequerimiento[];
+  organismosControl: OrganismoControl[];
+  entesControlPM: EnteControlPM[];
+  categoriasDocumentos: CategoriaDocumento[];
+  destinatariosInforme: DestinatarioInforme[];
+  entesSolicitantesInforme: EnteSolicitanteInforme[];
+  tiposFuenteNormativa: TipoFuenteNormativa[];
+  rolesResponsablesTermino: ClaveRolResponsableTermino[];
+}
 
 const REINTENTOS_LECTURA_LISTA = 2;
 const ESPERA_REINTENTO_MS = 400;
@@ -855,14 +876,16 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   // Evita repetir el aviso de autoguardado fallido en cada rebote del debounce; se
   // rearma en cuanto un guardado vuelve a salir bien.
   const avisoAutoguardadoFallidoRef = useRef(false);
+  // Último estado guardado de todas las secciones; null mientras no hay ediciones pendientes.
+  const ultimoGuardadoRef = useRef<EstadoConfiguraciones | null>(null);
 
-  // Avisa una sola vez de que la configuración de Términos e Informes no se pudo leer
-  // y que, por seguridad, no se está guardando.
+  // Avisa una sola vez de que parte de la configuración (Términos e Informes o Ejes
+  // Estratégicos) no se pudo leer y que, por seguridad, no se está guardando.
   const avisarListasNoCargadas = () => {
     if (avisoListasNoCargadasRef.current) return;
     avisoListasNoCargadasRef.current = true;
-    toast.error('No se pudo cargar la configuración de Términos e Informes', {
-      description: 'Para no sobrescribir lo ya parametrizado, los cambios de esta sección no se guardarán. Recarga la página e inténtalo de nuevo.',
+    toast.error('No se pudo cargar parte de la configuración (Términos e Informes o Ejes Estratégicos)', {
+      description: 'Para no sobrescribir lo ya parametrizado, los cambios de las secciones afectadas no se guardarán. Recarga la página e inténtalo de nuevo.',
       duration: 8000,
     });
   };
@@ -943,16 +966,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     };
     loadConfig();
 
-    const ejesGuardados = localStorage.getItem('sigl-ejes-estrategicos');
-    if (ejesGuardados) {
-      try {
-        const parsed = JSON.parse(ejesGuardados);
-        setEjesEstrategicos(parsed);
-        console.log('✅ Ejes Estratégicos cargados desde localStorage');
-      } catch (error) {
-        console.error('❌ Error al cargar ejes estratégicos:', error);
-      }
-    }
+    // Ejes Estratégicos: caché local para pintar de inmediato; el backend (más abajo)
+    // es la fuente de verdad.
+    const ejesLocales = leerListaLocal<EjeEstrategico>(CLAVE_EJES_ESTRATEGICOS);
+    if (ejesLocales) setEjesEstrategicos(ejesLocales);
 
     const indicadoresGuardados = localStorage.getItem('sigl-tipos-indicadores');
     if (indicadoresGuardados) {
@@ -1064,11 +1081,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     };
 
     const loadListasTerminosInformes = async () => {
-      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes, lecturaRolesResponsables] = await Promise.all([
+      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes, lecturaRolesResponsables, lecturaEjes] = await Promise.all([
         leerListaBackend<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme),
         leerListaBackend<EnteSolicitanteInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme),
         leerListaBackend<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa),
         leerListaBackend<ClaveRolResponsableTermino>(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino),
+        leerListaBackend<EjeEstrategico>(CLAVE_EJES_ESTRATEGICOS),
       ]);
 
       // El bloqueo de escritura se marca aunque el usuario ya esté editando: si no sabemos
@@ -1078,6 +1096,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         [lecturaEntes, CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme],
         [lecturaFuentes, CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa],
         [lecturaRolesResponsables, CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino],
+        [lecturaEjes, CLAVE_EJES_ESTRATEGICOS],
       ] as const;
       claves.forEach(([lectura, clave]) => {
         if (lectura.estado === 'error') listasNoCargadasRef.current.add(clave);
@@ -1095,9 +1114,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, setTiposFuenteNormativa);
       resolverLista(lecturaRolesResponsables, rolesResponsablesLocales, rolesResponsablesTerminoIniciales,
         CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, setRolesResponsablesTermino);
+      resolverLista(lecturaEjes, ejesLocales, ejesEstrategicosIniciales,
+        CLAVE_EJES_ESTRATEGICOS, setEjesEstrategicos);
 
       if (listasNoCargadasRef.current.size === 0) {
-        console.log('✅ Listas de Términos e Informes sincronizadas desde backend');
+        console.log('✅ Listas de Términos e Informes y Ejes Estratégicos sincronizados desde backend');
       }
     };
     cargaListasRef.current = loadListasTerminosInformes();
@@ -1199,80 +1220,96 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
   const getRolesResponsablesTermino = (): ClaveRolResponsableTermino[] => rolesResponsablesTermino;
 
+  // Foto del estado ya guardado (o cargado) justo antes de la primera edición pendiente.
+  // "Restablecer" vuelve a ella. Se descarta al guardar bien y se conserva si el guardado
+  // falla, para poder deshacer lo que no llegó al servidor.
+  const capturarUltimoGuardado = () => {
+    if (ultimoGuardadoRef.current) return;
+    ultimoGuardadoRef.current = {
+      configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos,
+      organismosControl, entesControlPM, categoriasDocumentos, destinatariosInforme,
+      entesSolicitantesInforme, tiposFuenteNormativa, rolesResponsablesTermino,
+    };
+  };
+
+  const marcarEdicion = () => {
+    capturarUltimoGuardado();
+    usuarioEditoRef.current = true;
+    setCambiosPendientes(true);
+  };
+
+  // Versión expuesta de setCambiosPendientes: marcar cambios sin pasar por un
+  // actualizar* también debe poder deshacerse con Restablecer.
+  const marcarCambiosPendientes = (valor: boolean) => {
+    if (valor) capturarUltimoGuardado();
+    setCambiosPendientes(valor);
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   // Actualizar ejes estratégicos
   const actualizarEjesEstrategicos = (nuevosEjes: EjeEstrategico[]) => {
     setEjesEstrategicos(nuevosEjes);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   // Actualizar tipos de indicadores
   const actualizarTiposIndicadores = (nuevosIndicadores: TipoIndicador[]) => {
     setTiposIndicadores(nuevosIndicadores);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   // Actualizar tipos de requerimientos
   // Actualizar tipos de requerimientos
   const actualizarTiposRequerimientos = (nuevosRequerimientos: TipoRequerimiento[]) => {
     setTiposRequerimientos(nuevosRequerimientos);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   // Actualizar organismos de control
   const actualizarOrganismosControl = (nuevosOrganismos: OrganismoControl[]) => {
     setOrganismosControl(nuevosOrganismos);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   const actualizarEntesControlPM = (nuevosEntes: EnteControlPM[]) => {
     setEntesControlPM(nuevosEntes);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   const actualizarCategoriasDocumentos = (nuevasCategorias: CategoriaDocumento[]) => {
     setCategoriasDocumentos(nuevasCategorias);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   const actualizarDestinatariosInforme = (nuevosDestinatarios: DestinatarioInforme[]) => {
     setDestinatariosInforme(nuevosDestinatarios);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   const actualizarEntesSolicitantesInforme = (nuevosEntes: EnteSolicitanteInforme[]) => {
     setEntesSolicitantesInforme(nuevosEntes);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   const actualizarTiposFuenteNormativa = (nuevosTipos: TipoFuenteNormativa[]) => {
     setTiposFuenteNormativa(nuevosTipos);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   const actualizarRolesResponsablesTermino = (nuevosRoles: ClaveRolResponsableTermino[]) => {
     setRolesResponsablesTermino(nuevosRoles);
-    usuarioEditoRef.current = true;
-    setCambiosPendientes(true);
+    marcarEdicion();
   };
 
   // Guardar configuraciones
   const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
+    // El guardado automático ya maneja su propio indicador; el manual lo muestra aquí.
+    if (!silencioso) setSavingStatus('saving');
     // Esperar la lectura inicial: hasta que termine no se sabe qué claves son seguras
     // de escribir. En la práctica ya está resuelta salvo que el usuario guarde en el
     // primer segundo tras abrir la pantalla.
@@ -1290,6 +1327,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       [CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInforme],
       [CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativa],
       [CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, rolesResponsablesTermino],
+      [CLAVE_EJES_ESTRATEGICOS, ejesEstrategicos],
     ];
     const listasGuardables = listasTerminosInformes.filter(([clave]) => !listasNoCargadasRef.current.has(clave));
     if (listasGuardables.length < listasTerminosInformes.length) {
@@ -1301,7 +1339,6 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     // final y una sola petición fallida se llevaba por delante todos los cambios).
     try {
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
-      localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
@@ -1387,9 +1424,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       // La caché local ya se escribió al inicio de esta función.
       usuarioEditoRef.current = false;
       avisoAutoguardadoFallidoRef.current = false;
+      ultimoGuardadoRef.current = null;
       setCambiosPendientes(false);
-      
+
       if (!silencioso) {
+        setSavingStatus('saved');
         toast.success('Configuraciones guardadas correctamente', {
           description: 'Los cambios se han aplicado a todos los módulos',
           duration: 3000
@@ -1400,7 +1439,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     } catch (error) {
       console.error('❌ Error al guardar configuraciones:', error);
       if (!silencioso) {
-        toast.error('Error al guardar configuraciones en el servidor');
+        setSavingStatus('error');
+        toast.error('Error al guardar configuraciones en el servidor', {
+          description: 'Los cambios siguen en pantalla: vuelve a pulsar "Guardar Cambios" para reintentar.',
+        });
       }
       throw error;
     }
@@ -1449,49 +1491,55 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     }
   }, [savingStatus]);
 
-  // Restablecer a valores por defecto
+  // Restablecer: devuelve la configuración al último estado guardado (no a los valores de
+  // fábrica). Descarta lo que quedó sin guardar, por ejemplo tras un autoguardado fallido.
   const restablecerDefecto = () => {
-    setConfiguraciones(configuracionesIniciales);
-    setEjesEstrategicos(ejesEstrategicosIniciales);
-    setTiposIndicadores(tiposIndicadoresIniciales);
-    setTiposRequerimientos(tiposRequerimientosIniciales);
-    setOrganismosControl(organismosControlIniciales);
-    setEntesControlPM(entesControlPMIniciales);
-    setCategoriasDocumentos(categoriasDocumentosIniciales);
-    setDestinatariosInforme(destinatariosInformeIniciales);
-    setEntesSolicitantesInforme(entesSolicitantesInformeIniciales);
-    setTiposFuenteNormativa(tiposFuenteNormativaIniciales);
-    setRolesResponsablesTermino(rolesResponsablesTerminoIniciales);
+    const guardado = ultimoGuardadoRef.current;
+    if (!guardado) {
+      toast.info('No hay cambios sin guardar', {
+        description: 'La configuración ya está en su último estado guardado',
+        duration: 3000
+      });
+      return;
+    }
 
-    localStorage.removeItem('sigl-configuraciones');
-    localStorage.removeItem('sigl-ejes-estrategicos');
-    localStorage.removeItem('sigl-tipos-indicadores');
-    localStorage.removeItem('sigl-tipos-requerimientos');
-    localStorage.removeItem('sigl-organismos-control');
-    localStorage.removeItem('sigl-entes-control-pm');
-    localStorage.removeItem('sigl-categorias-documentos');
-    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme);
-    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme);
-    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
-    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino);
+    setConfiguraciones(guardado.configuraciones);
+    setEjesEstrategicos(guardado.ejesEstrategicos);
+    setTiposIndicadores(guardado.tiposIndicadores);
+    setTiposRequerimientos(guardado.tiposRequerimientos);
+    setOrganismosControl(guardado.organismosControl);
+    setEntesControlPM(guardado.entesControlPM);
+    setCategoriasDocumentos(guardado.categoriasDocumentos);
+    setDestinatariosInforme(guardado.destinatariosInforme);
+    setEntesSolicitantesInforme(guardado.entesSolicitantesInforme);
+    setTiposFuenteNormativa(guardado.tiposFuenteNormativa);
+    setRolesResponsablesTermino(guardado.rolesResponsablesTermino);
 
-    // Las listas de Términos e Informes viven en el backend: hay que devolverlas
-    // también allí, o la próxima recarga volvería a traer los valores anteriores.
-    Promise.allSettled([
-      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInformeIniciales),
-      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInformeIniciales),
-      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativaIniciales),
-      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, rolesResponsablesTerminoIniciales),
-    ]).then(resultados => {
-      if (resultados.some(r => r.status === 'rejected')) {
-        console.warn('⚠️ No se pudieron restablecer en el backend todas las listas de Términos e Informes');
-      }
-    });
+    // Una escritura fallida deja la edición en la caché local (se guarda antes de llamar
+    // al backend): hay que devolverla al estado restaurado o reaparecería al recargar.
+    try {
+      localStorage.setItem('sigl-configuraciones', JSON.stringify(guardado.configuraciones));
+      localStorage.setItem(CLAVE_EJES_ESTRATEGICOS, JSON.stringify(guardado.ejesEstrategicos));
+      localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(guardado.tiposIndicadores));
+      localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(guardado.tiposRequerimientos));
+      localStorage.setItem('sigl-organismos-control', JSON.stringify(guardado.organismosControl));
+      localStorage.setItem('sigl-entes-control-pm', JSON.stringify(guardado.entesControlPM));
+      localStorage.setItem('sigl-categorias-documentos', JSON.stringify(guardado.categoriasDocumentos));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(guardado.destinatariosInforme));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(guardado.entesSolicitantesInforme));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, JSON.stringify(guardado.tiposFuenteNormativa));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, JSON.stringify(guardado.rolesResponsablesTermino));
+    } catch (error) {
+      console.warn('⚠️ No se pudo actualizar la caché local de configuraciones:', error);
+    }
 
+    ultimoGuardadoRef.current = null;
     usuarioEditoRef.current = false;
+    avisoAutoguardadoFallidoRef.current = false;
     setCambiosPendientes(false);
+    setSavingStatus('idle');
     toast.success('Configuraciones restablecidas', {
-      description: 'Se han restaurado los valores por defecto',
+      description: 'Se restauró el último estado guardado',
       duration: 3000
     });
   };
@@ -1541,7 +1589,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     actualizarRolesResponsablesTermino,
     guardarConfiguraciones,
     restablecerDefecto,
-    setCambiosPendientes,
+    setCambiosPendientes: marcarCambiosPendientes,
     savingStatus,
   };
 
