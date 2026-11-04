@@ -1,0 +1,15 @@
+# Opt-in: conserva BD, JWT, almacenamiento, revision humana y red original de PTA.
+services:
+  academic-work-plan-service:
+    environment:
+      RUND_OCR_ENABLED: ${RUND_OCR_ENABLED:?Falta RUND_OCR_ENABLED}
+      RUND_OCR_PROVIDER: ${RUND_OCR_PROVIDER:?Falta RUND_OCR_PROVIDER}
+      RUND_OCR_URL: ${RUND_OCR_URL:?Falta RUND_OCR_URL}
+      RUND_OLLAMA_URL: ${RUND_OLLAMA_URL:?Falta RUND_OLLAMA_URL}
+      RUND_OLLAMA_MODEL: ${RUND_OLLAMA_MODEL:?Falta RUND_OLLAMA_MODEL}
+    networks:
+      rund-ai: {}
+networks:
+  rund-ai:
+    external: true
+    name: ${RUND_AI_NETWORK:?Falta RUND_AI_NETWORK}

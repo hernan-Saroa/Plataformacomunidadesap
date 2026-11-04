@@ -1,0 +1,15 @@
+# Overlay opcional para cualquiera de las composiciones de la plataforma.
+# Crear primero la instancia de docker-compose.chatbot-ia.yml (proyecto esap-chatbot-ai).
+services:
+  chatbot-service:
+    environment:
+      CHATBOT_OLLAMA_URL: ${CHATBOT_OLLAMA_URL:-http://chatbot-ollama:11434}
+    networks:
+      - chatbot-knowledge
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+networks:
+  chatbot-knowledge:
+    external: true
+    name: ${CHATBOT_AI_NETWORK:-esap-chatbot-ai_default}

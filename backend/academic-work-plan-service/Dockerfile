@@ -29,6 +29,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --prefer-offline
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+COPY scripts/check-rund-ai.cjs ./scripts/check-rund-ai.cjs
 
 # Expose the port the app runs on
 EXPOSE 3000

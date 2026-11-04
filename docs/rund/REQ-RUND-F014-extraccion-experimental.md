@@ -4,6 +4,13 @@ Implementación del procesamiento local PP-OCRv6 → Qwen 3.5/Ollama para propon
 
 ## Estado de entrega
 
+Para instalar el perfil activo RUND/Gemma en dev, QA, pre o produccion, use
+[Instalacion de IA por ambiente](INSTALACION-IA-POR-AMBIENTE.md). Distingue ese
+perfil del experimento LOCAL/Qwen documentado mas abajo y permite reutilizar
+los motores existentes sin sustituirlos.
+
+Validación local del 3 de noviembre de 2026: Docker Desktop devolvía HTTP 500 y los puertos OCR/Ollama no respondían. Se recuperó Docker conservando los ocho contenedores y sus volúmenes, y se restableció PTA en el puerto 3003. La instalación activa usa el proveedor `RUND` (PaddleOCR compatible en 8000) y `gemma4:e4b` local en Ollama (11434); no se sustituyeron sus modelos ni se modificaron expedientes durante las pruebas. Pasaron 131 pruebas backend, 40 de interfaz, las compilaciones de PTA y la prueba en navegador con selección individual, lote ordenado, corrección humana y vistas de 320/390/768/1400 píxeles. La integración real con PDF ficticio y tablas temporales de PostgreSQL pasó; con el modelo caliente, OCR tardó 6,0/4,6/4,5 segundos y Ollama 1,4/1,2/1,2 segundos. Estos tiempos no representan todos los tipos o tamaños de PDF.
+
 La instalación local se actualizó y comprobó el 25 de septiembre de 2026 con un perfil de mayor precisión: PP-OCRv6 medium con corrección de orientación/perspectiva y Qwen 3.5 4B para interpretar los campos en español. Los dos modelos Gemma anteriores fueron retirados después de validar Qwen. Las migraciones 656 y 657 permanecen vigentes y no se ha desplegado en producción.
 
 La prueba completa utilizó un diploma ficticio, motores reales y PostgreSQL con tablas temporales y rollback. PP-OCRv6 leyó correctamente todo el texto y Qwen extrajo «Administración Pública» con la cita exacta, mantuvo el perfil intacto mientras la sugerencia estaba pendiente y verificó la confirmación humana, el rollback conjunto, la no duplicación, el reemplazo documental, el descarte y los reintentos. En este equipo las tres lecturas OCR tardaron 74,3 / 56,6 / 54,1 segundos y Qwen 3,6 / 2,7 / 3,4 segundos. El nuevo perfil todavía debe medirse con el corpus institucional acordado.
@@ -11,6 +18,12 @@ La prueba completa utilizó un diploma ficticio, motores reales y PostgreSQL con
 Los artefactos reproducibles están en `.local/rund-extraction-real/`. No se analizaron ni modificaron expedientes reales para esta prueba. La interfaz se verificó en navegador con componentes reales y API simulada. **Sigue pendiente la evaluación de precisión con un conjunto representativo de soportes institucionales**: un diploma sintético no acredita precisión general. El módulo conserva su carácter experimental y la validación humana obligatoria.
 
 ## Uso del operador
+
+El asistente OCR solo lista análisis cuyos documentos siguen `ACTIVO`. Los archivos eliminados o reemplazados no aparecen en las pestañas, el selector ni los contadores de sugerencias; sus trabajos y decisiones se conservan en la base para trazabilidad. Los reanálisis de un archivo todavía vigente siguen disponibles en el selector. El filtro se aplica antes del límite de resultados en el servidor y también en la interfaz. Al eliminar el archivo seleccionado, la interfaz pasa a otro vigente o deja de mostrar resultados si no queda ninguno.
+
+El asistente muestra pestañas por archivo y conserva el selector de análisis anteriores. Cada pestaña tiene su estado y una barra propia. El porcentaje representa las cuatro etapas verificadas: 0% al preparar el PDF, 25% al iniciar OCR, 50% al iniciar la extracción de datos, 75% al validar y 100% al completar. Los motores compatibles no entregan progreso por página o token, por lo que el porcentaje permanece estable dentro de una etapa y no estima el tiempo restante. La consulta se actualiza cada cinco segundos; si no responde en treinta segundos se muestra el último estado como no actualizado y se permite una nueva consulta.
+
+Se informa el tiempo transcurrido, el motivo del fallo, los intentos y la espera antes del siguiente intento. OCR tiene un plazo de tres minutos y el modelo de diez minutos. El worker tiene además un límite total de quince minutos para liberar la reserva si se bloquea una lectura u otra operación. Los resultados que lleguen después siguen sujetos a la comprobación de la reserva y no pueden reemplazar otro intento. El vencimiento o la pérdida de una conexión se distingue de una respuesta inválida. `worker_activo` indica si la reserva continúa vigente; no mide el progreso interno del motor.
 
 El OCR es una ayuda opcional: el cargador puede adjuntar los soportes y el revisor puede validar los campos y aprobar los bloques sin usar, confirmar ni descartar sugerencias OCR. Sus estados de cola, procesamiento, error y propuestas pendientes no bloquean ese flujo. Analizar un documento o publicar sus sugerencias conserva las aprobaciones existentes. Solo aplicar voluntariamente una propuesta que cambie datos del perfil requiere revisar otra vez los bloques afectados. La validación humana descrita en este documento es obligatoria para **aplicar** un dato extraído, no para utilizar la revisión documental convencional.
 

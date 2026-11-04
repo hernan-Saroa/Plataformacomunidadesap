@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CHATBOT_REQUEST_TIMEOUT_MS, ChatbotHttpError, ChatbotService, ChatbotServiceError, createChatbotService, resolveChatbotGatewayBaseUrl } from './chatbot.service';
+import { CHATBOT_ANSWER_TIMEOUT_MS, CHATBOT_REQUEST_TIMEOUT_MS, ChatbotHttpError, ChatbotService, ChatbotServiceError, createChatbotService, resolveChatbotGatewayBaseUrl } from './chatbot.service';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
@@ -172,7 +172,7 @@ describe('cliente autenticado del chatbot', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     const failure = expect(ChatbotService.enviarMensaje('id', 'Hola')).rejects.toMatchObject({ reason: 'timeout' });
-    await vi.advanceTimersByTimeAsync(CHATBOT_REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(CHATBOT_ANSWER_TIMEOUT_MS);
     await failure;
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
@@ -199,6 +199,38 @@ describe('cliente autenticado del chatbot', () => {
     vi.stubGlobal('fetch', fetchMock);
     await ChatbotService.listarConversaciones(true);
     expect(fetchMock.mock.calls[0][0]).toContain('todos=true');
+  });
+});
+
+describe('consultas documentales con IA', () => {
+  it('cancela a los cuatro segundos una respuesta pública bloqueada sin reintentos', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const failure = expect(ChatbotService.consultarPublico('Prueba documental')).rejects.toMatchObject({ reason: 'timeout' });
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await failure;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('envía solo los últimos turnos acotados sin cookies ni identidad', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ respuesta: 'Respuesta con fuentes' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await ChatbotService.consultarPublico('Pregunta', [
+      { pregunta: 'Antigua', respuesta: 'Descartada' },
+      { pregunta: 'x'.repeat(900), respuesta: 'y'.repeat(2000) },
+      { pregunta: 'Reciente', respuesta: 'Respuesta anterior' },
+    ]);
+    const options = fetchMock.mock.calls[0][1];
+    const body = JSON.parse(options.body);
+    expect(options.credentials).toBe('omit'); expect(body.historial).toHaveLength(2);
+    expect(body.historial[0].pregunta).toHaveLength(500); expect(body.historial[0].respuesta).toHaveLength(1500);
+    expect(body.historial[1].pregunta).toBe('Reciente');
+    expect(Object.keys(body)).toEqual(['contenido', 'historial']);
   });
 });
 

@@ -1,5 +1,15 @@
 # Fuente documental Isolución en el chatbot
 
+**Actualización del 3 de noviembre de 2026:** la conexión SQL real y el mapeo de
+101 columnas ya funcionan. Se implementó la integración de Qwen, recuperación y
+lectura HTML/PDF/DOCX con configuración por ambiente. Las 871 fichas revisadas no
+aportan texto documental; su contenido se recupera de los enlaces completando
+la sesión web técnica de consulta. Se verificó una respuesta con documentos
+reales de viáticos. El usuario confirmó la exposición pública de los aprobados.
+El estado vigente, pruebas y despliegue están en
+[Configuración del chatbot con IA](CONFIGURACION-CHATBOT-IA.md).
+Las secciones siguientes describen la entrega anterior de octubre.
+
 ## Estado
 
 Se instaló `mssql` 12.7.11 en `backend/chatbot-service`, junto con sus tipos. El conector está registrado en el módulo del chat y dispone de diagnóstico independiente. No cambia PostgreSQL, certificados laborales, RUND, Ollama ni los permisos del gateway. Las dependencias del controlador requieren Node 22 o posterior; las dos etapas del Dockerfile del chatbot usan Node 22.

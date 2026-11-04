@@ -15,3 +15,22 @@ it.each(['**', '****', '**sin cierre', '**dos\nlíneas**'])('conserva el texto s
   expect(container.textContent).toBe(text);
   expect(container.querySelector('strong')).toBeNull();
 });
+
+it('permite abrir fuentes HTTPS sin interpretar HTML ni esquemas de script', () => {
+  const { container } = render(<ChatMessageText text={'Fuente: https://example.invalid/documento.pdf. <img src=x> javascript:alert(1)'} />);
+  const link = container.querySelector('a');
+  expect(link?.getAttribute('href')).toBe('https://example.invalid/documento.pdf');
+  expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+  expect(container.querySelector('img')).toBeNull();
+});
+
+it('no activa enlaces con credenciales', () => {
+  const { container } = render(<ChatMessageText text={'https://usuario:clave@example.invalid/documento'} />);
+  expect(container.querySelector('a')).toBeNull();
+});
+
+it('abre el servicio laboral con un enlace relativo válido en cualquier ambiente', () => {
+  const { container } = render(<ChatMessageText text={'[Solicitar certificado laboral](/solicitar-certificado-laboral)'} />);
+  expect(container.querySelector('a')?.getAttribute('href')).toBe('/solicitar-certificado-laboral');
+  expect(container.textContent).toBe('Solicitar certificado laboral');
+});

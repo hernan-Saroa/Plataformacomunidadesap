@@ -100,7 +100,7 @@ const { dataReviewContext, loadDataReviewProfile, loadDataReviews } = require(pa
       assert.equal(saved.revisiones_campos[fields[fields.length - 1]].estado, 'Aprobado');
       assert.equal(saved.revisiones_campos[fields[0]].estado, 'Rechazado');
       assert.equal(saved.estado, 'Rechazado');
-      assert.equal((await block(s.bloque)).estado, 'Devuelto');
+      assert.equal((await block(s.bloque)).estado, 'En revisión');
       checks.push(`Decisiones documentales independientes persistidas: ${type}`);
     };
     // Empty fields cannot create an attachment, even through the document-library API.
@@ -195,6 +195,7 @@ const { dataReviewContext, loadDataReviewProfile, loadDataReviews } = require(pa
     assert.equal((await support('documento_identidad')).observacion, null);
     await assert.rejects(workflow.reviewSupport(id, 'IDENTIDAD', s1.id, { estado: 'Aprobado', documentoVersionId: first.id }, 'CARGADOR'), /cambió/);
     await review('documento_identidad');
+    assert.equal((await block('IDENTIDAD')).estado,'En revisión','Una nueva versión no debe reactivar la devolución del bloque anterior al revisar su soporte.');
     await reviewBlock(id, 'IDENTIDAD', 'REVISOR');
     assert.equal((await block('IDENTIDAD')).estado, 'Aprobado');
     assert.equal((await documents.list(id))[0].estadoRevision, 'Aprobado');
@@ -317,8 +318,8 @@ const { dataReviewContext, loadDataReviewProfile, loadDataReviews } = require(pa
     await review('contrato', 'Rechazado', 'Contrato de otra persona.');
     assert.equal((await support('resolucion_convocatoria')).estado, 'Aprobado');
     await reviewBlock(id, 'ACADEMICO', 'REVISOR');
-    assert.equal((await query('SELECT "estadoAprobacion" FROM academic_work_plan."Docente" WHERE id = $1', [id]))[0].estadoAprobacion, 'DEVUELTO');
-    checks.push('Devolución individual conserva otros soportes; aprobar otro bloque conserva DEVUELTO global');
+    assert.equal((await query('SELECT "estadoAprobacion" FROM academic_work_plan."Docente" WHERE id = $1', [id]))[0].estadoAprobacion, 'PENDIENTE_APROBACION');
+    checks.push('Devolver un archivo conserva los demás soportes y deja el perfil en revisión, sin pedir corrección de datos');
     const recoveredDocuments = await new RundDocumentosService(db, storage).list(id);
     assert.equal(recoveredDocuments.find(d => d.id === third.id).estadoRevision, 'Aprobado');
     // A fresh service reads the persisted evidence; only OTP identity/list/audit plumbing is isolated here.
@@ -376,6 +377,27 @@ const { dataReviewContext, loadDataReviewProfile, loadDataReviews } = require(pa
     assert.deepEqual(await block('ACADEMICO'), beforeAcademic);
     assert.equal((await client.query(migration))[1].rowCount, 0);
     checks.push('Migraci\u00f3n idempotente: reabre aprobaciones compartidas antiguas y conserva los otros bloques');
+    const statusMigration = require('node:fs').readFileSync(path.resolve(__dirname,'../db/migrations/675_rund_optional_support_review_status.sql'),'utf8')
+      .replaceAll('academic_work_plan.','pg_temp.');
+    const statusProfiles=[];
+    for(const action of ['DEVOLVER_SOPORTE','DEVOLVER_DATO','DEVOLVER']) {
+      const profileId=randomUUID();statusProfiles.push(profileId);
+      const fixture={...values,id:profileId,estadoAprobacion:'DEVUELTO',completitud:JSON.stringify({IDENTIDAD:'Devuelto'})};
+      await client.query(`INSERT INTO pg_temp."Docente" (${Object.keys(fixture).map(key=>`"${key}"`).join(',')}) VALUES (${Object.keys(fixture).map((_,index)=>`$${index+1}`).join(',')})`,Object.values(fixture));
+      await query(`INSERT INTO academic_work_plan."RundCampoEstado" (id,docente_id,bloque,estado,version,observacion) VALUES($1,$2,'IDENTIDAD','Devuelto',5,'Motivo conservado')`,[randomUUID(),profileId]);
+      for(const decision of [...new Set(['DEVOLVER_SOPORTE',action])])await query(`INSERT INTO academic_work_plan."RundAprobacionLog" (id,docente_id,bloque,accion,actor_id,observacion,"createdAt") VALUES($1,$2,'IDENTIDAD',$3,'REVISOR','Motivo conservado',clock_timestamp())`,[randomUUID(),profileId,decision]);
+    }
+    await client.query(statusMigration);
+    for(const [index,profileId] of statusProfiles.entries()){
+      const [saved]=await query('SELECT "estadoAprobacion",completitud FROM academic_work_plan."Docente" WHERE id=$1',[profileId]);
+      assert.equal(saved.estadoAprobacion,index===0?'PENDIENTE_APROBACION':'DEVUELTO');
+      assert.equal(saved.completitud.IDENTIDAD,index===0?'En revisión':'Devuelto');
+    }
+    const correctionLog=await query(`SELECT metadata FROM academic_work_plan."RundAprobacionLog" WHERE accion='NORMALIZAR_ESTADO_SOPORTE_OPCIONAL' AND docente_id::text=$1`,[statusProfiles[0]]);
+    assert.equal(correctionLog.length,1);assert.equal(correctionLog[0].metadata.observacionAnterior,'Motivo conservado');
+    await client.query(statusMigration);
+    assert.equal((await query(`SELECT id FROM academic_work_plan."RundAprobacionLog" WHERE accion='NORMALIZAR_ESTADO_SOPORTE_OPCIONAL' AND docente_id::text=$1`,[statusProfiles[0]])).length,1);
+    checks.push('Migración 675: normaliza solo devoluciones de archivos opcionales, conserva devoluciones de datos/bloques y no duplica auditorías');
     console.log(JSON.stringify({ success: true, isolatedTemporaryTables: true, checks, auditEntries: logs.length }, null, 2));
   } finally {
     await client.query('ROLLBACK');

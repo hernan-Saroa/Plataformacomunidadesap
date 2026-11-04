@@ -768,7 +768,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           )}
         </div>
         <div style={{ textAlign: 'right', minWidth: 220 }}>
-          <div role="status" style={{ fontSize: 12, fontWeight: 700, color: reviewStatus.approved ? '#047857' : reviewStatus.returned ? '#B91C1C' : '#64748B', marginBottom: 6 }}>{reviewStatus.label}</div>
+          <div role="status" title={reviewStatus.description} style={{ fontSize: 12, fontWeight: 700, color: reviewStatus.approved ? '#047857' : reviewStatus.returned ? '#B91C1C' : '#64748B', marginBottom: 6 }}>{reviewStatus.label}</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Secciones de datos aprobadas</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
@@ -978,9 +978,11 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
 
                   <div className="rund-checkpoint-grid">
                     {cfg.campos.map((c, idx) => {
-                      // Only evidences with a current file are shown and reviewed.
+                      // Only admitted files back a data row; all files stay in document review.
+                      // Use the current version's row decision for historical shared documents.
                       const evidences = c.tipoSoporte ? rundCheckpointEvidences(b.soportes || [], c.tipoSoporte)
-                        .filter((support: any) => canReturnRundBlock({ bloque: b.bloque, soportes: [support] })) : [];
+                        .filter((support: any) => canReturnRundBlock({ bloque: b.bloque, soportes: [support] })
+                          && rundEvidenceDecision(support, c).estado === 'Aprobado') : [];
                       const hasDoc = evidences.length > 0;
                       const dataDecision = b.revisionDatos?.[c.revisionId||c.tipoSoporte];
                       const dataState = dataDecision?.estado || 'Pendiente';
@@ -1005,7 +1007,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                           <div className="rund-checkpoint-row__evidence">
                             <span className="rund-checkpoint-reference">{!c.tipoSoporte ? c.documento : hasDoc
                               ? admittedCount + (admittedCount===1?' admitido de ':' admitidos de ') + evidences.length + (evidences.length===1?' soporte · ':' soportes · ') + c.documento
-                              : 'Sin soporte adjunto · Puedes validar el dato con tu criterio.'}</span>
+                              : 'Sin soportes aceptados · Puedes validar el dato con tu criterio.'}</span>
                             {hasDoc&&<details className="rund-data-sources"><summary>Consultar soportes de este dato ({evidences.length})</summary>
                               {evidences.map((evidence:any)=><div key={evidence.id}><span>{evidence.nombre_archivo||c.documento}</span>
                                 <button type="button" onClick={()=>openDocViewer(evidence.documento_carpeta_id||evidence.url||'',evidence.nombre_archivo||c.documento,c.campo)}>Ver soporte</button></div>)}

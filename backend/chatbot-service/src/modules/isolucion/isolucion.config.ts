@@ -33,9 +33,15 @@ export function isolucionConfig(config: ConfigService) {
     port: integer('PORT', 1433, 1, 65535),
     encrypt: get('ENCRYPT', 'true') !== 'false',
     trustServerCertificate: get('TRUST_SERVER_CERTIFICATE', 'false') === 'true',
+    documentBaseUrl: get('DOCUMENT_BASE_URL'),
+    documentPathPrefix: get('DOCUMENT_PATH_PREFIX'),
+    publicEnabled: get('PUBLIC_ENABLED', 'false') === 'true',
+    publicColumn: get('PUBLIC_ALLOWED_COLUMN'), publicValue: get('PUBLIC_ALLOWED_VALUE'),
+    extraTextColumns: get('TEXT_COLUMNS').split(',').map((item) => item.trim()).filter(Boolean).slice(0, 10),
     columns: {
       id: get('ID_COLUMN'), title: get('TITLE_COLUMN'), text: get('TEXT_COLUMN'),
       url: get('URL_COLUMN'), version: get('VERSION_COLUMN'), allowed: get('ALLOWED_COLUMN'),
+      code: get('CODE_COLUMN'), process: get('PROCESS_COLUMN'),
     },
     allowedValue: get('ALLOWED_VALUE'),
   };
