@@ -136,12 +136,12 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
     await waitFor(() => expect(servicio.actualizarEvento).toHaveBeenCalledWith('pta', 'pta_aprobado', { obligatorio: true }));
   });
 
-  it('un aviso solo de correo no ofrece destinatarios adicionales', async () => {
+  it('un aviso solo de correo también admite destinatarios adicionales (reciben copia del correo)', async () => {
     await abrirConfiguracionDePta();
     // pta_otp (el segundo) solo manda correo.
     fireEvent.click(screen.getAllByRole('button', { name: 'Más opciones' })[1]);
-    expect(screen.getByText(/no admite destinatarios adicionales/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Agregar' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Destinatarios adicionales/)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Agregar' }).length).toBe(3);
   });
 
   it('apagar el sobre deja el aviso solo en la campana y guarda solo ese campo en la ruta del módulo (CA2)', async () => {

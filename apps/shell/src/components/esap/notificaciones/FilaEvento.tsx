@@ -64,7 +64,7 @@ export function FilaEvento({ evento, modulo, catalogos, cargarCatalogos, onGuard
   };
 
   const abrir = () => {
-    if (!abierta && !catalogos && !sinCampana) cargarCatalogos();
+    if (!abierta && !catalogos) cargarCatalogos();
     setAbierta((v) => !v);
   };
 
@@ -118,16 +118,13 @@ export function FilaEvento({ evento, modulo, catalogos, cargarCatalogos, onGuard
 
       {abierta && (
         <div className="space-y-4 border-t border-slate-100 px-4 py-4">
-          {sinCampana ? (
-            <p className="text-xs text-slate-500">Este aviso solo manda correo a quien corresponde, así que no admite destinatarios adicionales.</p>
-          ) : (
-            <div className="space-y-3">
-              <p className={etiqueta}>Destinatarios adicionales (se suman a quienes el módulo ya avisa)</p>
-              <SelectorMultiple titulo="Roles" opciones={catalogos?.roles ?? []} elegidos={evento.roles_adicionales} cargando={!catalogos} onCambio={(ids) => onGuardar(evento.clave, { roles_adicionales: ids })} />
-              <SelectorMultiple titulo="Dependencias" opciones={catalogos?.dependencias ?? []} elegidos={evento.dependencias_adicionales.map(String)} cargando={!catalogos} onCambio={(ids) => onGuardar(evento.clave, { dependencias_adicionales: ids.map(Number) })} />
-              <SelectorMultiple titulo="Territoriales" opciones={catalogos?.sedes ?? []} elegidos={evento.sedes_adicionales.map(String)} cargando={!catalogos} onCambio={(ids) => onGuardar(evento.clave, { sedes_adicionales: ids.map(Number) })} />
-            </div>
-          )}
+          {/* Los adicionales reciben el aviso por los mismos canales que tiene: campana, una copia del correo, o ambos. */}
+          <div className="space-y-3">
+            <p className={etiqueta}>Destinatarios adicionales (se suman a quienes el módulo ya avisa, por los mismos canales)</p>
+            <SelectorMultiple titulo="Roles" opciones={catalogos?.roles ?? []} elegidos={evento.roles_adicionales} cargando={!catalogos} onCambio={(ids) => onGuardar(evento.clave, { roles_adicionales: ids })} />
+            <SelectorMultiple titulo="Dependencias" opciones={catalogos?.dependencias ?? []} elegidos={evento.dependencias_adicionales.map(String)} cargando={!catalogos} onCambio={(ids) => onGuardar(evento.clave, { dependencias_adicionales: ids.map(Number) })} />
+            <SelectorMultiple titulo="Territoriales" opciones={catalogos?.sedes ?? []} elegidos={evento.sedes_adicionales.map(String)} cargando={!catalogos} onCambio={(ids) => onGuardar(evento.clave, { sedes_adicionales: ids.map(Number) })} />
+          </div>
 
           <div className="flex flex-wrap items-center gap-3">
             {/* Obligatorio = nadie lo puede apagar (función 5): para avisos como un código de firma. */}
