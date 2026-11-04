@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Upload, AlertTriangle, Loader2,
@@ -7,7 +7,8 @@ import {
   Check, Globe, Building2, ArrowRight, Shield, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { bulkUploadBancoDocentes } from '../../../services/api/ptaApi';
+import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaField';
+import { bulkUploadBancoDocentes, getRundConvocatorias } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import * as XLSX from 'xlsx';
 
@@ -22,6 +23,12 @@ interface BancoDocentesBulkUploadProps {
 type WizardStep = 'upload' | 'validate' | 'importing';
 
 export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], periodoSeleccionado, onPeriodoChange }: BancoDocentesBulkUploadProps) {
+  const [convocatoria, setConvocatoria] = useState('');
+  const requestVersion = useRef(0);
+  useEffect(() => {
+    requestVersion.current++; setConvocatoria(''); resetState(); setLoading(false);
+  }, [periodoSeleccionado]);
+  useEffect(() => () => { requestVersion.current++; }, []);
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -98,11 +105,13 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
     const currentFile = fileToImport || file;
     if (!currentFile) return;
     
+    const version = ++requestVersion.current;
     setLoading(true); setError(null); setValidationErrors([]);
     if (!dryRun) setResult(null);
 
     try {
-      const response = await bulkUploadBancoDocentes(currentFile, dryRun, skipInvalid, periodoSeleccionado);
+      const response = await bulkUploadBancoDocentes(currentFile, dryRun, skipInvalid, periodoSeleccionado, convocatoria.trim() || undefined);
+      if (version !== requestVersion.current) return;
       
       if (response.success === false) {
         throw new Error(response.error || response.message || 'Error al validar el archivo');
@@ -110,7 +119,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
       
       const stats = response.data || {};
       const errorCount = Number(stats.errors || 0);
-      const importableCount = Number(stats.created || 0) + Number(stats.updated || 0);
+      const importableCount = Number(stats.created || 0) + Number(stats.updated || 0) + (convocatoria.trim() ? Number(stats.unchanged || 0) : 0);
       const hasImportableRows = importableCount > 0;
       
       setResult({
@@ -132,12 +141,13 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
         onSuccess();
       }
     } catch (err: any) {
+      if (version !== requestVersion.current) return;
       console.error(err);
       const msg = err.response?.data?.message || err.message || 'Error al procesar el archivo.';
       setError(msg);
       if (err.response?.data?.errores) setValidationErrors(err.response.data.errores);
       toast.error(msg);
-    } finally { setLoading(false); }
+    } finally { if (version === requestVersion.current) setLoading(false); }
   };
 
   const resetState = () => {
@@ -185,7 +195,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
     setCorrections({}); setShowCorrectionPanel(false);
     toast.info('Correcciones aplicadas. Re-validando...');
     await handleImportar(true, correctedFile);
-  }, [corrections, file]);
+  }, [corrections, file, convocatoria, periodoSeleccionado]);
 
   // ─── Computed ───
   const totalDts = 0; // Not used anymore
@@ -194,7 +204,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
   const updatedDts = 0; // Not used
   const newCetaps = result?.data?.created || 0;
   const updatedCetaps = result?.data?.updated || 0;
-  const importableCetaps = newCetaps + updatedCetaps;
+  const importableCetaps = newCetaps + updatedCetaps + (convocatoria.trim() ? Number(result?.data?.unchanged || 0) : 0);
   const identicalDts = 0; // Not used
   const identicalCetaps = result?.data?.unchanged || 0;
 
@@ -288,6 +298,11 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
       </div>
 
       {/* ══════ STEP CONTENT ══════ */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 mb-5">
+        <RundConvocatoriaField key={periodoSeleccionado || 'sin-periodo'} periodoCarga={periodoSeleccionado}
+          value={convocatoria} onChange={setConvocatoria} loadOptions={getRundConvocatorias}
+          allowCreate disabled={loading || (!isSimulated && !!result)} />
+      </div>
       <AnimatePresence mode="wait">
 
         {/* ━━━━━ STEP 1: UPLOAD ━━━━━ */}
@@ -300,7 +315,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
             transition={{ duration: 0.25 }}
           >
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2">
                 {/* Left: Drop Zone & Form */}
                 <div className="p-8 flex flex-col items-center justify-center border-r border-gray-50">
                   
@@ -513,12 +528,13 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                       Cambiar archivo
                     </button>
                     <button
-                      disabled
-                      className="px-5 py-2.5 text-xs font-bold text-white bg-gray-300 rounded-xl cursor-not-allowed flex items-center gap-2"
-                      title="No hay datos nuevos para importar"
+                      disabled={!convocatoria.trim()}
+                      onClick={() => handleImportar(false)}
+                      className="px-5 py-2.5 text-xs font-bold text-white bg-[#003DA5] disabled:bg-gray-300 rounded-xl disabled:cursor-not-allowed flex items-center gap-2"
+                      title={convocatoria.trim() ? 'Asociar los registros existentes a esta convocatoria' : 'No hay datos nuevos para importar'}
                     >
                       <ArrowRight className="w-4 h-4" />
-                      Importar ahora
+                      {convocatoria.trim() ? 'Asociar a convocatoria' : 'Importar ahora'}
                     </button>
                   </div>
                 </div>
@@ -553,7 +569,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                     </button>
                   </div>
                 </div>
-              ) : result.errores && result.errores.length > 0 && !result.has_blocking_errors ? (
+              ) : result.errores && result.errores.length > 0 && hasValidToImport ? (
                 <div className="px-6 py-4 bg-amber-50/30 border-b border-amber-100 space-y-3">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">

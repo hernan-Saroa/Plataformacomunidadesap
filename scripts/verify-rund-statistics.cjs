@@ -10,7 +10,7 @@ const { BancoDocentesService } = require(path.join(serviceRoot, 'src/pta/banco-d
   const client = clientForLocal(); await client.connect();
   try {
     await client.query('BEGIN');
-    const tables = [['academic_work_plan','Docente'], ...['user','personas','role','user_roles','seccionales','sedes'].map(t=>['auth',t])];
+    const tables = [['academic_work_plan','Docente'],['academic_work_plan','RundCargaMasiva'],['academic_work_plan','RundAprobacionLog'], ...['user','personas','role','user_roles','seccionales','sedes'].map(t=>['auth',t])];
     for (const [schema,table] of tables) await client.query(`CREATE TEMP TABLE "${table}" (LIKE ${schema}."${table}" INCLUDING DEFAULTS) ON COMMIT DROP`);
     const fixture = async (schema, table, values) => {
       const cols = (await client.query(`SELECT column_name,data_type,character_maximum_length FROM information_schema.columns
@@ -52,7 +52,7 @@ const { BancoDocentesService } = require(path.join(serviceRoot, 'src/pta/banco-d
       const stats=await service.getStats(filters);
       assert.equal(stats.total,total);assert.equal(stats.activos,activos);assert.equal(stats.inactivos,total-activos);
       assert.equal(stats.total_horas,horas);assert.equal(stats.promedio_horas,promedio);
-      for(const [key,rows] of Object.entries(stats).filter(([key])=>key.startsWith('por_'))) {
+      for(const [key,rows] of Object.entries(stats).filter(([key])=>key.startsWith('por_') && key !== 'por_convocatoria')) {
         assert.equal(rows.reduce((sum,row)=>sum+row.total,0),total,`${key} debe sumar el mismo universo filtrado`);
       }
       const listed=await service.list({...filters,limit:50});
@@ -73,6 +73,57 @@ const { BancoDocentesService } = require(path.join(serviceRoot, 'src/pta/banco-d
     // Simulated status/hour edits must be reflected by a fresh consultation.
     await client.query(`UPDATE pg_temp."Docente" SET estado='ACTIVO',"horasAsignables"=500 WHERE id=$1`,[ids[1]]);
     await check({periodoCarga:'2026-2'},3,3,1300,433.3);
-    console.log(JSON.stringify({success:true,temporaryTablesOnly:true,checks:['9 distribuciones y resumen contra el listado','Periodos 2025-2 y 2026-2 aislados','Todos los periodos y registros sin periodo','Periodo vacío sin NaN','Filtros combinados','Etiquetas territoriales equivalentes','Grupos sin territorial y sin dedicación','Refresco tras cambios de estado y horas']},null,2));
+    // Same name in different periods, repeated batches, unchanged rows and rejected rows.
+    const batch = async (nombre,periodo,registros) => fixture('academic_work_plan','RundCargaMasiva',{
+      id:randomUUID(),nombre_archivo:'convocatoria-prueba.xlsx',tipo_mime:'application/json',
+      tamano_bytes:2,sha256:'a'.repeat(64),contenido:Buffer.from('[]'),actor_id:'SISTEMA',
+      justificacion:'Prueba temporal',estado:'COMPLETADA',resumen:{convocatoria:nombre,
+        convocatoriaClave:nombre.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(),
+        convocatoriaPeriodo:periodo,trazabilidad:{periodos:[periodo],registros,
+          resumenPorPeriodo:{[periodo]:{total:registros.length}}}},
+    });
+    const member = (index,resultado='CREADO') => ({docenteId:ids[index],periodo:records[index].periodoCarga,
+      nombre:'Persona ficticia',documento_identidad:'TEST-CV-'+index,fila:index+2,resultado});
+    await batch('Convocatoria Pública','2026-2',[member(0),member(1,'SIN_CAMBIOS'),member(2,'NO_CARGADO'),member(3)]);
+    await batch('Convocatoria Pública','2026-2',[member(0,'SIN_CAMBIOS')]);
+    await batch('Convocatoria Pública','2025-2',[member(3)]);
+    await batch('Otra convocatoria','2026-2',[member(1,'ACTUALIZADO')]);
+    const cv = await check({periodoCarga:'2026-2',convocatoria:' CONVOCATORIA PUBLICA '},2,2,1300,650);
+    assert.equal(cv.por_convocatoria.find(row=>row.convocatoria==='Convocatoria Pública').total,2,'No duplicar pertenencias al repetir una carga');
+    assert.equal(cv.por_convocatoria.find(row=>row.convocatoria==='Otra convocatoria').total,1,'Conservar convocatorias previas');
+    await check({periodoCarga:'2025-2',convocatoria:'Convocatoria Pública'},1,1,700,700);
+    await check({periodoCarga:'2026-2',convocatoria:'Otra convocatoria'},1,1,500,500);
+    await check({periodoCarga:'2026-2',convocatoria:'Inexistente'},0,0,0,0);
+    const catalog = await service.getConvocatorias('2026-2');
+    assert.equal(catalog.length,2);
+    assert.equal((await service.getConvocatorias('2025-2')).length,1);
+    assert.equal((await service.getConvocatorias('2030-1')).length,0);
+    const listed = await service.list({periodoCarga:'2026-2',convocatoria:'Convocatoria Pública'});
+    assert.equal(listed.total,2);
+    assert(listed.data.every(row=>row.convocatorias.includes('Convocatoria Pública')));
+    const history = await service.getRegistrationHistory({periodoCarga:'2026-2',convocatoria:'Convocatoria Pública'});
+    assert.equal(history.total,2);
+    assert(history.data.every(row=>row.convocatoria==='Convocatoria Pública' && row.periodo==='2026-2'));
+    for (const search of ['Pública','publica','CONVOCATORIA   PUBLICA']) {
+      const found = await service.getRegistrationHistory({periodoCarga:'2026-2',search});
+      assert.equal(found.total,2,'Buscar por convocatoria con o sin tildes, mayúsculas y espacios');
+    }
+    const first = await service.getRegistrationHistory({periodoCarga:'2026-2',convocatoria:'CONVOCATORIA PUBLICA',tipo:'MASIVO',limit:1});
+    const second = await service.getRegistrationHistory({periodoCarga:'2026-2',convocatoria:'Convocatoria Pública',tipo:'MASIVO',limit:1,page:2});
+    assert.equal(first.total,2); assert.equal(first.pages,2); assert.equal(second.data.length,1);
+    assert.notEqual(first.data[0].id,second.data[0].id,'La paginación debe conservar el filtro y recorrer otras cargas');
+    const other = await service.getRegistrationHistory({periodoCarga:'2026-2',convocatoria:'Otra convocatoria'});
+    assert.equal(other.total,1); assert.equal(other.data[0].convocatoria,'Otra convocatoria');
+    const detail = await service.getRegistrationHistoryDetail('MASIVO',first.data[0].id,{periodoCarga:'2026-2'});
+    assert.equal(detail.event.convocatoria,'Convocatoria Pública');
+    assert(detail.registros.length>0 && detail.registros.every(row=>row.periodo==='2026-2'),'El detalle no mezcla otros períodos');
+    await assert.rejects(service.getRegistrationHistoryDetail('MASIVO',first.data[0].id,{periodoCarga:'2025-2'}),/periodo seleccionado/);
+    for (const filters of [
+      {convocatoria:'Inexistente'}, {convocatoria:'Convocatoria Pública',search:'Otra'},
+      {convocatoria:'Convocatoria Pública',tipo:'INDIVIDUAL'}, {search:'%_'},
+    ]) assert.equal((await service.getRegistrationHistory({periodoCarga:'2026-2',...filters})).total,0);
+    const deletion = await service.previewRegistroDeletion({todosFiltrados:true,filters:{periodoCarga:'2026-2',convocatoria:'Otra convocatoria'}});
+    assert.deepEqual(deletion.ids,[ids[1]],'La selección filtrada debe conservar la convocatoria');
+    console.log(JSON.stringify({success:true,temporaryTablesOnly:true,checks:['9 distribuciones y resumen contra el listado','Periodos 2025-2 y 2026-2 aislados','Todos los periodos y registros sin periodo','Periodo vacío sin NaN','Filtros combinados','Etiquetas territoriales equivalentes','Grupos sin territorial y sin dedicación','Refresco tras cambios de estado y horas','Convocatorias por período, sin cambios y sin duplicados','Trazabilidad, filtros y pertenencia histórica','Selección filtrada conserva convocatoria']},null,2));
   } finally {await client.query('ROLLBACK');await client.end();}
 })().catch(error=>{console.error(error.message);process.exitCode=1;});
