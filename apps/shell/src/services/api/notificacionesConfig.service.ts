@@ -1,7 +1,7 @@
 /**
  * Configuración de notificaciones por módulo (EFDS-2406).
  *
- * Desde "Configuración General > Notificaciones" se activa o desactiva lo que
+ * Desde "Configuración General > Gestión de módulos" se activa o desactiva lo que
  * avisa cada módulo, por evento, con su canal, prioridad y destinatarios
  * adicionales. Vive en notifications-service; el catálogo de eventos se llena
  * solo con el primer aviso que llega de cada tipo.
@@ -31,6 +31,8 @@ export interface ModuloNotificaciones {
   nombre: string;
   activo: boolean;
   canal_defecto: Canal;
+  /** Buzón al que llega lo que habría salido mientras el módulo o un aviso están apagados. */
+  correo_desvio: string | null;
   orden: number;
   actualizado_en: string;
   actualizado_por: string | null;
@@ -50,6 +52,8 @@ export interface EventoNotificaciones {
   prioridad: Prioridad | null;
   prioridad_codigo: string | null;
   envia_correo: boolean;
+  /** Ausente se entiende como que sí manda campana. `false` con `envia_correo` = aviso solo de correo. */
+  envia_campana?: boolean;
   roles_adicionales: string[];
   dependencias_adicionales: string[];
   sedes_adicionales: string[];
@@ -77,6 +81,8 @@ export interface EnvioOmitido {
   canal: 'plataforma' | 'correo';
   destinatario: string | null;
   motivo: string;
+  /** Buzón al que se desvió el aviso (motivo `desviado`). */
+  desviado_a?: string | null;
   titulo: string | null;
   fecha: string;
 }
@@ -87,7 +93,7 @@ export interface ResultadoPrueba {
   verificado: boolean;
 }
 
-export type CambiosModulo = Partial<Pick<ModuloNotificaciones, 'activo' | 'canal_defecto' | 'nombre'>>;
+export type CambiosModulo = Partial<Pick<ModuloNotificaciones, 'activo' | 'canal_defecto' | 'nombre' | 'correo_desvio'>>;
 export type CambiosEvento = Partial<{
   activo: boolean;
   canal: Canal | null;
@@ -105,7 +111,24 @@ export const MOTIVOS: Record<string, string> = {
   evento_inactivo: 'Evento desactivado',
   canal_solo_correo: 'El evento es solo de correo',
   canal_solo_plataforma: 'El evento es solo de plataforma',
+  desviado: 'Desviado al buzón del módulo',
 };
+
+/** Dominios que acepta el buzón de desvío; el servidor valida con NOTIFICACIONES_DOMINIOS_DESVIO. */
+export const DOMINIO_DESVIO = 'esap.edu.co';
+
+/** Devuelve el mensaje de error del buzón, o null si es válido (vacío es válido: borra el desvío). */
+export function validarCorreoDesvio(valor: string): string | null {
+  const correo = valor.trim().toLowerCase();
+  if (!correo) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return 'Escriba un correo válido, por ejemplo buzon@' + DOMINIO_DESVIO;
+  if (correo.split('@')[1] !== DOMINIO_DESVIO) return `Solo se aceptan correos @${DOMINIO_DESVIO}`;
+  return null;
+}
+
+/** Aviso que solo manda correo: no tiene campana, así que prioridad y destinatarios adicionales no aplican. */
+export const soloCorreo = (e: Pick<EventoNotificaciones, 'envia_correo' | 'envia_campana'>): boolean =>
+  e.envia_correo && e.envia_campana === false;
 
 function extraerData<T>(res: unknown): T {
   if (res && typeof res === 'object' && 'data' in (res as Record<string, unknown>)) {
@@ -140,15 +163,15 @@ export const notificacionesConfigService = {
     );
   },
 
-  async actualizarEvento(clave: string, cambios: CambiosEvento): Promise<EventoNotificaciones> {
+  async actualizarEvento(codigoModulo: string, clave: string, cambios: CambiosEvento): Promise<EventoNotificaciones> {
     return extraerData<EventoNotificaciones>(
-      await apiClient.patch<unknown>(`${BASE}/eventos/${encodeURIComponent(clave)}`, cambios),
+      await apiClient.patch<unknown>(`${BASE}/modulos/${encodeURIComponent(codigoModulo)}/eventos/${encodeURIComponent(clave)}`, cambios),
     );
   },
 
-  async probar(clave: string): Promise<ResultadoPrueba> {
+  async probar(codigoModulo: string, clave: string): Promise<ResultadoPrueba> {
     return extraerData<ResultadoPrueba>(
-      await apiClient.post<unknown>(`${BASE}/eventos/${encodeURIComponent(clave)}/prueba`, {}),
+      await apiClient.post<unknown>(`${BASE}/modulos/${encodeURIComponent(codigoModulo)}/eventos/${encodeURIComponent(clave)}/prueba`, {}),
     );
   },
 
