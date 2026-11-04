@@ -31,7 +31,6 @@ import {
   ModalNotificacionesModulo,
   useConsolaNotificaciones,
 } from './notificaciones/ConsolaNotificaciones';
-import { PanelRegistro } from './notificaciones/PanelRegistro';
 
 interface ModulesManagementProps {
   onModuleUpdated?: () => void;
@@ -440,12 +439,11 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
         )}
       </div>
 
-      {/* Notificaciones: remitentes que no son módulos del menú y registro general */}
+      {/* Notificaciones de remitentes que no son módulos del menú (correos del sistema, etc.) */}
       {consola.puede && (
         <>
           <AvisoCompuerta permisos={consola.permisos} />
           <BloqueOtrosRemitentes remitentes={otrosRemitentes} onConfigurar={setNotifCodigo} />
-          <PanelRegistro />
         </>
       )}
 

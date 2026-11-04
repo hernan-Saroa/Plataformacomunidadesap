@@ -55,7 +55,7 @@ const evento = (extra: Record<string, unknown> = {}) => ({
 async function abrirConfiguracionDePta() {
   render(<ModulesManagementModulePremium />);
   fireEvent.click(await screen.findByRole('button', { name: /Configurar notificaciones de Plan de Trabajo/ }));
-  await screen.findByText('pta_aprobado');
+  await screen.findByText('Pta aprobado');
 }
 
 describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
@@ -105,9 +105,8 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
     await abrirConfiguracionDePta();
     fireEvent.click(screen.getByRole('switch', { name: /Desactivar las notificaciones de Plan de Trabajo/ }));
     await waitFor(() => expect(servicio.actualizarModulo).toHaveBeenCalledWith('pta', { activo: false }));
-    expect(await screen.findByText('No notifica')).toBeInTheDocument();
-    expect(screen.getByText(/Ningún aviso sale, salvo los obligatorios/)).toBeInTheDocument();
-    expect(screen.getByText(/no oculta ni muestra el módulo en el menú/)).toBeInTheDocument();
+    expect(await screen.findByText('Notificaciones apagadas')).toBeInTheDocument();
+    expect(screen.getByText(/No sale ningún aviso, salvo los obligatorios/)).toBeInTheDocument();
     expect(modulos.updateModule).not.toHaveBeenCalled();
   });
 
@@ -120,12 +119,22 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
     expect(Array.from((selects[0] as HTMLSelectElement).options).find((o) => o.value === 'correo')?.disabled).toBe(false);
   });
 
-  it('un aviso solo de correo oculta la prioridad y explica que los destinatarios adicionales no aplican', async () => {
+  it('a la vista solo van nombre, canal e interruptor; lo demás está en «Más opciones»', async () => {
     await abrirConfiguracionDePta();
-    // pta_aprobado (campana + correo) tiene prioridad; pta_otp (solo correo) no.
-    expect(screen.getAllByRole('combobox', { name: 'Prioridad del evento' })).toHaveLength(1);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ver detalle' })[1]);
-    expect(screen.getByText(/la prioridad y los destinatarios adicionales no aplican/)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Prioridad del evento' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Destinatarios adicionales/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Más opciones' })[0]);
+    expect(screen.getByRole('combobox', { name: 'Prioridad del evento' })).toBeInTheDocument();
+    expect(screen.getByText(/Destinatarios adicionales/)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Obligatorio/ })).toBeInTheDocument();
+  });
+
+  it('un aviso solo de correo no ofrece prioridad ni destinatarios adicionales', async () => {
+    await abrirConfiguracionDePta();
+    // pta_otp (el segundo) solo manda correo.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Más opciones' })[1]);
+    expect(screen.getByText(/no admite destinatarios adicionales ni prioridad/)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Prioridad del evento' })).not.toBeInTheDocument();
   });
 
   it('cambiar el canal de un aviso guarda solo ese campo en la ruta del módulo (CA2)', async () => {
@@ -138,8 +147,8 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
   it('el buzón de desvío valida correo y dominio antes de llamar al servicio, y vacío lo borra', async () => {
     servicio.actualizarModulo.mockResolvedValue(modulo({ correo_desvio: 'pruebas@esap.edu.co' }));
     await abrirConfiguracionDePta();
-    const campoDesvio = screen.getByLabelText(/Buzón de desvío/);
-    expect(screen.getByText(/lo que habría salido llega a este buzón\. Vacío: no sale nada\./)).toBeInTheDocument();
+    const campoDesvio = screen.getByLabelText(/Buzón para lo apagado/);
+    expect(screen.getByText(/Lo que no sale por estar apagado llega aquí\. Vacío: no llega a ningún lado\./)).toBeInTheDocument();
 
     fireEvent.change(campoDesvio, { target: { value: 'nadie@gmail.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar buzón' }));
@@ -156,34 +165,20 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
     await waitFor(() => expect(servicio.actualizarModulo).toHaveBeenLastCalledWith('pta', { correo_desvio: null }));
   });
 
-  it('la prueba va a la ruta del módulo, informa por canal y recarga para mostrar "Verificado" (función 15)', async () => {
+  it('la prueba va a la ruta del módulo e informa por canal (función 15)', async () => {
     const { toast } = await import('sonner');
     servicio.probar.mockResolvedValue({ plataforma: { estado: 'enviado' }, correo: { estado: 'omitido', motivo: 'canal_solo_plataforma' }, verificado: true });
     await abrirConfiguracionDePta();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ver detalle' })[0]);
-    servicio.listarEventos.mockResolvedValue([evento({ verificado_en: '2026-11-01T12:00:00Z', verificado_por: 'admin' })]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Más opciones' })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Enviarme una prueba/ }));
     await waitFor(() => expect(servicio.probar).toHaveBeenCalledWith('pta', 'pta_aprobado'));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Prueba enviada: mire la campana', expect.objectContaining({ description: expect.stringContaining('solo de plataforma') })));
-    expect(await screen.findByText('Verificado', { selector: 'span' })).toBeInTheDocument();
   });
 
   it('avisa cuando el interruptor general del servidor está apagado', async () => {
     servicio.misPermisos.mockResolvedValue({ gestionar: true, compuerta_encendida: false });
     render(<ModulesManagementModulePremium />);
     expect(await screen.findByText(/NOTIFICACIONES_COMPUERTA/)).toBeInTheDocument();
-  });
-
-  it('el registro general muestra los desviados con su buzón y el historial con anterior y nuevo (RN5)', async () => {
-    servicio.omitidas.mockResolvedValue([{ id: '9', codigo_modulo: 'pta', clave_evento: 'pta_aprobado', canal: 'correo', destinatario: 'a@esap.edu.co', motivo: 'desviado', desviado_a: 'buzon@esap.edu.co', titulo: null, fecha: '2026-11-01T10:00:00Z' }]);
-    servicio.historial.mockResolvedValue([{ id: '1', entidad: 'modulo', clave: 'pta', anterior: { activo: true }, nuevo: { activo: false }, usuario: 'admin', fecha: '2026-11-01T10:00:00Z' }]);
-    render(<ModulesManagementModulePremium />);
-    expect(await screen.findByText('Desviado al buzón del módulo')).toBeInTheDocument();
-    expect(screen.getByText('Llegó a buzon@esap.edu.co')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Historial de cambios' }));
-    expect(await screen.findByText('Sí')).toBeInTheDocument();
-    expect(screen.getByText('No')).toBeInTheDocument();
-    expect(screen.getByText(/admin/)).toBeInTheDocument();
   });
 });
 

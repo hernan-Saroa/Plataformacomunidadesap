@@ -9,13 +9,11 @@ import { motion } from 'motion/react';
 import { Bell, Mail, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  CANALES,
   DOMINIO_DESVIO,
   MOTIVOS,
   notificacionesConfigService,
   validarCorreoDesvio,
   type CambiosEvento,
-  type Canal,
   type EventoNotificaciones,
   type ModuloNotificaciones,
 } from '../../../services/api/notificacionesConfig.service';
@@ -24,7 +22,7 @@ import { dependenciasService } from '../../../services/api/dependencias.service'
 import { estructuraService } from '../../../services/api/estructura.service';
 import { SIN_TRANSICION_CSS } from '../centro-ayuda/estilosAnimacion';
 import { FilaEvento } from './FilaEvento';
-import { botonSecundario, campo, campoChico, Cargando, etiqueta, fecha, Interruptor, Vacio, type Catalogos, type Opcion } from './piezas';
+import { botonSecundario, campo, campoChico, Cargando, etiqueta, Interruptor, Vacio, type Catalogos, type Opcion } from './piezas';
 
 interface Props {
   modulo: ModuloNotificaciones;
@@ -151,38 +149,18 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
   return (
     <div>
       <motion.div key={codigo} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }} className="mb-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" style={SIN_TRANSICION_CSS}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 basis-72">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-slate-900">{modulo.nombre}</h2>
-              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${modulo.activo ? 'border border-emerald-100 bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                {modulo.activo ? 'Notifica' : 'No notifica'}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {modulo.activo
-                ? 'Sus avisos activos salen por el canal de cada uno.'
-                : 'Ningún aviso sale, salvo los obligatorios. Lo que se intente mandar queda en «Avisos omitidos».'}
-              {modulo.actualizado_por && ` Último cambio: ${fecha(modulo.actualizado_en)} · ${modulo.actualizado_por}.`}
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900">{modulo.activo ? 'Notificaciones activas' : 'Notificaciones apagadas'}</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {modulo.activo ? 'Cada aviso sale si su interruptor está encendido.' : 'No sale ningún aviso, salvo los obligatorios.'}
             </p>
-            <p className="mt-1 text-[11px] text-slate-400">Este interruptor es solo de las notificaciones; no oculta ni muestra el módulo en el menú (eso es el estado «Activo / Inactivo» de la tabla).</p>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div>
-              <label className={etiqueta} htmlFor={`canal-defecto-${codigo}`}>Canal por defecto</label>
-              <select id={`canal-defecto-${codigo}`} value={modulo.canal_defecto} onChange={(e) => guardarModulo({ canal_defecto: e.target.value as Canal })} className={campoChico} style={{ width: '13rem' }}>
-                {CANALES.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-xs font-medium text-slate-700">{modulo.activo ? 'Notificaciones activas' : 'Notificaciones apagadas'}</span>
-              <Interruptor activo={modulo.activo} etiqueta={`${modulo.activo ? 'Desactivar' : 'Activar'} las notificaciones de ${modulo.nombre}`} onCambio={(v) => guardarModulo({ activo: v })} />
-            </div>
-          </div>
+          <Interruptor activo={modulo.activo} etiqueta={`${modulo.activo ? 'Desactivar' : 'Activar'} las notificaciones de ${modulo.nombre}`} onCambio={(v) => guardarModulo({ activo: v })} />
         </div>
 
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <label className={etiqueta} htmlFor={`desvio-${codigo}`}>Buzón de desvío (opcional)</label>
+          <label className={etiqueta} htmlFor={`desvio-${codigo}`}>Buzón para lo apagado (opcional)</label>
           <div className="flex flex-wrap items-start gap-2">
             <div className="relative min-w-0 flex-1 basis-64">
               <Mail className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
@@ -204,7 +182,7 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
           </div>
           {errorDesvio && <p role="alert" className="mt-1 text-xs text-red-600">{errorDesvio}</p>}
           <p id={`desvio-ayuda-${codigo}`} className="mt-1 text-xs text-slate-500">
-            Mientras las notificaciones de este módulo o de un aviso estén apagadas, lo que habría salido llega a este buzón. Vacío: no sale nada.
+            Lo que no sale por estar apagado llega aquí. Vacío: no llega a ningún lado.
           </p>
         </div>
       </motion.div>
@@ -221,7 +199,7 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
         <Vacio
           icono={<Bell className="h-6 w-6 text-slate-400" />}
           titulo={buscando ? 'Ningún aviso coincide' : 'Este módulo todavía no ha mandado avisos'}
-          detalle={buscando ? 'Pruebe con otra palabra o con la clave del aviso.' : 'Cuando mande el primero, aparece aquí y se puede configurar.'}
+          detalle={buscando ? 'Pruebe con otra palabra.' : 'Cuando mande el primero, aparece aquí y se puede configurar.'}
         />
       ) : (
         <ul className="space-y-2">
