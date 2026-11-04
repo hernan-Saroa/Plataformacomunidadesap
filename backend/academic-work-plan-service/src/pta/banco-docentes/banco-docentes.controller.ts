@@ -173,6 +173,7 @@ export class BancoDocentesController {
     @Query('genero') genero?: string,
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
+    @Query('convocatoria') convocatoria?: string,
   ) {
     const result = await this.service.list({
       territorial,
@@ -185,6 +186,7 @@ export class BancoDocentesController {
       genero,
       nivelFormacion,
       nucleoTematico,
+      convocatoria,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -212,6 +214,7 @@ export class BancoDocentesController {
     @Query('genero') genero?: string,
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
+    @Query('convocatoria') convocatoria?: string,
   ) {
     return {
       success: true,
@@ -225,6 +228,7 @@ export class BancoDocentesController {
         genero,
         nivelFormacion,
         nucleoTematico,
+        convocatoria,
       }),
     };
   }
@@ -445,6 +449,7 @@ export class BancoDocentesController {
     const supportContent = file?.buffer || Buffer.from(JSON.stringify(rows), 'utf8');
     const result = await this.service.bulkUpsert(rows, {
       rejectExisting: false,
+      convocatoria: body?.convocatoria,
       dryRun,
       omitErrors,
       periodoCarga: periodoCargaQuery || periodoCargaFromFile || undefined,
@@ -483,6 +488,12 @@ export class BancoDocentesController {
         message: 'La carga finalizó. El detalle no está disponible temporalmente; consulte el listado antes de volver a importar.',
       } };
     }
+  }
+
+  @Get('convocatorias')
+  @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  async convocatorias(@Query('periodoCarga') periodoCarga: string) {
+    return { success: true, data: await this.service.getConvocatorias(periodoCarga) };
   }
 
   @Get('bulk/historial')

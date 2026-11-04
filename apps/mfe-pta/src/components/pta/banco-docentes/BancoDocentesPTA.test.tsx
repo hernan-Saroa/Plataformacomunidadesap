@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { BancoDocentesPTA } from './BancoDocentesPTA';
 import { getBancoDocentes, previewRundDeletion, confirmRundDeletion } from '../../../services/api/ptaApi';
 
-vi.mock('../../../services/api/ptaApi', () => ({
+vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]),
   getBancoDocentes: vi.fn(),
   getBancoDocenteStats: vi.fn().mockResolvedValue({ success: true, data: { total: 1 } }),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
