@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { createHash } from 'crypto';
 
 export interface SendNotificationDto {
   id_usuario_destinatario: string;
@@ -678,6 +679,7 @@ export class NotificationClientService {
             : null,
         ],
       );
+      await this.copiarAdicionales(dto, decision);
       this.logger.log(
         `[NotificationClient] Notificación in-app insertada directamente en BD para ${dto.id_usuario_destinatario}`,
       );
@@ -787,6 +789,7 @@ export class NotificationClientService {
               : null,
           ],
         );
+        await this.copiarAdicionales(dto, decision);
       }
       this.logger.log(
         `[NotificationClient] Insertadas ${dtos.length} notificaciones directamente en BD`,
@@ -805,11 +808,12 @@ export class NotificationClientService {
    */
   private async permitidoPorConfiguracion(
     dto: SendNotificationDto,
-  ): Promise<{ permitido: boolean; motivo?: string; prioridad?: string | null }> {
+  ): Promise<{ permitido: boolean; motivo?: string; prioridad?: string | null; adicionales?: Adicionales }> {
     try {
       const [fila] = await this.dataSource.query(
         `SELECT m.activo AS modulo_activo, e.activo AS evento_activo, e.obligatorio,
-                COALESCE(e.canal, m.canal_defecto) AS canal, e.prioridad
+                COALESCE(e.canal, m.canal_defecto) AS canal, e.prioridad,
+                e.roles_adicionales, e.dependencias_adicionales, e.sedes_adicionales
            FROM notifications.modulo_notificacion m
            LEFT JOIN notifications.evento_notificacion e
              ON e.clave = $2 AND e.codigo_modulo = m.codigo
@@ -817,14 +821,79 @@ export class NotificationClientService {
         [dto.modulo ?? MODULO_NOTIFICACIONES, dto.tipo_notificacion],
       );
       if (!fila) return { permitido: true };
-      if (fila.obligatorio) return { permitido: true, prioridad: fila.prioridad };
+      const adicionales = {
+        roles: (fila.roles_adicionales || []).map((r: string) => String(r).toUpperCase()),
+        dependencias: (fila.dependencias_adicionales || []).map(String),
+        sedes: (fila.sedes_adicionales || []).map(String),
+      };
+      if (fila.obligatorio) return { permitido: true, prioridad: fila.prioridad, adicionales };
       if (fila.modulo_activo === false) return { permitido: false, motivo: 'modulo_inactivo' };
       if (fila.evento_activo === false) return { permitido: false, motivo: 'evento_inactivo' };
       if (fila.canal === 'correo') return { permitido: false, motivo: 'canal_solo_correo' };
-      return { permitido: true, prioridad: fila.prioridad };
+      return { permitido: true, prioridad: fila.prioridad, adicionales };
     } catch (err: any) {
       this.logger.warn(`[NotificationClient] No se pudo leer la configuración de notificaciones: ${err?.message}`);
       return { permitido: true };
+    }
+  }
+
+  /**
+   * Copia la campana a los destinatarios que el administrador sumó al aviso por
+   * rol, dependencia o sede (EFDS-2406, función 4), igual que el servicio central.
+   * El id sale del contenido y del día, con la misma fórmula del central: si luego
+   * el central manda el mismo aviso, ON CONFLICT evita duplicarlo. Nunca rompe el
+   * respaldo: si algo falla, la campana original ya quedó guardada.
+   */
+  private async copiarAdicionales(dto: SendNotificationDto, decision: { prioridad?: string | null; adicionales?: Adicionales }): Promise<void> {
+    const a = decision.adicionales;
+    if (!a || (!a.roles.length && !a.dependencias.length && !a.sedes.length)) return;
+    try {
+      const usuarios: { id_user: string }[] = await this.dataSource.query(
+        `SELECT DISTINCT u.id_user::text AS id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE COALESCE(u.is_active, true) = true
+            AND (
+              (cardinality($1::text[]) > 0 AND EXISTS (
+                 SELECT 1 FROM auth.user_roles ur
+                   JOIN auth.role r ON r.id = ur.id_rol
+                  WHERE ur.id_user = u.id_user
+                    AND COALESCE(ur.is_active, true) = true
+                    AND UPPER(r.code) = ANY($1::text[])))
+              OR (cardinality($2::bigint[]) > 0 AND p.id_dependencia = ANY($2::bigint[]))
+              OR (cardinality($3::bigint[]) > 0 AND p.id_sede = ANY($3::bigint[]))
+            )`,
+        [a.roles, a.dependencias, a.sedes],
+      );
+      const dia = new Date().toISOString().slice(0, 10);
+      for (const u of usuarios) {
+        if (!u.id_user || u.id_user === dto.id_usuario_destinatario) continue;
+        await this.dataSource.query(
+          `INSERT INTO notifications.notificacion
+            (id_notificacion, id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
+             icono, color, prioridad, categoria, tiene_accion, texto_boton_accion, url_accion, datos_adicionales)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (id_notificacion) DO NOTHING`,
+          [
+            idDeterminista(`${dto.tipo_notificacion}|${dto.titulo}|${dto.mensaje}|${u.id_user}|${dia}`),
+            u.id_user,
+            dto.tipo_notificacion,
+            dto.titulo,
+            dto.mensaje,
+            dto.descripcion_corta ?? null,
+            dto.icono ?? null,
+            dto.color ?? null,
+            decision.prioridad ?? dto.prioridad ?? 'Media',
+            dto.categoria ?? null,
+            dto.tiene_accion ?? false,
+            dto.texto_boton_accion ?? null,
+            dto.url_accion ?? null,
+            dto.datos_adicionales ? JSON.stringify(dto.datos_adicionales) : null,
+          ],
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify][DB] No se copiaron los destinatarios adicionales de "${dto.tipo_notificacion}": ${err?.message}`);
     }
   }
 
@@ -1406,3 +1475,11 @@ export class NotificationClientService {
   }
 }
 
+/** Destinatarios que el administrador sumó al aviso (EFDS-2406, función 4). */
+type Adicionales = { roles: string[]; dependencias: string[]; sedes: string[] };
+
+/** UUID (formato v4) derivado de un texto: el mismo texto da siempre el mismo id (igual que el servicio central). */
+function idDeterminista(texto: string): string {
+  const h = createHash('sha1').update(texto).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}

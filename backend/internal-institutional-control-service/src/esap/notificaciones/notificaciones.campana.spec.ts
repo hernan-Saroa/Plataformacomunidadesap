@@ -21,13 +21,17 @@ describe('NotificacionesService (Control Interno) · campana global', () => {
     datos_adicionales: { eventoCode: 'EVT-AUD-001', tipo: 'anuncio_auditoria' },
   };
 
-  function armar(opciones: { http?: boolean; configuracion?: any } = {}) {
+  function armar(opciones: { http?: boolean; configuracion?: any; usuarios?: any[]; fallaAdicionales?: boolean } = {}) {
     const posts: any[] = [];
     global.fetch = jest.fn(async (url: string, init: any) => {
       posts.push({ url: String(url), body: JSON.parse(init.body) });
       return { ok: opciones.http !== false, status: opciones.http === false ? 503 : 201 };
     }) as never;
     const query = jest.fn(async (sql: string) => {
+      if (sql.includes('cardinality')) {
+        if (opciones.fallaAdicionales) throw new Error('columna inexistente');
+        return opciones.usuarios ?? [];
+      }
       if (sql.includes('modulo_notificacion')) return opciones.configuracion ? [opciones.configuracion] : [];
       return [];
     });
@@ -67,6 +71,42 @@ describe('NotificacionesService (Control Interno) · campana global', () => {
     await service.publicarEnCampana(aviso);
     const insert = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO notifications.notificacion'));
     expect(insert?.[1][4]).toBe('Crítica');
+  });
+
+  describe('respaldo directo: destinatarios adicionales del aviso (EFDS-2406, función 4)', () => {
+    const conAdicionales = { modulo_activo: true, evento_activo: true, obligatorio: false, canal: 'ambos', prioridad: null, roles_adicionales: ['JEFE'], dependencias_adicionales: [], sedes_adicionales: [] };
+    const copias = (query: jest.Mock) =>
+      query.mock.calls.filter(([sql]) => sql.includes('ON CONFLICT (id_notificacion)'));
+
+    it('inserta una copia por cada adicional con id determinista, sin repetir al destinatario original', async () => {
+      const x = armar({ http: false, configuracion: conAdicionales, usuarios: [{ id_user: 'u1' }, { id_user: 'u2' }, { id_user: 'u3' }] });
+      await x.service.publicarEnCampana(aviso);
+      const inserts = x.query.mock.calls.filter(([sql]: [string]) => sql.includes('INSERT INTO notifications.notificacion'));
+      // La campana original + una copia por u2 y u3; u1 ya la recibió.
+      expect(inserts).toHaveLength(3);
+      const sinCopia = inserts.filter(([sql]: [string]) => !sql.includes('ON CONFLICT'));
+      expect(sinCopia).toHaveLength(1);
+      const destinos = copias(x.query).map(([, p]: any) => p[1]);
+      expect(destinos).toEqual(['u2', 'u3']);
+      const ids = copias(x.query).map(([, p]: any) => p[0]);
+      expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
+      expect(ids[0]).not.toBe(ids[1]);
+    });
+
+    it('con el aviso apagado no inserta nada, ni copias', async () => {
+      const x = armar({ http: false, configuracion: { ...conAdicionales, evento_activo: false }, usuarios: [{ id_user: 'u2' }] });
+      await x.service.publicarEnCampana(aviso);
+      expect(x.query.mock.calls.some(([sql]: [string]) => sql.includes('INSERT INTO notifications.notificacion'))).toBe(false);
+      expect(x.query.mock.calls.some(([sql]: [string]) => sql.includes('cardinality'))).toBe(false);
+    });
+
+    it('si falla la consulta de adicionales, la campana original igual se inserta', async () => {
+      const x = armar({ http: false, configuracion: conAdicionales, fallaAdicionales: true });
+      await x.service.publicarEnCampana(aviso);
+      const inserts = x.query.mock.calls.filter(([sql]: [string]) => sql.includes('INSERT INTO notifications.notificacion'));
+      expect(inserts).toHaveLength(1);
+      expect(copias(x.query)).toHaveLength(0);
+    });
   });
 
   describe('campana y correo salen con la misma clave de evento', () => {
