@@ -115,3 +115,39 @@ describe('ConfigurationsService.estadoMatches / findEstado (tolerante)', () => {
         expect(service.findEstadoIndex(estados, 'inexistente')).toBe(-1);
     });
 });
+
+describe('ConfigurationsService.saveConfiguration', () => {
+    let service: ConfigurationsService;
+    let mockRepo: any;
+
+    beforeEach(async () => {
+        mockRepo = { findOne: jest.fn(), find: jest.fn(), save: jest.fn((c) => Promise.resolve(c)), create: jest.fn((d) => d) };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [
+                ConfigurationsService,
+                { provide: getRepositoryToken(SystemConfiguration), useValue: mockRepo },
+            ],
+        }).compile();
+        service = module.get<ConfigurationsService>(ConfigurationsService);
+    });
+
+    it('al actualizar devuelve el valor nuevo y el anterior (para la auditoría)', async () => {
+        const anterior = [{ id: 'eje-1', nombre: 'Gestión Empresarial', activo: true }];
+        const nuevo = [{ id: 'eje-1', nombre: 'Gestión Institucional', activo: false }];
+        mockRepo.findOne.mockResolvedValue({ key: 'sigl-ejes-estrategicos', module: 'general', value: anterior });
+
+        const res = await service.saveConfiguration('sigl-ejes-estrategicos', { value: nuevo });
+
+        expect(res.value).toEqual(nuevo);
+        expect(res.previousValue).toEqual(anterior);
+    });
+
+    it('al crear la clave el valor anterior es null', async () => {
+        mockRepo.findOne.mockResolvedValue(null);
+
+        const res = await service.saveConfiguration('sigl-ejes-estrategicos', { value: [] });
+
+        expect(res.value).toEqual([]);
+        expect(res.previousValue).toBeNull();
+    });
+});
