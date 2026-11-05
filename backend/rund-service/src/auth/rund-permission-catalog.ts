@@ -12,6 +12,7 @@ export const RUND_BANK_PERMISSIONS = {
   IMPORT: 'banco-docentes.rund.import', EXPORT: 'banco-docentes.rund.export',
   INVITE: 'banco-docentes.rund.invite', DOCUMENTS_MANAGE: 'banco-docentes.rund.documents.manage',
   CREATE: 'banco-docentes.rund.create', SENSITIVE_VIEW: 'banco-docentes.rund.sensitive.view',
+  PHOTOS_MANAGE: 'banco-docentes.rund.photos.manage', PHOTOS_VALIDATE: 'banco-docentes.rund.photos.validate',
   // Tres perfiles operativos (carga, revision, incorporacion); las capacidades granulares siguen vigentes.
   ...RUND_PROFILE_PERMISSIONS,
 } as const;

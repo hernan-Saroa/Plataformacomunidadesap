@@ -204,6 +204,8 @@ module.exports = async function verifyBankIdentity(pgConfig, runtime, check, con
       try {
         await database.query(`GRANT USAGE ON SCHEMA rund TO "${role}"`);
         await database.query(`GRANT SELECT ON rund."Docente" TO "${role}"`);
+        // El grupo estadístico por convocatoria lee el soporte de cargas masivas (RundCargaMasiva).
+        await database.query(`GRANT SELECT ON rund."RundCargaMasiva" TO "${role}"`);
         await client.query(`SET ROLE "${role}"`);
         await assert.rejects(client.query('SELECT id_person FROM auth.personas LIMIT 1'), error => error.code === '42501');
         const current = Object.create(BancoDocentesService.prototype);
@@ -216,7 +218,7 @@ module.exports = async function verifyBankIdentity(pgConfig, runtime, check, con
         assert.deepEqual(canonicalStats(serialize(await current.getStats({ territorial: secIds[0] }))),
           canonicalStats(serialize(await reference.getStats({ territorial: secIds[0] }))));
       } finally {
-        await client.end(); await database.query(`REVOKE SELECT ON rund."Docente" FROM "${role}"`);
+        await client.end(); await database.query(`REVOKE SELECT ON rund."Docente" FROM "${role}"`); await database.query(`REVOKE SELECT ON rund."RundCargaMasiva" FROM "${role}"`);
         await database.query(`REVOKE USAGE ON SCHEMA rund FROM "${role}"`); await database.query(`DROP ROLE "${role}"`);
       }
     });

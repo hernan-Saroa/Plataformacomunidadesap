@@ -7,7 +7,7 @@ import {
   Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History
 } from 'lucide-react';
 import {
-  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, bulkUploadBancoDocentes
+  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes
 } from '../../../services/api/rundApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
@@ -20,7 +20,9 @@ import { RundExtractionNotificationDetail } from './RundExtractionNotificationDe
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { hasRundPermission } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
+import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import './BancoDocentesStatistics.css';
+import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaField';
 import { RundDeleteModal } from './RundDeleteModal';
 import type { RundDeletionSelection } from '../../../services/api/rundApi';
 
@@ -146,6 +148,8 @@ export function BancoDocentesPTA() {
   const [statsFilterTerritorial, setStatsFilterTerritorial] = useState('');
   const [statsFilterDedicacion, setStatsFilterDedicacion] = useState('');
   const [statsFilterEstado, setStatsFilterEstado] = useState('');
+  const [statsConvocatoria, setStatsConvocatoria] = useState('');
+  const [filterConvocatoria, setFilterConvocatoria] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -175,7 +179,7 @@ export function BancoDocentesPTA() {
   // In all-results mode, markedIds contains the explicitly excluded rows.
   const markedCount = allFiltered ? Math.max(0, total - markedIds.size) : markedIds.size;
   const clearMarked = () => { setMarkedIds(new Set()); setAllFiltered(false); };
-  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
+  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo, filterConvocatoria, canDelete]);
   const markRow = (id: string) => {
     setMarkedIds(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
@@ -230,6 +234,7 @@ export function BancoDocentesPTA() {
         territorial: statsFilterTerritorial || undefined,
         dedicacion: statsFilterDedicacion || undefined,
         estado: statsFilterEstado || undefined,
+        convocatoria: statsConvocatoria || undefined,
         // Las estadísticas usan el mismo periodo del encabezado/listado.
         periodoCarga: filterPeriodo || undefined,
       });
@@ -241,7 +246,7 @@ export function BancoDocentesPTA() {
     } finally {
       if (requestId === statsRequest.current) setStatsLoading(false);
     }
-  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
+  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo, statsConvocatoria]);
 
   useEffect(() => {
     if (tab === 'estadisticas') loadStats();
@@ -270,6 +275,7 @@ export function BancoDocentesPTA() {
   useEffect(() => {
     setSearch('');
     setSelectedDocente(null);
+    setFilterConvocatoria(''); setStatsConvocatoria('');
     setFilterTerritorial('');
     setFilterDedicacion('');
     setFilterVinculacion('');
@@ -284,6 +290,7 @@ export function BancoDocentesPTA() {
     setFilterDedicacion(filters.dedicacion ?? statsFilterDedicacion);
     setFilterVinculacion('');
     setFilterEstado(filters.estado ?? statsFilterEstado);
+    setFilterConvocatoria(statsConvocatoria);
     setSearch('');
     setPage(1);
     setTab('listado');
@@ -294,8 +301,8 @@ export function BancoDocentesPTA() {
     setLoading(true);
     try {
       const [res, listStatsRes] = await Promise.all([
-        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
-        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined, convocatoria: filterConvocatoria || undefined }),
+        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined, convocatoria: filterConvocatoria || undefined }),
       ]);
       if (requestId !== listadoRequest.current) return;
       if (res.success && res.data) {
@@ -318,14 +325,14 @@ export function BancoDocentesPTA() {
     } finally {
       if (requestId === listadoRequest.current) setLoading(false);
     }
-  }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, search, page, filterPeriodo]);
+  }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, search, page, filterPeriodo, filterConvocatoria]);
 
-  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo]);
+  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo, filterConvocatoria]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => { loadData(1); setPage(1); }, 400);
     return () => clearTimeout(searchTimeout.current);
-  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado]);
+  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterConvocatoria]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     loadData(page);
@@ -639,6 +646,10 @@ export function BancoDocentesPTA() {
             )}
           </div>
 
+          <div style={{ marginBottom: 16 }}>
+            <RundConvocatoriaField key={filterPeriodo} periodoCarga={filterPeriodo} value={filterConvocatoria}
+              loadOptions={getRundConvocatorias} onChange={value => { setFilterConvocatoria(value); setPage(1); }} />
+          </div>
           {/* Table Card — Estilo unificado con Personas */}
           <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden', position: 'relative' }}>
             {/* Table Header Bar */}
@@ -673,7 +684,7 @@ export function BancoDocentesPTA() {
                 <button type="button" onClick={clearMarked}>Limpiar selección</button>
                 <button type="button" className="rund-delete-action" disabled={loading || !markedCount} onClick={() => setDeleteTarget(allFiltered ? {
                   todosFiltrados: true, excluirIds: [...markedIds], filters: { search, territorial: filterTerritorial, dedicacion: filterDedicacion,
-                    vinculacion: filterVinculacion, estado: filterEstado, periodoCarga: filterPeriodo },
+                    vinculacion: filterVinculacion, estado: filterEstado, periodoCarga: filterPeriodo, convocatoria: filterConvocatoria },
                 } : { ids: [...markedIds] })}><Trash2 size={15} />Eliminar seleccionados ({markedCount})</button>
               </>}
             </div>}
@@ -745,14 +756,15 @@ export function BancoDocentesPTA() {
                               fontSize: '14px', fontWeight: 600,
                               transition: 'all 0.2s',
                             }}>
-                              {(d.nombre_completo || '').split(' ').slice(0, 2).map((n: string) => n[0]).join('')}
+                              <PublishedAvatar personaId={d.persona_id || d.personaId} name={d.nombre_completo} />
                             </div>
                             <div>
                               <p style={{ margin: 0, fontSize: '14px', lineHeight: '20px', fontWeight: 600, color: '#1F2937' }}>
                                 {d.nombre_completo}
                               </p>
                               {rundReviewStatus(d.completitud).approved && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#047857', fontSize: 11, fontWeight: 700, marginTop: 3 }}><CheckCircle size={13} /> Perfil RUND aprobado</span>}
-                              {rundReviewStatus(d.completitud).returned && <span style={{ display: 'block', color: '#B91C1C', fontSize: 11, marginTop: 3 }}>Pendiente de corrección</span>}
+                              {!rundReviewStatus(d.completitud).approved && <span title={rundReviewStatus(d.completitud).description}
+                                style={{ display: 'block', color: rundReviewStatus(d.completitud).returned ? '#B91C1C' : '#64748B', fontSize: 11, marginTop: 3 }}>{rundReviewStatus(d.completitud).label}</span>}
                               {d.correo_institucional && (
                                 <p style={{ margin: 0, fontSize: '12px', lineHeight: '16px', color: '#6B7280' }}>
                                   {d.correo_institucional}
@@ -1076,9 +1088,9 @@ export function BancoDocentesPTA() {
               </select>
 
               {/* Reset filtros */}
-              {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado) && (
+              {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado || statsConvocatoria) && (
                 <button
-                  onClick={() => { setStatsFilterTerritorial(''); setStatsFilterDedicacion(''); setStatsFilterEstado(''); }}
+                  onClick={() => { setStatsFilterTerritorial(''); setStatsFilterDedicacion(''); setStatsFilterEstado(''); setStatsConvocatoria(''); }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
                     borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2',
@@ -1090,8 +1102,10 @@ export function BancoDocentesPTA() {
               )}
             </div>
 
+            <RundConvocatoriaField key={filterPeriodo} periodoCarga={filterPeriodo} value={statsConvocatoria}
+              loadOptions={getRundConvocatorias} onChange={setStatsConvocatoria} />
             {/* Active filter badges */}
-            {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado) && (
+            {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado || statsConvocatoria) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {statsFilterTerritorial && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, background: '#FEF3C7', color: '#92400E', fontSize: '11px', fontWeight: 600 }}>
@@ -1130,6 +1144,14 @@ export function BancoDocentesPTA() {
             </div>
           ) : !statsLoading && stats && (
             <>
+              {!!stats.por_convocatoria?.length && <section className="rund-statistics__nucleos" aria-label="Docentes por convocatoria">
+                <h3>Docentes por convocatoria</h3>
+                <p className="rund-statistics__missing">Cada docente se cuenta una vez por convocatoria. Puede pertenecer a varias.</p>
+                <div className="rund-statistics__nucleo-list">{stats.por_convocatoria.map((row: any) => <div key={row.convocatoria_clave} className="rund-statistics__nucleo-row">
+                  <div><span>{row.convocatoria}</span><strong>{row.total}</strong></div>
+                </div>)}</div>
+              </section>}
+
               {/* ── KPI Cards — Clickeables ────────────────────────────── */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 16 }}>
                 {[
@@ -1420,6 +1442,7 @@ export function BancoDocentesPTA() {
         <div style={{ padding: '20px 24px' }}>
           <BancoDocentesBulkUpload 
             onSuccess={() => {
+              setFilterConvocatoria('');
               loadData(1);
               setTab('listado');
               showToast('Importación completada correctamente');

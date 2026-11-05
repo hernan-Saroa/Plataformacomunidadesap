@@ -6,7 +6,7 @@ export function isRundRequest(url: string): boolean {
   try { parsed = new URL(url, 'http://ruta-local'); } catch { return false; }
   const path = parsed.pathname;
   if (/\/(?:rund|rund-service)\/api\/v\d+(?:\/|$)/i.test(path)) return true;
-  if (/\/(banco-docentes|macro-docente|docentes-disponibles)(\/|$)/i.test(path)) return true;
+  if (/\/(banco-docentes|macro-docente|docentes-disponibles|fotos-perfil)(\/|$)/i.test(path)) return true;
   if (/\/pta\/api\/v\d+\/rund(?:\/|$)/i.test(path)) return true;
   if (API_MODE === 'direct') {
     try { return parsed.origin === new URL(MICROSERVICE_URLS.rund).origin; } catch { return false; }

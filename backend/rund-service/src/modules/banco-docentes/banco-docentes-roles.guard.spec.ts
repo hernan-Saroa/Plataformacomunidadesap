@@ -85,6 +85,31 @@ describe('BancoDocentesRolesGuard', () => {
     expect(request.rundPermissions).toEqual(new Set(['banco-docentes.rund.documents.manage']));
   });
 
+  it('el docente accede por rol a las rutas de autoservicio aunque Auth no le asigne permisos RUND', async () => {
+    const reflector = {
+      getAllAndOverride: jest.fn()
+        .mockReturnValueOnce(['DOCENTE', 'GESTION_PROFESORAL'])
+        .mockReturnValueOnce(['banco-docentes.rund.view']),
+    };
+    const identities = { permisosRoles: jest.fn().mockResolvedValue([]) };
+    const guard = new BancoDocentesRolesGuard(reflector as any, identities as any);
+    const { context } = contextFor({ roles: ['DOCENTE'] });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+
+  it('el rol DOCENTE no abre rutas que no lo listan, aunque pida el permiso de consulta', async () => {
+    const reflector = {
+      getAllAndOverride: jest.fn()
+        .mockReturnValueOnce(['GESTION_PROFESORAL', 'SUPER_ADMIN'])
+        .mockReturnValueOnce(['banco-docentes.rund.view']),
+    };
+    const guard = new BancoDocentesRolesGuard(reflector as any, { permisosRoles: jest.fn().mockResolvedValue([]) } as any);
+    const { context } = contextFor({ roles: ['DOCENTE'] });
+
+    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+  });
+
   it('rechaza un usuario sin rol ni permiso autorizado', async () => {
     const reflector = {
       getAllAndOverride: jest.fn()

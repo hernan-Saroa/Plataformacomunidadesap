@@ -248,6 +248,17 @@ describe('F014: cola independiente del flujo documental',()=>{
     service.onModuleInit();await service.tick();service.onModuleDestroy();
     expect(db.query).not.toHaveBeenCalled();expect(storage.read).not.toHaveBeenCalled();
   });
+  it('las cargas nuevas no inician OCR sin una selección explícita por defecto',async()=>{
+    process.env.RUND_OCR_ENABLED='true';
+    const previousAuto=process.env.RUND_EXTRACCION_AUTOMATICA;
+    delete process.env.RUND_EXTRACCION_AUTOMATICA;
+    const db={query:jest.fn(async(_sql:string)=>[])};
+    try{
+      await new RundExtraccionService(db as any,{} as any,{} as any).tick();
+      expect(db.query.mock.calls.some(([sql])=>String(sql).includes('INSERT INTO rund."RundExtraccionTrabajo"'))).toBe(false);
+      expect(db.query.mock.calls.some(([sql])=>String(sql).includes('SELECT * FROM reservado'))).toBe(true);
+    }finally{if(previousAuto===undefined)delete process.env.RUND_EXTRACCION_AUTOMATICA;else process.env.RUND_EXTRACCION_AUTOMATICA=previousAuto;}
+  });
   it('un fallo del OCR no propaga errores al flujo principal ni escribe el perfil',async()=>{
     process.env.RUND_OCR_ENABLED='true';
     const db={query:jest.fn().mockRejectedValue(new Error('BD caída'))};
@@ -269,6 +280,23 @@ describe('F014: cola independiente del flujo documental',()=>{
       expect(db.query).toHaveBeenCalledWith(expect.stringContaining("lease_hasta=now()+interval '90 seconds'"),[id,id]);
       done();await pending;const count=db.query.mock.calls.length;
       await jest.advanceTimersByTimeAsync(40000);expect(db.query).toHaveBeenCalledTimes(count);
+    }finally{await service.onModuleDestroy();jest.useRealTimers();}
+  });
+  it('libera el worker y registra un reintento si una operación de procesamiento nunca termina',async()=>{
+    jest.useFakeTimers();process.env.RUND_OCR_ENABLED='true';
+    const job={id,lease_id:id};
+    const db={query:jest.fn(async(sql:string)=>sql.includes('SELECT * FROM reservado')?[job]:[])};
+    const service=new RundExtraccionService(db as any,{} as any,{} as any);
+    (service as any).processingTimeoutMs=100;
+    const processJob=jest.spyOn(service as any,'process')
+      .mockImplementationOnce(()=>new Promise(()=>undefined)).mockResolvedValueOnce(undefined);
+    try {
+      const pending=service.tick();
+      await jest.advanceTimersByTimeAsync(101);await pending;
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining("disponible_en=now()+interval '1 minute'"),[id,id,'EXTRACCION_TIMEOUT']);
+      const calls=db.query.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(20000);expect(db.query).toHaveBeenCalledTimes(calls);
+      await service.tick();expect(processJob).toHaveBeenCalledTimes(2);
     }finally{await service.onModuleDestroy();jest.useRealTimers();}
   });
 });

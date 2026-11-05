@@ -356,6 +356,15 @@ class AuthService {
     return apiClient.get<ProfesionalUser[]>('/auth/api/v1/users');
   }
 
+  /** Usuarios activos tal como los devuelve auth-service (incluye documento, cargo, dependencia y roles). */
+  async getUsuariosActivosCrudos(): Promise<any[]> {
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    return Array.isArray(response) ? response : (response?.data ?? []);
+  }
+
   async getAbogadosRolResuelve(): Promise<AbogadoResuelve[]> {
     const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
       '/auth/api/v1/users',

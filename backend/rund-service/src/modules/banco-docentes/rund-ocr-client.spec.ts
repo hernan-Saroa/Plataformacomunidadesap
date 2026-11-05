@@ -68,4 +68,15 @@ describe('Compatibilidad del OCR local y el OCR del grupo RUND', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('Mensaje privado del servicio'));
     await expect(extractRundPdf(Buffer.from('%PDF-prueba'), 'http://localhost:8000')).rejects.toThrow('OCR_CONEXION_FALLIDA');
   });
+
+  it.each([false, true])('identifica el plazo vencido antes de cabeceras o durante el cuerpo: %s', async bodyStarted => {
+    process.env.RUND_OCR_PROVIDER = 'RUND';
+    const controller = new AbortController();
+    const timeout = jest.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    const fail = async () => { controller.abort(); throw new Error('detalle privado'); };
+    global.fetch = jest.fn(bodyStarted ? async () => ({ ok: true, json: fail }) as any : fail);
+    try {
+      await expect(extractRundPdf(Buffer.from('%PDF-prueba'), 'http://localhost:8000')).rejects.toThrow('OCR_TIMEOUT');
+    } finally { timeout.mockRestore(); }
+  });
 });

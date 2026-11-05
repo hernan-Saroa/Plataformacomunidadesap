@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BancoDocentesController } from './banco-docentes.controller';
 import { RundDocumentosService } from './rund-documentos.service';
 import { BancoDocentesService } from './banco-docentes.service';
@@ -12,6 +12,14 @@ describe('RUND: carga masiva y archivos originales', () => {
       documentoIdentidad: '1020304050', message: 'Documento 1020304050 duplicado', mensaje: 'Documento 1020304050 duplicado',
       reasons: ['1020304050 repetido'], data: { DOCUMENTO_IDENTIDAD: '1020304050', PUNTAJE_SALARIAL: 145.5, NOMBRE_COMPLETO: 'PRUEBA' },
     }],
+  });
+
+  it('rechaza con 400 una carga masiva sin archivo ni filas, sin llamar al servicio', async () => {
+    const service = { bulkUpsert: jest.fn() };
+    const controller = new BancoDocentesController(service as any, {} as any);
+    await expect(controller.bulkUpload(undefined, {}, actor('SUPER_ADMIN'), 'false')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.bulkUpload(undefined, undefined, actor('SUPER_ADMIN'), 'false')).rejects.toBeInstanceOf(BadRequestException);
+    expect(service.bulkUpsert).not.toHaveBeenCalled();
   });
 
   it.each([['ADMIN', true], ['ADMIN', false], ['GESTION_PROFESORAL', true]] as const)(

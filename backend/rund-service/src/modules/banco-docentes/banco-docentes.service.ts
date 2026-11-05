@@ -1,9 +1,10 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
 import { hashOtp, otpMatches } from './rund-otp';
 import { extractionIds, lockExtractionSuggestions, lockRundExtractionSuggestions, confirmExtractionSuggestions, RundExtractionReview } from './rund-extraccion-fields';
+import { dataReviewContext, loadDataReviewProfile, loadDataReviews } from './rund-data-review';
+import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
-import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { RundIncorporacion } from './rund-incorporacion';
 import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } from './rund-registration-history';
 import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
@@ -13,6 +14,7 @@ import { RundCatalogosClient } from '../../common/rund-catalogos.client';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { RUND_IDENTITY_WRITER, RundIdentityWriter, identityWriteViaAuthEnabled } from './rund-identity-writer';
+import { convocatoriaName, convocatoriaKey, convocatoriaPeriod, CONVOCATORIA_MEMBERS_SQL } from './rund-convocatorias';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import { upsertRundAuthIdentityWithManager } from './rund-auth-identity-write';
@@ -86,6 +88,7 @@ type BulkUpsertOptions = {
   dryRun?: boolean;
   omitErrors?: boolean;
   periodoCarga?: string;
+  convocatoria?: string;
   actorId?: string;
   ip?: string;
   support?: BulkSupport;
@@ -887,6 +890,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     usuario_id: row.usuario_id,
     docente_id: row.docente_id || null,
     orden_listado: row.orden_listado ?? null,
+    convocatorias: row.convocatorias || [],
     documento_identidad: row.documento_identidad ?? null,
     tipo_documento: row.tipo_documento ?? null,
     nombre_completo: nombreCompleto,
@@ -1189,7 +1193,7 @@ export class BancoDocentesService implements OnModuleInit {
     `;
   }
 
-  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }, params: any[]) {
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string }, params: any[]) {
     const conditions: string[] = [];
 
     if (filters.territorial === 'SIN_TERRITORIAL') {
@@ -1241,6 +1245,13 @@ export class BancoDocentesService implements OnModuleInit {
       conditions.push(`periodo_carga = $${params.length}`);
     }
 
+    if (filters.convocatoria) {
+      params.push(convocatoriaKey(filters.convocatoria));
+      conditions.push(`EXISTS (SELECT 1 FROM (${CONVOCATORIA_MEMBERS_SQL}) cm
+        WHERE cm.docente_id=auth_docentes.docente_id::text AND cm.periodo=auth_docentes.periodo_carga
+          AND cm.clave=$${params.length})`);
+    }
+
     if (filters.categoria) {
       params.push(filters.categoria);
       conditions.push(`LOWER(categoria) = LOWER($${params.length})`);
@@ -1278,7 +1289,7 @@ export class BancoDocentesService implements OnModuleInit {
     return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
-  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; page?: number; limit?: number }) {
+  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
@@ -1295,9 +1306,15 @@ export class BancoDocentesService implements OnModuleInit {
     params.push(limit, skip);
     const rows = await this.dataSource.query(
       `
-      ${baseSql}
-      SELECT *
+      ${baseSql}, convocatoria_docentes AS (
+        SELECT docente_id AS docente_ref,periodo AS periodo_ref,array_agg(nombre ORDER BY nombre) AS nombres
+        FROM (SELECT docente_id,periodo,clave,MIN(nombre) AS nombre
+          FROM (${CONVOCATORIA_MEMBERS_SQL}) cm GROUP BY docente_id,periodo,clave) members
+        GROUP BY docente_id,periodo
+      )
+      SELECT auth_docentes.*,COALESCE(cv.nombres,ARRAY[]::text[]) AS convocatorias
       FROM auth_docentes
+      LEFT JOIN convocatoria_docentes cv ON cv.docente_ref=auth_docentes.docente_id::text AND cv.periodo_ref=auth_docentes.periodo_carga
       ${where}
       ORDER BY orden_listado ASC NULLS LAST, nombre_completo ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -1342,7 +1359,7 @@ export class BancoDocentesService implements OnModuleInit {
   async previewRegistroDeletion(body: any) {
     // $1 es siempre la proyección de Auth que consume authDocentesBaseSql; los ids/filtros empiezan en $2.
     const params: any[] = [JSON.stringify(await this.authBanco.proyeccion())];
-    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga'];
+    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga', 'convocatoria'];
     const filters: any = {};
     if (body?.ids !== undefined) {
       params.push(deletionIds(body.ids));
@@ -1433,7 +1450,7 @@ export class BancoDocentesService implements OnModuleInit {
     );
   }
 
-  private async createBulkSupport(support: BulkSupport, actorId: string, ip?: string, trace?: any): Promise<string> {
+  private async createBulkSupport(support: BulkSupport, actorId: string, ip?: string, trace?: any, convocatoria: Record<string, any> = {}): Promise<string> {
     const id = randomUUID();
     const sha256 = createHash('sha256').update(support.content).digest('hex');
     await this.dataSource.query(
@@ -1444,7 +1461,7 @@ export class BancoDocentesService implements OnModuleInit {
       [
         id, support.fileName, support.mimeType, support.content.length, sha256,
         support.content, actorId, support.justificacion || 'Carga masiva de perfiles docentes RUND', ip || null,
-        JSON.stringify(trace ? { trazabilidad: trace } : {}),
+        JSON.stringify({ ...convocatoria, ...(trace ? { trazabilidad: trace } : {}) }),
       ],
     );
     return id;
@@ -1658,6 +1675,7 @@ export class BancoDocentesService implements OnModuleInit {
     if (!options.dryRun && !options.support) {
       throw new BadRequestException('La carga masiva definitiva requiere conservar el archivo como soporte documental.');
     }
+    const nombreConvocatoria = convocatoriaName(options.convocatoria);
     const preparedRows = rows.map((item, index) => ({ ...item, __sourceRowNumber: item?.__sourceRowNumber || index + 2 }));
     const needsActivePeriod = !options.periodoCarga && preparedRows.some(row => !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga);
     const fallbackPeriod = options.periodoCarga || (needsActivePeriod ? await this.catalogos.periodoActivo() : null);
@@ -1667,12 +1685,27 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
 
+    let convocatoria: Record<string, any> = {};
+    if (nombreConvocatoria) {
+      const periodo = convocatoriaPeriod(fallbackPeriod);
+      if (preparedRows.some(row => String(normalizeBancoDocentePayload(row).periodoCarga || '') !== periodo)) {
+        throw new BadRequestException('Todos los registros de una convocatoria deben pertenecer al período seleccionado. Revise PERIODO_CARGA en el archivo.');
+      }
+      const clave = convocatoriaKey(nombreConvocatoria)!;
+      const existing = await this.dataSource.query(`SELECT resumen->>'convocatoria' AS nombre
+        FROM rund."RundCargaMasiva"
+        WHERE resumen->>'convocatoriaClave'=$1 AND resumen->>'convocatoriaPeriodo'=$2
+        ORDER BY "createdAt",id LIMIT 1`, [clave, periodo]);
+      convocatoria = { convocatoria: existing[0]?.nombre || nombreConvocatoria, convocatoriaClave: clave, convocatoriaPeriodo: periodo };
+    }
+
+
     // Confirma una sola vez antes de escribir o abrir transacciones de filas.
     // Un fallo de Auth no guarda un soporte ni se interpreta como catálogo vacío.
     const territoriales = preparedRows.length ? await this.getTerritoriales() : [];
     const bulkSupportId = options.dryRun
       ? null
-      : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip, bulkRegistrationTrace(preparedRows));
+      : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip, bulkRegistrationTrace(preparedRows), convocatoria);
 
     let finalResults: any[] = [];
     let finalErrors: any[] = [];
@@ -1707,6 +1740,7 @@ export class BancoDocentesService implements OnModuleInit {
               observacion: options.support?.justificacion || 'Carga masiva de perfiles docentes RUND',
               metadata: {
                 cargaMasivaId: bulkSupportId,
+                ...convocatoria,
                 archivo: options.support?.fileName,
                 filaOrigen: row.__sourceRowNumber,
               },
@@ -1751,7 +1785,7 @@ export class BancoDocentesService implements OnModuleInit {
       if (bulkSupportId) {
         await this.finishBulkSupport(
           bulkSupportId,
-          { total: preparedRows.length, error: String(error?.message || 'Error no controlado'),
+          { ...convocatoria, total: preparedRows.length, error: String(error?.message || 'Error no controlado'),
             trazabilidad: bulkRegistrationTrace(preparedRows) },
           'FALLIDA',
         ).catch((auditError: any) => {
@@ -1762,6 +1796,7 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     const summary = {
+      ...convocatoria,
       total: preparedRows.length,
       created: finalResults.filter((r) => r.action === 'insert').length,
       updated: finalResults.filter((r) => r.action === 'update').length,
@@ -1776,6 +1811,7 @@ export class BancoDocentesService implements OnModuleInit {
       await this.finishBulkSupport(
         bulkSupportId,
         {
+          ...convocatoria,
           total: summary.total,
           created: summary.created,
           updated: summary.updated,
@@ -1788,6 +1824,15 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     return summary;
+  }
+
+  async getConvocatorias(periodoCarga: string) {
+    const periodo = convocatoriaPeriod(periodoCarga);
+    return this.dataSource.query(`SELECT resumen->>'convocatoriaClave' AS clave,
+      (array_agg(resumen->>'convocatoria' ORDER BY "createdAt",id))[1] AS nombre
+      FROM rund."RundCargaMasiva"
+      WHERE resumen->>'convocatoriaPeriodo'=$1 AND resumen->>'convocatoriaClave' IS NOT NULL
+      GROUP BY resumen->>'convocatoriaClave' ORDER BY nombre`, [periodo]);
   }
 
   async getBulkHistory(limit = 50): Promise<any[]> {
@@ -2041,7 +2086,7 @@ export class BancoDocentesService implements OnModuleInit {
     return suggestionIds.length && !extractionReview ? this.dataSource.transaction(execute) : execute();
   }
 
-  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }) {
+  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string }) {
     const baseSql = this.authDocentesBaseSql();
     const proyeccion = JSON.stringify(await this.authBanco.proyeccion());
     const params: any[] = [proyeccion];
@@ -2179,6 +2224,18 @@ export class BancoDocentesService implements OnModuleInit {
       ORDER BY total DESC
     `, s.p);
 
+    const cv = mkParams();
+    const porConvocatoria = await this.dataSource.query(`
+      ${baseSql}, convocatoria_members AS (${CONVOCATORIA_MEMBERS_SQL}), filtered AS (
+        SELECT * FROM auth_docentes ${cv.w}
+      )
+      SELECT cm.clave AS convocatoria_clave, MIN(cm.nombre) AS convocatoria,
+        COUNT(DISTINCT (f.docente_id,f.periodo_carga))::int AS total
+      FROM filtered f JOIN convocatoria_members cm
+        ON cm.docente_id=f.docente_id::text AND cm.periodo=f.periodo_carga
+      GROUP BY cm.clave ORDER BY total DESC,convocatoria
+    `, cv.p);
+
     const total = Number(summary?.total || 0);
     const activos = Number(summary?.activos || 0);
     return {
@@ -2187,6 +2244,7 @@ export class BancoDocentesService implements OnModuleInit {
       inactivos: total - activos,
       total_horas: Number(summary?.total_horas || 0),
       promedio_horas: Number(summary?.promedio_horas || 0),
+      por_convocatoria: porConvocatoria,
       por_dedicacion: porDedicacion,
       por_territorial: porTerritorial,
       por_categoria: porCategoria,
@@ -2517,7 +2575,9 @@ export class BancoDocentesService implements OnModuleInit {
       // Mensaje de corrección dirigido al titular autenticado; no incluye URL ni contenido del original.
       this.dataSource.query(`SELECT bloque, tipo_soporte, nombre_archivo, estado, observacion AS correccion_requerida
         FROM rund."RundSoporteCampo"
-        WHERE docente_id::text = $1 AND tipo_soporte NOT IN ('soporte_edicion_perfil', 'soporte_cambio_estado_perfil')`,
+        WHERE docente_id::text = $1 AND tipo_soporte NOT IN ('soporte_edicion_perfil', 'soporte_cambio_estado_perfil')
+        ORDER BY "createdAt" ASC, id ASC`,
+        // Oldest first: with several evidences per support, the portal keeps the most recent one.
         [String(match.docente_id)]),
       this.dataSource.query(`SELECT bloque, estado, observacion, fecha_revision
         FROM rund."RundCampoEstado" WHERE docente_id::text = $1`, [String(match.docente_id)]),
@@ -2679,7 +2739,7 @@ export class BancoDocentesService implements OnModuleInit {
   /**
    * BR-044 — Obtener estados de aprobación por bloque para un docente.
    */
-  async getBloques(docenteId: string) {
+  async getBloques(docenteId: string, includeDataReview = false) {
     docenteId = await this.resolveDocenteId(docenteId);
 
     let bloques = await this.dataSource.query(
@@ -2700,8 +2760,11 @@ export class BancoDocentesService implements OnModuleInit {
     ));
 
     const soportesPorBloque: Record<string, any[]> = {};
+    const dataProfile = includeDataReview ? await loadDataReviewProfile(this.dataSource,docenteId) : null;
+    const dataReviews = includeDataReview ? await loadDataReviews(this.dataSource,docenteId) : [];
     const names = await resolveRundActorNames(this.dataSource, [
       ...bloques.flatMap((block: any) => [block.cargado_por, block.revisado_por]),
+      ...dataReviews.map((review: any) => review.actor_id),
       ...soportes.flatMap((support: any) => [support.cargado_por,
         ...Object.values(support.revisiones_campos || {}).map((decision: any) => decision.revisadoPor)]),
     ]);
@@ -2719,6 +2782,8 @@ export class BancoDocentesService implements OnModuleInit {
       ...b,
       cargadoPorNombre: b.cargado_por ? rundActorName(names, b.cargado_por) : null,
       revisadoPorNombre: b.revisado_por ? rundActorName(names, b.revisado_por) : null,
+      ...(includeDataReview ? {revisionDatos:Object.fromEntries(Object.entries(dataReviewContext(b.bloque,dataProfile,soportesPorBloque[b.bloque] || [],dataReviews,b.estado))
+        .map(([key,value])=>[key,{...value,revisadoPorNombre:value.revisadoPor ? rundActorName(names,value.revisadoPor):null}]))}:{}),
       soportes: soportesPorBloque[b.bloque] || [],
       puedeDevolver: canReturnEvidenceBlock(b.bloque, soportesPorBloque[b.bloque] || []),
       tiposSoporteRequeridos: BancoDocentesService.CATALOGO_SOPORTE[b.bloque] || [],
@@ -2766,6 +2831,9 @@ export class BancoDocentesService implements OnModuleInit {
 
   async revisarSoporte(docenteId: string, bloque: string, soporteId: string, data: any, actorId: string, ip?: string) {
     return new RundEvidenceWorkflow(this.dataSource).reviewSupport(await this.resolveDocenteId(docenteId), bloque, soporteId, data, actorId, ip);
+  }
+  async revisarDato(docenteId: string, bloque: string, campo: string, data: any, actorId: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewData(await this.resolveDocenteId(docenteId),bloque,campo,data,actorId,ip);
   }
 
   /**

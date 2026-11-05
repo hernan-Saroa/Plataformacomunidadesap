@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { capturarDatosCarga } from './rund-carga-original';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import * as xlsx from 'xlsx';
+import { convocatoriaKey } from './rund-convocatorias';
 
 export type RegistrationRow = {
   fila: number | null; nombre: string; documento_identidad: string | null; correo: string | null;
@@ -92,7 +93,7 @@ export function registrationHistoryFilters(query: any = {}) {
   if (periodo && (periodo.length > 40 || /[\u0000-\u001f]/.test(periodo))) throw new BadRequestException('El periodo no es válido.');
   if (tipo && !['MASIVO', 'INDIVIDUAL'].includes(tipo)) throw new BadRequestException('El tipo de operación no es válido.');
   if (search && search.length > 150) throw new BadRequestException('La búsqueda admite hasta 150 caracteres.');
-  return { periodo, tipo, search, sinPeriodo: query.sinPeriodo === true || query.sinPeriodo === 'true',
+  return { periodo, tipo, search, convocatoria: convocatoriaKey(query.convocatoria), sinPeriodo: query.sinPeriodo === true || query.sinPeriodo === 'true',
     page: boundedNumber(query.page, 1, 1_000_000), limit: boundedNumber(query.limit, 20, 50) };
 }
 
@@ -128,7 +129,8 @@ const EVENTS = `WITH bulk_rows AS (
       jsonb_build_object('total',COALESCE(b.resumen->'total',CASE WHEN jsonb_typeof(b.resumen->'registros')='number' THEN b.resumen->'registros' END),'creados',b.resumen->'created',
         'actualizados',b.resumen->'updated','sinCambios',b.resumen->'unchanged','errores',b.resumen->'errors')) AS resumen,
     b.resumen ? 'trazabilidad' AS detalle_completo,
-    CASE WHEN b.resumen->>'tipo'='RECUPERACION_INFORMATIVA' THEN 'RECUPERACION_INFORMATIVA' ELSE 'REGISTRO' END AS origen
+    CASE WHEN b.resumen->>'tipo'='RECUPERACION_INFORMATIVA' THEN 'RECUPERACION_INFORMATIVA' ELSE 'REGISTRO' END AS origen,
+    b.resumen->>'convocatoria' AS convocatoria,b.resumen->>'convocatoriaClave' AS convocatoria_clave
   FROM bulk_sources b CROSS JOIN LATERAL unnest(b.periodos) p(periodo)
   LEFT JOIN historical_counts h ON h.carga_id=b.id::text AND h.periodo IS NOT DISTINCT FROM p.periodo
   UNION ALL
@@ -136,7 +138,7 @@ const EVENTS = `WITH bulk_rows AS (
     COALESCE(NULLIF(l.metadata->'registro'->>'nombre',''),NULLIF(p.nom_largo,''),'Nombre no disponible'),
     l.actor_id,'COMPLETADA',l."createdAt" AT TIME ZONE current_setting('TIMEZONE'),
     l."createdAt" AT TIME ZONE current_setting('TIMEZONE'),
-    jsonb_build_object('total',1,'creados',1,'actualizados',0,'sinCambios',0,'errores',0),true,'REGISTRO'
+    jsonb_build_object('total',1,'creados',1,'actualizados',0,'sinCambios',0,'errores',0),true,'REGISTRO',NULL::text,NULL::text
   FROM rund."RundAprobacionLog" l
   LEFT JOIN rund."Docente" d ON d.id::text=l.docente_id::text
   LEFT JOIN auth.personas p ON p.id_person::text=d."personaId"::text
@@ -149,7 +151,7 @@ export class RundRegistrationHistory {
   private async present(rows: any[]) {
     const names = await resolveRundActorNames(this.db as any, rows.map(row => row.actor_id));
     return rows.map(row => ({ id: row.id, tipo: row.tipo, periodo: row.periodo, origen: row.origen,
-      titulo: row.titulo, responsable: row.origen === 'RECUPERACION_INFORMATIVA' ? 'No registrado' : rundActorName(names, row.actor_id),
+      titulo: row.titulo, convocatoria: row.convocatoria || null, responsable: row.origen === 'RECUPERACION_INFORMATIVA' ? 'No registrado' : rundActorName(names, row.actor_id),
       responsableRecuperacion: row.origen === 'RECUPERACION_INFORMATIVA' ? rundActorName(names, row.actor_id) : null,
       estado: row.estado,
       fecha: row.fecha, fechaFin: row.fecha_fin, resumen: row.resumen, detalleCompleto: row.detalle_completo }));
@@ -157,12 +159,14 @@ export class RundRegistrationHistory {
 
   async list(query: any) {
     const filters = registrationHistoryFilters(query);
-    const args = [filters.periodo, filters.tipo, filters.search];
+    const normalizedSearch = filters.search?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ') || null;
+    const args = [filters.periodo, filters.tipo, filters.search, filters.convocatoria, normalizedSearch];
     const where = `WHERE ($1::text IS NULL OR periodo=$1) AND ($2::text IS NULL OR tipo=$2)
-      AND ($3::text IS NULL OR strpos(LOWER(titulo),LOWER($3))>0)`;
+      AND ($3::text IS NULL OR strpos(LOWER(titulo),LOWER($3))>0 OR strpos(convocatoria_clave,$5::text)>0)
+      AND ($4::text IS NULL OR convocatoria_clave=$4)`;
     const [count] = await this.db.query(`${EVENTS} SELECT COUNT(*)::int AS total FROM events ${where}`, args);
     const rows = await this.db.query(`${EVENTS} SELECT * FROM events ${where}
-      ORDER BY fecha DESC,id DESC,periodo DESC NULLS LAST LIMIT $4 OFFSET $5`, [...args, filters.limit, (filters.page - 1) * filters.limit]);
+      ORDER BY fecha DESC,id DESC,periodo DESC NULLS LAST LIMIT $6 OFFSET $7`, [...args, filters.limit, (filters.page - 1) * filters.limit]);
     return { data: await this.present(rows), total: count.total, page: filters.page, limit: filters.limit, pages: Math.ceil(count.total / filters.limit) };
   }
 

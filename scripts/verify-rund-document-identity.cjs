@@ -77,7 +77,8 @@ module.exports = async function verifyDocumentIdentity(pgConfig, runtime, check,
     await check('Identidad expediente: resolución completa coincide con SQL anterior, OR, documento exacto, duplicados e históricos', async () => {
       for (const key of [...ids, ...people, rawDocument.trim(), rawDocument.replace(/[. ]/g, ''), caseDocument.toLowerCase(), caseDocument, people[0].toUpperCase(), 'AUSENTE-' + tag]) {
         const expected = await previous.resolver(database, key);
-        if (expected) assert.deepEqual(await service.requireDocente(key), expected);
+        // persona_id lo agrega el expediente (se usa como carpeta); la referencia anterior solo devuelve id y documento.
+        if (expected) { const { persona_id, ...actual } = await service.requireDocente(key); assert.deepEqual(actual, expected); assert(persona_id); }
         else await assert.rejects(service.requireDocente(key), error => error.getStatus() === 404);
       }
       assert.equal((await service.requireDocente(rawDocument)).id, ids[2]);
@@ -93,7 +94,7 @@ module.exports = async function verifyDocumentIdentity(pgConfig, runtime, check,
           return identities.coincidenciasUnicidad(...args);
         },
       });
-      try { assert.deepEqual(await concurrent.requireDocente(people[0]), before); }
+      try { const { persona_id, ...actual } = await concurrent.requireDocente(people[0]); assert.deepEqual(actual, before); }
       finally { await database.query(`UPDATE rund."Docente" SET "personaId"=$2,"updatedAt"='2022-01-01' WHERE id=$1`, [ids[1], people[0]]); }
     });
     await check('Identidad expediente: validación por fila conserva LEFT JOIN, sexo nativo, títulos, cero e ignorar datos históricos', async () => {
@@ -143,6 +144,8 @@ module.exports = async function verifyDocumentIdentity(pgConfig, runtime, check,
       finally { authFixture.setFichaMode('normal'); }
     });
     await check('Identidad expediente: JWT, propiedad docente y metadatos protegidos conservan restricciones', async () => {
+      await database.query(`INSERT INTO auth.role (id,code,name,category,is_active) SELECT gen_random_uuid(),'ADMIN','Administrador','personalizado',true WHERE NOT EXISTS (SELECT 1 FROM auth.role WHERE UPPER(code)='ADMIN' AND is_active)`);
+      await database.query(`INSERT INTO auth.role_permissions (id_rol,id_permission,is_active,created_at,updated_at) SELECT r.id,p.id_permission,true,now(),now() FROM auth.role r JOIN auth.permission p ON p.code IN ('banco-docentes.rund.view','banco-docentes.rund.edit','banco-docentes.rund.documents.manage') WHERE UPPER(r.code)='ADMIN' AND r.is_active ON CONFLICT (id_rol,id_permission) DO NOTHING`);
       const admin = jwt.sign({ sub: randomUUID(), roles: ['ADMIN'] }, { expiresIn: '2m' });
       const foreignUser = (await database.query(`SELECT u.id_user FROM auth."user" u
         JOIN rund."Docente" d ON d."personaId"=u.id_person WHERE d.id=$1`, [docenteId])).rows[0].id_user;

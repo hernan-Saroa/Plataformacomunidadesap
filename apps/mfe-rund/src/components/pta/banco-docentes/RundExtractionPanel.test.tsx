@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RundExtractionPanel } from './RundExtractionPanel';
+import { RundExtractionPanel, RundExtractionProgress } from './RundExtractionPanel';
 import { apiClient } from '../../../services/api/apiClient';
 import { getAppOnlineStatus } from '../../../utils/connectivity';
 
@@ -17,7 +17,7 @@ afterEach(()=>{cleanup();vi.useRealTimers();});
 
 const openAssistant=async()=>{
   await waitFor(()=>expect(screen.queryByText('Consultando análisis…')).toBeNull());
-  fireEvent.click(await screen.findByRole('button',{name:'Revisar sugerencias'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Organizar análisis'}));
 };
 
 describe('revisión humana de OCR',()=>{
@@ -63,6 +63,7 @@ describe('revisión humana de OCR',()=>{
     ]});
     render(<RundExtractionPanel {...props} canEdit={false}/>);
     await openAssistant();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-1'}});
     expect(screen.getByText('Corregido y confirmado')).toBeTruthy();
     expect(screen.getByText('Título verificado por el cargador')).toBeTruthy();
     expect(apiClient.post).not.toHaveBeenCalled();
@@ -76,7 +77,7 @@ describe('revisión humana de OCR',()=>{
     expect(await screen.findByText(/1 dato por revisar/)).toBeTruthy();
     view.rerender(<RundExtractionPanel {...props} activeBlock="FORMACION" activeBlockLabel="Formación Académica"/>);
     expect(await screen.findByText('Sin sugerencias OCR para Formación Académica')).toBeTruthy();
-    expect(screen.queryByRole('button',{name:'Revisar sugerencias'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Organizar análisis'})).toBeNull();
     expect(screen.queryByText('identidad.pdf')).toBeNull();
     view.rerender(<RundExtractionPanel {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad"/>);
     expect(await screen.findByText(/1 dato por revisar/)).toBeTruthy();
@@ -92,7 +93,7 @@ describe('revisión humana de OCR',()=>{
     }],jobs:[{...data.jobs[0],bloque:'IDENTIDAD',estado,sugerencias:[]}]});
     render(<RundExtractionPanel {...props} activeBlock="FORMACION" activeBlockLabel="Formación Académica"/>);
     expect(await screen.findByText('Sin sugerencias OCR para Formación Académica')).toBeTruthy();
-    expect(screen.queryByRole('button',{name:'Revisar sugerencias'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Organizar análisis'})).toBeNull();
     expect(screen.queryByText('nuevo.pdf')).toBeNull();
   });
 
@@ -130,7 +131,7 @@ describe('revisión humana de OCR',()=>{
 
     view.rerender(<RundExtractionPanel {...props} activeBlock="CONTACTO" activeBlockLabel="Contacto"/>);
     expect(await screen.findByText('Sin sugerencias OCR para Contacto')).toBeTruthy();
-    await waitFor(()=>expect(screen.queryByRole('button',{name:'Revisar sugerencias'})).toBeNull());
+    await waitFor(()=>expect(screen.queryByRole('button',{name:'Organizar análisis'})).toBeNull());
     expect(screen.queryByText('Número de documento')).toBeNull();
   });
 
@@ -210,8 +211,45 @@ describe('revisión humana de OCR',()=>{
   it('no permite aplicar una sugerencia cuyo PDF fue reemplazado',async()=>{
     vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],documento_estado:'REEMPLAZADO'}]});
     render(<RundExtractionPanel {...props}/>);
-    await openAssistant();
+    await waitFor(()=>expect(screen.queryByText('Consultando análisis…')).toBeNull());
     expect(screen.queryByText('Aplicar al perfil')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Organizar análisis'})).toBeNull();
+  });
+
+  it.each([
+    ['IDENTIDAD','nombreCompleto'],['FORMACION','pregrado'],
+    ['VINCULACION','actoAdministrativoVinculacion'],['ACADEMICO','ultimaEvaluacion'],
+  ])('excluye los archivos eliminados y reemplazados de las pestañas, el selector y los contadores de %s',async(activeBlock,campo)=>{
+    const current={...data.jobs[0],bloque:activeBlock,nombre_archivo:'vigente.pdf',sugerencias:[{...suggestion,campo}]};
+    const removed={...current,id:'deleted-job',documento_id:'deleted-file',nombre_archivo:'eliminado.pdf',documento_estado:'ELIMINADO'};
+    const replaced={...current,id:'replaced-job',documento_id:'replaced-file',nombre_archivo:'reemplazado.pdf',documento_estado:'REEMPLAZADO',estado:'PROCESANDO'};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[removed,current,replaced]});
+    const onPendingChange=vi.fn();
+    render(<RundExtractionPanel {...props} activeBlock={activeBlock} onPendingChange={onPendingChange}/>);
+    await openAssistant();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option').textContent).toContain('vigente.pdf');
+    expect(screen.queryByRole('tablist',{name:'Análisis por archivo'})).toBeNull();
+    expect(screen.queryByText(/eliminado.pdf|reemplazado.pdf/)).toBeNull();
+    expect(onPendingChange).toHaveBeenLastCalledWith(activeBlock,1,false);
+    expect(screen.getByText('1 pendientes')).toBeTruthy();
+  });
+  it('si se elimina el archivo seleccionado cambia al vigente y actualiza sus contadores',async()=>{
+    const other={...data.jobs[0],id:'j-2',documento_id:'d-2',nombre_archivo:'otro-vigente.pdf',sugerencias:[{...suggestion,id:'s-2'}]};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],other]});
+    const view=render(<RundExtractionPanel {...props}/>);await openAssistant();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-1'}});
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],documento_estado:'ELIMINADO'},other]});
+    view.rerender(<RundExtractionPanel {...props} revision={1}/>);
+    await waitFor(()=>expect(screen.getAllByRole('option')).toHaveLength(1));
+    expect((screen.getByLabelText('Archivo para revisar') as HTMLSelectElement).value).toBe('j-2');
+    expect(screen.queryByText(/diploma.pdf/)).toBeNull();
+    expect(screen.getByText('1 pendientes')).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...other,documento_estado:'ELIMINADO'}]});
+    view.rerender(<RundExtractionPanel {...props} revision={2}/>);
+    await waitFor(()=>expect(screen.queryByLabelText('Archivo para revisar')).toBeNull());
+    expect(screen.queryByText(/otro-vigente.pdf/)).toBeNull();
+    expect(screen.queryByText('1 pendientes')).toBeNull();
   });
 
   it('muestra claramente el dato confirmado por el operador',async()=>{
@@ -223,15 +261,18 @@ describe('revisión humana de OCR',()=>{
     expect(screen.queryByText('Aplicar al perfil')).toBeNull();
   });
 
-  it('muestra el análisis vigente y oculta reprocesamientos históricos ya revisados',async()=>{
+  it('muestra el análisis vigente y permite consultar resultados anteriores sin aplicar sus sugerencias descartadas',async()=>{
     const old={...data.jobs[0],id:'j-old',nombre_archivo:'resultado-anterior.pdf',sugerencias:[{...suggestion,id:'s-old',estado:'DESCARTADA'}]};
     vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],old]});
     render(<RundExtractionPanel {...props}/>);
     await openAssistant();
-    expect(screen.getByText(/diploma.pdf/)).toBeTruthy();
-    expect(screen.queryByText(/resultado-anterior.pdf/)).toBeNull();
+    expect(screen.getAllByText(/diploma.pdf/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('option',{name:/resultado-anterior.pdf/})).toBeTruthy();
     expect(screen.getByText('Perfil actual')).toBeTruthy();
     expect(screen.getByText('Documento')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-old'}});
+    expect(screen.getByText('Descartado')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
   });
 
   it('el módulo desactivado no agrega controles al expediente',async()=>{
@@ -269,5 +310,196 @@ describe('revisión humana de OCR',()=>{
     render(<RundExtractionPanel {...props}/>);
     await openAssistant();
     expect(screen.getByRole('progressbar').getAttribute('aria-valuetext')).toBe('Esperando reintento automático');
+  });
+});
+
+describe('OCR con varias evidencias',()=>{
+  it('cada pestaña conserva el porcentaje y las propuestas de su propio archivo al actualizarse',async()=>{
+    const running={...data.jobs[0],estado:'PROCESANDO',etapa:'OCR',sugerencias:[],worker_activo:true};
+    const complete={...data.jobs[0],id:'j-2',documento_id:'d-2',nombre_archivo:'segundo.pdf'};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[running,complete]});
+    render(<RundExtractionPanel {...props}/>);await openAssistant();
+    const first=screen.getByRole('tab',{name:/diploma.pdf/});
+    const second=screen.getByRole('tab',{name:/segundo.pdf/});
+    expect(first.textContent).toContain('25%');expect(second.textContent).toContain('100%');
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+    fireEvent.click(second);
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(second.id);
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+    expect(screen.getByRole('button',{name:'Aplicar al perfil'})).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...running,etapa:'MODELO'},complete]});
+    fireEvent.click(screen.getByRole('button',{name:'Actualizar sugerencias'}));
+    await waitFor(()=>expect(screen.getByRole('tab',{name:/diploma.pdf/}).textContent).toContain('50%'));
+    expect(screen.getByRole('tab',{name:/segundo.pdf/}).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(screen.getByRole('tab',{name:/segundo.pdf/}),{key:'ArrowLeft'});
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50');
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+  });
+  const documents=[
+    {id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',nombre_archivo:'maestria-1.pdf',bloque:'FORMACION',tipo_soporte:'diploma_maestria'},
+    {id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',nombre_archivo:'maestria-2.pdf',bloque:'FORMACION',tipo_soporte:'diploma_maestria'},
+    {id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',nombre_archivo:'pregrado.pdf',bloque:'FORMACION',tipo_soporte:'diploma_pregrado'},
+  ];
+  beforeEach(()=>{vi.mocked(apiClient.post).mockResolvedValue({success:true,data:{queued:2}});});
+
+  it('permite volver a procesar un PDF antiguo con propuestas pendientes después de confirmarlo',async()=>{
+    const old={...documents[0],analizado_previamente:true};
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[old],jobs:[{...data.jobs[0],documento_id:old.id,bloque:'FORMACION'}]});
+    render(<RundExtractionPanel {...props} canEdit={false} canAnalyze activeBlock="FORMACION"/>);
+    await openAssistant();
+    expect(screen.getByRole('combobox',{name:'Archivo para revisar'}).getAttribute('aria-describedby')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Volver a procesar este PDF'}));
+    expect(screen.getByRole('region',{name:'Confirmar nuevo análisis OCR'})).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar nuevo análisis'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/reprocesar'),{documentos:[old.id]},expect.anything()));
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+  });
+  it('prepara reprocesados antiguos en el orden elegido y cancelar no modifica nada',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:documents.map(document=>({...document,analizado_previamente:true})),jobs:[]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    for(const document of documents.slice(0,2))fireEvent.click(screen.getByRole('checkbox',{name:`Incluir ${document.nombre_archivo} en el análisis`}));
+    fireEvent.click(screen.getByRole('button',{name:'Analizar antes maestria-2.pdf'}));
+    fireEvent.click(screen.getByRole('button',{name:'Analizar seleccionadas (2)'}));
+    fireEvent.click(screen.getByRole('button',{name:'Cancelar nuevo análisis'}));
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Analizar seleccionadas (2)'}));
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar nuevo análisis'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/reprocesar'),{documentos:[documents[1].id,documents[0].id]},expect.anything()));
+  });
+
+  it('analiza las evidencias seleccionadas en el orden elegido',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents,jobs:[]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    fireEvent.click(screen.getByRole('checkbox',{name:'Incluir pregrado.pdf en el análisis'}));
+    fireEvent.click(screen.getByRole('checkbox',{name:'Incluir maestria-2.pdf en el análisis'}));
+    expect(screen.getByText('Turno 1 del análisis')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Analizar antes maestria-2.pdf'}));
+    fireEvent.click(screen.getByRole('button',{name:'Analizar seleccionadas (2)'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/rund/api/v1/pta/banco-docentes/doc-1/extracciones/lote',
+      {documentos:[documents[1].id,documents[2].id]},expect.anything()));
+    await waitFor(()=>expect(props.onConfirmed).toHaveBeenCalled());
+  });
+
+  it('analiza todas en el orden mostrado y conserva la extracción individual',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents,jobs:[]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    expect(screen.getAllByRole('button',{name:'Extraer datos'})).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button',{name:'Analizar todas (3)'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/lote'),{documentos:documents.map(d=>d.id)},expect.anything()));
+  });
+  it('el revisor puede organizar análisis sin obtener permiso para editar el perfil',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,documents});
+    render(<RundExtractionPanel {...props} canEdit={false} canAnalyze activeBlock="FORMACION"/>);
+    await openAssistant();
+    fireEvent.click(screen.getByRole('checkbox',{name:'Incluir pregrado.pdf en el análisis'}));
+    fireEvent.click(screen.getByRole('button',{name:'Analizar seleccionadas (1)'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/lote'),{documentos:[documents[2].id]},expect.anything()));
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Corregir dato'})).toBeNull();
+  });
+
+  it('un revisor sin edición no ve controles de selección ni de orden',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents,jobs:[]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION" canEdit={false}/>);
+    await openAssistant();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('button',{name:/Analizar/})).toBeNull();
+  });
+
+  it('reordena los análisis en espera antes de que comiencen',async()=>{
+    vi.mocked(apiClient.post).mockResolvedValue({success:true,data:{reordered:2}});
+    const waiting=(id:string,name:string,posicion_cola:number)=>({id,documento_id:`d-${id}`,nombre_archivo:name,version:1,bloque:'FORMACION',estado:'PENDIENTE',documento_estado:'ACTIVO',posicion_cola,sugerencias:[]});
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[],jobs:[waiting('j-2','segunda.pdf',2),waiting('j-1','primera.pdf',1)]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    const queue=screen.getByRole('region',{name:'Orden de análisis en espera'});
+    expect(queue.textContent).toMatch(/1primera\.pdf.*2segunda\.pdf/);
+    expect((screen.getByLabelText('Archivo para revisar') as HTMLSelectElement).value).toBe('j-1');
+    expect(screen.getByText('Turno 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Analizar antes segunda.pdf'}));
+    fireEvent.click(screen.getByRole('button',{name:'Guardar orden'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/orden'),{trabajos:['j-2','j-1']},expect.anything()));
+  });
+
+  it('advierte propuestas de otras evidencias y bloquea aplicar una sugerencia desactualizada',async()=>{
+    const proposal=(id:string,valor:string,extra:any={})=>({id,campo:'maestria',label:'Maestría',valor,valor_previo:'Sin dato',pagina:1,evidencia:valor,estado:'PENDIENTE',baja_confianza:false,...extra});
+    const job=(id:string,name:string,suggestions:any[])=>({id,documento_id:`d-${id}`,nombre_archivo:name,version:1,bloque:'FORMACION',estado:'COMPLETADO',documento_estado:'ACTIVO',sugerencias:suggestions});
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[],jobs:[
+      job('j-1','maestria-1.pdf',[proposal('s-1','Maestría en Gestión')]),
+      job('j-2','maestria-2.pdf',[proposal('s-2','Maestría en Políticas')]),
+      job('j-3','maestria-3.pdf',[proposal('s-3','Maestría antigua',{desactualizada:true})]),
+    ]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    expect(screen.getByText(/Otra evidencia también propone este dato: «Maestría en Políticas» \(maestria-2\.pdf\)/)).toBeTruthy();
+    expect(screen.getAllByRole('button',{name:'Aplicar al perfil'})).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-2'}});
+    expect(screen.getByText(/Otra evidencia también propone este dato: «Maestría en Gestión» \(maestria-1\.pdf\)/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-3'}});
+    expect(screen.getByText(/El dato del perfil cambió después de este análisis/)).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(screen.getAllByRole('button',{name:'Rechazar sugerencia'})).toHaveLength(1);
+  });
+});
+
+describe('información de procesamiento sin avances ficticios',()=>{
+  it('explica el error y cuenta la espera antes del siguiente intento',()=>{
+    vi.useFakeTimers();
+    render(<RundExtractionProgress job={{id:'retry',estado:'PENDIENTE',intentos:1,error_codigo:'OCR_TIMEOUT',disponible_en:new Date(Date.now()+60000).toISOString()}}/>);
+    expect(screen.getByText(/motor OCR superó los 3 minutos/)).toBeTruthy();
+    expect(screen.getByText(/Próximo intento en 60 s/)).toBeTruthy();
+    act(()=>vi.advanceTimersByTime(1000));
+    expect(screen.getByText(/Próximo intento en 59 s/)).toBeTruthy();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+  });
+  it('conserva el avance por etapas mientras espera al motor y advierte si pierde el worker',()=>{
+    vi.useFakeTimers();
+    const job={id:'slow',estado:'PROCESANDO',etapa:'OCR',worker_activo:true,etapa_desde:new Date(Date.now()-61000).toISOString()};
+    const view=render(<RundExtractionProgress job={job}/>);
+    expect(screen.getByText(/Esta etapa lleva 1 min/)).toBeTruthy();
+    act(()=>vi.advanceTimersByTime(15000));
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+    view.rerender(<RundExtractionProgress job={{...job,worker_activo:false}}/>);
+    expect(screen.getByRole('status').textContent).toContain('Procesamiento interrumpido');
+    view.rerender(<RundExtractionProgress job={job} unavailable/>);
+    expect(screen.getByRole('status').textContent).toContain('Sin actualización del servidor');
+    expect(screen.getByText(/último estado recibido/)).toBeTruthy();
+  });
+  it('una consulta bloqueada muestra el fallo y permite la siguiente actualización',async()=>{
+    vi.useFakeTimers();
+    let resume!:(value:any)=>void;
+    vi.mocked(apiClient.get).mockReturnValueOnce(new Promise(()=>undefined))
+      .mockReturnValueOnce(new Promise(resolve=>{resume=resolve;}));
+    render(<RundExtractionPanel {...props}/>);
+    await act(async()=>{await vi.advanceTimersByTimeAsync(30001);});
+    expect(screen.getByText('No fue posible actualizar el análisis')).toBeTruthy();
+    await act(async()=>{resume(data);});
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(1);
+    expect(screen.queryByText('No fue posible actualizar el análisis')).toBeNull();
+  });
+});
+
+describe('OCR limitado a lo que acredita cada documento',()=>{
+  it('una sugerencia fuera de alcance solo puede rechazarse y no cuenta como propuesta alternativa',async()=>{
+    const base={campo:'nombreCompleto',label:'Nombre completo',valor_previo:'DOCENTE',pagina:1,estado:'PENDIENTE',baja_confianza:false};
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[],jobs:[
+      {id:'j-1',documento_id:'d-1',nombre_archivo:'anexo.pdf',version:1,categoria_codigo:'OTROS',estado:'COMPLETADO',documento_estado:'ACTIVO',
+        sugerencias:[{...base,id:'s-1',valor:'OTRA PERSONA',evidencia:'OTRA PERSONA',fuera_de_alcance:true}]},
+      {id:'j-2',documento_id:'d-2',nombre_archivo:'cedula.pdf',version:1,bloque:'IDENTIDAD',tipo_soporte:'documento_identidad',estado:'COMPLETADO',documento_estado:'ACTIVO',
+        sugerencias:[{...base,id:'s-2',valor:'DOCENTE',evidencia:'DOCENTE'}]},
+    ]});
+    render(<RundExtractionPanel {...props} activeBlock="IDENTIDAD"/>);
+    await openAssistant();
+    expect(screen.getByText(/Este documento no acredita este dato/)).toBeTruthy();
+    expect(screen.queryByText(/Otra evidencia también propone este dato/)).toBeNull();
+    expect(screen.queryByRole('button',{name:'Confirmar coincidencia'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(screen.getAllByRole('button',{name:'Rechazar sugerencia'})).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-2'}});
+    expect(screen.getByRole('button',{name:'Confirmar coincidencia'})).toBeTruthy();
   });
 });

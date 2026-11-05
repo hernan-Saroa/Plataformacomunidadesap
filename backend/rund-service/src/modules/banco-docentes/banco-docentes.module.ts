@@ -33,6 +33,8 @@ import { AuthIdentityCorrectionModule } from '../../common/auth-identity-correct
 import { RundOcrIdentityCorrection } from './rund-ocr-identity-correction';
 import { RundNucleosController } from './rund-nucleos.controller';
 import { RundNucleosService } from './rund-nucleos.service';
+import { RundPhotosService } from './rund-photos.service';
+import { RundPhotosController } from './rund-photos.controller';
 
 @Module({
   imports: [
@@ -43,8 +45,9 @@ import { RundNucleosService } from './rund-nucleos.service';
     AuthIdentityCorrectionModule,
     TypeOrmModule.forFeature([BancoDocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],
+  controllers: [RundPhotosController, RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],
   providers: [
+    RundPhotosService,
     RundAuthStateSyncService,
     RundAuthStateSyncWorker,
     RundCarpetaInternalGuard,

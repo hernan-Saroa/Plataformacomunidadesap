@@ -7803,3 +7803,17 @@ Las bases temporales se eliminaron. No se cambian `.env`
 reales, Compose, gateway, microfrontend ni RUND embebido. El aislamiento implementado
 sigue pendiente de activación/aceptación; continúan SQL de transición, despliegue,
 operación y retiro final del mapa de cierre.
+
+## Sincronización con micro-frontend (2026-11-04)
+
+Se portó a `rund-service` / `mfe-rund` lo que `micro-frontend` agregó al RUND embebido en PTA
+después del 27-oct (base común del último porte): fotos de perfil con validación
+(`rund-photos.*`, migración 028, permisos `banco-docentes.rund.photos.manage|validate`),
+convocatorias de cargas masivas (`rund-convocatorias`, filtro `convocatoria` en listado,
+estadísticas y trazabilidad), revisión de datos (`rund-data-review`), varias evidencias por
+punto de control (máx. 10, OCR por selección y reproceso), normalización de soportes opcionales
+(migración 029), redacción de auditoría y caché sin conexión para `fotos-perfil`, y el reporte
+Planta Docente con filtro de convocatoria. Auth reenvía la foto del portal a `rund-service`
+(`RUND_SERVICE_URL`). Deuda declarada: `rund-photos.service` y partes de `rund-evidence-workflow`
+aún leen `auth.personas`/`auth."user"` por SQL (transición, igual que el resto del módulo);
+migrar a `AuthIdentityClient` con endpoint propietario en Auth.

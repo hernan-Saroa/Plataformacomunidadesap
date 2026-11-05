@@ -102,6 +102,8 @@ module.exports = async function verifySupportIdentity(pgConfig, runtime, check, 
       assert.equal(fs.readFileSync(path.join(folder, 'nuevo.pdf'), 'utf8'), 'contenido ficticio inmutable');
     });
     await check('Identidad soportes: JWT, permisos, enmascaramiento y umbral inválido mantienen la protección pública', async () => {
+      await database.query(`INSERT INTO auth.role (id,code,name,category,is_active) SELECT gen_random_uuid(),'ADMIN','Administrador','personalizado',true WHERE NOT EXISTS (SELECT 1 FROM auth.role WHERE UPPER(code)='ADMIN' AND is_active)`);
+      await database.query(`INSERT INTO auth.role_permissions (id_rol,id_permission,is_active,created_at,updated_at) SELECT r.id,p.id_permission,true,now(),now() FROM auth.role r JOIN auth.permission p ON p.code IN ('banco-docentes.rund.view','banco-docentes.rund.edit','banco-docentes.rund.documents.manage') WHERE UPPER(r.code)='ADMIN' AND r.is_active ON CONFLICT (id_rol,id_permission) DO NOTHING`);
       const admin = jwt.sign({ sub: randomUUID(), roles: ['ADMIN'] }, { expiresIn: '2m' });
       const teacher = jwt.sign({ sub: randomUUID(), roles: ['DOCENTE'] }, { expiresIn: '2m' });
       for (const route of ['/banco-docentes/soportes/proximos-vencer', '/banco-docentes/admin/sync-check/' + ids[0]]) {

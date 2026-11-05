@@ -22,7 +22,7 @@ module.exports = async function verifyExtractionIdentity(pgConfig, runtime, chec
   const actor = { actorId: 'OCR_FICTICIO', roles: ['SUPER_ADMIN'], fullAccess: true };
   const ds = new DataSource({ type: 'postgres', host: pgConfig.host, port: pgConfig.port, username: pgConfig.user,
     password: pgConfig.password, database: pgConfig.database, synchronize: false, extra: { max: 1 } });
-  const keys = ['AUTH_SERVICE_URL', 'AUTH_INTERNAL_SERVICE_TOKEN', 'RUND_OCR_ENABLED', 'RUND_OCR_TOKEN', 'RUND_OCR_URL',
+  const keys = ['AUTH_SERVICE_URL', 'AUTH_INTERNAL_SERVICE_TOKEN', 'RUND_OCR_ENABLED', 'RUND_EXTRACCION_AUTOMATICA', 'RUND_OCR_TOKEN', 'RUND_OCR_URL',
     'RUND_OLLAMA_URL', 'RUND_OLLAMA_MODEL', 'OPENKM_BASE_URL', 'RUND_DOCUMENT_ALLOW_LOCAL', 'TZ'];
   const saved = keys.map(key => process.env[key]);
   const docs = [], workers = []; let roleCreated = false, engine, beforeModel, storage, first, recovered;
@@ -49,7 +49,7 @@ module.exports = async function verifyExtractionIdentity(pgConfig, runtime, chec
     for (const table of ['auth.personas', 'academic_work_plan."Persona"']) await assert.rejects(ds.query('SELECT * FROM ' + table), /permission denied/);
     process.env.AUTH_SERVICE_URL = authUrl; process.env.AUTH_INTERNAL_SERVICE_TOKEN = authToken;
     process.env.RUND_DOCUMENT_ALLOW_LOCAL = 'true'; process.env.OPENKM_BASE_URL = '';
-    process.env.RUND_OCR_ENABLED = 'true'; process.env.RUND_OCR_TOKEN = 'ocr-ficticio-local-000000000000000000000000';
+    process.env.RUND_OCR_ENABLED = 'true'; process.env.RUND_EXTRACCION_AUTOMATICA = 'true'; process.env.RUND_OCR_TOKEN = 'ocr-ficticio-local-000000000000000000000000';
     process.env.RUND_OLLAMA_MODEL = 'qwen3.5:4b';
     engine = http.createServer(async (req, res) => {
       try {
@@ -179,6 +179,8 @@ module.exports = async function verifyExtractionIdentity(pgConfig, runtime, chec
     await check('Identidad OCR: el main conserva OCR desactivado, JWT, roles y protección del original sin activar instalaciones', async () => {
       const route = '/banco-docentes/' + ids[0] + '/extracciones';
       const teacher = jwt.sign({ sub: randomUUID(), roles: ['DOCENTE'] }, { expiresIn: '2m' });
+      await database.query(`INSERT INTO auth.role (id,code,name,category,is_active) SELECT gen_random_uuid(),'ADMIN','Administrador','personalizado',true WHERE NOT EXISTS (SELECT 1 FROM auth.role WHERE UPPER(code)='ADMIN' AND is_active)`);
+      await database.query(`INSERT INTO auth.role_permissions (id_rol,id_permission,is_active,created_at,updated_at) SELECT r.id,p.id_permission,true,now(),now() FROM auth.role r JOIN auth.permission p ON p.code IN ('banco-docentes.rund.view','banco-docentes.rund.edit','banco-docentes.rund.documents.manage') WHERE UPPER(r.code)='ADMIN' AND r.is_active ON CONFLICT (id_rol,id_permission) DO NOTHING`);
       const admin = jwt.sign({ sub: randomUUID(), roles: ['ADMIN'] }, { expiresIn: '2m' });
       await request(route, { token: null, status: 401 }); await request(route, { token: teacher, status: 403 });
       await request(route, { token: admin, status: 403 }); assert.equal((await request(route)).data.enabled, false);

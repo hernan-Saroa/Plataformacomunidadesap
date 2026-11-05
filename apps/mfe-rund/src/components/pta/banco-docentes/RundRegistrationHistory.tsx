@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaField';
 import { Archive, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, FileSpreadsheet, History, Info, RefreshCw, Search, User, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { downloadBancoDocentesBulkSupport, getRundRegistrationHistory, getRundRegistrationHistoryDetail,
+import { downloadBancoDocentesBulkSupport, getRundConvocatorias, getRundRegistrationHistory, getRundRegistrationHistoryDetail,
   type RundRegistrationDetail, type RundRegistrationEvent, type RundRegistrationHistoryPage } from '../../../services/api/rundApi';
 import { rundActorName } from '../../../utils/rundActorName';
 import './RundRegistrationHistory.css';
@@ -97,7 +98,7 @@ function RegistrationCard({ event, canDownload }: { event: RundRegistrationEvent
   };
   return <article className={`rund-trace__card${recovery ? ' rund-trace__card--recovery' : !bulk ? ' rund-trace__card--individual' : ''}`}>
     <div className="rund-trace__card-top"><span className={`rund-trace__icon ${recovery ? 'rund-trace__icon--archive' : !bulk ? 'rund-trace__icon--person' : ''}`}>{recovery ? <Archive size={22} /> : bulk ? <FileSpreadsheet size={22} /> : <UserPlus size={22} />}</span>
-      <div className="rund-trace__title"><span className="rund-trace__eyebrow">{recovery ? 'Recuperación histórica' : bulk ? 'Carga masiva' : 'Creación individual'}</span><h4>{event.titulo}</h4>
+      <div className="rund-trace__title"><span className="rund-trace__eyebrow">{recovery ? 'Recuperación histórica' : bulk ? 'Carga masiva' : 'Creación individual'}</span><h4>{event.titulo}</h4>{bulk && <p style={{ marginTop: 6, color: '#475569', overflowWrap: 'anywhere' }}>Convocatoria: <strong>{event.convocatoria || 'Sin convocatoria registrada'}</strong></p>}
       </div><Status value={recovery && event.estado === 'COMPLETADA' ? 'RECUPERACION_COMPLETADA' : event.estado} /></div>
     <dl className="rund-trace__metadata">
       <div><dt><User size={14} />{recovery ? 'Responsable de la carga original' : bulk ? 'Cargado por' : 'Creado por'}</dt><dd className={recovery ? 'rund-trace__muted' : ''}>{recovery ? 'No quedó registrado' : rundActorName(event.responsable)}</dd></div>
@@ -120,7 +121,8 @@ function RegistrationCard({ event, canDownload }: { event: RundRegistrationEvent
 }
 
 export function RundRegistrationHistory({ periodoCarga, canDownloadOriginal = false }: { periodoCarga?: string; canDownloadOriginal?: boolean }) {
-  const [filters, setFilters] = useState({ page: 1, tipo: '', search: '' });
+  const [filters, setFilters] = useState({ page: 1, tipo: '', search: '', convocatoria: '' });
+  useEffect(() => { setFilters({ page: 1, tipo: '', search: '', convocatoria: '' }); setInput(''); }, [periodoCarga]);
   const [input, setInput] = useState('');
   const [data, setData] = useState<RundRegistrationHistoryPage | null>(null);
   const [busy, setBusy] = useState(true);
@@ -132,11 +134,11 @@ export function RundRegistrationHistory({ periodoCarga, canDownloadOriginal = fa
   }, [input]);
   useEffect(() => {
     let alive = true; setBusy(true); setError(false); setData(null);
-    getRundRegistrationHistory({ periodoCarga, page: filters.page, tipo: filters.tipo || undefined, search: filters.search || undefined })
+    getRundRegistrationHistory({ periodoCarga, convocatoria: filters.convocatoria || undefined, page: filters.page, tipo: filters.tipo || undefined, search: filters.search || undefined })
       .then(result => { if (alive) setData(result); }).catch(() => { if (alive) setError(true); })
       .finally(() => { if (alive) setBusy(false); });
     return () => { alive = false; };
-  }, [periodoCarga, filters.page, filters.tipo, filters.search, revision]);
+  }, [periodoCarga, filters.page, filters.tipo, filters.search, filters.convocatoria, revision]);
   const grouped = (data?.data || []).reduce<Record<string, RundRegistrationEvent[]>>((groups, event) => {
     (groups[event.periodo || ''] ||= []).push(event); return groups;
   }, {});
@@ -144,13 +146,17 @@ export function RundRegistrationHistory({ periodoCarga, canDownloadOriginal = fa
     <header className="rund-trace__header"><div className="rund-trace__heading"><span className="rund-trace__icon"><History size={23} /></span><div>
       <span className="rund-trace__header-eyebrow">Historial del Banco de Docentes</span><h3>Trazabilidad de registros</h3><p>Consulta quién registró la información, cuándo se hizo y qué resultado tuvo.</p></div></div>
       <span className="rund-trace__period"><CalendarDays size={14} />{periodoCarga || 'Todos los periodos'}</span></header>
-    <div className="rund-trace__toolbar"><label className="rund-trace__search"><Search size={16} /><input aria-label="Buscar operación" placeholder="Buscar archivo o nombre del registro individual…" maxLength={150} value={input} onChange={event => setInput(event.target.value)} /></label>
+    <div className="rund-trace__toolbar"><label className="rund-trace__search"><Search size={16} /><input aria-label="Buscar operación" placeholder="Buscar convocatoria, archivo o nombre del registro individual…" maxLength={150} value={input} onChange={event => setInput(event.target.value)} /></label>
       <select aria-label="Tipo de operación" value={filters.tipo} onChange={event => setFilters(current => ({ ...current, tipo: event.target.value, page: 1 }))}>
         <option value="">Todas las operaciones</option><option value="MASIVO">Cargas masivas</option><option value="INDIVIDUAL">Creaciones individuales</option>
       </select><button type="button" disabled={busy} onClick={() => setRevision(value => value + 1)}><RefreshCw size={14} />Actualizar</button></div>
+    <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0' }}>
+      <RundConvocatoriaField key={`${periodoCarga || 'todos'}-${revision}`} periodoCarga={periodoCarga} value={filters.convocatoria}
+        loadOptions={getRundConvocatorias} onChange={convocatoria => setFilters(current => ({ ...current, convocatoria, page: 1 }))} />
+    </div>
     <div className="rund-trace__content">
       {busy ? <p className="rund-trace__message" role="status">Consultando trazabilidad…</p> : error ? <div className="rund-trace__message" role="alert">No fue posible cargar la trazabilidad. <button type="button" onClick={() => setRevision(value => value + 1)}>Reintentar</button></div>
-        : !data?.data.length ? <div className="rund-trace__empty"><History size={30} /><strong>Sin operaciones registradas</strong><p>{filters.search || filters.tipo ? 'No hay operaciones que coincidan con los filtros.' : 'No hay cargas masivas ni creaciones individuales conservadas para este periodo.'}</p></div>
+        : !data?.data.length ? <div className="rund-trace__empty"><History size={30} /><strong>Sin operaciones registradas</strong><p>{filters.search || filters.tipo || filters.convocatoria ? 'No hay operaciones que coincidan con los filtros.' : 'No hay cargas masivas ni creaciones individuales conservadas para este periodo.'}</p></div>
           : Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a)).map(([period, events]) => <section key={period} className="rund-trace__group" aria-label={period ? `Periodo ${period}` : 'Sin periodo registrado'}>
             <h4 className="rund-trace__group-heading"><CalendarDays size={15} />{period ? `Periodo ${period}` : 'Sin periodo registrado'}</h4>
             {events.map(event => <RegistrationCard key={`${event.tipo}-${event.id}-${period}`} event={event} canDownload={canDownloadOriginal && data.accesoCompleto} />)}

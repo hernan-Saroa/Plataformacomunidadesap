@@ -4,6 +4,7 @@ import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { getBancoDocenteCabezote } from '../../../services/api/rundApi';
 
 vi.mock('../../../services/api/rundApi', () => ({ getBancoDocenteCabezote: vi.fn() }));
+vi.mock('../../../services/api/apiClient', () => ({ apiClient: { get: vi.fn().mockResolvedValue({ id: null, url: null }) } }));
 vi.mock('./RundValidationPanel', () => ({ RundValidationPanel: () => <div>Validación existente</div> }));
 afterEach(cleanup);
 beforeEach(() => { vi.clearAllMocks(); });

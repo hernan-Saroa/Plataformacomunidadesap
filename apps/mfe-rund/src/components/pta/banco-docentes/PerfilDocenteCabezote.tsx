@@ -14,6 +14,7 @@
  * `minmax`, que no dependen de breakpoints ni de hojas de estilo externas.
  */
 import { useMemo } from 'react';
+import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import {
   Award,
   Briefcase,
@@ -206,7 +207,7 @@ export function PerfilDocenteCabezote({ docente, compacto = false }: Props) {
               letterSpacing: '0.02em',
             }}
           >
-            {cabezote.iniciales}
+            <PublishedAvatar personaId={docente?.persona_id || docente?.personaId} name={cabezote.nombreCompleto} size={compacto ? 44 : 52} />
           </span>
           <div style={{ minWidth: 0 }}>
             <h3

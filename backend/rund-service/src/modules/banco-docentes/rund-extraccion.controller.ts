@@ -26,9 +26,28 @@ export class RundExtraccionController {
     return { success:true, data:await this.service.list(id,this.actor(req)) };
   }
   @Post('documentos/:documentId')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   @HttpCode(202)
   async enqueue(@Param('id', new ParseUUIDPipe()) id: string, @Param('documentId', new ParseUUIDPipe()) doc: string, @Req() req: any) {
     return { success:true, data:await this.service.enqueue(id,doc,this.actor(req)) };
+  }
+  /** Varias evidencias: analizar las seleccionadas en el orden indicado. */
+  @Post('lote')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  @HttpCode(202)
+  async enqueueBatch(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.enqueueBatch(id,body?.documentos,this.actor(req)) };
+  }
+  @Post('reprocesar')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  @HttpCode(202)
+  async reprocess(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.reprocess(id,body?.documentos,this.actor(req)) };
+  }
+  @Post('orden')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  async reorder(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.reorderQueue(id,body?.trabajos,this.actor(req)) };
   }
   @Post('sugerencias/:suggestionId/descartar')
   async discard(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Body() body: any, @Req() req: any) {

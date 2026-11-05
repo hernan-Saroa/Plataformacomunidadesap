@@ -21,9 +21,9 @@ export function isRundAuditUrl(url: string): boolean {
     || /^\/(?:(?:portal|internal)\/)?carpeta-digital(?:\/|$)/i.test(normalized)
     || /^\/uploads\/carpeta-digital(?:\/|$)/i.test(normalized)
     // Compatibilidad con las rutas PTA y destinos internos del banco anterior.
-    || /\/(?:banco-docentes|macro-docente|docentes-disponibles|autogestion\/docentes)(?:\/|$)/i.test(normalized)
+    || /\/(?:banco-docentes|macro-docente|docentes-disponibles|autogestion\/docentes|fotos-perfil|portal\/foto-perfil)(?:\/|$)/i.test(normalized)
     // Conservar también la heurística previa si la referencia histórica venía en la consulta.
-    || /\/(?:banco-docentes|macro-docente|docentes-disponibles|autogestion\/docentes)(?:\/|\?|$)/i.test(url);
+    || /\/(?:banco-docentes|macro-docente|docentes-disponibles|autogestion\/docentes|fotos-perfil|portal\/foto-perfil)(?:\/|\?|$)/i.test(url);
 }
 
 // Solo literales de operación en logs; no es un catálogo de rutas públicas ni de permisos.
@@ -34,7 +34,7 @@ const operations = new Set(`services rund rund-service auth auth-service pta aca
   by-persona tarjeta-rund detectar-duplicado bulk historial sync-auth sync-from-auth otp request validate drafts autogestion me submit
   categorias contenido reemplazo validacion-documental batch bloques aprobar devolver revision activacion cabezote auditoria
   persona personas perfiles perfiles-rund interoperabilidad versiones restaurar reclassify upload estado-rund tipos-documentos
-  evidencias validacion extraccion notificaciones campo campos evidencia`.split(/\s+/).filter(Boolean));
+  evidencias validacion extraccion notificaciones campo campos evidencia fotos-perfil foto-perfil mia publicada pendientes lote`.split(/\s+/).filter(Boolean));
 const alwaysParameter = new Set(['drafts', 'submit', 'me', 'externo', 'verificar', 'persona', 'personas', 'by-persona',
   'docente', 'documento', 'perfiles', 'versiones', 'accesos-externos', 'bloques']);
 const collectionOperations: Record<string, Set<string>> = {

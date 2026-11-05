@@ -24,7 +24,7 @@ describe('Banco RUND: proyección Auth por operación', () => {
   it('reutiliza el snapshot en todos los grupos de estadísticas con parámetros independientes', async () => {
     const s = service(); await s.getStats({ territorial: '9007199254740993', periodoCarga: '2026-2' });
     expect(s.authBanco.proyeccion).toHaveBeenCalledTimes(1);
-    expect(s.dataSource.query).toHaveBeenCalledTimes(10);
+    expect(s.dataSource.query).toHaveBeenCalledTimes(11);
     for (const [sql, params] of s.dataSource.query.mock.calls) {
       expect(params).toEqual([JSON.stringify(empty), '9007199254740993', '2026-2']);
       expect(sql).not.toMatch(/auth\.|academic_work_plan\./);

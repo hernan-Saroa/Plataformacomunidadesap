@@ -4,6 +4,12 @@ const transport = vi.hoisted(() => ({ mode: 'gateway' }));
 vi.mock('../../config/environment', () => ({ get API_MODE() { return transport.mode; }, MICROSERVICE_URLS: { rund: 'http://rund-direct.test:3016' } }));
 
 describe('Caché de respuestas RUND', () => {
+  it('no almacena fotos ni decisiones de revisión para uso sin conexión', () => {
+    for (const url of ['/pta/api/v1/pta/fotos-perfil/mia', '/rund/api/v1/pta/fotos-perfil/mia', '/pta/fotos-perfil/docentes/persona/versiones/id', '/pta/api/v1/pta/fotos-perfil/personas/id/publicada']) {
+      expect(isRundRequest(url)).toBe(true);
+      expect(excludesRundCache(url)).toBe(true);
+    }
+  });
   it.each(['/pta/api/v1/banco-docentes?page=1', '/pta/api/v1/pta/banco-docentes/drafts/token', '/pta/api/v1/macro-docente', '/pta/api/v1/pta/docentes-disponibles', '/rund/api/v1/pta/banco-docentes/12/documentos', '/rund/api/v1/pta/macro-docente/consulta'])('requiere servidor para %s', (url) => {
     expect(isRundRequest(url)).toBe(true);
     expect(excludesRundCache(url)).toBe(true);

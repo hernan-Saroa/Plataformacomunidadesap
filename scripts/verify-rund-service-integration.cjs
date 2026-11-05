@@ -23,7 +23,9 @@ const pgBin = process.env.PG_BIN_DIR || 'C:/Program Files/PostgreSQL/15/bin';
 const binary = (name) => path.join(pgBin, name + (process.platform === 'win32' ? '.exe' : ''));
 const migrationNames = ['001_create_rund_schema.sql', '002_seed_rund_auth_module.sql', '003_legacy_rund_tables.sql',
   '004_rund_docente_identificadores_text.sql', '005_rund_tarjeta_numero_secuencia.sql',
-  '006_rund_catalogo_permisos_compatibles.sql', '007_rund_carpeta_auth_proyeccion.sql', '008_rund_identidad_operacion.sql', '009_rund_identidad_contexto_nativo.sql', '010_rund_identidad_ejecucion.sql', '011_rund_identidad_resolucion_auth.sql', '012_rund_identidad_revision.sql', '013_rund_identidad_solicitud.sql', '014_rund_identidad_entrada_manual.sql', '015_rund_identidad_abandono_manual.sql', '016_rund_identidad_correo.sql', '017_rund_identidad_correo_resultado.sql', '018_rund_identidad_correo_revision.sql', '019_rund_identidad_correo_revision_cierre.sql', '020_rund_identidad_correo_omision.sql', '021_rund_identidad_correo_revision_incierto.sql', '022_rund_identidad_correccion_ocr.sql', '023_rund_autogestion_contexto_sin_periodo.sql'];
+  '006_rund_catalogo_permisos_compatibles.sql', '007_rund_carpeta_auth_proyeccion.sql', '008_rund_identidad_operacion.sql', '009_rund_identidad_contexto_nativo.sql', '010_rund_identidad_ejecucion.sql', '011_rund_identidad_resolucion_auth.sql', '012_rund_identidad_revision.sql', '013_rund_identidad_solicitud.sql', '014_rund_identidad_entrada_manual.sql', '015_rund_identidad_abandono_manual.sql', '016_rund_identidad_correo.sql', '017_rund_identidad_correo_resultado.sql', '018_rund_identidad_correo_revision.sql', '019_rund_identidad_correo_revision_cierre.sql', '020_rund_identidad_correo_omision.sql', '021_rund_identidad_correo_revision_incierto.sql', '022_rund_identidad_correccion_ocr.sql', '023_rund_autogestion_contexto_sin_periodo.sql',
+  '024_rund_registro_eliminacion.sql', '025_rund_categorias_expediente.sql', '026_rund_nucleos_areas_docente.sql', '027_rund_perfiles_operativos.sql',
+  '028_rund_foto_perfil.sql', '029_rund_soporte_opcional_estado.sql', '030_rund_permiso_create.sql'];
 const checks = [];
 let runtime;
 let database;
@@ -57,7 +59,9 @@ function fictitiousPdf(label) {
 }
 
 async function check(name, run) {
-  await run();
+  try { await run(); } catch (error) {
+    console.error(`FAIL ${name}`); console.error(String(error.stack || error).split('\n').slice(0, 8).join(' | ')); throw error;
+  }
   checks.push(name);
   console.log(`PASS ${name}`);
 }
@@ -313,6 +317,8 @@ async function run() {
     pgConfig.database = 'rund_integration';
     database = new Client(pgConfig);
     await database.connect();
+    // Diagnóstico de bloqueos: si el verificador se estanca, imprime las consultas activas del clúster temporal.
+    setInterval(async () => { const c = new Client(pgConfig); try { await c.connect(); const r = await c.query("select state,wait_event_type,wait_event,left(query,140) q from pg_stat_activity where datname='rund_integration' and pid<>pg_backend_pid() and state<>'idle'"); if (r.rows.length) console.error('ACTIVIDAD ' + JSON.stringify(r.rows)); } catch { /* diagnóstico */ } finally { await c.end().catch(() => {}); } }, 90000).unref();
     postgresVersion = (await database.query('SHOW server_version')).rows[0].server_version;
 
     // Prerrequisitos de auth: DDL y migración reales del repositorio, sin semillas de usuarios reales.
@@ -341,11 +347,30 @@ async function run() {
       assert.equal((await database.query('SELECT count(*) FROM auth.rund_identidad_efecto')).rows[0].count,'0');
       assert.equal((await database.query('SELECT count(*) FROM auth.rund_identidad_compensacion')).rows[0].count,'0');
     });
+    await check('Fotos de perfil: una publicada y una pendiente por persona, formatos y tamaños acotados (028)', async () => {
+      const persona = '11111111-1111-4111-8111-111111111111';
+      const insert = (estado, extra = {}) => database.query(
+        `INSERT INTO rund.rund_foto_perfil(persona_id,contenido,mime,nombre,ancho,alto,estado,origen,creado_por)
+         VALUES($1,$2,$3,'foto.png',$4,$5,$6,'RUND','verificador')`,
+        [persona, extra.contenido || Buffer.from('x'), extra.mime || 'image/png', extra.ancho || 400, extra.alto || 400, estado]);
+      await insert('APROBADA');
+      await insert('PENDIENTE');
+      await assert.rejects(insert('APROBADA'), /rund_foto_publicada_persona/);
+      await assert.rejects(insert('PENDIENTE'), /rund_foto_pendiente_persona/);
+      await insert('RECHAZADA'); await insert('RECHAZADA');
+      await assert.rejects(insert('RECHAZADA', { mime: 'image/gif' }), /check/i);
+      await assert.rejects(insert('RECHAZADA', { ancho: 100 }), /check/i);
+      await assert.rejects(insert('RECHAZADA', { contenido: Buffer.alloc(2097153) }), /check/i);
+      await assert.rejects(insert('BORRADA'), /check/i);
+      const permisos = (await database.query(`SELECT code FROM auth.permission WHERE code LIKE 'banco-docentes.rund.photos.%' ORDER BY code`)).rows.map((row) => row.code);
+      assert.deepEqual(permisos, ['banco-docentes.rund.photos.manage', 'banco-docentes.rund.photos.validate']);
+      await database.query('DELETE FROM rund.rund_foto_perfil WHERE persona_id=$1', [persona]);
+    });
     await check('Catálogo de permisos cubre los decoradores y no equipara operaciones distintas', async () => {
       const { RUND_PERMISSION_CODES } = require(path.join(serviceRoot, 'dist/auth/rund-permission-catalog'));
       const codes = (await database.query('SELECT code FROM auth.permission')).rows.map((row) => row.code);
-      assert(RUND_PERMISSION_CODES.every((code) => codes.includes(code)));
-      assert.equal(RUND_PERMISSION_CODES.length, 16);
+      assert.deepEqual(RUND_PERMISSION_CODES.filter((code) => !codes.includes(code)), []);
+      assert.equal(RUND_PERMISSION_CODES.length, 23);
       const { PERMISSIONS_KEY } = require(path.join(serviceRoot, 'dist/auth/auth.decorators'));
       const { RUND_PERMISSIONS_KEY } = require(path.join(serviceRoot, 'dist/modules/banco-docentes/rund-permissions'));
       const { MACRO_DOCENTE_PERMISSION_KEY } = require(path.join(serviceRoot, 'dist/modules/macro-docente/macro-docente-permission.decorator'));
@@ -376,9 +401,9 @@ async function run() {
       assert(references.every((column) => column.data_type === 'text'));
     });
     await verifyExistingDataUpgrade(pgConfig);
-    await check('Esquema nuevo vacío: 40 tablas y 7 categorías, sin copiar docentes', async () => {
+    await check('Esquema nuevo vacío: 44 tablas y 10 categorías, sin copiar docentes', async () => {
       const tables = (await database.query(`SELECT tablename FROM pg_tables WHERE schemaname='rund' ORDER BY tablename`)).rows;
-      assert.equal(tables.length, 40);
+      assert.equal(tables.length, 44);
       assert(tables.some(row=>row.tablename==='identidad_solicitud'));
       assert(tables.some(row=>row.tablename==='identidad_revision'));
       assert(tables.some(row=>row.tablename==='identidad_resolucion_auth'));
@@ -387,7 +412,9 @@ async function run() {
       assert(tables.some(row=>row.tablename==='identidad_ejecucion'));
       for (const { tablename } of tables) {
         const count = Number((await database.query(`SELECT count(*) FROM rund."${tablename}"`)).rows[0].count);
-        assert.equal(count, tablename === 'RundDocumentoCategoria' ? 7 : 0, tablename);
+        // Catálogos sembrados por las migraciones (categorías documentales, áreas de formación y núcleos temáticos); el resto nace vacío.
+        if (/^(area_formacion|nucleo_)/.test(tablename)) assert(count > 0, tablename);
+        else assert.equal(count, tablename === 'RundDocumentoCategoria' ? 10 : 0, tablename);
       }
     });
     await check('Migraciones repetibles sin duplicar columnas, categorías ni permisos', async () => {
@@ -395,7 +422,7 @@ async function run() {
       for (const name of migrationNames) await migrate(name);
       assert.deepEqual(await schemaSnapshot(), before);
       assert.equal(Number((await database.query(`SELECT count(*) FROM auth.permission WHERE code LIKE 'rund.%'`)).rows[0].count), 6);
-      assert.equal(Number((await database.query(`SELECT count(*) FROM rund."RundDocumentoCategoria"`)).rows[0].count), 7);
+      assert.equal(Number((await database.query(`SELECT count(*) FROM rund."RundDocumentoCategoria"`)).rows[0].count), 10);
     });
 
     // Fixtures de tablas externas mientras sigue pendiente sustituir las lecturas cross-schema.

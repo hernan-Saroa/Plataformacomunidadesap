@@ -51,7 +51,10 @@ export class BancoDocentesRolesGuard implements CanActivate {
       .some((permission) => effectivePermissions.has(permission));
     // A granular permission can be withdrawn even from a functional administrator.
     // Explicit roles are only the fallback for routes without permission metadata.
-    if (isSuperAdmin || (requiredPermissions?.length ? permissionAllowed : roleAllowed)) return true;
+    // Autoservicio: el rol DOCENTE no tiene permisos RUND asignables; las rutas que lo listan en @Roles quedan
+    // abiertas a ese rol y cada controlador limita al docente a su propio perfil (assertOwnProfile*).
+    const docenteSelfService = required.has('DOCENTE') && userRoles.includes('DOCENTE');
+    if (isSuperAdmin || docenteSelfService || (requiredPermissions?.length ? permissionAllowed : roleAllowed)) return true;
 
     const requirements = [
       requiredRoles?.length ? `roles: ${requiredRoles.join(', ')}` : '',

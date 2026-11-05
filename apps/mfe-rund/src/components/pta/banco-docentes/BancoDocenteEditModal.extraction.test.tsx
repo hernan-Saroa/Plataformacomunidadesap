@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { updateBancoDocente } from '../../../services/api/rundApi';
+vi.mock('../../../services/api/apiClient',()=>({apiClient:{get:vi.fn().mockResolvedValue({personaId:'test-person',publicada:null,solicitud:null,historial:[]})}}));
 vi.mock('../../../services/api/rundApi',()=>({updateBancoDocente:vi.fn(),createBancoDocente:vi.fn(),vincularRundSoporte:vi.fn()}));
 vi.mock('../../../contexts/AuthContext',()=>({useAuth:()=>({isSuperUser:true,userPersonId:'OPERADOR_FICTICIO'})}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
