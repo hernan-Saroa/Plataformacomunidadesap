@@ -82,7 +82,7 @@ type BulkUpsertOptions = {
 
 function toCleanString(value: any): string | null {
   if (value === undefined || value === null) return null;
-  const n = sanitizeText(String(value)).trim();
+  const n = sanitizeText(String(value)).normalize('NFC').trim();
   return n === '' ? null : n;
 }
 

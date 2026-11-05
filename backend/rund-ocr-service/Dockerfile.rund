@@ -1,5 +1,7 @@
 # Reproduce el motor RUND activo, incluida su correccion de compatibilidad CPU.
 FROM ocastelblanco/rund-ocr@sha256:e38a4de1b94600f51d4e6c96774843ac1af246876df8ca521b9b8667cf3fb399
 COPY legacy-entrypoint.py /app/rund-local-entrypoint.py
+COPY ocr_lines.py /app/ocr_lines.py
+COPY visual_pages.py /app/visual_pages.py
 HEALTHCHECK --interval=15s --timeout=5s --start-period=180s --retries=6 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"
 CMD ["python", "/app/rund-local-entrypoint.py"]

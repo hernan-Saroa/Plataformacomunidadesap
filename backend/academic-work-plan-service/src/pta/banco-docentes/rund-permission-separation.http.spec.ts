@@ -86,6 +86,23 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
   });
   afterAll(async () => app.close());
   beforeEach(() => { jest.clearAllMocks(); role = 'CARGADOR'; additionalRoles = []; subjectOnly = false; });
+  it('recibe nombres multipart con tildes y ñ y conserva los bytes originales', async () => {
+    const name = "Formación – José Muñoz (O'Ñeill).pdf";
+    const buffer = Buffer.from('%PDF-1.7\narchivo de prueba');
+    await request(app.getHttpServer()).post(`/pta/banco-docentes/${id}/documentos`)
+      .field('categoria', 'TITULOS').field('descripcion', 'Formación académica – España')
+      .attach('file', buffer, { filename: name, contentType: 'application/pdf' }).expect(201);
+    expect(documents.create).toHaveBeenCalledWith(id, expect.objectContaining({ descripcion: 'Formación académica – España' }),
+      expect.objectContaining({ originalname: name, buffer }), 'ACTOR_AUTENTICADO', expect.anything());
+  });
+  it('sirve el PDF con un nombre UTF-8 válido en la descarga HTTP', async () => {
+    const name = "Formación – José Muñoz (O'Ñeill).pdf";
+    documents.content.mockResolvedValueOnce({ fileName: name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 fixture') });
+    const result = await request(app.getHttpServer()).get(`/pta/banco-docentes/${id}/documentos/${suggestionId}/contenido?download=true`).expect(200);
+    const header = result.headers['content-disposition'];
+    expect(decodeURIComponent(header.split("filename*=UTF-8''")[1])).toBe(name);
+    expect(header).toContain('%27');
+  });
 
   it.each([
     ['RUND_CARGADOR', 201], ['RUND_APROBADOR', 403], ['RUND_INCORPORADOR', 403],

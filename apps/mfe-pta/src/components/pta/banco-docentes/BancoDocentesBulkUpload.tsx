@@ -11,6 +11,7 @@ import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaFie
 import { bulkUploadBancoDocentes, getRundConvocatorias } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import * as XLSX from 'xlsx';
+import { decodeRundCsv } from '../../../utils/rundCsv';
 
 interface BancoDocentesBulkUploadProps {
   onBack: () => void;
@@ -72,7 +73,9 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
     reader.onload = (ev) => {
       try {
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
-        workbookRef.current = XLSX.read(data, { type: 'array' });
+        workbookRef.current = /\.csv$/i.test(selectedFile.name)
+          ? XLSX.read(decodeRundCsv(data), { type: 'string' })
+          : XLSX.read(data, { type: 'array' });
       } catch (e) { console.warn('No se pudo parsear el workbook:', e); }
     };
     reader.readAsArrayBuffer(selectedFile);

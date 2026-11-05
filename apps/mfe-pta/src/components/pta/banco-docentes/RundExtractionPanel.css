@@ -21,6 +21,11 @@
 .rund-extraction-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .rund-extraction input{min-height:34px;max-width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;background:#fff;color:#24324a;font:inherit}
 .rund-extraction-warning{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:#92400e;background:#fffbeb;border-radius:8px;padding:10px}
+.rund-extraction-feedback{display:flex;align-items:flex-start;gap:8px;margin:14px 0;padding:12px 14px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1e40af;line-height:1.6;scroll-margin-top:90px}
+.rund-extraction-feedback svg{flex-shrink:0;margin-top:2px}
+.rund-extraction-feedback.is-error{border-color:#fcd34d;background:#fffbeb;color:#92400e}
+.rund-extraction-job,.rund-extraction-reprocess{scroll-margin-top:90px}
+.rund-extraction-feedback:focus-visible,.rund-extraction-job:focus-visible,.rund-extraction-reprocess:focus-visible{outline:2px solid #003da5;outline-offset:3px}
 .rund-extraction-documents>div{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 0}
 .rund-extraction-documents span{display:flex;gap:6px;align-items:center;overflow-wrap:anywhere}
 .rund-extraction-progress{margin-top:16px;padding:15px;border:1px solid #ede9fe;border-radius:10px;background:#faf8ff}
@@ -31,13 +36,6 @@
 .rund-extraction-track .is-complete{background:#7c3aed}
 .rund-extraction-track .is-current{background:#a78bfa;animation:rund-extraction-pulse 1.6s ease-in-out infinite}
 .rund-extraction-progress-title>strong{font-size:12px;font-variant-numeric:tabular-nums}
-.rund-extraction-tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px;margin-top:14px}
-.rund-extraction-tabs [role=tab]{display:flex;flex-direction:column;gap:7px;flex:0 0 220px;min-width:0;max-width:280px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;text-align:left;color:#334155;font:inherit;cursor:pointer}
-.rund-extraction-tabs [aria-selected=true]{border-color:#7c3aed;background:#f5f3ff;box-shadow:0 0 0 1px #7c3aed}
-.rund-extraction-tab-name{display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:12px}
-.rund-extraction-tab-name svg{flex-shrink:0}
-.rund-extraction-tab-track{height:5px;display:block;overflow:hidden;border-radius:8px;background:#e2e8f0}
-.rund-extraction-tab-track>span{display:block;height:100%;border-radius:inherit;background:#7c3aed;transition:width .3s ease}
 .rund-extraction-steps{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;font-size:10px;color:#64748b}
 .rund-extraction-steps [aria-current=step]{color:#5b21b6;font-weight:700}
 .rund-extraction-background{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#475569}

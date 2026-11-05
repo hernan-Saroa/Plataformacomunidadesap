@@ -5,6 +5,7 @@ import { RundDocumentManager } from './RundDocumentManager';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { toast } from 'sonner';
 import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
+import { RundSupportList, type RundSupportReview } from './RundSupportList';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -36,6 +37,173 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Biblioteca compacta de documentos RUND', () => {
+  const reviewFixture = (block = 'IDENTIDAD', type = 'documento_identidad') => {
+    const file = { ...docs[0], id: 'version-actual', bloque: block, tipoSoporte: type,
+      estadoRevision: 'Pendiente', rundSoporteId: 'soporte-actual', nombreArchivo: 'soporte-unificado.pdf',
+      totalVersiones: 2, descripcion: 'Descripción de prueba', contenidoUrl: '/soporte-actual' };
+    const support = { id: 'soporte-actual', tipo_soporte: type, documento_perfil_id: file.id,
+      documento_carpeta_id: file.contenidoUrl, nombre_archivo: file.nombreArchivo, estado: 'Pendiente' };
+    const field = { campo: 'Dato respaldado', documento: 'Documento de respaldo', tipoSoporte: type };
+    const review: RundSupportReview = { groups: [{ field, fields: [field], uploadField: field,
+      evidences: [support], canManage: true, canUpload: true }], canValidate: true, disabled: false, busy: null,
+      onView: vi.fn(), onReview: vi.fn(), onUpload: vi.fn() };
+    const previous = vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async url => url.includes('/documentos?') ? [file] : previous(url));
+    return { file, support, review };
+  };
+
+  it.each([
+    ['IDENTIDAD', 'documento_identidad'], ['FORMACION', 'diploma_pregrado'], ['VINCULACION', 'contrato'],
+    ['ACADEMICO', 'acto_asignacion_nucleo'], ['TRANSVERSAL', 'autorizacion_habeas_data'],
+  ])('unifica carga, consulta, herramientas y revisión de %s sin duplicar el archivo', async (block, type) => {
+    const { file, support, review } = reviewFixture(block, type);
+    render(<RundDocumentManager {...props} activeBlock={block} supportReview={review} />);
+    await loaded();
+    expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+    const item = within(screen.getByText(file.nombreArchivo).closest('li')!);
+    expect(item.getByTitle('Descargar')).toBeTruthy();
+    expect(item.getByTitle('Eliminar')).toBeTruthy();
+    expect(item.getByRole('button', { name: 'Reemplazar documento' })).toBeTruthy();
+    fireEvent.click(item.getByText('Detalles'));
+    expect(item.getByText(file.descripcion)).toBeTruthy();
+    fireEvent.click(item.getByRole('button', { name: 'Validar soporte' }));
+    expect(review.onReview).toHaveBeenCalledWith(support, review.groups[0], 'Aprobado');
+    expect(props.onView).not.toHaveBeenCalled();
+    expect(screen.getByText('1 de 1 documentos')).toBeTruthy();
+  });
+
+  it('el revisor consulta y decide sin recibir herramientas de carga ni eliminación', async () => {
+    const { review } = reviewFixture();
+    review.groups[0].canManage = false;
+    render(<RundDocumentManager {...props} canManage={false} activeBlock="IDENTIDAD" supportReview={review} />);
+    await loaded();
+    expect(screen.getByRole('button', { name: 'Validar soporte' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Devolver soporte' })).toBeTruthy();
+    expect(screen.queryByTitle('Eliminar')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reemplazar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Agregar documento' })).toBeNull();
+  });
+
+  it('no asocia herramientas de una versión anterior al soporte vigente mientras se actualiza la biblioteca', async () => {
+    const { file, support, review } = reviewFixture();
+    support.documento_perfil_id = 'version-nueva';
+    support.documento_carpeta_id = '/version-nueva';
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" supportReview={review} />);
+    await loaded();
+    expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Validar soporte' })).toBeTruthy();
+    expect(screen.queryByTitle('Descargar')).toBeNull();
+    expect(screen.queryByTitle('Eliminar')).toBeNull();
+    file.id = support.documento_perfil_id;
+    file.contenidoUrl = support.documento_carpeta_id;
+    fireEvent.click(screen.getByTitle('Actualizar documentos'));
+    await loaded();
+    expect(screen.getByTitle('Descargar')).toBeTruthy();
+    expect(screen.getByTitle('Eliminar')).toBeTruthy();
+  });
+
+  it('la carga principal de PDF se puede abrir con un botón enfocable', async () => {
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" />);
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
+    const input = screen.getByLabelText('Cargar PDF') as HTMLInputElement;
+    const picker = vi.spyOn(input, 'click').mockImplementation(() => {});
+    const button = screen.getByRole('button', { name: 'Cargar PDF' });
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    expect(picker).toHaveBeenCalledTimes(1);
+  });
+
+  it('conserva la revisión de un archivo aunque falte su dato y recoge los soportes que aún no aplican', async () => {
+    const { file, review } = reviewFixture();
+    review.groups[0].canUpload = false;
+    const field = { campo: 'Especialización', documento: 'Diploma', tipoSoporte: 'diploma_especializacion' };
+    review.groups.push({ field, fields: [field], uploadField: field, evidences: [], canManage: true, canUpload: false });
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" supportReview={review} />);
+    await loaded();
+    expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Validar soporte' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Reemplazar/ })).toBeNull();
+    const other = screen.getByText('Otros soportes').closest('details')!;
+    expect(other.open).toBe(false);
+    expect(within(other).getByText('Especialización')).toBeTruthy();
+    expect(other.querySelectorAll('input[type="file"]')).toHaveLength(0);
+  });
+
+  it('filtra el soporte unificado y conserva su número original de evidencia', async () => {
+    const { file, support, review } = reviewFixture();
+    review.groups[0].evidences.push({ ...support, id: 'segundo', documento_perfil_id: 'segunda-version',
+      documento_carpeta_id: '/segunda', nombre_archivo: 'otra-evidencia.pdf' });
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" supportReview={review} />);
+    await loaded();
+    expect(screen.getByText('2 de 2 documentos')).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'otra-evidencia' } });
+    expect(screen.queryByText(file.nombreArchivo)).toBeNull();
+    expect(screen.getByText('Evidencia 2')).toBeTruthy();
+    expect(screen.getByText('1 de 2 documentos')).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'archivo inexistente' } });
+    expect(screen.getByText('0 de 2 documentos')).toBeTruthy();
+    expect(screen.getByText('No hay documentos que coincidan con la búsqueda o categoría.')).toBeTruthy();
+  });
+
+  it('pasa el soporte a documentos adjuntos al cargarlo y conserva las otras opciones y los permisos', () => {
+    const { support, review } = reviewFixture('FORMACION', 'diploma_pregrado');
+    review.groups = ['Pregrado', 'Maestría', 'Doctorado'].map((campo, index) => {
+      const field = { campo, documento: 'Diploma + Acta de grado', tipoSoporte: ['diploma_pregrado', 'diploma_maestria', 'diploma_doctorado'][index] };
+      return { field, fields: [field], uploadField: field, evidences: [], canManage: true, canUpload: true };
+    });
+    const view = render(<RundSupportList {...review} />);
+    const order = () => screen.getAllByRole('heading', { level: 4 }).map(heading => heading.textContent);
+    expect(order()).toEqual(['Pregrado', 'Maestría', 'Doctorado']);
+    const file = new File(['%PDF-1.7'], 'maestría.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByLabelText('Archivo de soporte para Maestría'), { target: { files: [file] } });
+    expect(review.onUpload).toHaveBeenCalledWith(file, review.groups[1]);
+    review.groups[1].evidences = [{ ...support, tipo_soporte: 'diploma_maestria', nombre_archivo: file.name }];
+    view.rerender(<RundSupportList {...review} />);
+    expect(within(screen.getByRole('region', { name: 'Documentos adjuntos' })).getByRole('heading', { level: 4 }).textContent).toBe('Maestría');
+    expect(within(screen.getByRole('region', { name: 'Soportes sin archivos' })).getAllByRole('heading', { level: 4 }).map(heading => heading.textContent)).toEqual(['Pregrado', 'Doctorado']);
+    expect(screen.getAllByText(file.name)).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Adjuntar soporte' })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Validar soporte' }));
+    expect(review.onReview).toHaveBeenCalledWith(review.groups[1].evidences[0], review.groups[1], 'Aprobado');
+    review.groups[1].evidences = [];
+    review.groups[1].canManage = false;
+    view.rerender(<RundSupportList {...review} />);
+    expect(order()).toEqual(['Pregrado', 'Maestría', 'Doctorado']);
+    expect(screen.queryByText(file.name)).toBeNull();
+    expect(screen.queryByLabelText('Archivo de soporte para Maestría')).toBeNull();
+  });
+
+  it('el historial conserva las versiones y no duplica el panel de revisión vigente', async () => {
+    const { file, review } = reviewFixture();
+    const previous = vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async url => url.endsWith('historial=true')
+      ? [file, { ...file, id: 'version-anterior', estado: 'REEMPLAZADO', nombreArchivo: 'anterior.pdf' }] : previous(url));
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" supportReview={review} />);
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+    await screen.findByText('anterior.pdf');
+    expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Validar soporte' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver vigentes' }));
+    await loaded();
+    expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Validar soporte' })).toBeTruthy();
+  });
+
+  it('elimina desde la tarjeta única con confirmación y recarga el expediente', async () => {
+    const { file, review } = reviewFixture();
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" supportReview={review} />);
+    await loaded();
+    fireEvent.click(screen.getByTitle('Eliminar'));
+    expect(apiClient.delete).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Eliminar documento/ }));
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith(`/pta/api/v1/pta/banco-docentes/docente-1/documentos/${file.id}`));
+    await waitFor(() => expect(props.onChanged).toHaveBeenCalled());
+  });
+
   it('incorporación gestiona contratos y oculta cambios en los otros soportes de Vinculación', async () => {
     const previous = vi.mocked(apiClient.get).getMockImplementation()!;
     const contract = { ...docs[0], id: 'contract', bloque: 'VINCULACION', tipoSoporte: 'contrato', nombreArchivo: 'Contrato.pdf' };

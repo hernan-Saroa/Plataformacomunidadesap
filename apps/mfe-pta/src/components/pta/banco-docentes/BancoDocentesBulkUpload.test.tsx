@@ -7,6 +7,14 @@ import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel
 vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]), bulkUploadBancoDocentes: vi.fn() }));
 vi.mock('../../../utils/bancoDocentesExcel', () => ({ downloadBancoDocentesTemplate: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
+// These cases verify import requests; animation scheduling belongs to browser checks.
+vi.mock('motion/react', async () => {
+  const React = await import('react');
+  return {
+    AnimatePresence: ({ children }: any) => children,
+    motion: { div: ({ initial, animate, exit, transition, children, ...props }: any) => React.createElement('div', props, children) },
+  };
+});
 
 const props = { onBack: vi.fn(), onSuccess: vi.fn() };
 const archivo = () => new File(['x'], 'CargaDocentes_RUND_2026-1.xlsx', {

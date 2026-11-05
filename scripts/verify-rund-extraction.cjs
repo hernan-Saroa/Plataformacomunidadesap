@@ -80,7 +80,9 @@ const engineResponses=[];
     assert.equal((await db.query('SELECT * FROM academic_work_plan."RundExtraccionTrabajo"')).length,1);
     assert((await db.query('SELECT estado,version FROM academic_work_plan."RundCampoEstado"')).every(row=>row.estado==='Aprobado'&&row.version===1));
     await service.tick();
-    assert.equal(requests,2);
+    // Real readers may finish from explicit OCR or require several visual views.
+    if(realEngines)assert(requests>=1,'Debe consultar el motor local de OCR.');
+    else assert.equal(requests,2);
     let response=await service.list(docente,actor);
     assert.equal(response.jobs[0].estado,'COMPLETADO');
     assert(response.jobs[0].sugerencias.length>0,'El modelo debe extraer el título del diploma ficticio. Revise el artefacto de motores.');
@@ -110,8 +112,24 @@ const engineResponses=[];
     assert.equal(response.jobs[0].sugerencias[0].estado,'APROBADA');
     if(realEngines)fs.writeFileSync(path.join(artifacts,'revision-confirmada.json'),JSON.stringify(response,null,2));
     await assert.rejects(()=>db.transaction(tx=>lockExtractionSuggestions(tx,docente,[suggestion.id],{pregrado:'Administración Pública'})));
-    // Nuevo análisis explícito conserva el historial anterior.
-    await service.enqueue(docente,document,actor);await service.tick();
+    // Un nuevo análisis reemplaza el resultado visible, sin borrar auditoría ni decisiones.
+    const oldJob=response.jobs[0].id;
+    await db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET actualizado_en=now()-interval '1 day' WHERE id=$1`,[oldJob]);
+    await service.reprocess(docente,[document],actor);
+    response=await service.list(docente,actor);
+    assert.equal(response.jobs.length,1,'El mismo archivo tiene una única entrada, incluso mientras espera.');
+    assert.equal(response.jobs[0].estado,'PENDIENTE');
+    assert.notEqual(response.jobs[0].id,oldJob);
+    const newJob=response.jobs[0].id;
+    // Queue slots can predate the old result: they are not the result chronology.
+    await db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET creado_en=now()-interval '2 days' WHERE id=$1`,[newJob]);
+    await service.tick();
+    response=await service.list(docente,actor);
+    assert.equal(response.jobs.length,1);
+    assert.equal(response.jobs[0].id,newJob,'Mover un turno no debe resucitar el análisis anterior.');
+    await db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET estado='ERROR' WHERE id=$1`,[newJob]);
+    assert.equal((await service.list(docente,actor)).jobs[0].estado,'ERROR','Un fallo nuevo no debe mostrar el resultado anterior.');
+    await db.query(`UPDATE academic_work_plan."RundExtraccionTrabajo" SET estado='COMPLETADO' WHERE id=$1`,[newJob]);
     assert.equal((await db.query('SELECT * FROM academic_work_plan."RundExtraccionTrabajo"')).length,2);
     const [pending]=await db.query(`SELECT * FROM academic_work_plan."RundExtraccionSugerencia" WHERE estado='PENDIENTE'`);
     await db.query(`UPDATE academic_work_plan."RundDocumentoPerfil" SET estado='REEMPLAZADO' WHERE id=$1`,[document]);
@@ -154,6 +172,15 @@ const engineResponses=[];
     const ordered=(await service.list(docente,actor)).jobs.filter(job=>queueOrder.includes(job.id)).sort((a,b)=>a.posicion_cola-b.posicion_cola);
     assert.deepEqual(ordered.map(job=>job.id),queueOrder,'El orden visible debe conservar los microsegundos de la cola real.');
     assert.deepEqual(ordered.map(job=>job.posicion_cola),[1,2]);
+    // Collapse attempts before LIMIT 100, so repeated analyses cannot hide other PDFs.
+    await db.query(`INSERT INTO academic_work_plan."RundExtraccionTrabajo"
+      (documento_id,docente_id,creado_por,estado,creado_en,actualizado_en)
+      SELECT $1,$2,'TEST','COMPLETADO',now()-interval '1 day',now()-interval '1 day' FROM generate_series(1,110)`,[queueDocs[0],docente]);
+    const current=(await service.list(docente,actor)).jobs;
+    assert.equal(current.filter(job=>job.documento_id===queueDocs[0]).length,1);
+    assert.equal(current.filter(job=>job.documento_id===queueDocs[1]).length,1,'Archivos distintos con igual nombre siguen separados.');
+    assert(current.some(job=>job.documento_id===fresh));
+    assert.equal(new Set(current.map(job=>job.documento_id)).size,current.length);
     console.log(`F014: cola con precisión de microsegundos, extracción ${realEngines?'REAL OCR + Ollama':'simulada'}, revisión humana, rollback, reanálisis, obsolescencia, nuevas cargas tras reinicio y reintentos acotados verificados en PostgreSQL TEMP.`);
   }finally{
     global.fetch=originalFetch;

@@ -204,6 +204,11 @@ seguridad de documentos de identidad. Comprobar varias solicitudes consecutivas:
 
 La detección usa un límite de 2048 píxeles en lugar de los 960 originales para
 conservar etiquetas pequeñas cuando la cédula ocupa parte de una hoja completa.
+El reconocimiento conserva la imagen original para cada recorte. Los predictores
+se crean y ejecutan en un único hilo dedicado; un bloqueo entre solicitudes por sí solo no garantiza
+que Paddle use siempre el mismo hilo. La preparación del PDF y el cotejo visual
+mantienen sus límites existentes. La comprobación de disponibilidad debe incluir
+varias extracciones consecutivas y ausencia de nuevos eventos OOM, además de health.
 La validación admite etiquetas documentales con palabras unidas por el OCR,
 como `CEDULADECIUDADANIA`, conservando la cita exacta y exigiendo el nombre del
 tipo documental en la evidencia. La comparación del perfil reconoce los códigos
@@ -275,3 +280,116 @@ npm run build -w @esap-mfe/pta
 | EFDS-1993 Documentación | Este documento y comandos reproducibles |
 
 Referencias primarias: [PaddleOCR, pipeline OCR](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html), [Qwen 3.5 en Ollama](https://ollama.com/library/qwen3.5), [API chat de Ollama](https://docs.ollama.com/api/chat).
+
+## Lectura local compartida con respaldo visual (noviembre de 2026)
+
+El perfil RUND/Gemma `gemma4:e4b` usa la capacidad visual del modelo ya instalado;
+no descarga otro modelo ni envía documentos a servicios externos. Primero busca
+títulos explícitos en el OCR, con las mismas validaciones de evidencia, nivel y
+confianza. Si no encuentra un título fiable, transcribe dos vistas independientes
+del PDF. Una tercera ampliación solo se intenta si una vista fue ilegible: no
+resuelve por mayoría dos lecturas válidas que discrepan. El valor del perfil,
+el nombre del archivo y las conjeturas del OCR no se envían al lector visual.
+
+El respaldo exige coincidencia literal (ignorando mayúsculas y tildes), conserva
+el idioma del título y elimina únicamente calificadores explícitos como «Área
+de profundización: …». Se rechazan encabezados, niveles sin título, palabras
+incoherentes, expectativas de grado y títulos de otro nivel. Las coincidencias
+visuales siguen siendo propuestas cautelosas: no son probabilidades calibradas,
+no prueban que el reconocimiento sea correcto y requieren confirmación humana.
+La aceptación documental, la aprobación de datos y el estado del bloque no se
+modifican durante la extracción. El mismo respaldo visual se aplica a los campos
+compatibles de Identidad, Formación, Vinculación y Académico, según el tipo de
+soporte. Incluye perfil académico e investigación. Contacto y Transversal no
+tienen campos extraíbles configurados: no se fuerza OCR ni se inventan propuestas.
+Qwen conserva su ruta de extracción de texto.
+
+En Identidad se recuperan primero marcadores impresos explícitos, separando el
+número de identificación de matrículas profesionales y los datos del titular de
+los firmantes. Las etiquetas fijas admiten espacios de OCR («S E X O») sin reparar
+los valores personales. Género y sexo requieren además un marcador nativo
+independiente; dos respuestas visuales iguales no bastan para interpretar una
+casilla manuscrita ambigua. Las fechas explícitas con meses escritos o celdas
+día/mes/año se normalizan a ISO y se contrastan con su evidencia y calendario.
+No se completan años, cifras o nombres ilegibles desde el perfil.
+
+Los campos se leen en grupos pequeños, conservando el modelo completo. Una
+discrepancia descarta solo el campo afectado. Si el lector visual falla después
+de recuperar datos, se conservan las propuestas verificadas y se informa que el
+cotejo fue parcial; la carga y revisión del documento continúan disponibles.
+
+`POST /render-pages` prepara en memoria hasta tres páginas, cada una con vistas
+PNG acotadas a 1800 píxeles por lado. Mantiene el límite de 25 MB/25 páginas,
+procesamiento exclusivo, autenticación del proveedor LOCAL y cierre de recursos.
+El cliente valida formato, dimensiones, cantidad y tamaño acumulado (hasta 90 MB
+de transporte JSON); no acepta URLs de imágenes ni redirecciones. Los formularios
+pueden usar pares adicionales de recortes superior e inferior para leer sus
+tablas. El lector visual dispone de seis minutos en total y hasta cinco minutos
+por llamada, incluido el arranque del modelo. La etapa `VISION` se muestra dentro
+de «Extraer datos», sin simular avance.
+`RUND_VISUAL_FALLBACK=false` desactiva este respaldo. Un renderizador anterior
+sin este endpoint conserva la extracción de texto compatible e informa que el
+respaldo no estuvo disponible. No requiere migraciones.
+
+El contenedor RUND necesita los tres módulos del adaptador: `legacy-entrypoint.py`,
+`ocr_lines.py` y `visual_pages.py`; `Dockerfile.rund` los incluye. Un montaje aislado
+del entrypoint sobre la imagen antigua también debe incluir sus módulos hermanos.
+Actualizar solo el archivo montado no recarga el proceso Python que ya está
+ejecutándose. Se debe renovar exclusivamente el OCR local cuando la cola esté
+vacía y comprobar `/health` y una extracción, conservando los volúmenes de modelos.
+
+Se verificaron cinco soportes reales con los motores locales y una base simulada,
+sin escribir en expedientes: se recuperaron Licenciado en Ciencias Sociales,
+Magíster en Ciencias Económicas y Doctor en Ciencias Económicas. El pregrado con
+texto bajo un sello siguió sin una lectura consistente; la carta posdoctoral no
+acreditaba inequívocamente un título otorgado. Estos dos casos se mantuvieron para
+revisión manual. No se incorporan los PDF ni sus datos personales al repositorio.
+
+La comprobación posterior de Identidad recuperó los seis campos de una cédula
+real y tipo, número y nombre desde una tarjeta profesional, sin escribir perfiles
+ni aprobaciones. En la hoja de vida manuscrita solo se confirmó el número de
+identificación; los demás datos conservaron la revisión manual por falta de
+lectura consistente. Esto no garantiza exactitud universal en escritura manuscrita.
+
+`node scripts/verify-rund-visual-scopes.cjs` verifica el procesamiento por tipo de
+soporte con PDF ficticios, los motores locales reales y una base simulada. Nunca
+escribe expedientes reales. Guarda sus resultados de prueba en
+`.local/rund-visual-scopes/`. Los resultados anteriores no se recalculan al
+actualizar el código: «Volver a procesar» genera el análisis vigente con el
+contrato `rund-f014-v6`.
+
+En esta verificación pasaron los seis casos del script: Identidad (seis campos),
+Formación (maestría), Vinculación (acto y dos fechas), Académico (núcleo),
+Investigación y un soporte sin extracción. Se comprobaron 220 pruebas de backend,
+63 del asistente, cinco del flujo de aprobación y 18 Python, las compilaciones de
+backend e interfaz, integración PostgreSQL TEMP y navegador de escritorio/móvil.
+Las palabras partidas del OCR académico se derivan al cotejo visual, incluso
+cuando el motor informa confianza alta, sin unirlas mediante conjeturas.
+
+### Revisión final del flujo (5 de noviembre de 2026)
+
+Se añadió una comprobación de coherencia después de combinar OCR nativo y visión:
+si el tipo reconocido es CC, CE o PEP, no se guarda una propuesta de número con
+letras. El pasaporte mantiene su formato alfanumérico. Esta regla ya protegía la
+confirmación humana y ahora se aplica también antes de presentar las propuestas.
+La evidencia, página y confianza conservan un contrato TypeScript explícito.
+
+Pasaron 822 pruebas de backend RUND, 221 de interfaz y 18 Python, ambas
+compilaciones, la integración PostgreSQL TEMP y la prueba con motores reales por
+pestaña. El navegador comprobó reprocesado, permisos, corrección, resultados vacíos
+y carga por teclado. Las pruebas usan documentos ficticios, API/base simulada o
+tablas temporales; no cambian perfiles, decisiones ni aprobaciones reales.
+
+El archivo de revisión documental se verificó en dos grupos (3 y 70 casos).
+Ejecutarlo completo en este entorno con Vitest 0.34 produjo un timeout interno
+`birpc/onTaskUpdate`; ambos grupos terminaron sin fallos por separado:
+
+```powershell
+node node_modules/vitest/vitest.mjs run --config apps/mfe-pta/vitest.config.ts src/components/pta/banco-docentes/RundValidationPanel.workflow.test.tsx --threads false -t 'Respuestas tardías del visualizador'
+node node_modules/vitest/vitest.mjs run --config apps/mfe-pta/vitest.config.ts src/components/pta/banco-docentes/RundValidationPanel.workflow.test.tsx --threads false -t '^(?!.*Respuestas tardías del visualizador)'
+```
+
+`node scripts/verify-rund-evidence-browser.mjs --upload-only` permite aislar la
+comprobación de carga por teclado. El verificador espera el selector y envía Enter
+conjuntamente para no perder el evento de apertura. La prueba completa sigue
+disponible sin argumentos.

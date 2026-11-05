@@ -9,6 +9,7 @@ type Props = {
   evidences: any[];
   /** Shared files list their tools once, on the first row with data. */
   showTools: boolean;
+  showHeading?: boolean;
   reviewFields?: RundEvidenceField[];
   canManage: boolean;
   canValidate: boolean;
@@ -18,17 +19,20 @@ type Props = {
   onReview: (evidence: any, estado: 'Aprobado' | 'Rechazado') => void;
   onReplace: (evidence: any, file: File) => void;
   onAdd: (file: File) => void;
+  visibleEvidenceIds?: string[];
+  renderActions?: (evidence: any) => React.ReactNode;
+  renderDetails?: (evidence: any) => React.ReactNode;
 };
 
 const STATE_LABELS: Record<string, string> = { Aprobado: 'Admitida', Rechazado: 'Devuelta', Pendiente: 'Pendiente de revisión' };
 
 /** Keyboard-operable button that opens a hidden PDF picker (a label around a hidden input cannot take focus). */
-export function RundPdfPicker({ label, title, className, disabled, onFile, children }: {
-  label: string; title?: string; className: string; disabled: boolean; onFile: (file: File) => void; children: React.ReactNode;
+export function RundPdfPicker({ label, title, className, disabled, onFile, children, style }: {
+  label: string; title?: string; className: string; disabled: boolean; onFile: (file: File) => void; children: React.ReactNode; style?: React.CSSProperties;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return <>
-    <button type="button" className={className} title={title} disabled={disabled} onClick={() => input.current?.click()}>{children}</button>
+    <button type="button" className={className} title={title} style={style} disabled={disabled} onClick={() => input.current?.click()}>{children}</button>
     <input ref={input} type="file" accept="application/pdf,.pdf" hidden aria-label={label} disabled={disabled} tabIndex={-1} onChange={event => {
       const file = event.target.files?.[0];
       if (file) onFile(file);
@@ -42,21 +46,22 @@ const formatDate = (value?: string) => {
   return date && Number.isFinite(date.getTime()) ? date.toLocaleString('es-CO') : null;
 };
 
-export function RundCheckpointEvidence({ field, evidences, showTools, reviewFields, canManage, canValidate, disabled, busy, onView, onReview, onReplace, onAdd }: Props) {
+export function RundCheckpointEvidence({ field, evidences, showTools, showHeading = true, reviewFields, canManage, canValidate, disabled, busy, onView, onReview, onReplace, onAdd, visibleEvidenceIds, renderActions, renderDetails }: Props) {
   const several = evidences.length > 1;
   const canAdd = showTools && canManage && evidences.length < RUND_MAX_EVIDENCES_PER_TYPE;
 
   return <div className="rund-checkpoint-evidence">
-    <div className="rund-checkpoint-evidence__heading">
+    {showHeading && <div className="rund-checkpoint-evidence__heading">
       <span className="rund-checkpoint-evidence__icon"><FileText size={16} aria-hidden="true" /></span>
       <div>
         <strong>{field.documento}</strong>
         <small>{evidences.length} {several ? 'soportes vigentes' : 'soporte vigente'} · una decisión por archivo</small>
         {!showTools && <small className="rund-checkpoint-evidence__shared">Documento compartido: se consulta y reemplaza en la primera fila de este soporte.</small>}
       </div>
-    </div>
+    </div>}
     <ol className="rund-checkpoint-evidence__list" aria-label={`Evidencias de ${field.campo}`}>
       {evidences.map((evidence, index) => {
+        if (visibleEvidenceIds && !visibleEvidenceIds.includes(evidence.id)) return null;
         const number = index + 1;
         const decision = reviewFields ? rundDocumentDecision(evidence, reviewFields) : rundEvidenceDecision(evidence, field);
         const reviewing = busy === `review-${evidence.id}`;
@@ -79,6 +84,7 @@ export function RundCheckpointEvidence({ field, evidences, showTools, reviewFiel
               {decision.estado !== 'Pendiente' && reviewed ? ` · ${reviewed}` : ''}
             </span>
             {decision.estado === 'Rechazado' && decision.observacion && <p className="rund-checkpoint-evidence__note">{decision.observacion}</p>}
+            {showTools && renderDetails?.(evidence)}
           </div>
           <div className="rund-checkpoint-evidence__actions">
             {showTools && <button type="button" className="rund-checkpoint-evidence__button" onClick={() => onView(evidence, number)}
@@ -92,6 +98,7 @@ export function RundCheckpointEvidence({ field, evidences, showTools, reviewFiel
               <Replace size={13} aria-hidden="true" />
               <span className="rund-checkpoint-evidence__sr">Reemplazar {several ? `evidencia ${number}` : 'documento'}</span>
             </RundPdfPicker>}
+            {showTools && renderActions?.(evidence)}
             {canValidate && decision.estado === 'Pendiente' && <>
               <button type="button" className="rund-checkpoint-evidence__button" data-variant="approve" disabled={disabled || reviewing}
                 title={several ? `Admitir la evidencia ${number}: ${reviewFields ? field.documento : field.campo}` : undefined} onClick={() => onReview(evidence, 'Aprobado')}>

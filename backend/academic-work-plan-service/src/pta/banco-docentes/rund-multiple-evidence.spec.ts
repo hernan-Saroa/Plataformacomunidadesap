@@ -312,7 +312,7 @@ describe('Varias evidencias por punto de control: OCR por selección y orden', (
   it('marca como desactualizada la sugerencia de una evidencia cuando otra ya cambió el dato', async () => {
     const suggestion = (id: string, valor_previo: string) => ({ id, campo: 'maestria', valor: 'Maestría X', valor_previo, estado: 'PENDIENTE' });
     const query = jest.fn(async (sql: string) => {
-      if (sql.includes('FROM academic_work_plan."RundExtraccionTrabajo" j JOIN')) return [
+      if (sql.includes('COALESCE((SELECT jsonb_agg')) return [
         { id: 'job-2', estado: 'PENDIENTE', creado_en: '2026-10-02T00:00:00Z', posicion_cola:1, sugerencias: [] },
         { id: 'job-1', estado: 'COMPLETADO', creado_en: '2026-10-01T00:00:00Z', sugerencias: [suggestion('s-old', 'Sin título'), suggestion('s-new', 'Maestría actual')] },
       ];
@@ -368,7 +368,7 @@ describe('OCR limitado a los datos que acredita cada evidencia', () => {
   it('marca como fuera de alcance las sugerencias antiguas de un anexo sin datos acreditables', async () => {
     process.env.RUND_OCR_ENABLED = 'true';
     const query = jest.fn(async (sql: string) => {
-      if (sql.includes('FROM academic_work_plan."RundExtraccionTrabajo" j JOIN')) return [
+      if (sql.includes('COALESCE((SELECT jsonb_agg')) return [
         { id: 'j-1', estado: 'COMPLETADO', categoria_codigo: 'OTROS', tipo_soporte: null, sugerencias: [{ id: 's-1', campo: 'nombreCompleto', valor_previo: 'A', estado: 'PENDIENTE' }] },
         { id: 'j-2', estado: 'COMPLETADO', categoria_codigo: 'IDENTIDAD', tipo_soporte: 'documento_identidad', sugerencias: [{ id: 's-2', campo: 'nombreCompleto', valor_previo: 'A', estado: 'PENDIENTE' }] },
       ];

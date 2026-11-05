@@ -48,12 +48,43 @@ class OcrContractTest(unittest.TestCase):
         pdf.close()
         class Engine:
             def predict(self, image):
-                return [{'rec_texts': ['Título de prueba'], 'rec_scores': [0.92]}]
+                return [{'rec_texts': ['Formación de José Muñoz: áéíóúñü'], 'rec_scores': [0.92]}]
         with patch.object(app, 'get_engine', return_value=Engine()):
             response = self.client.post('/extract', headers=self.auth, files={'file': ('test.pdf', data.getvalue(), 'application/pdf')})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['paginas'][0]['texto'], 'Título de prueba')
+        self.assertEqual(response.json()['paginas'][0]['texto'], 'Formación de José Muñoz: áéíóúñü')
         self.assertEqual(response.json()['paginas'][0]['pagina'], 1)
+        self.assertEqual(response.json()['paginas'][0]['lineas'], [{'texto': 'Formación de José Muñoz: áéíóúñü', 'confianza': 0.92}])
+
+    def test_keeps_weak_line_confidence_separate_from_readable_lines(self):
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument.new()
+        pdf.new_page(500, 500).close()
+        data = io.BytesIO()
+        pdf.save(data)
+        pdf.close()
+        class Engine:
+            def predict(self, image):
+                return [{'rec_texts': ['TÍTULO DE:', 'AENTACIONHDEIUAHTUNT'], 'rec_scores': [0.99, 0.24]}]
+        result = app.extract_pdf(data.getvalue(), Engine())
+        self.assertEqual(result['paginas'][0]['lineas'][1]['confianza'], 0.24)
+        self.assertLess(result['paginas'][0]['confianza'], 0.85)
+
+    def test_rejects_missing_or_invalid_line_scores(self):
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument.new()
+        pdf.new_page(500, 500).close()
+        data = io.BytesIO()
+        pdf.save(data)
+        pdf.close()
+        for scores in [[], [float('nan')], [float('inf')], [1.5]]:
+            with self.subTest(scores=scores):
+                class Engine:
+                    def predict(self, image):
+                        return [{'rec_texts': ['Economista'], 'rec_scores': scores}]
+                with self.assertRaises(HTTPException) as error:
+                    app.extract_pdf(data.getvalue(), Engine())
+                self.assertEqual(error.exception.status_code, 503)
 
     def test_busy_worker_does_not_queue_in_memory(self):
         app.gate.acquire()
@@ -66,6 +97,17 @@ class OcrContractTest(unittest.TestCase):
     def test_invalid_pdf(self):
         with self.assertRaises(HTTPException):
             app.extract_pdf(b'not pdf', None)
+
+    def test_visual_renderer_requires_authentication_and_does_not_initialize_ocr(self):
+        with patch.object(app, 'get_engine') as engine:
+            response = self.client.post('/render-pages', files={'file': ('test.pdf', b'%PDF-1.7', 'application/pdf')})
+            self.assertEqual(response.status_code, 401)
+            engine.assert_not_called()
+            with patch.object(app, 'render_visual_pages', return_value={'paginas': [], 'total_paginas': 1}) as render:
+                response = self.client.post('/render-pages', headers=self.auth, files={'file': ('test.pdf', b'%PDF-1.7', 'application/pdf')})
+                self.assertEqual(response.status_code, 200)
+                render.assert_called_once_with(b'%PDF-1.7')
+                engine.assert_not_called()
 
 
 if __name__ == '__main__':

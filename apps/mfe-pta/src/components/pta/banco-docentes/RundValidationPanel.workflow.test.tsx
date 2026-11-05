@@ -3,13 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RundValidationPanel } from './RundValidationPanel';
 import { RundDocumentManager } from './RundDocumentManager';
+import { RundSupportList } from './RundSupportList';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { RUND_DATA_FIELDS } from '../../../../../../backend/academic-work-plan-service/src/pta/banco-docentes/rund-data-review';
 
-vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn() } }));
+vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn() } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => authContext }));
 vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null }));
-vi.mock('./RundDocumentManager', () => ({ RundDocumentManager: vi.fn(({ onChanged }: any) => <button onClick={onChanged}>Recargar expediente</button>) }));
+vi.mock('./RundDocumentManager', () => ({ RundDocumentManager: vi.fn(({ onChanged, supportReview }: any) => <>
+  <button onClick={onChanged}>Recargar expediente</button>
+  {supportReview && <RundSupportList {...supportReview} />}
+</>) }));
 
 let blocks: any[];
 let authContext: any;
@@ -62,7 +66,45 @@ beforeEach(() => {
     return { success: true };
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+describe('Respuestas tardías del visualizador de soportes', () => {
+  it.each(['cerrar', 'cambiar docente', 'abrir otro soporte'])('descarta el archivo pendiente después de %s', async action => {
+    const create = vi.fn().mockReturnValue('blob:actual');
+    vi.stubGlobal('URL', class extends URL { static createObjectURL = create; static revokeObjectURL = vi.fn(); });
+    let complete!: (value: Blob) => void;
+    vi.mocked(apiClient.getBlob).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    vi.mocked(apiClient.getBlob).mockResolvedValue(new Blob(['%PDF-1.7'], { type: 'application/pdf' }));
+    const originalGet = vi.mocked(apiClient.get).getMockImplementation()!;
+    vi.mocked(apiClient.get).mockImplementation(async url => {
+      const value = await originalGet(url);
+      return url.includes('/tarjeta-rund') && url.includes('/docente-2/') ? { ...value, docenteId: 'docente-2', idRund: 'RUND-ACTUAL' } : value;
+    });
+    blocks[0].soportes.push({ ...blocks[0].soportes[0], id: 'segundo', documento_perfil_id: 'version-2', documento_carpeta_id: '/segunda.pdf' });
+    const view = render(<RundValidationPanel docenteId="docente-1" />);
+    const buttons = await screen.findAllByRole('button', { name: 'Ver', exact: true });
+    fireEvent.click(buttons[0]);
+    await screen.findByText('Visualizador Seguro de Documentos RUND');
+    if (action === 'cerrar') {
+      const header = screen.getByText('Visualizador Seguro de Documentos RUND').parentElement!.parentElement!.parentElement!;
+      fireEvent.click(header.querySelector('button')!);
+    } else if (action === 'cambiar docente') {
+      view.rerender(<RundValidationPanel docenteId="docente-2" />);
+      await screen.findByText('RUND-ACTUAL');
+    } else {
+      fireEvent.click(buttons[1]);
+      await screen.findByTitle('Document Viewer');
+    }
+    await act(async () => { complete(new Blob(['%PDF-1.7 anterior'], { type: 'application/pdf' })); });
+    if (action === 'abrir otro soporte') {
+      expect(screen.getByTitle('Document Viewer').getAttribute('src')).toBe('blob:actual');
+      expect(create).toHaveBeenCalledTimes(1);
+    } else {
+      expect(screen.queryByText('Visualizador Seguro de Documentos RUND')).toBeNull();
+      expect(create).not.toHaveBeenCalled();
+    }
+  });
+});
 
 it.each([
   ['IDENTIDAD', 'Identidad', 'documento_identidad'],
@@ -342,6 +384,10 @@ describe('Revisión documental persistida en el panel RUND', () => {
   it('envía la versión vigente al aprobar Contacto sin pedir archivos', async () => {
     render(<RundValidationPanel docenteId="docente-1" />);
     fireEvent.click(await screen.findByRole('tab', { name: /Contacto/ }));
+    expect(screen.queryByRole('group', { name: 'Soportes de esta sección' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Recargar expediente' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Actualizar sugerencias' })).toBeNull();
+    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/CONTACTO/aprobar'), { blockVersion: 1 }));
   });
@@ -617,7 +663,7 @@ describe('Revisión centralizada de documentos compartidos', () => {
     expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/shared/revision'),expect.objectContaining({alcance:'documento',documentoVersionId:'v1',blockVersion:1}));
     expect(Object.values(block.soportes[0].revisiones_campos)).toHaveLength(Number(count));
     expect(Object.values(block.soportes[0].revisiones_campos).every((decision:any)=>decision.estado==='Aprobado')).toBe(true);
-    expect(screen.getByRole('region',{name:'Selección y revisión de soportes'})).toBeTruthy();
+    expect(screen.getByRole('group',{name:'Soportes de esta sección'})).toBeTruthy();
   });
 });
 
@@ -644,7 +690,7 @@ describe('Varias evidencias por punto de control', () => {
     const items = list.getAllByRole('listitem');
     expect(items.map(item => item.textContent)).toEqual([expect.stringContaining('Evidencia 1'), expect.stringContaining('Evidencia 2')]);
     expect(items[0].textContent).toContain('primera.pdf');
-    expect(screen.getByText('2 soportes vigentes · una decisión por archivo')).toBeTruthy();
+    expect(screen.getByText('2 archivos')).toBeTruthy();
     expect(screen.getByText('Pendiente de validar el dato')).toBeTruthy();
     fireEvent.click(within(items[1]).getByRole('button', { name: 'Validar soporte' }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/TRANSVERSAL/soportes/segunda/revision'),
@@ -752,6 +798,32 @@ describe('Evidencias de identidad y soportes históricos', () => {
 });
 
 describe('Carga por fila con datos', () => {
+  it('la guía lleva al dato o a la confirmación sin ejecutar una decisión', async () => {
+    const scroll = vi.fn();
+    const view = render(<RundValidationPanel docenteId="docente-1" />);
+    const guide = await screen.findByRole('navigation', { name: 'Pasos para revisar esta sección' });
+    const data = view.container.querySelector('.rund-data-section') as HTMLElement;
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.contains(guide)).toBe(true);
+    expect(panel.contains(data)).toBe(true);
+    expect(panel.querySelector('.rund-review-section-intro h4')?.textContent).toBe('Identidad');
+    data.scrollIntoView = scroll;
+    fireEvent.click(within(guide).getByRole('button', { name: /Revisar datos/ }));
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(apiClient.post).not.toHaveBeenCalled();
+    const tools = view.container.querySelector('.rund-review-tools') as HTMLDetailsElement;
+    expect(tools.open).toBe(false);
+    fireEvent.click(tools.querySelector('summary')!);
+    expect(tools.open).toBe(true);
+    expect(apiClient.post).not.toHaveBeenCalled();
+    expect(tools.compareDocumentPosition(data) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const confirmation = view.container.querySelector('.rund-review-confirmation')!;
+    expect(data.compareDocumentPosition(confirmation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Volver a los datos/ }));
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
   it('no ofrece carga ni reemplazo sin datos, pero conserva la consulta del soporte', async () => {
     const view = render(<RundValidationPanel docenteId="docente-1" />);
     await screen.findByText('RUND-PRUEBA');
@@ -767,7 +839,7 @@ describe('Carga por fila con datos', () => {
     blocks[0].soportes = [];
     profileBlocks = { IDENTIDAD: { campos: [{ campo: 'NOMBRE_COMPLETO', valor: 'PERSONA DE PRUEBA' }] } };
     const view = render(<RundValidationPanel docenteId="docente-1" />);
-    await screen.findByText('PERSONA DE PRUEBA');
+    await waitFor(() => expect(view.container.querySelectorAll('.rund-checkpoint-row__data')[1]?.textContent).toContain('PERSONA DE PRUEBA'));
     const inputs = view.container.querySelectorAll('input[type="file"]');
     expect(inputs).toHaveLength(1);
     fireEvent.change(inputs[0], { target: { files: [new File(['%PDF-1.7'], 'identidad.pdf', { type: 'application/pdf' })] } });
