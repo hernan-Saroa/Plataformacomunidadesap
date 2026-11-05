@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BancoDocentesPTA } from './BancoDocentesPTA';
 import { getBancoDocentes, previewRundDeletion, confirmRundDeletion } from '../../../services/api/ptaApi';
 
-vi.mock('../../../services/api/ptaApi', () => ({
+vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]),
   getBancoDocentes: vi.fn(),
   getBancoDocenteStats: vi.fn().mockResolvedValue({ success: true, data: { total: 1 } }),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -23,6 +23,24 @@ vi.mock('./TableroInvitacionesRUND', () => ({ TableroInvitacionesRUND: () => nul
 vi.mock('./RundRegistrationHistory', () => ({ RundRegistrationHistory: ({ periodoCarga }: any) => <div>Historial del periodo {periodoCarga}</div> }));
 afterEach(() => { cleanup(); localStorage.removeItem('esap_user'); sessionStorage.removeItem('esap_user'); });
 beforeEach(() => { vi.clearAllMocks(); grantedPermissions = null; });
+
+it('distingue en todos los registros la revisión pendiente, la corrección solicitada y la aprobación',async()=>{
+  const approved=Object.fromEntries(['IDENTIDAD','FORMACION','VINCULACION','ACADEMICO','TRANSVERSAL'].map(block=>[block,'Aprobado']));
+  vi.mocked(getBancoDocentes).mockResolvedValue({success:true,data:{data:[
+    {id:'pending',nombre_completo:'PERFIL SIN REVISAR',completitud:null},
+    {id:'returned',nombre_completo:'PERFIL CON DATO DEVUELTO',completitud:{IDENTIDAD:'Devuelto'}},
+    {id:'approved',nombre_completo:'PERFIL APROBADO',completitud:approved},
+  ],total:3,pages:1}} as any);
+  render(<BancoDocentesPTA/>);
+  const pending=(await screen.findByText('PERFIL SIN REVISAR')).closest('tr')!;
+  expect(within(pending).getByText('Pendiente de revisión').getAttribute('title')).toContain('soportes es opcional');
+  expect(within(pending).queryByText('Pendiente de corrección')).toBeNull();
+  const returned=screen.getByText('PERFIL CON DATO DEVUELTO').closest('tr')!;
+  expect(within(returned).getByText('Pendiente de corrección').getAttribute('title')).toContain('datos o un bloque');
+  const accepted=screen.getByText('PERFIL APROBADO').closest('tr')!;
+  expect(within(accepted).getByText('Perfil RUND aprobado')).toBeTruthy();
+  expect(within(accepted).queryByText('Pendiente de revisión')).toBeNull();
+});
 
 it('abre trazabilidad con el periodo del encabezado y conserva el regreso al listado', async () => {
   grantedPermissions = ['banco-docentes.rund.carga'];

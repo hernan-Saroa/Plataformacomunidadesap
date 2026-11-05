@@ -44,6 +44,16 @@ export class EvidenciaCierreDto {
   @IsString()
   @IsOptional()
   key?: string;
+
+  @ApiPropertyOptional({
+    example: 'SOPORTE_CONTRATACION',
+    description:
+      'Tipología de la evidencia (EFDS-2354): EJECUCION_TECNICA | SOPORTE_CONTRATACION | ACTA_RECEPCION_INSUMOS',
+    enum: ['EJECUCION_TECNICA', 'SOPORTE_CONTRATACION', 'ACTA_RECEPCION_INSUMOS'],
+  })
+  @IsString()
+  @IsOptional()
+  categoria?: string;
 }
 
 export class CerrarTecnicamenteDto {

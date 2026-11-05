@@ -1339,6 +1339,7 @@ export interface ItemCargaMasivaRp {
   valorComprometido: number;
   rubro: string;
   codigoRp?: string;
+  soporteRpPath?: string;
   observaciones?: string;
 }
 

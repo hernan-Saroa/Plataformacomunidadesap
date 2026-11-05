@@ -4,8 +4,11 @@ import logging
 import math
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.responses import JSONResponse
+from ocr_lines import recognized_page
+from visual_pages import render_visual_pages
 
 MAX_BYTES = 25 * 1024 * 1024
 MAX_PAGES = 25
@@ -17,6 +20,7 @@ OCR_RECOGNITION_MODEL = 'PP-OCRv6_medium_rec'
 app = FastAPI(title='RUND OCR local', docs_url=None, redoc_url=None, openapi_url=None)
 gate = threading.Lock()
 engine = None
+inference_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='rund-paddle')
 
 
 @app.middleware('http')
@@ -38,7 +42,7 @@ def health():
     return {'status': 'ready' if engine is not None else 'starting', 'configured': len(TOKEN) >= 32, 'local': True}
 
 
-def get_engine():
+def create_engine():
     global engine
     if engine is None:
         from paddleocr import PaddleOCR
@@ -49,6 +53,10 @@ def get_engine():
                            enable_mkldnn=False, cpu_threads=2, use_doc_orientation_classify=True,
                            use_doc_unwarping=True, use_textline_orientation=True)
     return engine
+
+
+def get_engine():
+    return inference_worker.submit(create_engine).result()
 
 
 @app.post('/warmup')
@@ -87,21 +95,22 @@ def extract_pdf(content: bytes, ocr):
                 try:
                     # Paddle recibe imagen BGR, no se escribe el PDF ni las imágenes en disco.
                     image = np.asarray(bitmap.to_pil().convert('RGB'))[:, :, ::-1].copy()
-                    texts, scores = [], []
+                    recognitions = []
                     try:
                         for result in ocr.predict(image):
-                            texts.extend(str(text) for text in result['rec_texts'])
-                            scores.extend(float(score) for score in result['rec_scores'])
+                            if len(result['rec_texts']) != len(result['rec_scores']):
+                                raise ValueError('OCR line scores do not match')
+                            recognitions.extend(zip(result['rec_texts'], result['rec_scores']))
+                        recognized = recognized_page(recognitions)
                     except Exception as error:
                         logging.getLogger('rund.ocr').warning('Fallo de inferencia OCR: %s', type(error).__name__)
                         raise HTTPException(503, 'El motor OCR no pudo procesar el documento. Reintente después.')
-                    text = '\n'.join(texts)
+                    text = recognized['text']
                     count += len(text)
                     if count > MAX_TEXT:
                         raise HTTPException(422, 'El documento supera el límite de texto procesable.')
                     # Percentil conservador: una página con lecturas débiles no se anuncia como segura.
-                    confidence = float(np.quantile(scores, 0.1)) if scores else 0.0
-                    pages.append({'pagina': index + 1, 'texto': text, 'confianza': max(0.0, min(1.0, confidence))})
+                    pages.append({'pagina': index + 1, 'texto': text, 'confianza': recognized['confidence'], 'lineas': recognized['lineas']})
                 finally:
                     bitmap.close()
             finally:
@@ -123,12 +132,25 @@ def extract(file: UploadFile = File(...)):
             ocr = get_engine()
         except Exception:
             raise HTTPException(503, 'El motor OCR local no está disponible. Reintente después.')
-        return extract_pdf(content, ocr)
+        return inference_worker.submit(extract_pdf, content, ocr).result()
     except HTTPException:
         raise
     except Exception:
         # No exponer rutas locales, texto del documento ni trazas de los modelos.
         raise HTTPException(422, 'No se pudo leer el PDF. Verifique que no esté dañado ni protegido con contraseña.')
+    finally:
+        file.file.close()
+        gate.release()
+
+
+@app.post('/render-pages')
+def render_pages(file: UploadFile = File(...)):
+    if not gate.acquire(blocking=False):
+        raise HTTPException(503, 'OCR ocupado. Reintente después.')
+    try:
+        return render_visual_pages(file.file.read(MAX_BYTES + 1))
+    except Exception:
+        raise HTTPException(422, 'No se pudieron preparar las vistas del PDF.')
     finally:
         file.file.close()
         gate.release()

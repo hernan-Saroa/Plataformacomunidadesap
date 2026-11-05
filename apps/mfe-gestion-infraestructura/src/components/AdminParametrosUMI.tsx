@@ -98,14 +98,18 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
     requiereVoBoInsumos: boolean;
     montoMinimoInsumosVoBoCop: number;
     categoriasVoBoObligatorio: number[];
+    categoriasCodigosVoBoObligatorio?: string[];
     requiereVoBoContratacion: boolean;
+    modalidadVoBo: 'UN_ACTOR' | 'DOS_ACTORES';
   }>({
     requiereVoBoGlobal: false,
     requiereVoBoMantenimientoMayor: true,
     requiereVoBoInsumos: true,
     montoMinimoInsumosVoBoCop: 500000,
-    categoriasVoBoObligatorio: [48, 54],
+    categoriasVoBoObligatorio: [25, 31, 48, 54],
+    categoriasCodigosVoBoObligatorio: ['CS_002', 'CS_008'],
     requiereVoBoContratacion: true,
+    modalidadVoBo: 'UN_ACTOR',
   });
 
   const inputBase =
@@ -399,8 +403,12 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
           montoMinimoInsumosVoBoCop: Number(cfg.montoMinimoInsumosVoBoCop ?? 500000),
           categoriasVoBoObligatorio: Array.isArray(cfg.categoriasVoBoObligatorio)
             ? cfg.categoriasVoBoObligatorio
-            : [48, 54],
+            : [25, 31, 48, 54],
+          categoriasCodigosVoBoObligatorio: Array.isArray(cfg.categoriasCodigosVoBoObligatorio)
+            ? cfg.categoriasCodigosVoBoObligatorio
+            : ['CS_002', 'CS_008'],
           requiereVoBoContratacion: Boolean(cfg.requiereVoBoContratacion),
+          modalidadVoBo: cfg.modalidadVoBo === 'DOS_ACTORES' ? 'DOS_ACTORES' : 'UN_ACTOR',
         });
       }
     } catch {
@@ -423,8 +431,12 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
           montoMinimoInsumosVoBoCop: Number(resp.montoMinimoInsumosVoBoCop ?? 500000),
           categoriasVoBoObligatorio: Array.isArray(resp.categoriasVoBoObligatorio)
             ? resp.categoriasVoBoObligatorio
-            : [48, 54],
+            : [25, 31, 48, 54],
+          categoriasCodigosVoBoObligatorio: Array.isArray(resp.categoriasCodigosVoBoObligatorio)
+            ? resp.categoriasCodigosVoBoObligatorio
+            : ['CS_002', 'CS_008'],
           requiereVoBoContratacion: Boolean(resp.requiereVoBoContratacion),
+          modalidadVoBo: resp.modalidadVoBo === 'DOS_ACTORES' ? 'DOS_ACTORES' : 'UN_ACTOR',
         });
       }
       setToast({ tipo: 'ok', texto: 'Parámetros de VoBo actualizados exitosamente.' });
@@ -1274,6 +1286,83 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Bloque Modalidad VoBo (EFDS-2355) */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shrink-0">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-900 text-sm block">
+                      Modalidad de Aprobación de la Valoración Técnica (EFDS-2355)
+                    </span>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                      Define los roles y participantes requeridos para validar y dar trámite a la valoración técnica previa al inicio de ejecución.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  <label
+                    className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer select-none transition-all ${
+                      voboConfig.modalidadVoBo === 'UN_ACTOR'
+                        ? 'bg-purple-50/70 border-purple-300 ring-2 ring-purple-200'
+                        : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100'
+                    } ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="modalidadVoBo"
+                      value="UN_ACTOR"
+                      disabled={readOnly}
+                      checked={voboConfig.modalidadVoBo === 'UN_ACTOR'}
+                      onChange={() => setVoboConfig({ ...voboConfig, modalidadVoBo: 'UN_ACTOR' })}
+                      className="mt-1 text-purple-600 focus:ring-purple-500"
+                    />
+                    <div className="space-y-1">
+                      <span className="text-xs font-black text-slate-900 block">
+                        Modalidad 1: Aprobador Único (Coordinador GIM)
+                      </span>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        El Coordinador UMI o Encargado revisa de manera unificada diagnóstico, alcance, materiales y tiempos estimados, emitiendo directamente el Visto Bueno definitivo.
+                      </p>
+                      <span className="inline-block mt-1 text-[11px] font-bold text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md">
+                        Flujo ágil · 1 Actor
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer select-none transition-all ${
+                      voboConfig.modalidadVoBo === 'DOS_ACTORES'
+                        ? 'bg-purple-50/70 border-purple-300 ring-2 ring-purple-200'
+                        : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100'
+                    } ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="modalidadVoBo"
+                      value="DOS_ACTORES"
+                      disabled={readOnly}
+                      checked={voboConfig.modalidadVoBo === 'DOS_ACTORES'}
+                      onChange={() => setVoboConfig({ ...voboConfig, modalidadVoBo: 'DOS_ACTORES' })}
+                      className="mt-1 text-purple-600 focus:ring-purple-500"
+                    />
+                    <div className="space-y-1">
+                      <span className="text-xs font-black text-slate-900 block">
+                        Modalidad 2: Revisor Técnico + Aprobador Ejecutivo (2 Actores)
+                      </span>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Un Revisor Técnico emite primero concepto técnico de conformidad o ajustes sobre los insumos y tiempos. Posteriormente, el Coordinador GIM otorga el visto bueno final para ejecución.
+                      </p>
+                      <span className="inline-block mt-1 text-[11px] font-bold text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md">
+                        Doble control · 2 Actores diferenciados
+                      </span>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               {/* Bloque 5: Categorías de Servicio con VoBo Obligatorio */}

@@ -18,8 +18,11 @@ export class ConfigurationsService {
         return this.configRepository.find();
     }
 
-    async saveConfiguration(key: string, data: any): Promise<SystemConfiguration> {
+    async saveConfiguration(key: string, data: any): Promise<SystemConfiguration & { previousValue: any }> {
         let config = await this.findByKey(key);
+        // El gateway audita el PUT con el cuerpo de la respuesta: devolver el valor
+        // anterior junto al nuevo deja en Auditoría el antes y el después.
+        const previousValue = config ? config.value : null;
 
         if (!config) {
             config = this.configRepository.create({
@@ -33,7 +36,8 @@ export class ConfigurationsService {
             if (data.description) config.description = data.description;
         }
 
-        return this.configRepository.save(config);
+        const saved = await this.configRepository.save(config);
+        return { ...saved, previousValue };
     }
 
     /**

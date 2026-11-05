@@ -1,4 +1,5 @@
 import React, { useState, forwardRef, useEffect } from 'react';
+import { PublishedAvatar } from '../../../../shared/profile-photos';
 import {
   Search,
   Bell,
@@ -137,7 +138,7 @@ const UserMenuButton = forwardRef<
     >
       <Avatar className="w-8 h-8 flex-shrink-0">
         <AvatarFallback className="bg-[#003DA5] text-white text-[13px] font-bold">
-          {initials}
+          <PublishedAvatar own name={safeUserName} size={32} />
         </AvatarFallback>
       </Avatar>
       <div className="hidden sm:flex flex-col items-start min-w-0">

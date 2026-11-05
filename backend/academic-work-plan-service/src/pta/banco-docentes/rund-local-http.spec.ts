@@ -31,4 +31,12 @@ describe('HTTP del modelo local', () => {
     await listen((_request, response) => response.end('x'.repeat(2 * 1024 * 1024 + 1)));
     await expect(postLocalJson(url, {})).rejects.toThrow();
   });
+  it('identifica una conexión cortada durante la respuesta sin esperar el plazo completo', async () => {
+    await listen((_request, response) => {
+      response.writeHead(200, {'Content-Type':'application/json'});
+      response.write('{"message":');
+      setTimeout(() => response.destroy(), 20);
+    });
+    await expect(postLocalJson(url, {}, 2000)).rejects.toThrow('MODELO_CONEXION_FALLIDA');
+  });
 });

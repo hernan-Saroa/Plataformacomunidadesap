@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { PeiIndicador } from '../entities/pei-indicador.entity';
@@ -27,6 +28,8 @@ describe('PeiService', () => {
         };
         mockIndicadorRepo = {
             findOne: jest.fn().mockResolvedValue(buildIndicador()),
+            create: jest.fn((data: any) => data),
+            save: jest.fn((data: any) => Promise.resolve(data)),
             createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
         };
         mockRegistroRepo = {
@@ -145,6 +148,62 @@ describe('PeiService', () => {
             expect(result.registro).toEqual({ id: 10, observaciones: 'ok' });
             expect(result.indicador).toBeDefined();
             expect(result.avanceGlobal).toBe(80);
+        });
+    });
+
+    describe('responsable del indicador (bug 2415)', () => {
+        const UID_A = 'a5f1b544-7fbe-4f73-8c34-cc39778f2010';
+
+        it('createIndicador rechaza un responsable en texto libre (sin responsableId)', async () => {
+            await expect(service.createIndicador({ nombre: 'X', responsableNombre: 'Dr Carlos perez' } as any))
+                .rejects.toBeInstanceOf(BadRequestException);
+            expect(mockIndicadorRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('createIndicador rechaza un responsableId que no es UUID', async () => {
+            await expect(service.createIndicador({ responsableId: '123', responsableNombre: 'Ana' } as any))
+                .rejects.toBeInstanceOf(BadRequestException);
+        });
+
+        it('createIndicador guarda la referencia al usuario y el nombre de ese usuario', async () => {
+            await service.createIndicador({ nombre: 'X', responsableId: UID_A, responsableNombre: ' Ana Lucia Abogada Prueba ' } as any);
+            expect(mockIndicadorRepo.save).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: UID_A, responsableNombre: 'Ana Lucia Abogada Prueba' }),
+            );
+        });
+
+        it('updateIndicador rechaza solo-nombre (texto libre) cuando se intenta cambiar el responsable', async () => {
+            await expect(service.updateIndicador(1, { responsableNombre: 'Carlos Perez' } as any))
+                .rejects.toBeInstanceOf(BadRequestException);
+            expect(mockIndicadorRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('updateIndicador sin tocar el responsable no lo valida ni lo marca como cambiado', async () => {
+            mockIndicadorRepo.findOne.mockResolvedValue({ ...buildIndicador(), responsableId: UID_A, responsableNombre: 'Ana' });
+            const res: any = await service.updateIndicador(1, { nombre: 'Nuevo nombre' } as any);
+            expect(res.responsableCambiado).toBe(false);
+        });
+
+        it('updateIndicador devuelve el responsable anterior (queda en Auditoría) y no incluye el histórico', async () => {
+            mockIndicadorRepo.findOne.mockResolvedValue({ ...buildIndicador(), responsableId: null, responsableNombre: 'Dr Carlos perez' });
+            const res: any = await service.updateIndicador(1, { responsableId: UID_A, responsableNombre: 'Ana Lucia Abogada Prueba' } as any);
+            expect(res).toEqual(expect.objectContaining({
+                responsableId: UID_A,
+                responsableNombre: 'Ana Lucia Abogada Prueba',
+                responsableAnteriorId: null,
+                responsableAnteriorNombre: 'Dr Carlos perez',
+                responsableCambiado: true,
+            }));
+            expect(res.registros).toBeUndefined();
+        });
+
+        it('getDashboard marca los indicadores sin responsableId como pendientes de reasignación', async () => {
+            queryBuilder.getMany.mockResolvedValue([
+                { id: 1, fechaFin: '2099-01-01', registros: [], responsableId: null, responsableNombre: 'Carlos Perez' },
+                { id: 2, fechaFin: '2099-01-01', registros: [], responsableId: UID_A, responsableNombre: 'Ana' },
+            ]);
+            const res = await service.getDashboard();
+            expect(res.indicadores.map((i: any) => i.responsableSinReferencia)).toEqual([true, false]);
         });
     });
 });

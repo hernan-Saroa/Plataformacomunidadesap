@@ -1,3 +1,4 @@
+import { uploadOwnPhoto } from '../../../../shared/profile-photos';
 /**
  * Portal API - funciones para el Portal Transaccional.
  *
@@ -49,16 +50,9 @@ export async function updatePrivacidad(personaId: string, configPriv: any) {
   }
 }
 
-export async function uploadFotoPerfil(file: File, personaId: string) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('personaId', personaId);
-  try {
-    return await apiClient.upload(`${PORTAL_PREFIX}/foto-perfil`, formData);
-  } catch (err) {
-    console.warn('[portalApi] uploadFotoPerfil falló:', err);
-    throw err;
-  }
+export async function uploadFotoPerfil(file: File, _personaId: string) {
+  const data = await uploadOwnPhoto(file);
+  return { success: true, data };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
