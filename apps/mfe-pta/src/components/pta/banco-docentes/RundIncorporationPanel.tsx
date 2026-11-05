@@ -48,14 +48,14 @@ export function RundIncorporationPanel({ docenteId, block, fields = [], onSaved 
     finally { actionLock.current = false; if (currentProfile.current === targetProfile) setBusy(false); }
   };
   const input: React.CSSProperties = { padding: 9, border: '1px solid #CBD5E1', borderRadius: 7, width: '100%', marginTop: 5 };
-  return <form onSubmit={save} aria-label="Datos de contratación" style={{ margin: '0 24px 20px', padding: 20, border: '1px solid #BFDBFE', borderRadius: 12, background: '#F8FBFF' }}>
+  return <form onSubmit={save} aria-label="Datos de contratación" style={{ margin: '0 0 20px', minWidth: 0, padding: 20, border: '1px solid #BFDBFE', borderRadius: 12, background: '#F8FBFF' }}>
     <strong>Datos de contratación</strong>
     <p style={{ fontSize: 12, color: '#475569' }}>Registra el contrato y sus fechas con el soporte correspondiente. Los cambios quedan pendientes de revisión documental.</p>
     {!supports.length ? <p role="status">Carga primero un contrato o acto de vinculación en los documentos de esta sección.</p> : <>
       {supports.length > 1 && <label>Soporte de la contratación<select value={supportId} onChange={event => setSupportId(event.target.value)} required disabled={busy} style={input}>
         <option value="">Selecciona el documento</option>{supports.map((support: any) => <option key={support.id} value={support.id}>{support.nombre_archivo}</option>)}
       </select></label>}
-      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: '12px 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 }}>
+      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: '12px 0', minWidth: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,190px),1fr))', gap: 14 }}>
         <label>Número de contrato o acto<input value={contract} onChange={event => setContract(event.target.value)} required maxLength={200} style={input}/></label>
         <label>Fecha de inicio<input type="date" value={start} onChange={event => setStart(event.target.value)} required style={input}/></label>
         <label>Fecha de finalización · opcional<input type="date" value={end} min={start} onChange={event => setEnd(event.target.value)} style={input}/></label>

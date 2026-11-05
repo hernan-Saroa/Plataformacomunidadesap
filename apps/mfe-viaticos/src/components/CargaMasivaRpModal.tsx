@@ -66,6 +66,8 @@ export default function CargaMasivaRPModal({
     URL.revokeObjectURL(url);
   };
 
+  const REGEX_NOMENCLATURA_SOPORTE_RP = /^(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
+
   const validarFila = (
     item: ItemCargaMasivaRp,
     filaIndex: number,
@@ -84,6 +86,31 @@ export default function CargaMasivaRPModal({
     }
     if (!item.rubro || !item.rubro.trim()) {
       return { esValida: false, error: 'Falta rubro presupuestal' };
+    }
+    if (!item.soporteRpPath || !item.soporteRpPath.trim()) {
+      return { esValida: false, error: 'Falta archivo soporte del RP (obligatorio)' };
+    }
+    const nombreBase = item.soporteRpPath.trim().split(/[/\\]/).pop() || '';
+    const matchSoporte = nombreBase.match(REGEX_NOMENCLATURA_SOPORTE_RP);
+    if (!matchSoporte) {
+      return {
+        esValida: false,
+        error: `Soporte '${item.soporteRpPath}' inválido: debe respetar Fecha_RP_Número`,
+      };
+    }
+    const fechaArchivoSinGuiones = matchSoporte[1].replace(/-/g, '');
+    const fechaRpSinGuiones = item.fechaRp.trim().replace(/-/g, '');
+    if (fechaRpSinGuiones && fechaArchivoSinGuiones !== fechaRpSinGuiones) {
+      return {
+        esValida: false,
+        error: `La fecha en el soporte (${matchSoporte[1]}) no coincide con fecha_rp (${item.fechaRp})`,
+      };
+    }
+    if (matchSoporte[2].toLowerCase() !== item.numeroRp.trim().toLowerCase()) {
+      return {
+        esValida: false,
+        error: `El número en el soporte (${matchSoporte[2]}) no coincide con numero_rp (${item.numeroRp})`,
+      };
     }
     return { esValida: true };
   };
@@ -125,6 +152,12 @@ export default function CargaMasivaRPModal({
         ),
         rubro: obj.rubro_presupuestal || obj.rubropresupuestal || obj.rubro || '',
         codigoRp: obj.codigo_rp || obj.codigorp || '',
+        soporteRpPath:
+          obj.soporte_rp_nombre ||
+          obj.soporte_rp_path ||
+          obj.soporterppath ||
+          obj.soporte_rp ||
+          '',
         observaciones: obj.observaciones || '',
       };
 
@@ -165,6 +198,18 @@ export default function CargaMasivaRPModal({
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const lista = Array.from(files);
+    const invalidos = lista.filter(
+      (f) =>
+        f.name.toLowerCase().endsWith('.pdf') &&
+        !REGEX_NOMENCLATURA_SOPORTE_RP.test(f.name),
+    );
+    if (invalidos.length > 0) {
+      setErrorGeneral(
+        `Los siguientes archivos soporte no cumplen la nomenclatura Fecha_RP_Número (ej. YYYYMMDD_RP_Numero.pdf): ${invalidos.map((f) => f.name).join(', ')}`,
+      );
+    } else {
+      setErrorGeneral(null);
+    }
     setArchivosSoporte(lista);
   };
 

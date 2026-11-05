@@ -1,0 +1,4 @@
+# Activacion explicita: solo la nueva instancia Gemma recibe acceso a NVIDIA.
+services:
+  rund-ollama:
+    gpus: all

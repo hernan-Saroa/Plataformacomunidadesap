@@ -383,6 +383,7 @@ describe('Prueba Unitaria Integral del Flujo Completo de Viáticos: Formato 023 
       fechaRp: '2026-11-05',
       valorComprometido: 1406034, // Total: Viáticos ($560.000) + Desplazamiento ($126.034) + Tiquetes ($720.000)
       rubroPresupuestal: 'C-2101-01-01-Viaticos',
+      soporteRpPath: '20261105_RP_48920.pdf',
     };
     const solicitudComprometida = await service.expedirRp(
       'sol-e2e-001',

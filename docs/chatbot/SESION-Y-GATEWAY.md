@@ -1,48 +1,37 @@
-# Sesión y gateway del chatbot
+# Chatbot temporal: conversación y gateway
 
-Tercer ajuste de la revisión, 22 de octubre de 2026.
+Comportamiento actualizado el 29 de octubre de 2026.
 
-## Integración con la plataforma
+El chatbot ofrece orientación general sin iniciar sesión. Tanto el recuadro flotante como el módulo completo usan `POST /chatbot/api/v1/public/consultas`, con `credentials: 'omit'` y `cache: 'no-store'`. No recuperan conversaciones guardadas, consultan permisos del historial ni renuevan cookies de autenticación.
 
-El módulo completo del backoffice y el widget reciben `apiBaseUrl={config.API_BASE_URL}`. Es la misma base que utiliza el cliente autenticado del shell; el chatbot ya no decide por separado si debe llamar a localhost, a otro host o a `/services` cuando se integra en la plataforma. El cuarto ajuste centraliza ese widget en el shell para todas las vistas; véase [COBERTURA-GLOBAL.md](COBERTURA-GLOBAL.md).
+## Duración de la conversación
 
-Cada instancia crea su propio cliente HTTP. No modifica la configuración global, no sobrescribe clientes de otros módulos y no almacena ni lee tokens del navegador. Si cambia el gateway recibido, se reinicia el contexto del chatbot: se descartan respuestas pendientes y borradores del destino anterior.
+Los mensajes, el borrador y las consultas pendientes se mantienen únicamente en la memoria del módulo remoto durante la vida del documento. Se comparten entre sus vistas. Navegar entre módulos, minimizar el recuadro, abrir la vista completa o iniciar/cerrar sesión mediante navegación interna conserva esa conversación.
 
-El envío de `credentials: 'include'`, ya corregido en los puntos anteriores, se mantiene para todas las operaciones privadas. El navegador gestiona la cookie HttpOnly; el cliente no construye cabeceras `Cookie` ni `Authorization`. La configuración y orientación públicas añadidas en el cuarto ajuste utilizan `credentials: 'omit'`.
+Una recarga completa, cerrar la pestaña o cargar un documento nuevo destruye esa memoria. No se utilizan localStorage, sessionStorage ni IndexedDB para recuperarla. Cada pestaña mantiene su propia conversación. «Nueva conversación» permite limpiarla antes de recargar. Un gateway diferente utiliza un estado separado y no recibe mensajes ni borradores del anterior.
 
-## Apertura independiente del microfrontend
+El proveedor global conserva su instancia al cambiar de usuario. Las propiedades antiguas de identidad siguen siendo compatibles con los contenedores, pero no se envían a las consultas generales.
 
-La base del gateway se resuelve en este orden:
+## Backend y contenido
 
-1. `apiBaseUrl` entregado por el contenedor.
-2. `window.__ESAP_CONFIG__.API_URL`, si existe.
-3. `VITE_API_URL` del build del chatbot.
-4. `/services`, en el mismo origen del navegador.
+El endpoint general comprueba que el módulo esté activo y utiliza orientación institucional compartida sobre viáticos, certificados, PTA, programación académica y otros módulos. No escribe conversaciones o mensajes. No consulta expedientes, historial privado ni la fuente documental interna de Isolución.
 
-La configuración se consulta al preparar cada petición. Las bases relativas se resuelven con el origen actual y se normalizan las barras finales. Una configuración de loopback utilizada desde un dominio remoto se adapta al host y protocolo actuales, como hace el shell. Las bases locales explícitas conservan su hostname, puerto y protocolo; no se cambia `127.0.0.1` por `localhost`.
+El gateway conserva la auditoría técnica de la operación sin guardar pregunta, respuesta, query ni contenido de errores de este endpoint. El historial privado anterior permanece protegido por los guards existentes y no se borra ni se hace público; la nueva interfaz no utiliza esas rutas. No se requiere una migración para el chat temporal.
 
-Una configuración inválida, con credenciales incrustadas, query, fragmento, protocolo incompatible o HTTP desde una página HTTPS produce un error visible de configuración antes de enviar la petición. No se cambia silenciosamente a otro servidor.
+## Gateway y ambientes
 
-## Proxy local del chatbot
+Se conserva el orden de resolución: base entregada por el contenedor, runtime `window.__ESAP_CONFIG__.API_URL`, `VITE_API_URL` y, como alternativa, `/services` del mismo origen. Las rutas relativas, HTTPS, localhost, IPv6, prefijos y túneles mantienen sus validaciones. Una configuración inválida no redirige silenciosamente a otro servidor.
 
-Vite, tanto en desarrollo como en preview, enruta `/services/*` al gateway indicado por `ESAP_API_GATEWAY_URL`. El valor predeterminado es `http://127.0.0.1:4000`, igual que el proxy local del shell. Solo se elimina el prefijo `/services` al reenviar; la ruta de servicio y versión permanece intacta.
+El proxy de Vite para desarrollo/preview elimina únicamente `/services` al reenviar al gateway configurado por `ESAP_API_GATEWAY_URL`. En un despliegue estático esa ruta debe estar publicada por el proxy web. Otro origen necesita su configuración CORS; no se envían cookies del navegador para el chat temporal.
 
-Esto permite abrir el chatbot por separado en desarrollo sin agregar el puerto del microfrontend a la política CORS general ni cambiar las propiedades de las cookies. El proxy conserva las cabeceras de sesión y las respuestas `Set-Cookie`.
-
-En un despliegue estático, `/services` debe estar publicado por el gateway web de la plataforma, como en el recorrido normal del shell. El proxy de Vite solo existe en desarrollo/preview. Un servidor que publique únicamente los archivos del remoto requiere la base de API explícita y la configuración de sesión/origen correspondiente.
-
-## Alcance
-
-Se añadieron únicamente la propiedad del gateway en las integraciones del chatbot, clientes HTTP por instancia y el proxy del propio microfrontend. No se modificaron la resolución general de entornos del shell, el login, los atributos HttpOnly/SameSite/Secure, la política CORS general ni los guards del gateway. No se añadieron rutas públicas de conversaciones.
-
-Este punto no requiere una migración nueva. Sigue aplicando el contrato y la migración del primer ajuste, descritos en [PRIVACIDAD-HISTORIAL.md](PRIVACIDAD-HISTORIAL.md), así como la recuperación de errores del [segundo ajuste](ERRORES-Y-RECUPERACION.md).
+PostgreSQL admite `DB_USERNAME/DB_PASSWORD/DB_DATABASE` y `DB_USER/DB_PASS/DB_NAME`, conservando la precedencia de la primera familia. La configuración JWT sigue siendo necesaria para las rutas privadas anteriores, pero no interviene en las consultas generales.
 
 ## Verificación
 
-- 65 pruebas frontend correctas: precedencia y normalización de URL, localhost/127.0.0.1/IPv6/HTTPS, runtime tardío, instancias independientes, entrega de la base al remoto, cambio de gateway y regresiones de privacidad/recuperación.
-- 15 pruebas HTTP del backend correctas, con JWT firmados y datos ficticios: cookie HttpOnly y Bearer, JWT inválido o vencido, permisos revocados, propietario y acceso administrativo de solo lectura.
-- TypeScript del microfrontend y build de producción correctos.
-- Prueba en navegador contra el build de producción servido con Vite preview y un gateway ficticio: rechazo inicial sin sesión, recepción de una cookie HttpOnly mediante el proxy, cookie ausente de `document.cookie`, historial accesible por `/services`, historial accesible entre puertos del mismo host con CORS y credenciales, rechazo tras retirar la cookie y ausencia de cabeceras de autorización construidas por el frontend.
-- Proxy de desarrollo comprobado por HTTP en un servidor Vite aislado usando la configuración real del chatbot; se verificaron el reenvío de la cookie y la eliminación exclusiva del prefijo `/services`.
+- `cd apps/mfe-chatbot && npm test`: conversación temporal, errores, cambios de identidad, vistas compartidas y regresiones del cliente.
+- `cd backend/chatbot-service && npm test`: consultas sin JWT y sin escrituras, disponibilidad, validación y protección del historial anterior.
+- `cd backend/api-gateway && npx jest src/audit --runInBand`: auditoría técnica sin contenido de las consultas temporales.
+- `node scripts/verify-chatbot-widget-browser.mjs`: navegador con artefactos de producción, diez tamaños, cambios de módulo/sesión, recarga real, gateway separado y ausencia de llamadas privadas.
+- `node scripts/verify-chatbot-environments.cjs`: revisión estática de seis composiciones y proxies HTTP/HTTPS con datos ficticios.
 
-Las comprobaciones de navegador utilizaron una sesión sintética y puertos temporales; no utilizaron cuentas reales ni modificaron conversaciones o servicios en ejecución. La validación HTTPS de URL está cubierta por pruebas de configuración; no se realizó un despliegue TLS en QA o producción.
+Las comprobaciones no realizan despliegues ni modifican conversaciones reales. Cada ambiente debe aplicar el frontend, el servicio y el gateway actualizados.

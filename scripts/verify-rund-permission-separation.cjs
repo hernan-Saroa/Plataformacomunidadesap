@@ -91,7 +91,8 @@ const { rundRequestActor } = require(path.join(serviceRoot, 'src/pta/banco-docen
     const person = randomUUID(), docente = randomUUID(), document = randomUUID(), job = randomUUID(), suggestion = randomUUID();
     await fixture('auth', 'personas', { id_person: person, num_identificacion: '1000000000', tip_identificacion: 'CC', nom_largo: 'DOCENTE FICTICIO' });
     await fixture('academic_work_plan', 'Docente', { id: docente, personaId: person, estadoAprobacion: 'ACTIVO_RUND' });
-    await fixture('academic_work_plan', 'RundDocumentoPerfil', { id: document, docente_id: docente, estado: 'ACTIVO' });
+    await fixture('academic_work_plan', 'RundDocumentoPerfil', { id: document, docente_id: docente,
+      estado: 'ACTIVO', categoria_codigo: 'IDENTIDAD', bloque: 'IDENTIDAD', tipo_soporte: 'documento_identidad' });
     await fixture('academic_work_plan', 'RundExtraccionTrabajo', { id: job, docente_id: docente, documento_id: document, estado: 'COMPLETADO' });
     await fixture('academic_work_plan', 'RundExtraccionSugerencia', { id: suggestion, trabajo_id: job, campo: 'documentNumber', valor: '1000000001', valor_previo: '1000000000', estado: 'PENDIENTE' });
     for (const bloque of ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL']) {
@@ -106,6 +107,42 @@ const { rundRequestActor } = require(path.join(serviceRoot, 'src/pta/banco-docen
     assert.equal(profile.estadoAprobacion, 'PENDIENTE_APROBACION');
     assert.equal(profile.completitud.IDENTIDAD, 'En revisión');
     await assert.rejects(db.transaction(manager => manager.query('UPDATE auth.personas SET num_identificacion=$2 WHERE id_person=$1', [person, '1000000003'])), /REQ-RUND-F001/);
+    // Reprocessing preserves confirmed values and support approvals, archiving only pending proposals.
+    // Only this short-lived process is enabled; no worker or OCR engine is started.
+    process.env.RUND_OCR_ENABLED='true';
+    const secondDocument=randomUUID(),secondJob=randomUUID(),pendingSuggestion=randomUUID();
+    await fixture('academic_work_plan','RundDocumentoPerfil',{id:secondDocument,docente_id:docente,estado:'ACTIVO',categoria_codigo:'IDENTIDAD',bloque:'IDENTIDAD',tipo_soporte:'documento_identidad'});
+    await fixture('academic_work_plan','RundExtraccionTrabajo',{id:secondJob,docente_id:docente,documento_id:secondDocument,estado:'COMPLETADO'});
+    await fixture('academic_work_plan','RundExtraccionSugerencia',{id:pendingSuggestion,trabajo_id:secondJob,campo:'nombreCompleto',valor:'NOMBRE ANTIGUO FICTICIO',valor_previo:'DOCENTE FICTICIO',estado:'PENDIENTE'});
+    await fixture('academic_work_plan','RundSoporteCampo',{id:randomUUID(),docente_id:docente,bloque:'IDENTIDAD',tipo_soporte:'documento_identidad',documento_perfil_id:document,estado:'Aprobado'});
+    const blocksBefore=await db.query('SELECT bloque,estado,version FROM academic_work_plan."RundCampoEstado" WHERE docente_id=$1 ORDER BY bloque',[docente]);
+    const supportsBefore=await db.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id=$1',[docente]);
+    const reviewer={actorId:'REVISOR_FICTICIO',roles:['RUND_APROBADOR'],fullAccess:true};
+    const available=await new RundExtraccionService(db,{}).list(docente,reviewer);
+    assert(available.documents.some(item=>item.id===secondDocument&&item.analizado_previamente));
+    assert(available.documents.some(item=>item.id===document&&item.analizado_previamente));
+    const reprocessed=await new RundExtraccionService(db,{}).reprocess(docente,[secondDocument,document],reviewer);
+    assert.deepEqual(reprocessed,{queued:2,reprocessed:true});
+    assert.equal((await new RundExtraccionService(db,{}).list(docente,reviewer)).documents.length,0);
+    assert.deepEqual((await db.query('SELECT documento_id FROM academic_work_plan."RundExtraccionTrabajo" WHERE estado=\'PENDIENTE\' ORDER BY creado_en')).map(row=>row.documento_id),[secondDocument,document]);
+    assert.equal((await db.query('SELECT estado FROM academic_work_plan."RundExtraccionSugerencia" WHERE id=$1',[suggestion]))[0].estado,'CORREGIDA');
+    const archived=(await db.query('SELECT estado,motivo,revisado_por FROM academic_work_plan."RundExtraccionSugerencia" WHERE id=$1',[pendingSuggestion]))[0];
+    assert.equal(archived.estado,'DESCARTADA');assert.equal(archived.revisado_por,reviewer.actorId);assert.match(archived.motivo,/nueva solicitud/);
+    assert.deepEqual(await db.query('SELECT bloque,estado,version FROM academic_work_plan."RundCampoEstado" WHERE docente_id=$1 ORDER BY bloque',[docente]),blocksBefore);
+    assert.deepEqual(await db.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id=$1',[docente]),supportsBefore);
+    assert.equal((await db.query('SELECT num_identificacion FROM auth.personas WHERE id_person=$1',[person]))[0].num_identificacion,'1000000002');
+    await assert.rejects(new RundExtraccionService(db,{}).reprocess(docente,[document],reviewer),/ya está en cola/);
+    // An audit failure must roll back both the new job and the archived proposals.
+    await db.query('UPDATE academic_work_plan."RundExtraccionTrabajo" SET estado=\'COMPLETADO\' WHERE estado=\'PENDIENTE\'');
+    await db.query('UPDATE academic_work_plan."RundExtraccionSugerencia" SET estado=\'PENDIENTE\' WHERE id=$1',[pendingSuggestion]);
+    const failingDb={...db,transaction:work=>db.transaction(manager=>work({...manager,query:async(sql,args)=>{
+      if(sql.includes('INSERT INTO academic_work_plan."RundAprobacionLog"')&&args.includes('REPROCESAR_EXTRACCION_OCR'))throw new Error('SYNTHETIC_AUDIT_FAILURE');
+      return manager.query(sql,args);
+    }}))};
+    await assert.rejects(new RundExtraccionService(failingDb,{}).reprocess(docente,[secondDocument],reviewer),/SYNTHETIC_AUDIT_FAILURE/);
+    assert.equal((await db.query('SELECT estado FROM academic_work_plan."RundExtraccionSugerencia" WHERE id=$1',[pendingSuggestion]))[0].estado,'PENDIENTE');
+    assert.equal((await db.query('SELECT count(*)::int n FROM academic_work_plan."RundExtraccionTrabajo" WHERE estado=\'PENDIENTE\''))[0].n,0);
+    console.log('Reprocesado OCR: orden, historial, datos confirmados, soportes aprobados, duplicados y rollback verificados en tablas temporales.');
     console.log(JSON.stringify({ success: true, temporaryTablesOnly: true, checks: ['Migraciones idempotentes', 'Tres perfiles con un permiso cada uno', 'Cargador registra e importa sin aprobar', 'Revisor sin carga ni edición', 'Incorporador sin edición general ni aprobación', 'PDF original autorizado por perfil', 'Corrección OCR conserva el valor original y registra actor/motivo', 'Corregir reabre el bloque sin aprobarlo', 'Cédula continúa inmutable fuera del flujo OCR'] }, null, 2));
   } finally { await client.query('ROLLBACK'); await client.end(); }
 })().catch(reportError);

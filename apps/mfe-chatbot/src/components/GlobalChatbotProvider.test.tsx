@@ -33,21 +33,22 @@ it('cubre vistas públicas, portal y backoffice con la misma instancia y conserv
   expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'omit', cache: 'no-store' });
 });
 
-it('el visitante usa orientación pública y el inicio o cambio de cuenta limpia el estado anterior', async () => {
+it('conserva la conversación temporal al iniciar sesión, cambiar de cuenta y salir de la cuenta', async () => {
   const view = render(provider(<p>Login</p>));
   const input = await open();
   expect(input.getAttribute('data-mode')).toBe('public');
   fireEvent.change(input, { target: { value: 'Consulta visitante' } });
   view.rerender(provider(<p>Portal</p>, alice));
-  expect((await open()).value).toBe('');
-  expect(screen.getByRole('textbox').getAttribute('data-user')).toBe('alice');
+  expect((await screen.findByRole('textbox') as HTMLInputElement).value).toBe('Consulta visitante');
+  expect(screen.getByRole('textbox').getAttribute('data-user')).toBeNull();
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Privado Alice' } });
   view.rerender(provider(<p>Portal</p>, bob));
-  expect((await open()).value).toBe('');
-  expect(screen.getByRole('textbox').getAttribute('data-user')).toBe('bob');
+  expect((await screen.findByRole('textbox') as HTMLInputElement).value).toBe('Privado Alice');
+  expect(screen.getByRole('textbox').getAttribute('data-user')).toBeNull();
   view.rerender(provider(<p>Portada</p>));
-  expect((await open()).getAttribute('data-mode')).toBe('public');
-  expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
+  expect((await screen.findByRole('textbox')).getAttribute('data-mode')).toBe('public');
+  expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Privado Alice');
+  expect(mounts).toHaveBeenCalledTimes(1);
 });
 
 it('oculta el widget en la vista completa y lo recupera conservando su borrador', async () => {
@@ -122,7 +123,7 @@ it('un error del remoto deja funcionando la vista y ofrece un reintento aislado'
   expect(screen.getByText('Vista principal operativa')).toBeTruthy();
   remoteFailure = false;
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
-  expect((await open()).getAttribute('data-user')).toBe('alice');
+  expect((await open()).getAttribute('data-user')).toBeNull();
 });
 
 it('cancela una comprobación que tarda demasiado sin habilitar el asistente', async () => {

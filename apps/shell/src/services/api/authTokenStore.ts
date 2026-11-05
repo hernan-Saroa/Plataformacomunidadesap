@@ -36,4 +36,5 @@ export function clearAuthTokens(): void {
     removeStorageValue(window.sessionStorage, key);
     removeStorageValue(window.localStorage, key);
   }
+  window.dispatchEvent(new Event('esap:profile-photo-changed'));
 }

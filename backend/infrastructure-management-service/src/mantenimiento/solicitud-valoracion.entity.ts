@@ -37,7 +37,7 @@ export class SolicitudValoracion {
   tecnicoNombre: string;
 
   @Column({ type: 'varchar', length: 30, name: 'estado_al_finalizar' })
-  estadoAlFinalizar: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS';
+  estadoAlFinalizar: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS' | 'CERRADA_SIN_ATENCION';
 
   @Column({ type: 'text' })
   diagnostico: string;

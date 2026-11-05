@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BancoDocentesPTA } from './BancoDocentesPTA';
-import { getBancoDocentes, getBancoDocenteStats } from '../../../services/api/ptaApi';
+import { getBancoDocentes, getBancoDocenteStats, getRundConvocatorias } from '../../../services/api/ptaApi';
 
-vi.mock('../../../services/api/ptaApi', () => ({ getBancoDocentes: vi.fn(), getBancoDocenteStats: vi.fn(),
+vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]), getBancoDocentes: vi.fn(), getBancoDocenteStats: vi.fn(),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [{ id: '43', nombre: 'Norte De Santander' }, { id: '44', nombre: 'Risaralda' }] }),
 }));
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn().mockResolvedValue([
@@ -157,4 +157,19 @@ it('agrupa núcleos repetidos y retira la gráfica si el otro periodo no tiene n
   fireEvent.change(screen.getByRole('combobox', { name: 'Periodo de estadísticas' }), { target: { value: '2025-2' } });
   await waitFor(() => expect(within(screen.getByRole('group', { name: 'Núcleos temáticos' })).getByText('0')).toBeTruthy());
   expect(screen.queryByRole('region', { name: 'Docentes por núcleo temático' })).toBeNull();
+});
+
+it('filtra estadísticas por convocatoria sin aplicar filtros ocultos al abrir el listado', async () => {
+  vi.mocked(getRundConvocatorias).mockResolvedValue([{ clave: 'convocatoria publica', nombre: 'Convocatoria Pública' }]);
+  await open();
+  const input = screen.getByRole('combobox', { name: 'Convocatoria' });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: 'publica' } });
+  fireEvent.click(await screen.findByRole('option', { name: 'Convocatoria Pública' }));
+  await waitFor(() => expect(getBancoDocenteStats).toHaveBeenLastCalledWith(expect.objectContaining({ periodoCarga: '2026-2', convocatoria: 'Convocatoria Pública' })));
+  await waitFor(() => expect(screen.getByRole('group', { name: 'Total Docentes' })).toBeTruthy());
+  fireEvent.click(screen.getByRole('group', { name: 'Total Docentes' }));
+  await waitFor(() => expect(getBancoDocentes).toHaveBeenLastCalledWith(expect.objectContaining({ periodoCarga: '2026-2' })));
+  expect(vi.mocked(getBancoDocentes).mock.calls.at(-1)![0]).not.toHaveProperty('convocatoria');
+  expect(screen.queryByRole('combobox', { name: 'Convocatoria' })).toBeNull();
 });

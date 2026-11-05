@@ -174,6 +174,7 @@ describe('RF-PRE-003 — Etapa 7: Determinar Modalidad de Pago (AVANCE vs. RECON
         fechaRp: '2026-09-21', // Lunes 21 sep -> Mar 22, Mié 23, Jue 24, Vie 25, Lun 28 = 5 días hábiles
         valorComprometido: 1200000,
         rubroPresupuestal: 'C-2101-01',
+        soporteRpPath: '20260921_RP_77701.pdf',
       };
 
       const resultado = await service.registrarRP('sol-avance-1', dto, 'usr-pres-001');
@@ -206,6 +207,7 @@ describe('RF-PRE-003 — Etapa 7: Determinar Modalidad de Pago (AVANCE vs. RECON
         fechaRp: '2026-09-21', // Lunes 21 sep -> Mar 22, Mié 23 = 2 días hábiles
         valorComprometido: 850000,
         rubroPresupuestal: 'C-2101-01',
+        soporteRpPath: '20260921_RP_77702.pdf',
       };
 
       const resultado = await service.registrarRP('sol-reconocimiento-1', dto, 'usr-pres-001');

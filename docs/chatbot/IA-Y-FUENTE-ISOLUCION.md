@@ -1,5 +1,12 @@
 # Evaluación de IA y fuente documental Isolución
 
+**Actualización del 3 de noviembre de 2026:** Qwen 3.5 9B está instalado en una
+instancia propia y la integración del backend ya está implementada. La vista SQL
+es accesible y se recuperó el contenido de los documentos completando la sesión
+web de consulta. El flujo con documentos reales ya fue verificado. Estado
+actual y pendientes: [configuración del chatbot](CONFIGURACION-CHATBOT-IA.md).
+La evaluación que sigue es histórica (octubre).
+
 Actualización posterior: se instaló el controlador SQL y se implementó el conector opcional del chatbot. La configuración, pruebas y pendientes reales se detallan en [Integración Isolución](INTEGRACION-ISOLUCION.md). La búsqueda documental continúa desactivada y no se ha establecido conexión con el servidor real.
 
 Revisión local y de fuentes oficiales: 22 de octubre de 2026. Esta fase identifica la configuración existente y prepara la integración; no instala modelos ni modifica el OCR o el chatbot en ejecución.

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Plus, Trash2, Save, AlertCircle, Clock, Gauge, Zap,
-  UploadCloud, FileText, ClipboardCheck, Package, CheckCircle2, AlertTriangle, Eye,
+  UploadCloud, FileText, ClipboardCheck, Package, PackageX, CheckCircle2, AlertTriangle, Eye, Loader2,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -57,6 +57,7 @@ export interface DetalleValoracionFormProps {
   open: boolean;
   onClose: () => void;
   idSolicitud: string;
+  consecutivo?: string;
   idValoracion?: string | null;
   idCategoria?: number | null;
   readOnly?: boolean;
@@ -67,6 +68,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
   open,
   onClose,
   idSolicitud,
+  consecutivo,
   idValoracion = null,
   idCategoria = null,
   readOnly = false,
@@ -80,6 +82,9 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
   const [nivelRiesgo, setNivelRiesgo] = useState<NivelRiesgoValoracion>('BAJO');
   const [requiereApagado, setRequiereApagado] = useState<boolean | null>(null);
   const [observaciones, setObservaciones] = useState('');
+  const [requiereContratacion, setRequiereContratacion] = useState(false);
+  const [cerrarPorFaltaInsumos, setCerrarPorFaltaInsumos] = useState(false);
+  const [motivoCierreFaltaInsumos, setMotivoCierreFaltaInsumos] = useState('');
   const [insumos, setInsumos] = useState<FilaInsumoLocal[]>([]);
   const [evidencias, setEvidencias] = useState<SolicitudEvidencia[]>([]);
   const [subiendoEvidencia, setSubiendoEvidencia] = useState(false);
@@ -101,6 +106,9 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     setNivelRiesgo('BAJO');
     setRequiereApagado(esCategoriaElectrica ? null : false);
     setObservaciones('');
+    setRequiereContratacion(false);
+    setCerrarPorFaltaInsumos(false);
+    setMotivoCierreFaltaInsumos('');
     setInsumos([FILA_INSUMO_VACIA()]);
     setEvidencias([]);
     setErrorForm('');
@@ -149,7 +157,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
   };
 
   const eliminarFila = (k: string) => {
-    setInsumos((prev) => (prev.length <= 1 ? [FILA_INSUMO_VACIA()] : prev.filter((x) => x._key !== k)));
+    setInsumos((prev) => (prev.filter((x) => x._key !== k)));
   };
 
   const actualizarFila = <K extends keyof FilaInsumoLocal>(
@@ -222,9 +230,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
     if (esCategoriaElectrica && requiereApagado == null) {
       return 'Categoría CS_002 (Eléctricas): debe indicar si requiere apagado/aislamiento eléctrico.';
     }
-    for (let i = 0; i < insumos.length; i++) {
-      const f = insumos[i];
-      if (!f.nombre || f.nombre.trim().length < 2) return `Fila ${i + 1}: nombre del material requiere al menos 2 caracteres.`;
+        // Los insumos son opcionales (mano de obra o contratación de servicio no requieren repuestos obligatorios)
+    if (cerrarPorFaltaInsumos && algunInsumoNoDisponible) {
+      if (motivoCierreFaltaInsumos.trim().length < 5) {
+        return 'EFDS-1735: Indique la causa / motivo del cierre por falta de disponibilidad de insumos (mínimo 5 caracteres).';
+      }
+    }
+    const insumosConDatos = insumos.filter((f) => f.nombre && f.nombre.trim().length > 0);
+    for (let i = 0; i < insumosConDatos.length; i++) {
+      const f = insumosConDatos[i];
+      if (f.nombre.trim().length < 2) return `Fila ${i + 1}: nombre del material requiere al menos 2 caracteres.`;
       if (!isFinite(Number(f._cantidadStr)) || Number(f._cantidadStr) <= 0) return `Fila ${i + 1}: cantidad debe ser mayor que 0.`;
       if (f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR') {
         const d = Number(f._tiempoStr);
@@ -265,7 +280,10 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
           nombreOriginal: e.nombreOriginal,
           tamanoBytes: e.tamanoBytes,
         })),
-        insumos: insumos.map<ValoracionInsumoPayload>((f) => ({
+        requiereContratacion: cerrarPorFaltaInsumos ? false : Boolean(requiereContratacion || algunInsumoNoDisponible),
+        cerrarPorFaltaInsumos: Boolean(cerrarPorFaltaInsumos && algunInsumoNoDisponible),
+        motivoCierreFaltaInsumos: cerrarPorFaltaInsumos && algunInsumoNoDisponible ? motivoCierreFaltaInsumos.trim() : undefined,
+        insumos: insumos.filter((f) => f.nombre && f.nombre.trim().length >= 2).map<ValoracionInsumoPayload>((f) => ({
           codigoInsumo: f.codigoInsumo,
           nombre: f.nombre.trim(),
           cantidad: Number(f._cantidadStr),
@@ -280,7 +298,9 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
       const r = await infraestructuraService.guardarValoracionCompleta(valoracionId, payload);
       setToast({
         tipo: 'ok',
-        texto: r.solicitud.estado === 'EN_ESPERA_DE_INSUMOS'
+        texto: r.solicitud.estado === 'CERRADA_SIN_ATENCION'
+          ? 'Solicitud cerrada formalmente por no disponibilidad de insumos (EFDS-1735).'
+          : r.solicitud.estado === 'EN_ESPERA_DE_INSUMOS'
           ? `Valoración guardada. Solicitud en espera de insumos (SLA extendido ${r.solicitud.diasExtendidosPorInsumos || 0} días).`
           : 'Valoración guardada. Solicitud pasó a En ejecución.',
       });
@@ -332,8 +352,13 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-bold text-slate-900 leading-tight">
-                  Valoración Técnica en Campo · {idSolicitud.slice(0, 8)}..
+                <h3 className="font-bold text-slate-900 leading-tight flex items-center gap-2 flex-wrap">
+                  <span>Valoración Técnica en Campo</span>
+                  {consecutivo && (
+                    <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                      {consecutivo}
+                    </span>
+                  )}
                 </h3>
                 {isReadOnly && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 text-[10px] font-bold">
@@ -536,6 +561,32 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                 </label>
               )}
             </div>
+
+            {/* EFDS-2354: Identificación de necesidad de contratación por el Técnico */}
+            <div style={{ padding: '1.25rem' }} className="md:col-span-12 rounded-2xl border border-purple-200 bg-purple-50/60 space-y-2 shadow-sm">
+              <label className={`flex items-start gap-3 ${isReadOnly || algunInsumoNoDisponible ? 'cursor-default' : 'cursor-pointer'} select-none`}>
+                <input
+                  type="checkbox"
+                  checked={requiereContratacion || algunInsumoNoDisponible}
+                  disabled={isReadOnly || algunInsumoNoDisponible}
+                  onChange={(e) => !isReadOnly && setRequiereContratacion(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                />
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                    ¿Requiere Contratación / Compra Externa?
+                    {algunInsumoNoDisponible && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                        Automático por insumos no disponibles
+                      </span>
+                    )}
+                  </span>
+                  <p className="text-[11px] text-purple-800 leading-relaxed mt-1">
+                    Marque esta casilla si la atención depende de un servicio especializado tercerizado o de compras externas de insumos. La solicitud permanecerá abierta hasta que se carguen las evidencias de compra y recepción, y requerirá validación de Coordinación para el cierre formal.
+                  </p>
+                </div>
+              </label>
+            </div>
           </section>
 
           {/* Sección 2: Tabla dinámica insumos */}
@@ -543,7 +594,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
             <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-slate-600" />
-                <h4 className="text-sm font-bold text-slate-800">Materiales y repuestos requeridos</h4>
+                <h4 className="text-sm font-bold text-slate-800">Materiales y repuestos requeridos <span className="text-xs font-normal text-slate-500">(Opcional)</span></h4>
                 <span className="text-[11px] text-slate-500">
                   ({insumos.length} fila{insumos.length !== 1 ? 's' : ''} · total estimado{' '}
                   <span className="font-semibold text-slate-700">
@@ -584,7 +635,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                   {insumos.length === 0 ? (
                     <tr className="bg-white">
                       <td colSpan={isReadOnly ? 8 : 9} className="px-3 py-4 text-center text-slate-400 italic">
-                        No se registraron materiales o repuestos requeridos.
+                        No se registraron materiales o repuestos requeridos (opcional si la labor solo requiere mano de obra o servicio externo).
                       </td>
                     </tr>
                   ) : (
@@ -728,6 +779,46 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* EFDS-1735: Opción de cierre directo si no hay insumos disponibles */}
+            {algunInsumoNoDisponible && (
+              <div style={{ padding: '1.25rem' }} className="border-t border-rose-200 bg-rose-50/70 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={cerrarPorFaltaInsumos}
+                    disabled={isReadOnly}
+                    onChange={(e) => setCerrarPorFaltaInsumos(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                  />
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                      <PackageX className="w-3.5 h-3.5 text-rose-600" />
+                      Cerrar solicitud directamente por no disponibilidad de insumos (EFDS-1735)
+                    </span>
+                    <p className="text-[11px] text-rose-800 leading-relaxed mt-1">
+                      Marque esta casilla si en la sede no se cuenta con los insumos y no existe una alternativa viable de compra inmediata (evita mantener la solicitud abierta hasta el siguiente ciclo anual). La solicitud quedará cerrada formalmente con registro de la causa en la trazabilidad.
+                    </p>
+                  </div>
+                </label>
+
+                {cerrarPorFaltaInsumos && (
+                  <div className="pl-7 space-y-1">
+                    <label className="block text-[11px] font-bold text-rose-950">
+                      Causa / Motivo del cierre por falta de insumos <span className="text-rose-600">*</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      disabled={isReadOnly}
+                      value={motivoCierreFaltaInsumos}
+                      onChange={(e) => setMotivoCierreFaltaInsumos(e.target.value)}
+                      placeholder="Describa la no disponibilidad de los insumos y la razón por la que no es viable adquisición oportuna..."
+                      className="w-full text-xs rounded-xl border border-rose-300 p-2.5 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Sección 3: Observaciones */}
@@ -878,6 +969,8 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                     setNivelRiesgo('BAJO');
                     setObservaciones('');
                     setInsumos([FILA_INSUMO_VACIA()]);
+                    setCerrarPorFaltaInsumos(false);
+                    setMotivoCierreFaltaInsumos('');
                     setEvidencias([]);
                     setErrorForm('');
                     setToast(null);
@@ -890,12 +983,21 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                   type="button"
                   disabled={guardando}
                   onClick={handleGuardar}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold transition shadow-sm"
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-white text-xs font-bold transition shadow-sm ${
+                    cerrarPorFaltaInsumos && algunInsumoNoDisponible
+                      ? 'bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400'
+                      : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400'
+                  }`}
                 >
                   {guardando ? (
                     <>
                       <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                      Guardando...
+                      {cerrarPorFaltaInsumos && algunInsumoNoDisponible ? 'Cerrando por falta de insumos...' : 'Guardando...'}
+                    </>
+                  ) : cerrarPorFaltaInsumos && algunInsumoNoDisponible ? (
+                    <>
+                      <PackageX className="w-3.5 h-3.5" />
+                      Cerrar Solicitud por Falta de Insumos (EFDS-1735)
                     </>
                   ) : (
                     <>
