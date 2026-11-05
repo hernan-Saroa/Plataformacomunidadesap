@@ -1,3 +1,4 @@
+import { MODULO_NOTIFICACIONES } from '../notificaciones/campana';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -1265,7 +1266,8 @@ export class AlertasService {
       const respuesta = await fetch(`${url}/notifications/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notifications: nuevos }),
+        // Con el módulo, la consola de notificaciones (EFDS-2406) puede apagar las alertas.
+        body: JSON.stringify({ notifications: nuevos.map((n) => ({ ...n, modulo: MODULO_NOTIFICACIONES })) }),
       });
 
       if (!respuesta.ok) {

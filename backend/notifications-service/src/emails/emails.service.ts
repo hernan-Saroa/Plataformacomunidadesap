@@ -1,12 +1,34 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { ClientSecretCredential } from '@azure/identity';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
+import { createHash } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
 import { SendEmailAttachmentDto } from './dto/send-email-attachment.dto';
 import { EmailAttachmentDto, SendEmailDto } from './dto/send-email.dto';
+import { CompuertaService, Decision } from '../configuracion/compuerta.service';
+
+/** Resultado de un correo que pasó por la configuración de notificaciones. */
+export type ResultadoCorreo =
+  | { sent: true; omitida?: false; message: string }
+  | { sent: false; omitida: true; motivo: string; modulo: string; evento: string; desviado_a?: string };
+
+/** Lo que hace falta para mandar al buzón de desvío un aviso que la configuración apagó. */
+export interface AvisoDesviado {
+  decision: Decision;
+  /** A quién iba dirigido: correo, o el id del usuario si no se pudo resolver. */
+  destinatario: string;
+  canal: 'campana' | 'correo';
+  asunto: string;
+  texto?: string;
+  html?: string;
+  attachments?: EmailAttachmentDto[];
+}
+
+const escaparHtml = (t: string): string =>
+  t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 type SmtpConfig = {
   host: string;
@@ -44,6 +66,135 @@ export class EmailsService {
   private readonly logger = new Logger(EmailsService.name);
   private transporter: nodemailer.Transporter | null = null;
   private graphClient: Client | null = null;
+
+  constructor(@Optional() private readonly compuerta?: CompuertaService) {}
+
+  /**
+   * Correo de un evento de la plataforma (EFDS-2406): antes de salir pasa por
+   * la configuración de notificaciones. Sin `evento` es un correo del sistema
+   * (clave, contraseña, OTP) y sale siempre.
+   */
+  async enviarSiPermitido(data: SendEmailDto): Promise<ResultadoCorreo> {
+    let decisionPermitida: Decision | null = null;
+    if (data.evento && this.compuerta) {
+      const decision = await this.compuerta.evaluar({
+        clave: data.evento,
+        canal: 'correo',
+        modulo: data.modulo,
+        destinatario: data.to,
+        titulo: data.subject,
+      });
+      if (!decision.permitido) {
+        if (decision.desvio) {
+          await this.enviarDesviado({
+            decision,
+            destinatario: data.to,
+            canal: 'correo',
+            asunto: data.subject,
+            texto: data.text,
+            html: data.html,
+            attachments: data.attachments,
+          });
+          return {
+            sent: false,
+            omitida: true,
+            motivo: 'desviado',
+            modulo: decision.modulo,
+            evento: data.evento,
+            desviado_a: decision.desvio,
+          };
+        }
+        return {
+          sent: false,
+          omitida: true,
+          motivo: decision.motivo || 'omitida',
+          modulo: decision.modulo,
+          evento: data.evento,
+        };
+      }
+      decisionPermitida = decision;
+    }
+    await this.sendEmail(data);
+    if (decisionPermitida) await this.copiarAdicionales(data, decisionPermitida);
+    return { sent: true, message: 'Correo enviado' };
+  }
+
+  /**
+   * Copia del correo para los destinatarios adicionales que el administrador
+   * sumó al aviso (EFDS-2406, función 4). Nunca tumba el correo original: todo
+   * fallo se registra y se sigue. Cada adicional recibe una sola copia por día
+   * del mismo asunto aunque el módulo mande el correo a varias personas.
+   */
+  private async copiarAdicionales(data: SendEmailDto, decision: Decision): Promise<void> {
+    try {
+      const adicionales = await this.compuerta!.destinatariosAdicionales(decision.evento);
+      if (!adicionales?.length) return;
+      const original = data.to.trim().toLowerCase();
+      const vistos = new Set<string>([original]);
+      const huella = createHash('sha256').update(data.subject).digest('hex');
+      const nota = 'Recibe esta copia porque la configuración de notificaciones lo incluye en este aviso.';
+      const cuerpoHtml =
+        data.html ??
+        `<p style="font-family:Arial,sans-serif;font-size:14px;color:#374151;line-height:1.6;">${escaparHtml(data.text || '').replace(/\n/g, '<br>')}</p>`;
+      const bloqueHtml =
+        `<div style="background-color:#eff6ff;border:1px solid #bfdbfe;padding:12px;margin-bottom:20px;font-family:sans-serif;color:#1e40af;border-radius:6px;">` +
+        `<strong>Copia del aviso.</strong> ${escaparHtml(nota)}</div>`;
+
+      for (const adicional of adicionales) {
+        const correo = (adicional?.email || '').trim();
+        const clave = correo.toLowerCase();
+        if (!correo || !correo.includes('@') || vistos.has(clave)) continue;
+        vistos.add(clave);
+        try {
+          if (!(await this.compuerta!.reservarCopiaCorreo(decision.modulo, decision.clave, huella, correo))) continue;
+          await this.sendEmail({
+            to: correo,
+            subject: data.subject,
+            text: `${nota}\n\n${data.text || ''}`,
+            html: bloqueHtml + cuerpoHtml,
+            attachments: data.attachments,
+          });
+        } catch (error: any) {
+          this.logger.warn(`No se pudo enviar la copia de "${decision.clave}" a ${correo}: ${error?.message || error}`);
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(`No se pudieron enviar las copias de "${data.evento}": ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Manda al buzón de desvío del módulo lo que la configuración apagó (EFDS-2406).
+   * El asunto lleva el prefijo [Desviado · módulo · aviso] y arriba del cuerpo
+   * va quién era el destinatario real y por qué no salió. Los adjuntos del
+   * aviso original viajan tal cual; no se agrega ninguno.
+   */
+  async enviarDesviado(aviso: AvisoDesviado): Promise<void> {
+    const { decision } = aviso;
+    const buzon = decision.desvio;
+    if (!buzon) return;
+    const nombreModulo = decision.modulo_nombre || decision.modulo;
+    const causa =
+      decision.motivo === 'modulo_inactivo'
+        ? `el módulo ${nombreModulo} está apagado`
+        : `el aviso ${decision.evento?.nombre || decision.clave} está apagado`;
+    const nota = `Este aviso era para ${aviso.destinatario} (${aviso.canal}). Se desvió porque ${causa}.`;
+
+    const cuerpoHtml =
+      aviso.html ??
+      `<p style="font-family:Arial,sans-serif;font-size:14px;color:#374151;line-height:1.6;">${escaparHtml(aviso.texto || '').replace(/\n/g, '<br>')}</p>`;
+    const bloqueHtml =
+      `<div style="background-color:#fef3c7;border:1px solid #fcd34d;padding:12px;margin-bottom:20px;font-family:sans-serif;color:#92400e;border-radius:6px;">` +
+      `<strong>Aviso desviado.</strong> ${escaparHtml(nota)}</div>`;
+
+    await this.sendEmail({
+      to: buzon,
+      subject: `[Desviado · ${nombreModulo} · ${decision.clave}] ${aviso.asunto}`,
+      text: `${nota}\n\n${aviso.texto || ''}`,
+      html: bloqueHtml + cuerpoHtml,
+      attachments: aviso.attachments,
+    });
+  }
 
   private decodeAttachments(items: EmailAttachmentDto[] = []): EmailAttachment[] {
     return items.map((item) => ({

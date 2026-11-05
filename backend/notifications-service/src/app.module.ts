@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { EmailsModule } from './emails/emails.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ConfiguracionModule } from './configuracion/configuracion.module';
 import { databaseConfig } from './database.config';
 
 @Module({
@@ -13,6 +14,7 @@ import { databaseConfig } from './database.config';
     TypeOrmModule.forRoot(databaseConfig),
     EmailsModule,
     NotificationsModule,
+    ConfiguracionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -362,6 +362,8 @@ export class DisciplinaryProcessReassignmentService {
           detalles,
           'Reasignación de Proceso',
           aprobado ? '#16A34A' : '#DC2626',
+          undefined,
+          aprobado ? 'REASIGNACION_APROBADA' : 'REASIGNACION_RECHAZADA',
         );
       }
     } catch (err: any) {

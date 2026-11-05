@@ -410,7 +410,12 @@ export class LegalNotificationsService {
           esReasignacion: params.esReasignacion,
           url,
         });
-        await this.notificationClient.sendEmail(detalleAbogado.email, emailSubject, emailHtml);
+        await this.notificationClient.sendEmail(
+          detalleAbogado.email,
+          emailSubject,
+          emailHtml,
+          params.esReasignacion ? 'PROCESO_REASIGNADO' : 'PROCESO_ASIGNADO',
+        );
       }
 
       // Notificar al Jefe de Gestión Legal
@@ -496,6 +501,7 @@ export class LegalNotificationsService {
               ctaLabel: 'Ver Proceso',
               url,
             }),
+            'EXPEDIENTE_ETAPA_AVANZADA',
           );
         }
       }
@@ -531,12 +537,12 @@ export class LegalNotificationsService {
         await this.notificationClient.notifyByRole(params.aprobacionRol, dto);
         const details = await this.notificationClient.getUsersDetailsByRole(params.aprobacionRol);
         for (const d of details) {
-          if (d.email) await this.notificationClient.sendEmail(d.email, emailSubject, emailHtml);
+          if (d.email) await this.notificationClient.sendEmail(d.email, emailSubject, emailHtml, 'EXPEDIENTE_ETAPA_PENDIENTE_FIRMA');
         }
       } else if (tipo === 'usuario' && params.aprobacionUsuario) {
         await this.notificationClient.notifyUserById(params.aprobacionUsuario, dto);
         const detail = await this.notificationClient.getUserDetailsById(params.aprobacionUsuario);
-        if (detail?.email) await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+        if (detail?.email) await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'EXPEDIENTE_ETAPA_PENDIENTE_FIRMA');
       }
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar avance de etapa del proceso ${params.radicado}: ${err?.message}`);
@@ -590,6 +596,7 @@ export class LegalNotificationsService {
             ctaLabel: 'Ver Proceso',
             url,
           }),
+          'OBSERVACION_PROCESO',
         );
       }
     } catch (err: any) {
@@ -669,6 +676,7 @@ export class LegalNotificationsService {
           detalle.email,
           emailSubject,
           buildLegalEmailHtml({ headerTitle: 'Proceso Anexado', headerColor: meta.color, bodyHtml, ctaLabel: 'Ver Expediente', url }),
+          'PROCESO_ANEXADO',
         );
       }
     };
@@ -793,6 +801,7 @@ export class LegalNotificationsService {
             ctaLabel: 'Ver Riesgo',
             url,
           }),
+          params.esReasignacion ? 'RIESGO_REASIGNADO' : 'RIESGO_ASIGNADO',
         );
       }
 
@@ -877,6 +886,7 @@ export class LegalNotificationsService {
               ctaLabel: 'Ver Riesgo',
               url,
             }),
+            'RIESGO_ZONA_CRITICA',
           );
         }
       }
@@ -942,6 +952,7 @@ export class LegalNotificationsService {
               ctaLabel: 'Ver Riesgo',
               url,
             }),
+            'RIESGO_PROVISION',
           );
         }
       }
@@ -1010,7 +1021,12 @@ export class LegalNotificationsService {
           esReasignacion: params.esReasignacion,
           url,
         });
-        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+        await this.notificationClient.sendEmail(
+          detail.email,
+          emailSubject,
+          emailHtml,
+          params.esReasignacion ? 'TERMINO_REASIGNADO' : 'TERMINO_ASIGNADO',
+        );
       } else if (detail?.email) {
         // Hay un valor en "email" pero no tiene forma de correo — casi seguro es el fallback a
         // `username` porque `dir_email` está vacío en auth.personas para este usuario.
@@ -1096,7 +1112,7 @@ export class LegalNotificationsService {
           if (esCorreoValido(detail?.email)) {
             const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
             const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
-            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'TERMINO_PROXIMO_A_VENCER');
           } else if (detail?.email) {
             this.logger.warn(
               `Responsable ${params.responsableId} del término ${params.terminoId}: el valor resuelto como correo ("${detail.email}") no tiene formato de email válido (probable dir_email vacío en auth.personas) — no se envía el correo de vencimiento.`,

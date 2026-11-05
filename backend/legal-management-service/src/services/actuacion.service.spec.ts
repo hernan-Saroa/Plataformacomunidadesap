@@ -108,6 +108,7 @@ describe('ActuacionService', () => {
                 'resp@esap.edu.co',
                 expect.any(String),
                 expect.any(String),
+                'ACTUACION_ASIGNADA',
             );
         });
 
@@ -143,6 +144,7 @@ describe('ActuacionService', () => {
                 'abogado@esap.edu.co',
                 expect.any(String),
                 expect.any(String),
+                'ACTUACION_AUTORIZADA',
             );
             expect(mockNotificationClient.notifyByRoles).toHaveBeenCalledWith(
                 ['SECRETARIADO_GESTION_LEGAL'],
@@ -330,6 +332,7 @@ describe('ActuacionService', () => {
                 'abogado@esap.edu.co',
                 expect.any(String),
                 expect.any(String),
+                'ACTUACION_DEVUELTA',
             );
         });
 
@@ -380,6 +383,7 @@ describe('ActuacionService', () => {
                 'aprobador@esap.edu.co',
                 expect.stringContaining('Revisión'),
                 expect.any(String),
+                'EXPEDIENTE_DEVUELTO_ETAPA',
             );
         });
     });

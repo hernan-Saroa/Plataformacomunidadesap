@@ -1066,7 +1066,8 @@ export class BancoDocentesService implements OnModuleInit {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, html }),
+        // Credenciales de acceso: la configuración de notificaciones lo trae como obligatorio.
+        body: JSON.stringify({ to, subject, text, html, modulo: 'pta', evento: 'rund_credenciales_docente' }),
       });
 
       if (!response.ok) {
@@ -1090,14 +1091,18 @@ export class BancoDocentesService implements OnModuleInit {
     return (direct || 'http://localhost:3000').replace(/\/$/, '');
   }
 
-  /** Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}. */
-  private async sendEmail(to: string, subject: string, text: string, html: string): Promise<{ sent: boolean; error?: string }> {
+  /**
+   * Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}.
+   * `evento` es la clave con la que la configuración de notificaciones (EFDS-2406)
+   * decide si el correo sale.
+   */
+  private async sendEmail(to: string, subject: string, text: string, html: string, evento: string): Promise<{ sent: boolean; error?: string }> {
     const baseUrl = this.resolveNotificationsBaseUrl();
     try {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, html }),
+        body: JSON.stringify({ to, subject, text, html, modulo: 'pta', evento }),
       });
       if (!response.ok) {
         const body = await response.text().catch(() => '');
@@ -2818,7 +2823,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p><a href="${link}">${link}</a></p>
       <p>Este enlace expira el ${fechaExpiracion.toLocaleDateString('es-CO')}.</p>
     `;
-    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html);
+    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html, 'rund_invitacion');
     this.logger.log(`[RUND] Invitación procesada (enviada=${emailResult.sent}).`);
 
     const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -2896,7 +2901,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p>
       <p>Vence en 10 minutos. Si no solicitaste este código, ignora este correo.</p>
     `;
-    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html);
+    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html, 'rund_codigo_acceso');
 
     this.logger.log(`[RUND][OTP] Solicitud procesada (enviado=${emailResult.sent}).`);
 

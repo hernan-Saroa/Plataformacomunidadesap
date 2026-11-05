@@ -12,6 +12,7 @@ import { AuditClientService } from './audit-client.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { isRundAuditUrl, redactRundAuditUrl } from './rund-audit-redaction';
 import { accionCentroAyuda } from './centro-ayuda-audit';
+import { accionNotificaciones } from './notificaciones-audit';
 import { getServiceFromUrl, getModuleFromService, getSubmoduleFromUrl, Microservice } from './microservice.enum';
 
 @Injectable()
@@ -44,7 +45,10 @@ export class AuditInterceptor implements NestInterceptor {
     const version = urlMatch?.[2] || '1';
     const module = getModuleFromService(serviceName, url);
     const submodule = getSubmoduleFromUrl(url) || undefined;
-    const action = accionCentroAyuda(method, url, request.body) ?? this.determineAction(method, url);
+    const action =
+      accionCentroAyuda(method, url, request.body) ??
+      accionNotificaciones(method, url, request.body) ??
+      this.determineAction(method, url);
     const clientIp = this.getClientIp(request);
     const userInfo = this.extractUserInfo(request);
 

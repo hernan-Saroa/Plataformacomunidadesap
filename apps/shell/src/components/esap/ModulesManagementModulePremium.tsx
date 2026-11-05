@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Layers,
   Search,
@@ -22,6 +22,14 @@ import {
 import { modulesService, type ModuleWithPermissions, type UpdateModuleDto } from '../../services/api/modules.service';
 import { ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
+import {
+  AvisoCompuerta,
+  BloqueOtrosRemitentes,
+  claveModulo,
+  EstadoNotificaciones,
+  ModalNotificacionesModulo,
+  useConsolaNotificaciones,
+} from './notificaciones/ConsolaNotificaciones';
 
 interface ModulesManagementProps {
   onModuleUpdated?: () => void;
@@ -54,6 +62,21 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
     color: '#003DA5',
     is_active: true
   });
+
+  // Notificaciones de cada módulo (EFDS-2406): solo con el permiso de la consola.
+  const consola = useConsolaNotificaciones();
+  const [notifCodigo, setNotifCodigo] = useState<string | null>(null);
+  const notifAbierto = consola.modulos?.find((m) => m.codigo === notifCodigo) ?? null;
+  const mezclarAbierto = useCallback(
+    (cambios: Parameters<typeof consola.mezclar>[1]) => { if (notifCodigo) consola.mezclar(notifCodigo, cambios); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [notifCodigo, consola.mezclar],
+  );
+  const otrosRemitentes = useMemo(() => {
+    if (loading) return [];
+    const codigosMenu = new Set(modules.map((m) => claveModulo(m.code)));
+    return (consola.modulos ?? []).filter((n) => !codigosMenu.has(claveModulo(n.codigo)));
+  }, [modules, loading, consola.modulos]);
 
   // Notificaciones Toast
   // const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -191,7 +214,7 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
           {
             label: "Recargar",
             icon: RefreshCw,
-            onClick: () => fetchModules(),
+            onClick: () => { fetchModules(); if (consola.puede) consola.recargar(); },
             variant: "secondary"
           }
         ]}
@@ -318,6 +341,7 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
                   {/* <th className="py-3.5 px-4 text-center">Categoría</th> */}
                   {/* <th className="py-3.5 px-4 text-center">Orden</th> */}
                   <th className="py-3.5 px-4 text-center">Estado</th>
+                  {consola.puede && <th className="py-3.5 px-4 text-center">Notificaciones</th>}
                   <th className="py-3.5 px-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -379,7 +403,18 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
                       </button>
                     </td>
 
+                    {consola.puede && (
+                      <td className="py-4 px-4 text-center">
+                        <EstadoNotificaciones
+                          modulo={consola.porCodigo(mod.code)}
+                          nombre={mod.name}
+                          onAbrir={() => setNotifCodigo(consola.porCodigo(mod.code)!.codigo)}
+                        />
+                      </td>
+                    )}
+
                     <td className="py-4 px-4 text-right">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-2">
                       <button
                         onClick={() => handleOpenEditModal(mod)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-all border border-blue-200 active:scale-95"
@@ -387,6 +422,7 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
                         <Edit2 className="w-3.5 h-3.5" />
                         <span>Editar</span>
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -395,6 +431,23 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
           </div>
         )}
       </div>
+
+      {/* Notificaciones de remitentes que no son módulos del menú (correos del sistema, etc.) */}
+      {consola.puede && (
+        <>
+          <AvisoCompuerta permisos={consola.permisos} />
+          <BloqueOtrosRemitentes remitentes={otrosRemitentes} onConfigurar={setNotifCodigo} />
+        </>
+      )}
+
+      {consola.puede && notifAbierto && (
+        <ModalNotificacionesModulo
+          modulo={notifAbierto}
+          onCerrar={() => setNotifCodigo(null)}
+          onModulo={mezclarAbierto}
+          onRecargar={consola.recargar}
+        />
+      )}
 
       {/* Modal de Edición */}
       {isEditModalOpen && selectedModule && (
