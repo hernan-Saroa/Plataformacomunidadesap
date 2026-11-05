@@ -1276,12 +1276,6 @@ export function FormularioAuditoriaUnificado({
       }
     }
 
-    if (mode === 'edit' && puedeEditarPaso(5) && formData.objetivos.length === 0) {
-      toast.error('Debe agregar al menos un objetivo');
-      setPasoActual(5);
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -3374,7 +3368,7 @@ function Paso5ObjetivosCriterios({
         <div className="space-y-6">
           {/* Objetivos */}
           <div>
-            <h4 className="font-bold text-gray-900 mb-3">Objetivos de la Auditoría *</h4>
+            <h4 className="font-bold text-gray-900 mb-3">Objetivos de la Auditoría</h4>
             
             {formData.objetivos.length > 0 && (
               <div className="space-y-2 mb-3">
@@ -4305,7 +4299,9 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
           </div>
           <div>
             <p className="text-gray-600">Objetivos:</p>
-            <p className="font-bold text-gray-900">{formData.objetivos.length} definidos</p>
+            <p className="font-bold text-gray-900">
+              {formData.objetivos.length > 0 ? `${formData.objetivos.length} definidos` : 'No registrado'}
+            </p>
           </div>
           <div>
             <p className="text-gray-600">Hallazgos Preliminares:</p>

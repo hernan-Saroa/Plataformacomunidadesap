@@ -649,7 +649,8 @@ export function aplicarContenidoIA(auditoria: AuditoriaBasicaPDF, contenido: Con
   const realArr = <T>(v: T[] | undefined | null, f: T[]): T[] => (Array.isArray(v) && v.length > 0 ? v : f);
   return {
     ...auditoria,
-    objetivo: real(auditoria.objetivo, contenido.objetivo),
+    // Los objetivos son opcionales: si no se registraron, el informe no inventa uno (EFDS-2419)
+    objetivo: real(auditoria.objetivo, 'No registrado'),
     alcance: real(auditoria.alcance, contenido.alcance),
     declaracion: real((auditoria as any).declaracion, contenido.declaracion),
     contextoGeneral: real(auditoria.contextoGeneral, contenido.contextoGeneral),

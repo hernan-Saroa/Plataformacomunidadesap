@@ -3302,12 +3302,12 @@ export function GestionAuditoriasKanbanSimple() {
                 dependenciasAuditadas: data.dependenciasAuditadas ?? [],
                 alcance: data.alcance || data.descripcion,
                 calificacionRiesgo: data.nivelRiesgo,
-                // Cronograma 3 etapas
+                // Cronograma 3 etapas: una etapa sin fecha no se envía vacía (el backend pide ISO 8601)
                 fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio,
-                fechaFinPlaneacion: data.fechaFinPlaneacion,
-                fechaInicioEjecucion: data.fechaInicioEjecucion,
-                fechaFinEjecucion: data.fechaFinEjecucion,
-                fechaInicioComunicacion: data.fechaInicioComunicacion,
+                fechaFinPlaneacion: data.fechaFinPlaneacion || undefined,
+                fechaInicioEjecucion: data.fechaInicioEjecucion || undefined,
+                fechaFinEjecucion: data.fechaFinEjecucion || undefined,
+                fechaInicioComunicacion: data.fechaInicioComunicacion || undefined,
                 fechaFin: data.fechaFinComunicacion || data.fechaFin,
                 semanasExcluidas: data.semanasExcluidas ?? [],
                 // Objetivos y Criterios
