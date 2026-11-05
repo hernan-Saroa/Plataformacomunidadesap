@@ -10,9 +10,10 @@ import { PublicChatController } from './public-chat.controller';
 import { PublicChatService } from './public-chat.service';
 import { IsolucionModule } from '../isolucion/isolucion.module';
 import { ChatbotEnabledGuard } from '../../auth/chatbot-enabled.guard';
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Conversacion, Mensaje]), JwtModule.register({}), IsolucionModule],
+  imports: [TypeOrmModule.forFeature([Conversacion, Mensaje]), JwtModule.register({}), IsolucionModule, KnowledgeModule],
   controllers: [ChatController, PublicChatController],
   providers: [ChatService, ChatbotAuthGuard, ChatbotEnabledGuard, PublicChatService],
   exports: [ChatService],

@@ -1,0 +1,13 @@
+# Perfil de ejecución: solo modifica el chatbot. Compatible con IA local o remota.
+# Cargar el archivo privado también con --env-file para respetar secretos del
+# entorno o del archivo, sin ejecutarlo como un script de shell.
+services:
+  chatbot-service:
+    environment:
+      CHATBOT_AI_ENABLED: ${CHATBOT_AI_ENABLED:-false}
+      CHATBOT_AI_FAST_MODE: ${CHATBOT_AI_FAST_MODE:-true}
+      CHATBOT_OLLAMA_URL: ${CHATBOT_OLLAMA_URL:-http://chatbot-ollama:11434}
+      CHATBOT_ISOLUCION_PASSWORD: ${CHATBOT_ISOLUCION_PASSWORD:-}
+      CHATBOT_ISOLUCION_WEB_PASSWORD: ${CHATBOT_ISOLUCION_WEB_PASSWORD:-}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'

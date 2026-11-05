@@ -58,13 +58,13 @@ export class IssueRpDto {
   @IsString()
   rubro?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      'Ruta o nombre del archivo soporte PDF del RP. Debe cumplir con el patrón YYYYMMDD_RP_Numero.pdf o Fecha_RP_Número (ej. 20260916_RP_12345.pdf).',
+      'Ruta o nombre del archivo soporte PDF del RP (obligatorio). Debe cumplir con el patrón YYYYMMDD_RP_Numero.pdf o Fecha_RP_Número (ej. 20260916_RP_12345.pdf).',
     example: '20260916_RP_12345.pdf',
   })
-  @IsOptional()
-  @IsString()
+  @IsNotEmpty({ message: 'El archivo soporte del RP (comprometido) es obligatorio.' })
+  @IsString({ message: 'El archivo soporte del RP debe ser una cadena de texto.' })
   @Matches(
     /^.*(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i,
     {
@@ -72,7 +72,7 @@ export class IssueRpDto {
         'El archivo soporte o nomenclatura debe cumplir con la regla Fecha_RP_Número (ejemplo: 20260916_RP_12345.pdf o 2026-09-16_RP_12345.pdf).',
     },
   )
-  soporteRpPath?: string;
+  soporteRpPath: string;
 
   @ApiPropertyOptional({
     description: 'Código completo de nomenclatura Fecha_RP_Número (autogenerado si no se envía).',

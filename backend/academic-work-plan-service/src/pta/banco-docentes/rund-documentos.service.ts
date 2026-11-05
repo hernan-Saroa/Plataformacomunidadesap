@@ -19,6 +19,7 @@ import { readRetentionPolicy, retentionReport, retentionSnapshot } from './rund-
 import { rundPrivacyPolicy } from './rund-privacy-policy';
 import { requireRundDocumental, rundDocumentalEnabled } from './rund-documental-feature';
 import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
+import { normalizeRundUpload, rundUnicodeText } from './rund-text-encoding';
 
 type DocumentUploadData = {
   categoria: string;
@@ -476,6 +477,7 @@ export class RundDocumentosService {
 
   private validatePdf(file: Express.Multer.File | undefined, category: any) {
     if (!file) throw new BadRequestException('Debe adjuntar un archivo PDF.');
+    normalizeRundUpload(file);
     const allowedMimes: string[] = Array.isArray(category.mime_permitidos)
       ? category.mime_permitidos
       : ['application/pdf'];
@@ -499,6 +501,7 @@ export class RundDocumentosService {
   }
 
   private validateFile(file: Express.Multer.File | undefined, category: any, technical: boolean): void {
+    normalizeRundUpload(file);
     if (!technical || file?.mimetype === 'application/pdf') return this.validatePdf(file, category);
     const content = file?.buffer;
     const extension = extname(file?.originalname || '').toLowerCase();
@@ -636,8 +639,8 @@ export class RundDocumentosService {
   }
 
   private cleanDescription(value?: string): string | null {
-    const clean = String(value || '').trim();
-    return clean ? clean.slice(0, 1000) : null;
+    const clean = rundUnicodeText(String(value || '')).trim();
+    return clean ? Array.from(clean).slice(0, 1000).join('') : null;
   }
 
   private categoryBlock(category: string) {

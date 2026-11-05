@@ -360,6 +360,7 @@ describe('TravelExpensesService — Firma Digital y Validación OTP', () => {
           fechaRp: '2026-10-06',
           valorComprometido: 2500000,
           rubroPresupuestal: 'C-2101-02-001',
+          soporteRpPath: '20261006_RP_99887.pdf',
           otp: otpRes.devCode,
           verificationId: otpRes.verificationId,
           certificadoId: 'ESAP-CERT-VIAT-20261006-PRESUP',

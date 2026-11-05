@@ -250,6 +250,61 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
     expect(viaticosService.expedirRp).not.toHaveBeenCalled();
   });
 
+  it('Escenario: El adjunto del comprometido es obligatorio y no deja pasar si no se carga', () => {
+    render(
+      <RegistrarRPModal
+        abierto={true}
+        solicitud={mockSolicitudAutorizada}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputNumeroRp = screen.getByPlaceholderText(/Ej. 12345/i);
+    fireEvent.change(inputNumeroRp, { target: { value: '12345' } });
+
+    const inputFecha = screen.getByDisplayValue(/2026/);
+    fireEvent.change(inputFecha, { target: { value: '2026-09-16' } });
+
+    // Sin adjuntar archivo PDF, el botón Confirmar y Comprometer debe estar deshabilitado
+    const botonConfirmar = screen.getByRole('button', { name: /Confirmar y Comprometer/i });
+    expect(botonConfirmar.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(botonConfirmar);
+    expect(viaticosService.solicitarOtpFirma).not.toHaveBeenCalled();
+    expect(viaticosService.expedirRp).not.toHaveBeenCalled();
+  });
+
+  it('Escenario: Valida que la fecha y el número en el nombre del archivo coincidan con el registro del RP (Fecha_RP_Número)', () => {
+    render(
+      <RegistrarRPModal
+        abierto={true}
+        solicitud={mockSolicitudAutorizada}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputNumeroRp = screen.getByPlaceholderText(/Ej. 12345/i);
+    fireEvent.change(inputNumeroRp, { target: { value: '12345' } });
+
+    const inputFecha = screen.getByDisplayValue(/2026/);
+    fireEvent.change(inputFecha, { target: { value: '2026-09-16' } });
+
+    // Adjuntar archivo con otro número de RP '20260916_RP_99999.pdf'
+    const archivoOtroNumero = new File(['dummy pdf'], '20260916_RP_99999.pdf', {
+      type: 'application/pdf',
+    });
+    const inputArchivo = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(inputArchivo, { target: { files: [archivoOtroNumero] } });
+
+    expect(
+      screen.getByText(/el número en el archivo \(99999\) no coincide con el RP registrado \(12345\)/i),
+    ).toBeDefined();
+
+    const botonConfirmar = screen.getByRole('button', { name: /Confirmar y Comprometer/i });
+    expect(botonConfirmar.hasAttribute('disabled')).toBe(true);
+  });
+
   it('RF-PRE-003: calcula y muestra en vivo la modalidad de pago proyectada según días hábiles', () => {
     // Solicitud que inicia en 8 días hábiles
     const solicitudConAnticipacion = {

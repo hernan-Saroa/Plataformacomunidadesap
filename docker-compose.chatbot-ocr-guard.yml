@@ -1,0 +1,11 @@
+# Conectar solo el chatbot a la red existente del monitor de Gemma, si es necesario.
+# No declara, inicia ni modifica los servicios de RUND/OCR.
+services:
+  chatbot-service:
+    networks:
+      - chatbot-ocr-monitor
+
+networks:
+  chatbot-ocr-monitor:
+    external: true
+    name: ${CHATBOT_AI_OCR_NETWORK:?Configure CHATBOT_AI_OCR_NETWORK}

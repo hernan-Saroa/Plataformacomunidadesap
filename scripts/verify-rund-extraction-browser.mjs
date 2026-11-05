@@ -14,12 +14,17 @@ const job={id:'job',documento_id:'documento',nombre_archivo:'diploma-ficticio.pd
 const progressJob={id:'job-progress',documento_id:'documento-progress',nombre_archivo:'documento-en-analisis.pdf',version:1,estado:'PROCESANDO',etapa:'MODELO',iniciado_en:new Date(Date.now()-65000).toISOString(),documento_estado:'ACTIVO',sugerencias:[]};
 const secondJob={...job,id:'job-second',documento_id:'documento-second',nombre_archivo:'otro-diploma-con-nombre-muy-largo-para-verificar-el-selector.pdf',sugerencias:[{...suggestion,id:'second-suggestion'}]};
 let jobs=[progressJob,job,secondJob],documents=[job,secondJob].map(item=>({id:item.documento_id,nombre_archivo:item.nombre_archivo,analizado_previamente:true,bloque:'FORMACION',tipo_soporte:'diploma_pregrado'}));
+let queueSequence=0;
+window.fixtureJobs=()=>structuredClone(jobs);
+window.startQueuedFixture=()=>{for(const item of jobs)if(item.estado==='PENDIENTE'){item.estado='PROCESANDO';item.etapa='OCR';}};
+window.completeQueuedFixture=()=>{for(const item of jobs)if(item.id.startsWith('queued-'))item.estado='COMPLETADO';documents=[job,secondJob].map(item=>({id:item.documento_id,nombre_archivo:item.nombre_archivo,analizado_previamente:true,bloque:'FORMACION',tipo_soporte:'diploma_pregrado'}));};
+window.setQualityFixture=empty=>{jobs=[{...job,campos_esperados:['Pregrado'],sugerencias:empty?[]:[{...suggestion,estado:'PENDIENTE',valor_previo:'Economista',valor:'AENTACIONHDEIUAHTUNT',valor_confirmado:undefined,lectura_no_confiable:'El título reconocido contiene texto incoherente o unido por el OCR.'}]}];};
 window.fixtureCalls=[];
 export const apiClient={get:async()=>({enabled:true,documents:structuredClone(documents),jobs:structuredClone(jobs)}),post:async(url,body)=>{
  window.fixtureCalls.push({url,body});
  if(url.endsWith('/reprocesar')){for(const [index,id] of body.documentos.entries()){
   const document=documents.find(item=>item.id===id);jobs.filter(item=>item.documento_id===id).forEach(item=>item.sugerencias.forEach(proposal=>{if(proposal.estado==='PENDIENTE')proposal.estado='DESCARTADA';}));
-  jobs.unshift({id:'queued-'+id,documento_id:id,nombre_archivo:document.nombre_archivo,version:1,estado:'PENDIENTE',documento_estado:'ACTIVO',posicion_cola:index+1,sugerencias:[]});
+  jobs.unshift({id:'queued-'+(++queueSequence)+'-'+id,documento_id:id,nombre_archivo:document.nombre_archivo,version:1,estado:'PENDIENTE',documento_estado:'ACTIVO',posicion_cola:index+1,sugerencias:[]});
  }documents=documents.filter(item=>!body.documentos.includes(item.id));return {queued:body.documentos.length,reprocessed:true};}
  if(url.endsWith('/orden')){body.trabajos.forEach((id,index)=>{jobs.find(item=>item.id===id).posicion_cola=index+1;});return {reordered:body.trabajos.length};}
  suggestion.estado='CORREGIDA';suggestion.valor_confirmado=body.valorCorregido;return {confirmed:true,changed:true};}};
@@ -30,10 +35,13 @@ export const vincularRundSoporte=async()=>({success:true,data:{id:'soporte-ficti
 const entry = `
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
 import {RundExtractionPanel} from '/apps/mfe-pta/src/components/pta/banco-docentes/RundExtractionPanel.tsx';
-function Fixture(){const [canEdit,setCanEdit]=useState(true),[revision,setRevision]=useState(0);window.setFixtureRole=setCanEdit;return React.createElement(RundExtractionPanel,{docenteId:'docente-ficticio',canEdit,revision,onConfirmed:()=>setRevision(n=>n+1),onView:()=>{window.sourceOpened=true;}});}
+function Fixture(){const [canEdit,setCanEdit]=useState(true),[revision,setRevision]=useState(0);window.setFixtureRole=setCanEdit;window.refreshFixture=()=>setRevision(n=>n+1);return React.createElement(RundExtractionPanel,{docenteId:'docente-ficticio',canEdit,revision,onConfirmed:()=>setRevision(n=>n+1),onView:()=>{window.sourceOpened=true;}});}
 createRoot(document.getElementById('root')).render(React.createElement(Fixture));`;
 
-const server = await createServer({root,configFile:false,logLevel:'error',server:{host:'127.0.0.1',port:0},plugins:[{
+const server = await createServer({root,configFile:false,logLevel:'error',
+  cacheDir:path.join(root,'.local/rund-review/vite-ocr'),
+  optimizeDeps:{noDiscovery:true,include:['react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime','lucide-react','sonner']},
+  server:{host:'127.0.0.1',port:0},plugins:[{
   name:'rund-extraction-fixture',enforce:'pre',
   resolveId(source){
     if(source.endsWith('/services/api')||source.endsWith('/services/api/ptaApi'))return '\0fixture-api';
@@ -54,7 +62,7 @@ const server = await createServer({root,configFile:false,logLevel:'error',server
 },react()]});
 let browser;
 try{
-  await server.listen();browser=await puppeteer.launch({headless:true});
+  await server.listen();browser=await puppeteer.launch({headless:true,...(process.env.RUND_BROWSER_EXECUTABLE?{executablePath:process.env.RUND_BROWSER_EXECUTABLE}:{})});
   const page=await browser.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   const origin=`http://127.0.0.1:${server.httpServer.address().port}`;
@@ -65,6 +73,9 @@ try{
   await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Organizar análisis').click());
   await page.waitForSelector('[role=progressbar]');
   assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuetext')),'Extraer datos');
+  assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuenow')),'50');
+  assert.equal((await page.$$('[role=tab]')).length,0,'No debe haber tarjetas de navegación duplicadas');
+  assert.equal((await page.$$('[aria-label="Archivo para revisar"] option')).length,3);
   const artifacts=path.join(root,'.local/rund-extraction-preview');await fs.mkdir(artifacts,{recursive:true});
   await page.screenshot({path:path.join(artifacts,'desktop.png'),fullPage:true});
   await page.setViewport({width:390,height:844});
@@ -72,7 +83,12 @@ try{
   await page.screenshot({path:path.join(artifacts,'mobile.png'),fullPage:true});
   await page.select('[aria-label="Archivo para revisar"]','job');
   await page.waitForSelector('.rund-extraction-suggestion');
-  assert.equal(await page.$('.rund-extraction-progress'),null,'Solo debe mostrarse el resultado del archivo seleccionado');
+  assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuenow')),'100');
+  assert.equal(await page.$eval('.rund-extraction-job-heading strong',el=>el.textContent),'diploma-ficticio.pdf');
+  await page.select('[aria-label="Archivo para revisar"]','job-progress');
+  assert.equal(await page.$eval('[role=progressbar]',el=>el.getAttribute('aria-valuenow')),'50');
+  assert.equal(await page.$('.rund-extraction-suggestion'),null,'El selector debe separar los resultados de cada archivo');
+  await page.select('[aria-label="Archivo para revisar"]','job');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'El selector y los resultados no deben desbordar en móvil');
   await page.screenshot({path:path.join(artifacts,'mobile-results.png'),fullPage:true});
   await page.setViewport({width:1400,height:950});
@@ -102,12 +118,24 @@ try{
   await page.screenshot({path:path.join(artifacts,'correccion-registrada.png'),fullPage:true});
   await page.select('[aria-label="Archivo para revisar"]','job-second');
   await click('Volver a procesar este PDF');
-  await page.waitForSelector('[aria-label="Confirmar nuevo análisis OCR"]');
-  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),1);
-  await click('Cancelar nuevo análisis');
+  await page.waitForFunction(()=>window.fixtureCalls.length===2);
+  await page.waitForFunction(()=>document.querySelector('[aria-label="Archivo para revisar"]').value.startsWith('queued-'));
+  assert.equal((await page.$$('[aria-label="Archivo para revisar"] option')).length,3,'Reprocesar no debe añadir otra entrada del mismo PDF');
+  assert.equal(await page.$('[aria-label="Archivo para revisar"] option[value="job-second"]'),null,'El nuevo análisis sustituye al anterior');
+  assert.equal(await page.$('[aria-label="Confirmar nuevo análisis OCR"]'),null);
+  assert.equal(await page.$eval('[role=progressbar]',element=>element.getAttribute('aria-valuenow')),'0');
+  assert.deepEqual((await page.evaluate(()=>window.fixtureCalls[1])).body.documentos,['documento-second']);
+  await page.screenshot({path:path.join(artifacts,'reprocesado-individual-solicitado.png'),fullPage:true});
+  await page.evaluate(()=>{window.startQueuedFixture();window.refreshFixture();});
+  await page.waitForFunction(()=>document.querySelector('[role=progressbar]').getAttribute('aria-valuenow')==='25');
+  await page.evaluate(()=>{window.completeQueuedFixture();window.refreshFixture();});
+  await page.waitForFunction(()=>document.querySelector('[role=progressbar]').getAttribute('aria-valuenow')==='100');
   await page.click('[aria-label="Incluir diploma-ficticio.pdf en el análisis"]');
   await page.click('[aria-label="Incluir otro-diploma-con-nombre-muy-largo-para-verificar-el-selector.pdf en el análisis"]');
   await page.click('[aria-label="Analizar antes otro-diploma-con-nombre-muy-largo-para-verificar-el-selector.pdf"]');
+  await click('Analizar seleccionadas (2)');
+  await click('Cancelar nuevo análisis');
+  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),2);
   await click('Analizar seleccionadas (2)');
   for(const width of [320,390,768,1400]){
     await page.setViewport({width,height:900});
@@ -115,15 +143,35 @@ try{
     await page.screenshot({path:path.join(artifacts,'reprocesar-'+width+'.png'),fullPage:true});
   }
   await click('Confirmar nuevo análisis');
-  await page.waitForFunction(()=>window.fixtureCalls.length===2);
-  const reprocess=await page.evaluate(()=>window.fixtureCalls[1]);
+  await page.waitForFunction(()=>window.fixtureCalls.length===3);
+  const reprocess=await page.evaluate(()=>window.fixtureCalls[2]);
   assert(reprocess.url.endsWith('/reprocesar'));
   assert.deepEqual(reprocess.body.documentos,['documento-second','documento']);
   await page.waitForSelector('[aria-label="Orden de análisis en espera"]');
+  const queueOrder=await page.evaluate(()=>['documento','documento-second'].map(id=>window.fixtureJobs().find(job=>job.documento_id===id&&job.estado==='PENDIENTE').id));
   await page.click('[aria-label="Orden de análisis en espera"] [aria-label="Analizar antes diploma-ficticio.pdf"]');
   await click('Guardar orden');
-  await page.waitForFunction(()=>window.fixtureCalls.length===3);
-  assert.deepEqual((await page.evaluate(()=>window.fixtureCalls[2])).body.trabajos,['queued-documento','queued-documento-second']);
+  await page.waitForFunction(()=>window.fixtureCalls.length===4);
+  assert.deepEqual((await page.evaluate(()=>window.fixtureCalls[3])).body.trabajos,queueOrder);
+  await page.evaluate(()=>{window.setQualityFixture(false);window.refreshFixture();});
+  await page.waitForSelector('.is-unreadable');
+  assert.equal(await page.evaluate(()=>document.body.textContent.includes('AENTACIONHDEIUAHTUNT')),false);
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('button')].some(button=>button.textContent.trim()==='Aplicar al perfil')),false);
+  assert(await page.evaluate(()=>document.body.textContent.includes('Reconocido para Pregrado')&&document.body.textContent.includes('Economista')));
+  for(const width of [320,390,1400]){
+    await page.setViewport({width,height:950});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.screenshot({path:path.join(artifacts,'lectura-no-fiable-'+width+'.png'),fullPage:true});
+  }
+  await click('Corregir dato');
+  assert.equal(await page.$eval(value,input=>input.value),'');
+  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),4);
+  await page.evaluate(()=>{window.setQualityFixture(true);window.refreshFixture();});
+  await page.waitForFunction(()=>document.body.textContent.includes('No fue posible reconocer Pregrado con suficiente fiabilidad.'));
+  await click('Ver PDF');
+  assert.equal(await page.evaluate(()=>window.sourceOpened),true);
+  assert.equal(await page.evaluate(()=>window.fixtureCalls.length),4);
+  await page.screenshot({path:path.join(artifacts,'sin-lectura-fiable.png'),fullPage:true});
   assert.deepEqual(errors,[]);
-  console.log('F014 navegador: selector visible, reprocesado individual y por lote ordenado, confirmación/cancelación, cola, escritorio/móvil y permisos separados verificados (API simulada).');
+  console.log('F014 navegador: lectura no fiable bloqueada, resultado vacío explicado, PDF disponible, corrección manual, reprocesado, cola y permisos verificados en escritorio/móvil (API simulada).');
 }finally{if(browser)await browser.close();await server.close();}

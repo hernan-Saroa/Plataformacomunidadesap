@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { PeiIndicador } from '../entities/pei-indicador.entity';
 import { PeiRegistroAvance } from '../entities/pei-registro-avance.entity';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class PeiService {
@@ -61,7 +63,9 @@ export class PeiService {
                 avanceActual,
                 valorActual,
                 registros: history, // Return full history for details
-                isVencido
+                isVencido,
+                // Responsable en texto libre (sin usuario asociado): pendiente de reasignación
+                responsableSinReferencia: !ind.responsableId
             };
         });
 
@@ -78,15 +82,46 @@ export class PeiService {
         };
     }
 
+    /**
+     * El responsable debe ser una referencia a un usuario (responsableId UUID + nombre tomado de ese usuario);
+     * no se aceptan nombres en texto libre. En la creación es obligatorio; en la edición solo se valida si viene en el body.
+     */
+    private validarResponsable(data: Partial<PeiIndicador>, obligatorio: boolean) {
+        const enviado = data.responsableId !== undefined || data.responsableNombre !== undefined;
+        if (!enviado && !obligatorio) return;
+
+        const responsableId = typeof data.responsableId === 'string' ? data.responsableId.trim() : '';
+        const responsableNombre = typeof data.responsableNombre === 'string' ? data.responsableNombre.trim() : '';
+        if (!UUID_REGEX.test(responsableId) || !responsableNombre) {
+            throw new BadRequestException('Debe seleccionar un responsable de la lista de usuarios del proceso');
+        }
+        data.responsableId = responsableId;
+        data.responsableNombre = responsableNombre;
+    }
+
     async createIndicador(data: Partial<PeiIndicador>) {
+        this.validarResponsable(data, true);
         const nuevo = this.indicadorRepo.create(data);
         return this.indicadorRepo.save(nuevo);
     }
 
+    /**
+     * La respuesta incluye el responsable anterior: el gateway audita este PUT con la respuesta como
+     * "datos nuevos", así el cambio de responsable queda trazable en Auditoría (anterior → nuevo).
+     */
     async updateIndicador(id: number, data: Partial<PeiIndicador>) {
+        this.validarResponsable(data, false);
         const indicador = await this.findOne(id);
-        const updated = Object.assign(indicador, data);
-        return this.indicadorRepo.save(updated);
+        const responsableAnteriorId = indicador.responsableId ?? null;
+        const responsableAnteriorNombre = indicador.responsableNombre ?? null;
+
+        const { registros: _registros, ...actualizado } = await this.indicadorRepo.save(Object.assign(indicador, data));
+        return {
+            ...actualizado,
+            responsableAnteriorId,
+            responsableAnteriorNombre,
+            responsableCambiado: responsableAnteriorId !== (actualizado.responsableId ?? null),
+        };
     }
 
     async findOne(id: number) {

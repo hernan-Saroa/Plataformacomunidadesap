@@ -1,0 +1,16 @@
+{
+  "titles": {
+    "name": "Verificación de títulos",
+    "path": "/certificacion-titulos-graduados",
+    "landingView": "solicitar-certificados-graduados",
+    "component": "PublicTitleVerification",
+    "fields": ["graduateLastName", "graduateDocument", "graduateEmail"]
+  },
+  "labor": {
+    "name": "Certificados Laborales",
+    "path": "/solicitar-certificado-laboral",
+    "landingView": "solicitar-certificados-laborales",
+    "component": "SolicitarCertificadoLaboral",
+    "fields": ["tipo-documento", "numero-documento", "codigo-validacion"]
+  }
+}

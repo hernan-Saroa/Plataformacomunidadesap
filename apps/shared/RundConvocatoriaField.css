@@ -1,0 +1,18 @@
+.rund-convocatoria { position: relative; min-width: 0; width: 100%; max-width: 620px; color: #334155; font-family: var(--font-sans, Arial, sans-serif); font-size: 13px; }
+.rund-convocatoria > label { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; font-weight: 600; }
+.rund-convocatoria > label > span { padding: 2px 8px; background: #eff6ff; color: #475569; border-radius: 20px; font-size: 11px; font-weight: 400; }
+.rund-convocatoria__input { display: flex; align-items: center; gap: 8px; padding: 0 10px; min-height: 42px; border: 1px solid #cbd5e1; background: white; border-radius: 9px; }
+.rund-convocatoria__input:focus-within { border-color: #003da5; box-shadow: 0 0 0 3px #003da510; }
+.rund-convocatoria__input > svg { color: #64748b; flex-shrink: 0; }
+.rund-convocatoria__input input { width: 100%; min-width: 0; flex: 1; padding: 10px 0; border: 0; outline: 0; background: transparent; font: inherit; color: #0f172a; }
+.rund-convocatoria .rund-convocatoria__input input:focus-visible { outline: 0; box-shadow: none; border-radius: 0; }
+.rund-convocatoria__input input:disabled { cursor: not-allowed; opacity: .6; }
+.rund-convocatoria button { cursor: pointer; font: inherit; }
+.rund-convocatoria__input button { display: flex; padding: 5px; background: transparent; border: 0; color: #64748b; flex-shrink: 0; }
+.rund-convocatoria button:disabled { cursor: not-allowed; opacity: .5; }
+.rund-convocatoria__menu { position: absolute; top: 72px; inset-inline: 0; z-index: 60; background: white; border: 1px solid #cbd5e1; box-shadow: 0 8px 24px #0f172a18; border-radius: 9px; max-height: 240px; overflow-y: auto; padding: 5px; }
+.rund-convocatoria__menu button { display: block; width: 100%; text-align: left; border: 0; border-radius: 5px; padding: 10px; background: transparent; overflow-wrap: anywhere; }
+.rund-convocatoria__menu button:hover, .rund-convocatoria__menu button.is-active, .rund-convocatoria__menu button[aria-selected="true"] { color: #003da5; background: #eff6ff; }
+.rund-convocatoria__menu p { padding: 10px; margin: 0; color: #64748b; line-height: 1.5; }
+.rund-convocatoria > small { display: block; margin-top: 6px; color: #64748b; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.rund-convocatoria > small button { border: 0; background: transparent; color: #003da5; text-decoration: underline; }

@@ -12,6 +12,10 @@ import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { SelectorResponsable, useResponsablesProcesoLegal } from './SelectorResponsable';
+import {
+  estadoResponsable, requiereReasignacion, resolverResponsableActual, MENSAJE_RESPONSABLE_OBLIGATORIO,
+} from './responsablesIndicador';
 
 interface Indicador {
   id: string;
@@ -20,6 +24,8 @@ interface Indicador {
   descripcion: string;
   ejeEstrategico: string;
   responsable: string;
+  /** id_user del responsable; ausente en indicadores con responsable en texto libre. */
+  responsableId?: string | null;
   meta: number;
   valorActual: number;
   unidadMedida: string;
@@ -43,12 +49,16 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
   const ejesActivos = getEjesEstrategicosActivos();
   const tiposIndicadorActivos = getTiposIndicadoresActivos();
 
+  // Usuarios activos del proceso Gestión Legal
+  const { responsables, error: errorResponsables } = useResponsablesProcesoLegal(isOpen);
+
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
     descripcion: '',
     ejeEstrategico: 'GESTION_INSTITUCIONAL',
     responsable: '',
+    responsableId: '',
     meta: '',
     unidadMedida: '%',
     fechaInicio: '',
@@ -66,6 +76,7 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
         descripcion: indicador.descripcion,
         ejeEstrategico: indicador.ejeEstrategico,
         responsable: indicador.responsable,
+        responsableId: indicador.responsableId ?? '',
         meta: indicador.meta.toString(),
         unidadMedida: indicador.unidadMedida,
         fechaInicio: indicador.fechaInicio instanceof Date
@@ -81,8 +92,26 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
     }
   }, [indicador]);
 
+  // Indicadores históricos con responsable en texto libre: se sugiere el usuario con el mismo nombre
+  // (queda fijado solo al guardar). Si no hay coincidencia única, el usuario debe elegir uno de la lista.
+  useEffect(() => {
+    if (!indicador || !responsables || indicador.responsableId) return;
+    const sugerido = resolverResponsableActual(indicador, responsables);
+    if (sugerido) {
+      setFormData(prev => prev.responsableId ? prev : { ...prev, responsableId: sugerido.id, responsable: sugerido.nombreCompleto });
+    }
+  }, [indicador, responsables]);
+
+  const estadoActual = indicador ? estadoResponsable(indicador, responsables) : 'SIN_ASIGNAR';
+  const requiereReasignar = indicador ? requiereReasignacion(indicador, responsables) : false;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.responsableId || !responsables?.some(r => r.id === formData.responsableId)) {
+      toast.error(MENSAJE_RESPONSABLE_OBLIGATORIO);
+      return;
+    }
 
     if (!formData.nombre.trim()) {
       toast.error('El nombre del indicador es obligatorio');
@@ -323,14 +352,25 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
                 <Label htmlFor="responsable" className="text-sm font-semibold text-gray-700">
                   Responsable del Indicador <span className="text-red-600">*</span>
                 </Label>
-                <Input
+                <SelectorResponsable
                   id="responsable"
-                  placeholder="Ej: Dr. Carlos Mendoza Torres"
-                  value={formData.responsable}
-                  onChange={(e) => handleChange('responsable', e.target.value)}
-                  className="border-2 border-gray-300 focus:border-orange-500"
-                  required
+                  opciones={responsables}
+                  error={errorResponsables}
+                  valor={formData.responsableId}
+                  nombreActual={indicador.responsable}
+                  onChange={(r) => setFormData(prev => ({ ...prev, responsableId: r.id, responsable: r.nombreCompleto }))}
+                  className="focus:border-orange-500"
                 />
+                <p className="text-xs text-gray-500">
+                  Solo usuarios activos del proceso Gestión Legal. Busque por nombre, documento o correo.
+                </p>
+                {requiereReasignar && (
+                  <p role="alert" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    {estadoActual === 'INACTIVO'
+                      ? `El responsable actual (${indicador.responsable}) ya no está activo en el proceso. Seleccione un nuevo responsable.`
+                      : `El responsable actual (${indicador.responsable}) fue registrado como texto libre. Seleccione un usuario de la lista para reasignarlo.`}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

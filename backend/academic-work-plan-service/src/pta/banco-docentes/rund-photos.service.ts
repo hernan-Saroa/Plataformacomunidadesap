@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { validateProfilePhoto } from './rund-photo-validation';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
+import { normalizeRundUpload } from './rund-text-encoding';
 
 const TABLE = 'academic_work_plan.rund_foto_perfil';
 const metadata = 'id,persona_id,nombre,mime,ancho,alto,estado,origen,creado_por,creado_en,revisado_por,revisado_en,observacion';
@@ -44,6 +45,7 @@ export class RundPhotosService {
   }
 
   async upload(person: string, file: Express.Multer.File | undefined, actor: string, origin: 'PTA'|'RUND'|'MASIVA') {
+    normalizeRundUpload(file);
     const info = validateProfilePhoto(file);
     await this.db.transaction(async tx => {
       // Lock the identity so simultaneous uploads/decisions cannot overwrite one
@@ -52,7 +54,7 @@ export class RundPhotosService {
       if (!rows.length) throw new NotFoundException('Persona no encontrada.');
       await tx.query(`UPDATE ${TABLE} SET estado='REEMPLAZADA' WHERE persona_id=$1 AND estado='PENDIENTE'`, [person]);
       await tx.query(`INSERT INTO ${TABLE}(persona_id,contenido,mime,nombre,ancho,alto,origen,creado_por)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [person,file!.buffer,info.mime,file!.originalname.slice(0,255),info.width,info.height,origin,actor]);
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [person,file!.buffer,info.mime,Array.from(file!.originalname).slice(0,255).join(''),info.width,info.height,origin,actor]);
     });
     return this.status(person);
   }

@@ -7,7 +7,7 @@ import {
   Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History
 } from 'lucide-react';
 import {
-  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, bulkUploadBancoDocentes
+  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes
 } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
@@ -22,6 +22,7 @@ import { hasRundPermission } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
 import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import './BancoDocentesStatistics.css';
+import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaField';
 import { RundDeleteModal } from './RundDeleteModal';
 import type { RundDeletionSelection } from '../../../services/api/ptaApi';
 
@@ -147,6 +148,7 @@ export function BancoDocentesPTA() {
   const [statsFilterTerritorial, setStatsFilterTerritorial] = useState('');
   const [statsFilterDedicacion, setStatsFilterDedicacion] = useState('');
   const [statsFilterEstado, setStatsFilterEstado] = useState('');
+  const [statsConvocatoria, setStatsConvocatoria] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -231,6 +233,7 @@ export function BancoDocentesPTA() {
         territorial: statsFilterTerritorial || undefined,
         dedicacion: statsFilterDedicacion || undefined,
         estado: statsFilterEstado || undefined,
+        convocatoria: statsConvocatoria || undefined,
         // Las estadísticas usan el mismo periodo del encabezado/listado.
         periodoCarga: filterPeriodo || undefined,
       });
@@ -242,7 +245,7 @@ export function BancoDocentesPTA() {
     } finally {
       if (requestId === statsRequest.current) setStatsLoading(false);
     }
-  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
+  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo, statsConvocatoria]);
 
   useEffect(() => {
     if (tab === 'estadisticas') loadStats();
@@ -271,6 +274,7 @@ export function BancoDocentesPTA() {
   useEffect(() => {
     setSearch('');
     setSelectedDocente(null);
+    setStatsConvocatoria('');
     setFilterTerritorial('');
     setFilterDedicacion('');
     setFilterVinculacion('');
@@ -280,11 +284,12 @@ export function BancoDocentesPTA() {
 
   // ── Navegar al listado con filtro preseleccionado ─────────────────────────
   const navigateToListado = (filters: { territorial?: string; dedicacion?: string; estado?: string }) => {
-    // El detalle conserva el universo filtrado que produjo la cifra seleccionada.
+    // Se trasladan únicamente los filtros que el listado permite consultar y limpiar.
     setFilterTerritorial(filters.territorial ?? statsFilterTerritorial);
     setFilterDedicacion(filters.dedicacion ?? statsFilterDedicacion);
     setFilterVinculacion('');
     setFilterEstado(filters.estado ?? statsFilterEstado);
+    if (statsConvocatoria) showToast('El listado no se filtra por convocatoria; consúltala en Trazabilidad.');
     setSearch('');
     setPage(1);
     setTab('listado');
@@ -753,7 +758,8 @@ export function BancoDocentesPTA() {
                                 {d.nombre_completo}
                               </p>
                               {rundReviewStatus(d.completitud).approved && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#047857', fontSize: 11, fontWeight: 700, marginTop: 3 }}><CheckCircle size={13} /> Perfil RUND aprobado</span>}
-                              {rundReviewStatus(d.completitud).returned && <span style={{ display: 'block', color: '#B91C1C', fontSize: 11, marginTop: 3 }}>Pendiente de corrección</span>}
+                              {!rundReviewStatus(d.completitud).approved && <span title={rundReviewStatus(d.completitud).description}
+                                style={{ display: 'block', color: rundReviewStatus(d.completitud).returned ? '#B91C1C' : '#64748B', fontSize: 11, marginTop: 3 }}>{rundReviewStatus(d.completitud).label}</span>}
                               {d.correo_institucional && (
                                 <p style={{ margin: 0, fontSize: '12px', lineHeight: '16px', color: '#6B7280' }}>
                                   {d.correo_institucional}
@@ -1077,9 +1083,9 @@ export function BancoDocentesPTA() {
               </select>
 
               {/* Reset filtros */}
-              {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado) && (
+              {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado || statsConvocatoria) && (
                 <button
-                  onClick={() => { setStatsFilterTerritorial(''); setStatsFilterDedicacion(''); setStatsFilterEstado(''); }}
+                  onClick={() => { setStatsFilterTerritorial(''); setStatsFilterDedicacion(''); setStatsFilterEstado(''); setStatsConvocatoria(''); }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
                     borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2',
@@ -1091,8 +1097,10 @@ export function BancoDocentesPTA() {
               )}
             </div>
 
+            <RundConvocatoriaField key={filterPeriodo} periodoCarga={filterPeriodo} value={statsConvocatoria}
+              loadOptions={getRundConvocatorias} onChange={setStatsConvocatoria} />
             {/* Active filter badges */}
-            {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado) && (
+            {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado || statsConvocatoria) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {statsFilterTerritorial && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, background: '#FEF3C7', color: '#92400E', fontSize: '11px', fontWeight: 600 }}>
@@ -1131,6 +1139,14 @@ export function BancoDocentesPTA() {
             </div>
           ) : !statsLoading && stats && (
             <>
+              {!!stats.por_convocatoria?.length && <section className="rund-statistics__nucleos" aria-label="Docentes por convocatoria">
+                <h3>Docentes por convocatoria</h3>
+                <p className="rund-statistics__missing">Cada docente se cuenta una vez por convocatoria. Puede pertenecer a varias.</p>
+                <div className="rund-statistics__nucleo-list">{stats.por_convocatoria.map((row: any) => <div key={row.convocatoria_clave} className="rund-statistics__nucleo-row">
+                  <div><span>{row.convocatoria}</span><strong>{row.total}</strong></div>
+                </div>)}</div>
+              </section>}
+
               {/* ── KPI Cards — Clickeables ────────────────────────────── */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 16 }}>
                 {[

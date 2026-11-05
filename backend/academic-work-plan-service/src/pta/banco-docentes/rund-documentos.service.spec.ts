@@ -29,6 +29,15 @@ describe('RundDocumentosService - validación de archivos REQ-RUND-F010', () => 
   it('acepta un PDF real dentro del tamaño configurado', () => {
     expect(() => (service as any).validatePdf(pdf(), category)).not.toThrow();
   });
+  it('acepta nombres y descripciones con tildes sin cortar un carácter Unicode a la mitad', () => {
+    const file = pdf({ originalname: Buffer.from('Formación – Muñoz.pdf').toString('latin1') });
+    expect(() => (service as any).validatePdf(file, category)).not.toThrow();
+    expect(file.originalname).toBe('Formación – Muñoz.pdf');
+    expect((service as any).cleanDescription('Formacio\u0301n de Jose\u0301 Mun\u0303oz')).toBe('Formación de José Muñoz');
+    const text = (service as any).cleanDescription('á'.repeat(999) + '🧑' + 'fin');
+    expect(text).toBe('á'.repeat(999) + '🧑');
+    expect(() => encodeURIComponent(text)).not.toThrow();
+  });
 
   it.each([
     ['extensión', pdf({ originalname: 'diploma.exe' })],
