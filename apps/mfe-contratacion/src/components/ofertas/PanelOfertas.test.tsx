@@ -34,9 +34,11 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   plazoConfirmado: true,
   recepcion: recepcion(),
   puedeRegistrar: true,
+  puedeCorregirVencimiento: true,
   puedeCerrar: false,
   audienciaRiesgos: { cumplido: true, motivo: null },
   listaPublicada: false,
+  prorrogas: [],
   oferentes: [],
   ...cambios,
 });
@@ -60,6 +62,15 @@ describe('PanelOfertas · el vencimiento del plazo', () => {
 
   const abrir = async () =>
     userEvent.click(await screen.findByRole('button', { name: /Corregir el vencimiento/ }));
+
+  it('fuera de las pruebas internas, el cierre ya fijado no se corrige a mano', async () => {
+    // Sesión de QA del 04/11 (EFDS-1157): en la operación la fecha de cierre
+    // solo se mueve con una adenda de cronograma.
+    pintar(estado({ puedeCorregirVencimiento: false }));
+
+    await screen.findByText(/Registrar una oferta/);
+    expect(screen.queryByRole('button', { name: /Corregir el vencimiento/ })).not.toBeInTheDocument();
+  });
 
   it('se pide en campos de fecha y hora, no escrito a mano', async () => {
     pintar(estado());
@@ -151,7 +162,7 @@ describe('PanelOfertas · el vencimiento del plazo', () => {
   });
 });
 
-/** La revisión de QA de la 6.1 (EFDS-1155): nombre, .zip y 50 MB. */
+/** La revisión de QA de la 6.1 (EFDS-1155): nombre, .zip y 200 MB. */
 describe('PanelOfertas · el soporte de la oferta', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -181,15 +192,85 @@ describe('PanelOfertas · el soporte de la oferta', () => {
     expect(screen.getByText('oferta-completa.zip')).toBeInTheDocument();
   });
 
-  it('rechaza antes de subir un archivo de más de 50 MB', async () => {
+  it('acepta un soporte de más de 50 MB mientras no pase de 200 MB', async () => {
+    const input = await abrirRegistro();
+
+    const grande = new File(['x'], 'oferta-grande.zip', { type: 'application/zip' });
+    Object.defineProperty(grande, 'size', { value: 150 * 1024 * 1024 });
+    await userEvent.upload(input, grande);
+
+    expect(screen.getByText('oferta-grande.zip')).toBeInTheDocument();
+  });
+
+  it('rechaza antes de subir un archivo de más de 200 MB', async () => {
     const { toast } = await import('sonner');
     const input = await abrirRegistro();
 
     const pesado = new File(['x'], 'oferta.pdf', { type: 'application/pdf' });
-    Object.defineProperty(pesado, 'size', { value: 51 * 1024 * 1024 });
+    Object.defineProperty(pesado, 'size', { value: 201 * 1024 * 1024 });
     await userEvent.upload(input, pesado);
 
-    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/máximo son 50 MB/));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/máximo son 200 MB/));
     expect(screen.queryByText('oferta.pdf')).toBeNull();
+  });
+});
+
+/**
+ * La fecha de cierre se extiende con una adenda de cronograma, aunque ya se
+ * estén recibiendo ofertas (revisión de QA de EFDS-1155).
+ */
+describe('PanelOfertas · extender el cierre por adenda', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const pintar = (datos: Record<string, unknown>, onIrAAdendas?: () => void) => {
+    vi.spyOn(contratacionService, 'ofertas').mockResolvedValue(datos as never);
+    render(<PanelOfertas procesoId="p-1" onIrAAdendas={onIrAAdendas} />);
+  };
+
+  it('con la recepción abierta lleva a las adendas', async () => {
+    const irAAdendas = vi.fn();
+    pintar(estado(), irAAdendas);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Extender el cierre con una adenda/ }),
+    );
+    expect(irAAdendas).toHaveBeenCalled();
+  });
+
+  it('cerrada la recepción ya no se ofrece', async () => {
+    pintar(
+      estado({
+        listaPublicada: true,
+        recepcion: recepcion({ estado: 'CERRADA', vencido: true, cerradaAt: '2026-10-15T22:00:00Z' }),
+      }),
+      vi.fn(),
+    );
+
+    expect(await screen.findByText(/Lista de oferentes publicada/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Extender el cierre/ })).toBeNull();
+  });
+
+  it('muestra de qué fecha a qué fecha la movió cada adenda', async () => {
+    pintar(
+      estado({
+        prorrogas: [
+          {
+            adendaId: 'a-2',
+            numero: 2,
+            fechaPublicacion: '2026-10-10',
+            publicadaPor: 'Laura Pineda',
+            vencimientoAnterior: '2026-10-15',
+            horaAnterior: '10:00:00',
+            vencimientoNuevo: '2026-10-22',
+            horaNueva: '17:00:00',
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText(/Cierre extendido por adenda/)).toBeInTheDocument();
+    expect(screen.getByText(/Adenda 2:.*a las 10:00.*al .*a las 17:00.*Laura Pineda/)).toBeInTheDocument();
   });
 });
