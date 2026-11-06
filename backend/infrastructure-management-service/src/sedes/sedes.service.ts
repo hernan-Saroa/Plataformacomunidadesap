@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Sede } from './sede.entity.js';
 import { BloqueEdificio } from './bloque.entity.js';
 import { CreateSedeDto, CreateBloqueDto } from './dto/create-sede.dto.js';
@@ -299,7 +299,10 @@ export class SedesService implements OnModuleInit {
       if (!cod) throw new BadRequestException('Código no puede ser vacío.');
       if (cod.length > 30) throw new BadRequestException('Código excede 30 caracteres.');
       if (cod !== b.codigo) {
-        const dup = await this.bloqueRepo.findOne({ where: { idSede: b.idSede, codigo: cod } });
+        const whereClause: any = { codigo: cod };
+        if (b.idSede) whereClause.idSede = b.idSede;
+        if (b.idCetap) whereClause.idCetap = b.idCetap;
+        const dup = await this.bloqueRepo.findOne({ where: whereClause });
         if (dup && dup.idBloque !== idBloque) {
           throw new ConflictException(`Código ${cod} ya existe en la sede.`);
         }
@@ -344,6 +347,86 @@ export class SedesService implements OnModuleInit {
     return { idBloque: b.idBloque, eliminado: true };
   }
 
+  async listBloquesPorCetap(idCetap: number, soloActivos: boolean = true): Promise<BloqueEdificio[]> {
+    const where: Record<string, any> = { idCetap };
+    if (soloActivos === true) where.isActivo = true;
+    return this.bloqueRepo.find({ where, relations: ['espacios'], order: { codigo: 'ASC' } });
+  }
+
+  async obtenerTerritorialesConCetaps(): Promise<{
+    sedesNivelCentral: any[];
+    direccionesTerritoriales: any[];
+  }> {
+    const sedesNivelCentral = await this.sedeRepo.find({
+      where: {
+        tipo: In(['SEDE_CENTRAL', 'SEDE_ALTERNA']),
+        isActivo: true,
+      },
+      relations: ['bloques', 'bloques.espacios'],
+      order: { nombre: 'ASC' },
+    });
+
+    let direccionesTerritoriales: any[] = [];
+    try {
+      const terrs = await this.sedeRepo.query(`
+        SELECT 
+            dt.id, 
+            dt.codigo, 
+            dt.nombre, 
+            COUNT(c.id)::int as num_cetaps 
+        FROM academic_work_plan.direccion_territorial dt 
+        LEFT JOIN academic_work_plan.cetap c ON c.id_direccion_territorial = dt.id 
+        WHERE dt.activo = true
+        GROUP BY dt.id, dt.codigo, dt.nombre 
+        ORDER BY dt.nombre
+      `);
+
+      const cetaps = await this.sedeRepo.query(`
+        SELECT 
+            c.id, 
+            c.id_direccion_territorial AS territorial_id, 
+            c.codigo, 
+            c.nombre, 
+            c.tipo, 
+            c.activo,
+            COALESCE(b_info.total_bloques, 0)::int AS total_bloques,
+            COALESCE(b_info.total_espacios, 0)::int AS total_espacios
+        FROM academic_work_plan.cetap c
+        LEFT JOIN (
+            SELECT 
+                b.id_cetap, 
+                COUNT(DISTINCT b.id_bloque)::int AS total_bloques, 
+                COUNT(DISTINCT e.id_espacio)::int AS total_espacios
+            FROM "infrastructure-management".bloque_edificio b
+            LEFT JOIN "infrastructure-management".espacio_fisico e ON e.id_bloque = b.id_bloque
+            WHERE b.id_cetap IS NOT NULL
+            GROUP BY b.id_cetap
+        ) b_info ON b_info.id_cetap = c.id
+        WHERE c.activo = true
+        ORDER BY c.nombre
+      `);
+
+      const cetapMap = new Map<string, any[]>();
+      for (const c of cetaps) {
+        const tid = String(c.territorial_id);
+        if (!cetapMap.has(tid)) cetapMap.set(tid, []);
+        cetapMap.get(tid)!.push(c);
+      }
+
+      direccionesTerritoriales = terrs.map((t: any) => ({
+        ...t,
+        cetaps: cetapMap.get(String(t.id)) || [],
+      }));
+    } catch (err: any) {
+      Logger.warn(`[SedesService] No se pudo consultar academic_work_plan: ${err?.message}`);
+    }
+
+    return {
+      sedesNivelCentral,
+      direccionesTerritoriales,
+    };
+  }
+
   async obtenerJerarquiaCompleta(): Promise<{
     sedesActuales: any[];
     territorialesNacionales: any[];
@@ -353,40 +436,11 @@ export class SedesService implements OnModuleInit {
       order: { nombre: 'ASC' },
     });
 
-    let territorialesNacionales: any[] = [];
-    try {
-      const terrs = await this.sedeRepo.query(`
-        SELECT t.id, t.nombre, t.codigo, COUNT(s.id)::int as num_cetaps 
-        FROM "academic_work_plan"."Territorial" t 
-        LEFT JOIN "academic_work_plan"."Sede" s ON s."territorialId" = t.id 
-        GROUP BY t.id, t.nombre, t.codigo 
-        ORDER BY t.nombre
-      `);
-
-      const cetaps = await this.sedeRepo.query(`
-        SELECT s.id, s."territorialId" as territorial_id, s.nombre, s.municipio 
-        FROM "academic_work_plan"."Sede" s 
-        ORDER BY s.nombre
-      `);
-
-      const cetapMap = new Map<string, any[]>();
-      for (const c of cetaps) {
-        const tid = c.territorial_id;
-        if (!cetapMap.has(tid)) cetapMap.set(tid, []);
-        cetapMap.get(tid)!.push(c);
-      }
-
-      territorialesNacionales = terrs.map((t: any) => ({
-        ...t,
-        cetaps: cetapMap.get(t.id) || [],
-      }));
-    } catch (err: any) {
-      console.warn('[SedesService] No se pudo consultar academic_work_plan:', err?.message);
-    }
+    const info = await this.obtenerTerritorialesConCetaps();
 
     return {
       sedesActuales,
-      territorialesNacionales,
+      territorialesNacionales: info.direccionesTerritoriales,
     };
   }
 }
