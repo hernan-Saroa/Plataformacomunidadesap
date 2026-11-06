@@ -70,6 +70,7 @@ import {
   EstadoModificaciones,
   DatosAdicion,
   DatosAclaratorio,
+  DatosOtraModificacion,
   DatosCesion,
   DatosProrroga,
   DatosReanudacion,
@@ -86,6 +87,13 @@ import {
   ConfiguracionAvisos,
   EventoAviso,
   ParametroAlerta,
+  CorreoInstitucional,
+  CambioCronogramaAdenda,
+  CronogramaPorEtapas,
+  CronogramaPredeterminado,
+  FilaPredeterminada,
+  PropuestaCronograma,
+  ResumenPredeterminado,
   EstadisticasGestion,
   FiltrosEstadisticas,
   ExpedienteAuditoria,
@@ -107,6 +115,7 @@ import {
   EstadoRespaldo,
   CdpDelEstudioPrevio,
   CdpAntesDeRadicar,
+  UmbralesComite,
   EstudioPrevio,
   Expediente,
   SimulacionFormulario,
@@ -157,7 +166,9 @@ import {
   DiagramaFlujo,
   AsignacionFlujo,
   SecuenciaDelPaso,
+  CambioDeAplicabilidad,
   FlujoDelProceso,
+  ResultadoActivacionFlujo,
   ProblemaFlujo,
   VersionFlujo,
   LaHaceConfig,
@@ -279,6 +290,10 @@ function cuerpoDelInforme(datos: RegistrarResultado, informe: File[]) {
   return cuerpo;
 }
 
+
+/** De qué pliego son las observaciones: la 5.6 o la 5.12.1 (138). */
+export type RutaObservaciones = 'observaciones' | 'observaciones-definitivo';
+
 export const contratacionService = {
   listarProcesos: () => pedir<ProcesoResumen[]>('/procesos'),
 
@@ -369,6 +384,9 @@ export const contratacionService = {
 
   cdpAntesDeRadicar: () => pedir<CdpAntesDeRadicar[]>('/configuracion/cdp-antes-de-radicar'),
 
+  /** Las modalidades con umbral propio para el comité; la cuantía general va en los parámetros. */
+  umbralesComite: () => pedir<UmbralesComite>('/configuracion/umbrales-comite'),
+
   guardarCdpAntesDeRadicar: (
     modalidad: string,
     datos: { obligatorio: boolean; fundamento?: string; confirmado?: boolean },
@@ -398,7 +416,15 @@ export const contratacionService = {
    */
   emitirAdenda: (
     procesoId: string,
-    datos: { tipo: 'FONDO' | 'CRONOGRAMA'; objeto: string; vencimientoNuevo?: string },
+    datos: {
+      tipo: 'FONDO' | 'CRONOGRAMA';
+      objeto: string;
+      vencimientoNuevo?: string;
+      /** HH:MM del nuevo cierre de ofertas; sin ella se conserva la del cronograma. */
+      horaNueva?: string;
+      /** Otras fechas del cronograma de la 5.2 que mueve; se aplican al publicarla (139). */
+      cambiosCronograma?: CambioCronogramaAdenda[];
+    },
     documento: File,
   ) => {
     const cuerpo = new FormData();
@@ -406,6 +432,10 @@ export const contratacionService = {
     cuerpo.append('tipo', datos.tipo);
     cuerpo.append('objeto', datos.objeto);
     if (datos.vencimientoNuevo) cuerpo.append('vencimientoNuevo', datos.vencimientoNuevo);
+    if (datos.horaNueva) cuerpo.append('horaNueva', datos.horaNueva);
+    if (datos.cambiosCronograma?.length) {
+      cuerpo.append('cambiosCronograma', JSON.stringify(datos.cambiosCronograma));
+    }
 
     return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`, {
       method: 'POST',
@@ -891,6 +921,16 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
+  /**
+   * Quien tomó el proceso le devuelve el estudio previo al área con
+   * observaciones, sin pasarlo a los abogados. Solo mientras está en revisión.
+   */
+  devolverDesdeLaRadicacion: (procesoId: string, observaciones: string) =>
+    pedir<{ estado: string }>(`/procesos/${procesoId}/estudio-previo/devolver-desde-la-radicacion`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
   // -------------------------------------- puestos del proceso (109) ------
 
   /** Los puestos del proceso, quién ocupa cada uno y qué le impide actuar. */
@@ -922,10 +962,6 @@ export const contratacionService = {
   /** Quién supervisa el contrato, si ya se le avisó y quiénes lo hicieron antes. */
   supervision: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`),
-
-  /** A quién se puede designar: los candidatos del puesto que avala la 9.4 (121). */
-  candidatosASupervisor: (procesoId: string, q = '') =>
-    pedir<CandidatoAPuesto[]>(`/procesos/${procesoId}/supervision/candidatos?q=${encodeURIComponent(q)}`),
 
   /**
    * Designa al supervisor con el acto administrativo que lo nombra. Le sale un
@@ -995,12 +1031,18 @@ export const contratacionService = {
     });
   },
 
-  /** Deja constancia de que se le comunicó la designación por fuera (matriz 8.2). */
-  avisarSupervisor: (procesoId: string) =>
-    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
+  /**
+   * Deja constancia de que se le comunicó la designación por fuera (matriz
+   * 8.2), con la evidencia obligatoria (sesión de QA del 04/11).
+   */
+  avisarSupervisor: (procesoId: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
       method: 'POST',
-      body: JSON.stringify({}),
-    }),
+      body: cuerpo,
+    });
+  },
 
   // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
 
@@ -1124,12 +1166,19 @@ export const contratacionService = {
     });
   },
 
-  /** El aval del supervisor sobre una cuenta radicada. */
-  avalarPago: (procesoId: string, pagoId: string, observacion?: string) =>
-    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/avalar`, {
+  /**
+   * Carga el aval firmado del supervisor sobre una cuenta radicada. El
+   * supervisor no entra a la aplicación (136): el documento es su aval.
+   */
+  avalarPago: (procesoId: string, pagoId: string, aval: File, observacion?: string) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', aval);
+    if (observacion) cuerpo.append('observacion', observacion);
+    return pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/avalar`, {
       method: 'POST',
-      body: JSON.stringify(observacion ? { observacion } : {}),
-    }),
+      body: cuerpo,
+    });
+  },
 
   /** Devuelve la cuenta al contratista para que la corrija. */
   devolverPago: (procesoId: string, pagoId: string, motivo: string) =>
@@ -1411,6 +1460,13 @@ export const contratacionService = {
 
   solicitarAclaratorio: (procesoId: string, datos: DatosAclaratorio) =>
     pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/aclaratorios`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Otra modificación, con descripción libre (138). */
+  solicitarOtraModificacion: (procesoId: string, datos: DatosOtraModificacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/otras`, {
       method: 'POST',
       body: JSON.stringify(datos),
     }),
@@ -1752,9 +1808,15 @@ export const contratacionService = {
 
   // ------------------------------- etapa 5 · observaciones al pliego (5.6) ---
 
-  /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
-  observaciones: (procesoId: string) =>
-    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`),
+  /**
+   * Observaciones del proceso con el resumen que decide si la actividad cumple.
+   *
+   * `ruta` elige el pliego: `observaciones` es la 5.6 (proyecto) y
+   * `observaciones-definitivo` la 5.12.1 (pliego definitivo, 138). Las dos se
+   * llevan igual.
+   */
+  observaciones: (procesoId: string, ruta: RutaObservaciones = 'observaciones') =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}`),
 
   /**
    * Registra una observación recibida, con su soporte si lo hubo.
@@ -1774,6 +1836,7 @@ export const contratacionService = {
       contenido: string;
     },
     archivos: File[],
+    ruta: RutaObservaciones = 'observaciones',
   ) => {
     const cuerpo = new FormData();
     archivos.forEach((a) => cuerpo.append('files', a));
@@ -1781,7 +1844,7 @@ export const contratacionService = {
     cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
     cuerpo.append('contenido', datos.contenido);
 
-    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`, {
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -1793,6 +1856,7 @@ export const contratacionService = {
     datos: { respuesta?: string; modificoPliego?: boolean },
     archivos: File[],
     firma?: EvidenciaFirmaOtp,
+    ruta: RutaObservaciones = 'observaciones',
   ) => {
     const cuerpo = new FormData();
     archivos.forEach((a) => cuerpo.append('files', a));
@@ -1800,7 +1864,7 @@ export const contratacionService = {
     if (datos.modificoPliego !== undefined) cuerpo.append('modificoPliego', String(datos.modificoPliego));
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
-    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/responder-todas`, {
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}/responder-todas`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -1811,15 +1875,20 @@ export const contratacionService = {
     observacionId: string,
     datos: { respuesta: string; modificoPliego?: boolean },
     firma?: EvidenciaFirmaOtp,
+    ruta: RutaObservaciones = 'observaciones',
   ) =>
     pedir<EstadoObservaciones>(
-      `/procesos/${procesoId}/observaciones/${observacionId}/responder`,
+      `/procesos/${procesoId}/${ruta}/${observacionId}/responder`,
       { method: 'POST', body: JSON.stringify({ ...datos, firma }) },
     ),
 
   /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
-  cerrarSinObservaciones: (procesoId: string, firma?: EvidenciaFirmaOtp) =>
-    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/cerrar`, {
+  cerrarSinObservaciones: (
+    procesoId: string,
+    firma?: EvidenciaFirmaOtp,
+    ruta: RutaObservaciones = 'observaciones',
+  ) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}/cerrar`, {
       method: 'POST',
       body: JSON.stringify({ firma }),
     }),
@@ -2203,12 +2272,12 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
-  /** Marca si la actividad aplica a una modalidad. */
+  /** Marca si la actividad aplica a una modalidad; llega también a los procesos vivos. */
   cambiarAplicabilidad: (
     numeral: string,
     datos: { modalidad: string; aplica: boolean; motivo?: string },
   ) =>
-    pedir<ActividadAplicable>(`/configuracion/actividades/${numeral}/aplicabilidad`, {
+    pedir<CambioDeAplicabilidad>(`/configuracion/actividades/${numeral}/aplicabilidad`, {
       method: 'PUT',
       body: JSON.stringify(datos),
     }),
@@ -2414,10 +2483,14 @@ export const contratacionService = {
     medioPublicacion: string,
     evidencia: File,
     firma?: EvidenciaFirmaOtp,
+    /** Enlace del proceso y observaciones del traslado (138). */
+    extra: { enlaceProceso?: string; observaciones?: string } = {},
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
     cuerpo.append('medioPublicacion', medioPublicacion);
+    if (extra.enlaceProceso?.trim()) cuerpo.append('enlaceProceso', extra.enlaceProceso.trim());
+    if (extra.observaciones?.trim()) cuerpo.append('observaciones', extra.observaciones.trim());
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/trasladar`, {
@@ -2574,10 +2647,22 @@ export const contratacionService = {
     informe: File | null,
     motivo?: string,
     /** La ganadora se decide en el definitivo (EFDS-1157). */
-    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
+    decision: {
+      oferenteId?: string;
+      valorEvaluado?: number;
+      justificacion?: string;
+      /** Por qué cambia frente al preliminar (138). */
+      justificacionCambios?: string;
+    } = {},
+    /** Documentos adicionales, opcionales (138). */
+    anexos: File[] = [],
   ) => {
     const cuerpo = new FormData();
     if (informe) cuerpo.append('file', informe);
+    for (const anexo of anexos) cuerpo.append('anexos', anexo);
+    if (decision.justificacionCambios?.trim()) {
+      cuerpo.append('justificacionCambios', decision.justificacionCambios.trim());
+    }
     // Actualizar un informe que ya existe pide motivo (EFDS-1159).
     if (motivo?.trim()) cuerpo.append('motivo', motivo.trim());
     if (decision.oferenteId) cuerpo.append('oferenteId', decision.oferenteId);
@@ -2886,8 +2971,94 @@ export const contratacionService = {
   /** Anticipación, tolerancia y hora del aviso diario (EFDS-1183). */
   parametrosAlerta: () => pedir<ParametroAlerta[]>('/alertas/parametros'),
 
+  /** Cronograma por etapas macro de la 5.2 (135). */
+  cronograma: (procesoId: string) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma`),
+
+  /** Guarda el cronograma entero; las etapas sin fecha de fin se quitan. */
+  guardarCronograma: (
+    procesoId: string,
+    etapas: { etapa: number; fechaInicio: string | null; fechaFin: string | null; nota: string | null }[],
+  ) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etapas }),
+    }),
+
+  /**
+   * Guarda el cronograma por actividad entero (138); lo del flujo que va sin
+   * fecha de fin se quita, y las propias que no van se borran (139).
+   */
+  guardarCronogramaActividades: (
+    procesoId: string,
+    actividades: {
+      /** Las del flujo; una propia va sin numeral, con nombre y etapa (139). */
+      numeral?: string | null;
+      id?: string | null;
+      nombre?: string | null;
+      etapa?: number | null;
+      fechaInicio: string | null;
+      fechaFin: string | null;
+      diasAntes: number | null;
+      avisarA: string[];
+      canal: string;
+      correos: string[];
+      nota: string | null;
+    }[],
+    origen: { adendaId?: string; motivo?: string } = {},
+  ) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma/actividades`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actividades,
+        ...(origen.adendaId ? { adendaId: origen.adendaId } : {}),
+        ...(origen.motivo?.trim() ? { motivo: origen.motivo.trim() } : {}),
+      }),
+    }),
+
+  /** Cuántas actividades tiene el cronograma predeterminado de cada modalidad (140). */
+  resumenCronogramaPredeterminado: () =>
+    pedir<ResumenPredeterminado[]>('/configuracion/cronograma-predeterminado'),
+
+  /** El cronograma predeterminado de una modalidad (140). */
+  cronogramaPredeterminado: (modalidad: string) =>
+    pedir<CronogramaPredeterminado>(`/configuracion/cronograma-predeterminado/${modalidad}`),
+
+  /** Reemplaza el cronograma predeterminado de la modalidad entero (140). */
+  guardarCronogramaPredeterminado: (modalidad: string, filas: Omit<FilaPredeterminada, 'id'>[]) =>
+    pedir<CronogramaPredeterminado>(`/configuracion/cronograma-predeterminado/${modalidad}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filas }),
+    }),
+
+  /** Las fechas que propone el predeterminado de la modalidad del proceso; no guarda nada (140). */
+  propuestaCronograma: (procesoId: string, diaCero: string) =>
+    pedir<PropuestaCronograma>(
+      `/procesos/${procesoId}/cronograma/predeterminado?desde=${encodeURIComponent(diaCero)}`,
+    ),
+
+  /** Marca o desmarca cumplida una actividad propia del cronograma (139). */
+  marcarCumplidaCronograma: (procesoId: string, actividadId: string, cumplida: boolean) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma/actividades/${actividadId}/cumplida`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cumplida }),
+    }),
+
   guardarParametrosAlerta: (cambios: Record<string, number>) =>
     pedir<ParametroAlerta[]>('/alertas/parametros', {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Buzones de la entidad que reciben copia de los correos del módulo (138). */
+  correosInstitucionales: () => pedir<CorreoInstitucional[]>('/alertas/correos'),
+
+  guardarCorreosInstitucionales: (cambios: Record<string, string | null>) =>
+    pedir<CorreoInstitucional[]>('/alertas/correos', {
       method: 'PUT',
       body: JSON.stringify(cambios),
     }),
@@ -3037,9 +3208,9 @@ export const contratacionService = {
   /** Lo que impide activar: del borrador si lo hay, si no de la activa. */
   validacionFlujo: () => pedir<ProblemaFlujo[]>('/configuracion/flujo-versiones/validacion'),
 
-  /** Activa el borrador; 409 si algo queda sin quién lo haga o lo apruebe. */
+  /** Activa el borrador y pasa a él los procesos vivos; 409 si algo queda sin quién lo haga o lo apruebe. */
   activarFlujo: (nota?: string) =>
-    pedir<{ activada: boolean }>('/configuracion/flujo-versiones/activar', {
+    pedir<ResultadoActivacionFlujo>('/configuracion/flujo-versiones/activar', {
       method: 'POST',
       body: JSON.stringify({ nota }),
     }),
