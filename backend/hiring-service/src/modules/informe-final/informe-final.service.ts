@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,13 +20,13 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
   AgregarEntregableDto,
   AnularInformeFinalDto,
   ElaborarInformeFinalDto,
 } from './dto/informe-final.dto';
-import { PuestosService } from '../participacion/puestos.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
@@ -70,7 +69,8 @@ interface ArchivoCargado {
  * Informe final de ejecución — actividad 10.1 (EFDS-1171, RF-LIQ-01).
  *
  * El supervisor cierra su vigilancia con un informe que consolida qué se
- * entregó y cómo quedó el contrato en plata. Es lo que soporta la liquidación
+ * entregó y cómo quedó el contrato en plata. No entra a la aplicación (136):
+ * su informe firmado lo carga quien tenga la 10.1 en el flujo. Es lo que soporta la liquidación
  * (EFDS-1172), y por eso lo que dice tiene que quedar fijo.
  *
  * **El balance se congela al elaborar.** Mismo criterio del informe de
@@ -83,7 +83,7 @@ export class InformeFinalService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
-    private readonly puestos: PuestosService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -97,7 +97,7 @@ export class InformeFinalService {
         motivoNoAdmite: 'el proceso todavía no tiene contrato generado',
         contrato: null,
         supervisor: null,
-        esSupervisor: false,
+        puedeRegistrar: false,
         puedeElaborar: false,
         /** El balance de hoy, para ver contra qué se va a firmar. */
         balanceActual: null as BalanceEjecucion | null,
@@ -130,9 +130,12 @@ export class InformeFinalService {
         valor: contrato.valor,
       },
       supervisor: supervisor
-        ? { nombre: supervisor.nombre, cargo: supervisor.cargo, personaId: supervisor.personaId }
+        ? { nombre: supervisor.nombre, cargo: supervisor.cargo, email: supervisor.email }
         : null,
-      esSupervisor: await this.esElSupervisor(procesoId, acceso),
+      /** Si quien consulta puede cargar el informe del supervisor (editar la 10.1). */
+      puedeRegistrar:
+        !!acceso.roles?.includes('SUPER_ADMIN') ||
+        (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_INFORME_FINAL)),
       puedeElaborar: admite && !!supervisor && !vigente,
       balanceActual,
       /**
@@ -188,7 +191,7 @@ export class InformeFinalService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
+      await this.exigirSupervisor(em, contrato.id);
 
       if (await this.informeVigente(contrato.id, em)) {
         throw new ConflictException(
@@ -252,7 +255,7 @@ export class InformeFinalService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
+      await this.exigirSupervisor(em, contrato.id);
 
       const informe = await this.informeVigente(contrato.id, em);
       if (!informe) {
@@ -307,7 +310,7 @@ export class InformeFinalService {
   async anular(procesoId: string, dto: AnularInformeFinalDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
+      await this.exigirSupervisor(em, contrato.id);
 
       const informe = await this.informeVigente(contrato.id, em);
       if (!informe) throw new NotFoundException('El contrato no tiene informe final vigente');
@@ -398,39 +401,16 @@ export class InformeFinalService {
   }
 
   /**
-   * Incluye al super admin, igual que `exigirSupervisor`: si aquí no lo
-   * contara, el botón para elaborar el informe nunca se le mostraría aunque
-   * la petición real se la fuera a aceptar (EFDS-1170, mismo caso en
-   * `pagos.service.ts`).
-   */
-  private esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
-    return this.puestos.esElSupervisor(procesoId, acceso, em);
-  }
-
-  /**
-   * Exige que quien actúa sea el supervisor vigente de este contrato.
+   * El supervisor vigente, que tiene que existir para cargar su informe.
    *
-   * Misma regla del aval del pago (EFDS-1170): el informe final es la
-   * conclusión de su vigilancia, y quien no vigiló no la puede firmar.
+   * No se pregunta quién actúa: el supervisor no entra a la aplicación (136) y
+   * su informe firmado lo carga quien tenga la 10.1 en el flujo. Pero sin
+   * supervisor designado no hay de quién sea el informe.
    */
-  private async exigirSupervisor(
-    em: EntityManager,
-    procesoId: string,
-    contratoId: string,
-    acceso: HiringAccess,
-  ) {
-    if (acceso.roles?.includes('SUPER_ADMIN')) return;
-
-    const supervisor = await this.supervisorVigente(contratoId, em);
-    if (!supervisor) {
+  private async exigirSupervisor(em: EntityManager, contratoId: string) {
+    if (!(await this.supervisorVigente(contratoId, em))) {
       throw new ConflictException(
-        'El contrato no tiene supervisor designado: no hay quien elabore el informe final',
-      );
-    }
-
-    if (!(await this.esElSupervisor(procesoId, acceso, em))) {
-      throw new ForbiddenException(
-        'No eres el supervisor de este contrato: el informe final lo firma quien vigiló la ejecución',
+        'El contrato no tiene supervisor designado: no hay de quién sea el informe final',
       );
     }
   }
