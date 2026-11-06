@@ -3,11 +3,24 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateMantenimientoDto {
-  @ApiProperty({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud' })
+  @ApiPropertyOptional({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud (Nivel Central Bogotá)' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID()
-  idSede: string;
+  idSede?: string;
+
+  @ApiPropertyOptional({ example: 1, description: 'ID de la Dirección Territorial (academic_work_plan.direccion_territorial)' })
+  @IsOptional()
+  idDireccionTerritorial?: number;
+
+  @ApiPropertyOptional({ example: 12, description: 'ID del CETAP municipal (academic_work_plan.cetap)' })
+  @IsOptional()
+  idCetap?: number;
+
+  @ApiPropertyOptional({ example: 'Salón 2do piso al lado de coordinación', description: 'Texto libre de ubicación cuando el CETAP no tiene inventario detallado (Fallback)' })
+  @IsString()
+  @IsOptional()
+  ubicacionAdicionalTexto?: string;
 
   @ApiPropertyOptional({ example: 'id-espacio-uuid', description: 'Espacio fisico asociado (catálogo de espacios)' })
   @IsString()

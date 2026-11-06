@@ -332,6 +332,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         String(m.descripcion || '').toLowerCase().includes(q) ||
         String(m.solicitanteNombre || '').toLowerCase().includes(q) ||
         String(m.sede?.nombre || '').toLowerCase().includes(q) ||
+        String(m.nombreUbicacionDisplay || '').toLowerCase().includes(q) ||
+        String(m.cetapNombre || '').toLowerCase().includes(q) ||
         String(m.espacioFisico || '').toLowerCase().includes(q)
       );
 
@@ -937,8 +939,13 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     {m.nombreAreaSolicitante && (
                       <span>Área: <strong className="text-slate-700">{m.nombreAreaSolicitante}</strong></span>
                     )}
-                    {m.sede?.nombre && (
-                      <span>Sede: <strong className="text-slate-700">{m.sede.nombre}</strong></span>
+                    {(m.sede?.nombre || m.nombreUbicacionDisplay || m.cetapNombre) && (
+                      <span>
+                        Sede / CETAP:{' '}
+                        <strong className="text-slate-700">
+                          {m.nombreUbicacionDisplay || m.sede?.nombre || `CETAP ${m.cetapNombre}`}
+                        </strong>
+                      </span>
                     )}
                     {(m.piso || m.salon) && (
                       <span>
