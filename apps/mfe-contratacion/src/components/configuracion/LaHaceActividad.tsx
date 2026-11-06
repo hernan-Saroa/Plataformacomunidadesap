@@ -349,8 +349,8 @@ export function AvisoDeVersion({
   return (
     <div className="space-y-1">
       <p className="text-xs text-slate-500 m-0">
-        Los cambios se guardan en el borrador del flujo y rigen cuando se activa en la pestaña Flujo. Los procesos en
-        curso siguen con su versión.
+        Los cambios se guardan en el borrador del flujo y rigen cuando se activa en la pestaña Flujo, también en los
+        procesos en curso para lo que les falta.
       </p>
       {modalidad ? (
         heredada ? (
