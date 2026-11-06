@@ -2113,16 +2113,27 @@ const puedeCerrarTecnicamente = Boolean(
 
                     <div className="space-y-2.5">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5" />
+                        <Building2 className="w-3.5 h-3.5 text-blue-600" />
                         Ubicación
                       </div>
                       <div className="font-semibold text-slate-800 text-base leading-6">
-                        {detalle.sede?.nombre || detalle.idSede || '—'}
+                        {detalle.nombreUbicacionDisplay ||
+                          detalle.sede?.nombre ||
+                          (detalle.cetapNombre
+                            ? `CETAP ${detalle.cetapNombre}${detalle.direccionTerritorialNombre ? ` (${detalle.direccionTerritorialNombre})` : ''}`
+                            : detalle.direccionTerritorialNombre
+                            ? `Territorial ${detalle.direccionTerritorialNombre}`
+                            : detalle.espacio?.bloque?.nombre || detalle.idSede || '—')}
                       </div>
-                      {(detalle.piso || detalle.salon || detalle.ubicacionDetalle) && (
+                      {(detalle.piso || detalle.salon || detalle.ubicacionDetalle || detalle.ubicacionAdicionalTexto) && (
                         <div className="text-xs text-slate-500 inline-flex items-start gap-1.5 leading-5">
                           <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-400" />
-                          {[detalle.piso && `Piso ${detalle.piso}`, detalle.salon, detalle.ubicacionDetalle].filter(Boolean).join(' · ')}
+                          {[
+                            detalle.piso && `Piso ${detalle.piso}`,
+                            detalle.salon,
+                            detalle.ubicacionDetalle,
+                            detalle.ubicacionAdicionalTexto,
+                          ].filter(Boolean).join(' · ')}
                         </div>
                       )}
                     </div>
