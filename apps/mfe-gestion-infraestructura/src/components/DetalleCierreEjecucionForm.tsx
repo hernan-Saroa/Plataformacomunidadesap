@@ -164,12 +164,22 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
 
   const tieneSoporteContratacion = useMemo(() => {
     return evidencias.some(
-      (e) => e.categoria === 'SOPORTE_CONTRATACION' || e.categoria === 'ACTA_RECEPCION_INSUMOS'
+      (e) =>
+        e.categoria === 'SOPORTE_CONTRATACION' ||
+        e.categoria === 'ACTA_RECEPCION_INSUMOS' ||
+        e.categoria === 'ACTA_RECIBO_SATISFACCION'
     );
   }, [evidencias]);
 
   const tieneRecepcionOActaInsumos = useMemo(() => {
-    return tieneRecepcionInsumos || evidencias.some((e) => e.categoria === 'ACTA_RECEPCION_INSUMOS');
+    return (
+      tieneRecepcionInsumos ||
+      evidencias.some(
+        (e) =>
+          e.categoria === 'ACTA_RECEPCION_INSUMOS' ||
+          e.categoria === 'ACTA_RECIBO_SATISFACCION'
+      )
+    );
   }, [tieneRecepcionInsumos, evidencias]);
 
   const faltaSoporteContratacion = Boolean(solicitud?.requiereContratacion && !tieneSoporteContratacion);
@@ -606,18 +616,23 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                               <option value="EJECUCION_TECNICA">Foto Ejecución Técnica</option>
                               <option value="SOPORTE_CONTRATACION">Soporte Contratación / OC / Factura</option>
                               <option value="ACTA_RECEPCION_INSUMOS">Acta Recepción Insumos</option>
+                              <option value="ACTA_RECIBO_SATISFACCION">Acta de Recibo a Satisfacción / Liquidación (Cumple Contrato + Entrega)</option>
                             </select>
                           </div>
                         ) : (
                           <div className="pt-0.5">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                              ev.categoria === 'SOPORTE_CONTRATACION'
+                              ev.categoria === 'ACTA_RECIBO_SATISFACCION'
+                                ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                : ev.categoria === 'SOPORTE_CONTRATACION'
                                 ? 'bg-purple-100 text-purple-800 border-purple-200'
                                 : ev.categoria === 'ACTA_RECEPCION_INSUMOS'
                                 ? 'bg-blue-100 text-blue-800 border-blue-200'
                                 : 'bg-emerald-100 text-emerald-800 border-emerald-200'
                             }`}>
-                              {ev.categoria === 'SOPORTE_CONTRATACION'
+                              {ev.categoria === 'ACTA_RECIBO_SATISFACCION'
+                                ? 'Acta Recibo Satisfacción / Liquidación'
+                                : ev.categoria === 'SOPORTE_CONTRATACION'
                                 ? 'Soporte Contratación'
                                 : ev.categoria === 'ACTA_RECEPCION_INSUMOS'
                                 ? 'Acta Insumos'
