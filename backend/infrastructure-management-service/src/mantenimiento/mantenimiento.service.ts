@@ -3,7 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -286,7 +286,9 @@ export interface VoBoConfigData {
   requiereVoBoInsumos: boolean;
   montoMinimoInsumosVoBoCop: number;
   categoriasVoBoObligatorio: number[];
+  categoriasCodigosVoBoObligatorio?: string[];
   requiereVoBoContratacion: boolean;
+  modalidadVoBo?: 'UN_ACTOR' | 'DOS_ACTORES';
 }
 
 const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
@@ -294,8 +296,10 @@ const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
   requiereVoBoMantenimientoMayor: true,
   requiereVoBoInsumos: true,
   montoMinimoInsumosVoBoCop: 500000,
-  categoriasVoBoObligatorio: [48, 54],
+  categoriasVoBoObligatorio: [25, 31, 48, 54],
+  categoriasCodigosVoBoObligatorio: ['CS_002', 'CS_008'],
   requiereVoBoContratacion: true,
+  modalidadVoBo: 'UN_ACTOR',
 };
 
 @Injectable()
@@ -824,7 +828,11 @@ export class MantenimientoService implements OnModuleInit {
       nombreFuncionarioBienAsignado: dto.nombreFuncionarioBienAsignado ?? null,
       placaInventarioBien: dto.placaInventarioBien ?? null,
       soporteBienAsignadoUrl: dto.soporteBienAsignadoUrl ?? null,
-      requiereVoBo: false,
+      requiereVoBo: await this.evaluarSiRequiereVoBo({
+        idCategoria: dto.idCategoria,
+        clasificacionMantenimiento: 'MENOR',
+        requiereContratacion: false,
+      }),
     };
 
     const saved = await this.mantenimientoRepo.save(solicitudData as any);
@@ -851,7 +859,7 @@ export class MantenimientoService implements OnModuleInit {
     }
 
     if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
-      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA' });
+      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA', clave: 'UMI_OTIC_SOLICITUD_RADICADA' });
     }
     await this.notificarAlSolicitante(saved, {
       tipo: 'SOLICITUD_RADICADA',
@@ -952,7 +960,7 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.remisiones = [...(Array.isArray(solicitud.remisiones) ? solicitud.remisiones : []), item];
 
     const savedRemision = await this.mantenimientoRepo.save(solicitud);
-    await this.notificarOTIC(savedRemision, { evento: 'REMITIDA A TECNOLOGÍAS (TI)', motivo: dto.motivo });
+    await this.notificarOTIC(savedRemision, { evento: 'REMITIDA A TECNOLOGÍAS (TI)', motivo: dto.motivo, clave: 'UMI_OTIC_REMITIDA_TI' });
     await this.notificarAlSolicitante(savedRemision, {
       tipo: 'SOLICITUD_REMITIDA_TI',
       titulo: `Solicitud #${savedRemision.consecutivo} remitida a TI`,
@@ -1692,6 +1700,104 @@ export class MantenimientoService implements OnModuleInit {
   // ---------------------------------------------------------------------------
   // Fase 3 Req. #3: Parametrización Visto Bueno (VoBo)
   // ---------------------------------------------------------------------------
+  async evaluarSiRequiereVoBo(
+    solicitud: {
+      idCategoria?: number | null;
+      clasificacionMantenimiento?: string | null;
+      requiereContratacion?: boolean | null;
+      totalEstimadoInsumosCop?: number | null;
+      esperaInsumosFlag?: boolean | null;
+    },
+    contexto?: { totalEstimadoInsumos?: number; hayInsumosNoDisponibles?: boolean },
+  ): Promise<boolean> {
+    try {
+      const voboConfig = await this.getVoBoConfig();
+      if (voboConfig.requiereVoBoGlobal) return true;
+      if (
+        voboConfig.requiereVoBoMantenimientoMayor &&
+        String(solicitud.clasificacionMantenimiento || '').toUpperCase() === 'MAYOR'
+      ) {
+        return true;
+      }
+      if (voboConfig.requiereVoBoContratacion && Boolean(solicitud.requiereContratacion)) {
+        return true;
+      }
+
+      // Categorías con VoBo obligatorio (por id o por código)
+      const idCat = Number(solicitud.idCategoria);
+      if (Number.isInteger(idCat) && idCat > 0) {
+        if (
+          Array.isArray(voboConfig.categoriasVoBoObligatorio) &&
+          voboConfig.categoriasVoBoObligatorio.includes(idCat)
+        ) {
+          return true;
+        }
+        try {
+          const catItem = await this.catalogoRepo.findOne({
+            where: { idCatalogo: idCat, catalogo: 'CATEGORIA_SERVICIO' },
+          });
+          if (catItem) {
+            const cod = (catItem.codigo || '').toUpperCase();
+            const codigosVoBo = voboConfig.categoriasCodigosVoBoObligatorio || ['CS_002', 'CS_008'];
+            if (codigosVoBo.includes(cod) || cod === 'CS_002' || cod === 'CS_008') {
+              return true;
+            }
+          }
+        } catch {}
+      }
+
+      // Insumos
+      const totalInsumos = contexto?.totalEstimadoInsumos ?? Number(solicitud.totalEstimadoInsumosCop || 0);
+      const hayNoDisponibles = contexto?.hayInsumosNoDisponibles ?? Boolean(solicitud.esperaInsumosFlag);
+      if (
+        voboConfig.requiereVoBoInsumos &&
+        (hayNoDisponibles || totalInsumos >= (voboConfig.montoMinimoInsumosVoBoCop || 500000))
+      ) {
+        return true;
+      }
+    } catch (err: any) {
+      console.warn('Error al evaluar si requiere VoBo:', err?.message || err);
+    }
+    return false;
+  }
+
+  async registrarRevisionVoBoTecnico(
+    idSolicitud: string,
+    body: { concepto: 'FAVORABLE' | 'CON_OBSERVACIONES'; observaciones: string },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
+
+    const vr = this.validarRolesAsignador(user);
+    const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!vr.permitido && !per.puede) {
+      throw new ForbiddenException('No tiene permisos para registrar la revisión técnica de la valoración.');
+    }
+
+    const obs = (body.observaciones || '').trim();
+    if (!obs || obs.length < 5) {
+      throw new BadRequestException('Las observaciones del concepto técnico deben contener al menos 5 caracteres.');
+    }
+    const concepto = body.concepto === 'CON_OBSERVACIONES' ? 'CON_OBSERVACIONES' : 'FAVORABLE';
+
+    solicitud.requiereVoBo = true;
+    const notaConcepto = `[Revisión Técnica - ${concepto}]: ${obs}`;
+    solicitud.voboObservaciones = solicitud.voboObservaciones
+      ? `${solicitud.voboObservaciones}\n${notaConcepto}`
+      : notaConcepto;
+
+    this.pushAsignacion(solicitud, {
+      accion: concepto === 'FAVORABLE' ? 'VOBO_REVISION_TECNICA_FAVORABLE' : 'VOBO_REVISION_TECNICA_OBSERVADA',
+      motivo: `Concepto técnico previo (${concepto}): ${obs}`,
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: solicitud.requiereContratacion,
+      user: user as AuthUser,
+    });
+
+    return this.mantenimientoRepo.save(solicitud);
+  }
+
   async getVoBoConfig(): Promise<VoBoConfigData> {
     const row = await this.catalogoRepo.findOne({
       where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_VOBO_CONFIG },
@@ -1874,7 +1980,11 @@ export class MantenimientoService implements OnModuleInit {
         | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA'
         | 'VOBO_VALORACION_APROBADO'
         | 'VOBO_VALORACION_OBSERVADO'
-        | 'VINCULACION_TRAMITE_CONTRACTUAL';
+        | 'VOBO_REVISION_TECNICA_FAVORABLE'
+        | 'VOBO_REVISION_TECNICA_OBSERVADA'
+        | 'VINCULACION_TRAMITE_CONTRACTUAL'
+        | 'CIERRE_POR_FALTA_DE_INSUMOS'
+        | 'CIERRE_TECNICO_CONTRATACION_VALIDADO';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       idTecnicoAsignado?: string | null;
@@ -2403,11 +2513,13 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       roles.includes('SUPER_ADMIN') ||
       roles.includes('GESTOR_MANTENIMIENTO') ||
       roles.includes('ADMINISTRADOR_FUNCIONAL') ||
-      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA')
+      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      roles.includes('COORDINADOR_INFRAESTRUCTURA') ||
+      roles.includes('P5')
     );
   }
 
-  // EFDS-1737 L17: bypass conformidad/devolver = SUPER_ADMIN + ADMINISTRADOR_FUNCIONAL + ADMINISTRADOR_FUNCIONAL_INFRA.
+  // EFDS-1737 L17: bypass conformidad/devolver = SUPER_ADMIN + ADMINISTRADOR_FUNCIONAL + ADMINISTRADOR_FUNCIONAL_INFRA + COORDINADOR_INFRAESTRUCTURA + P5.
   // NUNCA pasa P2 (ANALISTA_ASIGNADOR_UMI), NUNCA pasa P3/P4 TECNICOS, NUNCA pasa P7 CALIDAD.
   // Alineado 1:1 al frontend DetalleSolicitudModal.tsx esBypassConformidadValido.
   private bypassConformidadAutorizado(user: AuthUser | null | undefined): boolean {
@@ -2417,7 +2529,9 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       roles.includes('SUPER_ADMIN') ||
       roles.includes('GESTOR_MANTENIMIENTO') ||
       roles.includes('ADMINISTRADOR_FUNCIONAL') ||
-      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA')
+      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      roles.includes('COORDINADOR_INFRAESTRUCTURA') ||
+      roles.includes('P5')
     );
   }
 
@@ -2567,6 +2681,11 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       throw new ForbiddenException('No está autorizado para iniciar la ejecución de esta solicitud.');
     }
     await this.validarEspecializacionCS002(solicitud, per, user);
+    if (solicitud.requiereVoBo && solicitud.voboAprobado !== true) {
+      throw new BadRequestException(
+        'Esta solicitud requiere Visto Bueno institucional (VoBo) sobre la valoración técnica. No se puede iniciar ejecución hasta contar con la aprobación de Coordinación.',
+      );
+    }
     if (solicitud.estado !== 'ASIGNADA') {
       throw new ConflictException(
         `La solicitud debe estar en estado ASIGNADA para iniciar ejecución directa. Estado actual: ${solicitud.estado}`,
@@ -2744,7 +2863,10 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     valoracion.evidencias = Array.isArray(dto.evidencias) ? dto.evidencias : [];
     valoracion.fechaFinValoracion = new Date();
 
-    const estadoFinal: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS' = hayNoDisponible
+    const cerrarPorInsumos = Boolean(dto.cerrarPorFaltaInsumos && hayNoDisponible);
+    const estadoFinal: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS' | 'CERRADA_SIN_ATENCION' = cerrarPorInsumos
+      ? 'CERRADA_SIN_ATENCION'
+      : hayNoDisponible
       ? 'EN_ESPERA_DE_INSUMOS'
       : 'EN_PROGRESO';
     valoracion.estadoAlFinalizar = estadoFinal;
@@ -2780,20 +2902,63 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     solicitud.riesgoValoracion = savedValoracion.nivelRiesgo;
     solicitud.requiereApagadoElectrico = savedValoracion.requiereApagadoElectrico;
     solicitud.totalEstimadoInsumosCop = totalEstimado;
+
+    // [EFDS-1735] Cierre directo por falta de disponibilidad de insumos
+    if (cerrarPorInsumos) {
+      solicitud.estado = 'CERRADA_SIN_ATENCION';
+      solicitud.esperaInsumosFlag = false;
+      const motivoCierre = (dto.motivoCierreFaltaInsumos || '').trim() || 'Cierre técnico por falta de disponibilidad de insumos sin alternativa viable de abastecimiento (EFDS-1735)';
+      solicitud.motivoRechazo = motivoCierre;
+      solicitud.fechaCierreTecnico = new Date();
+
+      this.pushAsignacion(solicitud, {
+        accion: 'CIERRE_POR_FALTA_DE_INSUMOS',
+        tecnicoCodigo: per.tecnicoCodigo ?? null,
+        tecnicoNombreDisplay: per.tecnicoNombre ?? null,
+        motivo: `Solicitud CERRADA por falta de disponibilidad de insumos (EFDS-1735). Motivo: ${motivoCierre}`,
+        observaciones: 'Insumos requeridos no disponibles en bodega ni en presupuesto inmediato. Registro formal para análisis de necesidades de compra institucional.',
+        user: user as AuthUser,
+      });
+
+      const savedSol = await this.mantenimientoRepo.save(solicitud);
+
+      await this.notificarAlSolicitante(savedSol, {
+        tipo: 'SOLICITUD_CERRADA_SIN_INSUMOS',
+        titulo: `Solicitud #${savedSol.consecutivo} cerrada por falta de insumos`,
+        mensaje: `La solicitud fue valorada pero no fue posible ejecutarla debido a que los insumos requeridos no se encuentran disponibles ni existe alternativa oportuna de compra. Su necesidad quedó registrada en el consolidado institucional.`,
+        icono: 'PackageX',
+        color: '#be123c',
+        prioridad: 'Media',
+        textoAccion: 'Ver detalle',
+        emailSubject: `[UMI - ESAP] Solicitud #${savedSol.consecutivo}: Cerrada por no disponibilidad de insumos`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3>Solicitud Cerrada por Falta de Insumos (EFDS-1735)</h3>
+<p>Estimado(a) solicitante, la solicitud <strong>#${savedSol.consecutivo}</strong> fue valorada técnicamente, pero no es viable su atención inmediata por no disponibilidad de los materiales requeridos en sede ni disponibilidad presupuestal para compra oportuna.</p>
+<p><strong>Causa registrada:</strong> ${motivoCierre}</p>
+<p>Esta necesidad ha sido consolidada en el reporte de requerimientos de abastecimiento de la Unidad de Mantenimiento e Infraestructura.</p>
+</div>`,
+      });
+
+      return { solicitud: savedSol, valoracion: savedValoracion };
+    }
+
     solicitud.estado = estadoFinal;
     solicitud.esperaInsumosFlag = hayNoDisponible;
 
-    // Verificar si requiere VoBo según parametrización institucional (Fase 3 Req. #3)
-    try {
-      const voboConfig = await this.getVoBoConfig();
-      const requiereMayor = voboConfig.requiereVoBoMantenimientoMayor && solicitud.clasificacionMantenimiento === 'MAYOR';
-      const requiereInsumos = voboConfig.requiereVoBoInsumos && (hayNoDisponible || totalEstimado >= voboConfig.montoMinimoInsumosVoBoCop);
-      const requiereCat = Array.isArray(voboConfig.categoriasVoBoObligatorio) && voboConfig.categoriasVoBoObligatorio.includes(Number(solicitud.idCategoria));
-      const requiereContrat = voboConfig.requiereVoBoContratacion && Boolean(solicitud.requiereContratacion);
-      if (voboConfig.requiereVoBoGlobal || requiereMayor || requiereInsumos || requiereCat || requiereContrat) {
-        solicitud.requiereVoBo = true;
-      }
-    } catch {}
+    // [EFDS-2354] Si el técnico marcó requiereContratacion o si hay insumos no disponibles:
+    if (dto.requiereContratacion || hayNoDisponible) {
+      solicitud.requiereContratacion = true;
+      solicitud.requiereVoBo = true;
+    }
+
+    // Verificar si requiere VoBo según parametrización institucional (EFDS-2355)
+    const reqVoBoValoracion = await this.evaluarSiRequiereVoBo(solicitud, {
+      totalEstimadoInsumos: totalEstimado,
+      hayInsumosNoDisponibles: hayNoDisponible,
+    });
+    if (reqVoBoValoracion) {
+      solicitud.requiereVoBo = true;
+    }
 
     if (hayNoDisponible && maxDiasAdquisicion > 0) {
       if (solicitud.fechaLimiteAtencion) {
@@ -2861,10 +3026,33 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
         emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
 <h3 style="margin:0 0 8px;color:#d97706">Valoración en Campo: Insumos Requeridos</h3>
 <p style="margin:0 0 8px">La solicitud <strong>#${savedSol.consecutivo}</strong> requiere adquisición de insumos para continuar.</p>
-<p style="margin:0 0 8px"><strong>Total insumos estimado:</strong> $${Math.round(totalEstimado).toLocaleString('es-CO')} COP</p>
+<p style="margin:0 0 8px"><strong>Total insumos estimado:</strong> ${Math.round(totalEstimado).toLocaleString('es-CO')} COP</p>
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver detalle y gestionar</a></p>
 </div>`,
       });
+
+      if (dto.requiereContratacion) {
+        await this.notificarEncargadosUMI(savedSol, {
+          tipo: 'UMI_VALORACION_REQUIERE_CONTRATACION',
+          titulo: `Atención requiere Contratación: Solicitud #${savedSol.consecutivo}`,
+          mensaje: `El técnico identificó que la atención de la solicitud #${savedSol.consecutivo} depende de un proceso de contratación o compra externa.`,
+          icono: 'ShoppingCart',
+          color: '#7e22ce',
+          prioridad: 'Alta',
+          textoAccion: 'Revisar requerimiento',
+          emailSubject: `[UMI - ESAP] Solicitud #${savedSol.consecutivo} requiere Contratación / Compra Externa`,
+          emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#7e22ce">Identificación de Necesidad de Contratación / Compra Externa (EFDS-2354)</h3>
+<p style="margin:0 0 8px">El técnico asignado ha registrado la valoración para la solicitud <strong>#${savedSol.consecutivo}</strong> e identificó que la solución depende de contratación externa o compra de insumos fuera de inventario.</p>
+<p style="margin:0 0 4px"><strong>Sede ESAP:</strong> ${savedSol.sede || 'Sede Central'}</p>
+<p style="margin:0 0 4px"><strong>Diagnóstico Técnico:</strong> ${dto.diagnostico}</p>
+<p style="margin:0 0 4px"><strong>Alcance Previsto:</strong> ${dto.alcanceIdentificado}</p>
+<p style="margin:0 0 8px"><strong>Costo Estimado Insumos:</strong> ${Math.round(totalEstimado).toLocaleString('es-CO')} COP</p>
+<p style="margin:0 0 8px">La solicitud permanecerá en seguimiento y requerirá el cargue de evidencias contractuales y recepción de insumos para su posterior validación y cierre por Coordinación.</p>
+<p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(savedSol)}" style="display:inline-block;padding:6px 14px;background:#7e22ce;color:#fff;border-radius:6px;text-decoration:none">Ver Solicitud en Plataforma</a></p>
+</div>`,
+        });
+      }
     } else {
       await this.notificarAlSolicitante(savedSol, {
         tipo: 'UMI_SOLICITUD_EN_PROGRESO',
@@ -2898,6 +3086,74 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       });
     }
     return { solicitud: savedSol, valoracion: savedValoracion };
+  }
+
+  async cerrarPorFaltaDeInsumosDirecto(
+    idSolicitud: string,
+    dto: { insumosFaltantes?: string; motivo: string },
+    user?: AuthUser,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.mantenimientoRepo.findOne({
+      where: { idSolicitud },
+      relations: ['sede'],
+    });
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud no encontrada: ${idSolicitud}`);
+    }
+
+    const esAdmin = this.usuarioEsSuperAdminOAsignador(user);
+    const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!per.puede && !esAdmin) {
+      throw new ForbiddenException('No tiene permisos para cerrar la solicitud.');
+    }
+
+    if (solicitud.estado === 'CERRADA' || solicitud.estado === 'CERRADA_SIN_ATENCION') {
+      throw new ConflictException(`La solicitud ya se encuentra en estado ${solicitud.estado}.`);
+    }
+
+    const motivoCierre = (dto.motivo || '').trim();
+    if (motivoCierre.length < 5) {
+      throw new BadRequestException('El motivo de cierre por falta de insumos requiere al menos 5 caracteres.');
+    }
+
+    solicitud.estado = 'CERRADA_SIN_ATENCION';
+    solicitud.esperaInsumosFlag = false;
+    solicitud.motivoRechazo = motivoCierre;
+    solicitud.fechaCierreTecnico = new Date();
+
+    const insumosDesc = (dto.insumosFaltantes || '').trim();
+    this.pushAsignacion(solicitud, {
+      accion: 'CIERRE_POR_FALTA_DE_INSUMOS',
+      tecnicoCodigo: per.tecnicoCodigo ?? null,
+      tecnicoNombreDisplay: per.tecnicoNombre ?? null,
+      motivo: `Solicitud CERRADA por falta de disponibilidad de insumos (EFDS-1735). Motivo: ${motivoCierre}`,
+      observaciones: insumosDesc
+        ? `Insumos requeridos no disponibles: ${insumosDesc}. Sin viabilidad de abastecimiento inmediato.`
+        : 'Insumos requeridos no disponibles en bodega ni en presupuesto inmediato. Registro formal para consolidado institucional de compras.',
+      user: user as AuthUser,
+    });
+
+    const savedSol = await this.mantenimientoRepo.save(solicitud);
+
+    await this.notificarAlSolicitante(savedSol, {
+      tipo: 'SOLICITUD_CERRADA_SIN_INSUMOS',
+      titulo: `Solicitud #${savedSol.consecutivo} cerrada por falta de insumos`,
+      mensaje: `La solicitud fue valorada pero no fue posible ejecutarla debido a que los insumos requeridos no se encuentran disponibles ni existe alternativa oportuna de compra. Su necesidad quedó registrada en el consolidado institucional.`,
+      icono: 'PackageX',
+      color: '#be123c',
+      prioridad: 'Media',
+      textoAccion: 'Ver detalle',
+      emailSubject: `[UMI - ESAP] Solicitud #${savedSol.consecutivo}: Cerrada por no disponibilidad de insumos`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3>Solicitud Cerrada por Falta de Insumos (EFDS-1735)</h3>
+<p>Estimado(a) solicitante, la solicitud <strong>#${savedSol.consecutivo}</strong> fue valorada técnicamente, pero no es viable su atención inmediata por no disponibilidad de los materiales requeridos en sede ni disponibilidad presupuestal para compra oportuna.</p>
+<p><strong>Causa registrada:</strong> ${motivoCierre}</p>
+${insumosDesc ? `<p><strong>Materiales relacionados:</strong> ${insumosDesc}</p>` : ''}
+<p>Esta necesidad ha sido consolidada en el reporte de requerimientos de abastecimiento de la Unidad de Mantenimiento e Infraestructura.</p>
+</div>`,
+    });
+
+    return savedSol;
   }
 
   async confirmarRecepcionInsumos(
@@ -3067,7 +3323,7 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
 
   private async notificarOTIC(
     solicitud: SolicitudMantenimiento,
-    args: { evento: string; motivo?: string; observaciones?: string },
+    args: { evento: string; motivo?: string; observaciones?: string; clave: string },
   ): Promise<void> {
     if (!this.notificaciones) return;
     try {
@@ -3087,7 +3343,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       this.notifLogger.log(
         `[EMAIL_DISPATCH][OTIC] Despachando notificación a OTIC (${this.CORREO_OTIC_DESTINO}) | Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud} | Evento: ${args.evento}`,
       );
-      const ok = await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html);
+      const ok = await this.notificaciones.sendEmail(this.CORREO_OTIC_DESTINO, subject, html, false, args.clave);
       if (ok) {
         this.notifLogger.log(
           `[EMAIL_DISPATCH][OTIC][OK] Correo entregado exitosamente a OTIC (${this.CORREO_OTIC_DESTINO}) para evento ${args.evento}`,
@@ -3148,7 +3404,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         this.notifLogger.verbose(`[${solicitud.idSolicitud}] notificación "${payload.tipo}" enviada a solicitante ${destinatarioId}`);
       } else if (destinatarioEmail) {
         // Caso legacy sin usuario registrado (sólo email)
-        await this.notificaciones.sendEmail(destinatarioEmail, payload.emailSubject, payload.emailHtml);
+        await this.notificaciones.sendEmail(destinatarioEmail, payload.emailSubject, payload.emailHtml, false, payload.tipo);
         this.notifLogger.verbose(`[${solicitud.idSolicitud}] correo "${payload.tipo}" enviado a ${destinatarioEmail} (sin id_user)`);
       }
     } catch (err: any) {
@@ -3259,7 +3515,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         };
         await this.notificaciones.notifyUserById(tecUserId, dto, tecEmail ? { subject: args.emailSubject, html: args.emailHtml } : undefined);
       } else if (tecEmail) {
-        await this.notificaciones.sendEmail(tecEmail, args.emailSubject, args.emailHtml);
+        await this.notificaciones.sendEmail(tecEmail, args.emailSubject, args.emailHtml, false, args.tipo);
       }
     } catch (err: any) {
       this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación técnico falló: ${err?.message ?? err}`);
@@ -3413,6 +3669,51 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       );
     }
 
+    // [EFDS-2355] Regla de negocio bloqueante: Si la solicitud requiere Visto Bueno (VoBo),
+    // no se puede formalizar el cierre técnico hasta que Coordinación haya emitido su aprobación.
+    if (solicitud.requiereVoBo && solicitud.voboAprobado !== true) {
+      throw new BadRequestException(
+        'Esta solicitud requiere Visto Bueno institucional (VoBo) sobre la valoración técnica. No se puede formalizar el cierre técnico hasta contar con la aprobación de Coordinación.',
+      );
+    }
+
+
+    // [EFDS-2354] Regla de negocio bloqueante: Si requiere contratación / compra externa,
+    // es obligatorio contar con soporte auditable (orden de compra, contrato, remisión o factura)
+    // y constancia de recepción conforme de insumos antes de autorizar el cierre.
+    if (solicitud.requiereContratacion) {
+      const evidenciasDto: any[] = Array.isArray(dto.evidencias) ? dto.evidencias : [];
+      const tieneSoporteContratacion = evidenciasDto.some(
+        (e) => e.categoria === 'SOPORTE_CONTRATACION' || e.categoria === 'ACTA_RECEPCION_INSUMOS',
+      );
+
+      const asignacionesPrevias = Array.isArray(solicitud.asignaciones) ? (solicitud.asignaciones as any[]) : [];
+      const tieneRecepcionInsumosConforme = asignacionesPrevias.some((a: any) => {
+        if (a.accion === 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION') return true;
+        if (a.accion === 'RECEPCION_INSUMOS_TECNICO') {
+          try {
+            const parsed = typeof a.observaciones === 'string' ? JSON.parse(a.observaciones) : a.observaciones;
+            return parsed?.resultado === 'COMPLETA';
+          } catch {
+            return String(a.motivo || '').includes('COMPLETA');
+          }
+        }
+        return false;
+      }) || evidenciasDto.some((e) => e.categoria === 'ACTA_RECEPCION_INSUMOS');
+
+      if (!tieneSoporteContratacion) {
+        throw new BadRequestException(
+          'Esta solicitud requiere contratación: Es obligatorio adjuntar el soporte de contratación/compra (orden de compra, contrato, remisión o factura) o acta de recepción de insumos antes de proceder al cierre técnico.',
+        );
+      }
+
+      if (!tieneRecepcionInsumosConforme) {
+        throw new BadRequestException(
+          'Esta solicitud requiere contratación: Se debe registrar la verificación técnica conforme de recepción de insumos (o adjuntar el acta de recepción de insumos) antes de proceder al cierre técnico.',
+        );
+      }
+    }
+
     const ahora = new Date();
     const costo = Number(dto.costoFinalEfectivoCop || 0);
     const nEvidencias = Array.isArray(dto.evidencias) ? dto.evidencias.length : 0;
@@ -3449,8 +3750,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       .filter(Boolean)
       .join(' · ');
 
+    const esCierreMayorOContractual = Boolean(
+      solicitud.clasificacionMantenimiento === 'MAYOR' || solicitud.requiereContratacion
+    );
+
     this.pushAsignacion(solicitud, {
-      accion: 'CIERRE_TECNICO',
+      accion: (esCierreMayorOContractual ? 'CIERRE_TECNICO_CONTRATACION_VALIDADO' : 'CIERRE_TECNICO') as any,
       tecnicoCodigo: per.tecnicoCodigo ?? null,
       tecnicoNombreDisplay: per.tecnicoNombre ?? null,
       motivo: motivoResumen,
@@ -4402,7 +4707,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     }
 
     // ================== HOJA 3: Rendimiento_Tecnicos ==================
-    const wsTec = workbook.addWorksheet('Rendimiento_Tecnicos', { properties: { tabColor: { argb: 'FFD97706' } } });
+    const wsTec = workbook.addWorksheet('Atencion_Por_Tecnico', { properties: { tabColor: { argb: 'FFD97706' } } });
     wsTec.columns = [
       { header: 'Código Técnico', key: 'codigoTecnico', width: 22 },
       { header: 'Nombre', key: 'nombreTecnico', width: 38 },
@@ -4410,7 +4715,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       { header: 'Completados', key: 'completados', width: 14 },
       { header: 'En curso', key: 'enCurso', width: 12 },
       { header: 'Carga vigente HOY', key: 'cargaVigente', width: 18 },
-      { header: 'Promedio Calificación', key: 'promCalif', width: 20 },
+      { header: 'Satisfacción del Servicio', key: 'promCalif', width: 22 },
     ];
     wsTec.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     wsTec.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD97706' } };
@@ -4915,7 +5220,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       ]),
     ];
     const tecTable: any[][] = [
-      filaHeaderTabla(['Técnico', 'Asig', 'Comp', 'Cur', 'Carga', 'Prom ★']),
+      filaHeaderTabla(['Técnico', 'Asig', 'Comp', 'Cur', 'Carga', 'Satisfacción Servicio ★']),
       ...reporte.porTecnico.map((t) => [
         String(t.codigoTecnico || '') + '  ' + String(t.nombreTecnico || ''),
         String(t.asignados),
@@ -5012,7 +5317,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         { text: ' ', pageBreak: 'after' },
 
         // ===== SECCIÓN 4: Rendimiento Técnicos =====
-        { text: '3. Rendimiento por Técnico Asignado', style: 'h2', margin: [0, 0, 0, 15] },
+        { text: '3. Atención Operativa de Solicitudes por Técnico', style: 'h2', margin: [0, 0, 0, 15] },
         { table: { headerRows: 1, body: tecTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
         { text: ' ', pageBreak: 'after' },
 
@@ -5811,6 +6116,63 @@ ${obs ? `<p><strong>Observaciones:</strong> ${obs}</p>` : ''}
 
     return saved;
   }
+
+  async marcarRequiereContratacion(
+    idSolicitud: string,
+    body: {
+      motivo: string;
+      insumosRequeridos?: string;
+    },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    if (!user) throw new ForbiddenException('Usuario no autenticado.');
+
+    const solicitud = await this.findById(idSolicitud);
+    const motivo = String(body?.motivo || '').trim();
+    if (!motivo || motivo.length < 5) {
+      throw new BadRequestException('El motivo o justificación técnica debe contener al menos 5 caracteres.');
+    }
+
+    solicitud.requiereContratacion = true;
+    solicitud.requiereVoBo = true;
+
+    const insumos = body?.insumosRequeridos ? String(body.insumosRequeridos).trim() : null;
+    const auditoria = {
+      marcadoPor: (user as any)?.email ?? 'Técnico Operativo',
+      motivo,
+      insumosRequeridos: insumos,
+      fecha: new Date().toISOString(),
+    };
+
+    this.pushAsignacion(solicitud, {
+      accion: 'VALORACION_TECNICA' as any,
+      motivo: `Técnico marcó la solicitud como REQUIERE CONTRATACIÓN / COMPRA EXTERNA. Motivo: ${motivo}${insumos ? ` · Insumos: ${insumos}` : ''}`,
+      observaciones: JSON.stringify(auditoria),
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: true,
+      user: user as AuthUser,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    await this.notificarEncargadosUMI(saved, {
+      tipo: 'UMI_VALORACION_REQUIERE_CONTRATACION',
+      titulo: `Atención requiere Contratación: Solicitud #${saved.consecutivo}`,
+      mensaje: `El técnico identificó que la atención de la solicitud #${saved.consecutivo} depende de un proceso de contratación o compra externa.`,
+      icono: 'ShoppingCart',
+      color: '#7e22ce',
+      prioridad: 'Alta',
+      textoAccion: 'Revisar requerimiento',
+      emailSubject: `[UMI - ESAP] Solicitud #${saved.consecutivo} requiere Contratación / Compra Externa`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3>Identificación de Necesidad de Contratación / Compra (EFDS-2354)</h3>
+<p>El técnico ha registrado que la solicitud <strong>#${saved.consecutivo}</strong> requiere contratación de servicio o adquisición de insumos.</p>
+<p><strong>Motivo / Diagnóstico:</strong> ${motivo}</p>
+${insumos ? `<p><strong>Insumos / Servicios requeridos:</strong> ${insumos}</p>` : ''}
+<p><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#7e22ce;color:#fff;border-radius:6px;text-decoration:none">Ver Solicitud en Plataforma</a></p>
+</div>`,
+    });
+
+    return saved;
+  }
 }
-
-

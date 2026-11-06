@@ -74,6 +74,8 @@ web_modules/
 .env.test.local
 .env.production.local
 .env.local
+.env.knowledge
+.env.knowledge.*
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -196,6 +198,7 @@ uploads-private/
 .env.pre
 .env.prod
 .env.rund-ocr.local
+.env.rund-ai.*
 .env.rund-documental.*
 !.env.rund-documental.example
 .rund-ocr-testenv/
@@ -203,6 +206,7 @@ backend/rund-ocr-service/__pycache__/
 
 # Package locks local
 package-lock.json
+!backend/chatbot-service/package-lock.json
 
 .claude/
 # Material de trabajo del equipo, no del producto: notas de planeacion,

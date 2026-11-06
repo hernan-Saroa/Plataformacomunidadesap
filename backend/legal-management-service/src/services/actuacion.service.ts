@@ -206,7 +206,7 @@ export class ActuacionService {
                 </p>
               </div>
             `;
-            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'ACTUACION_ASIGNADA');
         }
     }
 
@@ -312,7 +312,7 @@ export class ActuacionService {
         `;
 
         for (const email of emails) {
-            await this.notificationClient.sendEmail(email, emailSubject, emailHtml);
+            await this.notificationClient.sendEmail(email, emailSubject, emailHtml, 'AUTORIZACION_PENDIENTE');
         }
     }
 
@@ -352,7 +352,7 @@ export class ActuacionService {
           </div>
         `;
 
-        await this.notificationClient.sendEmail(userEmail, emailSubject, emailHtml);
+        await this.notificationClient.sendEmail(userEmail, emailSubject, emailHtml, 'legal_otp_firma');
         return { message: 'OTP enviado con éxito' };
     }
 
@@ -554,7 +554,7 @@ export class ActuacionService {
                 await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, dto);
                 const detail = await this.getUserDetails(expediente.abogadoSustanciador);
                 if (detail?.email) {
-                    await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+                    await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'ACTUACION_AUTORIZADA');
                 }
             }
 
@@ -667,7 +667,7 @@ export class ActuacionService {
                         </p>
                       </div>
                     `;
-                    await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+                    await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'ACTUACION_DEVUELTA');
                 }
             }
 
@@ -712,7 +712,7 @@ export class ActuacionService {
                     await this.notificationClient.notifyUserById(anteriorColumna.aprobacionUsuario, dto);
                     const detail = await this.getUserDetails(anteriorColumna.aprobacionUsuario);
                     if (detail?.email) {
-                        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+                        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'EXPEDIENTE_DEVUELTO_ETAPA');
                     }
                 }
             }

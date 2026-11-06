@@ -10,6 +10,20 @@ const access = (permissions: string[]) => {
 };
 
 describe('Navegación PTA según permisos', () => {
+  it('los perfiles RUND conservan su propia entrada sin habilitar pantallas PTA', () => {
+    const permissions = deriveFromGranular(['banco-docentes.rund.view'], perfil, true)!;
+    expect(permissions.vistasPerm).toEqual(['banco_docentes']);
+    expect(defaultPTAView(view => permissions.vistasPerm.includes(view))).toBe('banco_docentes');
+    expect(permissions.puedeAprobar).toBe(false);
+    expect(permissions.puedeRevisar).toBe(false);
+  });
+
+  it('no aplica permisos por nombre de rol a una consulta autoritativa vacía', () => {
+    const permissions = deriveFromGranular([], { ...perfil, rol: 'admin' }, true)!;
+    expect(permissions.vistasPerm).toEqual([]);
+    expect(permissions.componentesAprobables).toEqual([]);
+    expect(permissions.componentesRevisables).toEqual([]);
+  });
   it('con solo Configuración entra en esa pestaña y no habilita Reportes', () => {
     const tieneVista = access([PTA_MANAGE_CONFIGURATION_PERMISSION]);
     expect(defaultPTAView(tieneVista)).toBe('configuracion');

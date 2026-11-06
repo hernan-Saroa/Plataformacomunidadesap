@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow, getBancoDocenteById } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
@@ -69,6 +70,7 @@ import {
   REVIEW_SUBSECCIONES_BY_COMPONENT,
   type PTAReviewSubseccionKey,
   hasComponentPermission,
+  hasDocumentTrackingComponentPermission,
   hasReviewPermission,
   PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
@@ -847,6 +849,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // se autorizan con los permisos y el alcance vigentes consultados al servidor.
   const { permisos: permisosPta } = usePermisosPTA();
   const { puede: puedePerm } = usePermisosPTAGranulares();
+  const { session: authSession, refreshPermissions } = useAuth();
+  const trackingScopeKey = PTA_COMPONENT_KEYS.filter(key => hasDocumentTrackingComponentPermission(puedePerm, key)).join('|');
   const apruebaTodo = useMemo(() => puedePerm(PTA_APPROVE_ALL_PERMISSION), [puedePerm]);
   const puedeGestionarSeguimientoDocumental = puedePerm(PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION);
   const tieneAlgunPermisoComponente = useMemo(
@@ -976,11 +980,16 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     setShowReporteInstitucional(false);
   }, [initialPta?.id]);
 
+  useEffect(() => {
+    if (activeTab === 'evidencias') void refreshPermissions?.();
+  }, [activeTab, refreshPermissions]);
+
   // Cargar evidencias al activar el tab
   useEffect(() => {
     const requestId = ++evidenciasRequestRef.current;
     if (activeTab === 'evidencias' && pta?.id && puedeGestionarSeguimientoDocumental) {
       setLoadingEvidencias(true);
+      setEvidencias([]);
       getEvidenciasSeguimientoPTA(pta.id).then(res => {
         if (requestId !== evidenciasRequestRef.current) return;
         if (res.success) setEvidencias(res.data || []);
@@ -998,7 +1007,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return () => {
       if (requestId === evidenciasRequestRef.current) ++evidenciasRequestRef.current;
     };
-  }, [activeTab, pta?.id, puedeGestionarSeguimientoDocumental, syncVersion]);
+  }, [activeTab, pta?.id, puedeGestionarSeguimientoDocumental, syncVersion, authSession, trackingScopeKey]);
 
   useEffect(() => {
     if (activeTab === 'evidencias' && !puedeGestionarSeguimientoDocumental) {
@@ -1594,16 +1603,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     && !hayComponenteDevueltoSinResolver
     && Boolean(decisionPermissions?.allowedComponents.length)
     && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
-  // Revisión de evidencias del tab Seguimiento: modelo POR COMPONENTE. Cada evidencia
-  // se puede ver/aprobar/rechazar solo si el usuario está autorizado para el componente
-  // (o la sección de extensión) al que pertenece. Superuser y pta.approve.all quedan
-  // cubiertos porque isComponentAuthorized retorna true para todos en ese caso.
-  // La entrada exige el permiso funcional de Seguimiento y el alcance de cada
-  // evidencia se basa exclusivamente en pta.approve.<componente> (+ approve.all
-  // y superuser). No usa fallbacks por nivel/rol, para mantener el filtro estricto.
+  // Seguimiento exige su permiso funcional y revisión o aprobación del componente.
+  // El servidor entrega únicamente evidencias dentro del alcance territorial.
   const isEvidenciaComponentAuthorized = useCallback(
-    (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puedePerm, key),
-    [apruebaTodo, puedePerm],
+    (key: PTAComponentKey) => hasDocumentTrackingComponentPermission(puedePerm, key),
+    [puedePerm],
   );
   const puedeRevisarEvidencia = useCallback(
     (ev: any) => puedeGestionarSeguimientoDocumental

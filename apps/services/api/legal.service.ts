@@ -239,6 +239,11 @@ export class LegalService {
         return authService.getAbogadosRolResuelve();
     }
 
+    /** Usuarios activos (sin filtrar por rol); el selector de Responsable del Indicador filtra por proceso legal. */
+    async getUsuariosResponsablesIndicador(): Promise<any[]> {
+        return authService.getUsuariosActivosCrudos();
+    }
+
     // Responsables de Términos e Informes: usuarios activos con alguno de los roles
     // parametrizados en Configuración → Términos e Informes.
     async getResponsablesTermino(clavesRoles: string[]): Promise<any[]> {

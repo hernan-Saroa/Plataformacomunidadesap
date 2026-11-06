@@ -27,7 +27,7 @@ import { extname, join } from 'path';
 import * as fs from 'node:fs';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
-import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaAuthGuard, PtaRoleAccessGuard } from './auth/pta-auth.guard';
 import { PtaConfigurationGuard } from './auth/pta-configuration.guard';
 import { PtaRundSensitiveInterceptor } from './banco-docentes/pta-rund-sensitive.interceptor';
 
@@ -497,6 +497,7 @@ export class PtaController {
   // Evidencias
   // ─────────────────────────────
   @Get('evidencias/ptas')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(PtaAuthGuard)
   async getPtasConEvidencias(@Query('periodo') periodo: string | undefined, @Req() req: Request) {
     const data = await this.ptaService.getAllPtasConEvidencias(periodo, req.ptaAuth);
@@ -926,6 +927,7 @@ export class PtaController {
   }
 
   @Get(':ptaId/evidencias/seguimiento')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(PtaAuthGuard)
   async getEvidenciasSeguimiento(@Param('ptaId') ptaId: string, @Req() req: Request) {
     const data = await this.ptaService.getEvidenciasSeguimientoPTA(ptaId, req.ptaAuth);
@@ -944,6 +946,15 @@ export class PtaController {
   @UseGuards(PtaAuthGuard)
   async getDecisionListScope(@Req() req: Request) {
     return { success: true, data: await this.ptaService.getDecisionListScope(req.ptaAuth!) };
+  }
+
+  @Get('permisos-vigentes')
+  @Header('Cache-Control', 'private, no-store')
+  @UseGuards(PtaRoleAccessGuard)
+  getCurrentRoleAccess(@Req() req: Request) {
+    const auth = req.ptaAuth!;
+    return { success: true, data: { userId: auth.userId, roles: auth.roles,
+      permissions: [...auth.permissions], isSuperUser: auth.isSuperUser } };
   }
 
   // Desagregado por territorial del componente "academica_territorial": cuando el

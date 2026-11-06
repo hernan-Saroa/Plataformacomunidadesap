@@ -648,6 +648,9 @@ services:
 
   # ============ CHATBOT SERVICE ============
   chatbot-service:
+    env_file:
+      - path: ${CHATBOT_KNOWLEDGE_ENV_FILE:-./backend/chatbot-service/.env.knowledge}
+        required: false
     build:
       context: ./backend/chatbot-service
       dockerfile: Dockerfile

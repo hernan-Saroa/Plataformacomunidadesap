@@ -759,7 +759,12 @@ export class SupervisionService {
         fuera,
       });
 
-      const salio = await this.campana.correoConAdjuntos(supervision.email, aviso, adjuntos);
+      const salio = await this.campana.correoConAdjuntos(
+        supervision.email,
+        aviso,
+        adjuntos,
+        'contratacion_designacion_supervisor',
+      );
       if (!salio) return sinEnviar(supervision.email, 'el servicio de correo no lo aceptó');
 
       // Copia al abogado revisor del proceso y al correo general de

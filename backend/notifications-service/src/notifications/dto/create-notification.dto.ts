@@ -37,6 +37,14 @@ export class CreateNotificationDto {
   @IsString()
   categoria?: string;
 
+  /**
+   * Código del módulo en la configuración de notificaciones (EFDS-2406). Si no
+   * viene, se deduce de `categoria`; los módulos ya conectados lo mandan.
+   */
+  @IsOptional()
+  @IsString()
+  modulo?: string;
+
   @IsOptional()
   @IsBoolean()
   tiene_accion?: boolean;

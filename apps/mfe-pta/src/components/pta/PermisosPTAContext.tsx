@@ -155,17 +155,18 @@ const PERMISO_TO_VISTA: Record<string, string> = {
 
 /**
  * Deriva PermisosPTA desde los permisos granulares almacenados en KV.
- * Retorna null si no hay suficientes permisos PTA para derivar (fallback a hardcoded).
+ * Solo permite el fallback histórico si no hay una consulta vigente del servidor.
  */
 export function deriveFromGranular(
   allPermisos: string[],
   perfil: PerfilRolPTA,
+  authoritative = false,
 ): PermisosPTA | null {
   // Filtrar solo permisos PTA
   const ptaPerms = allPermisos.filter(p => p.startsWith('pta.'));
   
-  // Si hay menos de 1 permiso PTA granular, no hay info suficiente
-  if (ptaPerms.length === 0) return null;
+  // Una respuesta vigente vacía revoca accesos; no habilita permisos históricos.
+  if (ptaPerms.length === 0 && !authoritative) return null;
   
   // Wildcard check
   const hasWildcard = allPermisos.includes('*');
@@ -203,6 +204,9 @@ export function deriveFromGranular(
 
   // Derivar vistas
   const vistasSet = new Set<string>();
+  if (authoritative && allPermisos.includes('banco-docentes.rund.view')) {
+    vistasSet.add('banco_docentes');
+  }
   for (const perm of ptaPerms) {
     const vista = PERMISO_TO_VISTA[perm]
       || Object.entries(PERMISO_TO_VISTA).find(([code]) => code.toLowerCase() === perm.toLowerCase())?.[1];
@@ -575,7 +579,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
   }, [auth.userEmail, auth.userRole]);
 
   // Perfil efectivo: override si existe y es superuser, sino perfil real
-  const isSuperUserEffective = auth.isSuperUser || isShellSuperUser();
+  const isSuperUserEffective = auth.isSuperUser;
   const perfil = (isSuperUserEffective && perfilOverride) ? perfilOverride : perfilReal;
   const isSimulando = isSuperUserEffective && perfilOverride !== null;
 
@@ -603,7 +607,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
     const allPerms = auth.session?.permisos || [];
     
     // Intentar derivar desde permisos granulares
-    const granular = deriveFromGranular(allPerms, perfil);
+    const granular = deriveFromGranular(allPerms, perfil, auth.ptaPermissionsVerified);
     if (granular) {
       return granular;
     }
@@ -622,7 +626,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
       nivelesTerritorialAprobar: [],
       nivelesTerritorialRevisar: [],
     };
-  }, [auth.session?.permisos, perfil, isSuperUserEffective]);
+  }, [auth.session?.permisos, perfil, isSuperUserEffective, auth.ptaPermissionsVerified]);
 
   const tieneVista = useCallback((vista: string) => {
     if (vista === 'configuracion') return auth.hasPermission(PTA_MANAGE_CONFIGURATION_PERMISSION);
@@ -719,38 +723,12 @@ export function SelectorRolPTA() {
   const { perfil, permisos, rolLabel, rolColor, rolBg } = usePermisosPTA();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Refrescar permisos sin re-login (vía ruta /auth/permissions-by-name/:roleName)
+  // Consulta la cuenta completa: incluye todos sus roles activos y revocaciones.
   const handleRefreshPermisos = async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      const roleName = auth.session?.rol || auth.userRole || '';
-      if (!roleName) {
-        console.warn('[PermisosPTA] No se puede refrescar: sin rol activo');
-        setRefreshing(false);
-        return;
-      }
-      const { publicAnonKey } = await import('../../utils/supabase/info');
-      const res = await fetch(
-        `http://localhost:5000/api/auth/permissions-by-name/${encodeURIComponent(roleName)}`,
-        { headers: { 'Authorization': `Bearer ${publicAnonKey}` } }
-      );
-      const data = await res.json();
-      if (data.success && Array.isArray(data.permisos)) {
-        // Actualizar permisos en la sesión via localStorage + reload contexto
-        const stored = localStorage.getItem('esap-auth-session');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          parsed.permisos = data.permisos;
-          parsed._timestamp = Date.now();
-          localStorage.setItem('esap-auth-session', JSON.stringify(parsed));
-          // Force page reload to pick up new permissions
-          window.location.reload();
-        }
-        console.log(`[PermisosPTA] Permisos refrescados: ${data.permisos.length} permisos`);
-      } else {
-        console.warn('[PermisosPTA] No se pudieron refrescar permisos:', data);
-      }
+      await auth.refreshPermissions?.();
     } catch (err) {
       console.error('[PermisosPTA] Error refrescando permisos:', err);
     } finally {

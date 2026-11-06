@@ -1794,11 +1794,16 @@ export class AuditoriasService {
         }
       }
       
+      // Igual que al crear: una Especial puede no tener Planeación (EFDS-1923)
+      const esEspecialSinPlaneacion =
+        this.resolveTipoKanban(updateDto.tipoKanban ?? auditoria.tipoKanban, updateDto.tipo ?? auditoria.tipo) === TipoKanban.ESPECIAL &&
+        !fechaFinPlaneacion;
+
       if (fechaFinEjecucion) {
-        if (!fechaFinPlaneacion) {
+        if (!fechaFinPlaneacion && !esEspecialSinPlaneacion) {
           throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
         }
-        if (fechaFinEjecucion <= fechaFinPlaneacion) {
+        if (fechaFinPlaneacion && fechaFinEjecucion <= fechaFinPlaneacion) {
           throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
         }
       }

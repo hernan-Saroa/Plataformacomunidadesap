@@ -9,6 +9,7 @@ export function postLocalJson(url: string, body: unknown, timeoutMs = 600000): P
     const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
     const request = send(target, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, response => {
       response.on('error', error => { clearTimeout(timer); reject(error); });
+      response.on('aborted', () => { clearTimeout(timer); reject(new Error('MODELO_CONEXION_FALLIDA')); });
       if (response.statusCode !== 200) {
         response.resume();
         request.destroy(new Error('MODELO_NO_DISPONIBLE'));
@@ -29,7 +30,12 @@ export function postLocalJson(url: string, body: unknown, timeoutMs = 600000): P
     });
     const timer = setTimeout(() => request.destroy(new Error('MODELO_TIMEOUT')), timeoutMs);
     timer.unref();
-    request.on('error', error => { clearTimeout(timer); reject(error); });
+    request.on('error', error => {
+      clearTimeout(timer);
+      const code = (error as NodeJS.ErrnoException).code;
+      reject(code && ['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(code)
+        ? new Error('MODELO_CONEXION_FALLIDA') : error);
+    });
     request.end(data);
   });
 }

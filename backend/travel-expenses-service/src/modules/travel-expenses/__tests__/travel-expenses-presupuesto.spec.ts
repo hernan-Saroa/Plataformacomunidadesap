@@ -303,6 +303,7 @@ describe('RF-PRE-001 — Etapa 7: Expedir RP en SIIF Nación (COMPROMETIDA)', ()
         fechaRp: '2026-09-16',
         valorComprometido: 1700000,
         rubro: 'C-2101-01',
+        soporteRpPath: '20260916_RP_77889.pdf',
         observaciones: 'Expedido en SIIF Nación sin contratiempos.',
       };
 
@@ -375,6 +376,48 @@ describe('RF-PRE-001 — Etapa 7: Expedir RP en SIIF Nación (COMPROMETIDA)', ()
       await expect(serviceInstance.expedirRp('sol-1', 'user-1', [], dto)).rejects.toThrow(
         /El valor comprometido debe ser un monto positivo mayor a 0/,
       );
+    });
+
+    it('Criterio 2 y 3 (validación): Rechaza si no se adjunta el archivo soporte del RP o si su nombre no respeta Fecha_RP_Número', async () => {
+      mockSolicitudRepo.findOne.mockResolvedValue({
+        ...solicitudAutorizadaBase,
+        estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO,
+      });
+
+      const dtoSinSoporte: ExpedirRpDto = {
+        numeroRp: '77889',
+        fechaRp: '2026-09-16',
+        valorComprometido: 1700000,
+        rubro: 'C-2101-01',
+      };
+
+      await expect(serviceInstance.expedirRp('sol-1', 'user-1', [], dtoSinSoporte)).rejects.toThrow(
+        /Debe cargar el archivo soporte del RP \(comprometido\)\. Este adjunto no es opcional/,
+      );
+
+      const dtoSoporteInvalido: ExpedirRpDto = {
+        numeroRp: '77889',
+        fechaRp: '2026-09-16',
+        valorComprometido: 1700000,
+        rubro: 'C-2101-01',
+        soporteRpPath: 'soporte_invalido.pdf',
+      };
+
+      await expect(
+        serviceInstance.expedirRp('sol-1', 'user-1', [], dtoSoporteInvalido),
+      ).rejects.toThrow(/Debe cumplir con la regla de nomenclatura Fecha_RP_Número/);
+
+      const dtoSoporteNoCoincide: ExpedirRpDto = {
+        numeroRp: '77889',
+        fechaRp: '2026-09-16',
+        valorComprometido: 1700000,
+        rubro: 'C-2101-01',
+        soporteRpPath: '20260916_RP_99999.pdf',
+      };
+
+      await expect(
+        serviceInstance.expedirRp('sol-1', 'user-1', [], dtoSoporteNoCoincide),
+      ).rejects.toThrow(/no coincide con la fecha .* y número de RP/);
     });
 
     it('Criterio 3: Validador de nomenclatura Fecha_RP_Número', () => {

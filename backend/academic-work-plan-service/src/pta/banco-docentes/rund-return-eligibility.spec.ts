@@ -1,13 +1,19 @@
 import { canReturnEvidenceBlock, EVIDENCE_TYPES, RundEvidenceWorkflow, requiredEvidence, evidenceFields } from './rund-evidence-workflow';
+import { dataReviewContext, RUND_DATA_FIELDS } from './rund-data-review';
 
 const blocks = ['IDENTIDAD','FORMACION','VINCULACION','ACADEMICO','TRANSVERSAL'];
 describe('Devolución con evidencia del bloque', () => {
-  it.each(blocks)('aprueba %s con revisión humana completa sin consultar ni depender del OCR', async block => {
-    const supports=requiredEvidence(block,{}).map(([type])=>({tipo_soporte:type,documento_carpeta_id:`/archivo-${type}`,estado:'Aprobado',
-      revisiones_campos:Object.fromEntries(evidenceFields(type).map(field=>[field,{estado:'Aprobado',documentoVersionId:`/archivo-${type}`}]))}));
+  it.each([...blocks,'CONTACTO'])('aprueba %s con revisión humana completa sin soportes ni dependencia del OCR', async block => {
+    const supports:any[]=[];
+    const profile:any={id:'docente'};
+    for(const def of RUND_DATA_FIELDS[block])if(def.required)for(const key of def.keys)profile[key]='Dato registrado';
+    const context=dataReviewContext(block,profile,supports,[]);
+    const reviews=Object.entries(context).filter(([,value])=>value.requiereRevision).map(([campo,value])=>({bloque:block,metadata:{campo,huella:value.huella,estado:'Aprobado'}}));
     const query=jest.fn(async(sql:string)=>{
       if(sql.includes('RundExtraccion'))throw new Error('La aprobación documental no debe consultar el OCR');
       if(sql.includes('SELECT * FROM academic_work_plan."Docente"'))return [{id:'docente'}];
+      if(sql.includes('SELECT d.*'))return [profile];
+      if(sql.includes('SELECT DISTINCT ON'))return reviews;
       if(sql.includes('SELECT * FROM academic_work_plan."RundCampoEstado"'))return [{bloque:block,version:1,estado:'En revisión'}];
       if(sql.includes('SELECT * FROM academic_work_plan."RundSoporteCampo"'))return supports;
       if(sql.includes('SELECT bloque, estado'))return blocks.map(bloque=>({bloque,estado:'Aprobado'}));

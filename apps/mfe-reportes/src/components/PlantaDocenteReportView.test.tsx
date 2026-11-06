@@ -195,3 +195,28 @@ describe('PlantaDocenteReportView — reporte de planta docente (REQ-RUND-F019)'
     expect(rows[0].nombre_completo).toBe('Ana Pérez');
   });
 });
+
+it('consulta convocatorias del período y conserva el nombre en filtros, agrupación y exportación', async () => {
+  const withConvocatoria = { ...STATS_FILTRADO, por_convocatoria: [{ convocatoria: 'Convocatoria Pública', total: 4 }] };
+  mockGet(async (endpoint: string) => {
+    if (endpoint.endsWith('/stats')) return { data: withConvocatoria };
+    if (endpoint.endsWith('/periodos-academicos')) return { data: PERIODOS_ACADEMICOS };
+    if (endpoint.endsWith('/convocatorias')) return [{ nombre: 'Convocatoria Pública', clave: 'convocatoria publica' }];
+    return { items: [], total: 0, pages: 1 };
+  });
+  render(<PlantaDocenteReportView />);
+  await screen.findByRole('option', { name: '2025-2 (en curso)' });
+  fireEvent.change(screen.getByLabelText('Período académico'), { target: { value: '2025-2' } });
+  const input = screen.getByRole('combobox', { name: 'Convocatoria' });
+  fireEvent.change(input, { target: { value: 'publica' } });
+  fireEvent.click(await screen.findByRole('option', { name: 'Convocatoria Pública' }));
+  fireEvent.click(screen.getByRole('button', { name: /Generar reporte/i }));
+  await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringMatching(/banco-docentes\/stats$/), { periodoCarga: '2025-2', convocatoria: 'Convocatoria Pública' }));
+  expect(screen.getByRole('heading', { name: 'Por convocatoria' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Exportar agregado \(Excel\)/ }));
+  const { exportRundReportToExcel } = await import('../utils/rundReportExport');
+  expect(exportRundReportToExcel).toHaveBeenCalledWith(expect.arrayContaining([{ dimension: 'Convocatoria', valor: 'Convocatoria Pública', total: 4 }]),
+    expect.anything(), expect.objectContaining({ filtros: expect.objectContaining({ Convocatoria: 'Convocatoria Pública' }) }), expect.anything());
+  fireEvent.change(screen.getByLabelText('Período académico'), { target: { value: '2025-1' } });
+  expect((screen.getByRole('combobox', { name: 'Convocatoria' }) as HTMLInputElement).value).toBe('');
+});

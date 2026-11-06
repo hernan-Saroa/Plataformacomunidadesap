@@ -377,6 +377,9 @@ services:
       - "3014:3014"
 
   chatbot-service:
+    env_file:
+      - path: ${CHATBOT_KNOWLEDGE_ENV_FILE:-./backend/chatbot-service/.env.knowledge}
+        required: false
     <<: *service-defaults
     build:
       context: ./backend/chatbot-service

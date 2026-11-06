@@ -26,6 +26,30 @@ export interface PTADecisionListScope {
   cetaps: string[] | null;
 }
 
+export interface PTARoleAccess {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  isSuperUser: boolean;
+}
+
+export async function getPTACurrentRoleAccess() {
+  try {
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/permisos-vigentes`, undefined,
+      { cache: 'no-store', skipErrorToast: true, retries: 0 });
+    const result = normalizeResult<PTARoleAccess | null>(raw, null);
+    const value = result.data;
+    if (!result.success || !value?.userId || !Array.isArray(value.roles)
+      || !Array.isArray(value.permissions) || typeof value.isSuperUser !== 'boolean') {
+      return { success: false, data: null };
+    }
+    return result;
+  } catch {
+    return { success: false, data: null };
+  }
+}
+
 export async function getPTADecisionListScope() {
   try {
     requireConnectionForDecision();
@@ -947,7 +971,8 @@ export async function savePTAUserData(
 
 export async function getAllPtasConEvidencias(periodo?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/evidencias/ptas`, periodo ? { periodo } : undefined);
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/evidencias/ptas`, periodo ? { periodo } : undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -2071,6 +2096,7 @@ export async function getBancoDocentes(filters?: {
   page?: number;
   limit?: number;
   periodoCarga?: string;
+  convocatoria?: string;
 }) {
   try {
     // El backend devuelve { success, items:[...], total, pages } sin wrapper "data"
@@ -2085,7 +2111,7 @@ export async function getBancoDocentes(filters?: {
   }
 }
 
-export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string }) {
+export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; convocatoria?: string }) {
   try {
     const params = new URLSearchParams();
     if (filters?.territorial) params.set('territorial', filters.territorial);
@@ -2093,6 +2119,7 @@ export async function getBancoDocenteStats(filters?: { territorial?: string; ded
     if (filters?.vinculacion) params.set('vinculacion', filters.vinculacion);
     if (filters?.estado) params.set('estado', filters.estado);
     if (filters?.periodoCarga) params.set('periodoCarga', filters.periodoCarga);
+    if (filters?.convocatoria) params.set('convocatoria', filters.convocatoria);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const raw = await apiClient.get<any>(`${BD_BASE}/stats${qs}`, undefined, { cache: 'no-store' });
     return normalizeResult<any>(raw, null);
@@ -2130,7 +2157,8 @@ export async function getBancoDocenteCabezote(id: string, periodoCarga?: string)
 /** Consulta administrativa: el servidor aplica permiso funcional y alcance por componente. */
 export async function getEvidenciasSeguimientoPTA(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`);
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -2175,10 +2203,11 @@ export async function toggleBancoDocenteEstado(id: string, body: {
   }
 }
 
-export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitErrors = false, periodoCarga?: string) {
+export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitErrors = false, periodoCarga?: string, convocatoria?: string) {
   try {
     const formData = new FormData();
     formData.append('file', file);
+    if (convocatoria?.trim()) formData.append('convocatoria', convocatoria.trim());
     const query = new URLSearchParams();
     if (dryRun) query.append('dry_run', 'true');
     if (omitErrors) query.append('omit_errors', 'true');
@@ -2192,6 +2221,13 @@ export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitEr
   }
 }
 
+export async function getRundConvocatorias(periodoCarga: string): Promise<{ clave: string; nombre: string }[]> {
+  const raw = await apiClient.get<any>(`${BD_BASE}/convocatorias`, { periodoCarga }, { cache: 'no-store', retries: 0, skipErrorToast: true });
+  const response = normalizeResult<{ clave: string; nombre: string }[]>(raw, []);
+  if (!response.success || !Array.isArray(response.data)) throw new Error('No fue posible consultar las convocatorias.');
+  return response.data;
+}
+
 export async function getBancoDocentesBulkHistory(limit = 50) {
   try {
     const raw = await apiClient.get<any>(`${BD_BASE}/bulk/historial`, { limit });
@@ -2203,7 +2239,7 @@ export async function getBancoDocentesBulkHistory(limit = 50) {
 }
 
 export interface RundRegistrationEvent {
-  id: string; tipo: 'MASIVO' | 'INDIVIDUAL'; periodo: string | null; titulo: string;
+  id: string; tipo: 'MASIVO' | 'INDIVIDUAL'; periodo: string | null; titulo: string; convocatoria?: string | null;
   responsable: string; estado: string; fecha: string; fechaFin: string;
   origen?: 'REGISTRO' | 'RECUPERACION_INFORMATIVA'; responsableRecuperacion?: string | null;
   resumen: { total?: number; creados?: number; actualizados?: number; sinCambios?: number; errores?: number; omitidos?: number; recuperados?: number };
@@ -2220,7 +2256,7 @@ export interface RundRegistrationDetail {
   total: number; page: number; limit: number; pages: number; detalleCompleto: boolean; accesoCompleto: boolean;
 }
 
-export async function getRundRegistrationHistory(query: { periodoCarga?: string; tipo?: string; search?: string; page?: number }) {
+export async function getRundRegistrationHistory(query: { periodoCarga?: string; convocatoria?: string; tipo?: string; search?: string; page?: number }) {
   const raw = await apiClient.get<any>(`${BD_BASE}/trazabilidad`, query, { cache: 'no-store', retries: 0, skipErrorToast: true });
   // A paginated page has its own `data` array; it must not be unwrapped again.
   const page = Array.isArray(raw?.data) ? raw : raw?.data;

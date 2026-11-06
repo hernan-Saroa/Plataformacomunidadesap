@@ -5135,6 +5135,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     if (this.notificationClient && typeof this.notificationClient.sendEmail === 'function') {
       await this.notificationClient.sendEmail({
+        evento: 'VIATICOS_OTP_FIRMA',
         to: input.to,
         subject: `Código de validación (${code}) — Firma Digital Viáticos ESAP`,
         text,
@@ -6171,6 +6172,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
             });
 
             await this.notificationClient.sendEmail({
+              evento: 'RECORDATORIO_FIRMA_PENDIENTE',
               to: email,
               subject: `[ESAP Viáticos] Recordatorio: Firma de aprobación requerida en solicitud ${consecutivo}`,
               html: emailHtml,
@@ -10754,6 +10756,7 @@ if (itinerarioGeneral) {
       `;
 
       await this.notificationClient.sendEmail({
+        evento: 'VIATICOS_DEVOLUCION_ANALISTA',
         to: correoDestino,
         subject,
         text: `Comisión ${solicitud.consecutivoUnico} devuelta por Control Viáticos. Motivo: ${observaciones}`,
@@ -12251,6 +12254,7 @@ if (itinerarioGeneral) {
       // 2. Correo directo al Comisionado si tiene email configurado
       if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
           to: solicitud.comisionado.email,
           subject: emailRechazo.asunto,
           html: emailRechazo.html,
@@ -13035,6 +13039,7 @@ if (itinerarioGeneral) {
       // Notificación directa por correo al comisionado si tiene email registrado
       if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_COMISION_CANCELADA',
           to: solicitud.comisionado.email,
           subject: emailCancelacion.asunto,
           html: emailCancelacion.html,
@@ -13851,14 +13856,33 @@ async registrarRP(
         throw new BadRequestException('El rubro presupuestal es obligatorio para expedir el RP.');
       }
 
-      // 3. Validación Nomenclatura SOPORTE RP
-      if (datosRp.soporteRpPath) {
-        const regexSoporte = /^.*(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
-        if (!regexSoporte.test(datosRp.soporteRpPath.trim())) {
-          throw new BadRequestException(
-            `El archivo soporte de RP '${datosRp.soporteRpPath}' es inválido. Debe cumplir con la regla de nomenclatura Fecha_RP_Número (ejemplo: YYYYMMDD_RP_Numero.pdf o 20260916_RP_12345.pdf).`,
-          );
-        }
+      // 3. Validación Obligatoriedad y Nomenclatura SOPORTE RP (Fecha_RP_Número)
+      if (!datosRp.soporteRpPath || !datosRp.soporteRpPath.trim()) {
+        throw new BadRequestException(
+          'Debe cargar el archivo soporte del RP (comprometido). Este adjunto no es opcional.',
+        );
+      }
+
+      const nombreBaseSoporte = datosRp.soporteRpPath.trim().split(/[/\\]/).pop() || '';
+      const regexSoporte = /^(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
+      const matchSoporte = nombreBaseSoporte.match(regexSoporte);
+      if (!matchSoporte) {
+        throw new BadRequestException(
+          `El archivo soporte de RP '${datosRp.soporteRpPath}' es inválido. Debe cumplir con la regla de nomenclatura Fecha_RP_Número (ejemplo: YYYYMMDD_RP_Numero.pdf o 20260916_RP_12345.pdf).`,
+        );
+      }
+
+      const fechaSoporteLimpia = matchSoporte[1].replace(/-/g, '');
+      const fechaRpLimpia = (datosRp.fechaRp || '').split('T')[0].trim().replace(/-/g, '');
+      const numSoporteLimpio = matchSoporte[2].trim();
+      const numRpLimpio = (datosRp.numeroRp || '').trim();
+      if (
+        (fechaRpLimpia && fechaSoporteLimpia !== fechaRpLimpia) ||
+        (numRpLimpio && numSoporteLimpio.toLowerCase() !== numRpLimpio.toLowerCase())
+      ) {
+        throw new BadRequestException(
+          `El archivo soporte de RP '${datosRp.soporteRpPath}' no coincide con la fecha (${datosRp.fechaRp}) y número de RP (${datosRp.numeroRp}) registrados. Debe cumplir con la regla de nomenclatura Fecha_RP_Número (ejemplo: ${fechaRpLimpia}_RP_${numRpLimpio}.pdf).`,
+        );
       }
 
       const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
@@ -14109,6 +14133,7 @@ async registrarRP(
       // Notificación directa por email al comisionado si tiene correo registrado
       if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_RP_EXPEDIDO',
           to: guardada.comisionado.email,
           subject: emailRp.asunto,
           html: emailRp.html,
@@ -14175,7 +14200,11 @@ async registrarRP(
         const fechaRpFinal = item.fechaRp || (item as any).fecha_rp;
         const valorFinal = item.valorComprometido ?? (item as any).valor_comprometido;
         const rubroFinal = item.rubro || (item as any).rubroPresupuestal || (item as any).rubro_presupuestal;
-        const soporteFinal = (item as any).soporteRpPath || (item as any).soporte_rp_path || null;
+        const soporteFinal =
+          (item as any).soporteRpPath ||
+          (item as any).soporte_rp_path ||
+          (item as any).soporte_rp_nombre ||
+          null;
 
         if (item.solicitudId) {
           solicitud = await this.solicitudRepo.findOne({
@@ -14243,6 +14272,19 @@ async registrarRP(
             error: 'Rubro presupuestal no suministrado.',
           });
           continue;
+        }
+
+        if (soporteFinal && String(soporteFinal).trim()) {
+          const nombreBaseSoporte = String(soporteFinal).trim().split(/[/\\]/).pop() || '';
+          const regexSoporte = /^(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
+          if (!regexSoporte.test(nombreBaseSoporte)) {
+            errores.push({
+              fila,
+              identificador,
+              error: `El archivo soporte '${soporteFinal}' no cumple con la nomenclatura Fecha_RP_Número.`,
+            });
+            continue;
+          }
         }
 
         // Valida y normaliza la nomenclatura Fecha_RP_Número
@@ -14528,6 +14570,7 @@ async registrarRP(
           // Notificación directa por email al comisionado si tiene correo registrado
           if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
             await this.notificationClient.sendEmail({
+              evento: 'OBLIGACION_SIIF_REGISTRADA',
               to: guardada.comisionado.email,
               subject: emailObligacion.asunto,
               html: emailObligacion.html,
@@ -14819,6 +14862,7 @@ async registrarRP(
           if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
             if (typeof this.notificationClient.sendEmail === 'function') {
               await this.notificationClient.sendEmail({
+                evento: 'COMISION_PAGADA',
                 to: guardada.comisionado.email,
                 subject: emailPago.asunto,
                 html: emailPago.html,
