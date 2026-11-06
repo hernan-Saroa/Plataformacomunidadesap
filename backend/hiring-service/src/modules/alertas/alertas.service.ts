@@ -1337,7 +1337,8 @@ export class AlertasService {
       };
 
       if (a.correos?.length) {
-        avisadas += await campana.aCorreosExternos(a.correos, aviso);
+        // El correo lleva la clave de su campana (EFDS-2406).
+        avisadas += await campana.aCorreosExternos(a.correos, aviso, aviso.tipo_notificacion);
         continue;
       }
       if (!a.responsableId) continue;
@@ -1353,7 +1354,7 @@ export class AlertasService {
             WHERE u.id_user::text = $1`,
           [cuenta],
         );
-        if (fila?.correo) avisadas += await campana.aCorreosExternos([fila.correo], aviso);
+        if (fila?.correo) avisadas += await campana.aCorreosExternos([fila.correo], aviso, aviso.tipo_notificacion);
         continue;
       }
       const r = await campana.enviar([{ ...aviso, id_usuario_destinatario: cuenta }], {

@@ -780,7 +780,10 @@ export class SupervisionService {
           titulo: `Copia: ${aviso.titulo}`,
           mensaje: `Copia de la notificación enviada a ${supervision.nombre} (${supervision.email}). ${aviso.mensaje}`,
         };
-        if (await this.campana.correoConAdjuntos(copia, aviso2, adjuntos)) copiasEnviadas.push(copia);
+        // La misma clave que el correo al supervisor (EFDS-2406): la consola los decide juntos.
+        if (await this.campana.correoConAdjuntos(copia, aviso2, adjuntos, 'contratacion_designacion_supervisor')) {
+          copiasEnviadas.push(copia);
+        }
       }
 
       supervision.alertaEnviadaAt = new Date();
