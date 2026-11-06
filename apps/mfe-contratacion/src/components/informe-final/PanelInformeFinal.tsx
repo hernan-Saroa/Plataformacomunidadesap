@@ -197,7 +197,8 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
       <Titulo>Informe final de supervisión</Titulo>
       <Ayuda>
         El supervisor cierra su vigilancia con el consolidado de entregables y el balance de la
-        ejecución. Es lo que soporta la liquidación del contrato.
+        ejecución. Es lo que soporta la liquidación del contrato. Como el supervisor no entra a la
+        aplicación, aquí se carga su informe firmado.
       </Ayuda>
 
       {!estado.admiteInforme ? (
@@ -275,7 +276,7 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
 
           <Entregables entregables={estado.informe.entregables} />
 
-          {estado.esSupervisor ? (
+          {estado.puedeRegistrar ? (
             <div className="flex flex-wrap gap-2">
               {!agregando ? (
                 <BotonSecundario
@@ -414,7 +415,7 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
         <Balance titulo="Balance de la ejecución" balance={estado.balanceActual} />
       ) : null}
 
-      {estado.puedeElaborar && estado.esSupervisor && !elaborando ? (
+      {estado.puedeElaborar && estado.puedeRegistrar && !elaborando ? (
         <Boton
           icono={<ClipboardCheck className="w-3.5 h-3.5" />}
           onClick={() => setElaborando(true)}

@@ -545,10 +545,10 @@ export class EstudioPrevioService implements OnModuleInit {
       const verTodos = await this.puedeVerTodos(acceso);
       const enElProceso =
         verTodos ||
-        (await this.participacion.procesosDe(acceso)).includes(procesoId) ||
-        // Quien evalúa no participa del proceso, pero tiene que abrirlo para
-        // llegar a la 6.3.
-        (await this.participacion.procesosDondeEvalua(acceso)).includes(procesoId);
+        // Estar en el comité evaluador no cuenta: la 6.2 identifica a los
+        // integrantes, no les abre el proceso. Quien deba trabajarlo entra
+        // por rol o por puesto, como cualquiera.
+        (await this.participacion.procesosDe(acceso)).includes(procesoId);
 
       /**
        * Y la bandeja, que es la cuarta vía y la más fácil de olvidar.
@@ -609,12 +609,7 @@ export class EstudioPrevioService implements OnModuleInit {
     if (!verTodos) {
       mios.push({ createdBy: acceso!.userName });
 
-      const alcanzables = new Set([
-        ...(await this.participacion.procesosDe(acceso!)),
-        // Y los que evalúa: el memorando lo designa sin repartirle el proceso,
-        // y sin esto no tendría cómo llegar a la 6.3.
-        ...(await this.participacion.procesosDondeEvalua(acceso!)),
-      ]);
+      const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
       if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
       }
@@ -1229,24 +1224,7 @@ export class EstudioPrevioService implements OnModuleInit {
     const actividad = await this.obtenerActividad(em, procesoId, true);
     const estabaCerrado = actividad.estado === 'EN_REVISION' || actividad.estado === 'APROBADO';
 
-    if (estabaCerrado) {
-      await em.save(Revision, {
-        procesoActividadId: actividad.id,
-        decision: 'DEVUELTO',
-        observaciones: observaciones.trim(),
-        versionRevisada: actividad.version,
-        revisadoPor: acceso.userName,
-        revisadoPorId: acceso.userId,
-      } as Partial<Revision>);
-
-      actividad.estado = 'DEVUELTO';
-      actividad.revisadoPor = acceso.userName;
-      actividad.revisadoAt = new Date();
-      await em.save(ProcesoActividad, actividad);
-      await this.cerrarLaRevision(em, procesoId, 'DEVUELTO', acceso);
-      // Si iba por una cadena, la ronda queda cerrada sin decidirse (101).
-      await this.cadenas.cancelarRonda(em, actividad.id, 'CANCELADA');
-    }
+    if (estabaCerrado) await this.devolverAlArea(em, procesoId, actividad, observaciones, acceso);
 
     // La traza de siempre: el motor de avisos le dice al área que le devolvieron
     // el estudio previo y por qué, sin un aviso nuevo para esto.
@@ -1257,6 +1235,72 @@ export class EstudioPrevioService implements OnModuleInit {
       estabaCerrado,
     });
     return { estado: actividad.estado, estabaCerrado };
+  }
+
+  /**
+   * Quien tomó el proceso en la 3.3 le devuelve el estudio previo al área.
+   *
+   * Recibirlo es también mirarlo: si llega incompleto o con algo que no
+   * corresponde, la Dirección no tiene por qué repartirlo a los abogados para
+   * que sean ellos quienes lo devuelvan. Es la misma devolución de la revisión
+   * —la 3.1 vuelve al área con la observación, la ronda de la cadena se cancela
+   * y la 3.4 queda abierta para cuando regrese—, pero fuera de la cadena: quien
+   * devuelve no es un escalón, es quien lleva el proceso, y lo sigue llevando
+   * cuando el área lo reenvíe.
+   */
+  async devolverDesdeLaRadicacion(procesoId: string, observaciones: string, acceso: HiringAccess) {
+    if ((observaciones?.trim().length ?? 0) < 10) {
+      throw new BadRequestException('Escribe las observaciones para el área: es lo que va a corregir');
+    }
+    return this.dataSource.transaction(async (em) => {
+      await this.participacion.exigirQueLoLleve(procesoId, acceso, em);
+      const actividad = await this.obtenerActividad(em, procesoId, true);
+      if (actividad.estado !== 'EN_REVISION') {
+        throw new ConflictException(
+          actividad.estado === 'APROBADO'
+            ? 'El estudio previo ya fue aprobado: ya no se devuelve desde la radicación'
+            : 'El estudio previo no está en revisión: el área lo tiene y no hay nada que devolverle',
+        );
+      }
+
+      await this.devolverAlArea(em, procesoId, actividad, observaciones, acceso);
+      // La traza de siempre: el motor de avisos le dice al área que le
+      // devolvieron el estudio previo y por qué.
+      await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'DEVOLVER', acceso, {
+        version: actividad.version,
+        observaciones: observaciones.trim(),
+        desdeLaRadicacion: true,
+      });
+      return { estado: actividad.estado };
+    });
+  }
+
+  /**
+   * La 3.1 vuelve al área: queda la revisión con la observación, la ronda de la
+   * cadena se cierra sin decidirse (101) y la 3.4 se reabre para cuando vuelva.
+   */
+  private async devolverAlArea(
+    em: EntityManager,
+    procesoId: string,
+    actividad: ProcesoActividad,
+    observaciones: string,
+    acceso: HiringAccess,
+  ) {
+    await em.save(Revision, {
+      procesoActividadId: actividad.id,
+      decision: 'DEVUELTO',
+      observaciones: observaciones.trim(),
+      versionRevisada: actividad.version,
+      revisadoPor: acceso.userName,
+      revisadoPorId: acceso.userId,
+    } as Partial<Revision>);
+
+    actividad.estado = 'DEVUELTO';
+    actividad.revisadoPor = acceso.userName;
+    actividad.revisadoAt = new Date();
+    await em.save(ProcesoActividad, actividad);
+    await this.cerrarLaRevision(em, procesoId, 'DEVUELTO', acceso);
+    await this.cadenas.cancelarRonda(em, actividad.id, 'CANCELADA');
   }
 
   async devolver(procesoId: string, observaciones: string, acceso: HiringAccess) {

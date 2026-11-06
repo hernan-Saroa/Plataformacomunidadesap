@@ -101,6 +101,19 @@ export class SolicitarCesionDto extends ConJustificacion {
  */
 export class SolicitarAclaratorioDto extends ConJustificacion {}
 
+/**
+ * Modificación de tipo «Otro» (sesión de QA del 04/11, 138): lo que no encaja
+ * en los demás tipos, como modificar los anexos técnicos.
+ */
+export class SolicitarOtraModificacionDto extends ConJustificacion {
+  @ApiProperty({ description: 'Qué se modifica, en pocas palabras' })
+  @IsString()
+  @IsNotEmpty({ message: 'Describe qué se modifica: por ejemplo, los anexos técnicos' })
+  @MinLength(5, { message: 'Describe qué se modifica con algo más que una palabra' })
+  @MaxLength(300)
+  descripcion: string;
+}
+
 /** Solicitud de suspension del contrato (EFDS-1178, RF-SIS-01). */
 export class SolicitarSuspensionDto extends ConJustificacion {
   @ApiProperty({ description: 'Desde cuándo queda suspendido', example: '2026-09-01' })

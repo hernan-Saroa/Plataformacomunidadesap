@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Smmlv } from '../../entities/smmlv.entity';
 import { DataSource, EntityManager, IsNull, Not } from 'typeorm';
 
 import {
@@ -33,6 +34,7 @@ import {
   NOMBRE_TIPO,
   plazoConMasDias,
   porQueNoAdmiteTipo,
+  ESTADOS_QUE_ADMITEN_MODIFICACION,
   TIPOS_CON_TRAMITE,
 } from './reglas-por-tipo';
 import {
@@ -43,6 +45,7 @@ import {
   RechazarRespaldoDto,
   RevocarModificacionDto,
   SolicitarAclaratorioDto,
+  SolicitarOtraModificacionDto,
   SolicitarAdicionDto,
   SolicitarCesionDto,
   SolicitarProrrogaDto,
@@ -83,7 +86,7 @@ interface ArchivoCargado {
  * Función pura para poder probar la regla sin base de datos.
  */
 export function admiteModificacion(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION' || estado === 'SUSPENDIDO';
+  return ESTADOS_QUE_ADMITEN_MODIFICACION.includes(estado);
 }
 
 /**
@@ -178,6 +181,9 @@ export class ModificacionesService {
       // Sin cifra solicitada: es lo que la pantalla necesita para decir cuánto
       // cabe antes de que alguien escriba nada.
       margen: this.margenDe(contrato, modificaciones, 0, tope.porcentaje),
+      // El salario mínimo del año, para decir el tope también en SMMLV
+      // (sesión de QA del 04/11): es la referencia con la que piensan los abogados.
+      smmlv: await this.smmlvDelAnio(),
       puedeSolicitar: admite,
       motivoNoPuede: admite ? null : this.porQueNoAdmite(contrato.estado),
       // Desde EFDS-1176 el supervisor también registra solicitudes, pero la
@@ -199,12 +205,10 @@ export class ModificacionesService {
       const tope = await this.topeConfigurado(em);
       const previas = await this.modificacionesDe(em, contrato.id);
 
-      // Se juzga ya, para no dejar entrar una adición que nunca se va a poder
-      // aprobar y que obligaría a tramitar un CDP en balde.
+      // Desde la sesión de QA del 04/11 el tope es informativo: se avisa y queda
+      // en la trazabilidad que la adición lo supera, pero no se impide. Quien
+      // decide si procede es el abogado, con la norma que aplique al caso.
       const margen = this.margenDe(contrato, previas, dto.valorAdicionado, tope.porcentaje);
-      if (!margen.cabe) {
-        throw new ConflictException(`No se puede adicionar el contrato: ${margen.motivo}`);
-      }
 
       const registro = await em.save(
         em.create(ModificacionContrato, {
@@ -228,6 +232,7 @@ export class ModificacionesService {
         tipo: 'ADICION',
         valorAdicionado: dto.valorAdicionado,
         margenDisponible: margen.margenDisponible,
+        ...(margen.cabe ? {} : { superaElTope: true, aviso: margen.motivo }),
       });
     });
 
@@ -376,6 +381,25 @@ export class ModificacionesService {
   }
 
   /**
+   * Registra una modificación de tipo «Otro» (sesión de QA del 04/11, 138).
+   *
+   * Lo que no es adición, prórroga, cesión, aclaratorio, suspensión,
+   * reanudación ni terminación: por ejemplo, modificar los anexos técnicos.
+   * Como el aclaratorio, no cambia plazo, valor ni partes en la plataforma;
+   * lo que dice queda en la descripción y en el acto que se adjunta al aprobar.
+   */
+  async solicitarOtra(procesoId: string, dto: SolicitarOtraModificacionDto, acceso: HiringAccess) {
+    return this.crear(
+      procesoId,
+      'OTRO',
+      acceso,
+      dto.justificacion,
+      { descripcion: dto.descripcion.trim() },
+      { descripcion: dto.descripcion.trim() },
+    );
+  }
+
+  /**
    * Registra la terminación anticipada en trámite.
    *
    * El contrato solo queda TERMINADO al aprobarla, con el acta o la resolución
@@ -518,6 +542,7 @@ export class ModificacionesService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const { contrato, modificacion } = await this.exigirEnTramite(em, procesoId, modificacionId);
+      let avisoDelTope: string | null = null;
 
       // Solo la adición compromete presupuesto. Exigirle CDP y RP a una
       // prórroga o a un aclaratorio obligaría a tramitar un certificado que no
@@ -540,9 +565,9 @@ export class ModificacionesService {
           modificacion.valorAdicionado ?? 0,
           tope.porcentaje,
         );
-        if (!margen.cabe) {
-          throw new ConflictException(`No se puede aprobar la adición: ${margen.motivo}`);
-        }
+        // Informativo (sesión de QA del 04/11): se aprueba igual; el aviso queda
+        // en la trazabilidad de la aprobación.
+        if (!margen.cabe) avisoDelTope = margen.motivo;
 
         modificacion.topePorcentaje = tope.porcentaje;
       }
@@ -592,6 +617,7 @@ export class ModificacionesService {
         tipo: modificacion.tipo,
         numero: dto.numero,
         ...efecto,
+        ...(avisoDelTope ? { superaElTope: true, aviso: avisoDelTope } : {}),
       });
     });
 
@@ -970,6 +996,12 @@ export class ModificacionesService {
     );
   }
 
+  private async smmlvDelAnio() {
+    const anio = Number(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).slice(0, 4));
+    const salario = await this.dataSource.getRepository(Smmlv).findOne({ where: { anio } });
+    return salario ? { anio: salario.anio, valor: salario.valor, confirmado: salario.confirmado } : null;
+  }
+
   private async topeConfigurado(em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
     const tope = await manager.getRepository(TopeAdicion).findOne({ where: { id: 1 } });
@@ -1097,6 +1129,7 @@ export class ModificacionesService {
       numero: m.numero,
       fechaSuscripcion: m.fechaSuscripcion,
       justificacion: m.justificacion,
+      descripcion: m.descripcion ?? null,
       objetoContrato: m.objetoContrato,
       valorAdicionado: m.valorAdicionado,
       valorContratoAntes: m.valorContratoAntes,

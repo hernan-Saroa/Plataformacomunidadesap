@@ -24,7 +24,6 @@ import {
 } from './dto/supervision.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
-import { PuestosService } from '../participacion/puestos.service';
 import { AdjuntoCorreo, Campana } from '../notificaciones/campana';
 import { STORAGE_PATH } from '../archivos';
 
@@ -52,6 +51,21 @@ export const NUMERAL_SUPERVISOR = '8.2';
  */
 export function admiteSupervisor(estado: EstadoContrato): boolean {
   return alMenos(estado, 'PERFECCIONADO');
+}
+
+/**
+ * Si dos nombres son la misma persona, sin tildes, mayúsculas ni espacios de
+ * más. Sin cuenta ni directorio (136) es lo único con qué compararlos.
+ */
+export function mismoNombre(a: string | null, b: string | null): boolean {
+  const normal = (x: string | null) =>
+    (x ?? '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  return !!normal(a) && normal(a) === normal(b);
 }
 
 interface ArchivoCargado {
@@ -111,6 +125,8 @@ export function repartirEnElCorreo<T extends DocumentoParaCorreo>(
 export interface ResultadoCorreo {
   enviado: boolean;
   para: string | null;
+  /** A quién más le salió copia: abogado revisor y correo general de Contratación (138). */
+  copias?: string[];
   adjuntos: string[];
   quedanFuera: string[];
   motivo: string | null;
@@ -130,7 +146,6 @@ export class SupervisionService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
-    private readonly puestos: PuestosService,
   ) {
     this.campana = new Campana(dataSource, this.logger);
   }
@@ -152,7 +167,6 @@ export class SupervisionService {
 
     const admite = admiteSupervisor(contrato.estado);
     const vigente = await this.supervisorVigente(contrato.id);
-    const puesto = await this.puestos.puestoDelSupervisor(procesoId);
 
     // El historial completo: quien vigiló los primeros meses respondió por
     // ellos, así que el expediente conserva a los relevados con su motivo.
@@ -166,6 +180,11 @@ export class SupervisionService {
           .getRepository(Documento)
           .findOne({ where: { id: vigente.actoDocumentoId } })
       : null;
+    const evidenciaAviso = vigente?.evidenciaAvisoDocumentoId
+      ? await this.dataSource
+          .getRepository(Documento)
+          .findOne({ where: { id: vigente.evidenciaAvisoDocumentoId } })
+      : null;
     const anexos = vigente?.anexosCorreo?.length
       ? await this.dataSource
           .getRepository(Documento)
@@ -178,18 +197,10 @@ export class SupervisionService {
         ? null
         : 'el contrato todavía no lo han firmado las dos partes',
       contrato: { numero: contrato.numero, objeto: contrato.objeto },
-      /**
-       * El puesto que llena la designación: el que avala la 9.4 en el flujo
-       * (121). Sin él, avala cualquiera con el permiso y la designación solo
-       * deja constancia de quién vigila.
-       */
-      puesto: puesto ? { id: puesto.id, nombre: puesto.nombre } : null,
       puedeDesignar: admite && !vigente,
       supervisor: vigente
         ? {
             id: vigente.id,
-            personaId: vigente.personaId,
-            usuarioId: vigente.usuarioId,
             nombre: vigente.nombre,
             cargo: vigente.cargo,
             email: vigente.email,
@@ -205,6 +216,13 @@ export class SupervisionService {
               url: d.archivoUrl,
             })),
             mensajeCorreo: vigente.mensajeCorreo,
+            /** El soporte de que se le notificó por fuera, si el correo no salió (138). */
+            evidenciaAviso: evidenciaAviso
+              ? {
+                  nombre: evidenciaAviso.archivoNombreOriginal ?? evidenciaAviso.nombre,
+                  url: evidenciaAviso.archivoUrl,
+                }
+              : null,
           }
         : null,
       /**
@@ -223,11 +241,6 @@ export class SupervisionService {
           motivoRelevo: s.motivoRelevo,
         })),
     };
-  }
-
-  /** A quién se puede designar: los candidatos del puesto que avala la 9.4. */
-  candidatos(procesoId: string, termino: string) {
-    return this.puestos.candidatosASupervisor(procesoId, termino);
   }
 
   // ---------------------------------------------------------- designación --
@@ -250,7 +263,6 @@ export class SupervisionService {
       }
 
       this.validarFecha(dto.fechaDesignacion);
-      const cuenta = await this.puestos.exigirCandidatoASupervisor(em, procesoId, dto.usuarioId);
 
       if (await this.cierre.exigeFirma(em, NUMERAL_SUPERVISOR)) {
         this.cierre.exigirFirmaValida(dto.firma);
@@ -258,14 +270,6 @@ export class SupervisionService {
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
-
-      const puestoId = await this.puestos.ocuparPorDesignacion(
-        em,
-        procesoId,
-        cuenta,
-        'Se designó otro supervisor en la 8.2',
-        acceso,
-      );
 
       const doc = await this.guardarDocumento(
         em,
@@ -283,12 +287,7 @@ export class SupervisionService {
           contratoId: contrato.id,
           actoDocumentoId: doc.id,
           fechaDesignacion: dto.fechaDesignacion,
-          personaId: cuenta.personaId,
-          usuarioId: cuenta.usuarioId,
-          puestoId,
-          nombre: cuenta.nombre,
-          cargo: dto.cargo ?? null,
-          email: cuenta.email,
+          ...this.datosDelSupervisor(dto),
           designadoPor: acceso.userName,
           estado: 'VIGENTE' as const,
           anexosCorreo,
@@ -301,7 +300,7 @@ export class SupervisionService {
       await this.traza(em, procesoId, supervision.id, 'DESIGNAR', acceso, {
         actividad: NUMERAL_SUPERVISOR,
         contrato: contrato.numero,
-        supervisor: cuenta.nombre,
+        supervisor: dto.nombre.trim(),
         fechaDesignacion: dto.fechaDesignacion,
       });
 
@@ -331,8 +330,6 @@ export class SupervisionService {
       vigente.relevadoPor = acceso.userName;
       vigente.motivoRelevo = dto.motivo;
       await em.save(vigente);
-      // El puesto queda vacío con él: nadie avala hasta que se designe otro.
-      await this.puestos.liberarPorDesignacion(em, procesoId, dto.motivo, acceso);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
 
@@ -383,14 +380,13 @@ export class SupervisionService {
         );
       }
 
-      if (vigente.usuarioId === dto.usuarioId) {
+      if (mismoNombre(vigente.nombre, dto.nombre)) {
         throw new ConflictException(
           'Esa persona ya es el supervisor del contrato: reasignar exige designar a otra',
         );
       }
 
       this.validarFecha(dto.fechaDesignacion);
-      const cuenta = await this.puestos.exigirCandidatoASupervisor(em, procesoId, dto.usuarioId);
 
       if (await this.cierre.exigeFirma(em, NUMERAL_SUPERVISOR)) {
         this.cierre.exigirFirmaValida(dto.firma);
@@ -398,9 +394,6 @@ export class SupervisionService {
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
-
-      // Releva al que ocupaba el puesto con el mismo motivo del acto.
-      const puestoId = await this.puestos.ocuparPorDesignacion(em, procesoId, cuenta, dto.motivo, acceso);
 
       const doc = await this.guardarDocumento(
         em,
@@ -426,12 +419,7 @@ export class SupervisionService {
           contratoId: contrato.id,
           actoDocumentoId: doc.id,
           fechaDesignacion: dto.fechaDesignacion,
-          personaId: cuenta.personaId,
-          usuarioId: cuenta.usuarioId,
-          puestoId,
-          nombre: cuenta.nombre,
-          cargo: dto.cargo ?? null,
-          email: cuenta.email,
+          ...this.datosDelSupervisor(dto),
           designadoPor: acceso.userName,
           estado: 'VIGENTE' as const,
           anexosCorreo,
@@ -446,7 +434,7 @@ export class SupervisionService {
         contrato: contrato.numero,
         reasignacion: true,
         supervisorAnterior: vigente.nombre,
-        supervisor: cuenta.nombre,
+        supervisor: dto.nombre.trim(),
         motivo: dto.motivo,
         fechaDesignacion: dto.fechaDesignacion,
       });
@@ -461,7 +449,7 @@ export class SupervisionService {
   /**
    * Vuelve a mandarle el correo al supervisor vigente (124).
    *
-   * Para cuando no salió —la cuenta no tenía correo, notifications-service
+   * Para cuando no salió —no se registró el correo, notifications-service
    * estaba caído— o para mandarle documentos que faltaban: los nuevos quedan
    * en el expediente y se suman a los que ya se le habían mandado, así que el
    * correo siempre lleva el paquete completo.
@@ -499,7 +487,21 @@ export class SupervisionService {
    * La matriz lo pide en 8.2. Lo normal es que lo marque el correo (124);
    * esto queda para cuando el correo no salió y se le avisó de otra forma.
    */
-  async registrarAviso(procesoId: string, acceso: HiringAccess) {
+  async registrarAviso(
+    procesoId: string,
+    acceso: HiringAccess,
+    evidencia?: ArchivoCargado,
+    hash?: string,
+  ) {
+    // Sesión de QA del 04/11: la evidencia de la notificación es obligatoria.
+    // Cuando el correo del módulo sale, él es la evidencia; cuando no, se
+    // carga la del aviso que se dio por fuera.
+    if (!evidencia || !hash) {
+      throw new BadRequestException(
+        'Carga la evidencia de la notificación al supervisor: el correo que se le envió por fuera o su constancia',
+      );
+    }
+
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoSuscrito(em, procesoId);
       const vigente = await this.supervisorVigente(contrato.id, em);
@@ -509,13 +511,27 @@ export class SupervisionService {
         throw new ConflictException('Ya quedó constancia de que se le avisó al supervisor');
       }
 
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · evidencia de la notificación al supervisor`,
+        evidencia,
+        hash,
+        acceso,
+      );
+
       vigente.alertaEnviadaAt = new Date();
+      vigente.evidenciaAvisoDocumentoId = doc.id;
       await em.save(vigente);
 
       await this.traza(em, procesoId, vigente.id, 'ADJUNTAR', acceso, {
         actividad: NUMERAL_SUPERVISOR,
         supervisor: vigente.nombre,
         aviso: 'comunicado',
+        evidencia: doc.id,
       });
     });
 
@@ -538,6 +554,21 @@ export class SupervisionService {
   }
 
   // ----------------------------------------------------------- auxiliares --
+
+  /**
+   * Lo que se guarda del supervisor: lo que dice el acto, sin cuenta ni
+   * persona del directorio (136). El supervisor no entra a la aplicación.
+   */
+  private datosDelSupervisor(dto: DesignarSupervisorDto): Partial<SupervisionContrato> {
+    return {
+      personaId: null,
+      usuarioId: null,
+      puestoId: null,
+      nombre: dto.nombre.trim(),
+      cargo: dto.cargo?.trim() || null,
+      email: dto.email?.trim().toLowerCase() || null,
+    };
+  }
 
   /** El acto ya se firmó; no se designa hacia el futuro. */
   private validarFecha(fecha: string) {
@@ -679,7 +710,7 @@ export class SupervisionService {
         .findOne({ where: { id: supervisionId } });
       if (!supervision) return sinEnviar(null, 'la designación no existe');
       if (!supervision.email) {
-        return sinEnviar(null, `la cuenta de ${supervision.nombre} no tiene correo registrado`);
+        return sinEnviar(null, `no se registró el correo de ${supervision.nombre}`);
       }
 
       const contrato = await this.dataSource
@@ -731,6 +762,22 @@ export class SupervisionService {
       const salio = await this.campana.correoConAdjuntos(supervision.email, aviso, adjuntos);
       if (!salio) return sinEnviar(supervision.email, 'el servicio de correo no lo aceptó');
 
+      // Copia al abogado revisor del proceso y al correo general de
+      // Contratación (sesión de QA del 04/11), no a la bandeja de la Dirección.
+      // notifications-service no maneja copia (cc), así que a cada uno le sale
+      // el mismo correo aparte, marcado como copia.
+      const copias = (await this.copiasDelCorreo(procesoId)).filter(
+        (c) => c.toLowerCase() !== supervision.email!.toLowerCase(),
+      );
+      const copiasEnviadas: string[] = [];
+      for (const copia of copias) {
+        const aviso2 = {
+          titulo: `Copia: ${aviso.titulo}`,
+          mensaje: `Copia de la notificación enviada a ${supervision.nombre} (${supervision.email}). ${aviso.mensaje}`,
+        };
+        if (await this.campana.correoConAdjuntos(copia, aviso2, adjuntos)) copiasEnviadas.push(copia);
+      }
+
       supervision.alertaEnviadaAt = new Date();
       await this.dataSource.getRepository(SupervisionContrato).save(supervision);
       await this.traza(this.dataSource.manager, procesoId, supervision.id, 'ADJUNTAR', acceso, {
@@ -738,27 +785,15 @@ export class SupervisionService {
         supervisor: supervision.nombre,
         aviso: 'correo',
         para: supervision.email,
+        copias: copiasEnviadas,
         adjuntos: adjuntos.map((a) => a.filename),
         ...(fuera.length ? { quedanFuera: fuera } : {}),
       });
 
-      // También a la campana: es donde mira lo que le toca en la plataforma.
-      if (supervision.usuarioId) {
-        await this.campana.enviar([
-          {
-            id_usuario_destinatario: supervision.usuarioId,
-            tipo_notificacion: 'contratacion_supervisor_designado',
-            titulo: aviso.titulo,
-            mensaje: `Te designaron supervisor${contrato?.numero ? ` del contrato ${contrato.numero}` : ''}. El acto te llegó por correo.`,
-            prioridad: 'Alta',
-            datos_adicionales: { modulo: 'contratacion', procesoId, numeral: NUMERAL_SUPERVISOR },
-          },
-        ]);
-      }
-
       return {
         enviado: true,
         para: supervision.email,
+        copias: copiasEnviadas,
         adjuntos: adjuntos.map((a) => a.filename),
         quedanFuera: fuera,
         motivo: null,
@@ -766,6 +801,37 @@ export class SupervisionService {
     } catch (error: any) {
       this.logger.warn(`No se pudo mandar el correo al supervisor: ${error.message}`);
       return sinEnviar(null, 'ocurrió un error al prepararlo');
+    }
+  }
+
+  /**
+   * A quién le va copia del correo de la designación: el abogado revisor del
+   * proceso (su puesto) y el correo general de Contratación (138). Nunca
+   * lanza: sin copias, el correo al supervisor sale igual.
+   */
+  private async copiasDelCorreo(procesoId: string): Promise<string[]> {
+    try {
+      const revisores: { correo: string | null }[] = await this.dataSource.query(
+        `SELECT COALESCE(NULLIF(TRIM(p.dir_email), ''),
+                         CASE WHEN u.username LIKE '%@%' THEN u.username END) AS correo
+           FROM hiring.asignaciones_puesto a
+           JOIN hiring.puestos_proceso pu ON pu.id = a.puesto_id
+           LEFT JOIN auth."user" u ON u.id_user::text = a.usuario_id::text
+           LEFT JOIN auth.personas p ON p.id_person = COALESCE(a.persona_id, u.id_person)
+          WHERE a.proceso_id = $1 AND a.estado = 'VIGENTE' AND pu.activo
+            AND lower(pu.nombre) = 'abogado revisor'`,
+        [procesoId],
+      );
+      const [general]: { correo: string | null }[] = await this.dataSource.query(
+        `SELECT correo FROM hiring.correos_institucionales WHERE clave = 'CONTRATACION_GENERAL'`,
+      );
+      const todos = [...revisores.map((r) => r.correo), general?.correo ?? null]
+        .map((c) => c?.trim().toLowerCase())
+        .filter((c): c is string => !!c && c.includes('@'));
+      return [...new Set(todos)];
+    } catch (error: any) {
+      this.logger.warn(`No se pudieron leer las copias del correo al supervisor: ${error.message}`);
+      return [];
     }
   }
 

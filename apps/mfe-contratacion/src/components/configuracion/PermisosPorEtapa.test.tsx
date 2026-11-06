@@ -155,11 +155,11 @@ describe('PermisosPorEtapa', () => {
     expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
   });
   it('parte de un perfil por defecto copiando el alcance del rol que lo encarna', async () => {
-    // Los cinco perfiles de la Dirección (EFDS-1183): el abogado es el revisor.
+    // Los perfiles por defecto (137): el abogado revisor lo encarna su rol.
     const abogado: RolConAlcance = {
-      id: 'r-revisor',
-      codigo: 'REVISOR_CONTRATACION',
-      nombre: 'Revisor de Contratación',
+      id: 'r-abogado-revisor',
+      codigo: 'ABOGADO_REVISOR',
+      nombre: 'Abogado Revisor',
       descripcion: null,
       acciones: ['ver', 'aprobar'],
       transversales: [],
@@ -173,7 +173,7 @@ describe('PermisosPorEtapa', () => {
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Ver en la etapa 3').checked).toBe(true));
 
-    await usuario.click(screen.getByRole('button', { name: 'Abogado' }));
+    await usuario.click(screen.getByRole('button', { name: 'Abogado revisor' }));
 
     expect(casilla('Ver en todo el módulo').checked).toBe(true);
     // Área Legal no tiene «Aprobar» en la plataforma: esa casilla no se copia.
@@ -188,6 +188,6 @@ describe('PermisosPorEtapa', () => {
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Ver en la etapa 3').checked).toBe(true));
 
-    expect(screen.queryByRole('button', { name: 'Abogado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Abogado revisor' })).toBeNull();
   });
 });

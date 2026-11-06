@@ -109,7 +109,7 @@ export class FlujoController {
   @ApiOperation({
     summary: 'Activar el borrador',
     description:
-      'Solo si ninguna actividad queda sin quién la haga ni sin quién la apruebe; si no, 409 con la lista de lo que hay que corregir. Los procesos en curso siguen con su versión.',
+      'Solo si ninguna actividad queda sin quién la haga ni sin quién la apruebe; si no, 409 con la lista de lo que hay que corregir. Los procesos vivos pasan a la versión nueva en lo que les falta; lo terminado y lo que está en revisión no cambia.',
   })
   activar(@Body() dto: ActivarFlujoDto, @Req() req: any) {
     return this.service.activar(getHiringAccess(req), dto.nota);

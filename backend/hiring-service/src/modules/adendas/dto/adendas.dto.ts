@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsDateString,
   IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateIf,
@@ -13,6 +16,29 @@ import {
 } from 'class-validator';
 
 import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+
+/** Una fecha del cronograma que mueve la adenda (139). */
+export class CambioCronogramaAdendaDto {
+  @ApiProperty({ description: 'Si mueve una etapa macro o una actividad', enum: ['ETAPA', 'ACTIVIDAD'] })
+  @IsIn(['ETAPA', 'ACTIVIDAD'], { message: 'Cada fecha de la adenda es de una etapa o de una actividad' })
+  ambito: 'ETAPA' | 'ACTIVIDAD';
+
+  /** La etapa (5 a 10), el numeral de la actividad del flujo o el id de una propia. */
+  @ApiProperty({ description: 'Etapa, numeral o id de la actividad propia' })
+  @IsString()
+  @IsNotEmpty({ message: 'Falta qué etapa o actividad mueve la adenda' })
+  @MaxLength(60)
+  clave: string;
+
+  @ApiPropertyOptional({ description: 'Nueva fecha de inicio (YYYY-MM-DD); sin ella se conserva la que tenía' })
+  @IsOptional()
+  @IsDateString({}, { message: 'La nueva fecha de inicio va en formato YYYY-MM-DD' })
+  fechaInicio?: string | null;
+
+  @ApiProperty({ description: 'Nueva fecha de fin (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La nueva fecha de fin va en formato YYYY-MM-DD' })
+  fechaFin: string;
+}
 
 export class EmitirAdendaDto {
   @ApiProperty({ description: 'Qué modifica la adenda', enum: ['FONDO', 'CRONOGRAMA'] })
@@ -43,6 +69,36 @@ export class EmitirAdendaDto {
     { message: 'Una adenda de cronograma necesita la nueva fecha de vencimiento (YYYY-MM-DD)' },
   )
   vencimientoNuevo?: string;
+
+  /**
+   * Hora del nuevo cierre de ofertas (HH:MM, Bogotá). Opcional: sin ella se
+   * conserva la del cronograma. Solo cuenta cuando la adenda prorroga el
+   * cierre de ofertas (revisión de QA de EFDS-1155).
+   */
+  @ApiPropertyOptional({ description: 'Hora del nuevo cierre de ofertas (HH:MM, Bogotá)' })
+  @ValidateIf((dto: EmitirAdendaDto) => dto.tipo === 'CRONOGRAMA' && !!dto.horaNueva)
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'La hora del nuevo cierre va en formato HH:MM (24 horas)',
+  })
+  horaNueva?: string;
+
+  /**
+   * Solo en las de cronograma: otras fechas del cronograma de la 5.2 que la
+   * adenda mueve (139). Llega como JSON porque la adenda viaja en multipart
+   * con su documento. Se aplican al publicarla, como el nuevo cierre.
+   */
+  @ApiPropertyOptional({ type: [CambioCronogramaAdendaDto], description: 'Fechas del cronograma que mueve' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? plainToInstance(CambioCronogramaAdendaDto, JSON.parse(value) as object[])
+      : value,
+  )
+  @IsArray()
+  @ArrayMaxSize(60)
+  @ValidateNested({ each: true })
+  @Type(() => CambioCronogramaAdendaDto)
+  cambiosCronograma?: CambioCronogramaAdendaDto[];
 }
 
 export class PublicarAdendaDto {

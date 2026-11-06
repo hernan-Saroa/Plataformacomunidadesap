@@ -1,4 +1,4 @@
-import { MAX_BYTES_ADJUNTO, MIME_DOCUMENTOS, MIME_ZIP, opcionesDeCarga } from './archivos';
+import { MAX_BYTES_ADJUNTO, MAX_BYTES_OFERTA, MIME_DOCUMENTOS, MIME_ZIP, opcionesDeCarga } from './archivos';
 
 /** La revisión de QA de la 6.1 (EFDS-1155): 50 MB y ofertas en .zip. */
 describe('opcionesDeCarga', () => {
@@ -12,6 +12,13 @@ describe('opcionesDeCarga', () => {
   it('admite adjuntos de hasta 50 MB', () => {
     expect(opcionesDeCarga(MIME_DOCUMENTOS, 'formato').limits.fileSize).toBe(50 * 1024 * 1024);
     expect(MAX_BYTES_ADJUNTO).toBe(50 * 1024 * 1024);
+  });
+
+  it('admite el soporte de una oferta de hasta 200 MB', () => {
+    expect(MAX_BYTES_OFERTA).toBe(200 * 1024 * 1024);
+    expect(
+      opcionesDeCarga([...MIME_DOCUMENTOS, ...MIME_ZIP], 'formato', MAX_BYTES_OFERTA).limits.fileSize,
+    ).toBe(200 * 1024 * 1024);
   });
 
   it('acepta el .zip donde la actividad lo admite, con el tipo que mande el navegador', async () => {

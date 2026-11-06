@@ -27,8 +27,22 @@ export function numeralDeLaSumision(sumision: SumisionComite): string {
 export function requisitoDeLaSegundaSesion(
   estadoActividad: EstadoActividad | null,
   sesiones: { decision: DecisionComite }[],
+  /**
+   * Si la primera sesión (3.7) quedó en «no pasa por comité», por cuantía o por
+   * modalidad (sesión de QA del 04/11). Con la misma regla, la segunda sesión
+   * tampoco se pide: basta el pliego definitivo aprobado por su cadena.
+   */
+  sinComite = false,
 ): { cumplido: boolean; motivo: string | null } {
   if (!estadoActividad || estadoActividad === 'NO_APLICA') return { cumplido: true, motivo: null };
+  if (sinComite) {
+    return estadoActividad === 'APROBADO'
+      ? { cumplido: true, motivo: null }
+      : {
+          cumplido: false,
+          motivo: 'El pliego definitivo todavía no lo aprueban el abogado revisor y la directora (5.6.1)',
+        };
+  }
 
   const ultima = sesiones[0];
   if (ultima?.decision === 'APROBADO' || ultima?.decision === 'APROBADO_CON_CONDICIONES') {
@@ -62,8 +76,12 @@ export function requisitoDeLaSegundaSesion(
 export function motivoParaNoRegistrarLaSesion(
   estadoActividad: EstadoActividad,
   ultima: DecisionComite | null,
+  sinComite = false,
 ): string | null {
   if (estadoActividad === 'NO_APLICA') return 'Esta modalidad no tiene segunda sesión del comité';
+  if (sinComite) {
+    return 'Por su cuantía el proceso no pasó por el comité en la 3.7: con la misma regla, tampoco hay segunda sesión';
+  }
   if (ultima === 'APROBADO' || ultima === 'APROBADO_CON_CONDICIONES') {
     return 'El comité ya aprobó el pliego definitivo: lo que sigue es la apertura';
   }
@@ -113,4 +131,24 @@ export function cambiaronTrasElProyecto(
 ): boolean {
   if (!cargadoEl || !publicadoEl) return false;
   return new Date(cargadoEl).getTime() > new Date(publicadoEl).getTime();
+}
+
+/**
+ * Si la primera sesión del comité (3.7) quedó en «no pasa por comité».
+ *
+ * La 3.7 resuelve la cuantía con el umbral de la modalidad y deja la actividad
+ * en NO_APLICA cuando el proceso no lo supera (o cuando la modalidad no va al
+ * comité). La segunda sesión usa la misma regla leyendo ese resultado, en vez
+ * de volver a calcularlo: si mañana cambia el umbral, el proceso no cambia de
+ * camino a mitad de la etapa 5.
+ */
+export async function sinComiteEnLaPrimeraSesion(
+  em: { query: (sql: string, params?: unknown[]) => Promise<any[]> },
+  procesoId: string,
+): Promise<boolean> {
+  const [fila] = await em.query(
+    `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '3.7'`,
+    [procesoId],
+  );
+  return fila?.estado === 'NO_APLICA';
 }

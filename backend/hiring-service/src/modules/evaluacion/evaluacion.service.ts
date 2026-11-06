@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +18,7 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { AlcanceService } from '../../auth/alcance.service';
 import { ComiteService } from '../comite/comite.service';
 import {
   ActualizarInformeDto,
@@ -60,8 +60,9 @@ export interface ArchivoDelInforme {
  * historial con su motivo.
  *
  * Lo que este servicio cuida es que el registro sea creíble: que haya comité
- * designado, que quien registra sea miembro de ese comité y que el informe
- * venga adjunto.
+ * designado y que el informe venga adjunto. Quién lo carga lo dice el permiso
+ * de la 6.3 y quién lo aprueba, el flujo: estar en el comité solo identifica a
+ * quien evaluó, no da permisos ni hace aprobador.
  */
 @Injectable()
 export class EvaluacionService {
@@ -69,6 +70,7 @@ export class EvaluacionService {
     private readonly dataSource: DataSource,
     private readonly comite: ComiteService,
     private readonly cierre: CierreActividadService,
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -92,6 +94,7 @@ export class EvaluacionService {
     );
 
     const misDimensiones = await this.comite.dimensionesDe(procesoId, acceso);
+    const puedeCargar = await this.alcance.puedeEn(acceso, 'editar', NUMERAL_EVALUACION);
     const comiteDesignado = (await this.comite.estado(procesoId, acceso)).designado;
 
     const historial = await this.dataSource.getRepository(ResultadoEvaluacion).find({
@@ -123,8 +126,8 @@ export class EvaluacionService {
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
       recepcionCerrada,
       comiteDesignado,
-      // En qué dimensiones fue designado quien consulta. Vacío significa que no
-      // integra el comité de este proceso, así que mira y no registra.
+      // En qué dimensiones fue designado quien consulta. Es informativo: lo que
+      // deja cargar es el permiso de la 6.3, no estar en el comité.
       misDimensiones,
       esMiembroDelComite: misDimensiones.length > 0,
       puedeRegistrar:
@@ -132,10 +135,10 @@ export class EvaluacionService {
         recepcionCerrada &&
         comiteDesignado &&
         oferentes.length > 0 &&
-        misDimensiones.length > 0 &&
+        puedeCargar &&
         !vigente,
       // Volver a cargar el informe si tiene un error u omisión (EFDS-1157).
-      puedeActualizar: !excluida && misDimensiones.length > 0 && !!vigente,
+      puedeActualizar: !excluida && puedeCargar && !!vigente,
       ofertas: oferentes.map((oferta) => ({
         id: oferta.id,
         numero: oferta.numero,
@@ -210,7 +213,6 @@ export class EvaluacionService {
   ) {
     await this.dataSource.transaction(async (em) => {
       await this.exigirProceso(em, procesoId);
-      await this.exigirQueSeaDelComite(procesoId, acceso);
 
       const vigente = await this.resultadoVigente(procesoId, em);
       if (!vigente) {
@@ -248,7 +250,6 @@ export class EvaluacionService {
   async rectificar(procesoId: string, dto: RectificarResultadoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       await this.exigirProceso(em, procesoId);
-      await this.exigirQueSeaDelComite(procesoId, acceso);
 
       const vigente = await this.resultadoVigente(procesoId, em);
       if (!vigente) {
@@ -288,7 +289,6 @@ export class EvaluacionService {
   ) {
     await this.dataSource.transaction(async (em) => {
       await this.exigirProceso(em, procesoId);
-      await this.exigirQueSeaDelComite(procesoId, acceso);
 
       const vigente = await this.resultadoVigente(procesoId, em);
       if (!vigente) {
@@ -329,25 +329,7 @@ export class EvaluacionService {
 
   // ----------------------------------------------------------- auxiliares --
 
-  /**
-   * Registra quien integra el comité de **este** proceso.
-   *
-   * El rol del token solo abre la pantalla. Un evaluador designado en otro
-   * proceso llega hasta aquí y no puede registrar nada, que es lo correcto:
-   * evaluar es una condición de la persona en el proceso, no una credencial.
-   * La regla es la misma de EFDS-1438; lo que cambió es qué se registra.
-   */
-  private async exigirQueSeaDelComite(procesoId: string, acceso: HiringAccess) {
-    const mias = await this.comite.dimensionesDe(procesoId, acceso);
-
-    if (mias.length === 0) {
-      throw new ForbiddenException(
-        'No fuiste designado en el comité evaluador de este proceso: el resultado lo registra quien evaluó',
-      );
-    }
-  }
-
-  /** Lo que piden cargar y volver a cargar: proceso, recepción en firme, comité y ser de él. */
+  /** Lo que piden cargar y volver a cargar: proceso, recepción en firme y comité designado. */
   private async exigirQueSePuedaCargar(em: EntityManager, procesoId: string, acceso: HiringAccess) {
     const proceso = await this.exigirProceso(em, procesoId);
     await this.exigirQueAplique(em, proceso);
@@ -363,7 +345,6 @@ export class EvaluacionService {
 
     // Sin comité no hay evaluación (EFDS-1156). No se repite la regla.
     await this.comite.exigirComiteParaEvaluar(procesoId, em);
-    await this.exigirQueSeaDelComite(procesoId, acceso);
   }
 
   /**

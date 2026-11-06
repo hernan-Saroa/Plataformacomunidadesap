@@ -4,10 +4,16 @@ import { DataSource } from 'typeorm';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import {
+  NOMBRE_ETAPA as NOMBRE_ETAPA_CRONOGRAMA,
+  NUMERAL_CRONOGRAMA,
+  SQL_ETAPA_CUMPLIDA,
+} from '../cronograma/cronograma-etapas';
 import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { PuestosService, UsoDePuesto } from '../participacion/puestos.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
+import { SQL_ACTIVIDAD_CUMPLIDA } from '../cronograma/cronograma-actividades';
 import { plazoDeActividad } from './plazos-actividad';
 import { limiteDelActa, numeralDeLaSumision } from '../comite-contratacion/segunda-sesion';
 import {
@@ -102,7 +108,18 @@ export type TipoAlerta =
    * y no frena la evaluación, así que esto es lo que impide que se olvide. Le
    * llega a quien hace la 6.2 en el proceso hasta que lo cargue.
    */
-  | 'MEMORANDO_COMITE_PENDIENTE';
+  | 'MEMORANDO_COMITE_PENDIENTE'
+  /**
+   * Una etapa del cronograma por etapas (5.2, migración 135) que se acerca a
+   * su fecha de fin o ya la pasó sin cumplirse. Le llega a quien hace la 5.2
+   * en el proceso, o a quien fijó la fecha si la actividad no tiene puesto.
+   */
+  | 'CRONOGRAMA_ETAPA'
+  /**
+   * Una actividad del cronograma (138) está por vencer o ya venció sin
+   * cumplirse. Le llega a quien su programación dice, por el canal que dice.
+   */
+  | 'CRONOGRAMA_ACTIVIDAD';
 
 /** Algo que espera la decisión de quien consulta (bandeja «Por revisar»). */
 export interface ElementoPorRevisar {
@@ -211,9 +228,16 @@ export interface Alerta {
   estado: EstadoAlerta;
   responsable: string | null;
   responsableEmail: string | null;
-  /** `id_person` del supervisor vigente; a él va la notificación. */
+  /** La cuenta a la que va la notificación. */
   responsableId: string | null;
+  /** Por dónde sale, si la alerta lo configura (cronograma por actividad, 138). */
+  canal?: 'CAMPANA' | 'CORREO' | 'AMBOS';
+  /** Correos escritos a mano que reciben el aviso solo por correo (138). */
+  correos?: string[];
 }
+
+/** Ejecución y supervisión del contrato: quien la edita lleva lo del supervisor (136). */
+const NUMERAL_SUPERVISION = '9.2';
 
 /**
  * Alertas de vencimiento (EFDS-1185, RF-SIS-03).
@@ -292,6 +316,8 @@ export class AlertasService {
       plazosActividad,
       actasPendientes,
       memorandosPendientes,
+      cronograma,
+      cronogramaActividades,
     ] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
@@ -302,6 +328,8 @@ export class AlertasService {
       this.plazosDeActividades(acceso),
       this.actasDelComitePendientes(hoy, plazos.plazo_acta_comite, acceso),
       this.memorandosDelComitePendientes(hoy, plazos.plazo_memorando_comite, acceso),
+      this.etapasDelCronogramaPorVencer(hoy, anticipacion ?? plazos.anticipacion_cronograma, acceso),
+      this.actividadesDelCronogramaPorVencer(hoy, plazos.anticipacion_cronograma, acceso),
     ]);
 
     const conPlazo: Alerta[] = plazosActividad.map((p) => ({
@@ -335,7 +363,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinResponsable, ...actasPendientes, ...memorandosPendientes, ...conPlazo, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinResponsable, ...actasPendientes, ...memorandosPendientes, ...cronograma, ...cronogramaActividades, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -650,14 +678,12 @@ export class AlertasService {
   /**
    * Cuentas de cobro radicadas que esperan el aval (9.4).
    *
-   * Las avala el supervisor vigente del contrato, no un rol: es la regla de
-   * `PagosService.exigirSupervisor`. Por la cuenta que ocupa el puesto que
-   * llenó la designación (121); si la 9.4 no nombra puesto, por la cuenta
-   * designada.
+   * El supervisor no entra a la aplicación (136): su aval firmado lo carga
+   * quien tiene «aprobar» en la 9.4, como el permiso que protege el botón.
+   * Solo las de contratos con supervisor: sin él no hay de quién sea el aval.
    */
-  private pagosPorAvalar(acceso: HiringAccess): Promise<any[]> {
-    const id = (acceso.userId ?? '').trim();
-    if (!id) return Promise.resolve([]);
+  private async pagosPorAvalar(acceso: HiringAccess): Promise<any[]> {
+    if (!this.alcance || !(await this.alcance.puedeEn(acceso, 'aprobar', '9.4'))) return [];
 
     return this.dataSource.query(
       `
@@ -675,22 +701,14 @@ export class AlertasService {
         FROM hiring.pagos_contrato pg
         JOIN hiring.contratos c ON c.id = pg.contrato_id
         JOIN hiring.procesos p ON p.id = c.proceso_id
-        JOIN hiring.supervisiones_contrato s
-              ON s.contrato_id = c.id
-             AND s.estado = 'VIGENTE'
         JOIN hiring.actividades a ON a.numeral = '9.4'
         LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
        WHERE pg.estado = 'RADICADO'
-         AND (
-           EXISTS (
-             SELECT 1 FROM hiring.asignaciones_puesto ap
-              WHERE ap.proceso_id = p.id AND ap.puesto_id = s.puesto_id
-                AND ap.estado = 'VIGENTE' AND ap.usuario_id::text = $1
-           )
-           OR (s.puesto_id IS NULL AND s.usuario_id::text = $1)
+         AND EXISTS (
+           SELECT 1 FROM hiring.supervisiones_contrato s
+            WHERE s.contrato_id = c.id AND s.estado = 'VIGENTE'
          )
       `,
-      [id],
     );
   }
 
@@ -974,6 +992,173 @@ export class AlertasService {
   }
 
   /**
+   * Las etapas del cronograma (5.2, 135) por vencer o vencidas sin cumplirse.
+   *
+   * Una etapa cumplida no alerta aunque se haya pasado de la fecha: se cumple
+   * cuando el proceso aprueba alguna actividad de una etapa posterior, o
+   * cuando el proceso termina (ver `SQL_ETAPA_CUMPLIDA`).
+   */
+  private async etapasDelCronogramaPorVencer(
+    hoy: string,
+    anticipacion: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    let filas: any[];
+    try {
+      filas = await this.dataSource.query(
+        `SELECT c.proceso_id, c.etapa, c.fecha_fin::text AS fecha_fin,
+                c.updated_by, c.updated_by_id, p.radicado
+           FROM hiring.cronograma_etapas c
+           JOIN hiring.procesos p ON p.id = c.proceso_id
+          WHERE c.fecha_fin <= ($1::date + $2::int)
+            AND NOT ${SQL_ETAPA_CUMPLIDA}
+          ORDER BY c.fecha_fin ASC`,
+        [hoy, anticipacion],
+      );
+    } catch (error: any) {
+      // Sin la 135 aplicada no hay cronograma que vigilar; el resto de las
+      // alertas no tiene por qué caerse con esto.
+      this.logger.warn(`Cronograma por etapas no disponible: ${error.message}`);
+      return [];
+    }
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, NUMERAL_CRONOGRAMA).catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.updated_by_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const etapa = Number(f.etapa);
+      const diasRestantes = diasParaVencer(f.fecha_fin, hoy);
+      alertas.push({
+        tipo: 'CRONOGRAMA_ETAPA',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `Etapa ${etapa} · ${NOMBRE_ETAPA_CRONOGRAMA[etapa] ?? ''}`,
+        vence: f.fecha_fin,
+        diasRestantes,
+        estado: estadoAlerta(diasRestantes, anticipacion),
+        responsable: quien?.responsable?.nombre ?? f.updated_by ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
+  }
+
+  /**
+   * Las actividades del cronograma por vencer o vencidas sin cumplirse (138).
+   *
+   * Cada fila dice con cuánta anticipación se avisa (sin ella, la general del
+   * cronograma), a quién y por qué canal. Sale una alerta por destinatario; los
+   * correos escritos a mano van en una sola, sin cuenta.
+   */
+  private async actividadesDelCronogramaPorVencer(
+    hoy: string,
+    anticipacionGeneral: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    let filas: any[];
+    try {
+      filas = await this.dataSource.query(
+        `SELECT c.proceso_id, c.numeral, COALESCE(c.nombre, a.nombre) AS nombre, c.fecha_fin::text AS fecha_fin,
+                COALESCE(c.dias_antes, $2::int) AS dias_antes, c.avisar_a, c.canal, c.correos,
+                c.updated_by, c.updated_by_id, p.radicado
+           FROM hiring.cronograma_actividades c
+           JOIN hiring.procesos p ON p.id = c.proceso_id
+           LEFT JOIN hiring.actividades a ON a.numeral = c.numeral
+          WHERE c.fecha_fin <= ($1::date + COALESCE(c.dias_antes, $2::int))
+            AND NOT ${SQL_ACTIVIDAD_CUMPLIDA}
+          ORDER BY c.fecha_fin ASC`,
+        [hoy, anticipacionGeneral],
+      );
+    } catch (error: any) {
+      // Sin la 138 aplicada no hay cronograma por actividad que vigilar.
+      this.logger.warn(`Cronograma por actividad no disponible: ${error.message}`);
+      return [];
+    }
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const destinos: string[] = Array.isArray(f.avisar_a) ? f.avisar_a : [];
+      const cuentas = new Set<string>();
+
+      if (destinos.includes('QUIEN_LA_HACE')) {
+        // Una propia (139) no tiene actividad del flujo: la hace quien lleva el
+        // cronograma, el de la 5.2.
+        const quien = this.alcance
+          ? await this.alcance.quienHace(undefined, f.proceso_id, f.numeral ?? '5.2').catch(() => null)
+          : null;
+        const id = quien?.responsable?.usuarioId ?? f.updated_by_id ?? null;
+        if (id) cuentas.add(id);
+      }
+      for (const [destino, puesto] of [
+        ['ABOGADO_ESTRUCTURADOR', 'abogado estructurador'],
+        ['ABOGADO_REVISOR', 'abogado revisor'],
+      ] as const) {
+        if (!destinos.includes(destino)) continue;
+        const ocupantes: { id: string | null }[] = await this.dataSource.query(
+          `SELECT COALESCE(a.usuario_id::text, u.id_user::text) AS id
+             FROM hiring.asignaciones_puesto a
+             JOIN hiring.puestos_proceso pu ON pu.id = a.puesto_id
+             LEFT JOIN auth."user" u ON u.id_person = a.persona_id
+            WHERE a.proceso_id = $1 AND a.estado = 'VIGENTE' AND lower(pu.nombre) = $2`,
+          [f.proceso_id, puesto],
+        );
+        for (const o of ocupantes) if (o.id) cuentas.add(o.id);
+      }
+      if (destinos.includes('GESTOR_DE_ARCHIVO')) {
+        const gestores: { id: string }[] = await this.dataSource.query(
+          `SELECT DISTINCT u.id_user::text AS id
+             FROM auth."user" u
+             JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+             JOIN auth.role r ON r.id = ur.id_rol AND r.is_active = true
+            WHERE u.is_active = true AND r.code = 'GESTOR_DE_ARCHIVO_Y_SUPERVISION'`,
+        );
+        for (const g of gestores) cuentas.add(g.id);
+      }
+
+      const diasRestantes = diasParaVencer(f.fecha_fin, hoy);
+      const base = {
+        tipo: 'CRONOGRAMA_ACTIVIDAD' as const,
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        // Una propia se abre en la 5.2, donde está su programación: la pantalla
+        // de alertas abre la actividad del numeral que va antes del «·».
+        descripcion: f.numeral ? `${f.numeral} · ${f.nombre}` : `5.2 · ${f.nombre} (actividad propia del cronograma)`,
+        vence: f.fecha_fin,
+        diasRestantes,
+        estado: estadoAlerta(diasRestantes, Number(f.dias_antes)),
+        responsable: f.updated_by ?? null,
+        responsableEmail: null,
+        canal: (f.canal ?? 'CAMPANA') as 'CAMPANA' | 'CORREO' | 'AMBOS',
+      };
+
+      for (const id of cuentas) {
+        if (!todos && id !== acceso?.userId) continue;
+        alertas.push({ ...base, responsableId: id });
+      }
+      const correos: string[] = Array.isArray(f.correos) ? f.correos : [];
+      if (correos.length && todos) alertas.push({ ...base, responsableId: null, correos });
+      // Quien consulta y no es destinatario igual la ve si puede ver todo.
+      if (!cuentas.size && !correos.length && todos) alertas.push({ ...base, responsableId: null });
+    }
+
+    return alertas;
+  }
+
+  /**
    * Criterio 1: pólizas con fecha de vencimiento.
    *
    * Se consultan los amparos y no las garantías porque el desglose de la 8.4
@@ -986,7 +1171,6 @@ export class AlertasService {
              c.numero        AS contrato,
              a.tipo          AS tipo_amparo,
              a.vigencia_hasta AS vence,
-             s.persona_id    AS responsable_id,
              s.nombre        AS responsable,
              s.email         AS responsable_email
         FROM hiring.amparos a
@@ -1008,7 +1192,8 @@ export class AlertasService {
       vence: f.vence,
       responsable: f.responsable,
       responsableEmail: f.responsable_email,
-      responsableId: f.responsable_id ?? null,
+      // A quien registra lo del supervisor (136): lo reparte `notificar`.
+      responsableId: null,
     }));
   }
 
@@ -1071,7 +1256,7 @@ export class AlertasService {
              -- —la 053 la creó con este nombre— y la consulta reventaba, así
              -- que el endpoint entero respondía 500 desde EFDS-1185.
              COALESCE(m.terminacion_el, c.updated_at::date) AS termino,
-             s.persona_id AS responsable_id, s.nombre AS responsable, s.email AS responsable_email
+             s.nombre AS responsable, s.email AS responsable_email
         FROM hiring.contratos c
         JOIN hiring.procesos p ON p.id = c.proceso_id
         LEFT JOIN hiring.modificaciones_contrato m
@@ -1094,8 +1279,88 @@ export class AlertasService {
       ),
       responsable: f.responsable,
       responsableEmail: f.responsable_email,
-      responsableId: f.responsable_id ?? null,
+      // A quien registra lo del supervisor (136): lo reparte `notificar`.
+      responsableId: null,
     }));
+  }
+
+  /**
+   * Las pólizas y la liquidación del contrato, a quien registra lo del
+   * supervisor.
+   *
+   * Iban al supervisor por su persona del directorio, pero el supervisor no
+   * entra a la aplicación (136): se registra a mano en la 8.2 y no tiene
+   * cuenta. Lo suyo lo lleva el gestor de archivo y supervisión, que es quien
+   * edita la 9.2 en el reparto de las etapas 9 y 10; se busca por ese permiso
+   * y no por el rol, para que siga siendo cierto si la Dirección lo cambia.
+   * Una alerta por cuenta, porque cada aviso tiene un solo destinatario.
+   */
+  private async aQuienSupervisa(alertas: Alerta[]): Promise<Alerta[]> {
+    const delContrato = (a: Alerta) => a.tipo === 'AMPARO' || a.tipo === 'LIQUIDACION';
+    if (!alertas.some(delContrato)) return alertas;
+
+    const cuentas = this.alcance
+      ? await this.alcance.cuentasQuePueden('editar', NUMERAL_SUPERVISION).catch(() => [])
+      : [];
+    return alertas.flatMap((a) =>
+      delContrato(a) && cuentas.length ? cuentas.map((id) => ({ ...a, responsableId: id })) : [a],
+    );
+  }
+
+  /**
+   * Los avisos del cronograma por actividad, cada uno por su canal (138).
+   *
+   * Campanita: el aviso normal. Ambos: la campana y, si es nuevo, también el
+   * correo. Correo: solo el correo de la cuenta. Los correos escritos a mano
+   * reciben solo correo, como los externos de los avisos (088).
+   */
+  private async avisarCronograma(alertas: Alerta[]): Promise<number> {
+    if (!alertas.length) return 0;
+    const campana = new Campana(this.dataSource, this.logger);
+    let avisadas = 0;
+
+    for (const a of alertas) {
+      const aviso = {
+        tipo_notificacion: 'contratacion_cronograma',
+        titulo:
+          a.estado === 'VENCIDO'
+            ? 'Actividad del cronograma vencida'
+            : 'Se acerca el vencimiento de una actividad del cronograma',
+        mensaje: `Proceso ${a.radicado}: la actividad ${a.descripcion}${
+          a.estado === 'VENCIDO'
+            ? ` debía estar cumplida el ${a.vence}; va ${Math.abs(a.diasRestantes)} días atrasada`
+            : a.diasRestantes === 0
+              ? ' vence hoy'
+              : ` vence el ${a.vence}, dentro de ${a.diasRestantes} días`
+        }.`,
+      };
+
+      if (a.correos?.length) {
+        avisadas += await campana.aCorreosExternos(a.correos, aviso);
+        continue;
+      }
+      if (!a.responsableId) continue;
+      const [cuenta] = await campana.cuentasDe([a.responsableId]);
+      if (!cuenta) continue;
+
+      if (a.canal === 'CORREO') {
+        const [fila] = await this.dataSource.query(
+          `SELECT COALESCE(NULLIF(TRIM(p.dir_email), ''),
+                           CASE WHEN u.username LIKE '%@%' THEN u.username END) AS correo
+             FROM auth."user" u
+             LEFT JOIN auth.personas p ON p.id_person = u.id_person
+            WHERE u.id_user::text = $1`,
+          [cuenta],
+        );
+        if (fila?.correo) avisadas += await campana.aCorreosExternos([fila.correo], aviso);
+        continue;
+      }
+      const r = await campana.enviar([{ ...aviso, id_usuario_destinatario: cuenta }], {
+        porCorreo: a.canal === 'AMBOS',
+      });
+      avisadas += r.enviados;
+    }
+    return avisadas;
   }
 
   /**
@@ -1155,23 +1420,33 @@ export class AlertasService {
     // toca cada una y si va por correo; aquí saldrían sin destinatario.
     const brutas = (await this.listar(anticipacion, acceso)).filter((a) => a.tipo !== 'PLAZO_ACTIVIDAD');
 
-    const alertas = brutas;
+    const todas = await this.aQuienSupervisa(brutas);
+
+    // El cronograma por actividad (138) dice por qué canal sale cada aviso: va
+    // aparte, por la campana con o sin correo, o solo por correo.
+    const delCronograma = todas.filter((a) => a.tipo === 'CRONOGRAMA_ACTIVIDAD');
+    const avisadasDelCronograma = await this.avisarCronograma(delCronograma);
+    const alertas = todas.filter((a) => a.tipo !== 'CRONOGRAMA_ACTIVIDAD');
 
     // Sin destinatario no hay a quién avisar: se cuentan aparte para que el log
     // distinga «no había nada» de «había y nadie tenía responsable».
     const conDestinatario = alertas.filter((a) => a.responsableId);
 
     if (!conDestinatario.length) {
-      return { alertas: alertas.length, notificadas: 0, sinDestinatario: alertas.length };
+      return {
+        alertas: alertas.length,
+        notificadas: 0,
+        sinDestinatario: alertas.length,
+        cronograma: avisadasDelCronograma,
+      };
     }
 
     /*
      * A la cuenta, no a la persona.
      *
-     * El supervisor de un contrato se guarda con su id de persona, pero la
-     * campana consulta por cuenta: el aviso de una póliza por vencer quedaba
-     * guardado sin que nadie lo viera. Lo que no se reconoce se conserva, porque
-     * puede ser ya una cuenta.
+     * La campana consulta por cuenta: un aviso dirigido a un id de persona
+     * quedaba guardado sin que nadie lo viera. Lo que no se reconoce se
+     * conserva, porque puede ser ya una cuenta.
      */
     const campana = new Campana(this.dataSource, this.logger);
     for (const alerta of conDestinatario) {
@@ -1211,6 +1486,22 @@ export class AlertasService {
               a.estado === 'VENCIDO'
                 ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
                 : `; el plazo vence el ${a.vence}`
+            }.`,
+          }
+        : a.tipo === 'CRONOGRAMA_ETAPA'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_cronograma',
+            titulo:
+              a.estado === 'VENCIDO'
+                ? 'Etapa del cronograma vencida'
+                : 'Se acerca el fin de una etapa del cronograma',
+            mensaje: `Proceso ${a.radicado}: la ${a.descripcion.replace(' · ', ' (')})${
+              a.estado === 'VENCIDO'
+                ? ` debía estar cumplida el ${a.vence}; va ${Math.abs(a.diasRestantes)} días atrasada`
+                : a.diasRestantes === 0
+                  ? ' debe quedar cumplida hoy'
+                  : ` debe quedar cumplida el ${a.vence}, dentro de ${a.diasRestantes} días`
             }.`,
           }
         : a.tipo === 'MEMORANDO_COMITE_PENDIENTE'
