@@ -102,7 +102,14 @@ const PERFILES = [
   {
     nombre: 'Archivo y supervisión',
     rol: 'GESTOR_DE_ARCHIVO_Y_SUPERVISION',
-    queHace: 'Registra la ejecución por el supervisor (pólizas, pagos, informe final) y archiva el expediente.',
+    queHace:
+      'Registra la ejecución por el supervisor (reunión de inicio, soportes, presunto incumplimiento, pagos, informe final) y archiva el expediente.',
+  },
+  {
+    // Sesión de QA del 04/11 (138): quien apoya al abogado en la reasignación.
+    nombre: 'Estructurador de apoyo',
+    rol: 'ESTRUCTURADOR_DE_APOYO',
+    queHace: 'Registra la reasignación de supervisor (9.3) y la notifica por correo; del resto, solo consulta.',
   },
   {
     nombre: 'Dirección',

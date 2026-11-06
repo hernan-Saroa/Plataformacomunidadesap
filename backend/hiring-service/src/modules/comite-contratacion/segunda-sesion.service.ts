@@ -31,6 +31,7 @@ import {
   estadoTrasLaSegundaSesion,
   motivoParaNoRegistrarLaSesion,
   requisitoDeLaSegundaSesion,
+  sinComiteEnLaPrimeraSesion,
 } from './segunda-sesion';
 
 /** Los documentos del proceso son los de la 5.1; la 5.6.1 les sube versión. */
@@ -101,7 +102,8 @@ export class SegundaSesionService implements OnModuleInit {
 
     const sesiones = await this.sesiones(em, procesoId);
     const ultima = sesiones[0]?.decision ?? null;
-    const noRegistra = motivoParaNoRegistrarLaSesion(estadoActual, ultima);
+    const sinComite = await sinComiteEnLaPrimeraSesion(em, procesoId);
+    const noRegistra = motivoParaNoRegistrarLaSesion(estadoActual, ultima, sinComite);
 
     // Los documentos de la 5.1, con la marca de cuáles cambiaron desde que se
     // publicó el proyecto: es lo que el revisor, la directora y el comité
@@ -145,7 +147,13 @@ export class SegundaSesionService implements OnModuleInit {
       responsable: responsable ? { nombre: responsable.nombre, usuarioNombre: responsable.usuarioNombre } : null,
       puesto,
       /** Lo que la apertura le pregunta a esta actividad. */
-      apertura: requisitoDeLaSegundaSesion(estadoActual, sesiones),
+      apertura: requisitoDeLaSegundaSesion(estadoActual, sesiones, sinComite),
+      /**
+       * Si por cuantía el proceso no pasa por comité (sesión de QA del 04/11):
+       * la 3.7 quedó en «no pasa» y la segunda sesión, con la misma regla,
+       * tampoco se pide.
+       */
+      sinComite,
     };
   }
 
@@ -247,7 +255,11 @@ export class SegundaSesionService implements OnModuleInit {
       if (!actividad) throw new NotFoundException('El proceso no tiene la actividad 5.6.1');
 
       const sesiones = await this.sesiones(em, procesoId);
-      const noRegistra = motivoParaNoRegistrarLaSesion(actividad.estado, sesiones[0]?.decision ?? null);
+      const noRegistra = motivoParaNoRegistrarLaSesion(
+        actividad.estado,
+        sesiones[0]?.decision ?? null,
+        await sinComiteEnLaPrimeraSesion(em, procesoId),
+      );
       if (noRegistra) throw new ConflictException(noRegistra);
 
       const cdp = await this.requisitoCdp(procesoId, em);

@@ -88,7 +88,13 @@ export const PERMISOS_TRANSVERSALES = [
 // Los roles por defecto de la 137: la Directora lo tiene todo y el Secretario
 // recibe y reparte, así que ve toda la entidad y sus informes.
 export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
-  [PERMISO_PROCESO_VER_TODOS]: ['DIRECTORA_DE_CONTRATACION', 'SECRETARIO_DE_CONTRATACION', 'SUPER_ADMIN'],
+  // El estructurador de apoyo (138) busca el proceso cuyo supervisor cambia sin estar en él.
+  [PERMISO_PROCESO_VER_TODOS]: [
+    'DIRECTORA_DE_CONTRATACION',
+    'SECRETARIO_DE_CONTRATACION',
+    'ESTRUCTURADOR_DE_APOYO',
+    'SUPER_ADMIN',
+  ],
   [PERMISO_PROCESO_ASIGNAR]: ['DIRECTORA_DE_CONTRATACION', 'SECRETARIO_DE_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_CONFIG_ADMINISTRAR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_REPORTE_VER]: ['DIRECTORA_DE_CONTRATACION', 'SECRETARIO_DE_CONTRATACION', 'SUPER_ADMIN'],
