@@ -49,6 +49,12 @@ export interface GrupoArbol {
   cicloInicio: string | null;
   cicloFin: string | null;
   cupoMaximo: number;
+  /** Virtual (063): sin aula; el horario es opcional y lo puede definir el docente. */
+  modalidad?: 'presencial' | 'virtual';
+  /** Virtual y sin franjas: el docente asignado define el horario en «Mi programación». */
+  horarioPorDefinir?: boolean;
+  /** Docente asignado a un grupo virtual que aún no tiene horario. */
+  docenteHorarioPorDefinir?: { idDocente: string; documento: string | null; nombre: string | null } | null;
   oferta: {
     idOfertaCetap: string;
     cetap: { id: string; codigo: string; nombre: string };

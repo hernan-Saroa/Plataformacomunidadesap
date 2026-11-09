@@ -107,7 +107,11 @@ export interface Grupo {
   /** Ciclo de clases del grupo. El backend ya los devolvía; faltaba declararlos. */
   fechaInicio: string | null;
   fechaFin: string | null;
+  /** Virtual (migración 063): sesiones mediadas por tecnología, sin aula; horario opcional. */
+  modalidad?: ModalidadGrupo;
 }
+
+export type ModalidadGrupo = 'presencial' | 'virtual';
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
 
@@ -163,12 +167,12 @@ export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): P
 }
 
 /** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
-export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null, idOfertaCetap?: string | null): Promise<Grupo[]> {
+export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null, idOfertaCetap?: string | null, modalidad: ModalidadGrupo = 'presencial'): Promise<Grupo[]> {
   return pedirJson<Grupo[]>(BASE_GRUPOS, {
     method: 'POST',
     // El periodo del grupo es el seleccionado en la cabecera: sin él, el grupo
     // nace huérfano (id_periodo NULL) y publicar/validar no lo alcanzan.
-    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null, ...(idOfertaCetap ? { idOfertaCetap } : {}) }),
+    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null, modalidad, ...(idOfertaCetap ? { idOfertaCetap } : {}) }),
   });
 }
 

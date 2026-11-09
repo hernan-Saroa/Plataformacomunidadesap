@@ -185,6 +185,13 @@ export class HorariosService {
 
     const grupo = await this.grupoRepo.findOne({ where: { idGrupo: dto.idGrupo } });
     if (!grupo) throw new NotFoundException('El grupo no existe.');
+    // Grupo virtual (063): sus sesiones son mediadas por tecnología y no llevan aula.
+    if (grupo.modalidad === 'virtual') {
+      if ((dto.tipoSesion && dto.tipoSesion !== 'mediada_tecnologia') || dto.aulaCodigo) {
+        throw new BadRequestException('El grupo es virtual: sus sesiones son mediadas por tecnología y sin aula.');
+      }
+      dto = { ...dto, tipoSesion: 'mediada_tecnologia', aulaCodigo: null, sedeCodigo: null };
+    }
 
     const existentes = await this.listarPorGrupo(dto.idGrupo);
     const choque = buscarSolapeIntraGrupo(dto, existentes);

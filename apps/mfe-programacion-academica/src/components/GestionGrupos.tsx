@@ -3,7 +3,7 @@ import { Layers3, Loader2, Plus, Trash2, User, Users } from 'lucide-react';
 
 import {
   actualizarOfertaCetapGrupo, crearGrupos, eliminarGrupo, getGrupos, getOfertasCetapGrupo,
-  type Grupo, type OfertaCetapGrupo,
+  type Grupo, type ModalidadGrupo, type OfertaCetapGrupo,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 
@@ -90,6 +90,8 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const [error, setError] = useState('');
   const [creando, setCreando] = useState(false);
   const [cantidad, setCantidad] = useState(1);
+  // Virtual (063): sin aula y con horario opcional, que puede definir el docente asignado.
+  const [modalidad, setModalidad] = useState<ModalidadGrupo>('presencial');
   const [ofertas, setOfertas] = useState<OfertaCetapGrupo[]>([]);
   const [cargandoOfertas, setCargandoOfertas] = useState(true);
   const [errorOfertas, setErrorOfertas] = useState('');
@@ -128,7 +130,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
     setCreando(true);
     setError('');
     try {
-      await crearGrupos(idAsignatura, cantidad, idPeriodo, cargandoOfertas || errorOfertas ? null : ofertaNueva || null);
+      await crearGrupos(idAsignatura, cantidad, idPeriodo, cargandoOfertas || errorOfertas ? null : ofertaNueva || null, modalidad);
       recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudieron crear los grupos.');
@@ -194,6 +196,20 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
             className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            Modalidad
+          </span>
+          <select
+            aria-label="Modalidad de los grupos nuevos"
+            value={modalidad}
+            onChange={(e) => setModalidad(e.target.value as ModalidadGrupo)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="presencial">Presencial</option>
+            <option value="virtual">Virtual (mediado por tecnologías)</option>
+          </select>
+        </label>
         <div className="w-full sm:w-80">
           <SelectorOfertaCetap
             id="oferta-grupo-nuevo" label="Oferta CETAP para grupos nuevos"
@@ -213,6 +229,12 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
         <p className="text-xs text-slate-400 font-medium ml-auto">
           La numeración es automática y no reutiliza números liberados.
         </p>
+        {modalidad === 'virtual' && (
+          <p role="note" className="w-full text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+            Grupo virtual: no lleva aula y el horario es opcional. Puede asignarle docente sin horario; el docente lo define
+            después en «Mi programación», con la validación de cruces, horas del grupo y tope.
+          </p>
+        )}
       </div>
 
       {cargandoOfertas && <p className="px-4 py-2 text-xs text-slate-500">Consultando ofertas CETAP…</p>}
@@ -253,7 +275,12 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                   {String(g.numeroGrupo).padStart(2, '0')}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-slate-800">Grupo {g.numeroGrupo}</p>
+                  <p className="text-sm font-bold text-slate-800">
+                    Grupo {g.numeroGrupo}
+                    {g.modalidad === 'virtual' && (
+                      <span className="ml-2 px-2 py-0.5 rounded-full text-[0.62rem] font-bold bg-violet-50 text-violet-700 border border-violet-200">Virtual</span>
+                    )}
+                  </p>
                   <p className="text-xs text-slate-400 font-medium flex items-center gap-3">
                     <span className="flex items-center gap-1">
                       <User className="w-3 h-3" />
@@ -313,6 +340,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
             nombreAsignatura={nombreAsignatura}
             fechaInicioGrupo={grupoSel.fechaInicio}
             fechaFinGrupo={grupoSel.fechaFin}
+            modalidad={grupoSel.modalidad ?? 'presencial'}
           />
         </div>
       )}
