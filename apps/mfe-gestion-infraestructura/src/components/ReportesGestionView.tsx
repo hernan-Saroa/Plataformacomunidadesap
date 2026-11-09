@@ -244,7 +244,7 @@ export const ReportesGestionView: React.FC = () => {
           <div>
             <h2 className="text-lg font-bold text-slate-900">Reportes e Indicadores de Gestión</h2>
             <p className="text-xs text-slate-500">
-              Vista consolidada de operaciones, SLA, percepción y rendimiento de técnicos ·{' '}
+              Vista consolidada de operaciones, SLA, percepción y atención operativa por técnico ·{' '}
               {reporte?.periodo.fechaDesdeISO ? `del ${reporte.periodo.fechaDesdeISO.slice(0, 10)} al ${reporte.periodo.fechaHastaISO?.slice(0, 10)}` : '…'}
             </p>
           </div>

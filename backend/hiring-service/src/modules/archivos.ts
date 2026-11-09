@@ -49,6 +49,15 @@ export const MIME_ZIP = ['application/zip', 'application/x-zip-compressed', 'app
  */
 export const MAX_BYTES_ADJUNTO = 50 * 1024 * 1024;
 
+/**
+ * Peso máximo del soporte de una oferta recibida (6.1).
+ *
+ * La oferta llega completa, muchas veces en un .zip con todos sus documentos,
+ * y no cabía en los 50 MB del resto del expediente. La pantalla lo repite en
+ * `PanelOfertas`.
+ */
+export const MAX_BYTES_OFERTA = 200 * 1024 * 1024;
+
 const EXTENSIONES: Record<string, string> = {
   'application/pdf': '.pdf',
   'image/png': '.png',
@@ -82,9 +91,14 @@ export const NOMBRE_EN_UTF8 = 'utf8';
  * Opciones de multer para un adjunto del expediente.
  *
  * El nombre en disco es aleatorio: el original lo elige el usuario y podría
- * colisionar o traer separadores de ruta.
+ * colisionar o traer separadores de ruta. El peso máximo es el de todo el
+ * expediente salvo donde la actividad diga otro.
  */
-export function opcionesDeCarga(mimePermitidos: string[], mensajeFormato: string) {
+export function opcionesDeCarga(
+  mimePermitidos: string[],
+  mensajeFormato: string,
+  maxBytes = MAX_BYTES_ADJUNTO,
+) {
   return {
     defParamCharset: NOMBRE_EN_UTF8,
     storage: diskStorage({
@@ -94,7 +108,7 @@ export function opcionesDeCarga(mimePermitidos: string[], mensajeFormato: string
         cb(null, `${randomBytes(16).toString('hex')}${extension}`);
       },
     }),
-    limits: { fileSize: MAX_BYTES_ADJUNTO },
+    limits: { fileSize: maxBytes },
     fileFilter: (_req: any, file: any, cb: any) =>
       mimePermitidos.includes(file.mimetype) || esZipSinTipo(file, mimePermitidos)
         ? cb(null, true)

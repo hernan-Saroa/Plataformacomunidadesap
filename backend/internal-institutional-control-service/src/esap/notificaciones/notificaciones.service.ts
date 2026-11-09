@@ -5,10 +5,33 @@ import { Notificacion, EstadoNotificacion, TipoNotificacion, CanalNotificacion, 
 import { PreferenciaNotificacion } from './entities/preferencia-notificacion.entity';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
 /** Límite de Microsoft Graph para adjuntos enviados dentro del mismo correo. */
 const MAX_ADJUNTO_CORREO_BYTES = 3 * 1024 * 1024;
+
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+const MODULO_NOTIFICACIONES = 'control-interno';
+
+/** Los nombres antiguos de evento traducidos al código EVT que usa la configuración global. */
+const CODIGO_EVENTO: Record<string, string> = {
+  anuncio_auditoria: 'EVT-AUD-001',
+  reunion_apertura: 'EVT-AUD-002',
+  recordatorio_plazo: 'EVT-AUD-003',
+  hallazgo_identificado: 'EVT-AUD-003',
+  aprobacion_plan: 'EVT-APR-001',
+  rechazo_plan: 'EVT-APR-002',
+  controversia_hallazgo: 'EVT-AUD-001',
+  seguimiento_trimestral: 'EVT-PM-001',
+};
+
+const PRIORIDAD_CAMPANA: Record<string, string> = {
+  [PrioridadNotificacion.BAJA]: 'Baja',
+  [PrioridadNotificacion.NORMAL]: 'Media',
+  [PrioridadNotificacion.ALTA]: 'Alta',
+  [PrioridadNotificacion.CRITICA]: 'Crítica',
+};
 
 /** Archivo que viaja adjunto en el correo (formato de notifications-service /api/v1/emails/send). */
 export interface AdjuntoCorreo {
@@ -678,9 +701,11 @@ export class NotificacionesService implements OnModuleInit {
   async create(createDto: CreateNotificacionDto, opciones?: { adjuntos?: AdjuntoCorreo[] }): Promise<Notificacion> {
     const tipoOriginal = String(createDto.tipoNotificacion || '');
     const tipoBd = this.mapTipoNotificacionParaBd(tipoOriginal, createDto.metadata);
+    // Campana y correo salen con la misma clave: la que pasó el creador o la traducida del tipo.
+    const evtCode = String((createDto.metadata as any)?.eventoCode || CODIGO_EVENTO[tipoOriginal] || tipoOriginal);
     const metadataConEvento = {
       ...(createDto.metadata || {}),
-      eventoCode: (createDto.metadata as any)?.eventoCode || tipoOriginal,
+      eventoCode: evtCode,
     };
 
     // ✅ NORMALIZACIÓN AGRESIVA: Limpiar caracteres corruptos
@@ -694,18 +719,6 @@ export class NotificacionesService implements OnModuleInit {
     try {
       const configGlobal = await this.preferenciaRepository.findOne({ where: { usuarioId: 'GLOBAL_CONFIG' } });
       
-      const mapping: Record<string, string> = {
-        'anuncio_auditoria': 'EVT-AUD-001',
-        'reunion_apertura': 'EVT-AUD-002',
-        'recordatorio_plazo': 'EVT-AUD-003',
-        'hallazgo_identificado': 'EVT-AUD-003',
-        'aprobacion_plan': 'EVT-APR-001',
-        'rechazo_plan': 'EVT-APR-002',
-        'controversia_hallazgo': 'EVT-AUD-001',
-        'seguimiento_trimestral': 'EVT-PM-001',
-      };
-      
-      const evtCode = mapping[tipoOriginal] || tipoOriginal;
       
       const configEvento = configGlobal?.tiposNotificacion ? configGlobal.tiposNotificacion[evtCode] : null;
       
@@ -759,26 +772,21 @@ export class NotificacionesService implements OnModuleInit {
     const saved = await this.notificacionRepository.save(notificacion);
 
     // 🚀 INTEGRACIÓN CON LA CAMPANITA GLOBAL DEL SHELL 🚀
-    // Escribir directamente en la tabla notifications.notificacion para que la UI la vea
-    try {
-      await this.dataSource.query(
-        `INSERT INTO notifications.notificacion 
-         (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, prioridad, tiene_accion, url_accion, color) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          usuarioIdFinal,
-          tipoBd,
-          tituloNormalizado,
-          mensajeNormalizado,
-          'Media',
-          createDto.accionUrl ? true : false,
-          createDto.accionUrl || null,
-          'blue'
-        ]
-      );
-      console.log(`[Notificaciones] ✅ Sincronizado campanita (${tipoBd}) usuario ${usuarioIdFinal}`);
-    } catch (err) {
-      console.error(`[Notificaciones] ❌ Error sincronizando con la campanita global:`, err.message);
+    // Solo si el canal propio incluye la plataforma: la configuración del
+    // módulo y la central se suman, ambas tienen que permitir el aviso.
+    if (canalFinal !== CanalNotificacion.EMAIL) {
+      await this.publicarEnCampana({
+        id_usuario_destinatario: usuarioIdFinal,
+        tipo_notificacion: evtCode,
+        titulo: tituloNormalizado,
+        mensaje: mensajeNormalizado,
+        prioridad: PRIORIDAD_CAMPANA[String(createDto.prioridad || PrioridadNotificacion.NORMAL)] || 'Media',
+        tiene_accion: !!createDto.accionUrl,
+        url_accion: createDto.accionUrl || null,
+        color: 'blue',
+        modulo: MODULO_NOTIFICACIONES,
+        datos_adicionales: { eventoCode: evtCode, tipo: tipoBd },
+      });
     }
 
     console.log(`[NotificacionesService.create] ✅ Notificación creada exitosamente: ID=${saved.id}, usuarioId=${usuarioIdFinal}, estado=${saved.estado}`);
@@ -787,6 +795,171 @@ export class NotificacionesService implements OnModuleInit {
     await this.enviarNotificacion(saved, opciones?.adjuntos);
 
     return saved;
+  }
+
+  /**
+   * La campana global del shell (EFDS-2406). Antes se escribía directo en
+   * notifications.notificacion con el tipo genérico y prioridad fija; ahora
+   * pasa por notifications-service con el código EVT real y la prioridad real,
+   * para que la configuración de notificaciones lo gobierne. Si el servicio no
+   * responde, inserta directo como antes, pero leyendo el catálogo primero.
+   */
+  private async publicarEnCampana(aviso: {
+    id_usuario_destinatario: string;
+    tipo_notificacion: string;
+    titulo: string;
+    mensaje: string;
+    prioridad: string;
+    tiene_accion: boolean;
+    url_accion: string | null;
+    color: string;
+    modulo: string;
+    datos_adicionales: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      const response = await fetch(`${this.resolveNotificationsBaseUrl()}/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(aviso),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (response.ok) {
+        console.log(`[Notificaciones] ✅ Campanita vía notifications-service (${aviso.tipo_notificacion}, ${response.status}) usuario ${aviso.id_usuario_destinatario}`);
+        return;
+      }
+      console.warn(`[Notificaciones] notifications-service respondió ${response.status}; insertando directo.`);
+    } catch (err) {
+      console.warn(`[Notificaciones] notifications-service no respondió (${err?.message}); insertando directo.`);
+    }
+
+    try {
+      const decision = await this.permitidoPorConfiguracion(aviso.modulo, aviso.tipo_notificacion);
+      if (!decision.permitido) {
+        await this.dataSource.query(
+          `INSERT INTO notifications.envio_omitido (codigo_modulo, clave_evento, canal, destinatario, motivo, titulo)
+           VALUES ($1, $2, 'plataforma', $3, $4, $5)`,
+          [aviso.modulo, aviso.tipo_notificacion, aviso.id_usuario_destinatario, decision.motivo, aviso.titulo.slice(0, 255)],
+        ).catch(() => undefined);
+        console.log(`[Notificaciones] Omitida "${aviso.tipo_notificacion}" por configuración (${decision.motivo})`);
+        return;
+      }
+      await this.dataSource.query(
+        `INSERT INTO notifications.notificacion
+         (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, prioridad, tiene_accion, url_accion, color, categoria, datos_adicionales)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          aviso.id_usuario_destinatario,
+          aviso.tipo_notificacion,
+          aviso.titulo,
+          aviso.mensaje,
+          decision.prioridad ?? aviso.prioridad,
+          aviso.tiene_accion,
+          aviso.url_accion,
+          aviso.color,
+          null,
+          JSON.stringify(aviso.datos_adicionales),
+        ],
+      );
+      await this.copiarAdicionales(aviso, decision);
+      console.log(`[Notificaciones] ✅ Sincronizado campanita directo (${aviso.tipo_notificacion}) usuario ${aviso.id_usuario_destinatario}`);
+    } catch (err) {
+      console.error(`[Notificaciones] ❌ Error sincronizando con la campanita global:`, err.message);
+    }
+  }
+
+  /**
+   * Copia la campana a los destinatarios que el administrador sumó al aviso por
+   * rol, dependencia o sede (EFDS-2406, función 4), igual que el servicio central.
+   * El id sale del contenido y del día, con la misma fórmula del central: si luego
+   * el central manda el mismo aviso, ON CONFLICT evita duplicarlo. Nunca rompe el
+   * respaldo: si algo falla, la campana original ya quedó guardada.
+   */
+  private async copiarAdicionales(
+    aviso: {
+      id_usuario_destinatario: string; tipo_notificacion: string; titulo: string; mensaje: string;
+      prioridad: string; tiene_accion: boolean; url_accion: string | null; color: string;
+      datos_adicionales: Record<string, unknown>;
+    },
+    decision: { prioridad?: string | null; adicionales?: Adicionales },
+  ): Promise<void> {
+    const a = decision.adicionales;
+    if (!a || (!a.roles.length && !a.dependencias.length && !a.sedes.length)) return;
+    try {
+      const usuarios: { id_user: string }[] = await this.dataSource.query(
+        `SELECT DISTINCT u.id_user::text AS id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE COALESCE(u.is_active, true) = true
+            AND (
+              (cardinality($1::text[]) > 0 AND EXISTS (
+                 SELECT 1 FROM auth.user_roles ur
+                   JOIN auth.role r ON r.id = ur.id_rol
+                  WHERE ur.id_user = u.id_user
+                    AND COALESCE(ur.is_active, true) = true
+                    AND UPPER(r.code) = ANY($1::text[])))
+              OR (cardinality($2::bigint[]) > 0 AND p.id_dependencia = ANY($2::bigint[]))
+              OR (cardinality($3::bigint[]) > 0 AND p.id_sede = ANY($3::bigint[]))
+            )`,
+        [a.roles, a.dependencias, a.sedes],
+      );
+      const dia = new Date().toISOString().slice(0, 10);
+      for (const u of usuarios) {
+        if (!u.id_user || u.id_user === aviso.id_usuario_destinatario) continue;
+        await this.dataSource.query(
+          `INSERT INTO notifications.notificacion
+           (id_notificacion, id_usuario_destinatario, tipo_notificacion, titulo, mensaje, prioridad, tiene_accion, url_accion, color, categoria, datos_adicionales)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (id_notificacion) DO NOTHING`,
+          [
+            idDeterminista(`${aviso.tipo_notificacion}|${aviso.titulo}|${aviso.mensaje}|${u.id_user}|${dia}`),
+            u.id_user,
+            aviso.tipo_notificacion,
+            aviso.titulo,
+            aviso.mensaje,
+            decision.prioridad ?? aviso.prioridad,
+            aviso.tiene_accion,
+            aviso.url_accion,
+            aviso.color,
+            null,
+            JSON.stringify(aviso.datos_adicionales),
+          ],
+        );
+      }
+    } catch (err) {
+      console.warn(`[Notificaciones] No se copiaron los destinatarios adicionales de "${aviso.tipo_notificacion}": ${err?.message}`);
+    }
+  }
+
+  /** Lee el catálogo de la configuración de notificaciones; si falla o no existe, deja pasar. */
+  private async permitidoPorConfiguracion(
+    modulo: string,
+    clave: string,
+  ): Promise<{ permitido: boolean; motivo?: string; prioridad?: string | null; adicionales?: Adicionales }> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT m.activo AS modulo_activo, e.activo AS evento_activo, e.obligatorio,
+                COALESCE(e.canal, m.canal_defecto) AS canal, e.prioridad,
+                e.roles_adicionales, e.dependencias_adicionales, e.sedes_adicionales
+           FROM notifications.modulo_notificacion m
+           LEFT JOIN notifications.evento_notificacion e
+             ON e.clave = $2 AND e.codigo_modulo = m.codigo
+          WHERE m.codigo = $1`,
+        [modulo, clave],
+      );
+      if (!fila) return { permitido: true };
+      const adicionales = {
+        roles: (fila.roles_adicionales || []).map((r: string) => String(r).toUpperCase()),
+        dependencias: (fila.dependencias_adicionales || []).map(String),
+        sedes: (fila.sedes_adicionales || []).map(String),
+      };
+      if (fila.obligatorio) return { permitido: true, prioridad: fila.prioridad, adicionales };
+      if (fila.modulo_activo === false) return { permitido: false, motivo: 'modulo_inactivo' };
+      if (fila.evento_activo === false) return { permitido: false, motivo: 'evento_inactivo' };
+      if (fila.canal === 'correo') return { permitido: false, motivo: 'canal_solo_correo' };
+      return { permitido: true, prioridad: fila.prioridad, adicionales };
+    } catch {
+      return { permitido: true };
+    }
   }
 
   /**
@@ -1001,6 +1174,9 @@ export class NotificacionesService implements OnModuleInit {
             subject: notificacion.titulo,
             text: notificacion.mensaje,
             html,
+            // El correo es el mismo evento que la campana: la configuración los decide juntos.
+            modulo: MODULO_NOTIFICACIONES,
+            evento: String((notificacion.metadata as any)?.eventoCode || notificacion.tipoNotificacion),
             ...(conAdjuntos.length ? { attachments: conAdjuntos } : {}),
           }),
         });
@@ -1529,4 +1705,13 @@ export class NotificacionesService implements OnModuleInit {
       return false;
     }
   }
+}
+
+/** Destinatarios que el administrador sumó al aviso (EFDS-2406, función 4). */
+type Adicionales = { roles: string[]; dependencias: string[]; sedes: string[] };
+
+/** UUID (formato v4) derivado de un texto: el mismo texto da siempre el mismo id (igual que el servicio central). */
+function idDeterminista(texto: string): string {
+  const h = createHash('sha1').update(texto).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }

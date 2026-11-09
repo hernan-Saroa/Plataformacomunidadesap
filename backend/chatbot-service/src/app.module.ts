@@ -9,7 +9,7 @@ import { ChatModule } from './modules/chat/chat.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '.env.local'],
+      envFilePath: ['.env.knowledge', '.env', '.env.local'],
     }),
     TypeOrmModule.forRootAsync({
       useFactory: () => getTypeOrmConfig(),

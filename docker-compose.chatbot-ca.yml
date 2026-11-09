@@ -1,0 +1,12 @@
+# CA institucional de solo lectura, únicamente dentro del chatbot.
+services:
+  chatbot-service:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/chatbot/isolucion-ca.pem
+    volumes:
+      - type: bind
+        source: ${CHATBOT_CA_CERT_FILE:?Configure CHATBOT_CA_CERT_FILE}
+        target: /run/chatbot/isolucion-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false

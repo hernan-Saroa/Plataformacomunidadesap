@@ -1,5 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
+import type { CambioDeAdenda } from '../modules/cronograma/cronograma-actividades';
+
 /** A qué afecta la adenda: al contenido del pliego o a sus fechas. */
 export type TipoAdenda = 'FONDO' | 'CRONOGRAMA';
 
@@ -62,6 +64,27 @@ export class Adenda {
 
   @Column({ name: 'vencimiento_nuevo', type: 'date', nullable: true })
   vencimientoNuevo: string | null;
+
+  /**
+   * La hora del cierre de ofertas antes y después, en Bogotá (HH:MM:SS).
+   *
+   * Solo cuando lo que se prorroga es el cierre: el plazo de observaciones no
+   * tiene hora. La nueva es opcional; sin ella se conserva la del cronograma.
+   */
+  @Column({ name: 'hora_anterior', type: 'time', nullable: true })
+  horaAnterior: string | null;
+
+  @Column({ name: 'hora_nueva', type: 'time', nullable: true })
+  horaNueva: string | null;
+
+  /**
+   * Las fechas del cronograma (5.2) que mueve una de cronograma (139).
+   *
+   * Se fijan al emitirla, como el nuevo cierre, y se aplican al publicarla:
+   * ahí cada una guarda también la fecha que tenía antes.
+   */
+  @Column({ name: 'cambios_cronograma', type: 'jsonb', default: () => "'[]'::jsonb" })
+  cambiosCronograma: CambioDeAdenda[];
 
   @Column({ name: 'anulada_at', type: 'timestamptz', nullable: true })
   anuladaAt: Date | null;

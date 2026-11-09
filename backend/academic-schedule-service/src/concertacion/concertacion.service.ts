@@ -214,6 +214,24 @@ export class ConcertacionService {
         `La concertación aplica desde el periodo ${desdePeriodo()}. En ${codigoPeriodo ?? 'este periodo'} la Docencia la aprueba el PTA.`);
     }
 
+    // Grupo virtual asignado sin horario (063): el docente aún no lo define en «Mi programación».
+    // Sin franjas no hay foto que revisar: no se envía hasta que lo defina.
+    const sinHorario: Array<{ nombre: string; numero: number }> = await this.dataSource.query(
+      `SELECT a.nombre, g.numero_grupo AS numero
+         FROM "academic-schedule".asignacion_docente ad
+         JOIN "academic-schedule".grupo g ON g.id_grupo = ad.id_grupo
+         JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
+        WHERE ad.id_docente = $1 AND g.modalidad = 'virtual'
+          AND COALESCE(g.id_periodo_academico::text, g.id_periodo::text) = $2
+          AND NOT EXISTS (SELECT 1 FROM "academic-schedule".franja_horaria f WHERE f.id_grupo = g.id_grupo)`,
+      [docente.idPerson, periodoRef]);
+    if (sinHorario.length) {
+      throw new ConflictException(
+        'El docente aún no define el horario de su grupo virtual: '
+        + sinHorario.map((x) => `${x.nombre} grupo ${x.numero}`).join(', ')
+        + '. Lo define en «Mi programación»; después se envía a revisión.');
+    }
+
     // El PTA exige las fechas del ciclo de cada asignatura: sin ciclo no se envía.
     const sinCiclo = await this.dataSource.query(
       `SELECT DISTINCT a.nombre

@@ -1,3 +1,4 @@
+import { usePublishedPhoto } from '../../../../shared/profile-photos';
 /**
  * ════════════════════════════════════════════════════════════════════════════
  * PORTAL TRANSACCIONAL V5.0 - MICROSOFT DYNAMICS + LINKEDIN STYLE - ESAP
@@ -136,6 +137,7 @@ export function UnifiedPortalViewV5({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [mostrarPerfilCompleto, setMostrarPerfilCompleto] = useState(false);
+  const approvedPhoto = usePublishedPhoto(userPersonId);
   const [perfilTab, setPerfilTab] = useState<'personal' | 'laboral' | 'privacidad' | 'historial'>('personal');
   const [servicioAbierto, setServicioAbierto] = useState<string | null>(null);
 
@@ -1057,7 +1059,7 @@ export function UnifiedPortalViewV5({
                   {/* Profile content */}
                   <div className="px-4 pb-4 -mt-8">
                     <Avatar className="w-16 h-16 ring-4 ring-white">
-                      <AvatarImage src={roleData?.perfil?.foto} />
+                      <AvatarImage src={approvedPhoto || undefined} />
                       <AvatarFallback className="bg-[#1e5da8] text-white text-xl font-semibold">
                         {userName.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -1698,7 +1700,7 @@ export function UnifiedPortalViewV5({
                     {/* Profile Header */}
                     <div className="flex items-start gap-6 mb-6 pb-6 border-b border-gray-200">
                       <Avatar className="w-24 h-24 ring-4 ring-[#1e5da8]/10">
-                        <AvatarImage src={roleData?.perfil?.foto} />
+                        <AvatarImage src={approvedPhoto || undefined} />
                         <AvatarFallback className="bg-[#1e5da8] text-white text-3xl font-semibold">
                           {userName.substring(0, 2).toUpperCase()}
                         </AvatarFallback>

@@ -1,3 +1,4 @@
+import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -183,7 +184,7 @@ export function BancoDocenteDetalle({ docente, onClose, onEdit }: Props) {
         <div style={{ padding: '24px 32px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', background: '#f8fafc' }}>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#1d4ed8', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 700 }}>
-              {docente.nombre_completo?.charAt(0) || 'D'}
+              <PublishedAvatar personaId={docente.persona_id || docente.personaId} name={docente.nombre_completo} size={64} />
             </div>
             <div>
               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#0f172a' }}>{docente.nombre_completo}</h2>

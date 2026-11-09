@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, ShieldAlert, Lock, History, ChevronDown, ChevronRight,
   User, GraduationCap, Briefcase, Phone, BookOpen, CircleCheck, Eye,
-  UploadCloud, FileText, FolderOpen, X, Edit2
+  FileText, FolderOpen, X, Edit2, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '../../../../../shell/src/services/api';
@@ -13,12 +13,18 @@ import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { RundDocumentManager } from './RundDocumentManager';
 import { RundExtractionPanel } from './RundExtractionPanel';
 import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
-import { canUploadRundField, groupRundEvidenceOptions, hasRundData } from '../../../utils/rundEvidenceData';
+import { canUploadRundField, groupRundEvidenceOptions, hasRundData, RUND_STANDALONE_SUPPORTS } from '../../../utils/rundEvidenceData';
 import { rundActorName } from '../../../utils/rundActorName';
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
 import { hasRundPermission, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
 import { RundIncorporationPanel } from './RundIncorporationPanel';
+import { RundPhotoPanel } from './RundPhotoPanel';
+import type { RundSupportGroup } from './RundSupportList';
+import './RundCheckpointEvidence.css';
+import { PHOTO_MANAGE, PHOTO_VALIDATE } from '../../../../../shared/profile-photos';
+import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
+import { rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -43,7 +49,7 @@ const CATALOGO_BR039: Record<string, {
   campos: CampoDoc[];
 }> = {
   IDENTIDAD: {
-    label: 'Identidad',
+    label: RUND_BLOCK_LABELS.IDENTIDAD,
     letra: 'A',
     subtitle: 'Documentos que acreditan la identidad del docente',
     icon: User,
@@ -56,6 +62,8 @@ const CATALOGO_BR039: Record<string, {
       { revisionId: 'SEXO_BIOLOGICO', campo: 'Sexo biológico', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí' },
       { revisionId: 'FECHA_NACIMIENTO', campo: 'Fecha de nacimiento', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'Debe ser < hoy' },
       { campo: 'Edad / Rango de edad', documento: '— (Calculado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'Calculado desde fecha de nacimiento' },
+      { campo: 'Tarjeta profesional', documento: 'Tarjeta profesional', tipoSoporte: 'tarjeta_profesional', obligatorio: 'Si aplica' },
+      { campo: 'Hoja de vida', documento: 'Hoja de vida', tipoSoporte: 'hoja_vida', obligatorio: 'No' },
     ],
   },
   CONTACTO: {
@@ -66,19 +74,20 @@ const CATALOGO_BR039: Record<string, {
     color: '#10b981',
     bg: '#ECFDF5',
     campos: [
-      { campo: 'Correo institucional', documento: '— (Asignación institucional)', tipoSoporte: '', obligatorio: 'No', validacion: 'Dominio @esap.edu.co' },
-      { campo: 'Correo personal', documento: '— (Autodeclarado)', tipoSoporte: '', obligatorio: 'No', validacion: 'Formato email' },
-      { campo: 'Teléfono', documento: '— (Autodeclarado)', tipoSoporte: '', obligatorio: 'No', validacion: 'Formato teléfono' },
+      { revisionId: 'CORREO_INSTITUCIONAL', campo: 'Correo institucional', documento: '— (Asignación institucional)', tipoSoporte: '', obligatorio: 'No', validacion: 'Dominio @esap.edu.co' },
+      { revisionId: 'CORREO_ALTERNATIVO', campo: 'Correo personal', documento: '— (Autodeclarado)', tipoSoporte: '', obligatorio: 'No', validacion: 'Formato email' },
+      { revisionId: 'TELEFONO', campo: 'Teléfono', documento: '— (Autodeclarado)', tipoSoporte: '', obligatorio: 'No', validacion: 'Formato teléfono' },
     ],
   },
   FORMACION: {
-    label: 'Formación Académica',
+    label: RUND_BLOCK_LABELS.FORMACION,
     letra: 'C',
     subtitle: 'Títulos académicos y soportes de formación',
     icon: GraduationCap,
     color: '#8b5cf6',
     bg: '#F5F3FF',
     campos: [
+      { campo: 'Bachiller', documento: 'Diploma de bachiller', tipoSoporte: 'diploma_bachiller', obligatorio: 'No' },
       { campo: 'Pregrado', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_pregrado', obligatorio: 'Sí', validacion: 'Base mínima requerida' },
       { campo: 'Especialización', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_especializacion', obligatorio: 'Si aplica' },
       { campo: 'Maestría', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_maestria', obligatorio: 'Si aplica' },
@@ -114,7 +123,7 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
   ACADEMICO: {
-    label: 'Académico',
+    label: RUND_BLOCK_LABELS.ACADEMICO,
     letra: 'E',
     subtitle: 'Asignaciones académicas, investigación y evaluación',
     icon: BookOpen,
@@ -124,28 +133,28 @@ const CATALOGO_BR039: Record<string, {
       { campo: 'Núcleo temático', documento: 'Acto de asignación / definición institucional GGP', tipoSoporte: 'acto_asignacion_nucleo', obligatorio: 'Sí', validacion: 'Lista controlada' },
       { campo: 'Investigación activa', documento: 'Acto de convocatoria / certificación de producto', tipoSoporte: 'certificacion_investigacion', obligatorio: 'Si aplica', validacion: 'Coherente con dedicación' },
       { campo: 'Última evaluación', documento: 'Acta o certificado de evaluación de desempeño (SEDP)', tipoSoporte: 'acta_evaluacion_desempeno', obligatorio: 'Sí', validacion: 'BR-055: Vigencia / caducidad' },
+      { campo: '02 Experiencia docente', documento: 'Certificaciones de experiencia docente', tipoSoporte: 'experiencia_docente', obligatorio: 'No' },
+      { campo: '03 Experiencia laboral', documento: 'Certificaciones de experiencia laboral', tipoSoporte: 'experiencia_laboral', obligatorio: 'No' },
+      { campo: 'Experiencia investigativa', documento: 'Soportes de experiencia investigativa', tipoSoporte: 'experiencia_investigativa', obligatorio: 'No' },
+      { campo: 'Productividad académica', documento: 'Soportes de productividad académica', tipoSoporte: 'productividad_academica', obligatorio: 'No' },
+      { campo: 'Dominio de segunda lengua', documento: 'Certificado de dominio de segunda lengua', tipoSoporte: 'dominio_segunda_lengua', obligatorio: 'No' },
+      { campo: 'Formación no formal', documento: 'Certificados de formación no formal', tipoSoporte: 'formacion_no_formal', obligatorio: 'No' },
+      { campo: 'Estudio de hoja de vida', documento: 'Estudio de hoja de vida', tipoSoporte: 'estudio_hoja_vida', obligatorio: 'No' },
     ],
   },
   TRANSVERSAL: {
     label: 'Transversal',
     letra: 'F',
-    subtitle: 'Documentos obligatorios para activar el registro',
+    subtitle: 'Información transversal y validación del revisor',
     icon: Shield,
     color: '#e11d48',
     bg: '#FFF1F2',
     campos: [
       { campo: 'ID RUND', documento: '— (Sistema)', tipoSoporte: '', obligatorio: 'Derivado' },
-      { campo: 'Observaciones', documento: '— (Revisión)', tipoSoporte: '', obligatorio: 'No' },
-      { campo: 'Autorización de tratamiento de datos', documento: 'Formato Habeas Data firmado', tipoSoporte: 'autorizacion_habeas_data', obligatorio: 'Sí', validacion: 'BR-057: Bloquea activación si falta' },
+      { revisionId: 'OBSERVACIONES', campo: 'Observaciones', documento: '— (Revisión)', tipoSoporte: '', obligatorio: 'No' },
+      { campo: 'Autorización de tratamiento de datos', documento: 'Formato Habeas Data firmado', tipoSoporte: 'autorizacion_habeas_data', obligatorio: 'Sí', validacion: 'BR-057: Validación expresa del revisor' },
     ],
   },
-};
-
-const getFieldDecision = (support: any, field: CampoDoc) => {
-  const decision = support?.revisiones_campos?.[field.revisionId || field.tipoSoporte];
-  if (decision && decision.documentoVersionId === (support?.documento_perfil_id || support?.documento_carpeta_id)) return decision;
-  if (!field.revisionId && !decision) return { estado: support?.estado, observacion: support?.observacion };
-  return { estado: 'Pendiente' };
 };
 
 const CAMPO_LABELS: Record<string, string> = {
@@ -300,39 +309,10 @@ const RUND_ESTADO_BADGE: Record<string, { bg: string; text: string; border: stri
   'Pendiente':       { bg: '#FEFCE8', text: '#CA8A04', border: '#FDE68A', icon: History,        label: 'Pendiente' },
   'En revisión':     { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', icon: Eye,          label: 'En revisión' },
   'Devuelto':        { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', icon: ShieldAlert,      label: 'Devuelto' },
-  'Soporte faltante': { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA', icon: ShieldAlert, label: 'Falta soporte' },
+  'Soporte faltante': { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA', icon: ShieldAlert, label: 'Pendiente de revisión' },
 };
 
 const getRundEstadoBadge = (estado: string) => RUND_ESTADO_BADGE[estado] || RUND_ESTADO_BADGE['Pendiente'];
-
-function replaceRecordIfChanged<T extends string>(
-  previous: Record<string, T>,
-  next: Record<string, T>,
-): Record<string, T> {
-  const previousKeys = Object.keys(previous);
-  const nextKeys = Object.keys(next);
-  if (previousKeys.length !== nextKeys.length) return next;
-  return nextKeys.every((key) => previous[key] === next[key]) ? previous : next;
-}
-
-function mergeRecordValues<T extends string>(
-  previous: Record<string, T>,
-  incoming: Record<string, T>,
-): Record<string, T> {
-  const incomingEntries = Object.entries(incoming) as [string, T][];
-  if (incomingEntries.length === 0) return previous;
-
-  let changed = false;
-  const next = { ...previous };
-  incomingEntries.forEach(([key, value]) => {
-    if (next[key] !== value) {
-      next[key] = value;
-      changed = true;
-    }
-  });
-
-  return changed ? next : previous;
-}
 
 export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpdated }: { docenteId: string, cleanPersonaId?: string, docente?: any, onUpdated?: () => void }) {
   const [tarjetaRund, setTarjetaRund] = useState<any | null>(null);
@@ -342,17 +322,25 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   const [loadingRund, setLoadingRund] = useState(false);
   const [selectedRundBloque, setSelectedRundBloque] = useState<string>('IDENTIDAD');
   const tabsRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const [showRundAudit, setShowRundAudit] = useState(false);
   const [documentRevision, setDocumentRevision] = useState(0);
   const [returnSupport, setReturnSupport] = useState<{ support: any; block: string; field: CampoDoc } | null>(null);
   const [supportReason, setSupportReason] = useState('');
+  const [returnData,setReturnData] = useState<{block:string;field:CampoDoc}|null>(null);
+  const [dataReason,setDataReason] = useState('');
   const [loadError, setLoadError] = useState(false);
   const [rundActionLoading, setRundActionLoading] = useState<string | null>(null);
   const [devolverRundBloque, setDevolverRundBloque] = useState<string | null>(null);
   const [devolverRundObs, setDevolverRundObs] = useState('');
-  const [docStatus, setDocStatus] = useState<Record<string, 'Aprobado' | 'Rechazado'>>({});
-  const [supportUrls, setSupportUrls] = useState<Record<string, string>>({});
-  const [viewingDoc, setViewingDoc] = useState<{ url: string, nombre: string, campo: string, displayUrl?: string, loading?: boolean, error?: string } | null>(null);
+  // review: evidence opened from a checkpoint, so the viewer can admit or return exactly that file.
+  const [viewingDoc, setViewingDoc] = useState<{ url: string, nombre: string, campo: string, displayUrl?: string, loading?: boolean, error?: string,
+    review?: { support: any; block: string; field: CampoDoc } } | null>(null);
+  const viewerRequest = useRef(0);
+  const closeDocViewer = useCallback(() => {
+    viewerRequest.current += 1;
+    setViewingDoc(null);
+  }, []);
 
   useEffect(() => {
     const objectUrl = viewingDoc?.displayUrl;
@@ -399,8 +387,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   const canRegisterIncorporation = hasRundPermission(auth, RUND_PROFILE_PERMISSIONS.INCORPORADOR) || hasRundPermission(auth, 'banco-docentes.rund.manage');
   const canManageSupport = (type: string) => canManageDocuments || canRegisterIncorporation && RUND_INCORPORATION_SUPPORTS.includes(type as any);
   const canReadExtraction = canEditRund || canValidateRund || canRegisterIncorporation;
+  const expedienteContext = JSON.stringify([docenteId,cleanPersonaId,currentPeriodoCarga,canValidateRund]);
+  const activeExpedienteContext = useRef<string|null>(expedienteContext);
 
-  const openDocViewer = async (url: string, nombre: string, campo: string, tipoSoporte?: string) => {
+  const openDocViewer = async (url: string, nombre: string, campo: string, review?: { support: any; block: string; field: CampoDoc }) => {
     if (tarjetaRund?.proteccion_datos?.acceso_completo === false) {
       toast.error('El documento original está restringido para su rol.');
       return;
@@ -410,10 +400,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       return;
     }
 
-    setViewingDoc({ url, nombre, campo, displayUrl: '', loading: true });
+    const request = ++viewerRequest.current;
+    const context = activeExpedienteContext.current;
+    setViewingDoc({ url, nombre, campo, displayUrl: '', loading: true, review });
 
     try {
       const blob = await apiClient.getBlob(url);
+      if (request !== viewerRequest.current || context !== activeExpedienteContext.current) return;
       const extMatch = url.match(/\.([a-zA-Z0-9]+)$/);
       const tipo = extMatch ? extMatch[1].toLowerCase() : 'pdf';
       let mime = 'application/pdf';
@@ -422,15 +415,18 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       const typedBlob = blob.type ? blob : blob.slice(0, blob.size, mime);
       const objectUrl = URL.createObjectURL(typedBlob);
       
-      setViewingDoc({ url, nombre, campo, displayUrl: objectUrl, loading: false });
+      setViewingDoc({ url, nombre, campo, displayUrl: objectUrl, loading: false, review });
     } catch (err: any) {
+      if (request !== viewerRequest.current || context !== activeExpedienteContext.current) return;
       console.error('[RundValidationPanel] Error cargando documento:', err);
       toast.error('No se pudo cargar el documento para previsualización');
-      setViewingDoc({ url, nombre, campo, displayUrl: '', loading: false, error: err.message || 'Error al cargar' });
+      setViewingDoc({ url, nombre, campo, displayUrl: '', loading: false, error: err.message || 'Error al cargar', review });
     }
   };
 
   const fetchRundData = useCallback(async () => {
+    // A completed action may still hold the callback from the previously opened profile.
+    if(activeExpedienteContext.current!==expedienteContext)return;
     const sequence = ++requestSequence.current;
     setLoadingRund(true);
     setLoadError(false);
@@ -462,21 +458,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       setTarjetaRund(tar);
       setRundBloques(blq);
       setRundAuditLog(Array.isArray(auditRows) ? auditRows : []);
-
-      const statuses: Record<string, 'Aprobado' | 'Rechazado'> = {};
-      const urls: Record<string, string> = {};
-      for (const block of blq) {
-        for (const field of CATALOGO_BR039[block.bloque]?.campos || []) {
-          const support = (block.soportes || []).find((item: any) => item.tipo_soporte === field.tipoSoporte
-            || (field.tipoSoporte === 'documento_identidad' && ['cedula_extranjeria', 'pasaporte'].includes(item.tipo_soporte)));
-          if (!support) continue;
-          if (support.documento_carpeta_id) urls[field.campo] = support.documento_carpeta_id;
-          const decision = getFieldDecision(support, field);
-          if (['Aprobado', 'Rechazado'].includes(decision.estado)) statuses[field.campo] = decision.estado;
-        }
-      }
-      setDocStatus(previous => replaceRecordIfChanged(previous, statuses));
-      setSupportUrls(previous => replaceRecordIfChanged(previous, urls));
       setDocumentRevision(value => value + 1);
     } catch (err) {
       if (sequence !== requestSequence.current) return;
@@ -485,31 +466,39 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       setTarjetaRund(null);
       setRundBloques([]);
       setRundAuditLog([]);
-      setDocStatus({});
-      setSupportUrls({});
-      setViewingDoc(null);
+      closeDocViewer();
     } finally {
       if (sequence === requestSequence.current) setLoadingRund(false);
     }
-  }, [docenteId, cleanPersonaId, currentPeriodoCarga, canValidateRund]);
+  }, [docenteId, cleanPersonaId, currentPeriodoCarga, canValidateRund, expedienteContext]);
 
   useEffect(() => {
+    activeExpedienteContext.current = expedienteContext;
     setTarjetaRund(null);
-    setViewingDoc(null);
+    closeDocViewer();
     setReturnSupport(null);
+    setReturnData(null);setDataReason('');
     setDevolverRundBloque(null);
     setIsEditing(false);
     setSelectedRundBloque('IDENTIDAD');
     void fetchRundData();
-    return () => { requestSequence.current += 1; };
+    return () => {
+      viewerRequest.current += 1;
+      requestSequence.current += 1;
+      if(activeExpedienteContext.current===expedienteContext)activeExpedienteContext.current=null;
+    };
   }, [fetchRundData]);
 
   const toggleRundBloque = (bloque: string) => {
     setSelectedRundBloque(bloque);
   };
 
-  const handleUploadFile = async (file: File, tipoSoporte: string, campo: string) => {
+  /** Without a target the file is added as another evidence; with one, that exact evidence gets a new version. */
+  const handleUploadFile = async (file: File, tipoSoporte: string, campo: string, replaceTarget?: any) => {
     if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError) return;
+    // Legacy evidences only have a folder file: they are replaced through their review row.
+    const replaceDocumentId = replaceTarget?.documento_perfil_id;
+    const replaceLegacySupportId = replaceTarget && !replaceDocumentId ? replaceTarget.id : undefined;
     const field = CATALOGO_BR039[selectedRundBloque]?.campos.find(item => item.campo === campo && item.tipoSoporte === tipoSoporte);
     if (!field || !canUploadRundField(selectedRundBloque, field, tarjetaRund)) {
       toast.error('Registre primero el dato de la fila antes de cargar su soporte.');
@@ -525,7 +514,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       return;
     }
 
-    setRundActionLoading(`subir-${campo}`);
+    setRundActionLoading(replaceTarget ? `reemplazar-${replaceTarget.id}` : `subir-${campo}`);
     try {
       const formData = new FormData();
       // Obtener nombre del docente desde: tarjeta RUND → prop docente → fallback
@@ -545,6 +534,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       formData.append('docenteDocumento', docIdentidad);
       formData.append('tipoSoporte', tipoSoporte);
       formData.append('campo', field.revisionId || field.tipoSoporte);
+      if (replaceDocumentId) formData.append('documentoId', replaceDocumentId);
+      else if (replaceLegacySupportId) formData.append('soporteHistoricoId', replaceLegacySupportId);
+      else formData.append('modo', 'agregar');
       formData.append('file', file);
 
       // CORRECTO: usar apiClient.upload (multipart/form-data) en vez de apiClient.post (JSON)
@@ -555,7 +547,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       // or fallback to a truthy res that isn't an error object.
       const isSuccess = !!res?.id;
       if (isSuccess) {
-        toast.success(`Documento "${file.name}" cargado exitosamente en RUND.`);
+        toast.success(replaceTarget ? `Evidencia reemplazada por "${file.name}". La versión anterior se conserva en el historial.`
+          : `Documento "${file.name}" cargado exitosamente en RUND.`);
         if (res.validacionTipo?.validated && !res.validacionTipo.matched) {
           toast.warning('El contenido podría no corresponder al soporte solicitado. Revíselo antes de aprobar.');
         }
@@ -636,10 +629,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     }
   };
 
-  const findRundSoporte = (soportes: any[], tipo: string) =>
-    soportes?.find((s: any) => s.tipo_soporte === tipo || s.tipo === tipo
-      || (tipo === 'documento_identidad' && ['cedula_extranjeria', 'pasaporte'].includes(s.tipo_soporte)));
-
   const canReviewCurrentSupport = (support: any, block: string) => {
     const current = rundBloques.find(b => b.bloque === block)?.soportes?.find((s: any) => s.id === support?.id);
     return !!current && canReturnRundBlock({ bloque: block, soportes: [current] })
@@ -652,13 +641,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     setRundActionLoading(`review-${support.id}`);
     try {
       await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${block}/soportes/${support.id}/revision`, {
-        estado, observacion, campo: field.revisionId || field.tipoSoporte, documentoVersionId: support.documento_perfil_id || support.documento_carpeta_id,
+        estado, observacion, alcance: 'documento', documentoVersionId: support.documento_perfil_id || support.documento_carpeta_id,
         blockVersion: Number(rundBloques.find(b => b.bloque === block)?.version),
       });
-      toast.success(estado === 'Aprobado' ? 'Fila aprobada. Decisión registrada.' : 'Fila devuelta para corrección.');
+      toast.success(estado === 'Aprobado' ? 'Soporte admitido para todos los datos que acredita.' : 'Soporte devuelto para corrección.');
       setReturnSupport(null);
       setSupportReason('');
-      setViewingDoc(null);
+      closeDocViewer();
       await fetchRundData();
       window.dispatchEvent(new CustomEvent('rund:soporte-uploaded', { detail: { docenteId: tarjetaRund.docenteId, accion: 'REVISION' } }));
       onUpdated?.();
@@ -666,21 +655,42 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     finally { setRundActionLoading(null); }
   };
 
-  const reviewField = (fieldName: string, estado: 'Aprobado' | 'Rechazado') => {
-    const field = CATALOGO_BR039[selectedRundBloque]?.campos.find(c => c.campo === fieldName);
-    const block = rundBloques.find(b => b.bloque === selectedRundBloque);
-    const support = field && findRundSoporte(block?.soportes || [], field.tipoSoporte);
+  /** One decision covers the document and its accredited fields; returns require a reason. */
+  const reviewEvidence = (support: any, block: string, field: CampoDoc, estado: 'Aprobado' | 'Rechazado') => {
     if (!support) return;
     if (estado === 'Rechazado') {
-      setViewingDoc(null);
-      setReturnSupport({ support, block: selectedRundBloque, field });
+      closeDocViewer();
+      setReturnSupport({ support, block, field });
       setSupportReason('');
-    } else { void reviewSupport(support, selectedRundBloque, field, estado); }
+    } else { void reviewSupport(support, block, field, estado); }
+  };
+  const reviewData = async (block:string,field:CampoDoc,estado:'Aprobado'|'Rechazado',observacion?:string) => {
+    if(!canValidateRund||rundActionLoading||loadingRund||loadError||!tarjetaRund?.docenteId)return;
+    const current=rundBloques.find(item=>item.bloque===block);
+    const campo=field.revisionId||field.tipoSoporte;
+    const decision=current?.revisionDatos?.[campo];
+    if(!decision?.huella)return;
+    setRundActionLoading(`data-${campo}`);
+    try{
+      await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${block}/datos/${campo}/revision`,{
+        estado,observacion,huella:decision.huella,blockVersion:Number(current.version),
+      });
+      toast.success(estado==='Aprobado'?'Dato validado. La aprobación final del bloque sigue pendiente.':'Dato devuelto para corrección.');
+      setReturnData(null);setDataReason('');await fetchRundData();onUpdated?.();
+      window.dispatchEvent(new CustomEvent('rund:soporte-uploaded',{detail:{docenteId:tarjetaRund.docenteId,accion:'REVISION'}}));
+    }catch(error:any){toast.error(error?.message||'No fue posible revisar el dato.');}
+    finally{setRundActionLoading(null);}
+  };
+  useEffect(()=>{if(!canValidateRund){setReturnData(null);setDataReason('');}},[canValidateRund]);
+  const evidenceNumber = (support: any, block: string) => {
+    const evidences = rundCheckpointEvidences(rundBloques.find(b => b.bloque === block)?.soportes || [], support?.tipo_soporte);
+    return evidences.length > 1 ? { number: evidences.findIndex(item => item.id === support?.id) + 1, total: evidences.length } : null;
   };
 
   const sortedRundBloques = useMemo(() => {
     const blockOrder = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
-    return [...rundBloques].sort((a, b) => {
+    // RUND-013: los datos de contacto se gestionan en el cabezote, así que su sección de validación se oculta.
+    return rundBloques.filter(b => b.bloque !== 'CONTACTO').sort((a, b) => {
       return blockOrder.indexOf(a.bloque) - blockOrder.indexOf(b.bloque);
     });
   }, [rundBloques]);
@@ -700,20 +710,49 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   }
 
   const reviewStatus = rundReviewStatus(Object.fromEntries(rundBloques.map(b => [b.bloque, b.estado])));
+  const viewerReview = viewingDoc?.review;
+  const viewerSupport = viewerReview && rundBloques.find(b => b.bloque === viewerReview.block)?.soportes?.find((s: any) => s.id === viewerReview.support.id);
+  // The viewer decides only on the evidence it shows, while that version is current and the row is still pending.
+  const viewerCanReview = Boolean(canValidateRund && viewingDoc && !viewingDoc.loading && !viewingDoc.error && viewerReview && viewerSupport
+    && canReviewCurrentSupport(viewerReview.support, viewerReview.block)
+    && rundDocumentDecision(viewerSupport, CATALOGO_BR039[viewerReview.block].campos.filter(field => field.tipoSoporte === viewerReview.field.tipoSoporte)).estado === 'Pendiente');
+
+  const activeBlock = sortedRundBloques.find(block => block.bloque === selectedRundBloque);
+  const activeConfig = CATALOGO_BR039[selectedRundBloque];
+  const showExtraction = selectedRundBloque !== 'CONTACTO' && canReadExtraction && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError;
+  const hasOriginalData = !!tarjetaRund.datos_carga_masiva && Object.keys(tarjetaRund.datos_carga_masiva).length > 0;
+  const showSupportingTools = !!activeBlock && (showExtraction || hasOriginalData);
+  const supportGroups: RundSupportGroup[] = (activeConfig?.campos || [])
+    .filter((field, index, all) => field.tipoSoporte && all.findIndex(item => item.tipoSoporte === field.tipoSoporte) === index)
+    .map(field => {
+      const fields = activeConfig.campos.filter(item => item.tipoSoporte === field.tipoSoporte);
+      const uploadField = fields.find(item => canUploadRundField(selectedRundBloque, item, tarjetaRund));
+      return { field, fields, uploadField: uploadField || field, canUpload: !!uploadField,
+        dataSummary: fields.map(item => getDatoExtraido(selectedRundBloque, item.campo, tarjetaRund))
+          .filter(value => hasRundData(value)).join(' · '),
+        canManage: canManageSupport(field.tipoSoporte),
+        evidences: rundCheckpointEvidences(activeBlock?.soportes || [], field.tipoSoporte)
+          .filter(support => canReturnRundBlock({ bloque: selectedRundBloque, soportes: [support] })),
+      };
+    });
 
   return (
-    <div aria-busy={loadingRund} style={{ background: reviewStatus.approved ? '#F0FDF4' : '#FAFBFC', borderRadius: 16, border: `1px solid ${reviewStatus.approved ? '#86EFAC' : '#E5E7EB'}`, overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+    <div ref={workspaceRef} className="rund-review-workspace" aria-busy={loadingRund} style={{ background: reviewStatus.approved ? '#F0FDF4' : '#FAFBFC', borderRadius: 16, border: `1px solid ${reviewStatus.approved ? '#86EFAC' : '#E5E7EB'}`, overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
       
       {loadError && <div role="alert" style={{ padding: 16, background: '#FFFBEB', color: '#92400E' }}>No se pudo verificar el estado vigente. Actualice antes de cargar o revisar documentos. <button onClick={fetchRundData}>Reintentar</button></div>}
       {canValidateRund && <div style={{ padding: '12px 24px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
         <button onClick={() => setShowRundAudit(v => !v)} style={{ border: 0, background: 'transparent', color: '#003DA5', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}><History size={16} /> {showRundAudit ? 'Ocultar trazabilidad' : 'Ver trazabilidad de revisiones y documentos'}</button>
-        {showRundAudit && <div style={{ maxHeight: 320, overflowY: 'auto', marginTop: 12 }}>
+        {showRundAudit && <div role="region" aria-label="Trazabilidad de revisiones y documentos" style={{ maxHeight: 320, overflowY: 'auto', marginTop: 12 }}>
           <p style={{ fontSize: 12, color: '#64748B' }}>Últimas 50 acciones. Se conserva el historial de cargas, versiones y decisiones.</p>
           {auditError ? <p role="alert" style={{ fontSize: 12, color: '#B91C1C' }}>No fue posible consultar la trazabilidad. <button onClick={fetchRundData}>Reintentar</button></p> : rundAuditLog.length === 0 && <p style={{ fontSize: 12 }}>Sin acciones registradas.</p>}
           {rundAuditLog.map((entry: any) => <div key={entry.id} style={{ borderLeft: '2px solid #CBD5E1', padding: '8px 14px', marginBottom: 8, fontSize: 12 }}>
-            <strong>{String(entry.accion).replaceAll('_', ' ')} · {CATALOGO_BR039[entry.bloque]?.label || entry.bloque}</strong>
+            <strong>{String(entry.accion).replace(/_/g, ' ')} ·{CATALOGO_BR039[entry.bloque]?.label || (entry.bloque === 'DOCUMENTAL' ? 'Expediente documental' : entry.bloque)}</strong>
             <div style={{ color: '#64748B', marginTop: 4 }}>{rundActorName(entry.actorNombre, entry.actorId || entry.actor_id)} · {new Date(entry.createdAt).toLocaleString('es-CO')}</div>
+            {Array.isArray(entry.metadata?.campos) && entry.metadata.alcance === 'documento' && <div>Revisión del documento completo · {entry.metadata.campos.length} datos</div>}
             {entry.metadata?.campo && <div>Fila: {CATALOGO_BR039[entry.bloque]?.campos.find(c => (c.revisionId || c.tipoSoporte) === entry.metadata.campo)?.campo || entry.metadata.campo}</div>}
+            {Number(entry.metadata?.evidenciasVigentes) > 1 && entry.metadata?.evidencia && <div>Evidencia {entry.metadata.evidencia} de {entry.metadata.evidenciasVigentes}{entry.metadata.evidenciaAdicional ? ' · evidencia adicional' : ''}</div>}
+            {entry.accion === 'ELIMINAR_DOCUMENTO' && entry.metadata?.evidenciasVigentes !== undefined && <div>Evidencias vigentes del punto: {entry.metadata.evidenciasVigentes}</div>}
+            {Array.isArray(entry.metadata?.orden) && <div>Orden de análisis: {entry.metadata.orden.map((item: any) => `${item.posicion}. ${item.nombreArchivo || 'Documento'}`).join(' · ')}</div>}
             {entry.metadata?.nombreArchivo && <div>{entry.metadata.nombreArchivo}</div>}
             {entry.metadata?.version && <div>Versión {entry.metadata.version}</div>}
             {entry.metadata?.versionNueva && <div>Versión {entry.metadata.versionAnterior} → {entry.metadata.versionNueva}</div>}
@@ -721,12 +760,24 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           </div>)}
         </div>}
       </div>}
-      {returnSupport && <div role="dialog" aria-modal="true" aria-label="Devolver fila" style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(15,23,42,.6)', display: 'grid', placeItems: 'center' }}>
-        <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: 'min(520px, 90vw)' }}>
-          <h3 style={{ marginTop: 0 }}>Devolver fila</h3><p>{returnSupport.field.campo}</p><p>{returnSupport.support.nombre_archivo}</p>
+      {returnData&&<div role="dialog" aria-modal="true" aria-label="Devolver dato" className="rund-data-return">
+        <div><h3>Devolver dato para corrección</h3><strong>{returnData.field.campo}</strong>
+          <p>Indica qué está incorrecto en el dato y qué debe corregirse. Los archivos conservan su revisión independiente.</p>
+          <label htmlFor="rund-data-return-reason">Motivo y corrección del dato</label>
+          <textarea id="rund-data-return-reason" autoFocus value={dataReason} onChange={event=>setDataReason(event.target.value)} maxLength={2000} rows={4}/>
+          <footer><button type="button" disabled={!!rundActionLoading} onClick={()=>setReturnData(null)}>Cancelar</button>
+            <button type="button" disabled={!dataReason.trim()||!!rundActionLoading||loadingRund||loadError} onClick={()=>reviewData(returnData.block,returnData.field,'Rechazado',dataReason.trim())}>Confirmar devolución del dato</button></footer>
+        </div>
+      </div>}
+      {returnSupport && <div role="dialog" aria-modal="true" aria-label="Devolver soporte" style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(15,23,42,.6)', display: 'grid', placeItems: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: 'min(520px, 90vw)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto' }}>
+          <h3 style={{ marginTop: 0 }}>Devolver soporte</h3><p>{returnSupport.field.documento}</p>
+          <p style={{ overflowWrap: 'anywhere' }}>{(() => { const position = evidenceNumber(returnSupport.support, returnSupport.block);
+            return position ? `Evidencia ${position.number} de ${position.total} · ` : ''; })()}{returnSupport.support.nombre_archivo}</p>
+          <p style={{ fontSize: 12, color: '#64748B', lineHeight: 1.5 }}>La devolución corresponde al archivo completo y queda registrada con su motivo. Revisa también los datos que respalda antes de confirmar el bloque.</p>
           <label htmlFor="support-return-reason">Motivo y corrección requerida</label>
           <textarea id="support-return-reason" autoFocus value={supportReason} onChange={e => setSupportReason(e.target.value)} maxLength={2000} rows={4} style={{ width: '100%', marginTop: 8, padding: 12, border: '1px solid #CBD5E1', borderRadius: 8 }} />
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
             <button disabled={!!rundActionLoading} onClick={() => setReturnSupport(null)}>Cancelar</button>
             <button disabled={!supportReason.trim() || !!rundActionLoading || !canReviewCurrentSupport(returnSupport.support, returnSupport.block)} onClick={() => reviewSupport(returnSupport.support, returnSupport.block, returnSupport.field, 'Rechazado', supportReason.trim())} style={{ padding: '10px 16px', borderRadius: 8, border: 0, background: '#B91C1C', color: '#fff' }}>Confirmar devolución</button>
           </div>
@@ -759,8 +810,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           )}
         </div>
         <div style={{ textAlign: 'right', minWidth: 220 }}>
-          <div role="status" style={{ fontSize: 12, fontWeight: 700, color: reviewStatus.approved ? '#047857' : reviewStatus.returned ? '#B91C1C' : '#64748B', marginBottom: 6 }}>{reviewStatus.label}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Secciones con soporte aprobadas</div>
+          <div role="status" title={reviewStatus.description} style={{ fontSize: 12, fontWeight: 700, color: reviewStatus.approved ? '#047857' : reviewStatus.returned ? '#B91C1C' : '#64748B', marginBottom: 6 }}>{reviewStatus.label}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Secciones de datos aprobadas</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
               {reviewStatus.count} / {reviewStatus.total}
@@ -847,7 +898,22 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           })}
         </div>
 
-        <RundDocumentManager
+        <div role="tabpanel" id={`rund-panel-${tarjetaRund.docenteId}`} aria-labelledby={`rund-tab-${tarjetaRund.docenteId}-${selectedRundBloque}`} style={{ flex: 1, background: '#FAFBFC', position: 'relative', minWidth: 0 }}>
+        <header className="rund-review-section-intro">
+          <h4>{activeConfig.label}</h4>
+          <p>{activeConfig.subtitle}</p>
+        </header>
+        <nav className="rund-review-guide" aria-label="Pasos para revisar esta sección">
+          {[
+            ...(selectedRundBloque === 'CONTACTO' ? [] : [{ title: 'Consultar soportes', hint: showSupportingTools ? 'Archivos y herramientas de apoyo · opcional' : 'Archivos de apoyo · opcional', target: '.rund-documents' }]),
+            { title: canValidateRund ? 'Revisar datos' : 'Consultar datos', hint: canValidateRund ? 'Valida o solicita una corrección' : 'Consulta la información registrada', target: '.rund-data-section' },
+            { title: activeBlock?.estado === 'Aprobado' ? 'Consultar resultado' : canValidateRund ? 'Confirmar revisión' : 'Estado de revisión', hint: activeBlock?.estado === 'Aprobado' ? 'Esta sección ya fue aprobada' : canValidateRund ? 'Aprueba la sección al finalizar' : 'Consulta el avance de la sección', target: '.rund-review-confirmation' },
+          ].map((step, index) => <button key={step.target} type="button" data-review-step={step.target} onClick={() => workspaceRef.current?.querySelector(step.target)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}>
+            <span>{index + 1}</span><div><strong>{step.title}</strong><small>{step.hint}</small></div><ChevronRight size={16} aria-hidden="true" />
+          </button>)}
+        </nav>
+
+        {selectedRundBloque !== 'CONTACTO' && <RundDocumentManager
           key={tarjetaRund.docenteId}
           docenteId={tarjetaRund.docenteId}
           canManage={(canManageDocuments || canRegisterIncorporation && selectedRundBloque === 'VINCULACION') && !loadError}
@@ -855,6 +921,14 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           revision={documentRevision}
           activeBlock={selectedRundBloque}
           activeBlockLabel={CATALOGO_BR039[selectedRundBloque]?.label}
+          supportReview={{ groups: supportGroups, canValidate: canValidateRund,
+            disabled: !!rundActionLoading || loadingRund || loadError, busy: rundActionLoading,
+            onView: (evidence, group, number) => openDocViewer(evidence.documento_carpeta_id || evidence.documentoCarpetaId || evidence.url || '',
+              group.evidences.length > 1 ? group.field.documento + ' · Evidencia ' + number : group.field.documento,
+              group.field.campo, { support: evidence, block: selectedRundBloque, field: group.field as CampoDoc }),
+            onReview: (evidence, group, estado) => reviewEvidence(evidence, selectedRundBloque, group.field as CampoDoc, estado),
+            onUpload: (file, group, evidence) => handleUploadFile(file, group.field.tipoSoporte, group.uploadField.campo, evidence),
+          }}
           evidenceOptions={groupRundEvidenceOptions(Object.entries(CATALOGO_BR039).flatMap(([block, config]) => config.campos
             .filter(field => canUploadRundField(block, field, tarjetaRund))
             .map(field => ({ block, type: field.tipoSoporte,
@@ -866,46 +940,51 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             }))))}
           onView={(url, name, label) => openDocViewer(url, name, label)}
           onChanged={fetchRundData}
-        />
+        />}
 
-        {/* Content Pane: Selected Category Details */}
-        {canRegisterIncorporation && tarjetaRund.proteccion_datos?.acceso_completo === true && selectedRundBloque === 'VINCULACION' && !loadError && <RundIncorporationPanel
-          key={`incorporacion-${tarjetaRund.docenteId}`}
-          docenteId={tarjetaRund.docenteId} block={rundBloques.find(block => block.bloque === 'VINCULACION')}
-          fields={tarjetaRund.bloques?.VINCULACION?.campos || []}
-          onSaved={async () => { await fetchRundData(); onUpdated?.(); }} />}
+        {showSupportingTools && <details className="rund-review-tools rund-review-tools--after-documents" key={`tools-${selectedRundBloque}`}>
+          <summary>
+            <span className="rund-review-tools__icon" aria-hidden="true">{showExtraction ? <Sparkles size={21} /> : <BookOpen size={21} />}</span>
+            <div className="rund-review-tools__copy">
+              <div className="rund-review-tools__heading"><strong>Herramientas de apoyo</strong><span className="rund-review-tools__optional">Opcional</span></div>
+              <small>{showExtraction ? hasOriginalData ? 'Asistente OCR y datos de origen para contrastar la información del perfil.' : 'Asistente OCR para consultar sugerencias y contrastar los datos de tus archivos.' : 'Consulta los datos de origen antes de revisar el perfil.'}</small>
+            </div>
+            <span className="rund-review-tools__action">
+              <span className="rund-review-tools__when-closed">Ver herramientas</span>
+              <span className="rund-review-tools__when-open">Ocultar herramientas</span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </span>
+          </summary>
+          <div>
+            {showExtraction && <RundExtractionPanel
+              key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
+              activeBlock={selectedRundBloque} activeBlockLabel={activeConfig.label} activeBlockColor={activeConfig.color} canEdit={canEditRund} canAnalyze={canEditRund || canValidateRund}
+              onView={openDocViewer} onConfirmed={fetchRundData} />}
+            <RundDatosCargaOriginal bloque={selectedRundBloque} datos={tarjetaRund.datos_carga_masiva} accesoCompleto={tarjetaRund.proteccion_datos?.acceso_completo === true} />
+          </div>
+        </details>}
 
-        <div role="tabpanel" id={`rund-panel-${tarjetaRund.docenteId}`} aria-labelledby={`rund-tab-${tarjetaRund.docenteId}-${selectedRundBloque}`} style={{ flex: 1, background: '#FAFBFC', position: 'relative' }}>
+        {/* Data review and section confirmation follow the optional supporting tools. */}
           {(() => {
             const b = sortedRundBloques.find(x => x.bloque === selectedRundBloque);
             if (!b) return null;
             const cfg = CATALOGO_BR039[b.bloque];
             const canApprove = b.estado !== 'Aprobado' && !loadError;
             const canReturn = canReturnRundBlock(b);
-            const hasAllRequired = cfg.campos.filter(c => c.obligatorio === 'Sí' || (c.obligatorio === 'Si aplica' && hasRundData(getDatoExtraido(b.bloque, c.campo, tarjetaRund)))).every(c => !c.tipoSoporte || findRundSoporte(b.soportes || [], c.tipoSoporte)?.documento_carpeta_id);
-            const allReviewed = (b.soportes || []).filter((s: any) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(s.tipo_soporte)).every((s: any) => s.estado === 'Aprobado') && cfg.campos.filter(c => c.tipoSoporte && findRundSoporte(b.soportes || [], c.tipoSoporte)).every(c => getFieldDecision(findRundSoporte(b.soportes || [], c.tipoSoporte), c).estado === 'Aprobado');
-            const hasExpired = (b.soportes || []).some((support: any) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(support.tipo_soporte) && support.fecha_vencimiento && new Date(support.fecha_vencimiento).getTime() < Date.now());
+            const dataDecisions:any[] = Object.values(b.revisionDatos||{});
+            const dataReady = !!b.revisionDatos && dataDecisions.every(decision=>decision.estado!=='Rechazado'&&(!decision.requiereRevision||decision.estado==='Aprobado'&&decision.puedeValidar));
+            const requiredData = dataDecisions.filter(decision => decision.requiereRevision);
+            const approvedData = requiredData.filter(decision => decision.estado === 'Aprobado' && decision.puedeValidar).length;
+            const returnedData = dataDecisions.filter(decision => decision.estado === 'Rechazado').length;
+            const pendingData = requiredData.filter(decision => decision.estado !== 'Rechazado' && (decision.estado !== 'Aprobado' || !decision.puedeValidar)).length;
             const isDevolverOpen = devolverRundBloque === b.bloque;
 
             return (
-              <div style={{ padding: 32, display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ padding: 'clamp(12px, 2vw, 32px)', minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
                 
-                <div style={{ marginBottom: 24 }}>
-                  <h4 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {cfg.label}
-                  </h4>
-                  <p style={{ margin: 0, fontSize: 13, color: '#64748B', marginTop: 4 }}>{cfg.subtitle}</p>
-                </div>
-
-                {canReadExtraction && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError && (
-                  <RundExtractionPanel key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
-                    activeBlock={b.bloque} activeBlockLabel={cfg.label} activeBlockColor={cfg.color} canEdit={canEditRund}
-                    onView={openDocViewer} onConfirmed={fetchRundData} />
-                )}
-
                 {b.estado === 'Aprobado' && (
                   <div style={{ padding: 16, marginBottom: 20, borderRadius: 12, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <CheckCircle size={24} /><div><strong>Espacio aprobado</strong><div style={{ fontSize: 12, marginTop: 4 }}>Información y soportes revisados{b.fecha_revision ? ` · ${new Date(b.fecha_revision).toLocaleString('es-CO')}` : ''}. Una nueva versión requerirá otra revisión.</div></div>
+                    <CheckCircle size={24} /><div><strong>Espacio aprobado</strong><div style={{ fontSize: 12, marginTop: 4 }}>Información validada por el revisor{b.fecha_revision ? ` · ${new Date(b.fecha_revision).toLocaleString('es-CO')}` : ''}. Una nueva versión requerirá otra revisión.</div></div>
                   </div>
                 )}
                 {b.observacion && (
@@ -918,197 +997,94 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                   </div>
                 )}
 
-                <RundDatosCargaOriginal
-                  bloque={b.bloque}
-                  datos={tarjetaRund.datos_carga_masiva}
-                  accesoCompleto={tarjetaRund.proteccion_datos?.acceso_completo === true}
-                />
-
                 {/* Unified Validation List */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', marginBottom: 16, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Shield size={18} color="#003DA5" /> Puntos de Control y Evidencia
+                <section className="rund-data-section" aria-label={`Datos de ${cfg.label}`} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div className="rund-section-heading"><span className="rund-section-step">{b.bloque === 'CONTACTO' ? 1 : 2}</span>
+                    <div><h4>{canValidateRund ? 'Validación de datos' : 'Consulta de datos'}</h4><p>{!canValidateRund ? 'Consulta la información y su estado de revisión. Las decisiones corresponden al revisor autorizado.' : b.bloque === 'CONTACTO' ? 'Revisa los correos y teléfonos. Esta sección no requiere soportes.' : 'Comprueba la información registrada y decide sobre cada dato. Los soportes son opcionales.'}</p></div>
+                    <span className="rund-section-progress">{requiredData.length ? `${approvedData} de ${requiredData.length} datos validados` : returnedData ? `${returnedData} ${returnedData === 1 ? 'dato devuelto' : 'datos devueltos'}` : 'Sin datos pendientes de revisión'}</span>
                   </div>
-                  <p style={{ margin: '-8px 0 16px', fontSize: 12, lineHeight: 1.5, color: '#64748B' }}>
-                    Revisa que el soporte respalde cada dato actual del perfil. El asistente OCR es opcional y no impide aprobar los campos ni el bloque.
-                  </p>
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                  {canRegisterIncorporation && tarjetaRund.proteccion_datos?.acceso_completo === true && b.bloque === 'VINCULACION' && !loadError && <RundIncorporationPanel
+                    key={`incorporacion-${tarjetaRund.docenteId}`}
+                    docenteId={tarjetaRund.docenteId} block={b}
+                    fields={tarjetaRund.bloques?.VINCULACION?.campos || []}
+                    onSaved={async () => { await fetchRundData(); onUpdated?.(); }} />}
+
+                  {b.bloque === 'IDENTIDAD' && <RundPhotoPanel docenteId={docenteId}
+                    name={docente?.nombre_completo || ''} canUpload={hasRundPermission(auth, PHOTO_MANAGE)}
+                    canValidate={hasRundPermission(auth, PHOTO_VALIDATE)} onChanged={onUpdated} />}
+
+                  <div className="rund-checkpoint-grid">
                     {cfg.campos.map((c, idx) => {
-                      const soporte = c.tipoSoporte ? findRundSoporte(b.soportes || [], c.tipoSoporte) : null;
-                      const decision = getFieldDecision(soporte, c);
-                      const localDocUrl = c.tipoSoporte ? supportUrls[c.campo] : null;
-                      const hasDoc = (!!soporte && canReturnRundBlock({ bloque: b.bloque, soportes: [soporte] })) || (!soporte && !!localDocUrl);
-                      const activeUrl = soporte?.documento_carpeta_id || localDocUrl || soporte?.documentoCarpetaId || soporte?.url || '';
-                      const isRequired = c.obligatorio === 'Sí' || (c.obligatorio === 'Si aplica' && hasRundData(getDatoExtraido(b.bloque, c.campo, tarjetaRund)));
+                      // Only admitted files back a data row; all files stay in document review.
+                      // Use the current version's row decision for historical shared documents.
+                      const evidences = c.tipoSoporte ? rundCheckpointEvidences(b.soportes || [], c.tipoSoporte)
+                        .filter((support: any) => canReturnRundBlock({ bloque: b.bloque, soportes: [support] })
+                          && rundEvidenceDecision(support, c).estado === 'Aprobado') : [];
+                      const hasDoc = evidences.length > 0;
+                      const dataDecision = b.revisionDatos?.[c.revisionId||c.tipoSoporte];
+                      const dataState = dataDecision?.estado || 'Pendiente';
+                      const admittedCount = evidences.filter((support: any) => rundEvidenceDecision(support, c).estado === 'Aprobado').length;
                       const isDerived = c.obligatorio === 'Derivado';
                       const rowHasData = canUploadRundField(b.bloque, c, tarjetaRund);
-                      const uploadOwner = cfg.campos.findIndex(field => field.tipoSoporte === c.tipoSoporte && canUploadRundField(b.bloque, field, tarjetaRund));
-                      const showDocumentTools = uploadOwner === idx || (uploadOwner < 0 && cfg.campos.findIndex(field => field.tipoSoporte === c.tipoSoporte) === idx);
                       const datoExtraido = getDatoExtraido(b.bloque, c.campo, tarjetaRund);
 
                       return (
-                        <div key={idx} style={{ 
-                          background: 'white', 
-                          borderRadius: 12, 
-                          border: `1px solid ${docStatus[c.campo] === 'Aprobado' ? '#A7F3D0' : docStatus[c.campo] === 'Rechazado' ? '#FCA5A5' : hasDoc ? '#FCD34D' : isRequired && c.tipoSoporte ? '#FCA5A5' : '#E2E8F0'}`,
-                          display: 'flex',
-                          overflow: 'hidden',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                        <div key={idx} className="rund-checkpoint-row" data-state={isDerived ? 'Derivado' : dataState} style={{
+                          border: `1px solid ${dataState === 'Aprobado' ? '#A7F3D0' : dataState === 'Rechazado' ? '#FCA5A5' : '#E2E8F0'}`,
                         }}>
                           {/* Col 1: Dato */}
-                          <div style={{ width: '30%', padding: '16px 20px', borderRight: '1px solid #F1F5F9', background: '#FAFBFC' }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>{c.campo}</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: datoExtraido !== null ? '#0F172A' : '#64748B', overflowWrap: 'anywhere' }}>{datoExtraido ?? (c.tipoSoporte === 'autorizacion_habeas_data' ? 'Se acredita con el documento firmado' : c.tipoSoporte === 'convalidacion_men' ? 'Origen de los títulos no informado' : 'No registrado')}</div>
+                          <div className="rund-checkpoint-row__data">
+                            <div className="rund-checkpoint-label">{c.campo}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: datoExtraido !== null ? '#0F172A' : '#64748B', overflowWrap: 'anywhere' }}>{datoExtraido ?? (c.tipoSoporte === 'autorizacion_habeas_data' ? 'Validación a criterio del revisor; soporte opcional' : c.tipoSoporte === 'convalidacion_men' ? 'Origen de los títulos no informado' : 'No registrado')}</div>
                             {c.tipoSoporte === 'convalidacion_men' && <p style={{ margin: '6px 0 0', fontSize: 11, lineHeight: 1.5, color: '#64748B' }}>El perfil no indica si los títulos se obtuvieron en Colombia o en otro país. Tener un título registrado no confirma que sea del exterior.</p>}
                             {hasDoc && !rowHasData && c.tipoSoporte !== 'convalidacion_men' && <p style={{ margin: '6px 0 0', fontSize: 11, lineHeight: 1.5, color: '#92400E' }}>Hay un soporte previo, pero falta registrar el dato del perfil. La revisión del archivo se conserva.</p>}
                           </div>
 
                           {/* Col 2: Soporte Documental */}
-                          <div style={{ width: '45%', padding: '16px 20px', borderRight: '1px solid #F1F5F9', display: 'flex', alignItems: 'center' }}>
-                            {!c.tipoSoporte ? (
-                               <div style={{ color: '#94A3B8', fontSize: 12, fontStyle: 'italic' }}>{c.documento}</div>
-                            ) : !rowHasData && !hasDoc ? (
-                               <span style={{ fontSize: 12, color: '#64748B' }}>Registre primero el dato de esta fila para cargar su soporte.</span>
-                            ) : hasDoc ? (
-                               <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
-                                  <div style={{ width: 36, height: 36, borderRadius: 8, background: '#EFF6FF', color: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <FileText size={18} />
-                                  </div>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B' }}>{c.documento}</div>
-                                    <div style={{ fontSize: 10, color: '#10B981', fontWeight: 600 }}>Cargado exitosamente</div>
-                                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 3 }}>PDF · Máximo 10 MB por archivo</div>
-                                  </div>
-                                  {showDocumentTools && (
-                                    <>
-                                      <button 
-                                        onClick={() => openDocViewer(activeUrl, c.documento, c.campo, c.tipoSoporte)}
-                                        style={{ padding: '6px 12px', borderRadius: 6, background: '#EFF6FF', border: 'none', color: '#2563EB', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
-                                      >
-                                        <Eye size={14}/> Ver
-                                      </button>
-                                      {canManageSupport(c.tipoSoporte) && rowHasData && (
-                                        <>
-                                          <button
-                                            style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: 'white', color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                                            title="Reemplazar documento (PDF, máximo 10 MB)"
-                                            onClick={() => {
-                                              const el = document.getElementById(`upload-${c.campo}`);
-                                              if (el) el.click();
-                                            }}
-                                          >
-                                            <Edit2 size={13} />
-                                          </button>
-                                          <input
-                                            id={`upload-${c.campo}`}
-                                            type="file"
-                                            accept="application/pdf,.pdf"
-                                            style={{ display: 'none' }}
-                                            disabled={rundActionLoading === `subir-${c.campo}`}
-                                            onChange={(e) => {
-                                              if (e.target.files && e.target.files.length > 0) {
-                                                const file = e.target.files[0];
-                                                handleUploadFile(file, c.tipoSoporte as string, c.campo);
-                                              }
-                                              e.target.value = '';
-                                            }}
-                                          />
-                                        </>
-                                      )}
-                                    </>
-                                  )}
-                               </div>
-                            ) : uploadOwner !== idx ? (
-                               <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{c.documento}</div>
-                                    <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>Soporte unificado (cargar arriba)</div>
-                                  </div>
-                               </div>
-                            ) : (
-                               <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
-                                  <div style={{ width: 36, height: 36, borderRadius: 8, background: '#F8FAFC', color: '#94A3B8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px dashed #CBD5E1' }}>
-                                    <UploadCloud size={18} />
-                                  </div>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{c.documento}</div>
-                                    <div style={{ fontSize: 10, color: isRequired ? '#DC2626' : '#64748B', fontWeight: 600 }}>{c.tipoSoporte === 'convalidacion_men' ? 'Solo para títulos obtenidos en el exterior' : isRequired ? 'Soporte Obligatorio' : 'Opcional'}</div>
-                                    {c.tipoSoporte === 'convalidacion_men' && <p style={{ margin: '5px 0', fontSize: 11, lineHeight: 1.5, color: '#64748B' }}>Es la resolución del Ministerio de Educación Nacional (MEN) que reconoce en Colombia un título obtenido en otro país. Adjunte este documento si corresponde a uno de los títulos del docente.</p>}
-                                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 3 }}>PDF · Máximo 10 MB por archivo</div>
-                                  </div>
-                                  {canManageSupport(c.tipoSoporte) ? <label style={{ padding: '6px 12px', borderRadius: 6, background: rundActionLoading === `subir-${c.campo}` ? '#E2E8F0' : 'white', border: '1px solid #CBD5E1', color: '#475569', fontSize: 11, fontWeight: 600, cursor: rundActionLoading === `subir-${c.campo}` ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', opacity: rundActionLoading === `subir-${c.campo}` ? 0.7 : 1 }}>
-                                    <input 
-                                      type="file"
-                                      accept="application/pdf,.pdf"
-                                      style={{ display: 'none' }} 
-                                      disabled={rundActionLoading === `subir-${c.campo}`}
-                                      onChange={(e) => {
-                                        if (e.target.files && e.target.files.length > 0) {
-                                          const file = e.target.files[0];
-                                          handleUploadFile(file, c.tipoSoporte as string, c.campo);
-                                        }
-                                        e.target.value = '';
-                                      }}
-                                    />
-                                    <UploadCloud size={14}/> {rundActionLoading === `subir-${c.campo}` ? 'Cargando...' : 'Subir'}
-                                  </label> : <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>Solo consulta</span>}
-                               </div>
-                            )}
+                          <div className="rund-checkpoint-row__evidence">
+                            <span className="rund-checkpoint-reference">{!c.tipoSoporte ? c.documento : hasDoc
+                              ? admittedCount + (admittedCount===1?' admitido de ':' admitidos de ') + evidences.length + (evidences.length===1?' soporte · ':' soportes · ') + c.documento
+                              : 'Sin soportes admitidos'}</span>
+                            {hasDoc&&<details className="rund-data-sources"><summary>Consultar soportes de este dato ({evidences.length})</summary>
+                              {evidences.map((evidence:any)=><div key={evidence.id}><span>{evidence.nombre_archivo||c.documento}</span>
+                                <button type="button" onClick={()=>openDocViewer(evidence.documento_carpeta_id||evidence.url||'',evidence.nombre_archivo||c.documento,c.campo)}>Ver soporte</button></div>)}
+                            </details>}
                           </div>
 
-                          {/* Col 3: Estado / Acción individual */}
-                          <div style={{ width: '30%', padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 8, background: hasDoc ? '#F8FAFC' : 'transparent' }}>
-                            {decision.observacion && <span style={{ fontSize: 11, color: '#B91C1C' }}>{decision.observacion}</span>}
-                            {!canValidateRund && hasDoc && !docStatus[c.campo] && <span style={{ fontSize: 11, color: '#92400E' }}>Pendiente de revisión</span>}
-                            {isDerived ? (
-                               <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>Dato Automático</span>
-                            ) : hasDoc ? (
-                               docStatus[c.campo] === 'Aprobado' ? (
-                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 12, fontSize: 11, fontWeight: 800, background: '#10B981', color: 'white' }}><CheckCircle size={14}/> Aprobado</span>
-                               ) : docStatus[c.campo] === 'Rechazado' ? (
-                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 12, fontSize: 11, fontWeight: 800, background: '#FEF2F2', color: '#DC2626' }}><ShieldAlert size={14}/> Devuelto</span>
-                               ) : (
-                                 <div style={{ display: 'flex', gap: 8 }}>
-                                    {canValidateRund && (
-                                      <button 
-                                        disabled={!!rundActionLoading || loadingRund || loadError}
-                                        onClick={() => reviewField(c.campo, 'Aprobado')}
-                                        style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #10B981', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
-                                      >
-                                        <CheckCircle size={14} /> Validar soporte
-                                      </button>
-                                    )}
-                                    {canValidateRund && (
-                                      <button 
-                                        disabled={!!rundActionLoading || loadingRund || loadError}
-                                        onClick={() => reviewField(c.campo, 'Rechazado')}
-                                        style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
-                                      >
-                                        <ShieldAlert size={14} /> Devolver soporte
-                                      </button>
-                                    )}
-                                 </div>
-                               )
-                            ) : c.tipoSoporte && !rowHasData ? (
-                               <span style={{ fontSize: 11, color: '#64748B' }}>Sin dato para soportar</span>
-                            ) : c.tipoSoporte === 'convalidacion_men' ? (
-                               <span style={{ fontSize: 11, color: '#92400E', textAlign: 'center' }}>Por determinar si aplica</span>
-                            ) : isRequired && c.tipoSoporte ? (
-                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 12, fontSize: 11, fontWeight: 800, background: '#FEF2F2', color: '#DC2626' }}><ShieldAlert size={14}/> Falta Soporte</span>
-                            ) : (
-                               <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>No Requerido</span>
-                            )}
+                          {/* Data decisions are separate from document admission. */}
+                          <div className="rund-checkpoint-row__status" data-empty={!dataDecision?.requiereRevision && dataState === 'Pendiente'}>
+                            {isDerived?<span style={{fontSize:11,color:'#94A3B8'}}>Dato Automático</span>:RUND_STANDALONE_SUPPORTS.includes(c.tipoSoporte)?<span style={{fontSize:11,color:'#94A3B8'}}>Solo soporte documental (opcional)</span>:<div className="rund-data-decision">
+                              <strong data-state={dataState}>{dataState==='Aprobado'?'Dato validado':dataState==='Rechazado'?'Dato devuelto':dataDecision?.requiereRevision===false?'Sin dato para revisar':c.tipoSoporte&&!rowHasData?'Sin dato para soportar':'Pendiente de validar el dato'}</strong>
+                              {dataDecision?.observacion&&<p>{dataDecision.observacion}</p>}
+                              {dataDecision?.revisadoPorNombre&&<small>Revisado por {dataDecision.revisadoPorNombre}</small>}
+                              {canValidateRund&&<div>
+                                {dataState!=='Aprobado'&&<button type="button" data-variant="approve" disabled={!dataDecision?.puedeValidar||!!rundActionLoading||loadingRund||loadError}
+                                  title={!dataDecision?.puedeValidar?'Registra el dato antes de validarlo. Los soportes son opcionales.':undefined}
+                                  onClick={()=>reviewData(b.bloque,c,'Aprobado')}>Validar dato</button>}
+                                <button type="button" data-variant="return" disabled={!dataDecision?.huella||!!rundActionLoading||loadingRund||loadError}
+                                  onClick={()=>{setReturnData({block:b.bloque,field:c});setDataReason('');}}>Devolver dato</button>
+                              </div>}
+                            </div>}
                           </div>
 
                         </div>
                       );
                     })}
                   </div>
-                </div>
+                </section>
 
                 {/* Bottom Action Bar */}
-                <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid #E2E8F0' }}>
+                <div className="rund-review-confirmation">
+                  <div className="rund-section-heading"><span className="rund-section-step">{b.bloque === 'CONTACTO' ? 2 : 3}</span>
+                    <div><h4>{b.estado === 'Aprobado' ? 'Revisión completada' : canValidateRund ? 'Confirmar revisión' : 'Estado de revisión'}</h4>
+                      <p>{b.estado === 'Aprobado' ? 'Esta sección ya fue aprobada.' : !canValidateRund ? 'La aprobación de esta sección corresponde al revisor autorizado.' : dataReady ? 'Los datos están listos. Puedes aprobar esta sección.' : 'Valida los datos pendientes y resuelve las devoluciones para finalizar.'}</p></div>
+                  </div>
+                  {canValidateRund && b.estado !== 'Aprobado' && !dataReady && <div className="rund-review-remaining" aria-label="Datos por resolver antes de aprobar">
+                    {pendingData > 0 && <span>{pendingData} {pendingData === 1 ? 'dato pendiente de validar' : 'datos pendientes de validar'}</span>}
+                    {returnedData > 0 && <span data-state="Devuelto">{returnedData} {returnedData === 1 ? 'dato devuelto para corregir' : 'datos devueltos para corregir'}</span>}
+                    <button type="button" onClick={() => workspaceRef.current?.querySelector('.rund-data-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}>Volver a los datos <ChevronRight size={14} aria-hidden="true" /></button>
+                  </div>}
                   {isDevolverOpen ? (
                     <div style={{ background: '#FEF2F2', padding: 20, borderRadius: 12, border: '1px solid #FECACA', animation: 'fadeIn 0.2s' }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: '#991B1B', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1127,16 +1103,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                       </div>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'flex-end' }}>
+                    <div className="rund-validation-actions">
                       {b.estado === 'Aprobado' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 8, background: '#ECFDF5', color: '#059669', fontSize: 13, fontWeight: 700 }}>
                           <Lock size={16} /> Bloque Aprobado
                         </div>
                       )}
                       
-                      {canApprove && !allReviewed && <span style={{ fontSize: 12, color: '#92400E' }}>Revise cada fila pendiente antes de aprobar el espacio.</span>}
-                      {canApprove && !hasAllRequired && <span style={{ fontSize: 12, color: '#B91C1C' }}>Faltan soportes obligatorios.</span>}
-                      {canApprove && hasExpired && <span style={{ fontSize: 12, color: '#B91C1C' }}>Hay soportes vencidos. Cargue una versión vigente antes de aprobar.</span>}
                       {canApprove && (
                         <>
                           {canValidateRund && (
@@ -1145,7 +1118,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                             </button>
                           )}
                           {canValidateRund && (
-                            <button onClick={() => handleAprobarRund(b.bloque)} disabled={!!rundActionLoading || loadingRund || !allReviewed || !hasAllRequired || hasExpired || loadError} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: 13, fontWeight: 700, cursor: !!rundActionLoading || loadingRund || !allReviewed || !hasAllRequired || hasExpired || loadError ? 'not-allowed' : 'pointer', opacity: !!rundActionLoading || loadingRund || !allReviewed || !hasAllRequired || hasExpired ? 0.55 : 1, transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0, 61, 165, 0.3)' }}>
+                            <button className="rund-review-approve" onClick={() => handleAprobarRund(b.bloque)} disabled={!!rundActionLoading || loadingRund || !dataReady || loadError} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', color: 'white', fontSize: 13, fontWeight: 700, cursor: !!rundActionLoading || loadingRund || !dataReady || loadError ? 'not-allowed' : 'pointer', opacity: !!rundActionLoading || loadingRund || !dataReady ? 0.55 : 1, transition: 'all 0.2s', boxShadow: '0 3px 8px rgba(35, 105, 85, 0.12)' }}>
                               <CheckCircle size={16} /> Aprobar bloque
                             </button>
                           )}
@@ -1179,7 +1152,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                 </div>
               </div>
               <button 
-                onClick={() => setViewingDoc(null)}
+                onClick={closeDocViewer}
+                aria-label="Cerrar documento"
                 style={{ width: 36, height: 36, borderRadius: 18, background: '#F1F5F9', border: 'none', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
               >
                 <X size={18} />
@@ -1213,23 +1187,23 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             {/* Modal Footer (Action Buttons) */}
             <div style={{ padding: '20px 24px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
-                 ¿El documento cumple con los requisitos normativos para <strong style={{ color: '#0F172A' }}>{viewingDoc.campo}</strong>?
+                 {viewingDoc.review ? 'La decisión cubre el documento completo y todos los datos que acredita.' : <>¿El documento cumple con los requisitos normativos para <strong style={{ color: '#0F172A' }}>{viewingDoc.campo}</strong>?</>}
                </div>
                <div style={{ display: 'flex', gap: 12 }}>
-                 {canValidateRund && !viewingDoc.loading && !viewingDoc.error && CATALOGO_BR039[selectedRundBloque]?.campos.some(c => c.campo === viewingDoc.campo && supportUrls[c.campo] === viewingDoc.url) && (
+                 {viewerCanReview && (
                    <button disabled={!!rundActionLoading || loadingRund || loadError}
                      onClick={() => {
-                       reviewField(viewingDoc.campo, 'Rechazado');
+                       reviewEvidence(viewingDoc.review!.support, viewingDoc.review!.block, viewingDoc.review!.field, 'Rechazado');
                      }}
                      style={{ padding: '10px 20px', borderRadius: 8, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
                    >
                      <ShieldAlert size={16} /> Devolver documento
                    </button>
                  )}
-                 {canValidateRund && !viewingDoc.loading && !viewingDoc.error && CATALOGO_BR039[selectedRundBloque]?.campos.some(c => c.campo === viewingDoc.campo && supportUrls[c.campo] === viewingDoc.url) && (
+                 {viewerCanReview && (
                    <button disabled={!!rundActionLoading || loadingRund || loadError}
                      onClick={() => {
-                       reviewField(viewingDoc.campo, 'Aprobado');
+                       reviewEvidence(viewingDoc.review!.support, viewingDoc.review!.block, viewingDoc.review!.field, 'Aprobado');
                      }}
                      style={{ padding: '10px 24px', borderRadius: 8, background: '#10B981', border: 'none', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}
                    >

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Wrench, Clock, AlertTriangle, Plus, ListTodo, FolderKanban,
-  Inbox, Search, FileSearch, ClipboardList, Loader2, Hammer,
-  Package, CheckCircle, Archive, Ban, XCircle, ChevronDown,
+  Inbox, Search, FileSearch, ClipboardList, Loader2, Hammer, X,
+  Package, PackageX, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download, FileSpreadsheet,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
-  User, ThumbsDown, Star, UploadCloud, Database, Info, X,
+  User, ThumbsDown, Star, UploadCloud, Database, Info, X, ShoppingCart,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -19,7 +19,6 @@ import {
   getMisSolicitudes,
   tecnicoPerteneceASesionUMI,
 } from '../services/infraestructuraService';
-import { ModalJerarquiaTerritorialDemo } from './ModalJerarquiaTerritorialDemo';
 import { HistoricoMantenimientosExterno } from './HistoricoMantenimientosExterno';
 
 interface SolicitudesMantenimientoProps {
@@ -207,6 +206,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
   const [filtroResponsable, setFiltroResponsable] = useState<string>('TODOS');
+  const [filtroContratacion, setFiltroContratacion] = useState<string>('TODAS');
+  const [busquedaTexto, setBusquedaTexto] = useState<string>('');
   const [paginaActual, setPaginaActual] = useState<number>(1);
 
   useEffect(() => {
@@ -318,13 +319,30 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           .filter(Boolean);
         asignacionOk = !!responsable && candidatos.some((it) => responsableNorm.includes(it));
       }
-      return estadoOk && prioridadOk && asignacionOk;
+      const contratacionOk =
+        filtroContratacion === 'TODAS' ||
+        (filtroContratacion === 'REQUIERE_CONTRATACION' && !!m.requiereContratacion) ||
+        (filtroContratacion === 'OBRA_MAYOR' && m.clasificacionMantenimiento === 'MAYOR') ||
+        (filtroContratacion === 'MENOR' && m.clasificacionMantenimiento !== 'MAYOR');
+
+      const q = busquedaTexto.trim().toLowerCase();
+      const busquedaOk = !q || (
+        String(m.consecutivo || '').toLowerCase().includes(q) ||
+        String(m.descripcion || '').toLowerCase().includes(q) ||
+        String(m.solicitanteNombre || '').toLowerCase().includes(q) ||
+        String(m.sede?.nombre || '').toLowerCase().includes(q) ||
+        String(m.nombreUbicacionDisplay || '').toLowerCase().includes(q) ||
+        String(m.cetapNombre || '').toLowerCase().includes(q) ||
+        String(m.espacioFisico || '').toLowerCase().includes(q)
+      );
+
+      return estadoOk && prioridadOk && asignacionOk && contratacionOk && busquedaOk;
     });
-  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, opcionesResponsableMap]);
+  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, opcionesResponsableMap]);
 
   useEffect(() => {
     setPaginaActual(1);
-  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, lista.length]);
+  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, lista.length]);
 
   const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / PAGE_SIZE_SOLICITUDES));
 
@@ -369,7 +387,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [exportandoExcel, setExportandoExcel] = useState(false);
   const [toastExport, setToastExport] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
   const [mostrarModalCargaMasiva, setMostrarModalCargaMasiva] = useState(false);
-  const [mostrarModalJerarquia, setMostrarModalJerarquia] = useState(false);
 
 
   useEffect(() => {
@@ -409,7 +426,9 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const hayFiltrosActivos =
     filtroEstado !== 'TODOS' ||
     filtroPrioridad !== 'TODAS' ||
-    filtroResponsable !== 'TODOS';
+    filtroResponsable !== 'TODOS' ||
+    filtroContratacion !== 'TODAS' ||
+    Boolean(busquedaTexto.trim());
 
   const toggleExpandir = (id: string) => {
     setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -524,16 +543,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   <UploadCloud className="w-3.5 h-3.5" />
                   <span>Carga Masiva (Histórico)</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMostrarModalJerarquia(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold transition-all shadow-sm active:scale-95"
-                  title="Fase 4 Req. #8: Simulador y evaluación de Jerarquía de Sedes y Territoriales para la reunión"
-                >
-                  <GitBranch className="w-3.5 h-3.5 text-indigo-700" />
-                  <span>Jerarquía Sedes (Demo)</span>
-                </button>
               </>
 
             )}
@@ -644,9 +653,31 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
         {!vistaLoading && lista.length > 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-3">
+            {/* EFDS-2373: Buscador libre de texto y radicado */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={busquedaTexto}
+                onChange={(e) => setBusquedaTexto(e.target.value)}
+                placeholder="Buscar por radicado (ej: MNT-2026-0027), descripción, solicitante o sede..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-10 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+              />
+              {busquedaTexto && (
+                <button
+                  type="button"
+                  onClick={() => setBusquedaTexto('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                  title="Borrar búsqueda"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
             <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <label className="block">
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Estado</span>
                   <select
@@ -693,6 +724,19 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     ))}
                   </select>
                 </label>
+                <label className="block">
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Contratación</span>
+                  <select
+                    value={filtroContratacion}
+                    onChange={(e) => setFiltroContratacion(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  >
+                    <option value="TODAS">Todas las solicitudes</option>
+                    <option value="REQUIERE_CONTRATACION">Requiere Contratación</option>
+                    <option value="OBRA_MAYOR">Obra Mayor (EFDS-2353)</option>
+                    <option value="MENOR">Mantenimiento Menor</option>
+                  </select>
+                </label>
               </div>
               <div className="flex items-center justify-between lg:justify-end gap-2">
                 <span className="text-xs text-slate-500">
@@ -705,6 +749,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       setFiltroEstado('TODOS');
                       setFiltroPrioridad('TODAS');
                       setFiltroResponsable('TODOS');
+                      setFiltroContratacion('TODAS');
+                      setBusquedaTexto('');
                     }}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                   >
@@ -807,6 +853,17 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       {m.tipoMantenimiento}
                     </span>
+                    {m.clasificacionMantenimiento === 'MAYOR' && (
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-purple-100 text-purple-800 border-purple-300">
+                        Obra Mayor
+                      </span>
+                    )}
+                    {m.requiereContratacion && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-rose-100 text-rose-800 border-rose-300">
+                        <ShoppingCart className="w-3 h-3" />
+                        Requiere Contratación
+                      </span>
+                    )}
                     {m.tipoAtencion && (
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${m.tipoAtencion === 'TECNOLOGICA'
                           ? 'bg-sky-100 text-sky-700 border-sky-200'
@@ -870,8 +927,13 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     {m.nombreAreaSolicitante && (
                       <span>Área: <strong className="text-slate-700">{m.nombreAreaSolicitante}</strong></span>
                     )}
-                    {m.sede?.nombre && (
-                      <span>Sede: <strong className="text-slate-700">{m.sede.nombre}</strong></span>
+                    {(m.sede?.nombre || m.nombreUbicacionDisplay || m.cetapNombre) && (
+                      <span>
+                        Sede / CETAP:{' '}
+                        <strong className="text-slate-700">
+                          {m.nombreUbicacionDisplay || m.sede?.nombre || `CETAP ${m.cetapNombre}`}
+                        </strong>
+                      </span>
                     )}
                     {(m.piso || m.salon) && (
                       <span>
@@ -944,12 +1006,22 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       </span>
                     );
                   })()}
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${claseEstado(m.estado)}`}
-                  >
-                    {iconoEstado(m.estado, 14)}
-                    {m.estado || 'RECIBIDA'}
-                  </span>
+                  {String(m.estado || '').toUpperCase() === 'CERRADA_SIN_ATENCION' ? (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-rose-50 text-rose-800 border-rose-300 shadow-sm"
+                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento (EFDS-1735)"
+                    >
+                      <PackageX className="w-3.5 h-3.5 text-rose-600" />
+                      Cerrada por falta de insumos
+                    </span>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${claseEstado(m.estado)}`}
+                    >
+                      {iconoEstado(m.estado, 14)}
+                      {m.estado || 'RECIBIDA'}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => onGestionar?.(m.idSolicitud)}
@@ -1084,12 +1156,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           </div>
         </div>
       )}
-
-      {/* Modal Demostrativo: Jerarquía Territorial de Sedes (Req. #8) */}
-      <ModalJerarquiaTerritorialDemo
-        isOpen={mostrarModalJerarquia}
-        onClose={() => setMostrarModalJerarquia(false)}
-      />
     </div>
   );
 };

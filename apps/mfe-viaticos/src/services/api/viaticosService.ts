@@ -332,6 +332,8 @@ export class ViaticosService {
       valorComprometido: (s as any).valorComprometido != null ? Number((s as any).valorComprometido) : null,
       rubroRp: (s as any).rubroRp || null,
       codigoRp: (s as any).codigoRp || null,
+      soporteRpPath: (s as any).soporteRpPath || (s as any).soporte_rp_path || null,
+      observacionesRp: (s as any).observacionesRp || (s as any).observaciones_rp || null,
       fechaExpedicionRp: (s as any).fechaExpedicionRp || null,
       modalidadPago: (s as any).modalidadPago || (s as any).modalidad_pago || null,
       diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : ((s as any).dias_habiles_previos != null ? Number((s as any).dias_habiles_previos) : null),

@@ -2,10 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -21,19 +21,32 @@ import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma
  */
 export class DesignarSupervisorDto {
   /**
-   * La cuenta y no la persona del directorio (121): quien se designa ocupa el
-   * puesto que avala la 9.4, y es la cuenta la que inicia sesión. El nombre,
-   * el correo y la persona se toman de ella.
+   * El supervisor no entra a la aplicación (136): se registra con lo que dice
+   * el acto, escrito a mano. Lo que hace en las etapas 9 y 10 lo registran
+   * por él el abogado estructurador y el gestor de archivo y supervisión.
    */
-  @ApiProperty({ description: 'id_user de la cuenta que se designa, entre los candidatos del puesto' })
-  @IsUUID('all', { message: 'El supervisor se elige entre las cuentas que pueden ocupar el puesto' })
-  usuarioId: string;
+  @ApiProperty({ description: 'Nombre completo del supervisor, como figura en el acto' })
+  @IsString()
+  @IsNotEmpty({ message: 'Escribe el nombre del supervisor' })
+  @MaxLength(200)
+  nombre: string;
 
   @ApiPropertyOptional({ description: 'Cargo que ocupa en la entidad' })
   @IsOptional()
   @IsString()
   @MaxLength(200)
   cargo?: string;
+
+  /**
+   * A donde le llega el memorando (124). Obligatorio desde la sesión de QA del
+   * 04/11: la notificación sale del módulo y es la evidencia de la designación.
+   */
+  @ApiProperty({ description: 'Correo del supervisor' })
+  @IsString()
+  @IsNotEmpty({ message: 'Escribe el correo del supervisor: a él le llega la notificación' })
+  @IsEmail({}, { message: 'El correo del supervisor no es válido' })
+  @MaxLength(200)
+  email: string;
 
   @ApiProperty({ description: 'Fecha del acto administrativo (YYYY-MM-DD)' })
   @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })

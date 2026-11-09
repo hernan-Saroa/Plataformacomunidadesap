@@ -34,9 +34,9 @@ const ETIQUETA_DESTINO: Record<DestinoPublicacion, string> = {
 /**
  * Actividad 8.8 · Publicación del contrato (EFDS-1166).
  *
- * Se pide el destino porque las fuentes no coinciden: la historia habla de
- * SECOP II y la matriz llama a la actividad «Publicación en página web ESAP».
- * Registrar el sitio reconcilia las dos lecturas sin decidir por Contratación.
+ * Desde la sesión de QA del 04/11 es solo la página web de la ESAP: en SECOP II
+ * el contrato ya se publicó con la adjudicación. Es parte de la legalización y
+ * tiene que estar completa para pasar a la etapa 9.
  */
 export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
   const firma = useFirma(NUMERAL, 'Publicar el contrato');
@@ -47,7 +47,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
 
   const [registrando, setRegistrando] = useState(false);
   const [datos, setDatos] = useState({
-    destino: 'SECOP_II' as DestinoPublicacion,
+    destino: 'WEB_ESAP' as DestinoPublicacion,
     fechaPublicacion: hoyEnBogota(),
     secopNumero: '',
     secopUrl: '',
@@ -71,7 +71,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
 
   const limpiar = () => {
     setDatos({
-      destino: 'SECOP_II',
+      destino: 'WEB_ESAP',
       fechaPublicacion: hoyEnBogota(),
       secopNumero: '',
       secopUrl: '',
@@ -135,18 +135,11 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Publicación del contrato</Titulo>
       <Ayuda>
-        El contrato se publica dentro del plazo legal contado desde su perfeccionamiento. Se
-        registra dónde se publicó y con qué evidencia.
+        El contrato se publica en la página web de la ESAP dentro del plazo legal contado desde su
+        perfeccionamiento, con la evidencia de la publicación. En SECOP II ya quedó publicado con la
+        adjudicación. Se puede registrar en cualquier orden con el RP, las garantías y la ARL, pero
+        las cuatro tienen que estar completas para pasar a la etapa 9.
       </Ayuda>
-
-      {/* Revisión de QA de EFDS-1166: la publicación en la página web se hace
-          una sola vez por proceso, en la 5.3. Esta es un recordatorio para
-          confirmar la evidencia y no detiene el proceso. */}
-      <Aviso tono="aviso" titulo="Recordatorio, no detiene el proceso">
-        La publicación del proceso en la página web de la ESAP ya se registró con la publicación del
-        proyecto de pliego (5.3). Aquí solo se confirma la evidencia de lo que corresponda publicar
-        ahora (en Tienda Virtual, la orden de compra); el proceso sigue aunque quede pendiente.
-      </Aviso>
 
       {/* El plazo corre desde el perfeccionamiento (Decreto 1082, art.
           2.2.1.1.1.7.1): no espera a las garantías ni a la ARL. */}
@@ -230,14 +223,14 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
               setRegistrando(true);
             }}
           >
-            Registrar publicación en {ETIQUETA_DESTINO[estado.pendientes[0]]}
+            Registrar la publicación en la página web
           </Boton>
         </Permitido>
       ) : null}
 
       {estado.suscrito && estado.pendientes.length === 0 ? (
         <Aviso tono="ok" titulo="El contrato está publicado">
-          Quedó registrada la publicación en los dos sitios.
+          Quedó registrada la publicación en la página web de la ESAP.
         </Aviso>
       ) : null}
 
@@ -246,25 +239,6 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
           <p className="text-[12.5px] font-bold text-slate-800 m-0">Registrar publicación</p>
 
           <div className="grid grid-cols-2 gap-2.5">
-            <div>
-              <label htmlFor="pub-destino" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Dónde se publicó <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="pub-destino"
-                value={datos.destino}
-                onChange={(e) =>
-                  setDatos((p) => ({ ...p, destino: e.target.value as DestinoPublicacion }))
-                }
-                className={campo}
-              >
-                {estado.pendientes.map((d) => (
-                  <option key={d} value={d}>
-                    {ETIQUETA_DESTINO[d]}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div>
               <label htmlFor="pub-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
                 Fecha de publicación <span className="text-red-600">*</span>
@@ -280,21 +254,6 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
                 La real, no la de hoy: es la que cuenta para el plazo.
               </p>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <div>
-              <label htmlFor="pub-numero" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Número del proceso
-              </label>
-              <input
-                id="pub-numero"
-                type="text"
-                value={datos.secopNumero}
-                onChange={(e) => setDatos((p) => ({ ...p, secopNumero: e.target.value }))}
-                className={campo}
-              />
-            </div>
             <div>
               <label htmlFor="pub-url" className="block text-xs font-bold text-gray-600 mb-1.5">
                 Enlace a la publicación
@@ -304,7 +263,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
                 type="url"
                 value={datos.secopUrl}
                 onChange={(e) => setDatos((p) => ({ ...p, secopUrl: e.target.value }))}
-                placeholder="https://…"
+                placeholder="https://www.esap.edu.co/…"
                 className={campo}
               />
             </div>

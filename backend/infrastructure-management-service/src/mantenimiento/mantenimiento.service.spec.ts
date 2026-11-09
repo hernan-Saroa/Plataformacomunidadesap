@@ -2356,6 +2356,66 @@ describe('[EFDS-1736] Cierre técnico (cerrarTecnicamente)', () => {
     expect(r.estado).toBe('COMPLETADA');
     expect(r.usuarioCierreTecnicoId).toBe(userSuper.userId);
   });
+
+  // [EFDS-2354] Regla bloqueante de cierre para solicitudes que requieren contratación
+  it('cerrarTecnicamente BadRequestException si requiereContratacion=true y NO tiene soporte de compra/contratación', async () => {
+    const sol = {
+      idSolicitud: 'SOL-CONTRATACION-1',
+      estado: 'EN_PROGRESO',
+      idCategoria: 47,
+      requiereContratacion: true,
+      codigoTecnicoAsignado: 'TEC-01',
+      responsableAsignado: 'TEC-01 · Porky',
+      areaResponsableActual: 'UMI',
+      asignaciones: [],
+    };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    // Envía evidencia común (solo foto) sin categoría de soporte
+    await expect(
+      servicio.cerrarTecnicamente(
+        'SOL-CONTRATACION-1',
+        {
+          trabajoRealizado: 'Se realizaron trabajos pero no hay factura',
+          evidencias: [{ id: 'e1', categoria: 'EJECUCION_TECNICA' }],
+          costoFinalEfectivoCop: 500000,
+        } as any,
+        userTecnico,
+      ),
+    ).rejects.toThrow('Esta solicitud requiere contratación: Es obligatorio adjuntar el soporte de contratación/compra');
+  });
+
+  it('cerrarTecnicamente OK si requiereContratacion=true, tiene soporte SOPORTE_CONTRATACION y recepción de insumos COMPLETA', async () => {
+    const sol = {
+      idSolicitud: 'SOL-CONTRATACION-2',
+      estado: 'EN_PROGRESO',
+      idCategoria: 47,
+      requiereContratacion: true,
+      codigoTecnicoAsignado: 'TEC-01',
+      responsableAsignado: 'TEC-01 · Porky',
+      areaResponsableActual: 'UMI',
+      asignaciones: [
+        {
+          accion: 'RECEPCION_INSUMOS_TECNICO',
+          motivo: 'Verificación de entrega de insumos por técnico: COMPLETA',
+          observaciones: JSON.stringify({ resultado: 'COMPLETA' }),
+        },
+      ],
+    };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const r = await servicio.cerrarTecnicamente(
+      'SOL-CONTRATACION-2',
+      {
+        trabajoRealizado: 'Trabajos finalizados con orden de compra auditada',
+        evidencias: [
+          { id: 'oc-1', name: 'orden-compra.pdf', categoria: 'SOPORTE_CONTRATACION' },
+        ],
+        costoFinalEfectivoCop: 3500000,
+      } as any,
+      userTecnico,
+    );
+    expect(r.estado).toBe('COMPLETADA');
+    expect(r.asignaciones[r.asignaciones.length - 1].accion).toBe('CIERRE_TECNICO_CONTRATACION_VALIDADO');
+  });
 });
 
 // ===========================================================================

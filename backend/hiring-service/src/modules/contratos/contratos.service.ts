@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { leerPlazoPactado, plazoEnPalabras } from './plazo-pactado';
 import { DataSource, EntityManager } from 'typeorm';
 
 import { alMenos, Contrato, EstadoContrato, TipoPersona } from '../../entities/contrato.entity';
@@ -263,6 +264,15 @@ export class ContratosService {
             objeto: contrato.objeto,
             valor: contrato.valor,
             plazoDias: contrato.plazoDias,
+            plazoUnidad: contrato.plazoUnidad,
+            plazoCantidad: contrato.plazoCantidad,
+            plazoFechaFin: contrato.plazoFechaFin,
+            plazoTexto: plazoEnPalabras({
+              unidad: contrato.plazoUnidad,
+              cantidad: contrato.plazoCantidad,
+              fechaFin: contrato.plazoFechaFin,
+              dias: contrato.plazoDias,
+            }),
             contratista: {
               documento: contrato.contratistaDocumento,
               nombre: contrato.contratistaNombre,
@@ -329,6 +339,9 @@ export class ContratosService {
       const contradiccion = contradiceElActo(dto, acto);
       if (contradiccion) throw new BadRequestException(contradiccion);
 
+      const pactado = leerPlazoPactado(dto);
+      if ('error' in pactado) throw new BadRequestException(pactado.error);
+
       if (await this.contratoVigente(procesoId, em)) {
         throw new ConflictException(
           'El proceso ya tiene contrato: para cambiarlo se registra el rechazo del proponente y se genera otro',
@@ -375,7 +388,10 @@ export class ContratosService {
           numero: dto.numero,
           objeto: dto.objeto,
           valor: dto.valor,
-          plazoDias: dto.plazoDias ?? null,
+          plazoDias: pactado.plazo.dias,
+          plazoUnidad: pactado.plazo.unidad,
+          plazoCantidad: pactado.plazo.cantidad,
+          plazoFechaFin: pactado.plazo.fechaFin,
           contratistaDocumento: dto.contratistaDocumento,
           contratistaNombre: dto.contratistaNombre,
           contratistaTipo: dto.contratistaTipo,

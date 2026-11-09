@@ -1,0 +1,53 @@
+name: Validate chatbot integration
+
+on:
+  pull_request:
+    paths:
+      - 'backend/chatbot-service/**'
+      - 'backend/api-gateway/src/auth/**'
+      - 'scripts/chatbot/**'
+      - 'docker-compose*.yml'
+      - 'deploy.*.sh'
+      - 'apps/shell/src/components/portal/**'
+      - 'apps/shell/src/components/esap/SidebarPremium.tsx'
+      - 'apps/shell/src/App.tsx'
+      - '.github/workflows/validate-chatbot.yml'
+  push:
+    branches: [dev, qa, pre, prod]
+    paths:
+      - 'backend/chatbot-service/**'
+      - 'backend/api-gateway/src/auth/**'
+      - 'scripts/chatbot/**'
+      - 'docker-compose*.yml'
+      - 'deploy.*.sh'
+      - 'apps/shell/src/components/portal/**'
+      - 'apps/shell/src/components/esap/SidebarPremium.tsx'
+      - 'apps/shell/src/App.tsx'
+      - '.github/workflows/validate-chatbot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/chatbot-service/package-lock.json
+      - name: Install locked chatbot dependencies
+        run: npm ci --prefix backend/chatbot-service --no-audit --no-fund
+      - name: Backend policies, access and source contracts
+        working-directory: backend/chatbot-service
+        run: npm run test:ci
+      - name: Build and verify current platform names
+        working-directory: backend/chatbot-service
+        run: npm run build
+      - name: Isolated deployment tests (no live services or secrets)
+        env:
+          CHATBOT_COMPOSE_RENDER_TEST: 'true'
+        run: node --test scripts/chatbot/*.test.cjs scripts/verify-deploy-service-selection.test.cjs scripts/rund-documental/deploy-guard.test.cjs

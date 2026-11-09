@@ -24,8 +24,8 @@ export class GuardarCadenaDto {
     description:
       'Los escalones en orden: { nombre, roles, personas (id_person), papeles, reglaDecision: UNO|TODOS, acciones: APROBAR|DEVOLVER|NEGAR }',
     example: [
-      { nombre: 'Revisión técnica', roles: ['REVISOR_CONTRATACION'], acciones: ['APROBAR', 'DEVOLVER'] },
-      { nombre: 'Director', roles: ['DIRECTOR_CONTRATACION'], acciones: ['APROBAR', 'DEVOLVER', 'NEGAR'] },
+      { nombre: 'Revisión jurídica', roles: ['ABOGADO_REVISOR'], acciones: ['APROBAR', 'DEVOLVER'] },
+      { nombre: 'Directora', roles: ['DIRECTORA_DE_CONTRATACION'], acciones: ['APROBAR', 'DEVOLVER', 'NEGAR'] },
     ],
   })
   @IsArray()

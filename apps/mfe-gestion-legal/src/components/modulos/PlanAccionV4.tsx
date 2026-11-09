@@ -41,40 +41,22 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 // Importar modales ESAP 2025
 import { ModalNuevoIndicador } from './ModalNuevoIndicador';
 import { ModalEditarIndicador } from './ModalEditarIndicador';
+import { useResponsablesProcesoLegal } from './SelectorResponsable';
+import { ResponsableOpcion, estadoResponsable, requiereReasignacion } from './responsablesIndicador';
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
+import {
+  Indicador, EjeEstrategico, EstadoIndicador, FiltrosPlanAccion, FILTROS_VACIOS, EJES, ESTADOS,
+  EJE_NOMBRES, ESTADO_NOMBRES, filtrarIndicadores, agruparPorEje, calcularMetricas,
+  calcularAvanceConsolidado, hayFiltrosActivos, getFechaCorte, getNivelSemaforo, getSemaforoConfig,
+  MENSAJE_SIN_RESULTADOS,
+} from './planAccionUtils';
+import { exportarPlanAccionExcel, exportarPlanAccionPDF } from './planAccionExport';
+import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/popover';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 
 // ==================== TIPOS ====================
-// ... (interface definitions kept same but no API_URL const) ...
-interface Indicador {
-  id: string;
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  ejeEstrategico: 'GESTION_INSTITUCIONAL' | 'TALENTO_HUMANO' | 'TRANSPARENCIA' | 'TECNOLOGIA';
-  responsable: string;
-  meta: number;
-  valorActual: number;
-  avance: number; // % de cumplimiento
-  fechaInicio: Date;
-  fechaFin: Date;
-  estado: 'EN_TIEMPO' | 'EN_RIESGO' | 'VENCIDO' | 'COMPLETADO';
-  prioridad: 'ALTA' | 'MEDIA' | 'BAJA';
-  periodicidad: 'MENSUAL' | 'TRIMESTRAL' | 'SEMESTRAL' | 'ANUAL';
-  tipoIndicador: 'EFICIENCIA' | 'EFICACIA' | 'GESTION' | 'TRANSPARENCIA';
-  unidadMedida: string;
-  ultimaActualizacion: Date;
-  // Bug 6b: registros del backend para mostrar historial con observaciones
-  registros?: Array<{
-    id: number | string;
-    valorReportado: number;
-    porcentajeAvance: number;
-    observaciones?: string;
-    evidenciaUrl?: string;
-    fechaRegistro: string | Date;
-    usuarioRegistraId?: string;
-  }>;
-}
+// Indicador y la lógica de filtros/consolidados viven en planAccionUtils (testeable).
 
 type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz' | 'archivados';
 
@@ -184,17 +166,14 @@ const getEstadoIcon = (iconType: string) => {
   return <CheckCircle className="w-3 h-3" />;
 };
 
-const getSemaforoColor = (avance: number) => {
-  if (avance >= 90) return '#10B981'; // Verde
-  if (avance >= 50) return '#F59E0B'; // Amarillo
-  return '#DC2626'; // Rojo
-};
+const SEMAFORO_COLORES = { verde: '#10B981', amarillo: '#F59E0B', rojo: '#DC2626' } as const;
+
+const getSemaforoColor = (avance: number) => SEMAFORO_COLORES[getNivelSemaforo(avance)];
 
 /** Variant del componente Progress según porcentaje (Bug 3) */
 const getSemaforoVariant = (avance: number): 'success' | 'warning' | 'danger' => {
-  if (avance >= 90) return 'success';
-  if (avance >= 50) return 'warning';
-  return 'danger';
+  const n = getNivelSemaforo(avance);
+  return n === 'verde' ? 'success' : n === 'amarillo' ? 'warning' : 'danger';
 };
 
 /** Badge tipo "chip" para % cumplimiento que cambia color según el porcentaje (Bug 3) */
@@ -225,10 +204,8 @@ export function ModuloPlanAccionV4() {
   const canMutatePlanAccion = authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_CREATE);
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('lista');
-  const [busqueda, setBusqueda] = useState('');
-  const [filtroEje, setFiltroEje] = useState<string>('TODOS');
-  const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
-  const [ocultarCompletados, setOcultarCompletados] = useState(false);
+  const [filtros, setFiltros] = useState<FiltrosPlanAccion>(FILTROS_VACIOS);
+  const updateFiltros = (patch: Partial<FiltrosPlanAccion>) => setFiltros(prev => ({ ...prev, ...patch }));
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA']));
 
@@ -242,6 +219,9 @@ export function ModuloPlanAccionV4() {
   const [modalAvanceOpen, setModalAvanceOpen] = useState(false);
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [indicadorSeleccionado, setIndicadorSeleccionado] = useState<Indicador | null>(null);
+
+  // Usuarios activos del proceso legal: permiten identificar indicadores cuyo responsable requiere reasignación
+  const { responsables: responsablesActivos } = useResponsablesProcesoLegal();
 
   // Fetch Data
   const fetchData = async () => {
@@ -257,6 +237,7 @@ export function ModuloPlanAccionV4() {
         descripcion: ind.descripcion || '',
         ejeEstrategico: mapEjeFromBackend(ind.ejeEstrategico),
         responsable: ind.responsableNombre || 'Sin Asignar',
+        responsableId: ind.responsableId ?? null,
         meta: Number(ind.metaObjetivo) || 0,
         valorActual: Number(ind.valorActual) || 0,
         avance: Number(ind.avanceActual) || 0,
@@ -331,6 +312,7 @@ export function ModuloPlanAccionV4() {
           descripcion: ind.descripcion || '',
           ejeEstrategico: mapEjeFromBackend(ind.ejeEstrategico),
           responsable: ind.responsableNombre || 'Sin Asignar',
+          responsableId: ind.responsableId ?? null,
           meta: Number(ind.metaObjetivo) || 0,
           valorActual: Number(ind.valorActual) || 0,
           avance: Number(ind.avanceActual) || 0,
@@ -441,6 +423,7 @@ export function ModuloPlanAccionV4() {
         frecuenciaMedicion: data.periodicidad,
         prioridad: data.prioridad,
         tipoIndicador: data.tipoIndicador,
+        responsableId: data.responsableId,
         responsableNombre: data.responsable,
         estado: 'ACTIVO'
       };
@@ -469,6 +452,7 @@ export function ModuloPlanAccionV4() {
         frecuenciaMedicion: data.periodicidad,
         prioridad: data.prioridad,
         tipoIndicador: data.tipoIndicador,
+        responsableId: data.responsableId,
         responsableNombre: data.responsable
       };
 
@@ -503,6 +487,22 @@ export function ModuloPlanAccionV4() {
     }
   };
 
+  const handleExportarArchivo = async (tipo: 'excel' | 'pdf') => {
+    if (indicadoresFiltrados.length === 0) {
+      toast.warning(MENSAJE_SIN_RESULTADOS);
+      return;
+    }
+    const toastId = toast.loading(`Generando ${tipo === 'excel' ? 'Excel' : 'PDF'}...`);
+    try {
+      if (tipo === 'excel') await exportarPlanAccionExcel(indicadoresFiltrados, filtros);
+      else await exportarPlanAccionPDF(indicadoresFiltrados, filtros);
+      toast.success('Reporte descargado exitosamente', { id: toastId });
+    } catch (error) {
+      console.error('Error exporting report:', error);
+      toast.error('Error al generar el reporte', { id: toastId });
+    }
+  };
+
   const handleExportarZip = async () => {
     const toastId = toast.loading('Generando reporte ZIP...');
     try {
@@ -525,65 +525,27 @@ export function ModuloPlanAccionV4() {
     }
   };
 
-  // Filtrar indicadores
-  const indicadoresFiltrados = useMemo(() => {
-    let resultado = [...indicadores];
+  // Filtrar indicadores (los totales, consolidados y todas las vistas usan este resultado)
+  const indicadoresFiltrados = useMemo(
+    () => filtrarIndicadores(indicadores, filtros),
+    [filtros, indicadores]
+  );
 
-    if (busqueda) {
-      resultado = resultado.filter(i =>
-        i.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-        i.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        i.responsable.toLowerCase().includes(busqueda.toLowerCase())
-      );
-    }
-
-    if (filtroEje !== 'TODOS') {
-      resultado = resultado.filter(i => i.ejeEstrategico === filtroEje);
-    }
-
-    if (filtroEstado !== 'TODOS') {
-      resultado = resultado.filter(i => i.estado === filtroEstado);
-    }
-
-    if (ocultarCompletados) {
-      resultado = resultado.filter(i => i.avance < 100);
-    }
-
-    return resultado;
-  }, [busqueda, filtroEje, filtroEstado, ocultarCompletados, indicadores]);
+  const filtrosActivos = hayFiltrosActivos(filtros);
 
   // Agrupar por eje estratégico
-  const indicadoresAgrupados = useMemo(() => {
-    const grupos: Record<string, Indicador[]> = {
-      GESTION_INSTITUCIONAL: [],
-      TALENTO_HUMANO: [],
-      TRANSPARENCIA: [],
-      TECNOLOGIA: []
-    };
+  const indicadoresAgrupados = useMemo(() => agruparPorEje(indicadoresFiltrados), [indicadoresFiltrados]);
 
-    indicadoresFiltrados.forEach(ind => {
-      if (grupos[ind.ejeEstrategico]) {
-        grupos[ind.ejeEstrategico].push(ind);
-      }
-    });
+  // Con filtros activos solo se muestran los ejes que tienen indicadores coincidentes
+  const ejesVisibles = useMemo(
+    () => Object.fromEntries(
+      Object.entries(indicadoresAgrupados).filter(([, inds]) => !filtrosActivos || inds.length > 0)
+    ) as Record<string, Indicador[]>,
+    [indicadoresAgrupados, filtrosActivos]
+  );
 
-    return grupos;
-  }, [indicadoresFiltrados]);
-
-  // Calcular métricas
-  const metricas = useMemo(() => {
-    const total = indicadores.length;
-    if (total === 0) return { total: 0, avancePromedio: 0, enTiempo: 0, enRiesgo: 0, vencidos: 0 };
-
-    const avancePromedio = Math.round(
-      indicadores.reduce((sum, i) => sum + i.avance, 0) / total
-    );
-    const enTiempo = indicadores.filter(i => i.estado === 'EN_TIEMPO' || i.estado === 'COMPLETADO').length;
-    const enRiesgo = indicadores.filter(i => i.estado === 'EN_RIESGO').length;
-    const vencidos = indicadores.filter(i => i.estado === 'VENCIDO').length;
-
-    return { total, avancePromedio, enTiempo, enRiesgo, vencidos };
-  }, [indicadores]);
+  // Métricas recalculadas según los filtros aplicados
+  const metricas = useMemo(() => calcularMetricas(indicadoresFiltrados), [indicadoresFiltrados]);
 
   const toggleGroup = (eje: string) => {
     const newExpanded = new Set(expandedGroups);
@@ -607,8 +569,22 @@ export function ModuloPlanAccionV4() {
       })
     }
     arrayBtns.push({
-      label: 'Exportar',
-      labelMobile: 'Exportar',
+      label: 'Excel',
+      labelMobile: 'Excel',
+      icon: <Download className="w-4 h-4" />,
+      onClick: () => handleExportarArchivo('excel'),
+      variant: 'outline'
+    })
+    arrayBtns.push({
+      label: 'PDF',
+      labelMobile: 'PDF',
+      icon: <Download className="w-4 h-4" />,
+      onClick: () => handleExportarArchivo('pdf'),
+      variant: 'outline'
+    })
+    arrayBtns.push({
+      label: 'ZIP',
+      labelMobile: 'ZIP',
       icon: <Download className="w-4 h-4" />,
       onClick: handleExportarZip,
       variant: 'outline'
@@ -656,7 +632,7 @@ export function ModuloPlanAccionV4() {
               },
               {
                 label: "🚦 Semáforo de Cumplimiento",
-                content: "🟢 Verde (≥90%): Meta cumplida | 🟡 Amarillo (50-89%): En riesgo | 🔴 Rojo (<50%): Requiere acción inmediata",
+                content: "🟢 Verde (≥90%): Meta cumplida | 🟡 Amarillo (60-89%): En riesgo | 🔴 Rojo (<60%): Requiere acción inmediata",
                 type: "warning"
               }
             ]}
@@ -677,7 +653,7 @@ export function ModuloPlanAccionV4() {
             label: 'Cumplimiento Promedio',
             value: `${metricas.avancePromedio}%`,
             icon: <Activity className="w-4 h-4" />,
-            color: metricas.avancePromedio >= 90 ? 'green' : metricas.avancePromedio >= 50 ? 'yellow' : 'red'
+            color: { verde: 'green', amarillo: 'yellow', rojo: 'red' }[getNivelSemaforo(metricas.avancePromedio)] as 'green' | 'yellow' | 'red'
           },
           {
             label: 'En Riesgo / Vencidos',
@@ -696,59 +672,65 @@ export function ModuloPlanAccionV4() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               placeholder="Buscar por código, nombre o responsable..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
+              value={filtros.busqueda}
+              onChange={(e) => updateFiltros({ busqueda: e.target.value })}
               className="pl-10 border-2 border-gray-300 focus:border-blue-500"
             />
           </div>
 
           {/* Filtros en línea */}
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={filtroEje}
-              onChange={(e) => setFiltroEje(e.target.value)}
-              className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-            >
-              <option value="TODOS">Todos los Ejes</option>
-              <option value="GESTION_INSTITUCIONAL">🏛️ Gestión Institucional</option>
-              <option value="TALENTO_HUMANO">👥 Talento Humano</option>
-              <option value="TRANSPARENCIA">🔍 Transparencia</option>
-              <option value="TECNOLOGIA">💻 Tecnología</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <MultiSelectFiltro
+              label="Ejes"
+              todosLabel="Todos los Ejes"
+              opciones={EJES.map(e => ({ value: e, label: `${getEjeConfig(e).icon} ${EJE_NOMBRES[e]}` }))}
+              seleccion={filtros.ejes}
+              onChange={(ejes) => updateFiltros({ ejes: ejes as EjeEstrategico[] })}
+            />
 
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
-              className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-            >
-              <option value="TODOS">Todos los Estados</option>
-              <option value="EN_TIEMPO">✅ En Tiempo</option>
-              <option value="EN_RIESGO">⚠️ En Riesgo</option>
-              <option value="VENCIDO">🔴 Vencido</option>
-              <option value="COMPLETADO">🎉 Completado</option>
-            </select>
+            <MultiSelectFiltro
+              label="Estados"
+              todosLabel="Todos los Estados"
+              opciones={ESTADOS.map(e => ({ value: e, label: ESTADO_NOMBRES[e] }))}
+              seleccion={filtros.estados}
+              onChange={(estados) => updateFiltros({ estados: estados as EstadoIndicador[] })}
+            />
+
+            <label className="flex items-center gap-1 text-xs text-gray-600">
+              Corte desde
+              <input
+                type="date"
+                aria-label="Periodo desde"
+                value={filtros.periodoDesde}
+                max={filtros.periodoHasta || undefined}
+                onChange={(e) => updateFiltros({ periodoDesde: e.target.value })}
+                className="px-2 py-1.5 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs text-gray-600">
+              hasta
+              <input
+                type="date"
+                aria-label="Periodo hasta"
+                value={filtros.periodoHasta}
+                min={filtros.periodoDesde || undefined}
+                onChange={(e) => updateFiltros({ periodoHasta: e.target.value })}
+                className="px-2 py-1.5 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              />
+            </label>
 
             <Button
-              variant={ocultarCompletados ? 'default' : 'outline'}
-              onClick={() => setOcultarCompletados(!ocultarCompletados)}
-              className={`flex items-center gap-2 border-2 ${ocultarCompletados ? 'bg-green-600 border-green-700 text-white' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+              variant={filtros.ocultarCompletados ? 'default' : 'outline'}
+              onClick={() => updateFiltros({ ocultarCompletados: !filtros.ocultarCompletados })}
+              className={`flex items-center gap-2 border-2 ${filtros.ocultarCompletados ? 'bg-green-600 border-green-700 text-white' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
             >
-              <CheckCircle className={`w-4 h-4 ${ocultarCompletados ? 'text-white' : 'text-green-600'}`} />
-              {ocultarCompletados ? 'Completados Ocultos' : 'Ocultar Completados'}
+              <CheckCircle className={`w-4 h-4 ${filtros.ocultarCompletados ? 'text-white' : 'text-green-600'}`} />
+              {filtros.ocultarCompletados ? 'Completados Ocultos' : 'Ocultar Completados'}
             </Button>
 
-            {(busqueda || filtroEje !== 'TODOS' || filtroEstado !== 'TODOS' || ocultarCompletados) && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setBusqueda('');
-                  setFiltroEje('TODOS');
-                  setFiltroEstado('TODOS');
-                  setOcultarCompletados(false);
-                }}
-              >
-                Limpiar Filtros
+            {filtrosActivos && (
+              <Button size="sm" variant="outline" onClick={() => setFiltros(FILTROS_VACIOS)}>
+                Limpiar filtros
               </Button>
             )}
           </div>
@@ -772,12 +754,23 @@ export function ModuloPlanAccionV4() {
         </div>
       ) : (
         <>
-          {tipoVista === 'dashboard' && <VistaDashboard indicadores={indicadores} />}
+          {indicadoresFiltrados.length === 0 && tipoVista !== 'archivados' ? (
+            <div className="p-12 text-center text-gray-600 bg-white border-2 border-dashed border-gray-200 rounded-xl" role="status">
+              <p className="font-semibold">{MENSAJE_SIN_RESULTADOS}</p>
+              {filtrosActivos && (
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => setFiltros(FILTROS_VACIOS)}>
+                  Limpiar filtros
+                </Button>
+              )}
+            </div>
+          ) : (<>
+          {tipoVista === 'dashboard' && <VistaDashboard indicadores={indicadoresFiltrados} onVerDetalles={handleVerDetalles} />}
           {tipoVista === 'lista' && (
             <VistaLista
-              indicadoresAgrupados={indicadoresAgrupados}
+              indicadoresAgrupados={ejesVisibles}
               expandedGroups={expandedGroups}
               toggleGroup={toggleGroup}
+              responsablesActivos={responsablesActivos}
               onVerDetalles={handleVerDetalles}
               onEditarIndicador={canMutatePlanAccion ? handleEditarIndicador : undefined}
               onCargarAvance={canMutatePlanAccion ? handleCargarAvance : undefined}
@@ -786,7 +779,8 @@ export function ModuloPlanAccionV4() {
             />
           )}
           {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
-          {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadores} />}
+          {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadoresFiltrados} />}
+          </>)}
           {tipoVista === 'archivados' && (
             <VistaArchivados
               items={itemsArchivados}
@@ -851,6 +845,8 @@ interface VistaListaProps {
   indicadoresAgrupados: Record<string, Indicador[]>;
   expandedGroups: Set<string>;
   toggleGroup: (eje: string) => void;
+  /** null mientras carga: no se marca ningún indicador para reasignar. */
+  responsablesActivos: ResponsableOpcion[] | null;
   onVerDetalles: (indicador: Indicador) => void;
   onEditarIndicador?: (indicador: Indicador) => void;
   onCargarAvance?: (indicador: Indicador) => void;
@@ -862,6 +858,7 @@ function VistaLista({
   indicadoresAgrupados,
   expandedGroups,
   toggleGroup,
+  responsablesActivos,
   onVerDetalles,
   onEditarIndicador,
   onCargarAvance,
@@ -873,9 +870,7 @@ function VistaLista({
       {Object.entries(indicadoresAgrupados).map(([eje, indicadores]: [string, Indicador[]]) => {
         const ejeConfig = getEjeConfig(eje);
         const isExpanded = expandedGroups.has(eje);
-        const avanceEje = indicadores.length > 0
-          ? Math.round(indicadores.reduce((sum, i) => sum + i.avance, 0) / indicadores.length)
-          : 0;
+        const avanceEje = calcularAvanceConsolidado(indicadores);
 
         return (
           <Card key={eje} className="border-2 border-gray-200 bg-white overflow-hidden">
@@ -901,7 +896,7 @@ function VistaLista({
                 <div className="flex items-center gap-4">
                   <div className="hidden md:flex items-center gap-2">
                     <div className="w-32">
-                      <Progress value={avanceEje} className="h-2" />
+                      <Progress value={avanceEje} variant={getSemaforoVariant(avanceEje)} className="h-2" />
                     </div>
                     <span
                       className="text-sm font-bold min-w-[3rem] text-right"
@@ -937,6 +932,7 @@ function VistaLista({
                       <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">% Cumplimiento</th>
                       <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Estado</th>
                       <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Fecha Límite</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Fecha de Corte</th>
                       <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Acciones</th>
                     </tr>
                   </thead>
@@ -950,7 +946,7 @@ function VistaLista({
                           </td>
                           <td className="px-4 py-3">
                             <div className="max-w-xs">
-                              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{ind.nombre}</p>
+                              <button type="button" onClick={() => onVerDetalles(ind)} className="text-left text-sm font-semibold text-gray-900 line-clamp-1 hover:text-blue-700 hover:underline">{ind.nombre}</button>
                               <p className="text-xs text-gray-600 line-clamp-1">{ind.descripcion}</p>
                             </div>
                           </td>
@@ -962,6 +958,16 @@ function VistaLista({
                                 </AvatarFallback>
                               </Avatar>
                               <span className="text-sm text-gray-700 max-w-[150px] truncate">{ind.responsable}</span>
+                              {requiereReasignacion(ind, responsablesActivos) && (
+                                <Badge
+                                  className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                                  title={estadoResponsable(ind, responsablesActivos) === 'INACTIVO'
+                                    ? 'El responsable ya no está activo en el proceso'
+                                    : 'Responsable sin referencia a un usuario de la plataforma'}
+                                >
+                                  Reasignar
+                                </Badge>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -1014,6 +1020,9 @@ function VistaLista({
                               <Calendar className="w-3 h-3" />
                               {ind.fechaFin.toLocaleDateString('es-CO')}
                             </div>
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap text-xs text-gray-600">
+                            {getFechaCorte(ind).toLocaleDateString('es-CO')}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center">
@@ -1074,42 +1083,149 @@ function VistaLista({
   );
 }
 
+// ==================== MULTISELECT FILTRO ====================
+interface MultiSelectFiltroProps {
+  label: string;
+  todosLabel: string;
+  opciones: { value: string; label: string }[];
+  seleccion: string[];
+  onChange: (seleccion: string[]) => void;
+}
+
+/** Filtro de selección múltiple. Selección vacía equivale a "Todos". */
+export function MultiSelectFiltro({ label, todosLabel, opciones, seleccion, onChange }: MultiSelectFiltroProps) {
+  const toggle = (value: string) =>
+    onChange(seleccion.includes(value) ? seleccion.filter(v => v !== value) : [...seleccion, value]);
+
+  const resumen =
+    seleccion.length === 0
+      ? todosLabel
+      : seleccion.length === 1
+        ? opciones.find(o => o.value === seleccion[0])?.label ?? label
+        : `${label} (${seleccion.length})`;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Filtro ${label}`}
+          className="flex items-center gap-2 px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-white focus:border-blue-500 focus:outline-none"
+        >
+          {resumen}
+          <ChevronDown className="w-4 h-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 p-2">
+        <label className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold cursor-pointer hover:bg-gray-50 rounded">
+          <Checkbox
+            aria-label={todosLabel}
+            checked={seleccion.length === 0}
+            onCheckedChange={() => onChange([])}
+          />
+          {todosLabel}
+        </label>
+        {opciones.map(o => (
+          <label key={o.value} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-gray-50 rounded">
+            <Checkbox
+              aria-label={o.label}
+              checked={seleccion.includes(o.value)}
+              onCheckedChange={() => toggle(o.value)}
+            />
+            {o.label}
+          </label>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ==================== VISTA DASHBOARD ====================
-function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
+function VistaDashboard({ indicadores, onVerDetalles }: { indicadores: Indicador[]; onVerDetalles?: (i: Indicador) => void }) {
+  const [ejesAbiertos, setEjesAbiertos] = useState<Set<string>>(new Set());
+
+  // Solo ejes con indicadores (tras filtros), con su avance consolidado
   const estadisticasPorEje = useMemo(() => {
-    const ejes = ['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA'];
-    return ejes.map(eje => {
-      const indsEje = indicadores.filter(i => i.ejeEstrategico === eje);
-      const avancePromedio = indsEje.length > 0
-        ? Math.round(indsEje.reduce((sum, i) => sum + i.avance, 0) / indsEje.length)
-        : 0;
-      return { eje, total: indsEje.length, avancePromedio, config: getEjeConfig(eje) };
-    });
+    const grupos = agruparPorEje(indicadores);
+    return EJES.filter(eje => grupos[eje].length > 0).map(eje => ({
+      eje,
+      indicadores: grupos[eje],
+      total: grupos[eje].length,
+      avancePromedio: calcularAvanceConsolidado(grupos[eje]),
+      config: getEjeConfig(eje),
+    }));
   }, [indicadores]);
+
+  const toggleEje = (eje: string) =>
+    setEjesAbiertos(prev => {
+      const next = new Set(prev);
+      if (next.has(eje)) next.delete(eje); else next.add(eje);
+      return next;
+    });
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {estadisticasPorEje.map(({ eje, total, avancePromedio, config }) => (
-          <Card key={eje} className="border-2 border-gray-200 bg-white p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-3xl">{config.icon}</span>
-                <div>
-                  <h4 className="text-sm font-bold text-gray-900">{config.nombre}</h4>
-                  <p className="text-xs text-gray-600">{total} indicadores</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+        {estadisticasPorEje.map(({ eje, total, avancePromedio, config, indicadores: indsEje }) => {
+          const abierto = ejesAbiertos.has(eje);
+          return (
+            <Card key={eje} className="border-2 border-gray-200 bg-white p-4" data-testid={`eje-card-${eje}`}>
+              <button
+                type="button"
+                aria-expanded={abierto}
+                aria-label={`Ver indicadores de ${config.nombre}`}
+                onClick={() => toggleEje(eje)}
+                className="w-full text-left"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl">{config.icon}</span>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900">{config.nombre}</h4>
+                      <p className="text-xs text-gray-600">{total} indicadores</p>
+                    </div>
+                  </div>
+                  {abierto ? <ChevronDown className="w-4 h-4 text-gray-600" /> : <ChevronRight className="w-4 h-4 text-gray-600" />}
                 </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Progress value={avancePromedio} className="h-3" />
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Cumplimiento</span>
-                <span className="text-lg font-bold" style={{ color: getSemaforoColor(avancePromedio) }}>{avancePromedio}%</span>
-              </div>
-            </div>
-          </Card>
-        ))}
+                <div className="space-y-2">
+                  <Progress value={avancePromedio} variant={getSemaforoVariant(avancePromedio)} className="h-3" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-600">Cumplimiento</span>
+                    <span className="text-lg font-bold" style={{ color: getSemaforoColor(avancePromedio) }}>{avancePromedio}%</span>
+                  </div>
+                </div>
+              </button>
+
+              {abierto && (
+                <ul className="mt-3 pt-3 border-t space-y-3">
+                  {indsEje.map(ind => (
+                    <li key={ind.id} className="text-xs" data-testid={`indicador-${ind.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => onVerDetalles?.(ind)}
+                        className="font-semibold text-sm text-gray-900 text-left hover:text-blue-700 hover:underline"
+                      >
+                        {ind.nombre}
+                      </button>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1">
+                          <Progress value={ind.avance} variant={getSemaforoVariant(ind.avance)} size="sm" />
+                        </div>
+                        <span className="font-bold" style={{ color: getSemaforoColor(ind.avance) }}>{ind.avance}%</span>
+                      </div>
+                      <p className="text-gray-600 mt-1">
+                        Meta: {fmtValor(ind.meta, ind.unidadMedida)} • Ejecutado: {fmtValor(ind.valorActual, ind.unidadMedida)}
+                      </p>
+                      <p className="text-gray-600">
+                        👤 {ind.responsable} • Corte: {getFechaCorte(ind).toLocaleDateString('es-CO')}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="border-2 border-gray-200 bg-white p-4">
@@ -1277,8 +1393,8 @@ function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
         <h4 className="font-bold text-gray-900 mb-3">📋 Leyenda de Estados</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-sm text-gray-700"><strong>En Tiempo:</strong> Cumplimiento ≥90%</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500" /><span className="text-sm text-gray-700"><strong>En Riesgo:</strong> Cumplimiento 50-89%</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" /><span className="text-sm text-gray-700"><strong>Vencido:</strong> Cumplimiento &lt;50%</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500" /><span className="text-sm text-gray-700"><strong>En Riesgo:</strong> Cumplimiento 60-89%</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" /><span className="text-sm text-gray-700"><strong>Vencido:</strong> Cumplimiento &lt;60%</span></div>
         </div>
       </Card>
     </div>

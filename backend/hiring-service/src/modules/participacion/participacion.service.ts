@@ -122,10 +122,18 @@ export class ParticipacionService {
     const soyElDeContratacion = !!contratacion && esSuya(contratacion, acceso);
     const puedeRepartir = soyElDeContratacion || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
 
+    // Devolver desde la radicación solo cabe mientras el estudio previo está en
+    // revisión: si el área lo tiene, no hay nada que devolverle.
+    const estudioPrevio = await this.dataSource
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO } });
+
     return {
       /** Sin tomar: el proceso está en la bandeja y nadie responde por él. */
       puedeTomar: !contratacion && (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION)),
       puedeRepartir,
+      /** Quien lo tomó puede devolverle el estudio previo al área con observaciones. */
+      puedeDevolver: !!contratacion && puedeRepartir && estudioPrevio?.estado === 'EN_REVISION',
       contratacion: contratacion ? this.aVista(contratacion, acceso) : null,
       /**
        * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP
@@ -207,39 +215,28 @@ export class ParticipacionService {
     return this.alcance.quienHace(acceso, procesoId, numeral);
   }
 
+  /**
+   * Lo que se exige para actuar como la Dirección sobre el proceso desde la
+   * 3.3 —devolverle el estudio previo al área—: haberlo tomado, o el permiso
+   * de repartir, que es el mismo criterio con el que se asignan los puestos.
+   */
+  async exigirQueLoLleve(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+    if (tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR)) return;
+    const contratacion = await this.vigente(procesoId, 'CONTRATACION', em);
+    if (!contratacion) {
+      throw new ConflictException('Nadie ha tomado este proceso todavía: primero hazte cargo de él en la radicación');
+    }
+    if (!esSuya(contratacion, acceso)) {
+      throw new ForbiddenException(`Este proceso lo lleva ${contratacion.nombre}: solo quien lo tomó puede devolverlo`);
+    }
+  }
+
   /** Quién ocupa ese papel en el proceso, o nulo si nadie. */
   vigente(procesoId: string, papel: PapelEnProceso, em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
     return manager
       .getRepository(ParticipacionProceso)
       .findOne({ where: { procesoId, papel, estado: 'VIGENTE' } });
-  }
-
-  /**
-   * Los procesos en cuyo comité evaluador vigente está quien pregunta.
-   *
-   * Aparte de `procesosDe` a propósito: estar en el proceso da para escribir
-   * el estudio previo (`exigirQueSeaSuyo`), y evaluar no. Esto solo abre la
-   * puerta para ver el proceso y llegar a la 6.3, que es donde trabaja.
-   *
-   * En crudo por `auth."user"`, que es de otro equipo: es el mismo enlace
-   * cuenta → persona que usa `ComiteService`, sin mapear su tabla aquí.
-   */
-  async procesosDondeEvalua(acceso: HiringAccess): Promise<string[]> {
-    const id = (acceso.userId ?? '').trim();
-    if (!id) return [];
-
-    const filas: { proceso_id: string }[] = await this.dataSource.query(
-      `SELECT DISTINCT c.proceso_id
-         FROM hiring.comites_evaluadores c
-         JOIN hiring.miembros_comite m ON m.comite_id = c.id
-         JOIN auth."user" u ON u.id_person = m.persona_id
-        WHERE c.estado = 'VIGENTE'
-          AND u.id_user::text = $1`,
-      [id],
-    );
-
-    return filas.map((f) => f.proceso_id);
   }
 
   /**

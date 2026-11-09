@@ -136,6 +136,20 @@ export class InformeEvaluacion {
   @Column({ name: 'trasladado_at', type: 'timestamptz', nullable: true })
   trasladadoAt: Date | null;
 
+  /**
+   * El registro informativo de la 6.4 (sesión de QA del 04/11, 138): dónde se
+   * publicó y cómo se notificó, el enlace del proceso y lo que dejó el
+   * traslado. Antes el medio solo quedaba en la trazabilidad.
+   */
+  @Column({ name: 'medio_publicacion', type: 'text', nullable: true })
+  medioPublicacion: string | null;
+
+  @Column({ name: 'enlace_proceso', type: 'varchar', length: 1000, nullable: true })
+  enlaceProceso: string | null;
+
+  @Column({ name: 'observaciones_traslado', type: 'text', nullable: true })
+  observacionesTraslado: string | null;
+
   /** Plazo aplicado, congelado al trasladar. */
   @Column({ name: 'plazo_dias_habiles', type: 'int', nullable: true })
   plazoDiasHabiles: number | null;

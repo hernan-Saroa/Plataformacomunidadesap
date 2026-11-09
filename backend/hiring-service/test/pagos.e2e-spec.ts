@@ -1,6 +1,5 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { AlcanceService } from '../src/auth/alcance.service';
 import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
@@ -73,15 +72,22 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
     userName: 'prueba.revisor',
     roles: ['REVISOR_CONTRATACION'],
   };
-  /** El supervisor de otro contrato: tiene el rol y no debe poder avalar aquí. */
+  /** Una cuenta sin acciones en la 9.4: el rol del supervisor ya no tiene nada ahí (136). */
   const otroSupervisor: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000008',
     userName: 'prueba.otro.supervisor',
     roles: ['SUPERVISOR_CONTRATO'],
   };
 
-  /** El supervisor designado; su cuenta se resuelve en beforeAll. */
-  let supervisor: HiringAccess;
+  /**
+   * Quien registra lo del supervisor, que no entra a la aplicación (136): su
+   * aval y su informe los carga el gestor de archivo y supervisión.
+   */
+  const archivista: HiringAccess = {
+    userId: '00000000-0000-0000-0000-000000000009',
+    userName: 'prueba.gestor.archivo',
+    roles: ['GESTOR_DE_ARCHIVO_Y_SUPERVISION'],
+  };
   let juridica: { acceso: HiringAccess; personaId: string };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -137,23 +143,6 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         userName: 'prueba.juridica',
         roles: ['EVALUADOR_JURIDICO'],
       },
-    };
-
-    // El supervisor es una cuenta que puede ocupar su puesto (121): la que
-    // avala la 9.4 y elabora la 10.1. La 8.2 la designa por su `id_user`, que
-    // es el mismo con el que inicia sesión.
-    const alcance = app.get(AlcanceService);
-    const avalan = await alcance.cuentasQuePueden('aprobar', '9.4');
-    const elaboran = new Set(await alcance.cuentasQuePueden('editar', '10.1'));
-    const [candidata] = await dataSource.query(
-      `SELECT id_user::text AS id, username FROM auth."user"
-        WHERE is_active AND id_user::text = ANY($1::text[]) ORDER BY id_user`,
-      [avalan.filter((id) => elaboran.has(id))],
-    );
-    supervisor = {
-      userId: candidata.id,
-      userName: candidata.username,
-      roles: ['SUPERVISOR_CONTRATO'],
     };
   });
 
@@ -370,8 +359,9 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
     await supervision.designar(
       proceso.id,
       {
-        usuarioId: supervisor.userId,
+        nombre: 'Supervisora del contrato',
         cargo: 'Profesional especializada',
+        email: 'supervision@esap.edu.co',
         fechaDesignacion: hoy(),
       },
       archivo('acto-supervision.pdf'),
@@ -405,7 +395,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       { fechaInicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
-      supervisor,
+      archivista,
     );
 
     return proceso;
@@ -430,9 +420,9 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
   // ------------------------------------------------------------ criterio --
 
   describe('Criterio 1 · factura, informe y aval tramitan el pago', () => {
-    // Revisión de QA de EFDS-1170: quien alimenta el módulo es la supervisión,
-    // que radica y avala. No hay regla que impida avalar lo que uno radicó.
-    it('el supervisor que radica la cuenta también la avala', async () => {
+    // El supervisor no entra a la aplicación (136): el gestor de archivo y
+    // supervisión radica la cuenta y carga el aval que el supervisor firmó.
+    it('el gestor de archivo radica la cuenta y carga el aval del supervisor', async () => {
       const proceso = await contratoEnEjecucion();
 
       const radicado = await pagos.radicar(
@@ -442,12 +432,19 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         'x'.repeat(64),
         archivo('informe-actividades.pdf'),
         'y'.repeat(64),
-        supervisor,
+        archivista,
       );
-      expect(radicado.pagos[0].radicadoPor).toBe(supervisor.userName);
-      expect(radicado.esSupervisor).toBe(true);
+      expect(radicado.pagos[0].radicadoPor).toBe(archivista.userName);
+      expect(radicado.puedeAvalar).toBe(true);
 
-      const avalado = await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
+      const avalado = await pagos.avalar(
+        proceso.id,
+        radicado.pagos[0].id,
+        {},
+        archivo('aval-supervisor.pdf'),
+        'v'.repeat(64),
+        archivista,
+      );
       expect(avalado.pagos[0].estado).toBe('AVALADO');
     });
 
@@ -465,10 +462,12 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         proceso.id,
         radicado.pagos[0].id,
         { observacion: 'Las actividades del periodo se cumplieron' },
-        supervisor,
+        archivo('aval-supervisor.pdf'),
+        'v'.repeat(64),
+        archivista,
       );
       expect(avalado.pagos[0].estado).toBe('AVALADO');
-      expect(avalado.pagos[0].avaladoPor).toBe(supervisor.userName);
+      expect(avalado.pagos[0].avaladoPor).toBe(archivista.userName);
 
       const tramitado = await pagos.tramitar(
         proceso.id,
@@ -532,44 +531,52 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
     });
   });
 
-  describe('Criterio 3 · el aval es de quien vigila, no de quien tiene el rol', () => {
-    // Prueba en navegador de EFDS-1170 (migración 133): el supervisor también
-    // registra el trámite del pago, pero solo en el contrato que vigila.
-    it('el supervisor tramita el pago de su contrato', async () => {
+  describe('Criterio 3 · el aval es del supervisor designado y va firmado', () => {
+    it('el aval firmado queda como soporte de la cuenta', async () => {
       const proceso = await contratoEnEjecucion();
       const radicado = await radicar(proceso.id);
-      await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
 
-      const tramitado = await pagos.tramitar(
+      const avalado = await pagos.avalar(
         proceso.id,
         radicado.pagos[0].id,
-        { referenciaPago: 'OP-2026-0133' },
-        supervisor,
+        {},
+        archivo('aval-supervisor.pdf'),
+        'v'.repeat(64),
+        archivista,
       );
-      expect(tramitado.puedeTramitar).toBe(true);
-      expect(tramitado.pagos[0].estado).toBe('TRAMITADO');
+
+      const aval = avalado.pagos[0].soportes.find((s: any) => s.tipo === 'AVAL_SUPERVISOR');
+      expect(aval?.descripcion).toMatch(/Supervisora del contrato/);
+      expect(aval?.documento).not.toBeNull();
     });
 
-    it('el supervisor de otro contrato no puede tramitar el pago', async () => {
+    it('sin supervisor designado no hay de quién sea el aval', async () => {
       const proceso = await contratoEnEjecucion();
       const radicado = await radicar(proceso.id);
-      await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
+      await supervision.relevar(
+        proceso.id,
+        { motivo: 'La supervisora se trasladó a otra dependencia' },
+        ordenador,
+      );
 
-      expect((await pagos.estado(proceso.id, otroSupervisor)).puedeTramitar).toBe(false);
       await expect(
-        pagos.tramitar(proceso.id, radicado.pagos[0].id, { referenciaPago: 'OP-2026-0134' }, otroSupervisor),
-      ).rejects.toThrow(/no eres el supervisor de este contrato/i);
+        pagos.avalar(
+          proceso.id,
+          radicado.pagos[0].id,
+          {},
+          archivo('aval-supervisor.pdf'),
+          'v'.repeat(64),
+          archivista,
+        ),
+      ).rejects.toThrow(/no tiene supervisor designado/i);
     });
 
-    it('el supervisor de otro contrato no puede avalar', async () => {
+    it('quien no tiene la acción en la 9.4 no ve el aval ni el trámite', async () => {
       const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
+      const estado = await pagos.estado(proceso.id, otroSupervisor);
 
-      // Tiene SUPERVISOR_CONTRATO y llega hasta aquí: lo que lo detiene es no
-      // ser el supervisor de este contrato, que es la regla de EFDS-1438.
-      await expect(
-        pagos.avalar(proceso.id, radicado.pagos[0].id, {}, otroSupervisor),
-      ).rejects.toThrow(/no eres el supervisor de este contrato/i);
+      expect(estado.puedeAvalar).toBe(false);
+      expect(estado.puedeTramitar).toBe(false);
     });
 
     it('devolver deja la cuenta corregible y sin aval', async () => {
@@ -580,7 +587,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         proceso.id,
         radicado.pagos[0].id,
         { motivo: 'El informe de actividades no cubre todo el periodo cobrado' },
-        supervisor,
+        archivista,
       );
 
       expect(devuelto.pagos[0].estado).toBe('DEVUELTO');
@@ -605,14 +612,21 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         proceso.id,
         radicado.pagos[0].id,
         { motivo: 'El informe de actividades no cubre todo el periodo cobrado' },
-        supervisor,
+        archivista,
       );
 
       // La factura y el informe se fijan al radicar y no hay como
       // reemplazarlos, asi que reabrir la devuelta la dejaria avalada con los
       // documentos que el supervisor rechazo. Se radica otra.
       await expect(
-        pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor),
+        pagos.avalar(
+          proceso.id,
+          radicado.pagos[0].id,
+          {},
+          archivo('aval-supervisor.pdf'),
+          'v'.repeat(64),
+          archivista,
+        ),
       ).rejects.toThrow(/no se puede avalar una cuenta devuelta/i);
 
       const corregida = await radicar(proceso.id, { valor: 8_000_000 });
@@ -620,7 +634,9 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
         proceso.id,
         corregida.pagos[0].id,
         {},
-        supervisor,
+        archivo('aval-supervisor.pdf'),
+        'v'.repeat(64),
+        archivista,
       );
 
       // Las dos quedan: la devuelta explica por que hubo dos cuentas del mismo
@@ -666,7 +682,21 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       const radicado = await radicar(proceso.id);
       const pagoId = radicado.pagos[0].id;
 
-      await pagos.avalar(proceso.id, pagoId, {}, supervisor);
+      await pagos.avalar(
+
+        proceso.id,
+
+        pagoId,
+
+        {},
+
+        archivo('aval-supervisor.pdf'),
+
+        'v'.repeat(64),
+
+        archivista,
+
+      );
       await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0003' }, gestor);
 
       await expect(
@@ -719,7 +749,21 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       const radicado = await radicar(proceso.id);
       const pagoId = radicado.pagos[0].id;
 
-      await pagos.avalar(proceso.id, pagoId, {}, supervisor);
+      await pagos.avalar(
+
+        proceso.id,
+
+        pagoId,
+
+        {},
+
+        archivo('aval-supervisor.pdf'),
+
+        'v'.repeat(64),
+
+        archivista,
+
+      );
       await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0004' }, gestor);
 
       await expect(
@@ -743,7 +787,14 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
 
       // Radicada y avalada, la actividad sigue en curso: todavía no hay pago.
       expect(await estadoDe()).toBe('BORRADOR');
-      await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
+      await pagos.avalar(
+        proceso.id,
+        radicado.pagos[0].id,
+        {},
+        archivo('aval-supervisor.pdf'),
+        'v'.repeat(64),
+        archivista,
+      );
       expect(await estadoDe()).toBe('BORRADOR');
 
       await pagos.tramitar(
@@ -776,7 +827,21 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       const radicado = await radicar(proceso.id);
       const pagoId = radicado.pagos[0].id;
 
-      await pagos.avalar(proceso.id, pagoId, {}, supervisor);
+      await pagos.avalar(
+
+        proceso.id,
+
+        pagoId,
+
+        {},
+
+        archivo('aval-supervisor.pdf'),
+
+        'v'.repeat(64),
+
+        archivista,
+
+      );
       await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0006' }, gestor);
 
       const trazas = await dataSource.query(

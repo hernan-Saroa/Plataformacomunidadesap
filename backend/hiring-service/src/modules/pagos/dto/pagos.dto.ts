@@ -48,7 +48,7 @@ export class RadicarPagoDto {
 
 /** Aval del supervisor sobre una cuenta radicada. */
 export class AvalarPagoDto {
-  @ApiPropertyOptional({ description: 'Observación del supervisor al avalar' })
+  @ApiPropertyOptional({ description: 'Observación del supervisor en su aval' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

@@ -58,6 +58,10 @@ export class FranjaHorariaEntity {
   @Column({ type: 'varchar', length: 30, default: 'PROGRAMADO' })
   estado: string;
 
+  /** Quién creó la franja (migración 063): el programador o el docente de un grupo virtual. */
+  @Column({ name: 'definida_por', type: 'varchar', length: 20, default: 'programador' })
+  definidaPor: 'programador' | 'docente';
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

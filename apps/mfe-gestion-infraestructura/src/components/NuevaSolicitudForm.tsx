@@ -19,6 +19,8 @@ import {
   Info,
   UserCheck,
   Tag,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -85,6 +87,13 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [cargandoDependencias, setCargandoDependencias] = useState<boolean>(true);
 
   const [tipoAtencion, setTipoAtencion] = useState<'FISICA' | 'TECNOLOGICA' | ''>('');
+  const [ambitoUbicacion, setAmbitoUbicacion] = useState<'CENTRAL' | 'TERRITORIAL'>('CENTRAL');
+  const [direccionesTerritoriales, setDireccionesTerritoriales] = useState<any[]>([]);
+  const [idDireccionTerritorial, setIdDireccionTerritorial] = useState<string | number>('');
+  const [idCetap, setIdCetap] = useState<string | number>('');
+  const [bloquesCetap, setBloquesCetap] = useState<BloqueEdificio[]>([]);
+  const [cargandoBloquesCetap, setCargandoBloquesCetap] = useState<boolean>(false);
+  const [ubicacionAdicionalTexto, setUbicacionAdicionalTexto] = useState<string>('');
   const [idSede, setIdSede] = useState<string>('');
   const [idBloque, setIdBloque] = useState<string>('');
   const [idEspacio, setIdEspacio] = useState<string>('');
@@ -128,6 +137,8 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
 
   const inputFileRef = useRef<HTMLInputElement>(null);
   const tipoAtencionRef = useRef<HTMLButtonElement>(null);
+  const territorialRef = useRef<HTMLSelectElement>(null);
+  const cetapRef = useRef<HTMLSelectElement>(null);
   const sedeRef = useRef<HTMLSelectElement>(null);
   const areaSolicitanteRef = useRef<HTMLSelectElement>(null);
   const bloqueRef = useRef<HTMLSelectElement>(null);
@@ -146,14 +157,18 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         setCargandoSedes(true);
         setCargandoCatalogos(true);
         setCargandoDependencias(true);
-        const [listadoSedes, tm, pr, cs, deps] = await Promise.all([
+        const [listadoSedes, tm, pr, cs, deps, terrData] = await Promise.all([
           infraestructuraService.getSedesAlcanceUMI(),
           infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
           infraestructuraService.getDependenciasCatalogo(),
+          infraestructuraService.getTerritorialesConCetaps(),
         ]);
         setSedesAlcance(listadoSedes);
+        if (terrData && Array.isArray(terrData.direccionesTerritoriales)) {
+          setDireccionesTerritoriales(terrData.direccionesTerritoriales);
+        }
         setCatalogoCS(cs.length > 0 ? cs : []);
         setDependencias(Array.isArray(deps) && deps.length > 0 ? deps : []);
         if (listadoSedes.length === 1) {
@@ -201,18 +216,70 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const territorialSeleccionada = useMemo(() => {
+    return direccionesTerritoriales.find((t) => String(t.id) === String(idDireccionTerritorial)) ?? null;
+  }, [direccionesTerritoriales, idDireccionTerritorial]);
+
+  const cetapsDisponibles = useMemo(() => {
+    return territorialSeleccionada?.cetaps ?? [];
+  }, [territorialSeleccionada]);
+
+  const cetapSeleccionado = useMemo(() => {
+    return cetapsDisponibles.find((c: any) => String(c.id) === String(idCetap)) ?? null;
+  }, [cetapsDisponibles, idCetap]);
+
+  const cetapTieneBloques = useMemo(() => {
+    return Number(cetapSeleccionado?.total_bloques) > 0;
+  }, [cetapSeleccionado]);
+
   const sedeSeleccionada = useMemo(
     () => sedesAlcance.find((s) => s.idSede === idSede) ?? null,
     [sedesAlcance, idSede],
   );
-  const bloquesSedeSeleccionada: BloqueEdificio[] = useMemo(
-    () => (sedeSeleccionada?.bloques ?? []).filter((b) => b.isActivo !== false),
-    [sedeSeleccionada],
-  );
+
+  const bloquesDisponibles: BloqueEdificio[] = useMemo(() => {
+    if (ambitoUbicacion === 'TERRITORIAL') {
+      return bloquesCetap;
+    }
+    return (sedeSeleccionada?.bloques ?? []).filter((b) => b.isActivo !== false);
+  }, [ambitoUbicacion, bloquesCetap, sedeSeleccionada]);
+
+  const bloquesSedeSeleccionada = bloquesDisponibles;
+
   const espacioSeleccionado: EspacioFisico | null | undefined = useMemo(
     () => espaciosDelBloque.find((e) => e.idEspacio === idEspacio),
     [espaciosDelBloque, idEspacio],
   );
+
+  // Cargar bloques de CETAP o activar Fallback al cambiar CETAP
+  useEffect(() => {
+    if (ambitoUbicacion !== 'TERRITORIAL') return;
+    setIdBloque('');
+    setIdEspacio('');
+    setEspaciosDelBloque([]);
+    if (!idCetap) {
+      setBloquesCetap([]);
+      return;
+    }
+    const cetapObj = cetapsDisponibles.find((c: any) => String(c.id) === String(idCetap));
+    if (Number(cetapObj?.total_bloques) > 0) {
+      setCargandoBloquesCetap(true);
+      infraestructuraService
+        .getBloquesPorCetap(idCetap)
+        .then((blqs) => {
+          setBloquesCetap(blqs || []);
+        })
+        .catch((err) => {
+          console.warn('[NuevaSolicitudForm] Error cargando bloques de CETAP:', err);
+          setBloquesCetap([]);
+        })
+        .finally(() => setCargandoBloquesCetap(false));
+    } else {
+      setBloquesCetap([]);
+      setPiso('Piso 1');
+      setSalon(`CETAP ${cetapObj?.nombre || ''} - Sede General`);
+    }
+  }, [idCetap, ambitoUbicacion, cetapsDisponibles]);
 
   // (EFDS-1732) Reset selectores dependientes al cambiar la sede
   useEffect(() => {
@@ -237,6 +304,11 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       setIdEspacio('');
       setPiso('');
       setSalon('');
+      return;
+    }
+    if (ambitoUbicacion === 'TERRITORIAL') {
+      const blq = bloquesCetap.find((b) => b.idBloque === idBloque);
+      setEspaciosDelBloque(blq?.espacios || []);
       return;
     }
     let cancelled = false;
@@ -301,16 +373,27 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const validar = (): boolean => {
     const nuevosErrores: Record<string, string> = {};
     if (!tipoAtencion) nuevosErrores.tipoAtencion = 'Seleccione el tipo de atención (Física o Tecnológica)';
-    if (!idSede) nuevosErrores.idSede = 'Seleccione la sede';
+    if (ambitoUbicacion === 'CENTRAL') {
+      if (!idSede) nuevosErrores.idSede = 'Seleccione la sede de Nivel Central';
+      if (ubicacionManual) {
+        if (!piso.trim()) nuevosErrores.piso = 'Ingrese el piso';
+        if (!salon.trim()) nuevosErrores.salon = 'Ingrese el salón, oficina o ubicación';
+      } else {
+        if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio';
+        if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico (aula, oficina, laboratorio...)';
+      }
+    } else {
+      if (!idDireccionTerritorial) nuevosErrores.idDireccionTerritorial = 'Seleccione la Dirección Territorial';
+      if (!idCetap) nuevosErrores.idCetap = 'Seleccione el CETAP municipal';
+      if (cetapTieneBloques && !ubicacionManual) {
+        if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio del CETAP';
+        if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico';
+      } else {
+        if (!salon.trim()) nuevosErrores.salon = 'Indique el espacio o ubicación específica';
+      }
+    }
     if (!nombreAreaSolicitante.trim() || nombreAreaSolicitante.trim().length < 3) {
       nuevosErrores.nombreAreaSolicitante = 'Ingrese el nombre del área solicitante (mínimo 3 caracteres)';
-    }
-    if (ubicacionManual) {
-      if (!piso.trim()) nuevosErrores.piso = 'Ingrese el piso';
-      if (!salon.trim()) nuevosErrores.salon = 'Ingrese el salón, oficina o ubicación';
-    } else {
-      if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio';
-      if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico (aula, oficina, laboratorio...)';
     }
     if (!tipoMantenimiento) nuevosErrores.tipoMantenimiento = 'Seleccione un tipo de mantenimiento';
     if (tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(idCategoria)) {
@@ -329,12 +412,16 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     }
     setErrores(nuevosErrores);
     if (Object.keys(nuevosErrores).length > 0) {
-      const ordenCampos = ubicacionManual
-        ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
-        : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'];
+      const ordenCampos = ambitoUbicacion === 'CENTRAL'
+        ? (ubicacionManual
+            ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
+            : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'])
+        : ['tipoAtencion', 'idDireccionTerritorial', 'idCetap', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'salon', 'tipoMantenimiento', 'idCategoria', 'descripcion'];
       const primerCampoConError = ordenCampos.find((campo) => !!nuevosErrores[campo]);
       const refsPorCampo: Record<string, React.RefObject<HTMLElement | null>> = {
         tipoAtencion: tipoAtencionRef,
+        idDireccionTerritorial: territorialRef,
+        idCetap: cetapRef,
         idSede: sedeRef,
         nombreAreaSolicitante: areaSolicitanteRef,
         idBloque: bloqueRef,
@@ -465,7 +552,13 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         ]),
       ).filter((x): x is string => !!x);
       const payload: CreateMantenimientoPayload = {
-        idSede,
+        ...(ambitoUbicacion === 'CENTRAL'
+          ? { idSede }
+          : {
+              idDireccionTerritorial: Number(idDireccionTerritorial),
+              idCetap: Number(idCetap),
+              ubicacionAdicionalTexto: ubicacionAdicionalTexto.trim() || undefined,
+            }),
         idEspacio: !ubicacionManual && idEspacio ? idEspacio : undefined,
         nombreAreaSolicitante: nombreAreaSolicitante.trim(),
         piso: piso.trim(),
@@ -671,41 +764,155 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className={etiquetaCampoClase('idSede')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                    Sede
-                  </span>
-                  <span className="text-rose-500 ml-1">*</span>
-                </label>
-                <select
-                  ref={sedeRef}
-                  value={idSede}
-                  onChange={(e) => {
-                    const nuevaSede = e.target.value;
-                    setIdSede(nuevaSede);
-                    if (nuevaSede && nombreAreaSolicitante) {
-                      const filtrada = dependencias.find((d) => d.nomDependencia === nombreAreaSolicitante);
-                      if (filtrada && filtrada.sedeUmiId && filtrada.sedeUmiId !== nuevaSede) {
-                        setNombreAreaSolicitante('');
-                      }
-                    }
+            {/* Selector de Ámbito de Ubicación: Nivel Central vs Red Territorial */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Ámbito de Ubicación Geográfica <span className="text-rose-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmbitoUbicacion('CENTRAL');
+                    setIdDireccionTerritorial('');
+                    setIdCetap('');
+                    setBloquesCetap([]);
+                    setIdBloque('');
+                    setIdEspacio('');
                   }}
-                  disabled={cargandoSedes}
-                  className={inputClase('idSede')}
-                  aria-invalid={!!errores.idSede}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    ambitoUbicacion === 'CENTRAL'
+                      ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <option value="">{cargandoSedes ? 'Cargando sedes...' : 'Seleccione una sede'}</option>
-                  {sedesAlcance.map((s) => (
-                    <option key={s.idSede} value={s.idSede}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
-                {errorCampo('idSede')}
+                  <Building2 className="w-3.5 h-3.5" />
+                  Sedes Nivel Central (Bogotá D.C.)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmbitoUbicacion('TERRITORIAL');
+                    setIdSede('');
+                    setIdBloque('');
+                    setIdEspacio('');
+                  }}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    ambitoUbicacion === 'TERRITORIAL'
+                      ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  Dirección Territorial / CETAP Regional
+                </button>
               </div>
+            </div>
+
+            {/* Selectores según el ámbito elegido */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {ambitoUbicacion === 'CENTRAL' ? (
+                <div>
+                  <label className={etiquetaCampoClase('idSede')}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      Sede Nivel Central
+                    </span>
+                    <span className="text-rose-500 ml-1">*</span>
+                  </label>
+                  <select
+                    ref={sedeRef}
+                    value={idSede}
+                    onChange={(e) => {
+                      const nuevaSede = e.target.value;
+                      setIdSede(nuevaSede);
+                      if (nuevaSede && nombreAreaSolicitante) {
+                        const filtrada = dependencias.find((d) => d.nomDependencia === nombreAreaSolicitante);
+                        if (filtrada && filtrada.sedeUmiId && filtrada.sedeUmiId !== nuevaSede) {
+                          setNombreAreaSolicitante('');
+                        }
+                      }
+                    }}
+                    disabled={cargandoSedes}
+                    className={inputClase('idSede')}
+                    aria-invalid={!!errores.idSede}
+                  >
+                    <option value="">{cargandoSedes ? 'Cargando sedes...' : 'Seleccione una sede central'}</option>
+                    {sedesAlcance.map((s) => (
+                      <option key={s.idSede} value={s.idSede}>
+                        {s.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {errorCampo('idSede')}
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className={etiquetaCampoClase('idDireccionTerritorial')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-slate-400" />
+                        Dirección Territorial ({direccionesTerritoriales.length})
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={territorialRef}
+                      value={idDireccionTerritorial}
+                      onChange={(e) => {
+                        const tid = e.target.value;
+                        setIdDireccionTerritorial(tid);
+                        setIdCetap('');
+                        setIdBloque('');
+                        setIdEspacio('');
+                        setBloquesCetap([]);
+                      }}
+                      className={inputClase('idDireccionTerritorial')}
+                      aria-invalid={!!errores.idDireccionTerritorial}
+                    >
+                      <option value="">Seleccione la Dirección Territorial</option>
+                      {direccionesTerritoriales.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nombre} {t.codigo ? `(${t.codigo})` : ''} · {(t.cetaps || []).length} CETAPs
+                        </option>
+                      ))}
+                    </select>
+                    {errorCampo('idDireccionTerritorial')}
+                  </div>
+
+                  <div>
+                    <label className={etiquetaCampoClase('idCetap')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        CETAP / Sede Municipal ({cetapsDisponibles.length})
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={cetapRef}
+                      value={idCetap}
+                      onChange={(e) => setIdCetap(e.target.value)}
+                      disabled={!idDireccionTerritorial || cetapsDisponibles.length === 0}
+                      className={inputClase('idCetap')}
+                      aria-invalid={!!errores.idCetap}
+                    >
+                      <option value="">
+                        {!idDireccionTerritorial
+                          ? 'Primero seleccione la territorial'
+                          : cetapsDisponibles.length === 0
+                          ? 'Sin CETAPs registrados'
+                          : 'Seleccione el CETAP municipal'}
+                      </option>
+                      {cetapsDisponibles.map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre} {c.total_bloques > 0 ? `· (${c.total_bloques} bloques)` : '· (Fallback)'}
+                        </option>
+                      ))}
+                    </select>
+                    {errorCampo('idCetap')}
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className={etiquetaCampoClase('nombreAreaSolicitante')}>
@@ -742,68 +949,97 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 {errorCampo('nombreAreaSolicitante')}
               </div>
 
-              <div>
-                <label className={etiquetaCampoClase('idBloque')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-slate-400" />
-                    Bloque / Edificio
-                  </span>
-                  <span className="text-rose-500 ml-1">*</span>
-                </label>
-                <select
-                  ref={bloqueRef}
-                  value={idBloque}
-                  onChange={(e) => setIdBloque(e.target.value)}
-                  disabled={ubicacionManual || cargandoSedes || !idSede}
-                  className={inputClase('idBloque')}
-                  aria-invalid={!!errores.idBloque}
-                >
-                  <option value="">
-                    {ubicacionManual
-                      ? 'Ubicación manual activada'
-                      : !idSede
-                      ? 'Primero seleccione la sede'
-                      : bloquesSedeSeleccionada.length === 0
-                      ? 'No hay bloques registrados para esta sede'
-                      : 'Seleccione el bloque o edificio'}
-                  </option>
-                  {bloquesSedeSeleccionada.map((b) => (
-                    <option key={b.idBloque} value={b.idBloque}>
-                      [{b.codigo}] {b.nombre} {b.pisos > 1 ? `· ${b.pisos} pisos` : ''}
-                    </option>
-                  ))}
-                </select>
-                {errorCampo('idBloque')}
-              </div>
+              {/* Bloque y Espacio: Si es Territorial con Fallback se muestra campo de ubicación asistida */}
+              {ambitoUbicacion === 'TERRITORIAL' && idCetap && !cetapTieneBloques ? (
+                <div className="md:col-span-2 p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-950 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-amber-900 mb-0.5">Modo de Radicación Asistida (Fallback Activo)</p>
+                      <p className="leading-relaxed">
+                        El <strong>CETAP {cetapSeleccionado?.nombre}</strong> aún no cuenta con un levantamiento de aulas y oficinas registrado. La solicitud se registrará como <strong>Sede General</strong> y el personal técnico clasificará la ubicación física en el diagnóstico.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-amber-200/60">
+                    <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                      Ubicación específica o referencia en el CETAP (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Salón del 2do piso al lado de coordinación, baño del patio, etc."
+                      value={ubicacionAdicionalTexto}
+                      onChange={(e) => setUbicacionAdicionalTexto(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className={etiquetaCampoClase('idBloque')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-slate-400" />
+                        Bloque / Edificio
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={bloqueRef}
+                      value={idBloque}
+                      onChange={(e) => setIdBloque(e.target.value)}
+                      disabled={ubicacionManual || cargandoSedes || (ambitoUbicacion === 'CENTRAL' ? !idSede : !idCetap) || cargandoBloquesCetap}
+                      className={inputClase('idBloque')}
+                      aria-invalid={!!errores.idBloque}
+                    >
+                      <option value="">
+                        {ubicacionManual
+                          ? 'Ubicación manual activada'
+                          : cargandoBloquesCetap
+                          ? 'Cargando bloques del CETAP...'
+                          : (ambitoUbicacion === 'CENTRAL' ? !idSede : !idCetap)
+                          ? 'Primero seleccione la sede o CETAP'
+                          : bloquesSedeSeleccionada.length === 0
+                          ? 'No hay bloques registrados para esta sede'
+                          : 'Seleccione el bloque o edificio'}
+                      </option>
+                      {bloquesSedeSeleccionada.map((b) => (
+                        <option key={b.idBloque} value={b.idBloque}>
+                          [{b.codigo}] {b.nombre} {b.pisos > 1 ? `· ${b.pisos} pisos` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {errorCampo('idBloque')}
+                  </div>
 
-              <div>
-                <label className={etiquetaCampoClase('idEspacio')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    Espacio físico (aula / oficina / lab)
-                  </span>
-                  <span className="text-rose-500 ml-1">*</span>
-                </label>
-                <select
-                  ref={espacioRef}
-                  value={idEspacio}
-                  onChange={(e) => setIdEspacio(e.target.value)}
-                  disabled={ubicacionManual || !idBloque || cargandoEspacios}
-                  className={inputClase('idEspacio')}
-                  aria-invalid={!!errores.idEspacio}
-                >
-                  <option value="">
-                    {ubicacionManual
-                      ? 'Ubicación manual activada'
-                      : !idBloque
-                      ? 'Primero seleccione el bloque'
-                      : cargandoEspacios
-                      ? 'Cargando espacios del bloque...'
-                      : espaciosDelBloque.length === 0
-                      ? 'No hay espacios registrados en este bloque'
-                      : 'Seleccione el espacio'}
-                  </option>
-                  {espaciosDelBloque.map((e) => (
+                  <div>
+                    <label className={etiquetaCampoClase('idEspacio')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        Espacio físico (aula / oficina / lab)
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={espacioRef}
+                      value={idEspacio}
+                      onChange={(e) => setIdEspacio(e.target.value)}
+                      disabled={ubicacionManual || !idBloque || cargandoEspacios}
+                      className={inputClase('idEspacio')}
+                      aria-invalid={!!errores.idEspacio}
+                    >
+                      <option value="">
+                        {ubicacionManual
+                          ? 'Ubicación manual activada'
+                          : !idBloque
+                          ? 'Primero seleccione el bloque'
+                          : cargandoEspacios
+                          ? 'Cargando espacios del bloque...'
+                          : espaciosDelBloque.length === 0
+                          ? 'No hay espacios registrados en este bloque'
+                          : 'Seleccione el espacio'}
+                      </option>
+                      {espaciosDelBloque.map((e) => (
                     <option key={e.idEspacio} value={e.idEspacio}>
                       [{e.codigo}] {e.nombre} · {e.tipo} · P{e.piso === 0 ? 'B' : e.piso} {e.capacidad ? `· Cap ${e.capacidad}` : ''}
                     </option>
@@ -811,6 +1047,8 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 </select>
                 {errorCampo('idEspacio')}
               </div>
+            </>
+          )}
 
               <div className="md:col-span-2">
                 <label className="inline-flex items-start gap-2 select-none cursor-pointer">

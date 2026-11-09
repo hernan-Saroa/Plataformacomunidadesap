@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -31,7 +30,6 @@ import {
   RadicarPagoDto,
   TramitarPagoDto,
 } from './dto/pagos.dto';
-import { PuestosService } from '../participacion/puestos.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
@@ -196,7 +194,6 @@ export class PagosService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
-    private readonly puestos: PuestosService,
     private readonly alcance: AlcanceService,
   ) {}
 
@@ -212,7 +209,8 @@ export class PagosService {
         contrato: null,
         supervisor: null,
         puedeRadicar: false,
-        esSupervisor: false,
+        puedeAvalar: false,
+        puedeTramitar: false,
         integracionClick: false,
         pagos: [] as PagoResumen[],
         resumen: { cobrado: 0, tramitado: 0, saldo: 0, advertencia: null as string | null },
@@ -245,19 +243,17 @@ export class PagosService {
         fechaInicio: acta?.fechaInicio ?? null,
       },
       supervisor: supervisor
-        ? { nombre: supervisor.nombre, cargo: supervisor.cargo, personaId: supervisor.personaId }
+        ? { nombre: supervisor.nombre, cargo: supervisor.cargo, email: supervisor.email }
         : null,
       puedeRadicar: admite,
       /**
-       * Si quien consulta es el supervisor de **este** contrato.
-       *
-       * La pantalla lo necesita para ofrecer el aval solo a quien puede darlo:
-       * tener el rol no basta, y un botón que siempre falla es peor que no
-       * mostrarlo. La regla de verdad la aplica `exigirSupervisor`.
+       * Si quien consulta puede registrar el aval del supervisor y su
+       * devolución. El supervisor no entra a la aplicación (136): lo carga
+       * firmado quien tenga «aprobar» en la 9.4.
        */
-      esSupervisor: await this.esElSupervisor(procesoId, acceso),
-      /** Si quien consulta puede registrar el trámite: lo aplica `exigirQuienTramita`. */
-      puedeTramitar: await this.puedeTramitar(procesoId, acceso),
+      puedeAvalar: await this.puede(acceso, 'aprobar'),
+      /** Si quien consulta puede registrar el trámite del pago. */
+      puedeTramitar: await this.puede(acceso, 'decidir'),
       /** Mientras sea falso, los soportes se cargan a mano. */
       integracionClick: false,
       pagos: pagos.map((pago): PagoResumen => ({
@@ -435,21 +431,49 @@ export class PagosService {
   // ------------------------------------------------------------ el aval ----
 
   /**
-   * El supervisor avala la cuenta.
+   * Registra el aval del supervisor sobre la cuenta.
    *
-   * Es el núcleo de la historia y por eso la regla no es de rol sino de
-   * persona: lo avala el supervisor **vigente de este contrato**, con el mismo
-   * criterio del comité evaluador (EFDS-1438). Un supervisor de otro contrato
-   * tiene el rol y no puede avalar aquí, que es exactamente lo correcto.
+   * El supervisor no entra a la aplicación (136): firma el aval por fuera y
+   * quien tiene «aprobar» en la 9.4 lo carga. El documento firmado es lo que
+   * respalda el pago, así que sin él no hay aval: queda como soporte de la
+   * cuenta.
    */
-  async avalar(procesoId: string, pagoId: string, dto: AvalarPagoDto, acceso: HiringAccess) {
+  async avalar(
+    procesoId: string,
+    pagoId: string,
+    dto: AvalarPagoDto,
+    aval: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
+      const supervisor = await this.exigirSupervisor(em, contrato.id);
 
       const pago = await this.exigirPago(em, contrato.id, pagoId);
       this.exigirEstado(pago, ['RADICADO'], 'avalar');
       await this.exigirQueQuepa(em, contrato, Number(pago.valor), ['AVALADO', 'TRAMITADO']);
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · aval del supervisor al pago ${pago.numero}`,
+        aval,
+        hash,
+        acceso,
+      );
+      await em.save(
+        em.create(SoportePago, {
+          pagoId: pago.id,
+          documentoId: doc.id,
+          tipo: 'AVAL_SUPERVISOR' as const,
+          descripcion: `Firmado por ${supervisor.nombre}`,
+          cargadoPor: acceso.userName,
+        } as Partial<SoportePago>),
+      );
 
       pago.estado = 'AVALADO';
       pago.avaladoAt = new Date();
@@ -465,6 +489,7 @@ export class PagosService {
         actividad: NUMERAL_PAGOS,
         pago: pago.numero,
         valor: pago.valor,
+        supervisor: supervisor.nombre,
       });
     });
 
@@ -472,7 +497,7 @@ export class PagosService {
   }
 
   /**
-   * El supervisor devuelve la cuenta.
+   * Registra que el supervisor devolvió la cuenta.
    *
    * No se borra: el periodo y los documentos que el contratista presentó
    * existieron, y el motivo es lo que le dice qué arreglar.
@@ -485,7 +510,7 @@ export class PagosService {
   async devolver(procesoId: string, pagoId: string, dto: DevolverPagoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
-      await this.exigirSupervisor(em, procesoId, contrato.id, acceso);
+      await this.exigirSupervisor(em, contrato.id);
 
       const pago = await this.exigirPago(em, contrato.id, pagoId);
       this.exigirEstado(pago, ['RADICADO', 'AVALADO'], 'devolver');
@@ -515,20 +540,16 @@ export class PagosService {
   // ---------------------------------------------------------- el trámite ---
 
   /**
-   * La Dirección Financiera tramita el pago avalado.
+   * Registra que el pago avalado se tramitó.
    *
    * La plataforma no gira: registra que se tramitó y con qué referencia, que es
-   * lo que permite encontrarlo en el sistema financiero.
+   * lo que permite encontrarlo en el sistema financiero. Quién lo registra lo
+   * dice el permiso de decidir la 9.4, que ya protege la ruta.
    */
   async tramitar(procesoId: string, pagoId: string, dto: TramitarPagoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
       const pago = await this.exigirPago(em, contrato.id, pagoId);
-      if (!(await this.puedeTramitar(procesoId, acceso, em))) {
-        throw new ForbiddenException(
-          'No eres el supervisor de este contrato: el trámite del pago lo registra su supervisor o la Dirección de Contratación',
-        );
-      }
 
       if (pago.estado !== 'AVALADO') {
         throw new ConflictException(
@@ -647,66 +668,27 @@ export class PagosService {
     return 'el contrato todavía no está legalizado';
   }
 
-  /**
-   * Si el usuario que consulta es el supervisor vigente del contrato.
-   *
-   * Por la cuenta que ocupa el puesto del supervisor, no por la persona del
-   * directorio (ver `PuestosService.esElSupervisor`).
-   *
-   * Incluye al super admin, igual que `exigirSupervisor`: si aquí no lo
-   * contara, el botón de avalar nunca se le mostraría aunque la petición real
-   * se la fuera a aceptar —el soporte que tiene que poder destrabar un
-   * contrato sin supervisor con acceso se quedaría viendo solo "radicar", sin
-   * forma de llegar al botón que sí puede usar.
-   */
-  private esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
-    return this.puestos.esElSupervisor(procesoId, acceso, em);
-  }
-
-  /**
-   * Si quien consulta puede registrar el trámite del pago (decidir la 9.4).
-   *
-   * El supervisor lo tiene por su rol, pero solo sobre el contrato que vigila:
-   * el permiso es del rol y el contrato es del puesto, como en el aval. Quien
-   * lo tiene por otro rol —el gestor de Contratación— lo registra en
-   * cualquiera.
-   */
-  private async puedeTramitar(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+  /** Si quien consulta tiene la acción en la 9.4; el super admin, siempre. */
+  private async puede(acceso: HiringAccess, accion: 'aprobar' | 'decidir') {
     if (acceso.roles?.includes('SUPER_ADMIN')) return true;
-    if (!(await this.alcance.puedeEn(acceso, 'decidir', NUMERAL_PAGOS))) return false;
-    const otros = (acceso.roles ?? []).filter((r) => r !== 'SUPERVISOR_CONTRATO');
-    if (await this.alcance.puedeEn({ roles: otros }, 'decidir', NUMERAL_PAGOS)) return true;
-    return this.esElSupervisor(procesoId, acceso, em);
+    return this.alcance.puedeEn(acceso, accion, NUMERAL_PAGOS);
   }
 
   /**
-   * Exige que quien actúa sea el supervisor vigente de este contrato.
+   * El supervisor vigente, que tiene que existir para avalar o devolver.
    *
-   * La membresía manda sobre el rol, como en la evaluación (EFDS-1438): avala
-   * quien ocupa en el proceso el puesto que aprueba la 9.4 (121). Se acepta
-   * también al super admin, que es rol de soporte y tiene que poder destrabar
-   * un contrato cuyo supervisor perdió el acceso.
+   * No se pregunta quién actúa: el supervisor no entra a la aplicación (136) y
+   * lo que se carga es su aval firmado. Pero sin supervisor designado en la
+   * 8.2 no hay de quién sea ese aval.
    */
-  private async exigirSupervisor(
-    em: EntityManager,
-    procesoId: string,
-    contratoId: string,
-    acceso: HiringAccess,
-  ) {
-    if (acceso.roles?.includes('SUPER_ADMIN')) return;
-
+  private async exigirSupervisor(em: EntityManager, contratoId: string) {
     const supervisor = await this.supervisorVigente(contratoId, em);
     if (!supervisor) {
       throw new ConflictException(
-        'El contrato no tiene supervisor designado: no hay quien avale la cuenta',
+        'El contrato no tiene supervisor designado: no hay de quién sea el aval (se designa en la 8.2)',
       );
     }
-
-    if (!(await this.esElSupervisor(procesoId, acceso, em))) {
-      throw new ForbiddenException(
-        'No eres el supervisor de este contrato: el aval lo da quien vigila su ejecución',
-      );
-    }
+    return supervisor;
   }
 
   private exigirEstado(pago: PagoContrato, admitidos: EstadoPago[], accion: string) {

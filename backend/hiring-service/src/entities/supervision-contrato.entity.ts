@@ -74,6 +74,14 @@ export class SupervisionContrato {
   @Column({ name: 'alerta_enviada_at', type: 'timestamptz', nullable: true })
   alertaEnviadaAt: Date | null;
 
+  /**
+   * La evidencia de que se le notificó por fuera, cuando el correo del módulo
+   * no salió (138). Desde la sesión de QA del 04/11 la notificación es
+   * obligatoria: o sale el correo o queda este soporte.
+   */
+  @Column({ name: 'evidencia_aviso_documento_id', type: 'uuid', nullable: true })
+  evidenciaAvisoDocumentoId: string | null;
+
   /** Los documentos del expediente que acompañan el acto en el correo (124). */
   @Column({ name: 'anexos_correo', type: 'uuid', array: true, default: () => "'{}'" })
   anexosCorreo: string[];

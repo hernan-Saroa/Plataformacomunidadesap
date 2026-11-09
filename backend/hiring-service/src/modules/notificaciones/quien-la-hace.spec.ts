@@ -28,9 +28,15 @@ describe('quienLaHace', () => {
     expect(quienLaHace('10.4')).toEqual({ papeles: ['ARCHIVA_EXPEDIENTE'] });
   });
 
-  it('la evaluación al comité y la ejecución al supervisor de ese proceso', () => {
-    expect(quienLaHace('6.3')?.papeles).toEqual(['COMITE_EVALUADOR']);
-    expect(quienLaHace('9.4')?.papeles).toEqual(['SUPERVISOR']);
+  it('la evaluación a quien la hace según el flujo, no al comité', () => {
+    expect(quienLaHace('6.3')?.papeles).toEqual(['QUIEN_LA_HACE']);
+    expect(quienLaHace('7.2')?.papeles).toEqual(['QUIEN_LA_HACE']);
+  });
+
+  it('la ejecución y el informe final a quien los registra: el supervisor no entra (136)', () => {
+    expect(quienLaHace('8.7')?.papeles).toEqual(['QUIEN_LA_HACE']);
+    expect(quienLaHace('9.4')?.papeles).toEqual(['QUIEN_LA_HACE']);
+    expect(quienLaHace('10.1')?.papeles).toEqual(['QUIEN_LA_HACE']);
   });
 
   it('lo demás de la Dirección, a quien hace la actividad según su regla (109)', () => {
