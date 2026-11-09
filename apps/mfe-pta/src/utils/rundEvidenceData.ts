@@ -22,9 +22,15 @@ const fields: Record<string, string[]> = {
   acto_asignacion_nucleo: ['NUCLEO_TEMATICO'], certificacion_investigacion: ['INVESTIGACION_ACTIVA'], acta_evaluacion_desempeno: ['ULTIMA_EVALUACION'],
 };
 
+/** Soportes de la codificación documental sin campo en RUND: opcionales y sin dato previo (espejo del backend). */
+export const RUND_STANDALONE_SUPPORTS = [
+  'tarjeta_profesional', 'hoja_vida', 'diploma_bachiller', 'experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa',
+  'productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida',
+];
+
 export function canUploadRundField(block: string, field: { tipoSoporte: string; revisionId?: string }, tarjeta: any): boolean {
   if (!tarjeta?.docenteId || !field.tipoSoporte) return false;
-  if (field.tipoSoporte === 'autorizacion_habeas_data') return true;
+  if (field.tipoSoporte === 'autorizacion_habeas_data' || RUND_STANDALONE_SUPPORTS.includes(field.tipoSoporte)) return true;
   const keys = fields[field.revisionId || field.tipoSoporte] || [];
   return (tarjeta.bloques?.[block]?.campos || []).some((item: any) => keys.includes(item.campo) && !item.restringido && hasRundData(item.valor));
 }

@@ -4,7 +4,7 @@ import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { isRundContactoCampo, normalizarContacto, RUND_CONTACTO_MENSAJES, type RundContactoCampo } from './rund-contacto';
-import { RundEvidenceWorkflow, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
+import { EVIDENCE_TYPES, RundEvidenceWorkflow, currentBlockRows, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
 import { RundIncorporacion } from './rund-incorporacion';
 import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } from './rund-registration-history';
 import { convocatoriaName, convocatoriaKey, convocatoriaPeriod, CONVOCATORIA_MEMBERS_SQL } from './rund-convocatorias';
@@ -3279,14 +3279,8 @@ export class BancoDocentesService implements OnModuleInit {
   /**
    * BR-039 â€” CatÃ¡logo de tipos de soporte vÃ¡lidos por bloque.
    */
-  private static readonly CATALOGO_SOPORTE: Record<string, string[]> = {
-    IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
-    CONTACTO: [],
-    FORMACION: ['diploma_pregrado', 'acta_grado_pregrado', 'diploma_especializacion', 'acta_grado_especializacion', 'diploma_maestria', 'acta_grado_maestria', 'diploma_doctorado', 'acta_grado_doctorado', 'certificado_posdoctoral', 'convalidacion_men', 'hoja_vida_pro'],
-    VINCULACION: ['acto_administrativo_vinculacion', 'resolucion_convocatoria', 'contrato', 'acto_administrativo_dedicacion', 'acto_administrativo_situacion', 'acto_adscripcion_territorial', 'resolucion_escalafon', 'resolucion_puntaje_salarial'],
-    ACADEMICO: ['acto_asignacion_nucleo', 'certificacion_investigacion', 'acta_evaluacion_desempeno'],
-    TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
-  };
+  private static readonly CATALOGO_SOPORTE: Record<string, string[]> = EVIDENCE_TYPES;
+
 
   // DDL for RundCampoEstado and RundSoporteCampo moved to:
   //   db/migrations/333_create_rund_tables_and_sequence.sql
@@ -3344,12 +3338,12 @@ export class BancoDocentesService implements OnModuleInit {
     let bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
       [docenteId],
-    );
+    ).then(currentBlockRows);
 
     // Si no existen bloques, inicializarlos
     if (bloques.length < 6) {
       await this.inicializarBloques(docenteId);
-      bloques = await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]);
+      bloques = currentBlockRows(await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]));
     }
 
     // Cargar soportes por bloque

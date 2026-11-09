@@ -19,6 +19,7 @@ import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
+import { standaloneSupportCategory } from './rund-evidence-data';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 import {
@@ -74,6 +75,8 @@ export class BancoDocentesController {
   private supportCategory(bloque: string, tipoSoporte: string): string {
     const block = String(bloque || '').toUpperCase();
     const type = String(tipoSoporte || '').toLowerCase();
+    const codificada = standaloneSupportCategory(type);
+    if (codificada) return codificada;
     if (block === 'IDENTIDAD') return 'IDENTIDAD';
     if (block === 'FORMACION') return 'TITULOS';
     if (type.includes('contrato')) return 'CONTRATOS';
