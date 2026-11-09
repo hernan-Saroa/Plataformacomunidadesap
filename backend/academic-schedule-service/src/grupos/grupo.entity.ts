@@ -15,6 +15,14 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 export const TIPOS_OFERTA = ['periodo_regular', 'creditos_virtual', 'interperiodo'] as const;
 export type TipoOferta = (typeof TIPOS_OFERTA)[number];
 
+/**
+ * Modalidad del GRUPO (migración 063). Virtual: sus sesiones son mediadas por
+ * tecnología y sin aula, y el horario es OPCIONAL al crearlo: el docente asignado
+ * lo define después en «Mi programación».
+ */
+export const MODALIDADES_GRUPO = ['presencial', 'virtual'] as const;
+export type ModalidadGrupo = (typeof MODALIDADES_GRUPO)[number];
+
 @Entity({ schema: 'academic-schedule', name: 'grupo' })
 export class GrupoEntity {
   @PrimaryGeneratedColumn('uuid', { name: 'id_grupo' })
@@ -48,6 +56,9 @@ export class GrupoEntity {
   /** Nullable a propósito: el grupo se numera antes de asignar docente. */
   @Column({ name: 'id_docente', type: 'uuid', nullable: true })
   idDocente: string | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'presencial' })
+  modalidad: ModalidadGrupo;
 
   @Column({ name: 'cupo_maximo', type: 'int', default: 30 })
   cupoMaximo: number;
