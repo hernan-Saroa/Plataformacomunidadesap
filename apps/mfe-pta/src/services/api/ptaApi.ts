@@ -2187,6 +2187,20 @@ export async function updateBancoDocente(id: string, body: any) {
   }
 }
 
+/** RUND-013 — Edita un solo dato de contacto desde el cabezote; el servidor valida y audita. */
+export async function updateBancoDocenteContacto(id: string, body: {
+  campo: 'CORREO_INSTITUCIONAL' | 'CORREO_ALTERNATIVO' | 'TELEFONO';
+  valor: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.patch<any>(`${BD_BASE}/${encodeURIComponent(id)}/contacto`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible guardar el dato de contacto.') };
+  }
+}
+
 export async function toggleBancoDocenteEstado(id: string, body: {
   estadoObjetivo: 'ACTIVO' | 'INACTIVO';
   justificacion: string;

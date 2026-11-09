@@ -686,18 +686,73 @@ export class MantenimientoService implements OnModuleInit {
     try {
       const rows = await query.orderBy('solicitud.fechaRadicacion', 'DESC').getMany();
       this.loggerFindAll.log(`==== FIN findAll: ${rows.length} filas ====`);
-      return rows;
+      return this.enriquecerSolicitudesConTerritoriales(rows);
     } catch (err: any) {
       this.loggerFindAll.error(`==== ERROR findAll: ${err?.message || String(err)} ====`);
       throw err;
     }
   }
 
+  async enriquecerSolicitudesConTerritoriales(solicitudes: SolicitudMantenimiento[]): Promise<any[]> {
+    if (!solicitudes || solicitudes.length === 0) return [];
+
+    const dtIds = Array.from(new Set(solicitudes.map((s) => s.idDireccionTerritorial).filter(Boolean)));
+    const cetapIds = Array.from(new Set(solicitudes.map((s) => s.idCetap).filter(Boolean)));
+
+    const dtMap = new Map<number, string>();
+    const cetapMap = new Map<number, string>();
+
+    if (dtIds.length > 0) {
+      try {
+        const dtRows = await this.dataSource.query(
+          `SELECT id, nombre FROM academic_work_plan.direccion_territorial WHERE id = ANY($1)`,
+          [dtIds],
+        );
+        for (const row of dtRows || []) {
+          dtMap.set(Number(row.id), row.nombre);
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    }
+
+    if (cetapIds.length > 0) {
+      try {
+        const cRows = await this.dataSource.query(
+          `SELECT id, nombre FROM academic_work_plan.cetap WHERE id = ANY($1)`,
+          [cetapIds],
+        );
+        for (const row of cRows || []) {
+          cetapMap.set(Number(row.id), row.nombre);
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    }
+
+    return solicitudes.map((s) => {
+      const dtNom = s.idDireccionTerritorial ? dtMap.get(Number(s.idDireccionTerritorial)) || null : null;
+      const cetapNom = s.idCetap ? cetapMap.get(Number(s.idCetap)) || null : null;
+      const display = s.sede?.nombre
+        ? s.sede.nombre
+        : (cetapNom
+            ? `CETAP ${cetapNom}${dtNom ? ` (${dtNom})` : ''}`
+            : (dtNom ? `Territorial ${dtNom}` : (s.espacio?.bloque?.nombre || null)));
+
+      return {
+        ...s,
+        direccionTerritorialNombre: dtNom,
+        cetapNombre: cetapNom,
+        nombreUbicacionDisplay: display,
+      };
+    });
+  }
+
   async findByUsuario(usuarioId: string | undefined): Promise<SolicitudMantenimiento[]> {
     if (!usuarioId) {
       return [];
     }
-    return this.mantenimientoRepo.createQueryBuilder('solicitud')
+    const rows = await this.mantenimientoRepo.createQueryBuilder('solicitud')
       .leftJoinAndSelect('solicitud.sede', 'sede')
       .leftJoinAndSelect('solicitud.espacio', 'espacio')
       .leftJoinAndSelect('espacio.bloque', 'bloque')
@@ -705,9 +760,10 @@ export class MantenimientoService implements OnModuleInit {
       .where('solicitud.usuarioSolicitanteId = :usuarioId', { usuarioId })
       .orderBy('solicitud.fechaRadicacion', 'DESC')
       .getMany();
+    return this.enriquecerSolicitudesConTerritoriales(rows);
   }
 
-  async findById(id: string): Promise<SolicitudMantenimiento> {
+  async findById(id: string): Promise<any> {
     const solicitud = await this.mantenimientoRepo.findOne({
       where: { idSolicitud: id },
       relations: ['sede', 'espacio', 'espacio.bloque', 'evidencias'],
@@ -715,7 +771,8 @@ export class MantenimientoService implements OnModuleInit {
     if (!solicitud) {
       throw new NotFoundException(`Solicitud de mantenimiento ${id} no encontrada`);
     }
-    return solicitud;
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([solicitud]);
+    return enriquecida || solicitud;
   }
 
   async create(dto: CreateMantenimientoDto, user: AuthUser): Promise<SolicitudMantenimiento> {
@@ -723,14 +780,67 @@ export class MantenimientoService implements OnModuleInit {
       throw new ForbiddenException('Usuario autenticado requerido para radicar solicitud');
     }
 
-    const sede = await this.sedeRepo.findOne({
-      where: { idSede: dto.idSede },
-    });
-    if (!sede) {
-      throw new BadRequestException(`Sede ${dto.idSede} no existe o no está registrada`);
+    let sede: any = null;
+    let resolvedDtId: number | null = dto.idDireccionTerritorial ? Number(dto.idDireccionTerritorial) : null;
+
+    const esCentral = !!dto.idSede;
+    const esTerritorial = !!dto.idDireccionTerritorial || !!dto.idCetap;
+
+    if (!esCentral && !esTerritorial) {
+      throw new BadRequestException(
+        'Debe especificar la ubicación de la solicitud: seleccione una Sede de Nivel Central o una Dirección Territorial / CETAP.',
+      );
     }
-    if (!sede.isActivo) {
-      throw new BadRequestException(`La sede ${sede.nombre} está inactiva y no permite radicación`);
+
+    if (esCentral && dto.idCetap) {
+      throw new BadRequestException(
+        'Conflicto de ámbito: una solicitud no puede enviar simultáneamente una Sede de Nivel Central y un CETAP municipal.',
+      );
+    }
+
+    if (esCentral) {
+      sede = await this.sedeRepo.findOne({
+        where: { idSede: dto.idSede },
+      });
+      if (!sede) {
+        throw new BadRequestException(`Sede ${dto.idSede} no existe o no está registrada`);
+      }
+      if (!sede.isActivo) {
+        throw new BadRequestException(`La sede ${sede.nombre} está inactiva y no permite radicación`);
+      }
+      if (!resolvedDtId && (sede.codigo?.startsWith('SEDE-') || sede.tipo === 'SEDE_CENTRAL' || sede.tipo === 'SEDE_ALTERNA')) {
+        resolvedDtId = 1;
+      }
+    } else {
+      // Flujo Territorial
+      if (dto.idCetap) {
+        const cetapRows = await this.dataSource.query(
+          `SELECT id, nombre, id_direccion_territorial, activo FROM academic_work_plan.cetap WHERE id = $1 LIMIT 1`,
+          [dto.idCetap],
+        );
+        if (!cetapRows || cetapRows.length === 0) {
+          throw new BadRequestException(`El CETAP con ID ${dto.idCetap} no existe.`);
+        }
+        if (!cetapRows[0].activo) {
+          throw new BadRequestException(`El CETAP ${cetapRows[0].nombre} está inactivo.`);
+        }
+        if (!resolvedDtId) {
+          resolvedDtId = Number(cetapRows[0].id_direccion_territorial);
+        }
+      }
+      if (dto.idDireccionTerritorial) {
+        const dtRows = await this.dataSource.query(
+          `SELECT id, nombre, activo FROM academic_work_plan.direccion_territorial WHERE id = $1 LIMIT 1`,
+          [dto.idDireccionTerritorial],
+        );
+        if (!dtRows || dtRows.length === 0) {
+          throw new BadRequestException(`La Dirección Territorial con ID ${dto.idDireccionTerritorial} no existe.`);
+        }
+        if (!dtRows[0].activo) {
+          throw new BadRequestException(`La Dirección Territorial ${dtRows[0].nombre} está inactiva.`);
+        }
+        resolvedDtId = Number(dto.idDireccionTerritorial);
+      }
     }
 
     const areaResp: 'UMI' | 'TI' = dto.tipoAtencion === 'TECNOLOGICA' ? 'TI' : 'UMI';
@@ -797,7 +907,10 @@ export class MantenimientoService implements OnModuleInit {
     }
 
     const solicitudData: Partial<SolicitudMantenimiento> = {
-      idSede: dto.idSede,
+      idSede: dto.idSede ?? null,
+      idDireccionTerritorial: resolvedDtId,
+      idCetap: dto.idCetap ? Number(dto.idCetap) : null,
+      ubicacionAdicionalTexto: dto.ubicacionAdicionalTexto ?? null,
       idEspacio: dto.idEspacio,
       idAreaSolicitante: dto.idAreaSolicitante,
       nombreAreaSolicitante: dto.nombreAreaSolicitante,
@@ -898,7 +1011,8 @@ export class MantenimientoService implements OnModuleInit {
 </div>`,
     });
 
-    return saved;
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
+    return enriquecida || saved;
   }
 
   async updateEstado(id: string, dto: UpdateMantenimientoEstadoDto): Promise<SolicitudMantenimiento> {
@@ -3684,22 +3798,29 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (solicitud.requiereContratacion) {
       const evidenciasDto: any[] = Array.isArray(dto.evidencias) ? dto.evidencias : [];
       const tieneSoporteContratacion = evidenciasDto.some(
-        (e) => e.categoria === 'SOPORTE_CONTRATACION' || e.categoria === 'ACTA_RECEPCION_INSUMOS',
+        (e) =>
+          e.categoria === 'SOPORTE_CONTRATACION' ||
+          e.categoria === 'ACTA_RECEPCION_INSUMOS' ||
+          e.categoria === 'ACTA_RECIBO_SATISFACCION',
       );
 
       const asignacionesPrevias = Array.isArray(solicitud.asignaciones) ? (solicitud.asignaciones as any[]) : [];
-      const tieneRecepcionInsumosConforme = asignacionesPrevias.some((a: any) => {
-        if (a.accion === 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION') return true;
-        if (a.accion === 'RECEPCION_INSUMOS_TECNICO') {
-          try {
-            const parsed = typeof a.observaciones === 'string' ? JSON.parse(a.observaciones) : a.observaciones;
-            return parsed?.resultado === 'COMPLETA';
-          } catch {
-            return String(a.motivo || '').includes('COMPLETA');
+      const tieneRecepcionInsumosConforme =
+        asignacionesPrevias.some((a: any) => {
+          if (a.accion === 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION') return true;
+          if (a.accion === 'RECEPCION_INSUMOS_TECNICO') {
+            try {
+              const parsed = typeof a.observaciones === 'string' ? JSON.parse(a.observaciones) : a.observaciones;
+              return parsed?.resultado === 'COMPLETA';
+            } catch {
+              return String(a.motivo || '').includes('COMPLETA');
+            }
           }
-        }
-        return false;
-      }) || evidenciasDto.some((e) => e.categoria === 'ACTA_RECEPCION_INSUMOS');
+          return false;
+        }) ||
+        evidenciasDto.some(
+          (e) => e.categoria === 'ACTA_RECEPCION_INSUMOS' || e.categoria === 'ACTA_RECIBO_SATISFACCION',
+        );
 
       if (!tieneSoporteContratacion) {
         throw new BadRequestException(
@@ -6114,7 +6235,8 @@ ${obs ? `<p><strong>Observaciones:</strong> ${obs}</p>` : ''}
 </div>`,
     });
 
-    return saved;
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
+    return enriquecida || saved;
   }
 
   async marcarRequiereContratacion(
@@ -6173,6 +6295,7 @@ ${insumos ? `<p><strong>Insumos / Servicios requeridos:</strong> ${insumos}</p>`
 </div>`,
     });
 
-    return saved;
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
+    return enriquecida || saved;
   }
 }

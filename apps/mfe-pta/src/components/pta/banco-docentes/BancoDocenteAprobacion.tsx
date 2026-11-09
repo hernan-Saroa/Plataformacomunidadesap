@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 import { rundActorName } from '../../../utils/rundActorName';
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
@@ -62,7 +63,7 @@ const CATALOGO_BR039: Record<string, {
   campos: CampoDoc[];
 }> = {
   IDENTIDAD: {
-    label: 'Identidad',
+    label: RUND_BLOCK_LABELS.IDENTIDAD,
     letra: 'A',
     subtitle: 'Documentos que acreditan la identidad del docente',
     icon: User,
@@ -74,6 +75,8 @@ const CATALOGO_BR039: Record<string, {
       { campo: 'Género', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí' },
       { campo: 'Fecha de nacimiento', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'Debe ser < hoy' },
       { campo: 'Edad / Rango de edad', documento: '— (Calculado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'Calculado desde fecha de nacimiento' },
+      { campo: 'Tarjeta profesional', documento: 'Tarjeta profesional', tipoSoporte: 'tarjeta_profesional', obligatorio: 'Si aplica' },
+      { campo: 'Hoja de vida', documento: 'Hoja de vida', tipoSoporte: 'hoja_vida', obligatorio: 'No' },
     ],
   },
   CONTACTO: {
@@ -90,13 +93,14 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
   FORMACION: {
-    label: 'Formación Académica',
+    label: RUND_BLOCK_LABELS.FORMACION,
     letra: 'C',
     subtitle: 'Títulos académicos y soportes de formación',
     icon: GraduationCap,
     color: '#8b5cf6',
     bg: '#F5F3FF',
     campos: [
+      { campo: 'Bachiller', documento: 'Diploma de bachiller', tipoSoporte: 'diploma_bachiller', obligatorio: 'No' },
       { campo: 'Pregrado', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_pregrado', obligatorio: 'Sí', validacion: 'Base mínima requerida' },
       { campo: 'Especialización', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_especializacion', obligatorio: 'Si aplica' },
       { campo: 'Maestría', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_maestria', obligatorio: 'Si aplica' },
@@ -128,7 +132,7 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
   ACADEMICO: {
-    label: 'Académico',
+    label: RUND_BLOCK_LABELS.ACADEMICO,
     letra: 'E',
     subtitle: 'Asignaciones académicas, investigación y evaluación',
     icon: BookOpen,
@@ -138,6 +142,13 @@ const CATALOGO_BR039: Record<string, {
       { campo: 'Núcleo temático', documento: 'Acto de asignación / definición institucional GGP', tipoSoporte: 'acto_asignacion_nucleo', obligatorio: 'Sí', validacion: 'Lista controlada' },
       { campo: 'Investigación 2025', documento: 'Acto de convocatoria / certificación de producto', tipoSoporte: 'certificacion_investigacion', obligatorio: 'Si aplica', validacion: 'Coherente con dedicación' },
       { campo: 'Última evaluación', documento: 'Acta o certificado de evaluación de desempeño (SEDP)', tipoSoporte: 'acta_evaluacion_desempeno', obligatorio: 'Sí', validacion: 'BR-055: Vigencia / caducidad' },
+      { campo: '02 Experiencia docente', documento: 'Certificaciones de experiencia docente', tipoSoporte: 'experiencia_docente', obligatorio: 'No' },
+      { campo: '03 Experiencia laboral', documento: 'Certificaciones de experiencia laboral', tipoSoporte: 'experiencia_laboral', obligatorio: 'No' },
+      { campo: 'Experiencia investigativa', documento: 'Soportes de experiencia investigativa', tipoSoporte: 'experiencia_investigativa', obligatorio: 'No' },
+      { campo: 'Productividad académica', documento: 'Soportes de productividad académica', tipoSoporte: 'productividad_academica', obligatorio: 'No' },
+      { campo: 'Dominio de segunda lengua', documento: 'Certificado de dominio de segunda lengua', tipoSoporte: 'dominio_segunda_lengua', obligatorio: 'No' },
+      { campo: 'Formación no formal', documento: 'Certificados de formación no formal', tipoSoporte: 'formacion_no_formal', obligatorio: 'No' },
+      { campo: 'Estudio de hoja de vida', documento: 'Estudio de hoja de vida', tipoSoporte: 'estudio_hoja_vida', obligatorio: 'No' },
     ],
   },
   TRANSVERSAL: {

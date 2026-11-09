@@ -832,6 +832,65 @@ export class LegalNotificationsService {
   }
 
   /**
+   * Notifica al responsable del riesgo que el seguimiento cuatrimestral de un control venció sin registro.
+   */
+  async notifyRiesgoSeguimientoVencido(params: {
+    riesgoId: string;
+    codigo: string;
+    nombreRiesgo: string;
+    controlDescripcion: string;
+    cuatrimestreLabel: string;
+    vigencia: number;
+    abogadoId: string;
+  }): Promise<void> {
+    const meta = MODULE_META['GESTION_RIESGOS'];
+    const url = buildUrl('GESTION_RIESGOS');
+    const corte = `${params.cuatrimestreLabel} de ${params.vigencia}`;
+    this.logger.log(`[NOTIFY] Seguimiento de control vencido — codigo=${params.codigo} corte=${corte}`);
+
+    try {
+      await this.notificationClient.notifyUserById(params.abogadoId, {
+        tipo_notificacion: 'RIESGO_SEGUIMIENTO_VENCIDO',
+        titulo: 'Seguimiento de control vencido',
+        mensaje: `El seguimiento del control "${params.controlDescripcion}" del riesgo ${params.codigo} (${params.nombreRiesgo}) venció sin registro en el ${corte}.`,
+        descripcion_corta: `Seguimiento vencido — riesgo ${params.codigo}`,
+        icono: meta.icon,
+        color: meta.color,
+        prioridad: 'Alta',
+        categoria: meta.categoria,
+        tiene_accion: true,
+        texto_boton_accion: 'Ver riesgo',
+        url_accion: url,
+        datos_adicionales: {
+          modulo: 'GESTION_RIESGOS',
+          riesgoId: params.riesgoId,
+          codigo: params.codigo,
+          cuatrimestre: params.cuatrimestreLabel,
+          vigencia: params.vigencia,
+        },
+      });
+
+      const detalle = await this.notificationClient.getUserDetailsById(params.abogadoId);
+      if (detalle?.email) {
+        await this.notificationClient.sendEmail(
+          detalle.email,
+          `Seguimiento de control vencido — ${params.codigo}`,
+          buildLegalEmailHtml({
+            headerTitle: 'Seguimiento de control vencido',
+            headerColor: meta.color,
+            bodyHtml: `<p>El seguimiento del control <strong>${escapeHtml(params.controlDescripcion)}</strong> del riesgo <strong>${escapeHtml(params.codigo)}</strong> (${escapeHtml(params.nombreRiesgo)}) venció sin registro en el ${escapeHtml(corte)}.</p>`,
+            ctaLabel: 'Ver Riesgo',
+            url,
+          }),
+          'RIESGO_SEGUIMIENTO_VENCIDO',
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar el seguimiento vencido del riesgo ${params.codigo} al responsable ${params.abogadoId}: ${err?.message}`);
+    }
+  }
+
+  /**
    * Notifica cuando un riesgo entra en zona crítica (ALTO o EXTREMO).
    */
   async notifyRiesgoZonaCritica(params: {
