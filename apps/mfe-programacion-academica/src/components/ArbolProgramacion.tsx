@@ -50,6 +50,8 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo, programable =
           <p className="text-sm text-slate-500 mt-2">Área: {a.area?.nombre ?? 'Sin área'} · Créditos: {a.creditos ?? 'Sin definir'}</p>
           {a.grupos.map(g => <details key={g.idGrupo} className="mt-3 border rounded-lg p-3">
             <summary className="cursor-pointer font-semibold">Grupo {g.numeroGrupo} · {g.estado}
+              {g.modalidad === 'virtual' && <span className="ml-2 text-violet-700">Virtual</span>}
+              {g.horarioPorDefinir && <span className="ml-2 text-violet-700">Horario por definir</span>}
               {!g.oferta && <span className="ml-2 text-amber-800">Sin oferta CETAP</span>}
               {g.franjas.some(f => !f.idDocente) && <span className="ml-2 text-amber-800">Franjas sin docente</span>}
               {g.horas.excede && <span className="ml-2 text-red-700">Excede las horas requeridas</span>}
@@ -61,8 +63,16 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo, programable =
               {abrirGrupo && permisos.programar.includes(p.nivel) && <button type="button" onClick={() => abrirGrupo(g, a.nombre)} className="border rounded-lg p-2 text-[#003DA5]">Ver horario del grupo</button>}
               {programable && permisos.asignar.includes(p.nivel) && <button type="button" className="border rounded-lg p-2 text-[#003DA5]" onClick={e => setAsignacion({ grupo: g, asignatura: a.nombre, foco: e.currentTarget })}>Asignar docente</button>}
               <p>{Object.entries(g.estadoFranjas).map(([estado, cantidad]) => `${estado}: ${cantidad}`).join(' · ')}</p>
+              {g.horarioPorDefinir && (
+                <p role="note" className="bg-violet-50 text-violet-900 p-2 rounded-lg">
+                  Grupo virtual sin horario. {g.docenteHorarioPorDefinir
+                    ? `Asignado a ${g.docenteHorarioPorDefinir.nombre ?? 'un docente'}: lo define en «Mi programación».`
+                    : 'Asigne un docente y él definirá el horario en «Mi programación», o defínalo usted en «Ver horario del grupo».'}
+                </p>
+              )}
               <h4 className="font-semibold">Docentes del grupo</h4>
-              {!g.docentes.length && <p className="text-amber-800">Sin docentes asignados.</p>}
+              {!g.docentes.length && !g.docenteHorarioPorDefinir && <p className="text-amber-800">Sin docentes asignados.</p>}
+              {!g.docentes.length && g.docenteHorarioPorDefinir && <p>{g.docenteHorarioPorDefinir.nombre ?? 'Nombre no disponible'} · {g.docenteHorarioPorDefinir.documento ?? 'Sin documento'} · horario por definir</p>}
               <ul>{g.docentes.map(d => <li key={d.idDocente}>{d.nombre ?? 'Nombre no disponible'} · {d.documento ?? 'Sin documento'} · {d.vinculacion?.texto ?? 'Vinculación no disponible'} · {horas(d.horas)}</li>)}</ul>
               <div className="overflow-x-auto"><table className="w-full text-left"><caption className="text-left font-semibold">Franjas del grupo</caption>
                 <thead><tr>{['Día', 'Horario', 'Aula', 'Docente', 'Estado'].map(c => <th key={c} className="p-2 border-b">{c}</th>)}</tr></thead>
