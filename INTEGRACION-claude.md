@@ -1239,3 +1239,34 @@ Pedido de Tomás: al crear un grupo virtual (mediado por tecnologías, sin aula)
 - **Vista por niveles:** cada grupo trae `modalidad`, `horarioPorDefinir` y `docenteHorarioPorDefinir`.
 - **Pantallas:** selector de modalidad al crear grupos (Presencial / Virtual) con aviso; insignia «Virtual» en la lista y el árbol, «Horario por definir» y el docente asignado; el calendario del grupo virtual fija «Mediada por tecnología» y explica que el horario es opcional; el modal de asignación permite asignar sin franjas; en «Mi programación», la sección «Horario de mis grupos virtuales» con horas programadas/requeridas/máximas, alta y baja de sesiones y el motivo del servidor.
 - **Pruebas:** agregado real nuevo `portal-docente/grupo-virtual.agregado.spec.ts` (11 casos: presencial vacío no se asigna, candidatos y reserva de 64 h, asignación sin horario, envío bloqueado y desbloqueado, choque, alta correcta, exceso de horas, otro docente, quitar y concertación). Front: `HorarioGruposVirtuales.test.tsx` (5), `AsignacionAreaModal.virtual.test.tsx` (1) y un caso en `GestionGrupos.test.tsx`. PA backend 283/283; MFE 58/58.
+
+## 33. Roles que inciden en Programación Académica y migración 064 (9 de noviembre)
+
+Problema en QA: no se podía completar el flujo (ver la concertación de los grupos de un docente) porque faltaban roles y el superusuario no tenía todos los permisos del módulo. Los permisos se leen de `auth.role` / `auth.role_permissions`; el módulo se muestra por el **prefijo** del permiso (`programacion-academica.*`), por eso cada rol de decisión lleva también «Disponibilidad de docentes».
+
+### 33.1 · Roles y lo que pueden
+
+| Rol | Permisos | Qué hace en el flujo |
+|---|---|---|
+| **SUPER_ADMIN** (`superuser@esap.edu.co`) | los 10 de Programación Académica y los 2 del portal; `pta.review.all`, `pta.approve.all`; activar periodo extraordinario | Todo: periodos, programar, asignar, enviar, revisar, aprobar. Sin restricción geográfica. |
+| **ADMIN_PROGRAMACION** | `programacion-academica.all`, catálogo pregrado y posgrado, disponibilidad, publicar | Administra: crea y activa periodos, aulas y ofertas, programa y publica ambos niveles, y puede asignar. No decide la concertación (no tiene permisos `pta.*`). |
+| **SUBDIRECTOR_ACADEMICO** | `programacion-academica.all`, disponibilidad | Igual que administración dentro del módulo. |
+| **PROGRAMADOR_PREGRADO** / **PROGRAMADOR_POSGRADO** | `catalogo.<nivel>`, disponibilidad, publicar | Crea grupos, franjas y ciclos de SU nivel y los publica. No asigna docentes. |
+| **PROGRAMADOR_DOCENTE_PREGRADO** / **PROGRAMADOR_DOCENTE_POSGRADO** | `asignacion-docente.<nivel>`, disponibilidad | Asigna el docente del área a los grupos de su nivel y **envía a revisión**. No programa. |
+| **REVISOR_DOCENCIA_PREGRADO** / **REVISOR_DOCENCIA_POSGRADO** (nuevos) | `pta.review.academica.<nivel>`, disponibilidad | Etapa 2: revisa y firma la docencia de su nivel; puede devolverla al programador. |
+| **APROBADOR_DOCENCIA** (nuevo si no existía) | `pta.approve.academica.pregrado` y `.posgrado`, disponibilidad | Etapa 3: aprueba y firma la docencia ya revisada. |
+| **JEFATURA_TERRITORIAL** | `pta.approve.academica.<nivel>` y `.territorial.<nivel>`, `aprobacion.territorial`, disponibilidad | Aprueba la docencia de su territorial (alcance por la seccional de su persona). |
+| **DOCENTE** | `portal-transaccional.programacion-academica.view` y `.tomar` | Etapa 4: «Mi programación» (aceptar y firmar o reportar novedad) y, en grupos virtuales, define su horario. |
+| **GESTION_PROFESORAL** | (rol del PTA, sin permisos de Programación Académica) | Puede crear y activar periodos (el endpoint del PTA lo admite junto con `ADMIN_PROGRAMACION` y `SUPER_ADMIN`). |
+
+Para completar el flujo con usuarios reales basta asignar: **ADMIN_PROGRAMACION** (periodos y catálogo) → **PROGRAMADOR_PREGRADO** (grupos) → **PROGRAMADOR_DOCENTE_PREGRADO** (asigna y envía) → **REVISOR_DOCENCIA_PREGRADO** → **APROBADOR_DOCENCIA** (o JEFATURA_TERRITORIAL) → **DOCENTE**. Activar un periodo como extraordinario solo lo tiene `SUPER_ADMIN`.
+
+### 33.2 · Migración `064_roles_flujo_concertacion_y_superadmin.sql` (PA)
+- **SUPER_ADMIN** recibe todos los permisos de Programación Académica y del portal (le faltaban «Asignar docentes» pregrado y posgrado y «Publicar»; tenía 7 de 10).
+- Crea **REVISOR_DOCENCIA_PREGRADO**, **REVISOR_DOCENCIA_POSGRADO** y **APROBADOR_DOCENCIA** (solo si no existen) y les agrega los permisos que falten; si el aprobador ya existía, no se le quita nada.
+- Idempotente (probada dos veces) y con canarios: SUPER_ADMIN no puede quedar sin ningún permiso del módulo, los revisores resuelven su permiso `pta.review.academica.<nivel>` (si no está sembrado el del PTA, la migración falla y lo dice) y no pueden programar, asignar ni publicar.
+- Prueba de agregado `auth/roles-flujo.agregado.spec.ts` (4 casos).
+- Verificado con un usuario de prueba con el rol revisor (`qa.revisor@esap.edu.co`, clave `Programacion2026*`, solo en la base local): la bandeja de concertación responde 200 y la lista de periodos 403, que es el perfil de «solo revisión» que ya usa la jefatura.
+
+### 33.3 · Para QA
+Aplicar la 064 en la base de QA y asignar los roles desde **Gestión de Usuarios** con el superusuario. Además, la concertación debe estar encendida en los dos servicios (`PROG_CONCERTACION_HABILITADA=true` en Programación Académica y la configuración equivalente en el PTA); si no, el flujo cae al orden anterior.
