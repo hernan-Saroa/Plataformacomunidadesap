@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
@@ -856,6 +856,22 @@ export class BancoDocentesController {
       rundSensitiveAccess: { roles: actor.roles, fullAccess: actor.fullAccess, endpoint: 'EDITAR_PERFIL_RUND' },
     });
     return { success: true, data: protectRundSensitiveData(result, actor.fullAccess) };
+  }
+
+  /** RUND-013 — Edición de un dato de contacto desde el cabezote (sin soporte; queda auditada). */
+  @Patch(':id/contacto')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.MANAGE)
+  async updateContacto(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const result = await this.service.updateContactoDocente(id, {
+      campo: body?.campo,
+      valor: body?.valor,
+      periodoCarga: body?.periodoCarga || body?.periodo_carga,
+      actorId: actor.actorId,
+      ip: actor.ip,
+    });
+    return { success: true, data: result };
   }
 
   @Put(':id/estado')

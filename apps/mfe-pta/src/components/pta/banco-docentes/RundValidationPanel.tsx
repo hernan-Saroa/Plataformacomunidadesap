@@ -678,7 +678,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
 
   const sortedRundBloques = useMemo(() => {
     const blockOrder = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
-    return [...rundBloques].sort((a, b) => {
+    // RUND-013: los datos de contacto se gestionan en el cabezote, así que su sección de validación se oculta.
+    return rundBloques.filter(b => b.bloque !== 'CONTACTO').sort((a, b) => {
       return blockOrder.indexOf(a.bloque) - blockOrder.indexOf(b.bloque);
     });
   }, [rundBloques]);

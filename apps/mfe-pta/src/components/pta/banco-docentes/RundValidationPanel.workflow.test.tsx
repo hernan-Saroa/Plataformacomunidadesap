@@ -231,7 +231,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
     fireEvent.click(screen.getByRole('button',{name:'Validar soporte',exact:true}));
     await waitFor(()=>expect(view.container.querySelectorAll('.rund-data-sources')).toHaveLength(5));
   });
-  it.each([['IDENTIDAD','Identidad'],['CONTACTO','Contacto'],['FORMACION','Formación Académica'],['VINCULACION','Vinculación'],['ACADEMICO','Académico'],['TRANSVERSAL','Transversal']])('permite revisar datos y aprobar %s sin adjuntar archivos',async(code,label)=>{
+  it.each([['IDENTIDAD','Identidad'],['FORMACION','Formación Académica'],['VINCULACION','Vinculación'],['ACADEMICO','Académico'],['TRANSVERSAL','Transversal']])('permite revisar datos y aprobar %s sin adjuntar archivos',async(code,label)=>{
     for(const block of blocks){block.soportes=[];block.estado='Soporte faltante';}
     render(<RundValidationPanel docenteId="docente-1"/>);
     await screen.findByText('RUND-PRUEBA');
@@ -359,9 +359,8 @@ describe('Revisión documental persistida en el panel RUND', () => {
     expect(await screen.findByText('Perfil RUND aprobado')).toBeTruthy();
     expect(screen.getByText('5 / 5')).toBeTruthy();
     expect(screen.getByText('Contacto no requiere soporte documental.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('tab', { name: /Contacto/ }));
-    expect(screen.queryByRole('button', { name: 'Validar soporte', exact: true })).toBeNull();
-    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false);
+    // RUND-013: Contacto ya no tiene pestaña propia; se gestiona en el cabezote.
+    expect(screen.queryByRole('tab', { name: /Contacto/ })).toBeNull();
   });
 
   it('una devolución retira el estado de perfil aprobado y admite nueva revisión tras el reemplazo', async () => {
@@ -381,26 +380,13 @@ describe('Revisión documental persistida en el panel RUND', () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/revision'), expect.objectContaining({ documentoVersionId: 'version-corregida', blockVersion: 8 })));
   });
 
-  it('envía la versión vigente al aprobar Contacto sin pedir archivos', async () => {
+  it('RUND-013: oculta la sección de Contacto (sin pestaña, franja ni botones de validar/devolver dato)', async () => {
     render(<RundValidationPanel docenteId="docente-1" />);
-    fireEvent.click(await screen.findByRole('tab', { name: /Contacto/ }));
-    expect(screen.queryByRole('group', { name: 'Soportes de esta sección' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Recargar expediente' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Actualizar sugerencias' })).toBeNull();
-    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/CONTACTO/aprobar'), { blockVersion: 1 }));
-  });
-
-  it('exige motivo y envía la versión vigente al devolver Contacto', async () => {
-    render(<RundValidationPanel docenteId="docente-1" />);
-    fireEvent.click(await screen.findByRole('tab', { name: /Contacto/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Devolver bloque' }));
-    const confirm = screen.getByRole('button', { name: 'Confirmar devolución' }) as HTMLButtonElement;
-    expect(confirm.disabled).toBe(true);
-    fireEvent.change(screen.getByPlaceholderText(/Especifique/), { target: { value: 'Corrija el correo personal.' } });
-    fireEvent.click(confirm);
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/CONTACTO/devolver'), { observacion: 'Corrija el correo personal.', blockVersion: 1 }));
+    await screen.findByText('RUND-PRUEBA');
+    expect(screen.queryByRole('tab', { name: /Contacto/ })).toBeNull();
+    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    expect(screen.queryByText('Correo institucional')).toBeNull();
+    expect(screen.queryByText('Revisa los correos y teléfonos. Esta sección no requiere soportes.')).toBeNull();
   });
 
   it('envía todos los datos del soporte compartido y excluye campos ausentes, derivados y restringidos', async () => {
@@ -437,18 +423,18 @@ describe('Revisión documental persistida en el panel RUND', () => {
     expect(options.find(option => option.block === 'TRANSVERSAL')?.type).toBe('autorizacion_habeas_data');
   });
 
-  it('permite recorrer las seis pestañas con el teclado y mantiene seleccionada la sección visible', async () => {
+  it('permite recorrer las cinco pestañas con el teclado y mantiene seleccionada la sección visible', async () => {
     render(<RundValidationPanel docenteId="docente-1" />);
     const identity = await screen.findByRole('tab', { name: /Identidad/ });
-    const contact = screen.getByRole('tab', { name: /Contacto/ });
+    const formacion = screen.getByRole('tab', { name: /Formación/ });
     const transversal = screen.getByRole('tab', { name: /Transversal/ });
     expect(identity.tabIndex).toBe(0);
-    expect(contact.tabIndex).toBe(-1);
+    expect(formacion.tabIndex).toBe(-1);
     fireEvent.keyDown(identity, { key: 'ArrowRight' });
-    expect(contact.getAttribute('aria-selected')).toBe('true');
-    expect(document.activeElement).toBe(contact);
-    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(contact.id);
-    fireEvent.keyDown(contact, { key: 'End' });
+    expect(formacion.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(formacion);
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(formacion.id);
+    fireEvent.keyDown(formacion, { key: 'End' });
     expect(transversal.getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(transversal, { key: 'ArrowRight' });
     expect(identity.getAttribute('aria-selected')).toBe('true');
@@ -564,8 +550,6 @@ describe('Revisión documental persistida en el panel RUND', () => {
     await waitFor(() => expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
     await screen.findByText('Espacio aprobado');
-    fireEvent.click(screen.getByRole('tab', { name: /Contacto/ }));
-    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('un fallo al consultar el OCR tampoco bloquea la revisión documental', async () => {
