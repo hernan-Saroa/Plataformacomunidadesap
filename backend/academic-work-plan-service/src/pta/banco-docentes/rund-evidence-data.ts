@@ -1,5 +1,26 @@
 import { BadRequestException } from '@nestjs/common';
 
+/** CC, CE y pasaporte acreditan las mismas filas de identidad y comparten un solo punto de control. */
+export const IDENTITY_TYPES = ['documento_identidad', 'cedula_extranjeria', 'pasaporte'];
+/**
+ * Soportes de la codificación documental del GGP que no acreditan un campo del perfil RUND: son opcionales,
+ * no exigen dato previo y no entran en las reglas de obligatoriedad de los bloques ya aprobados.
+ */
+export const STANDALONE_SUPPORT_TYPES: Record<string, string[]> = {
+  IDENTIDAD: ['tarjeta_profesional', 'hoja_vida'],
+  FORMACION: ['diploma_bachiller'],
+  ACADEMICO: ['experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa', 'productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida'],
+};
+/** Categoría documental de cada soporte de la codificación; todas existen en el catálogo (migraciones 422, 665 y 678). */
+export function standaloneSupportCategory(type?: string | null): string | null {
+  if (['tarjeta_profesional', 'hoja_vida'].includes(type || '')) return 'IDENTIDAD';
+  if (type === 'diploma_bachiller') return 'TITULOS';
+  if (['experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa'].includes(type || '')) return 'EXPERIENCIA';
+  if (['productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida'].includes(type || '')) return 'CERTIFICADOS';
+  return null;
+}
+export const isStandaloneSupport = (type?: string | null) => Object.values(STANDALONE_SUPPORT_TYPES).some(types => types.includes(type || ''));
+
 export function hasRundData(value: unknown): boolean {
   if (value === null || value === undefined || value === false) return false;
   if (typeof value === 'number') return Number.isFinite(value);
@@ -37,7 +58,7 @@ const fields: Record<string, Record<string, string[]>> = {
 
 export async function assertRundEvidenceData(query: { query: (...args: any[]) => Promise<any> }, docenteId: string, type?: string, campo?: string) {
   // General attachments and workflow documents do not represent a profile-data row.
-  if (!type || ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type)) return;
+  if (!type || isStandaloneSupport(type) || ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type)) return;
   const rows = fields[type];
   if (!rows || (campo && !rows[campo])) throw new BadRequestException('El soporte no corresponde a una fila válida.');
   const [profile] = await query.query(`SELECT d.*, p.num_identificacion, p.nom_largo, p.gen_tercero, p.fec_nacimiento

@@ -740,7 +740,7 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
     [{ content: `LUGAR Y FECHA DE EJECUCIÓN AUDITORIA: ${territorial} / ${rangoFechas}`, styles: { fontStyle: 'bold' } }],
     [{ content: `PERIODO DE LA AUDITORIA: ${periodoEvaluado}`, styles: { fontStyle: 'bold' } }],
     [{ content: `EQUIPO AUDITOR:\n${(datos.auditoria.equipoAuditores || []).map((a: any) => `${a.nombre} - ${a.rol}`).join('\n')}`, styles: { fontStyle: 'bold' } }],
-    [{ content: `OBJETIVO(S):\n${objetivosText}`, styles: { fontStyle: 'normal' } }],
+    [{ content: `OBJETIVO(S):\n${objetivosText || 'No registrado'}`, styles: { fontStyle: 'normal' } }],
     [{ content: `ALCANCE:\n${alcanceText}`, styles: { fontStyle: 'normal' } }],
   ];
 

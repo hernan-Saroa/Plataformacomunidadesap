@@ -120,8 +120,10 @@ export function PanelSeguimiento({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Seguimiento de la ejecución</Titulo>
       <Ayuda>
-        El supervisor carga los informes, actas y soportes que acreditan la ejecución. Quedan en
-        el expediente del proceso con el periodo que cubren.
+        El gestor de archivo y supervisión carga los informes, actas y soportes de la ejecución que
+        le hace llegar el supervisor, que no entra a la aplicación. Quedan en el expediente con el
+        periodo que cubren, y la actividad sigue abierta mientras dure el contrato, también en la
+        etapa 10.
       </Ayuda>
 
       {/* Qué falta y en qué paso se resuelve, en vez de un botón apagado. */}

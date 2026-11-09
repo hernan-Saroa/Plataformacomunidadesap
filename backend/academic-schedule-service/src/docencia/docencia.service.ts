@@ -106,7 +106,28 @@ export class DocenciaService {
           AND ${sqlPeriodoNoCerrado()}`,
       [idDocente, excluirGrupo ?? null, incluirFranja ?? null],
     );
-    if (!grupos.length) return [];
+    // Grupos VIRTUALES asignados que aún no tienen horario (063): el docente lo define en
+    // «Mi programación». Mientras tanto se le reservan las horas del plan, para que el tope
+    // y el acumulado no lo den por libre.
+    const porDefinir: any[] = await this.dataSource.query(
+      `SELECT g.id_grupo::text                                     AS "idGrupo",
+              a.codigo                                             AS "codigoAsignatura",
+              a.nombre                                             AS asignatura,
+              COALESCE(g.id_periodo_academico::text, g.id_periodo::text) AS "idPeriodo",
+              COALESCE(pa.codigo, pp.codigo)                       AS periodo,
+              g.tipo_oferta                                        AS "tipoOferta"
+         FROM "academic-schedule".asignacion_docente ad
+         JOIN "academic-schedule".grupo g          ON g.id_grupo = ad.id_grupo
+         JOIN academic_work_plan.asignatura a      ON a.id = g.id_asignatura
+         LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
+         LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
+        WHERE ad.id_docente = $1 AND g.modalidad = 'virtual'
+          AND NOT EXISTS (SELECT 1 FROM "academic-schedule".franja_horaria f WHERE f.id_grupo = g.id_grupo)
+          AND ($2::uuid IS NULL OR g.id_grupo <> $2::uuid)
+          AND ${sqlPeriodoNoCerrado()}`,
+      [idDocente, excluirGrupo ?? null],
+    );
+    if (!grupos.length && !porDefinir.length) return [];
 
     const franjas = await this.franjasConSesiones(grupos.map((g) => g.idGrupo));
     // Un cálculo del contrato por asignatura: varias franjas o grupos no lo repiten.
@@ -120,6 +141,17 @@ export class DocenciaService {
       const delGrupo = franjas.filter((f) => f.idGrupo === g.idGrupo)
         .map((f) => (incluirFranja && f.idFranja === incluirFranja ? { ...f, idDocente } : f));
       resultado.push({ ...g, ...this.horasEnGrupo(delGrupo, idDocente, calculos.get(g.codigoAsignatura)!) });
+    }
+    for (const g of porDefinir) {
+      if (!calculos.has(g.codigoAsignatura)) {
+        calculos.set(g.codigoAsignatura, await this.contrato.calcularImpacto(g.codigoAsignatura, vinculacion, token));
+      }
+      const horasPlan = redondear(Number(calculos.get(g.codigoAsignatura)!.horasImpacto ?? 0));
+      resultado.push({
+        ...g, horas: horasPlan, horasGrupo: horasPlan, fraccion: 1, horasPlan, base: 'plan',
+        descontadas: { festivos: 0, recesos: 0 },
+        avisos: ['Grupo virtual sin horario: se reservan las horas del plan hasta que el docente lo defina.'],
+      });
     }
     return resultado;
   }

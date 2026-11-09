@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { fijarPlazoEnDias } from '../contratos/plazo-pactado';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import {
@@ -280,6 +281,7 @@ export class ActaInicioService {
       if (contrato.estado !== 'EJECUCION') {
         contrato.estado = 'EJECUCION';
         contrato.ejecucionDesde = dto.fechaInicio;
+        fijarPlazoEnDias(contrato, dto.fechaInicio);
         await em.save(contrato);
       }
 
@@ -413,6 +415,7 @@ export class ActaInicioService {
 
       contrato.estado = 'EJECUCION';
       contrato.ejecucionDesde = dto.fechaSuscripcion;
+      fijarPlazoEnDias(contrato, dto.fechaSuscripcion);
       await em.save(contrato);
 
       await this.cierre.resolverCierre(

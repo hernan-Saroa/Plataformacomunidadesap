@@ -58,6 +58,8 @@ interface Props {
   fechaInicioGrupo?: string | null;
   fechaFinGrupo?: string | null;
   onOfertaActualizada?: (grupo: Grupo) => void;
+  /** Virtual (063): sesiones solo mediadas por tecnología y horario opcional. */
+  modalidad?: 'presencial' | 'virtual';
 }
 
 /** El modo de consulta no monta los efectos ni los controles de escritura del grupo. */
@@ -105,8 +107,9 @@ function CalendarioConsulta({ calendario: c }: { calendario: CalendarioDocente }
 }
 
 function CalendarioGrupoEditable({
-  idGrupo, numeroGrupo, nombreAsignatura, onOfertaActualizada,
+  idGrupo, numeroGrupo, nombreAsignatura, onOfertaActualizada, modalidad = 'presencial',
 }: Props) {
+  const virtual = modalidad === 'virtual';
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -202,7 +205,7 @@ function CalendarioGrupoEditable({
       diaSemana: dia,
       horaInicio: fmtHora(Math.min(ini, HORA_HASTA * 60 - 60)),
       horaFin: fmtHora(Math.min(Math.max(fin, ini + 60), HORA_HASTA * 60)),
-      tipoSesion: 'presencial',
+      tipoSesion: virtual ? 'mediada_tecnologia' : 'presencial',
       aulaCodigo: '',
     });
     setError('');
@@ -310,6 +313,13 @@ function CalendarioGrupoEditable({
           </p>
         </div>
       </div>
+
+      {virtual && (
+        <p role="note" className="mx-4 mt-3 text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+          Grupo virtual: sus sesiones son mediadas por tecnología y sin aula. El horario es opcional: si no lo define,
+          el docente asignado lo define en «Mi programación». El ciclo de clases sí se necesita para calcular las horas.
+        </p>
+      )}
 
       {/* Periodo del ciclo de clases, propio de este grupo */}
       <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-end gap-3 flex-wrap">
@@ -492,7 +502,7 @@ function CalendarioGrupoEditable({
               <span className="text-[0.62rem] font-bold text-slate-500 uppercase flex items-center gap-1">
                 <Monitor className="w-3 h-3" /> Tipo de sesión
               </span>
-              <select value={nueva.tipoSesion}
+              <select value={nueva.tipoSesion} disabled={virtual}
                 onChange={(e) => setNueva({ ...nueva, tipoSesion: e.target.value as TipoSesion })}
                 className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20">
                 <option value="presencial">Presencial</option>

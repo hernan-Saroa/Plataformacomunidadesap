@@ -10,6 +10,7 @@ import {
   EvidenciaFirmaOtp,
   ParteFirmante,
   TipoPersonaContratista,
+  UnidadPlazo,
 } from '../../types';
 import {
   Aviso,
@@ -60,7 +61,11 @@ const VACIO = {
   numero: '',
   objeto: '',
   valor: '',
-  plazoDias: '',
+  /** Sesión de QA del 04/11: un número con su unidad, o una fecha cierta. */
+  plazoForma: 'UNIDAD' as 'UNIDAD' | 'FECHA',
+  plazoCantidad: '',
+  plazoUnidad: 'DIAS' as UnidadPlazo,
+  plazoFechaFin: '',
   contratistaDocumento: '',
   contratistaNombre: '',
   contratistaTipo: 'NATURAL' as TipoPersonaContratista,
@@ -130,7 +135,10 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
       contratistaDocumento: datos.contratistaDocumento.trim(),
       contratistaNombre: datos.contratistaNombre.trim(),
       contratistaTipo: datos.contratistaTipo,
-      ...(datos.plazoDias ? { plazoDias: Number(datos.plazoDias) } : {}),
+      ...(datos.plazoForma === 'UNIDAD' && datos.plazoCantidad
+        ? { plazoUnidad: datos.plazoUnidad, plazoCantidad: Number(datos.plazoCantidad) }
+        : {}),
+      ...(datos.plazoForma === 'FECHA' && datos.plazoFechaFin ? { plazoFechaFin: datos.plazoFechaFin } : {}),
     };
 
     setGuardando(true);
@@ -281,8 +289,12 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
     faltantes.push('describe el objeto del contrato con al menos 10 caracteres');
   }
   if (!(Number(datos.valor) > 0)) faltantes.push('registra un valor mayor que cero');
-  if (datos.plazoDias && !(Number(datos.plazoDias) > 0)) {
-    faltantes.push('el plazo debe ser mayor que cero');
+  if (
+    datos.plazoForma === 'UNIDAD' &&
+    datos.plazoCantidad &&
+    !(Number.isInteger(Number(datos.plazoCantidad)) && Number(datos.plazoCantidad) > 0)
+  ) {
+    faltantes.push('el plazo debe ser un número entero mayor que cero');
   }
   if (!datos.contratistaDocumento.trim()) faltantes.push('escribe el documento del contratista');
   if (!datos.contratistaNombre.trim()) faltantes.push('escribe el nombre del contratista');
@@ -356,7 +368,11 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
                 <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
                   {contrato.contratista.nombre} ({contrato.contratista.documento}) ·{' '}
                   {pesos.format(contrato.valor)}
-                  {contrato.plazoDias ? ` · ${contrato.plazoDias} días` : ''}
+                  {contrato.plazoTexto
+                    ? ` · ${contrato.plazoTexto}`
+                    : contrato.plazoDias
+                      ? ` · ${contrato.plazoDias} días`
+                      : ''}
                 </p>
                 <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
                   {contrato.objeto}
@@ -701,21 +717,83 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             </div>
             <div>
               <label
-                htmlFor="contrato-plazo"
+                htmlFor="contrato-plazo-forma"
                 className="block text-xs font-bold text-gray-600 mb-1.5"
               >
-                Plazo en días
+                Plazo
               </label>
-              <input
-                id="contrato-plazo"
-                type="number"
-                min={1}
-                value={datos.plazoDias}
-                onChange={(e) => cambiar('plazoDias', e.target.value)}
+              <select
+                id="contrato-plazo-forma"
+                value={datos.plazoForma}
+                onChange={(e) => cambiar('plazoForma', e.target.value)}
                 className={campo}
-              />
+              >
+                <option value="UNIDAD">Número y unidad de tiempo</option>
+                <option value="FECHA">Hasta una fecha cierta</option>
+              </select>
             </div>
           </div>
+
+          {/* Sesión de QA del 04/11 (EFDS-1162): la minuta dice «seis meses» o
+              «hasta el 31 de diciembre», no siempre un número de días. */}
+          {datos.plazoForma === 'UNIDAD' ? (
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label
+                  htmlFor="contrato-plazo"
+                  className="block text-xs font-bold text-gray-600 mb-1.5"
+                >
+                  Duración
+                </label>
+                <input
+                  id="contrato-plazo"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={datos.plazoCantidad}
+                  onChange={(e) => cambiar('plazoCantidad', e.target.value)}
+                  className={campo}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="contrato-plazo-unidad"
+                  className="block text-xs font-bold text-gray-600 mb-1.5"
+                >
+                  Unidad
+                </label>
+                <select
+                  id="contrato-plazo-unidad"
+                  value={datos.plazoUnidad}
+                  onChange={(e) => cambiar('plazoUnidad', e.target.value)}
+                  className={campo}
+                >
+                  <option value="DIAS">Días</option>
+                  <option value="MESES">Meses</option>
+                  <option value="ANIOS">Años</option>
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label
+                htmlFor="contrato-plazo-fecha"
+                className="block text-xs font-bold text-gray-600 mb-1.5"
+              >
+                Vence el
+              </label>
+              <input
+                id="contrato-plazo-fecha"
+                type="date"
+                value={datos.plazoFechaFin}
+                onChange={(e) => cambiar('plazoFechaFin', e.target.value)}
+                className={campo}
+              />
+              <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                Por ejemplo, «hasta el 31 de diciembre». Desde el acta de inicio se cuenta en días.
+              </p>
+            </div>
+          )}
 
           <div>
             <label

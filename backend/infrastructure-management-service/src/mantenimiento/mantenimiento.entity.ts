@@ -24,8 +24,17 @@ export class SolicitudMantenimiento {
   @Column({ type: 'uuid', nullable: true, name: 'id_espacio' })
   idEspacio: string;
 
-  @Column({ type: 'uuid', name: 'id_sede' })
-  idSede: string;
+  @Column({ type: 'uuid', nullable: true, name: 'id_sede' })
+  idSede?: string | null;
+
+  @Column({ type: 'bigint', nullable: true, name: 'id_direccion_territorial' })
+  idDireccionTerritorial?: number | string | null;
+
+  @Column({ type: 'bigint', nullable: true, name: 'id_cetap' })
+  idCetap?: number | string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, name: 'ubicacion_adicional_texto' })
+  ubicacionAdicionalTexto?: string | null;
 
   @Column({ type: 'varchar', length: 50, name: 'tipo_mantenimiento' })
   tipoMantenimiento: string;

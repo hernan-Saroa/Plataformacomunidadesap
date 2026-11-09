@@ -31,6 +31,7 @@ import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
 import { RiesgoHistorial } from './entities/riesgo-historial.entity';
+import { RiesgoControlSeguimiento } from './entities/riesgo-control-seguimiento.entity';
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 import { CorreoJuridico } from './entities/correo-juridico.entity';
@@ -98,6 +99,7 @@ import { RequerimientosOCService } from './services/requerimientos-oc.service';
 import { TareasNotasService } from './services/tareas-notas.service';
 import { ComentariosDocumentosOCService } from './services/comentarios-documentos-oc.service';
 import { RiesgosService } from './services/riesgos.service';
+import { RiesgoSeguimientosService } from './services/riesgo-seguimientos.service';
 import { DashboardService } from './services/dashboard.service';
 import { DocumentosConsultaService } from './services/documentos-consulta.service';
 import { ComentariosConsultaService } from './services/comentarios-consulta.service';
@@ -167,6 +169,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Riesgos
       Riesgo,
       RiesgoHistorial,
+      RiesgoControlSeguimiento,
       // Documentos Consultas
       DocumentoConsulta,
       ComentarioConsulta,
@@ -264,6 +267,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     TareasNotasService,
     ComentariosDocumentosOCService,
     RiesgosService,
+    RiesgoSeguimientosService,
     DocumentosConsultaService,
     ComentariosConsultaService,
     // Microsoft Graph / Correos
