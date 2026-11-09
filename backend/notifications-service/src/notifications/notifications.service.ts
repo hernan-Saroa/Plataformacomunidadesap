@@ -1,14 +1,34 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { CompuertaService, Decision } from '../configuracion/compuerta.service';
+import { EmailsService } from '../emails/emails.service';
+
+/** Respuesta cuando la configuración de notificaciones no dejó pasar el aviso (EFDS-2406). */
+export interface NotificacionOmitida {
+  omitida: true;
+  motivo: string;
+  modulo: string;
+  tipo_notificacion: string;
+  /** Buzón al que se mandó en su lugar cuando el motivo es 'desviado'. */
+  desviado_a?: string;
+}
+
+export const esOmitida = (r: unknown): r is NotificacionOmitida =>
+  !!r && typeof r === 'object' && (r as NotificacionOmitida).omitida === true;
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     @InjectRepository(Notification)
     private readonly repo: Repository<Notification>,
+    private readonly compuerta: CompuertaService,
+    @Optional() private readonly correos?: EmailsService,
   ) {}
 
   async getUserNotifications(
@@ -71,8 +91,102 @@ export class NotificationsService {
     }
   }
 
-  async create(dto: CreateNotificationDto): Promise<Notification> {
-    const notification = this.repo.create({
+  /**
+   * Pasa el aviso por la configuración de notificaciones antes de guardarlo.
+   * Devuelve la notificación creada o `{ omitida: true, motivo }` si el módulo
+   * o el evento están apagados o el evento es solo de correo.
+   */
+  async create(dto: CreateNotificationDto): Promise<Notification | NotificacionOmitida> {
+    const decision = await this.evaluar(dto);
+    if (!decision.permitido) {
+      await this.desviar(dto, decision);
+      return this.omitida(dto, decision);
+    }
+    const guardada = await this.guardar(dto, decision);
+    await this.notificarAdicionales(dto, decision);
+    return guardada;
+  }
+
+  async createBulk(
+    dtos: CreateNotificationDto[],
+  ): Promise<{ success: boolean; created: number; omitidas: number; desviadas: number }> {
+    const permitidos: Array<{ dto: CreateNotificationDto; decision: Decision }> = [];
+    let omitidas = 0;
+    let desviadas = 0;
+    for (const dto of dtos) {
+      const decision = await this.evaluar(dto);
+      if (decision.permitido) permitidos.push({ dto, decision });
+      else {
+        omitidas++;
+        if (await this.desviar(dto, decision)) desviadas++;
+      }
+    }
+    const notifications = permitidos.map(({ dto, decision }) => this.armar(dto, decision));
+    const saved = notifications.length ? await this.repo.save(notifications) : [];
+    // Los adicionales se resuelven una vez por evento: un envío masivo a N
+    // aprobadores no debe copiar N veces al mismo rol.
+    const porEvento = new Map<string, { dto: CreateNotificationDto; decision: Decision }>();
+    for (const item of permitidos) porEvento.set(item.decision.clave, item);
+    for (const { dto, decision } of porEvento.values()) await this.notificarAdicionales(dto, decision);
+    // `omitidas` incluye las desviadas: ninguna se guardó en la campana.
+    return { success: true, created: saved.length, omitidas, desviadas };
+  }
+
+  private evaluar(dto: CreateNotificationDto): Promise<Decision> {
+    return this.compuerta.evaluar({
+      clave: dto.tipo_notificacion,
+      canal: 'plataforma',
+      modulo: dto.modulo,
+      categoria: dto.categoria,
+      prioridad: dto.prioridad,
+      destinatario: dto.id_usuario_destinatario,
+      titulo: dto.titulo,
+    });
+  }
+
+  private omitida(dto: CreateNotificationDto, decision: Decision): NotificacionOmitida {
+    if (decision.desvio) {
+      return {
+        omitida: true,
+        motivo: 'desviado',
+        modulo: decision.modulo,
+        tipo_notificacion: dto.tipo_notificacion,
+        desviado_a: decision.desvio,
+      };
+    }
+    return {
+      omitida: true,
+      motivo: decision.motivo || 'omitida',
+      modulo: decision.modulo,
+      tipo_notificacion: dto.tipo_notificacion,
+    };
+  }
+
+  /**
+   * La campana apagada no se crea, pero si el módulo tiene buzón de desvío lo
+   * que habría salido llega allí por correo. Un fallo del correo se registra y
+   * no tumba al emisor: la campana ya se omitió de todos modos.
+   */
+  private async desviar(dto: CreateNotificationDto, decision: Decision): Promise<boolean> {
+    if (!decision.desvio || !this.correos) return false;
+    try {
+      const correo = await this.compuerta.resolverCorreoDeUsuario(dto.id_usuario_destinatario);
+      await this.correos.enviarDesviado({
+        decision,
+        destinatario: correo || dto.id_usuario_destinatario,
+        canal: 'campana',
+        asunto: dto.titulo,
+        texto: dto.mensaje,
+      });
+      return true;
+    } catch (error: any) {
+      this.logger.warn(`No se pudo mandar al buzón de desvío "${dto.tipo_notificacion}": ${error?.message || error}`);
+      return false;
+    }
+  }
+
+  private armar(dto: CreateNotificationDto, decision: Decision): Notification {
+    return this.repo.create({
       id_usuario_destinatario: dto.id_usuario_destinatario,
       tipo_notificacion: dto.tipo_notificacion,
       titulo: dto.titulo,
@@ -80,13 +194,17 @@ export class NotificationsService {
       descripcion_corta: dto.descripcion_corta,
       icono: dto.icono,
       color: dto.color,
-      prioridad: dto.prioridad ?? 'Media',
+      prioridad: decision.prioridad ?? dto.prioridad ?? 'Media',
       categoria: dto.categoria,
       tiene_accion: dto.tiene_accion ?? false,
       texto_boton_accion: dto.texto_boton_accion,
       url_accion: dto.url_accion,
       datos_adicionales: dto.datos_adicionales,
     });
+  }
+
+  private async guardar(dto: CreateNotificationDto, decision: Decision): Promise<Notification> {
+    const notification = this.armar(dto, decision);
     if (dto.clave_idempotencia) {
       notification.id_notificacion = dto.clave_idempotencia;
       await this.repo.createQueryBuilder().insert().into(Notification).values(notification)
@@ -99,26 +217,26 @@ export class NotificationsService {
     return this.repo.save(notification);
   }
 
-  async createBulk(dtos: CreateNotificationDto[]): Promise<{ success: boolean; created: number }> {
-    const notifications = dtos.map((dto) =>
-      this.repo.create({
-        id_usuario_destinatario: dto.id_usuario_destinatario,
-        tipo_notificacion: dto.tipo_notificacion,
-        titulo: dto.titulo,
-        mensaje: dto.mensaje,
-        descripcion_corta: dto.descripcion_corta,
-        icono: dto.icono,
-        color: dto.color,
-        prioridad: dto.prioridad ?? 'Media',
-        categoria: dto.categoria,
-        tiene_accion: dto.tiene_accion ?? false,
-        texto_boton_accion: dto.texto_boton_accion,
-        url_accion: dto.url_accion,
-        datos_adicionales: dto.datos_adicionales,
-      }),
-    );
-    const saved = await this.repo.save(notifications);
-    return { success: true, created: saved.length };
+  /**
+   * Copia el aviso a los destinatarios que el administrador sumó al evento
+   * (función 4). El id se deriva del contenido y del día para que el mismo
+   * aviso repetido en el día no se duplique en la campana de quien lo recibe
+   * por configuración.
+   */
+  private async notificarAdicionales(dto: CreateNotificationDto, decision: Decision): Promise<void> {
+    const adicionales = await this.compuerta.destinatariosAdicionales(decision.evento);
+    if (!adicionales.length) return;
+    const dia = new Date().toISOString().slice(0, 10);
+    const copias = adicionales
+      .filter((a) => a.id_user && a.id_user !== dto.id_usuario_destinatario)
+      .map((a) => {
+        const copia = this.armar({ ...dto, id_usuario_destinatario: a.id_user }, decision);
+        copia.id_notificacion = idDeterminista(`${decision.clave}|${dto.titulo}|${dto.mensaje}|${a.id_user}|${dia}`);
+        return copia;
+      });
+    if (!copias.length) return;
+    await this.repo.createQueryBuilder().insert().into(Notification).values(copias)
+      .onConflict('("id_notificacion") DO NOTHING').execute();
   }
 
   async markAsRead(id: string): Promise<{ success: boolean }> {
@@ -179,4 +297,10 @@ export class NotificationsService {
       throw error;
     }
   }
+}
+
+/** UUID (formato v4) derivado de un texto: el mismo texto da siempre el mismo id. */
+export function idDeterminista(texto: string): string {
+  const h = createHash('sha1').update(texto).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }

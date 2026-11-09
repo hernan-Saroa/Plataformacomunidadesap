@@ -683,6 +683,8 @@ export interface DocumentoDelPliegoDefinitivo {
 export interface EstadoSegundaSesion {
   aplica: boolean;
   estado: EstadoActividad;
+  /** Por cuantía no pasó por comité en la 3.7: tampoco hay segunda sesión (138). */
+  sinComite?: boolean;
   cdp: { cumplido: boolean; motivo: string | null };
   /** Cuándo se registró la publicación del proyecto de pliego (5.3). */
   publicadoEl: string | null;
@@ -745,6 +747,8 @@ export interface EstadoParticipacion {
   puedeTomar: boolean;
   /** Quien lo tomó asigna los puestos; el Director también. */
   puedeRepartir: boolean;
+  /** Quien lo lleva puede devolverle al área el estudio previo en revisión. */
+  puedeDevolver: boolean;
   contratacion: Participante | null;
   /**
    * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP se
@@ -858,9 +862,80 @@ export interface Adenda {
   /** Solo en las de cronograma publicadas: de qué fecha a qué fecha se movió. */
   vencimientoAnterior: string | null;
   vencimientoNuevo: string | null;
+  /** Hora del cierre de ofertas antes y después (HH:MM:SS); nulas si no movió un cierre. */
+  horaAnterior: string | null;
+  horaNueva: string | null;
+  /** Fechas del cronograma de la 5.2 que mueve (139); con la anterior, una vez publicada. */
+  cambiosCronograma?: CambioCronogramaAdenda[];
   motivoAnulacion: string | null;
   documento: ArchivoApertura | null;
   evidencia: ArchivoApertura | null;
+}
+
+/** Una fila del cronograma predeterminado de una modalidad (140). */
+export interface FilaPredeterminada {
+  id?: string;
+  /** Las del flujo; una propia va sin numeral, con nombre y etapa. */
+  numeral: string | null;
+  nombre: string | null;
+  etapa: number | null;
+  /** Días contados desde el día cero; nulo si solo importa el fin. */
+  diaInicio: number | null;
+  diaFin: number;
+  tipoDias: 'HABILES' | 'CALENDARIO';
+  diasAntes: number | null;
+  avisarA: DestinoCronograma[];
+  canal: CanalCronograma;
+  correos: string[];
+  nota: string | null;
+}
+
+/** El cronograma predeterminado de una modalidad, tal como se configura (140). */
+export interface CronogramaPredeterminado {
+  modalidad: string;
+  nombre: string;
+  actividades: { numeral: string; nombre: string; etapa: number; configuracion: FilaPredeterminada | null }[];
+  propias: FilaPredeterminada[];
+  actualizadoPor: string | null;
+}
+
+/** Cuántas actividades tiene configuradas cada modalidad (140). */
+export interface ResumenPredeterminado {
+  modalidad: string;
+  nombre: string;
+  actividades: number;
+  actualizadoAt: string | null;
+}
+
+/** Las fechas que propone el predeterminado para un proceso, con un día cero (140). */
+export interface PropuestaCronograma {
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  diaCero: string;
+  actividades: {
+    numeral: string | null;
+    nombre: string;
+    etapa: number;
+    fechaInicio: string | null;
+    fechaFin: string;
+    diasAntes: number | null;
+    avisarA: DestinoCronograma[];
+    canal: CanalCronograma;
+    correos: string[];
+    nota: string | null;
+  }[];
+}
+
+/** Una fecha del cronograma que mueve una adenda de cronograma (139). */
+export interface CambioCronogramaAdenda {
+  ambito: 'ETAPA' | 'ACTIVIDAD';
+  /** La etapa (5 a 10), el numeral o el id de la actividad propia. */
+  clave: string;
+  nombre?: string | null;
+  fechaInicio?: string | null;
+  fechaFin: string;
+  /** Lo que había antes; se llena al publicarla. */
+  antes?: { fechaInicio: string | null; fechaFin: string | null } | null;
 }
 
 /** Estado de las adendas del proceso. */
@@ -884,6 +959,8 @@ export interface EstadoAdendas {
   puedeGestionar: boolean;
   /** Vencimiento del plazo hoy; es lo que mueve una adenda de cronograma. */
   vencimientoVigente: string | null;
+  /** Hora del cierre de ofertas vigente (HH:MM:SS); nula si no hay cierre que mover. */
+  horaVigente: string | null;
   /** Qué prorroga una de cronograma: el cierre de ofertas o, sin apertura, las observaciones. */
   mueve: 'CIERRE_OFERTAS' | 'PLAZO_OBSERVACIONES';
   adendas: Adenda[];
@@ -1006,6 +1083,80 @@ export interface RecepcionOfertas {
   cerradaPor: string | null;
 }
 
+/** Cómo va una etapa del cronograma de la 5.2 (135). */
+export type EstadoEtapaCronograma = 'VENCIDO' | 'POR_VENCER' | 'VIGENTE' | 'CUMPLIDA' | 'SIN_FECHA';
+
+/** Una etapa macro del cronograma del proceso. */
+export interface EtapaCronograma {
+  etapa: number;
+  nombre: string;
+  fechaInicio: string | null;
+  /** Hasta cuándo debería estar cumplida; sin ella la etapa no alerta. */
+  fechaFin: string | null;
+  nota: string | null;
+  actualizadoPor: string | null;
+  actualizadoAt: string | null;
+  /** Cumplida se deriva: el proceso ya aprobó algo de una etapa posterior, o terminó. */
+  estado: EstadoEtapaCronograma;
+  diasRestantes: number | null;
+}
+
+/** Cronograma por etapas macro de la 5.2: opcional, con alertas de vencimiento. */
+export interface CronogramaPorEtapas {
+  /** Días antes del fin en que empieza a alertar (parámetro de alertas). */
+  anticipacion: number;
+  etapas: EtapaCronograma[];
+  /** El cronograma por actividad (138). */
+  actividades?: ActividadCronograma[];
+  /** Los cambios de fechas, del más reciente al primero (138). */
+  historial?: CambioCronograma[];
+}
+
+/** A quién se avisa del vencimiento de una actividad del cronograma (138). */
+export type DestinoCronograma = 'QUIEN_LA_HACE' | 'ABOGADO_ESTRUCTURADOR' | 'ABOGADO_REVISOR' | 'GESTOR_DE_ARCHIVO';
+export type CanalCronograma = 'CAMPANA' | 'CORREO' | 'AMBOS';
+
+/** Una actividad del cronograma con su alerta (138). */
+export interface ActividadCronograma {
+  /** Nulo en las propias del proceso (139), que se identifican por `id`. */
+  numeral: string | null;
+  /** Solo las propias; las del flujo van por su numeral. */
+  id: string | null;
+  /** Propia del proceso: el flujo no la tiene y se marca cumplida a mano (139). */
+  propia: boolean;
+  nombre: string;
+  etapa: number;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  /** Sin él rige la anticipación general del cronograma. */
+  diasAntes: number | null;
+  avisarA: DestinoCronograma[];
+  canal: CanalCronograma;
+  correos: string[];
+  nota: string | null;
+  actualizadoPor: string | null;
+  actualizadoAt: string | null;
+  /** Solo en las propias, que se marcan cumplidas a mano (139). */
+  cumplidaAt?: string | null;
+  cumplidaPor?: string | null;
+  estado: EtapaCronograma['estado'];
+  diasRestantes: number | null;
+}
+
+/** Un cambio de fechas del cronograma, con la adenda que lo originó (138). */
+export interface CambioCronograma {
+  ambito: 'ETAPA' | 'ACTIVIDAD';
+  clave: string;
+  /** «Etapa 6 · …», «6.1 · …» o el nombre de la propia (139). */
+  nombre?: string | null;
+  antes: { fechaInicio: string | null; fechaFin: string | null };
+  despues: { fechaInicio: string | null; fechaFin: string | null };
+  adenda: { id: string; numero: string | null } | null;
+  motivo: string | null;
+  usuario: string | null;
+  fecha: string;
+}
+
 /** Estado de la recepción de ofertas del proceso. */
 export interface EstadoOfertas {
   /** False donde la modalidad no adelanta recepción de ofertas. */
@@ -1022,12 +1173,28 @@ export interface EstadoOfertas {
   plazoConfirmado: boolean;
   recepcion: RecepcionOfertas | null;
   puedeRegistrar: boolean;
+  /** Fijar el vencimiento sí; corregir uno ya fijado, solo el super administrador. */
+  puedeCorregirVencimiento: boolean;
   puedeCerrar: boolean;
   /** Donde es obligatoria, sin la audiencia de riesgos no se cierra (EFDS-1153, 112). */
   audienciaRiesgos: { cumplido: boolean; motivo: string | null };
   /** Lo que vuelve pública la lista es el cierre. */
   listaPublicada: boolean;
+  /** Adendas de cronograma publicadas que extendieron el cierre (EFDS-1155). */
+  prorrogas: ProrrogaDelCierre[];
   oferentes: Oferente[];
+}
+
+/** Una extensión del cierre de ofertas por adenda de cronograma. */
+export interface ProrrogaDelCierre {
+  adendaId: string;
+  numero: number;
+  fechaPublicacion: string | null;
+  publicadaPor: string | null;
+  vencimientoAnterior: string | null;
+  horaAnterior: string | null;
+  vencimientoNuevo: string;
+  horaNueva: string | null;
 }
 
 // -------------------- etapa 6 · comité evaluador (6.2, EFDS-1156) -----------
@@ -1697,6 +1864,10 @@ export interface InformeEvaluacion {
   generadoAt: string;
   trasladadoPor: string | null;
   trasladadoAt: string | null;
+  /** Registro informativo de la 6.4 (138). */
+  medioPublicacion?: string | null;
+  enlaceProceso?: string | null;
+  observacionesTraslado?: string | null;
   plazoDiasHabiles: number | null;
   venceEl: string | null;
   diasRestantes: number | null;
@@ -1872,6 +2043,10 @@ export interface InformeDefinitivo {
   evidencia: { id: string; nombre: string; archivoUrl: string } | null;
   /** Enlace de la publicación en SECOP (119). */
   enlacePublicacion?: string | null;
+  /** Documentos adicionales del informe (138). */
+  anexos?: { id: string; nombre: string; archivoUrl: string }[];
+  /** Por qué el definitivo cambia frente al preliminar (138). */
+  justificacionCambios?: string | null;
   /** Cada versión generada, en orden; la última es la vigente (119). */
   versiones?: VersionInformeDefinitivo[];
   generadoPor: string | null;
@@ -2071,6 +2246,9 @@ export interface FormatoContrato {
   archivoUrl: string | null;
 }
 
+/** En qué se pacta el plazo del contrato (138). */
+export type UnidadPlazo = 'DIAS' | 'MESES' | 'ANIOS';
+
 export interface ContratoDelProceso {
   id: string;
   tipologia: string;
@@ -2079,6 +2257,12 @@ export interface ContratoDelProceso {
   objeto: string;
   valor: number;
   plazoDias: number | null;
+  /** El plazo como se pactó (138): número con su unidad o fecha cierta. */
+  plazoUnidad?: UnidadPlazo | null;
+  plazoCantidad?: number | null;
+  plazoFechaFin?: string | null;
+  /** «6 meses», «hasta el 2026-12-31». */
+  plazoTexto?: string | null;
   contratista: {
     documento: string;
     nombre: string;
@@ -2200,6 +2384,9 @@ export interface DatosContrato {
   objeto: string;
   valor: number;
   plazoDias?: number;
+  plazoUnidad?: UnidadPlazo;
+  plazoCantidad?: number;
+  plazoFechaFin?: string;
   contratistaDocumento: string;
   contratistaNombre: string;
   contratistaTipo: TipoPersonaContratista;
@@ -2229,11 +2416,9 @@ export interface GuardarTipologia {
 
 // ---------------------- etapa 8 · supervision del contrato (8.2) -----------
 
+/** El supervisor como lo dice el acto: no entra a la aplicación (136). */
 export interface SupervisorContrato {
   id: string;
-  personaId: string | null;
-  /** La cuenta designada (121): la que ocupa el puesto e inicia sesión. */
-  usuarioId: string | null;
   nombre: string;
   cargo: string | null;
   email: string | null;
@@ -2245,12 +2430,16 @@ export interface SupervisorContrato {
   /** Lo que se le mandó en el correo además del acto (124). */
   anexos?: { nombre: string; url: string | null }[];
   mensajeCorreo?: string | null;
+  /** El soporte de que se le notificó por fuera, si el correo no salió (138). */
+  evidenciaAviso?: { nombre: string; url: string } | null;
 }
 
 /** Si salió el correo de la designación (124) y, si no, por qué. */
 export interface ResultadoCorreoSupervisor {
   enviado: boolean;
   para: string | null;
+  /** A quién más le salió copia: abogado revisor y correo general de Contratación. */
+  copias?: string[];
   adjuntos: string[];
   /** Los que no cupieron en el correo: quedan en el expediente. */
   quedanFuera: string[];
@@ -2275,11 +2464,6 @@ export interface EstadoSupervision {
   admiteSupervisor: boolean;
   motivoNoAdmite: string | null;
   contrato?: { numero: string; objeto: string };
-  /**
-   * El puesto que llena la designación: el que aprueba la 9.4 en el flujo
-   * (121). Nulo si la 9.4 no nombra puesto.
-   */
-  puesto?: { id: string; nombre: string } | null;
   puedeDesignar?: boolean;
   supervisor: SupervisorContrato | null;
   /** El aviso que pide la matriz sigue pendiente. */
@@ -2291,9 +2475,11 @@ export interface EstadoSupervision {
 
 /** Lo que la pantalla envia al designar. */
 export interface DatosSupervisor {
-  /** La cuenta, entre los candidatos del puesto; nombre y correo salen de ella. */
-  usuarioId: string;
+  /** Como figura en el acto: el supervisor no tiene cuenta (136). */
+  nombre: string;
   cargo?: string;
+  /** A donde le llega el acto (124). */
+  email?: string;
   fechaDesignacion: string;
   /** Lo que se le escribe en el correo de la designación (124). */
   mensaje?: string;
@@ -2533,7 +2719,9 @@ export type TipoSoportePago =
   | 'SEGURIDAD_SOCIAL'
   | 'RUT'
   | 'CERTIFICACION_BANCARIA'
-  | 'OTRO';
+  | 'OTRO'
+  /** El aval firmado del supervisor (136): entra al avalar, no como soporte suelto. */
+  | 'AVAL_SUPERVISOR';
 
 export interface SoportePago {
   id: string;
@@ -2576,12 +2764,15 @@ export interface EstadoPagos {
     valor: number;
     fechaInicio: string | null;
   } | null;
-  supervisor: { nombre: string; cargo: string | null; personaId: string } | null;
+  supervisor: { nombre: string; cargo: string | null; email: string | null } | null;
   puedeRadicar: boolean;
-  /** Si quien consulta es el supervisor de este contrato y puede avalar. */
-  esSupervisor: boolean;
-  /** Si puede registrar el trámite: el gestor en cualquiera, el supervisor en el suyo (133). */
-  puedeTramitar?: boolean;
+  /**
+   * Si quien consulta puede cargar el aval del supervisor (aprobar la 9.4). El
+   * supervisor no entra a la aplicación (136): su aval firmado lo carga otro.
+   */
+  puedeAvalar: boolean;
+  /** Si puede registrar el trámite del pago (decidir la 9.4). */
+  puedeTramitar: boolean;
   /** Mientras sea falso, los soportes se cargan a mano. */
   integracionClick: boolean;
   pagos: PagoContrato[];
@@ -2646,9 +2837,9 @@ export interface EstadoInformeFinal {
   admiteInforme: boolean;
   motivoNoAdmite: string | null;
   contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
-  supervisor: { nombre: string; cargo: string | null; personaId: string } | null;
-  /** Si quien consulta es el supervisor y puede firmarlo. */
-  esSupervisor: boolean;
+  supervisor: { nombre: string; cargo: string | null; email: string | null } | null;
+  /** Si quien consulta puede cargar el informe firmado del supervisor (editar la 10.1, 136). */
+  puedeRegistrar: boolean;
   puedeElaborar: boolean;
   /** El balance de hoy, para ver contra que se va a firmar. */
   balanceActual: BalanceEjecucion | null;
@@ -3032,7 +3223,9 @@ export type TipoModificacion =
   | 'ACLARATORIO'
   | 'SUSPENSION'
   | 'REANUDACION'
-  | 'TERMINACION_ANTICIPADA';
+  | 'TERMINACION_ANTICIPADA'
+  /** Con descripción libre: por ejemplo, modificar los anexos técnicos (138). */
+  | 'OTRO';
 
 export type EstadoModificacion = 'EN_TRAMITE' | 'APROBADA' | 'RECHAZADA' | 'REVOCADA';
 
@@ -3060,6 +3253,8 @@ export interface ModificacionRegistrada {
   numero: string | null;
   fechaSuscripcion: string | null;
   justificacion: string;
+  /** Qué se modifica, en el tipo «Otro» (138). */
+  descripcion?: string | null;
   /** El objeto sobre el que se tramito, congelado al solicitar (RF-MOD-04). */
   objetoContrato: string | null;
   valorAdicionado: number | null;
@@ -3133,6 +3328,8 @@ export interface EstadoModificaciones {
   } | null;
   tope: { porcentaje: number; fundamento: string | null; confirmado: boolean };
   margen: MargenDeAdicion | null;
+  /** El salario mínimo del año, para decir el tope en SMMLV (138). */
+  smmlv?: { anio: number; valor: number; confirmado: boolean } | null;
   tipos: TipoDisponible[];
   /** La suspension sin levantar, que es la que la reanudacion nombra. */
   suspension: {
@@ -3170,6 +3367,12 @@ export interface DatosCesion {
 
 /** Lo que la pantalla envia al solicitar un aclaratorio (EFDS-1178). */
 export interface DatosAclaratorio {
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al solicitar otra modificación (138). */
+export interface DatosOtraModificacion {
+  descripcion: string;
   justificacion: string;
 }
 
@@ -3373,7 +3576,11 @@ export interface AlertaVencimiento {
     | 'PLAZO_ACTIVIDAD'
     /** Una sesión del comité (3.7 o 5.6.1) que sigue sin acta (113). */
     | 'ACTA_COMITE_PENDIENTE'
-    | 'MEMORANDO_COMITE_PENDIENTE';
+    | 'MEMORANDO_COMITE_PENDIENTE'
+    /** Una etapa del cronograma de la 5.2 por vencer o vencida sin cumplirse (135). */
+    | 'CRONOGRAMA_ETAPA'
+    /** Una actividad del cronograma por vencer o vencida (138). */
+    | 'CRONOGRAMA_ACTIVIDAD';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
@@ -3700,12 +3907,35 @@ export interface RolConAlcance {
 // ------------------------------------------ los plazos de las alertas (EFDS-1183)
 
 /** Un plazo de las alertas, con los límites que admite. */
+/** Un buzón de la entidad que recibe copia de los correos del módulo (138). */
+export interface CorreoInstitucional {
+  clave: string;
+  correo: string | null;
+  descripcion: string;
+}
+
 export interface ParametroAlerta {
   clave: string;
   valor: number;
   minimo: number;
   maximo: number;
   descripcion: string;
+}
+
+/** Una modalidad con umbral propio para ir al Comité de Contratación (071). */
+export interface UmbralComitePorModalidad {
+  modalidad: string;
+  modalidadNombre: string;
+  valor: number;
+  unidad: 'SMMLV' | 'PESOS';
+  fundamento: string | null;
+  confirmado: boolean;
+}
+
+/** Lo que Configuración necesita para explicar dónde no rige la cuantía general. */
+export interface UmbralesComite {
+  smmlv: { anio: number; valor: number; confirmado: boolean } | null;
+  umbrales: UmbralComitePorModalidad[];
 }
 
 // ---------------------------------------------- avisos a la campana (EFDS-1183)
@@ -4229,8 +4459,6 @@ export interface PuestoEnProceso {
   } | null;
   /** Lo que le impide actuar a quien lo ocupa: perdió un permiso. */
   problema: string | null;
-  /** Dónde se ocupa si no es en la 3.3: el del supervisor, con el acto de la 8.2 (121). */
-  seOcupaEn?: string | null;
 }
 
 export interface PuestosDelProceso {
@@ -4349,6 +4577,27 @@ export interface FlujoDelProceso {
   activa: number | null;
   desactualizado: boolean;
   puedeActualizar: boolean;
+}
+
+/** Lo que dejó activar una versión del flujo: los procesos vivos pasan a ella. */
+export interface ResultadoActivacionFlujo {
+  activada: true;
+  version: number;
+  procesosActualizados: number;
+}
+
+/** Lo que dejó cambiar si una actividad aplica a una modalidad. */
+export interface CambioDeAplicabilidad {
+  numeral: string;
+  modalidad: string;
+  aplica: boolean;
+  motivo?: string | null;
+  procesos: {
+    /** Procesos vivos de la modalidad cuyo riel cambió. */
+    actualizados: number;
+    /** Radicados que ya iban más adelante: la actividad no se les reabre. */
+    yaLaPasaron: string[];
+  };
 }
 
 /** Lo que la configuración deja sin salida. */

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { MODULO_NOTIFICACIONES } from './notification-client.service';
 import { firstValueFrom } from 'rxjs';
 import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 import { buildEmailButton } from '../common/email-button.util';
@@ -80,6 +81,8 @@ export class DisciplinaryEmailService {
           to,
           subject: `[REASIGNACIÓN] Nuevo proceso asignado: ${radicadoProceso}`,
           html,
+          modulo: MODULO_NOTIFICACIONES,
+          evento: 'PROCESO_REASIGNADO',
         }),
       );
       this.logger.log(`Email de reasignación enviado exitosamente a ${to}`);
@@ -160,6 +163,8 @@ export class DisciplinaryEmailService {
           to,
           subject: `[REASIGNACIÓN] Proceso reasignado: ${radicadoProceso}`,
           html,
+          modulo: MODULO_NOTIFICACIONES,
+          evento: 'PROCESO_REASIGNADO_ANTERIOR',
         }),
       );
       this.logger.log(`Email de reasignación (profesional anterior) enviado exitosamente a ${to}`);
@@ -171,13 +176,15 @@ export class DisciplinaryEmailService {
   }
 
   /**
-   * Envía un correo genérico con template HTML
+   * Envía un correo genérico con template HTML. `evento` es la clave con la que
+   * la configuración de notificaciones (EFDS-2406) decide si el correo sale.
    */
   async sendEmail(
     to: string,
     subject: string,
     html: string,
     text?: string,
+    evento?: string,
   ): Promise<boolean> {
     const notificationsUrl =
       process.env.NOTIFICATION_SERVICE_URL ||
@@ -190,6 +197,7 @@ export class DisciplinaryEmailService {
           subject,
           html,
           ...(text ? { text } : {}),
+          ...(evento ? { modulo: MODULO_NOTIFICACIONES, evento } : {}),
         }),
       );
       this.logger.log(`Email enviado exitosamente a ${to}`);
@@ -294,6 +302,7 @@ export class DisciplinaryEmailService {
     badge: string = 'Aviso',
     badgeBg: string = '#003DA5',
     accionesRequeridas?: string,
+    evento?: string,
   ): Promise<void> {
     const html = this.buildEmailTemplateESAP(
       titulo,
@@ -307,7 +316,7 @@ export class DisciplinaryEmailService {
       destinatarios
         .filter((d) => d.email && d.email.trim().length > 0)
         .map((d) =>
-          this.sendEmail(d.email.trim(), asunto, html, mensajePrincipal).catch((err) =>
+          this.sendEmail(d.email.trim(), asunto, html, mensajePrincipal, evento).catch((err) =>
             this.logger.error(`Error enviando correo bulk a ${d.email}: ${err.message}`),
           ),
         ),

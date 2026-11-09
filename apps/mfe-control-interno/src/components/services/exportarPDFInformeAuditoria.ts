@@ -764,8 +764,7 @@ export async function exportarPDFInformeAuditoria(
   y = filaTabla(doc, margin, y, tableW, 'EQUIPO AUDITOR:', equipoTxt.toUpperCase(), TABLA_OPTS);
 
   // Fila: OBJETIVO
-  const obj = auditoria.objetivo ||
-    'Evaluar el cumplimiento de las normas, directrices, procedimientos y regulaciones aplicables, mediante la auditoría interna como actividad independiente y objetiva, identificando riesgos y evaluando controles.';
+  const obj = auditoria.objetivo || 'No registrado';
   y = filaTabla(doc, margin, y, tableW, 'OBJETIVO(S):', obj, TABLA_OPTS);
 
   // Fila: ALCANCE

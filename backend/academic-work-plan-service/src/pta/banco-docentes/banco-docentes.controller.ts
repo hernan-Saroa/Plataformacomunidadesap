@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
@@ -19,6 +19,7 @@ import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
+import { standaloneSupportCategory } from './rund-evidence-data';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 import {
@@ -74,6 +75,8 @@ export class BancoDocentesController {
   private supportCategory(bloque: string, tipoSoporte: string): string {
     const block = String(bloque || '').toUpperCase();
     const type = String(tipoSoporte || '').toLowerCase();
+    const codificada = standaloneSupportCategory(type);
+    if (codificada) return codificada;
     if (block === 'IDENTIDAD') return 'IDENTIDAD';
     if (block === 'FORMACION') return 'TITULOS';
     if (type.includes('contrato')) return 'CONTRATOS';
@@ -856,6 +859,22 @@ export class BancoDocentesController {
       rundSensitiveAccess: { roles: actor.roles, fullAccess: actor.fullAccess, endpoint: 'EDITAR_PERFIL_RUND' },
     });
     return { success: true, data: protectRundSensitiveData(result, actor.fullAccess) };
+  }
+
+  /** RUND-013 — Edición de un dato de contacto desde el cabezote (sin soporte; queda auditada). */
+  @Patch(':id/contacto')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.MANAGE)
+  async updateContacto(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const result = await this.service.updateContactoDocente(id, {
+      campo: body?.campo,
+      valor: body?.valor,
+      periodoCarga: body?.periodoCarga || body?.periodo_carga,
+      actorId: actor.actorId,
+      ip: actor.ip,
+    });
+    return { success: true, data: result };
   }
 
   @Put(':id/estado')

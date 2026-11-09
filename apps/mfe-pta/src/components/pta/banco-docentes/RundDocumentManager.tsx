@@ -86,6 +86,8 @@ const fileSize = (bytes: number) => {
 const evidenceCategory = (block: string, type: string) => {
   if (block === 'IDENTIDAD') return 'IDENTIDAD';
   if (block === 'FORMACION') return 'TITULOS';
+  if (['experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa'].includes(type)) return 'EXPERIENCIA';
+  if (['productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida'].includes(type)) return 'CERTIFICADOS';
   if (type.includes('contrato')) return 'CONTRATOS';
   if (type.includes('certif') || type.includes('evaluacion')) return 'CERTIFICADOS';
   if (type.includes('resolucion') || type.includes('acto_')) return 'RESOLUCIONES';

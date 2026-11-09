@@ -151,3 +151,85 @@ describe('ConfigurationsService.saveConfiguration', () => {
         expect(res.previousValue).toBeNull();
     });
 });
+
+describe('ConfigurationsService.saveConfiguration · entes de control de Planes de Mejoramiento', () => {
+    let service: ConfigurationsService;
+    let mockRepo: any;
+    let managerFind: jest.Mock;
+
+    const ente = (id: string, nombre: string, activo = true) => ({
+        id, nombre, descripcion: '', icono: '🏛️', color: '#DC2626', activo,
+    });
+    const previos = [ente('CONTRALORIA', 'Contraloría General'), ente('OCI', 'Oficina Control Interno')];
+
+    beforeEach(async () => {
+        managerFind = jest.fn().mockResolvedValue([]);
+        mockRepo = {
+            findOne: jest.fn().mockResolvedValue({ key: 'sigl-entes-control-pm', module: 'general', value: previos }),
+            find: jest.fn(),
+            save: jest.fn(async (c) => c),
+            create: jest.fn((d) => d),
+            manager: { find: managerFind },
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [
+                ConfigurationsService,
+                { provide: getRepositoryToken(SystemConfiguration), useValue: mockRepo },
+            ],
+        }).compile();
+        service = module.get<ConfigurationsService>(ConfigurationsService);
+    });
+
+    it('guarda cambios de nombre, ícono, color, descripción y estado y devuelve el valor anterior para Auditoría', async () => {
+        const editados = [{ ...previos[0], nombre: 'Nuevo', icono: '🔍', color: '#112233', descripcion: 'x', activo: false }, previos[1]];
+
+        const res = await service.saveConfiguration('sigl-entes-control-pm', { value: editados });
+
+        expect(mockRepo.save).toHaveBeenCalled();
+        expect(res.value).toEqual(editados);
+        expect(res.previousValue).toEqual(previos);
+        expect(managerFind).not.toHaveBeenCalled();
+    });
+
+    it('permite agregar un ente', async () => {
+        await expect(
+            service.saveConfiguration('sigl-entes-control-pm', { value: [...previos, ente('ente-1', 'Nuevo Ente')] }),
+        ).resolves.toBeDefined();
+    });
+
+    it('permite eliminar un ente sin planes asociados', async () => {
+        await expect(service.saveConfiguration('sigl-entes-control-pm', { value: [previos[0]] })).resolves.toBeDefined();
+        expect(managerFind).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza (409) eliminar un ente con planes asociados y no guarda', async () => {
+        managerFind.mockResolvedValue([{ id: 'p1', origen: 'OCI' }, { id: 'p2', origen: 'OCI' }]);
+
+        await expect(
+            service.saveConfiguration('sigl-entes-control-pm', { value: [previos[0]] }),
+        ).rejects.toThrow(/Oficina Control Interno.*\(2\).*Solo puede inactivarse/);
+        expect(mockRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('un ente con planes sí puede inactivarse', async () => {
+        managerFind.mockResolvedValue([{ id: 'p1', origen: 'OCI' }]);
+
+        await expect(
+            service.saveConfiguration('sigl-entes-control-pm', { value: [previos[0], { ...previos[1], activo: false }] }),
+        ).resolves.toBeDefined();
+    });
+
+    it.each([
+        ['no es lista', { value: 'x' }],
+        ['sin nombre', { value: [{ id: 'a', nombre: ' ', activo: true }] }],
+        ['sin estado', { value: [{ id: 'a', nombre: 'A' }] }],
+        ['ids repetidos', { value: [ente('a', 'A'), ente('a', 'B')] }],
+    ])('rechaza (400) una lista inválida: %s', async (_, body) => {
+        await expect(service.saveConfiguration('sigl-entes-control-pm', body)).rejects.toThrow();
+        expect(mockRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('otras claves no se validan', async () => {
+        await expect(service.saveConfiguration('otra-clave', { value: 'cualquier cosa' })).resolves.toBeDefined();
+    });
+});

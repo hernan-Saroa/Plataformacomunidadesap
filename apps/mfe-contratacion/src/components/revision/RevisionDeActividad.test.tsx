@@ -125,3 +125,96 @@ describe('RevisionDeActividad · estudio previo', () => {
     expect(onVerProceso).toHaveBeenCalledWith('3.1');
   });
 });
+
+/**
+ * La revisión del pliego definitivo (5.6.1) se aprueba sobre el proceso
+ * entero: el estudio previo, el CDP y los documentos de etapas anteriores se
+ * leen en la misma pantalla, no solo lo que se cargó en la 5.6.1.
+ */
+describe('RevisionDeActividad · pliego definitivo', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    olvidarResponsables();
+    fijarAlcance({ alcances: [{ accion: 'aprobar', lugar: '5.6.1' }], transversales: [] });
+    vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
+      estudio({ estado: 'APROBADO' }) as never,
+    );
+    vi.spyOn(contratacionService, 'actividades').mockResolvedValue([
+      { numeral: '3.1', nombre: 'Estudio previo', etapa: 3, aplica: true, estado: 'APROBADO' },
+      { numeral: '4.2', nombre: 'Expedición del CDP', etapa: 4, aplica: true, estado: 'APROBADO' },
+      { numeral: '5.1', nombre: 'Documentos del proceso', etapa: 5, aplica: true, estado: 'APROBADO' },
+      { numeral: '5.6.1', nombre: 'Pliego definitivo', etapa: 5, aplica: true, estado: 'EN_REVISION' },
+    ] as never);
+    vi.spyOn(contratacionService, 'participacion').mockResolvedValue({
+      contratacion: { nombre: 'Laura Pineda', esMio: false },
+      financiera: null,
+    } as never);
+    vi.spyOn(contratacionService, 'responsables').mockResolvedValue([] as never);
+    vi.spyOn(contratacionService, 'revisiones').mockResolvedValue([] as never);
+    vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockRejectedValue(new Error('sin red'));
+    vi.spyOn(contratacionService, 'segundaSesionComite').mockResolvedValue({
+      aplica: true,
+      estado: 'EN_REVISION',
+      cdp: { cumplido: true, motivo: null },
+      documentos: [],
+      sesiones: [],
+      puedeAjustar: false,
+      puedeRetirar: false,
+      puedeRegistrar: false,
+      puedeCargarActa: false,
+    } as never);
+    vi.spyOn(contratacionService, 'obtenerExpediente').mockResolvedValue({
+      numeroExpediente: 'EXP-2026-0010',
+      estado: 'ABIERTO',
+      fechaApertura: '2026-09-01',
+      documentos: [
+        {
+          id: 'd-cdp',
+          tipo: 'ADJUNTO',
+          nombre: 'CDP 1234.pdf',
+          numeral: '4.2',
+          requisito: null,
+          requisitoNombre: null,
+          sustituido: false,
+          mimeType: 'application/pdf',
+          tamano: 1000,
+          hashSha256: 'abc',
+          version: 1,
+          subidoPor: 'Laura Pineda',
+          createdAt: '2026-09-10T10:00:00Z',
+          descargaUrl: '/files/cdp.pdf',
+        },
+      ],
+    } as never);
+  });
+
+  const pintar = () =>
+    render(
+      <RevisionDeActividad
+        procesoId="p-1"
+        numeral="5.6.1"
+        volverA="Por revisar"
+        onVolver={vi.fn()}
+        onVerProceso={vi.fn()}
+      />,
+    );
+
+  it('enseña los documentos de todo el proceso, con el CDP de la etapa 4', async () => {
+    pintar();
+
+    await userEvent.click(await screen.findByRole('button', { name: /Documentos del proceso/ }));
+
+    expect(await screen.findByText('CDP 1234.pdf')).toBeInTheDocument();
+    expect(screen.getByText('Expedición del CDP')).toBeInTheDocument();
+    // Solo lectura: quien revisa no adjunta.
+    expect(screen.queryByRole('button', { name: /Adjuntar/ })).toBeNull();
+  });
+
+  it('deja leer el estudio previo sin salir de la revisión', async () => {
+    pintar();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Estudio previo$/ }));
+
+    expect(await screen.findByText('Asesoría jurídica especializada')).toBeInTheDocument();
+  });
+});

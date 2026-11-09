@@ -151,7 +151,7 @@ export class RecordatorioViajeService {
 
     if (comision.email_comisionado && comision.email_comisionado.includes('@')) {
       await this.notificationClient
-        .sendEmail({ to: comision.email_comisionado, subject: email.subject, html: email.html, text: email.text })
+        .sendEmail({ evento: 'VIATICOS_RECORDATORIO_VIAJE', to: comision.email_comisionado, subject: email.subject, html: email.html, text: email.text })
         .catch((err) =>
           this.logger.warn(`[RF-SIS-002] No se pudo avisar al comisionado de ${consecutivo}: ${err?.message}`),
         );

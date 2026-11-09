@@ -16,7 +16,6 @@ import {
   Briefcase,
   MessageSquare,
   Calendar,
-  Bell,
   Award,
   CheckCircle,
   FolderOpen,
@@ -53,7 +52,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'trd' | 'centro-ayuda' | 'chatbot';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'trd' | 'centro-ayuda' | 'chatbot';
 
 export interface ActiveModuleItem {
   code: string;

@@ -83,8 +83,9 @@ interface ArchivoDelInforme {
  * historial con su motivo. Si no hubo ofertas o ninguna cumple, desde aquí se
  * declara desierto el proceso.
  *
- * Quién puede cargar no lo decide el rol del token sino la membresía del
- * comité de este proceso —lo que devuelve `esMiembroDelComite`—.
+ * Quién puede cargar lo dice el permiso de la 6.3 —`puedeRegistrar` y
+ * `puedeActualizar`—, y quién aprueba, el flujo. Estar en el comité (6.2) solo
+ * identifica a quien evaluó: no abre la carga ni hace aprobador.
  */
 export function PanelEvaluacion({ procesoId, onCambio }: Props) {
   const firma = useFirma(NUMERAL, 'Cargar el informe de evaluación preliminar');
@@ -256,9 +257,9 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
 
       {estado.esMiembroDelComite && (
         <Aviso tono="ok" titulo="Integras el comité de este proceso">
-          Fuiste designado para la evaluación{' '}
-          {estado.misDimensiones.map((d) => ETIQUETA_DIMENSION[d]).join(' y ')}. El informe lo
-          carga cualquiera de los miembros, en nombre del comité.
+          Figuras en la evaluación{' '}
+          {estado.misDimensiones.map((d) => ETIQUETA_DIMENSION[d]).join(' y ')}. La designación te
+          identifica como evaluador; quién carga el informe y quién lo aprueba lo define el flujo.
         </Aviso>
       )}
 
@@ -310,8 +311,9 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
             </BotonSecundario>
           )}
 
-          {/* Otros soportes del comité: actas de reunión y similares. */}
-          {estado.esMiembroDelComite && !formulario && (
+          {/* Otros soportes del comité: actas de reunión y similares. Los carga
+              quien puede cargar el informe, no quien figura en el comité. */}
+          {estado.puedeActualizar && !formulario && (
             <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
               <div>
                 <label
@@ -478,13 +480,16 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
         </div>
       )}
 
-      {estado.comiteDesignado && !estado.esMiembroDelComite && estado.ofertas.length > 0 && (
-        <p className="text-[11px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
-          <ClipboardList className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-          Consultas la evaluación, pero no cargas el informe: lo carga el comité designado en este
-          proceso, que es el que responde por él.
-        </p>
-      )}
+      {estado.comiteDesignado &&
+        !estado.puedeRegistrar &&
+        !estado.puedeActualizar &&
+        estado.ofertas.length > 0 && (
+          <p className="text-[11px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
+            <ClipboardList className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+            Consultas la evaluación, pero no cargas el informe: lo carga quien tiene a cargo la 6.3
+            en el flujo del proceso.
+          </p>
+        )}
       {firma.modal}
     </Marco>
   );

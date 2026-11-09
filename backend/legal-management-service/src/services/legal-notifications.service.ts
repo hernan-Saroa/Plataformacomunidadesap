@@ -410,7 +410,12 @@ export class LegalNotificationsService {
           esReasignacion: params.esReasignacion,
           url,
         });
-        await this.notificationClient.sendEmail(detalleAbogado.email, emailSubject, emailHtml);
+        await this.notificationClient.sendEmail(
+          detalleAbogado.email,
+          emailSubject,
+          emailHtml,
+          params.esReasignacion ? 'PROCESO_REASIGNADO' : 'PROCESO_ASIGNADO',
+        );
       }
 
       // Notificar al Jefe de Gestión Legal
@@ -496,6 +501,7 @@ export class LegalNotificationsService {
               ctaLabel: 'Ver Proceso',
               url,
             }),
+            'EXPEDIENTE_ETAPA_AVANZADA',
           );
         }
       }
@@ -531,12 +537,12 @@ export class LegalNotificationsService {
         await this.notificationClient.notifyByRole(params.aprobacionRol, dto);
         const details = await this.notificationClient.getUsersDetailsByRole(params.aprobacionRol);
         for (const d of details) {
-          if (d.email) await this.notificationClient.sendEmail(d.email, emailSubject, emailHtml);
+          if (d.email) await this.notificationClient.sendEmail(d.email, emailSubject, emailHtml, 'EXPEDIENTE_ETAPA_PENDIENTE_FIRMA');
         }
       } else if (tipo === 'usuario' && params.aprobacionUsuario) {
         await this.notificationClient.notifyUserById(params.aprobacionUsuario, dto);
         const detail = await this.notificationClient.getUserDetailsById(params.aprobacionUsuario);
-        if (detail?.email) await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+        if (detail?.email) await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'EXPEDIENTE_ETAPA_PENDIENTE_FIRMA');
       }
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar avance de etapa del proceso ${params.radicado}: ${err?.message}`);
@@ -590,6 +596,7 @@ export class LegalNotificationsService {
             ctaLabel: 'Ver Proceso',
             url,
           }),
+          'OBSERVACION_PROCESO',
         );
       }
     } catch (err: any) {
@@ -669,6 +676,7 @@ export class LegalNotificationsService {
           detalle.email,
           emailSubject,
           buildLegalEmailHtml({ headerTitle: 'Proceso Anexado', headerColor: meta.color, bodyHtml, ctaLabel: 'Ver Expediente', url }),
+          'PROCESO_ANEXADO',
         );
       }
     };
@@ -793,6 +801,7 @@ export class LegalNotificationsService {
             ctaLabel: 'Ver Riesgo',
             url,
           }),
+          params.esReasignacion ? 'RIESGO_REASIGNADO' : 'RIESGO_ASIGNADO',
         );
       }
 
@@ -819,6 +828,65 @@ export class LegalNotificationsService {
       });
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar asignación del riesgo ${params.codigo} al abogado ${params.abogadoId}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notifica al responsable del riesgo que el seguimiento cuatrimestral de un control venció sin registro.
+   */
+  async notifyRiesgoSeguimientoVencido(params: {
+    riesgoId: string;
+    codigo: string;
+    nombreRiesgo: string;
+    controlDescripcion: string;
+    cuatrimestreLabel: string;
+    vigencia: number;
+    abogadoId: string;
+  }): Promise<void> {
+    const meta = MODULE_META['GESTION_RIESGOS'];
+    const url = buildUrl('GESTION_RIESGOS');
+    const corte = `${params.cuatrimestreLabel} de ${params.vigencia}`;
+    this.logger.log(`[NOTIFY] Seguimiento de control vencido — codigo=${params.codigo} corte=${corte}`);
+
+    try {
+      await this.notificationClient.notifyUserById(params.abogadoId, {
+        tipo_notificacion: 'RIESGO_SEGUIMIENTO_VENCIDO',
+        titulo: 'Seguimiento de control vencido',
+        mensaje: `El seguimiento del control "${params.controlDescripcion}" del riesgo ${params.codigo} (${params.nombreRiesgo}) venció sin registro en el ${corte}.`,
+        descripcion_corta: `Seguimiento vencido — riesgo ${params.codigo}`,
+        icono: meta.icon,
+        color: meta.color,
+        prioridad: 'Alta',
+        categoria: meta.categoria,
+        tiene_accion: true,
+        texto_boton_accion: 'Ver riesgo',
+        url_accion: url,
+        datos_adicionales: {
+          modulo: 'GESTION_RIESGOS',
+          riesgoId: params.riesgoId,
+          codigo: params.codigo,
+          cuatrimestre: params.cuatrimestreLabel,
+          vigencia: params.vigencia,
+        },
+      });
+
+      const detalle = await this.notificationClient.getUserDetailsById(params.abogadoId);
+      if (detalle?.email) {
+        await this.notificationClient.sendEmail(
+          detalle.email,
+          `Seguimiento de control vencido — ${params.codigo}`,
+          buildLegalEmailHtml({
+            headerTitle: 'Seguimiento de control vencido',
+            headerColor: meta.color,
+            bodyHtml: `<p>El seguimiento del control <strong>${escapeHtml(params.controlDescripcion)}</strong> del riesgo <strong>${escapeHtml(params.codigo)}</strong> (${escapeHtml(params.nombreRiesgo)}) venció sin registro en el ${escapeHtml(corte)}.</p>`,
+            ctaLabel: 'Ver Riesgo',
+            url,
+          }),
+          'RIESGO_SEGUIMIENTO_VENCIDO',
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar el seguimiento vencido del riesgo ${params.codigo} al responsable ${params.abogadoId}: ${err?.message}`);
     }
   }
 
@@ -877,6 +945,7 @@ export class LegalNotificationsService {
               ctaLabel: 'Ver Riesgo',
               url,
             }),
+            'RIESGO_ZONA_CRITICA',
           );
         }
       }
@@ -942,6 +1011,7 @@ export class LegalNotificationsService {
               ctaLabel: 'Ver Riesgo',
               url,
             }),
+            'RIESGO_PROVISION',
           );
         }
       }
@@ -1010,7 +1080,12 @@ export class LegalNotificationsService {
           esReasignacion: params.esReasignacion,
           url,
         });
-        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+        await this.notificationClient.sendEmail(
+          detail.email,
+          emailSubject,
+          emailHtml,
+          params.esReasignacion ? 'TERMINO_REASIGNADO' : 'TERMINO_ASIGNADO',
+        );
       } else if (detail?.email) {
         // Hay un valor en "email" pero no tiene forma de correo — casi seguro es el fallback a
         // `username` porque `dir_email` está vacío en auth.personas para este usuario.
@@ -1096,7 +1171,7 @@ export class LegalNotificationsService {
           if (esCorreoValido(detail?.email)) {
             const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
             const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
-            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml, 'TERMINO_PROXIMO_A_VENCER');
           } else if (detail?.email) {
             this.logger.warn(
               `Responsable ${params.responsableId} del término ${params.terminoId}: el valor resuelto como correo ("${detail.email}") no tiene formato de email válido (probable dir_email vacío en auth.personas) — no se envía el correo de vencimiento.`,

@@ -29,14 +29,14 @@ describe('permisosDelUsuario', () => {
     // tiene el usuario.
     const permisos = permisosDelUsuario({
       permissions: [PERMISO_REPORTE_VER],
-      roles: ['DIRECTOR_CONTRATACION'],
+      roles: ['DIRECTORA_DE_CONTRATACION'],
     });
 
     expect(permisos).not.toContain(PERMISO_PROCESO_ASIGNAR);
   });
 
   it('cae a los roles mientras el token no los traiga', () => {
-    const permisos = permisosDelUsuario({ roles: ['DIRECTOR_CONTRATACION'] });
+    const permisos = permisosDelUsuario({ roles: ['DIRECTORA_DE_CONTRATACION'] });
 
     expect(permisos).toEqual(
       expect.arrayContaining([PERMISO_PROCESO_VER_TODOS, PERMISO_PROCESO_ASIGNAR, PERMISO_CONFIG_ADMINISTRAR]),
@@ -44,7 +44,7 @@ describe('permisosDelUsuario', () => {
   });
 
   it('reconoce los roles vengan como objetos o en minúscula', () => {
-    expect(permisosDelUsuario({ roles: [{ code: 'director_contratacion' }] })).toContain(
+    expect(permisosDelUsuario({ roles: [{ code: 'directora_de_contratacion' }] })).toContain(
       PERMISO_PROCESO_ASIGNAR,
     );
   });
@@ -62,19 +62,23 @@ describe('el respaldo en código', () => {
     expect(Object.keys(ROLES_QUE_OTORGAN).sort()).toEqual([...PERMISOS_TRANSVERSALES].sort());
   });
 
-  it('ver todos los procesos es una sola X: la del Jefe de Oficina (068)', () => {
-    expect(tienePermiso({ roles: ['REVISOR_CONTRATACION'] }, PERMISO_PROCESO_VER_TODOS)).toBe(false);
-    expect(tienePermiso({ roles: ['DIRECTOR_CONTRATACION'] }, PERMISO_PROCESO_VER_TODOS)).toBe(true);
+  it('ven toda la entidad la Directora y el Secretario, que reparte (137)', () => {
+    expect(tienePermiso({ roles: ['ABOGADO_REVISOR'] }, PERMISO_PROCESO_VER_TODOS)).toBe(false);
+    expect(tienePermiso({ roles: ['DIRECTORA_DE_CONTRATACION'] }, PERMISO_PROCESO_VER_TODOS)).toBe(true);
+    expect(tienePermiso({ roles: ['SECRETARIO_DE_CONTRATACION'] }, PERMISO_PROCESO_ASIGNAR)).toBe(true);
   });
 
-  it('el administrador configura e informa sin repartir', () => {
-    const admin = { roles: ['ADMINISTRADOR_CONTRATACION'] };
-    expect(tienePermiso(admin, PERMISO_CONFIG_ADMINISTRAR)).toBe(true);
-    expect(tienePermiso(admin, PERMISO_REPORTE_VER)).toBe(true);
-    expect(tienePermiso(admin, PERMISO_PROCESO_ASIGNAR)).toBe(false);
+  it('configurar es solo de la Directora', () => {
+    expect(tienePermiso({ roles: ['DIRECTORA_DE_CONTRATACION'] }, PERMISO_CONFIG_ADMINISTRAR)).toBe(true);
+    expect(tienePermiso({ roles: ['SECRETARIO_DE_CONTRATACION'] }, PERMISO_CONFIG_ADMINISTRAR)).toBe(false);
+    expect(tienePermiso({ roles: ['SECRETARIO_DE_CONTRATACION'] }, PERMISO_REPORTE_VER)).toBe(true);
   });
 
-  it('terminar un plazo es solo del superadministrador', () => {
-    expect(ROLES_QUE_OTORGAN[PERMISO_PLAZO_TERMINAR]).toEqual(['SUPER_ADMIN']);
+  it('los roles que la 137 desactivó ya no otorgan nada', () => {
+    expect(permisosDelUsuario({ roles: ['DIRECTOR_CONTRATACION', 'ADMINISTRADOR_CONTRATACION'] })).toEqual([]);
+  });
+
+  it('terminar un plazo es de la Directora y del superadministrador', () => {
+    expect(ROLES_QUE_OTORGAN[PERMISO_PLAZO_TERMINAR]).toEqual(['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN']);
   });
 });

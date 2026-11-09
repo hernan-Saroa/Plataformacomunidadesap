@@ -3,7 +3,8 @@ import { dataReviewContext, loadDataReviewProfile, loadDataReviews } from './run
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
-import { RundEvidenceWorkflow, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
+import { isRundContactoCampo, normalizarContacto, RUND_CONTACTO_MENSAJES, type RundContactoCampo } from './rund-contacto';
+import { EVIDENCE_TYPES, RundEvidenceWorkflow, currentBlockRows, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
 import { RundIncorporacion } from './rund-incorporacion';
 import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } from './rund-registration-history';
 import { convocatoriaName, convocatoriaKey, convocatoriaPeriod, CONVOCATORIA_MEMBERS_SQL } from './rund-convocatorias';
@@ -1066,7 +1067,8 @@ export class BancoDocentesService implements OnModuleInit {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, html }),
+        // Credenciales de acceso: la configuración de notificaciones lo trae como obligatorio.
+        body: JSON.stringify({ to, subject, text, html, modulo: 'pta', evento: 'rund_credenciales_docente' }),
       });
 
       if (!response.ok) {
@@ -1090,14 +1092,18 @@ export class BancoDocentesService implements OnModuleInit {
     return (direct || 'http://localhost:3000').replace(/\/$/, '');
   }
 
-  /** Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}. */
-  private async sendEmail(to: string, subject: string, text: string, html: string): Promise<{ sent: boolean; error?: string }> {
+  /**
+   * Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}.
+   * `evento` es la clave con la que la configuración de notificaciones (EFDS-2406)
+   * decide si el correo sale.
+   */
+  private async sendEmail(to: string, subject: string, text: string, html: string, evento: string): Promise<{ sent: boolean; error?: string }> {
     const baseUrl = this.resolveNotificationsBaseUrl();
     try {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, html }),
+        body: JSON.stringify({ to, subject, text, html, modulo: 'pta', evento }),
       });
       if (!response.ok) {
         const body = await response.text().catch(() => '');
@@ -1446,6 +1452,83 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
     return buildRundPerfilCabezote({ ...perfil, canal_origen: canalOrigen });
+  }
+
+  /**
+   * RUND-013 — Edita un solo dato de contacto desde el cabezote.
+   * No exige soporte documental (a diferencia de `updateDocente`): es una
+   * corrección puntual de contacto. Deja rastro en `RundAprobacionLog` con
+   * usuario, fecha, valor anterior y valor nuevo. El origen del dato no cambia.
+   */
+  async updateContactoDocente(id: string, body: {
+    campo?: unknown; valor?: unknown; periodoCarga?: string; actorId?: string; ip?: string;
+  }): Promise<{ campo: RundContactoCampo; valor: string | null; valor_anterior: string | null }> {
+    if (!isRundContactoCampo(body?.campo)) throw new BadRequestException(RUND_CONTACTO_MENSAJES.campo);
+    const campo = body.campo;
+    const docenteId = await this.resolveDocenteId(id, body.periodoCarga);
+
+    return this.dataSource.transaction(async (manager) => {
+      const docente = await manager.findOne(DocenteEntity, { where: { id: docenteId }, lock: { mode: 'pessimistic_write' } });
+      if (!docente) throw new NotFoundException(`Docente ${id} no encontrado`);
+      const personaRows = await manager.query(
+        `SELECT id_person, dir_email, tel_celular FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
+        [docente.personaId],
+      );
+      const persona = personaRows[0];
+      if (!persona) throw new NotFoundException('No se encontró la persona asociada al docente.');
+
+      const anterior = campo === 'CORREO_INSTITUCIONAL' ? (docente.correoInstitucional ?? persona.dir_email ?? null)
+        : campo === 'CORREO_ALTERNATIVO' ? (docente.correoAlternativo ?? null)
+          : (persona.tel_celular ?? null);
+      const otroCorreo = campo === 'CORREO_INSTITUCIONAL' ? docente.correoAlternativo
+        : campo === 'CORREO_ALTERNATIVO' ? (docente.correoInstitucional ?? persona.dir_email) : null;
+      const nuevo = normalizarContacto(campo, body.valor, otroCorreo);
+
+      if ((anterior ?? null) === nuevo) return { campo, valor: nuevo, valor_anterior: anterior };
+
+      if (campo === 'TELEFONO') {
+        await manager.query(
+          `UPDATE auth.personas SET tel_celular = $2, fec_modificacion = CURRENT_DATE WHERE id_person = $1`,
+          [docente.personaId, nuevo],
+        );
+      } else if (campo === 'CORREO_ALTERNATIVO') {
+        await manager.update(DocenteEntity, { id: docenteId }, { correoAlternativo: nuevo } as any);
+      } else {
+        // El correo institucional también es el usuario de ingreso: no puede duplicar a otra cuenta.
+        const duplicado = await manager.query(
+          `SELECT 1 FROM auth."user" WHERE LOWER(username) = $1 AND id_person::text <> $2 LIMIT 1`,
+          [nuevo, String(docente.personaId)],
+        );
+        if (duplicado[0]) {
+          throw new BadRequestException({
+            message: 'Ya existe otra cuenta con ese correo institucional.',
+            columna: campo, datoErrado: nuevo, valorEsperado: 'Un correo institucional no registrado',
+          });
+        }
+        await manager.update(DocenteEntity, { id: docenteId }, { correoInstitucional: nuevo } as any);
+        await manager.query(
+          `UPDATE auth.personas SET dir_email = $2, fec_modificacion = CURRENT_DATE WHERE id_person = $1`,
+          [docente.personaId, nuevo],
+        );
+        await manager.query(
+          `UPDATE auth."user" SET username = $2, updated_at = now() WHERE id_person = $1`,
+          [docente.personaId, nuevo],
+        );
+      }
+
+      await this.writeAuditWithManager(manager, {
+        docenteId,
+        accion: 'EDITAR_CONTACTO',
+        actorId: body.actorId || 'SISTEMA',
+        canalOrigen: 'CABEZOTE',
+        campoAfectado: campo,
+        datoPrevio: anterior ?? undefined,
+        datoNuevo: nuevo ?? undefined,
+        ip: body.ip,
+        metadata: { origen: 'cabezote-perfil-docente' },
+      });
+      return { campo, valor: nuevo, valor_anterior: anterior };
+    });
   }
 
   private async writeAuditWithManager(manager: any, entry: {
@@ -2818,7 +2901,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p><a href="${link}">${link}</a></p>
       <p>Este enlace expira el ${fechaExpiracion.toLocaleDateString('es-CO')}.</p>
     `;
-    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html);
+    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html, 'rund_invitacion');
     this.logger.log(`[RUND] Invitación procesada (enviada=${emailResult.sent}).`);
 
     const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -2896,7 +2979,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p>
       <p>Vence en 10 minutos. Si no solicitaste este código, ignora este correo.</p>
     `;
-    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html);
+    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html, 'rund_codigo_acceso');
 
     this.logger.log(`[RUND][OTP] Solicitud procesada (enviado=${emailResult.sent}).`);
 
@@ -3196,14 +3279,8 @@ export class BancoDocentesService implements OnModuleInit {
   /**
    * BR-039 â€” CatÃ¡logo de tipos de soporte vÃ¡lidos por bloque.
    */
-  private static readonly CATALOGO_SOPORTE: Record<string, string[]> = {
-    IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
-    CONTACTO: [],
-    FORMACION: ['diploma_pregrado', 'acta_grado_pregrado', 'diploma_especializacion', 'acta_grado_especializacion', 'diploma_maestria', 'acta_grado_maestria', 'diploma_doctorado', 'acta_grado_doctorado', 'certificado_posdoctoral', 'convalidacion_men', 'hoja_vida_pro'],
-    VINCULACION: ['acto_administrativo_vinculacion', 'resolucion_convocatoria', 'contrato', 'acto_administrativo_dedicacion', 'acto_administrativo_situacion', 'acto_adscripcion_territorial', 'resolucion_escalafon', 'resolucion_puntaje_salarial'],
-    ACADEMICO: ['acto_asignacion_nucleo', 'certificacion_investigacion', 'acta_evaluacion_desempeno'],
-    TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
-  };
+  private static readonly CATALOGO_SOPORTE: Record<string, string[]> = EVIDENCE_TYPES;
+
 
   // DDL for RundCampoEstado and RundSoporteCampo moved to:
   //   db/migrations/333_create_rund_tables_and_sequence.sql
@@ -3261,12 +3338,12 @@ export class BancoDocentesService implements OnModuleInit {
     let bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
       [docenteId],
-    );
+    ).then(currentBlockRows);
 
     // Si no existen bloques, inicializarlos
     if (bloques.length < 6) {
       await this.inicializarBloques(docenteId);
-      bloques = await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]);
+      bloques = currentBlockRows(await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]));
     }
 
     // Cargar soportes por bloque

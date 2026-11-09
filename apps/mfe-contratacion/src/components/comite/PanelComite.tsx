@@ -23,10 +23,14 @@ interface Props {
 
 const NUMERAL = '6.2';
 
+/**
+ * Cómo se nombra cada rol del comité. Desde la sesión de QA del 04/11 el
+ * comité es un registro informativo: quién lo integra y como qué evaluador.
+ */
 const ETIQUETA_ROL: Record<RolEvaluador, string> = {
-  JURIDICO: 'Jurídica',
-  FINANCIERO: 'Financiera y económica',
-  TECNICO: 'Técnica',
+  JURIDICO: 'Evaluador jurídico',
+  FINANCIERO: 'Evaluador financiero y económico',
+  TECNICO: 'Evaluador técnico',
 };
 
 /**
@@ -86,7 +90,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
     // la misma regla que aplica el servidor, dicha aquí antes de enviar.
     const repetido = propuestos.some((m) => m.personaId === persona.id && m.rol === rol);
     if (repetido) {
-      toast.error(`${persona.nombre} ya está como evaluador en ${ETIQUETA_ROL[rol].toLowerCase()}`);
+      toast.error(`${persona.nombre} ya está como ${ETIQUETA_ROL[rol].toLowerCase()}`);
       return;
     }
 
@@ -201,15 +205,16 @@ export function PanelComite({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Comité evaluador</Titulo>
       <Ayuda>
-        Se registran los integrantes del comité y el rol de cada uno. El memorando de designación
-        se puede cargar después, cuando esté firmado: no frena el proceso, pero queda una alerta
-        mientras falte. Sin comité, la evaluación no puede iniciarse.
+        Registro informativo de quiénes integran el comité y como qué evaluador. Los integrantes no
+        entran a la plataforma ni califican: el abogado estructurador consolida su evaluación y
+        carga el informe preliminar (6.3). El memorando de designación y su fecha son opcionales y
+        se pueden cargar después; mientras falte queda una alerta.
       </Ayuda>
 
-      {/* Quien consulta sabe de entrada si le toca evaluar y en qué. */}
+      {/* Quien consulta sabe de entrada si figura en el comité y en qué. */}
       {estado.soyEvaluador ? (
-        <Aviso tono="ok" titulo="Evalúas en este proceso">
-          Fuiste designado para la evaluación{' '}
+        <Aviso tono="ok" titulo="Integras el comité de este proceso">
+          Figuras como{' '}
           {estado.misDimensiones.map((d) => ETIQUETA_ROL[d].toLowerCase()).join(' y ')}.
         </Aviso>
       ) : null}
@@ -301,7 +306,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
                     {miembro.nombre}
                   </p>
                   <p className="text-[11.5px] text-slate-600 m-0 mt-0.5">
-                    Evaluación {ETIQUETA_ROL[miembro.rol].toLowerCase()}
+                    {ETIQUETA_ROL[miembro.rol]}
                   </p>
                 </div>
               </div>
@@ -351,9 +356,9 @@ export function PanelComite({ procesoId, onCambio }: Props) {
                 onChange={(e) => setRol(e.target.value as RolEvaluador)}
                 className={campo}
               >
-                <option value="JURIDICO">Evaluación jurídica</option>
-                <option value="FINANCIERO">Evaluación financiera y económica</option>
-                <option value="TECNICO">Evaluación técnica</option>
+                <option value="JURIDICO">Evaluador jurídico</option>
+                <option value="FINANCIERO">Evaluador financiero y económico</option>
+                <option value="TECNICO">Evaluador técnico</option>
               </select>
               <button
                 type="button"
@@ -382,7 +387,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
                       {miembro.nombre}
                     </p>
                     <p className="text-[11px] text-slate-500 m-0">
-                      Evaluación {ETIQUETA_ROL[miembro.rol].toLowerCase()}
+                      {ETIQUETA_ROL[miembro.rol]}
                     </p>
                   </div>
                   <button

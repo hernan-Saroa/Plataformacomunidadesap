@@ -44,7 +44,7 @@ export class RundExtraccionNotificationsService implements OnModuleInit, OnModul
           mensaje:complete?'Tu análisis terminó. Abre el expediente para revisar el resultado; los datos del perfil requieren confirmación humana.':
             job.estado==='OBSOLETO'?'El documento fue reemplazado o eliminado. Puedes consultar el historial del análisis en RUND.':
             'No fue posible completar el análisis después de los reintentos. Tu documento sigue disponible y puedes volver a intentarlo desde RUND.',
-          categoria:'RUND',prioridad:complete?'Media':'Alta',icono:'FileText',color:complete?'purple':'orange',
+          categoria:'RUND',modulo:'pta',prioridad:complete?'Media':'Alta',icono:'FileText',color:complete?'purple':'orange',
           tiene_accion:true,texto_boton_accion:'Ver resultado',
           url_accion:`/?module=banco-docentes-pta&rundDocenteId=${encodeURIComponent(job.docente_id)}`,
           datos_adicionales:{rundTrabajoId:job.id,rundDocenteId:job.docente_id},enviar_email:false})

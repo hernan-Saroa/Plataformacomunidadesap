@@ -126,7 +126,12 @@ export class TareasNotasService {
                     </p>
                 </div>
             `;
-            await this.notificationClient.sendEmail(detalle.email, `Tarea ${esReasignacion ? 'reasignada' : 'asignada'}: ${tarea.titulo}`, emailHtml);
+            await this.notificationClient.sendEmail(
+                detalle.email,
+                `Tarea ${esReasignacion ? 'reasignada' : 'asignada'}: ${tarea.titulo}`,
+                emailHtml,
+                esReasignacion ? 'TAREA_REASIGNADA' : 'TAREA_ASIGNADA',
+            );
         }
     }
 

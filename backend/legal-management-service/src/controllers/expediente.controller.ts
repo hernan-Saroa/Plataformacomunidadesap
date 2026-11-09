@@ -282,7 +282,7 @@ export class ExpedienteController {
             const usuarios = await this.notificationClient.getUsersDetailsByRole(body.roleCode);
             for (const u of usuarios) {
                 if (u.email) {
-                    await this.notificationClient.sendEmail(u.email, body.asunto, emailHtml);
+                    await this.notificationClient.sendEmail(u.email, body.asunto, emailHtml, 'NOTIFICACION_EXPEDIENTE');
                 }
             }
         }

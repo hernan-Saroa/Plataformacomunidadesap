@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, ClipboardCheck, Eye, Info } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardCheck,
+  Eye,
+  FileText,
+  FolderOpen,
+  Info,
+  ListChecks,
+} from 'lucide-react';
 
 import { useSituacionDelProceso } from '../../hooks/useSituacionDelProceso';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
@@ -8,7 +18,12 @@ import { SoloLectura } from '../shared/SoloLectura';
 import { LugarDeDecision } from '../shared/LugarDeDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { PanelDeLaActividad } from '../proceso/PanelDeLaActividad';
-import { NUMERALES_CON_DECISION_EN_EL_PANEL } from '../proceso/actividadesConPanel';
+import {
+  NUMERALES_CON_DECISION_EN_EL_PANEL,
+  NUMERALES_CON_LISTA_PROPIA,
+  NUMERALES_QUE_SE_REVISAN_CON_EL_PROCESO,
+} from '../proceso/actividadesConPanel';
+import { ExpedienteDelProceso } from '../proceso/ExpedienteDelProceso';
 import { DecisionEstudioPrevio } from '../estudio-previo/DecisionEstudioPrevio';
 import { EscalonesDeLaRonda } from '../shared/EscalonesDeLaRonda';
 import { RondaDeAprobacion } from '../../types';
@@ -57,6 +72,7 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
   const { cargando, error, estudio, catalogo, situacion, pasaA } = useSituacionDelProceso(procesoId, token);
   const [faltanFormatos, setFaltanFormatos] = useState(0);
   const [hayDecision, setHayDecision] = useState(false);
+  const [vista, setVista] = useState<VistaDeLaRevision>('actividad');
 
   if (cargando && !estudio) {
     return (
@@ -91,6 +107,13 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
   /** La 3.1 ya no espera decisión: se resolvió aquí o en otra parte. */
   const estudioResuelto = esEstudio && estudio.estado !== 'EN_REVISION';
 
+  /**
+   * Lo que se aprueba se apoya en lo que el proceso trae de antes —el estudio
+   * previo, el CDP, las observaciones—: se lee aquí mismo, por pestañas.
+   */
+  const conElProceso = NUMERALES_QUE_SE_REVISAN_CON_EL_PROCESO.includes(numeral);
+  const vistaActiva: VistaDeLaRevision = conElProceso ? vista : 'actividad';
+
   return (
     <div className="space-y-3 md:space-y-4">
       {/* Cabecera: de qué proceso es y qué se revisa. */}
@@ -123,8 +146,9 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
               {estudio.proceso.expediente ? ` · Expediente ${estudio.proceso.expediente}` : ''}
             </p>
           </div>
-          {/* Revisando la 3.1 ya se está leyendo: el botón sería un eco. */}
-          {!esEstudio && (
+          {/* Revisando la 3.1 ya se está leyendo, y con el proceso al lado
+              tiene su pestaña: el botón sería un eco. */}
+          {!esEstudio && !conElProceso && (
             <span className="self-center">
               <VerEstudioPrevio estudio={estudio} procesoId={procesoId} />
             </span>
@@ -147,6 +171,20 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
           {esEstudio ? (
             <LecturaEstudioPrevio estudio={estudio} procesoId={procesoId} />
           ) : (
+            <>
+            {conElProceso && <PestanasDeLaRevision numeral={numeral} vista={vistaActiva} onCambiar={setVista} />}
+            {vistaActiva === 'estudio' && <LecturaEstudioPrevio estudio={estudio} procesoId={procesoId} />}
+            {vistaActiva === 'expediente' && (
+              <ExpedienteDelProceso
+                procesoId={procesoId}
+                editable={false}
+                actividades={catalogo}
+                recargarToken={token}
+              />
+            )}
+            {/* Oculto y no desmontado: al volver de las otras pestañas el panel
+                sigue como estaba, sin pedirse de nuevo. */}
+            <div hidden={vistaActiva !== 'actividad'}>
             <LugarDeDecision enLaRevision>
             <SoloLectura motivo="Estás revisando lo que se envió">
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -167,17 +205,23 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                   recargarToken={token}
                 />
               </div>
-              <div className="mt-3">
-                <ListaDeDocumentos
-                  procesoId={procesoId}
-                  numeral={numeral}
-                  recargarToken={token}
-                  onFaltantes={setFaltanFormatos}
-                  bloqueo="Estás revisando: los documentos los carga quien trabaja la actividad"
-                />
-              </div>
+              {/* Las de lista propia ya la enseñan dentro del panel, como en el
+                  trabajo del proceso: montarla aquí la repetía. */}
+              {!NUMERALES_CON_LISTA_PROPIA.includes(numeral) && (
+                <div className="mt-3">
+                  <ListaDeDocumentos
+                    procesoId={procesoId}
+                    numeral={numeral}
+                    recargarToken={token}
+                    onFaltantes={setFaltanFormatos}
+                    bloqueo="Estás revisando: los documentos los carga quien trabaja la actividad"
+                  />
+                </div>
+              )}
             </SoloLectura>
             </LugarDeDecision>
+            </div>
+            </>
           )}
         </div>
 
@@ -305,6 +349,58 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
             </>
           )}
         </aside>
+      </div>
+    </div>
+  );
+}
+
+type VistaDeLaRevision = 'actividad' | 'estudio' | 'expediente';
+
+/**
+ * Qué se está leyendo: la actividad enviada, el estudio previo o el
+ * expediente entero, donde están el CDP, los documentos de la 5.1, las
+ * observaciones y las actas del comité con la etapa y la actividad de cada uno.
+ */
+function PestanasDeLaRevision({
+  numeral,
+  vista,
+  onCambiar,
+}: {
+  numeral: string;
+  vista: VistaDeLaRevision;
+  onCambiar: (v: VistaDeLaRevision) => void;
+}) {
+  const pestanas = [
+    { id: 'actividad' as const, label: `Lo enviado en la ${numeral}`, icono: ListChecks },
+    { id: 'estudio' as const, label: 'Estudio previo', icono: FileText },
+    { id: 'expediente' as const, label: 'Documentos del proceso', icono: FolderOpen },
+  ];
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl px-4 pt-3 mb-3">
+      <p className="text-[12px] text-slate-500 m-0">
+        Lo que apruebas se apoya en todo el proceso: revisa también el estudio previo, el CDP y los
+        documentos de las etapas anteriores.
+      </p>
+      <div className="flex gap-1 mt-2 overflow-x-auto" role="group" aria-label="Qué revisar">
+        {pestanas.map((t) => {
+          const Icono = t.icono;
+          const activa = vista === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onCambiar(t.id)}
+              aria-pressed={activa}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] whitespace-nowrap transition-colors ${
+                activa ? 'border-[#003DA5] text-[#003DA5] font-black' : 'border-transparent text-slate-500 font-bold'
+              }`}
+              style={{ borderBottomWidth: 2 }}
+            >
+              <Icono className="w-3.5 h-3.5" aria-hidden="true" />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

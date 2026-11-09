@@ -100,6 +100,9 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
   '5.5': ['5.3'],
   '5.6': ['5.3'],
   '5.13': ['5.3', '5.7'],
+  // Las observaciones al pliego definitivo (138) corren desde la apertura, a la
+  // par de la recepción de ofertas: no la frenan.
+  '5.12.1': ['5.7'],
   // Supervisor (8.2), RP, garantías y ARL solo piden el contrato firmado: el
   // backend no exige más (`admiteSupervisor`, `admiteRp`, `admiteLegalizacion`).
   // La 8.6 sí espera a las cuatro, porque comunica que están cumplidas.
@@ -109,7 +112,7 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
   // La publicación corre desde la firma (Decreto 1082): no espera a la
   // legalización ni al acta de inicio, que la matriz numera antes.
   '8.8': ['8.1'],
-  '9.5': ['8.7'],
+  '9.5': ['8.1'],
 };
 
 /**
@@ -141,7 +144,7 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
  * ninguna, y desde la 112 van después de la apertura, así que exigirlas
  * encerraría la recepción de ofertas (6.1) detrás de algo que quizá no ocurra.
  */
-export const NUNCA_BLOQUEA = new Set(['5.13', '9.1', '9.2', '9.3', '9.5']);
+export const NUNCA_BLOQUEA = new Set(['5.12.1', '5.13', '9.1', '9.2', '9.3', '9.5']);
 
 /** Lo que rige en el paso: lo de su versión del flujo, o lo predeterminado. */
 export function secuenciaDe(paso: Pick<PasoDelFlujo, 'numeral' | 'secuencia'>): SecuenciaDelPaso {

@@ -1,16 +1,31 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarClock, Check, FileText, Lock, Paperclip, Trash2, UserPlus } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  FilePen,
+  FileText,
+  Lock,
+  Paperclip,
+  Trash2,
+  UserPlus,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoOfertas, Oferente } from '../../types';
+import { EstadoOfertas, Oferente, ProrrogaDelCierre } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
-import { horaEnBogota, hoyEnBogota, momentoConHora } from '../shared/fechas';
+import { fechaLarga, horaEnBogota, hoyEnBogota, momentoConHora } from '../shared/fechas';
 import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
+  /**
+   * Lleva a las adendas (5.13). El cierre se extiende con una adenda de
+   * cronograma aunque ya se estén recibiendo ofertas (revisión de QA de
+   * EFDS-1155); sin esto, desde la 6.1 no había cómo llegar a ella.
+   */
+  onIrAAdendas?: () => void;
 }
 
 /**
@@ -26,8 +41,8 @@ const TONO_PLAZO = {
   SIN_PLAZO: 'border-gray-200 bg-slate-50 text-slate-500',
 } as const;
 
-/** El mismo `MAX_BYTES_ADJUNTO` del servidor (EFDS-1155). */
-const MAX_BYTES_OFERTA = 50 * 1024 * 1024;
+/** El mismo `MAX_BYTES_OFERTA` del servidor. */
+const MAX_BYTES_OFERTA = 200 * 1024 * 1024;
 
 /**
  * Actividad 6.1 · Cierre del proceso y recepción de ofertas (EFDS-1155).
@@ -37,7 +52,7 @@ const MAX_BYTES_OFERTA = 50 * 1024 * 1024;
  * cierre es lo que publica la lista, así que a partir de ahí la pantalla deja
  * de ofrecer cambios y pasa a mostrar el registro.
  */
-export function PanelOfertas({ procesoId, onCambio }: Props) {
+export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
   const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoOfertas | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -248,6 +263,10 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
         <EstadoPlazo recepcion={recepcion} />
       )}
 
+      {/* De dónde salió el cierre vigente: cada prórroga con su adenda, la
+          fecha anterior, la nueva y quién la publicó. */}
+      {estado.prorrogas.length > 0 ? <Prorrogas prorrogas={estado.prorrogas} /> : null}
+
       {/* Los plazos entraron como supuesto del equipo: se dice, en vez de
           presentarlos como si fueran término legal ya ratificado. */}
       {recepcion && !estado.plazoConfirmado && recepcion.plazoDiasHabiles !== null ? (
@@ -300,7 +319,17 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
             </Boton>
           ) : null}
 
-          {!ajustandoPlazo ? (
+          {recepcion?.estado === 'ABIERTA' && onIrAAdendas ? (
+            <Boton
+              icono={<FilePen className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={onIrAAdendas}
+            >
+              Extender el cierre con una adenda
+            </Boton>
+          ) : null}
+
+          {!ajustandoPlazo && estado.puedeCorregirVencimiento ? (
             <button
               type="button"
               disabled={guardando}
@@ -561,6 +590,27 @@ function FormularioPlazo({
   );
 }
 
+/** Las extensiones del cierre por adenda de cronograma (EFDS-1155). */
+function Prorrogas({ prorrogas }: { prorrogas: ProrrogaDelCierre[] }) {
+  const momento = (dia: string, hora: string | null) =>
+    `${fechaLarga(dia)}${hora ? ` a las ${hora.slice(0, 5)}` : ''}`;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-1.5">
+      <p className="text-xs font-bold text-slate-800 m-0">Cierre extendido por adenda</p>
+      {prorrogas.map((p) => (
+        <p key={p.adendaId} className="text-xs text-slate-600 m-0 leading-relaxed">
+          Adenda {p.numero}:{' '}
+          {p.vencimientoAnterior ? `del ${momento(p.vencimientoAnterior, p.horaAnterior)} ` : ''}
+          al {momento(p.vencimientoNuevo, p.horaNueva ?? p.horaAnterior)}
+          {p.fechaPublicacion ? ` · publicada el ${fechaLarga(p.fechaPublicacion)}` : ''}
+          {p.publicadaPor ? ` por ${p.publicadaPor}` : ''}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /** Cuándo vence el plazo y cómo va, con el mismo semáforo de la etapa 5. */
 function EstadoPlazo({ recepcion }: { recepcion: NonNullable<EstadoOfertas['recepcion']> }) {
   const faltan = recepcion.diasHabilesRestantes;
@@ -671,7 +721,7 @@ function SelectorArchivo({
       >
         {archivo
           ? archivo.name
-          : 'PDF, Word, Excel o un .zip con todos los documentos de la oferta · máx. 50 MB.'}
+          : 'PDF, Word, Excel o un .zip con todos los documentos de la oferta · máx. 200 MB.'}
       </p>
 
       <input
@@ -684,9 +734,9 @@ function SelectorArchivo({
           e.target.value = '';
           if (!elegido) return;
           // Se dice aquí y no al guardar: el servidor lo rechazaría después de
-          // subir los 50 MB, y con un mensaje en inglés.
+          // subir los 200 MB, y con un mensaje en inglés.
           if (elegido.size > MAX_BYTES_OFERTA) {
-            toast.error(`El archivo pesa ${(elegido.size / (1024 * 1024)).toFixed(1)} MB y el máximo son 50 MB.`);
+            toast.error(`El archivo pesa ${(elegido.size / (1024 * 1024)).toFixed(1)} MB y el máximo son 200 MB.`);
             return;
           }
           onElegir(elegido);
