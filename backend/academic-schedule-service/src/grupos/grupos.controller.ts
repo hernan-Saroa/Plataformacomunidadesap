@@ -33,6 +33,16 @@ export class GruposController {
     return { success: true, data: await this.gruposService.ofertasCetap(idAsignatura, idPeriodo) };
   }
 
+  /**
+   * GET /grupos/ofertas-cetap/estado?asignatura=<id>&periodo=<idPeriodo> — por qué no hay (o
+   * faltan) CETAP que elegir: periodo sin carga, programa no ofertado, CETAP sin territorial.
+   */
+  @Get('ofertas-cetap/estado')
+  @LecturaEn({ asignatura: { query: 'asignatura' } })
+  async estadoOfertasCetap(@Query('asignatura') idAsignatura: string, @Query('periodo') idPeriodo: string) {
+    return { success: true, data: await this.gruposService.estadoOfertasCetap(idAsignatura, idPeriodo) };
+  }
+
   @Get(':id')
   @LecturaEn({ grupo: { param: 'id' } })
   async obtener(@Param('id', ParseUUIDPipe) id: string) {

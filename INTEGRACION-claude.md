@@ -1270,3 +1270,28 @@ Para completar el flujo con usuarios reales basta asignar: **ADMIN_PROGRAMACION*
 
 ### 33.3 · Para QA
 Aplicar la 064 en la base de QA y asignar los roles desde **Gestión de Usuarios** con el superusuario. Además, la concertación debe estar encendida en los dos servicios (`PROG_CONCERTACION_HABILITADA=true` en Programación Académica y la configuración equivalente en el PTA); si no, el flujo cae al orden anterior.
+
+## 34. Oferta CETAP al crear grupos: qué se revisó y qué se agregó (9 de noviembre)
+
+Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado sobre `micro-frontend`.
+
+### 34.1 · Cómo se arma la información (verificado)
+- El selector «Oferta CETAP» (`GET /grupos/ofertas-cetap?asignatura&periodo`) lista las **ofertas CETAP × programa × periodo** (`oferta_cetap_programa`) del programa de la asignatura en el periodo seleccionado. **No vienen del RUND ni del catálogo de CETAP:** las crea la **carga del Excel del catálogo para ese periodo** (Programas Académicos → Periodos → Importar, hoja `MATRIZ_OFERTA`). Un periodo sin carga, o cargado sin el programa de la asignatura, no tiene nada que ofrecer aunque el catálogo de CETAP esté completo.
+- El catálogo de CETAP y de direcciones territoriales lo cargan la estructura organizacional o la propia carga del Excel (`ensureCetapsFromMatriz` crea los CETAP y territoriales que falten).
+- La territorial de cada oferta sale de `direccion_territorial.codigo = auth.seccionales.cod_seccional` (cruce exacto, falla cerrado): sin esa vinculación el CETAP se puede elegir pero el grupo no se puede concertar.
+
+### 34.2 · Lo comprobado contra el código de `micro-frontend`
+- Con la oferta cargada, el flujo funciona por API y por pantalla (programadores de pregrado y posgrado, asignador y administración; la jefatura no programa y recibe 403, como corresponde).
+- **Escenario «base sin catálogo de CETAP»** (copia de la base con `cetap` en cero y sin periodos): la carga del Excel crea los 290 CETAP y las 325 ofertas, sin rechazos. Es decir, el catálogo de CETAP no tiene que estar sembrado de antemano.
+- No encontré un defecto de código que deje vacío el selector con la oferta cargada. La causa más probable en QA, por tanto, es de **datos del periodo**: el periodo no tiene cargado el Excel (o se cargó sin el programa), o se eligió un periodo del modelo anterior (legado), que no tiene ofertas por CETAP. Sin acceso a la base de QA no puedo confirmarlo: por eso lo siguiente.
+
+### 34.3 · Qué se agregó para que la causa se vea y se arregle
+- **`GET /grupos/ofertas-cetap/estado?asignatura&periodo`** (solo lectura): devuelve cuántas ofertas tiene el periodo, cuántas el programa de la asignatura, cuántos CETAP hay en el catálogo, cuántos CETAP elegibles no tienen territorial y un `motivo` listo para mostrar.
+- **Pantalla de grupos:** cuando no hay CETAP que elegir explica por qué («El periodo X no tiene la oferta por CETAP cargada: un administrador debe importar el Excel del catálogo para este periodo», «tiene N ofertas pero ninguna del programa Y», «el periodo es del modelo anterior») y avisa cuando hay CETAP sin territorial. Antes solo decía «No hay ofertas CETAP activas…».
+- **`backend/academic-schedule-service/scripts/diagnostico-oferta-cetap.sql`** (solo lectura) para correr en QA: catálogo de CETAP y territoriales, territoriales sin seccional, ofertas por periodo (0 = sin carga), programas sin oferta en periodos cargados y grupos sin oferta.
+- Pruebas: `grupos/estado-oferta-cetap.agregado.spec.ts` (4 casos contra la base real) y 2 casos en `GestionGrupos.test.tsx`.
+
+### 34.4 · Para completar el flujo en QA
+1. Un administrador (ADMIN_PROGRAMACION o SUPER_ADMIN) importa el Excel del catálogo para el periodo (`esap/programacion/resultados/2026-1/catalogo-importable-2026-1.xlsx`). Los programadores no pueden importar: dependen de ese paso.
+2. Los programadores crean los grupos y eligen el CETAP; si no sale ninguno, la pantalla ya dice por qué.
+3. Si la causa no es esa, correr `diagnostico-oferta-cetap.sql` en QA y compartir el resultado.
