@@ -19,7 +19,6 @@ import {
   getMisSolicitudes,
   tecnicoPerteneceASesionUMI,
 } from '../services/infraestructuraService';
-import { ModalJerarquiaTerritorialDemo } from './ModalJerarquiaTerritorialDemo';
 import { HistoricoMantenimientosExterno } from './HistoricoMantenimientosExterno';
 
 interface SolicitudesMantenimientoProps {
@@ -388,7 +387,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [exportandoExcel, setExportandoExcel] = useState(false);
   const [toastExport, setToastExport] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
   const [mostrarModalCargaMasiva, setMostrarModalCargaMasiva] = useState(false);
-  const [mostrarModalJerarquia, setMostrarModalJerarquia] = useState(false);
 
 
   useEffect(() => {
@@ -544,16 +542,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                 >
                   <UploadCloud className="w-3.5 h-3.5" />
                   <span>Carga Masiva (Histórico)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMostrarModalJerarquia(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold transition-all shadow-sm active:scale-95"
-                  title="Fase 4 Req. #8: Simulador y evaluación de Jerarquía de Sedes y Territoriales para la reunión"
-                >
-                  <GitBranch className="w-3.5 h-3.5 text-indigo-700" />
-                  <span>Jerarquía Sedes (Demo)</span>
                 </button>
               </>
 
@@ -1168,12 +1156,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           </div>
         </div>
       )}
-
-      {/* Modal Demostrativo: Jerarquía Territorial de Sedes (Req. #8) */}
-      <ModalJerarquiaTerritorialDemo
-        isOpen={mostrarModalJerarquia}
-        onClose={() => setMostrarModalJerarquia(false)}
-      />
     </div>
   );
 };
