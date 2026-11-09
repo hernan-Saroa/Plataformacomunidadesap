@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
 import { ETAPA_RECEPCION, RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { Oferente } from '../../entities/oferente.entity';
+import { Adenda } from '../../entities/adenda.entity';
 import { PlazoOfertas } from '../../entities/plazo-ofertas.entity';
 import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
@@ -19,7 +21,7 @@ import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { HiringAccess } from '../../auth/hiring-access';
+import { esSuperAdmin, HiringAccess } from '../../auth/hiring-access';
 import { festivosEntre } from '../publicacion/festivos-colombia';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from '../publicacion/dias-habiles';
 import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
@@ -61,7 +63,7 @@ export class OfertasService {
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string) {
+  async estado(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
 
     const excluida = await this.dataSource.getRepository(ActividadExcluida).findOne({
@@ -87,6 +89,7 @@ export class OfertasService {
 
     const documentos = await this.archivosDe(oferentes.map((o) => o.soporteDocumentoId));
     const audiencia = await this.riesgos.requisitoParaCerrarOfertas(procesoId);
+    const prorrogas = recepcion ? await this.prorrogasPorAdenda(recepcion) : [];
 
     return {
       aplica: !excluida,
@@ -104,6 +107,11 @@ export class OfertasService {
         ? { ...this.verRecepcion(recepcion), ...(await this.plazoConDias(recepcion)) }
         : null,
       puedeRegistrar: !excluida && !!recepcion && recepcion.estado === 'ABIERTA',
+      // Fijar el vencimiento a mano sigue para la modalidad sin plazo
+      // parametrizado. Corregir uno ya fijado no: en la operación el cierre se
+      // mueve solo con una adenda de cronograma (sesión de QA del 04/11, EFDS-1157),
+      // y el atajo queda para las pruebas internas del super administrador.
+      puedeCorregirVencimiento: !recepcion || esSuperAdmin(acceso),
       // El cierre solo puede intentarse con el plazo vencido; la pantalla usa
       // esto para decir por qué el botón no está disponible, en vez de dejarlo
       // apagado sin explicación.
@@ -119,6 +127,10 @@ export class OfertasService {
       // Lo que vuelve pública la lista es el cierre: a partir de ahí ya no
       // admite cambios.
       listaPublicada: recepcion?.estado === 'CERRADA',
+      // Revisión de QA de EFDS-1155: el cierre se extiende con una adenda de
+      // cronograma (5.13), aunque ya se estén recibiendo ofertas. La pantalla
+      // las lista para que se vea de dónde salió el vencimiento vigente.
+      prorrogas,
       oferentes: oferentes.map((o) => ({
         id: o.id,
         numero: o.numero,
@@ -247,6 +259,12 @@ export class OfertasService {
         );
       }
 
+      if (recepcion && !esSuperAdmin(acceso)) {
+        throw new ForbiddenException(
+          'La fecha de cierre solo se cambia con una adenda de cronograma (5.13), que deja su soporte en el expediente',
+        );
+      }
+
       const anterior = recepcion?.vencimiento ?? null;
 
       if (recepcion) {
@@ -277,7 +295,7 @@ export class OfertasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   // ----------------------------------------------------------- oferentes --
@@ -357,7 +375,7 @@ export class OfertasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   /**
@@ -393,7 +411,7 @@ export class OfertasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   // -------------------------------------------------------------- cierre --
@@ -463,7 +481,7 @@ export class OfertasService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   // ----------------------------------------------------------- auxiliares --
@@ -516,6 +534,38 @@ export class OfertasService {
     const restantes = diasHabilesRestantes(hoy, dia, festivos);
 
     return { diasHabilesRestantes: restantes, estadoPlazo: estadoDelPlazo(restantes) };
+  }
+
+  /**
+   * Las adendas de cronograma publicadas que movieron este cierre de ofertas.
+   *
+   * Las que llevan hora anterior son, desde la 134, las que prorrogaron el
+   * cierre; las de antes se reconocen porque se emitieron con la recepción ya
+   * abierta, que es cuando una de cronograma mueve el cierre y no el plazo de
+   * observaciones.
+   */
+  private async prorrogasPorAdenda(recepcion: RecepcionOfertas) {
+    const adendas = await this.dataSource.getRepository(Adenda).find({
+      where: { procesoId: recepcion.procesoId, tipo: 'CRONOGRAMA', estado: 'PUBLICADA' },
+      order: { numero: 'ASC' },
+    });
+
+    return adendas
+      .filter(
+        (a) =>
+          !!a.vencimientoNuevo &&
+          (a.horaAnterior !== null || a.createdAt.getTime() >= recepcion.createdAt.getTime()),
+      )
+      .map((a) => ({
+        adendaId: a.id,
+        numero: a.numero,
+        fechaPublicacion: a.fechaPublicacion,
+        publicadaPor: a.publicadaPor,
+        vencimientoAnterior: a.vencimientoAnterior,
+        horaAnterior: a.horaAnterior,
+        vencimientoNuevo: a.vencimientoNuevo,
+        horaNueva: a.horaNueva,
+      }));
   }
 
   private async exigirQueAplique(em: EntityManager, proceso: Proceso) {

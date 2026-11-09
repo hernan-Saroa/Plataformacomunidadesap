@@ -11,6 +11,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const PARAMETROS = [
   { clave: 'anticipacion_amparo', valor: 30, minimo: 1, maximo: 180, descripcion: 'Días antes de la póliza' },
   { clave: 'hora_aviso', valor: 7, minimo: 0, maximo: 23, descripcion: 'Hora del aviso' },
+  { clave: 'cuantia_minima_comite', valor: 1000, minimo: 1, maximo: 100000, descripcion: 'SMMLV del comité' },
 ];
 
 /** Los plazos de las alertas, en tabla, como los plazos de publicidad (EFDS-1183). */
@@ -49,6 +50,14 @@ describe('ParametrosAlertas', () => {
     await userEvent.type(campo, '25');
 
     expect(screen.getByRole('button', { name: /Guardar plazo/ })).toBeDisabled();
+  });
+
+  it('no muestra la cuantía del comité: se configura en Configuración', async () => {
+    render(<ParametrosAlertas puedeEditar />);
+
+    await screen.findByText('30 días antes');
+    expect(screen.queryByText(/SMMLV/)).toBeNull();
+    expect(screen.queryByText('cuantia_minima_comite')).toBeNull();
   });
 
   it('a quien no configura no le ofrece cambiar', async () => {

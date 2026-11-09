@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   BellRing,
+  CalendarRange,
   ClipboardCheck,
   FileClock,
   FileCheck2,
@@ -18,6 +19,7 @@ import { fechaLarga } from '../shared/fechas';
 import { PERMISOS } from '../../auth/permisos';
 import { useAlcance } from '../../auth/alcance';
 import { ParametrosAlertas } from './ParametrosAlertas';
+import { CorreosInstitucionales } from './CorreosInstitucionales';
 
 const RASGOS: Record<
   AlertaVencimiento['tipo'],
@@ -44,6 +46,10 @@ const RASGOS: Record<
   // (113). Vencido el plazo, la fila se pinta como cualquier vencimiento.
   ACTA_COMITE_PENDIENTE: { etiqueta: 'Acta del comité', icono: FileClock, color: '#D97706' },
   MEMORANDO_COMITE_PENDIENTE: { etiqueta: 'Memorando del comité evaluador', icono: FileClock, color: '#D97706' },
+  // Rojo como un vencimiento: la fecha de fin de una etapa del cronograma de
+  // la 5.2 (135). Lleva a la 5.2, donde se ajusta.
+  CRONOGRAMA_ETAPA: { etiqueta: 'Cronograma', icono: CalendarRange, color: '#DC2626' },
+  CRONOGRAMA_ACTIVIDAD: { etiqueta: 'Cronograma', icono: CalendarRange, color: '#DC2626' },
 };
 
 /**
@@ -141,7 +147,10 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
       </div>
 
       {pestana === 'configuracion' && puedeConfigurar ? (
-        <ParametrosAlertas puedeEditar />
+        <>
+          <ParametrosAlertas puedeEditar />
+          <CorreosInstitucionales puedeEditar />
+        </>
       ) : (
       <>
 
@@ -243,7 +252,12 @@ function Fila({
   // La devolución la trae igual, y llevar a quien corrige hasta la actividad
   // —no hasta el proceso— es justamente lo que le ahorra buscarla. «Sin
   // abogado» abre con la 3.4, que es la actividad que está trancada.
-  const numeral = sinPlazo || esPlazoActividad || esActaComite ? a.descripcion.split('·')[0].trim() : undefined;
+  const numeral =
+    a.tipo === 'CRONOGRAMA_ETAPA'
+      ? '5.2'
+      : a.tipo === 'CRONOGRAMA_ACTIVIDAD' || sinPlazo || esPlazoActividad || esActaComite
+        ? a.descripcion.split('·')[0].trim()
+        : undefined;
   /** «1 día hábil», «3 días hábiles»: en el plazo se dice el número bien dicho. */
   const dias = (n: number) =>
     esPlazoActividad ? (Math.abs(n) === 1 ? 'día hábil' : 'días hábiles') : 'días';

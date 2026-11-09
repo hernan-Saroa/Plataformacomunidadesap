@@ -146,6 +146,17 @@ describe('PanelEvaluacion · actividad 6.3', () => {
     expect(screen.getByLabelText('Archivos del informe')).toHaveAttribute('multiple');
   });
 
+  it('integrar el comité identifica, pero sin el permiso de la 6.3 no deja cargar', async () => {
+    servicio.evaluacion.mockResolvedValue(estado({ ...miembro }));
+    render(<PanelEvaluacion procesoId="p-1" />);
+
+    expect(await screen.findByText('Integras el comité de este proceso')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Cargar el informe de evaluación preliminar/i }),
+    ).toBeNull();
+    expect(screen.getByText(/lo carga quien tiene a cargo la 6.3/)).toBeInTheDocument();
+  });
+
   it('carga el informe en varios archivos, cada uno con su dimensión', async () => {
     const usuario = userEvent.setup();
     servicio.evaluacion.mockResolvedValue(estado({ ...miembro, puedeRegistrar: true }));

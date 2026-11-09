@@ -31,9 +31,8 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
 /**
  * Informe final de ejecución — actividad 10.1 (EFDS-1171).
  *
- * Lo firma el supervisor, que es quien vigiló. El rol abre la puerta y el
- * servicio exige que sea el supervisor vigente de ese contrato, con la misma
- * regla del aval del pago.
+ * Lo firma el supervisor, que es quien vigiló. Como no entra a la aplicación
+ * (136), su informe firmado lo carga quien tenga la 10.1 en el flujo.
  */
 @ApiTags('Etapa 10 · Informe final de supervisión')
 @Controller('procesos/:id/informe-final')

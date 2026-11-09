@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ComiteContratacionService } from './comite-contratacion.service';
-import { ComiteContratacionController } from './comite-contratacion.controller';
+import { ComiteContratacionController, UmbralesComiteController } from './comite-contratacion.controller';
 import { SegundaSesionService } from './segunda-sesion.service';
 import { SegundaSesionController } from './segunda-sesion.controller';
 
@@ -51,7 +51,7 @@ import { DocumentoProceso } from '../../entities/documento-proceso.entity';
     AprobacionModule,
     DocumentosActividadModule,
   ],
-  controllers: [ComiteContratacionController, SegundaSesionController],
+  controllers: [ComiteContratacionController, SegundaSesionController, UmbralesComiteController],
   providers: [ComiteContratacionService, SegundaSesionService],
 })
 export class ComiteContratacionModule {}

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { History, Inbox } from 'lucide-react';
+import { History, Inbox, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoParticipacion, PuestosDelProceso as DatosPuestos } from '../../types';
-import { Aviso, Ayuda, Boton, Marco, Titulo } from '../shared/PiezasPanel';
+import { Aviso, Ayuda, Boton, BotonSecundario, Marco, Titulo } from '../shared/PiezasPanel';
 import { PasoDeLaActividad, PasosDeLaActividad } from '../shared/PasosDeLaActividad';
 import { momento } from '../shared/fechas';
+import { useDialogo } from '../shared/useDialogo';
 import { PuestosDelProceso } from './PuestosDelProceso';
 
 interface Props {
@@ -34,6 +35,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
+  const dialogo = useDialogo();
 
   /** Nulo si la consulta falla: la radicación sigue sirviendo para tomar el proceso. */
   const leerPuestos = () =>
@@ -63,6 +65,35 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
       // Hacerse cargo es lo que habilita asignar los puestos.
       leerPuestos();
       toast.success('Ya estás a cargo. Ahora escoge quién lleva el caso y quién lo revisa.');
+      onCambio?.();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  /*
+   * Recibirlo es también mirarlo: si llega incompleto, quien lo tomó se lo
+   * devuelve al área sin pasarlo antes a los abogados, y lo sigue llevando
+   * cuando vuelva.
+   */
+  const devolver = async () => {
+    const observaciones = await dialogo.pedirMotivo({
+      titulo: 'Devolver el estudio previo al área',
+      descripcion:
+        'El área lo recibe con tus observaciones para corregirlo y reenviarlo. Sigues a cargo del proceso cuando vuelva, y la revisión empieza de nuevo.',
+      etiqueta: 'Observaciones para el área',
+      placeholder: 'Falta el análisis del sector y el anexo técnico firmado…',
+      confirmar: 'Devolver al área',
+    });
+    if (!observaciones) return;
+
+    setGuardando(true);
+    try {
+      await contratacionService.devolverDesdeLaRadicacion(procesoId, observaciones);
+      setEstado(await contratacionService.participacion(procesoId));
+      toast.success('Le devolviste el estudio previo al área con tus observaciones.');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -110,6 +141,16 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
         detalle: `${contratacion.nombre}${contratacion.esMio ? ' (tú)' : ''} · desde el ${momento(
           contratacion.asignadoAt,
         )}`,
+        children: estado.puedeDevolver ? (
+          <BotonSecundario
+            icono={<Undo2 className="w-3.5 h-3.5" />}
+            disabled={guardando}
+            onClick={devolver}
+            title="Si el estudio previo llegó incompleto, devuélvelo al área con tus observaciones"
+          >
+            Devolver al área
+          </BotonSecundario>
+        ) : undefined,
       }
     : puedeTomar
       ? {
@@ -207,6 +248,8 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
           )}
         </div>
       )}
+
+      {dialogo.elemento}
     </Marco>
   );
 }
