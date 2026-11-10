@@ -17,4 +17,8 @@ describe('Estado documental RUND y excepción de Contacto', () => {
     expect(rundReviewStatus().approved).toBe(false);
     expect(rundReviewStatus({ CONTACTO: 'Aprobado', OTRO: 'Aprobado' })).toMatchObject({ approved: false, count: 0, total: 5 });
   });
+  it.each([undefined,null,{}, {IDENTIDAD:'Pendiente'}, {IDENTIDAD:'En revisión'}, {FORMACION:'Soporte faltante'}])('los datos aún no revisados no se anuncian como una corrección: %p',states=>{
+    expect(rundReviewStatus(states)).toMatchObject({approved:false,returned:false,label:'Pendiente de revisión'});
+    expect(rundReviewStatus(states).description).toContain('soportes es opcional');
+  });
 });

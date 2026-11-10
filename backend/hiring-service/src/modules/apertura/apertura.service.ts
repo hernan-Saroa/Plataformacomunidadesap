@@ -23,6 +23,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import {
   NUMERAL_SEGUNDA_SESION,
   requisitoDeLaSegundaSesion,
+  sinComiteEnLaPrimeraSesion,
 } from '../comite-contratacion/segunda-sesion';
 
 /** Actividad 5.7 de la matriz: la apertura formal del proceso. */
@@ -255,7 +256,11 @@ export class AperturaService {
       where: { procesoId, sumision: 2 },
       order: { fecha: 'DESC', createdAt: 'DESC' },
     });
-    return requisitoDeLaSegundaSesion(actividad?.estado ?? null, sesiones);
+    return requisitoDeLaSegundaSesion(
+      actividad?.estado ?? null,
+      sesiones,
+      await sinComiteEnLaPrimeraSesion(em, procesoId),
+    );
   }
 
   /**

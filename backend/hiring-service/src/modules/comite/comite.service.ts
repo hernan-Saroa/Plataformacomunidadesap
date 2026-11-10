@@ -305,17 +305,14 @@ export class ComiteService {
   // ------------------------------------------------- quién puede evaluar --
 
   /**
-   * En qué dimensiones evalúa este usuario dentro del proceso.
+   * En qué dimensiones figura este usuario en el comité del proceso.
    *
-   * Es la pregunta que hará la evaluación (EFDS-1157) en cada petición, y la
-   * respuesta se deriva de la membresía del comité vigente: **no se escriben
-   * roles en `auth.user_roles`**. Dos razones. La primera es de propiedad: ese
-   * esquema es de otro equipo y repartir permisos globales desde contratación
-   * sería pisarlo. La segunda es de fondo: ser evaluador no es una condición de
-   * la persona sino de la persona *en este proceso*, y un rol global no sabría
-   * distinguir en cuál puede evaluar y en cuál no.
+   * Es solo identificación: la designación dice quién integra el comité y con
+   * qué rol, y **no da permisos ni hace aprobador**. Quién carga la evaluación
+   * lo dice el alcance de la 6.3 y quién la aprueba, el flujo. Tampoco se
+   * escriben roles en `auth.user_roles`: ese esquema es de otro equipo.
    *
-   * Lista vacía significa que no evalúa aquí, sea porque no está designado o
+   * Lista vacía significa que no figura aquí, sea porque no está designado o
    * porque su cuenta no está enlazada a ninguna persona del directorio.
    */
   async dimensionesDe(procesoId: string, acceso: HiringAccess) {

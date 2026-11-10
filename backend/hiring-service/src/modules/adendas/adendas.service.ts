@@ -11,6 +11,7 @@ import { Adenda } from '../../entities/adenda.entity';
 import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
 import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
+import { CronogramaService } from '../cronograma/cronograma.service';
 import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
@@ -101,6 +102,8 @@ export class AdendasService {
       // el proceso ya se abrió, o el plazo de observaciones donde no hay
       // apertura.
       vencimientoVigente: ventana.vencimiento,
+      /** La hora del cierre vigente (HH:MM:SS, Bogotá); nula si no hay cierre que mover. */
+      horaVigente: ventana.hora,
       mueve: ventana.recepcion ? 'CIERRE_OFERTAS' : 'PLAZO_OBSERVACIONES',
       adendas: adendas.map((a) => ({
         id: a.id,
@@ -114,6 +117,10 @@ export class AdendasService {
         publicadaPor: a.publicadaPor,
         vencimientoAnterior: a.vencimientoAnterior,
         vencimientoNuevo: a.vencimientoNuevo,
+        horaAnterior: a.horaAnterior,
+        horaNueva: a.horaNueva,
+        /** Las fechas del cronograma que mueve (139); con la anterior, una vez publicada. */
+        cambiosCronograma: a.cambiosCronograma ?? [],
         motivoAnulacion: a.motivoAnulacion,
         documento: archivo(a.documentoId),
         evidencia: archivo(a.evidenciaDocumentoId),
@@ -159,13 +166,30 @@ export class AdendasService {
       // plataforma controle (las de evaluación y adjudicación van en el
       // documento): se registra y se publica sin nuevo vencimiento.
       const sinFechaQueMover = dto.tipo === 'CRONOGRAMA' && !!ventana.motivoFondo;
-      if (dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover && !dto.vencimientoNuevo) {
+      const cambios = dto.cambiosCronograma ?? [];
+      if (dto.tipo === 'FONDO' && cambios.length) {
         throw new BadRequestException(
-          'Una adenda de cronograma necesita la nueva fecha de vencimiento (YYYY-MM-DD)',
+          'Las fechas del cronograma se mueven con una adenda de cronograma, no con una de requisitos',
         );
       }
+      // Desde la 139 una de cronograma puede mover solo fechas del cronograma
+      // de la 5.2 (la audiencia, las subsanaciones…) sin tocar el cierre.
+      if (dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover && !dto.vencimientoNuevo && !cambios.length) {
+        throw new BadRequestException(
+          'Una adenda de cronograma mueve la fecha de cierre o alguna fecha del cronograma: indica cuál',
+        );
+      }
+      const cambiosCronograma =
+        dto.tipo === 'CRONOGRAMA'
+          ? await CronogramaService.resolverCambiosDeAdenda(
+              em,
+              procesoId,
+              cambios,
+              !sinFechaQueMover && !!dto.vencimientoNuevo && !!ventana.recepcion,
+            )
+          : [];
 
-      if (dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover) {
+      if (dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover && dto.vencimientoNuevo) {
         // Abierto el proceso, lo que se prorroga es el cierre de ofertas. Si la
         // modalidad no lo tiene parametrizado y nadie lo ha fijado, no hay
         // fecha que mover; tomar la del plazo de observaciones movería otra.
@@ -174,7 +198,7 @@ export class AdendasService {
             'Todavía no hay plazo de ofertas que prorrogar: fíjalo primero en la recepción de ofertas (6.1)',
           );
         }
-        this.validarNuevoVencimiento(dto.vencimientoNuevo!, ventana);
+        this.validarNuevoVencimiento(dto.vencimientoNuevo!, dto.horaNueva ?? null, ventana);
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -199,7 +223,14 @@ export class AdendasService {
           estado: 'EMITIDA' as const,
           emitidaPor: acceso.userName,
           vencimientoNuevo:
-            dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover ? dto.vencimientoNuevo! : null,
+            dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover ? (dto.vencimientoNuevo ?? null) : null,
+          cambiosCronograma,
+          // La hora solo existe en el cierre de ofertas: el plazo de
+          // observaciones se cuenta por días.
+          horaNueva:
+            dto.tipo === 'CRONOGRAMA' && !sinFechaQueMover && ventana.recepcion && dto.horaNueva
+              ? `${dto.horaNueva}:00`
+              : null,
         }),
       );
 
@@ -211,6 +242,9 @@ export class AdendasService {
         actividad: NUMERAL_ADENDAS,
         adenda: adenda.numero,
         tipo: dto.tipo,
+        ...(cambiosCronograma.length
+          ? { cronograma: cambiosCronograma.map((c) => ({ actividad: c.nombre, fechaFin: c.fechaFin })) }
+          : {}),
       });
     });
 
@@ -284,24 +318,55 @@ export class AdendasService {
             'Todavía no hay plazo de ofertas que prorrogar: fíjalo primero en la recepción de ofertas (6.1)',
           );
         }
-        this.validarNuevoVencimiento(adenda.vencimientoNuevo!, ventana);
+        this.validarNuevoVencimiento(adenda.vencimientoNuevo!, adenda.horaNueva, ventana);
 
         adenda.vencimientoAnterior = ventana.vencimiento;
+        adenda.horaAnterior = ventana.hora;
         if (ventana.recepcion) {
           // Con el proceso abierto, lo que la adenda prorroga es el cierre de
-          // ofertas. Se conserva la hora del cronograma: la adenda mueve el
-          // día, no la hora a la que cierra la recepción.
+          // ofertas. Si la adenda no fija hora se conserva la del cronograma:
+          // mueve el día, no la hora a la que cierra la recepción.
           const recepcion = ventana.recepcion;
-          recepcion.vencimiento = new Date(
-            `${adenda.vencimientoNuevo}T${horaEnBogota(recepcion.vencimiento)}-05:00`,
+          recepcion.vencimiento = instanteEnBogota(
+            adenda.vencimientoNuevo!,
+            adenda.horaNueva ?? horaEnBogota(recepcion.vencimiento),
           );
           // Deja de ser el plazo calculado, igual que al fijarlo a mano.
           recepcion.plazoDiasHabiles = null;
           await em.save(recepcion);
+          // Si el cierre (6.1) estaba en el cronograma por actividad, se mueve
+          // con la adenda y el cambio queda en su historial (138).
+          await CronogramaService.moverPorAdenda(
+            em,
+            procesoId,
+            '6.1',
+            adenda.vencimientoNuevo!,
+            adenda.id,
+            acceso,
+          );
         } else {
           publicacion.fechaVencimiento = adenda.vencimientoNuevo;
           await em.save(publicacion);
         }
+      }
+
+      // Las demás fechas del cronograma que trae la adenda (139): se vuelven a
+      // revisar contra el cronograma de hoy —entre emitirla y publicarla pudo
+      // cambiar— y se aplican con la fecha que tenían antes.
+      if (adenda.tipo === 'CRONOGRAMA' && adenda.cambiosCronograma?.length) {
+        const vigentes = await CronogramaService.resolverCambiosDeAdenda(
+          em,
+          procesoId,
+          adenda.cambiosCronograma,
+          !!adenda.vencimientoNuevo && !!ventana.recepcion,
+        );
+        adenda.cambiosCronograma = await CronogramaService.aplicarCambiosDeAdenda(
+          em,
+          procesoId,
+          vigentes,
+          { id: adenda.id, numero: adenda.numero },
+          acceso,
+        );
       }
 
       await em.save(adenda);
@@ -316,6 +381,17 @@ export class AdendasService {
           ? {
               vencimientoAnterior: adenda.vencimientoAnterior,
               vencimientoNuevo: adenda.vencimientoNuevo,
+              ...(adenda.horaAnterior ? { horaAnterior: adenda.horaAnterior } : {}),
+              ...(ventana.recepcion ? { horaNueva: horaEnBogota(ventana.recepcion.vencimiento) } : {}),
+            }
+          : {}),
+        ...(adenda.cambiosCronograma?.length
+          ? {
+              cronograma: adenda.cambiosCronograma.map((c) => ({
+                actividad: c.nombre,
+                fechaFinAnterior: c.antes?.fechaFin ?? null,
+                fechaFin: c.fechaFin,
+              })),
             }
           : {}),
       });
@@ -412,14 +488,16 @@ export class AdendasService {
         'La recepción de ofertas ya se cerró: después del cierre solo caben adendas de cronograma';
     }
 
-    const vencimiento =
-      recepcion && recepcion.estado !== 'CERRADA'
-        ? fechaEnBogota(recepcion.vencimiento)
-        : recepcion || apertura
-          ? null
-          : (publicacion?.fechaVencimiento ?? null);
+    const abierta = recepcion && recepcion.estado !== 'CERRADA' ? recepcion : null;
+    const vencimiento = abierta
+      ? fechaEnBogota(abierta.vencimiento)
+      : recepcion || apertura
+        ? null
+        : (publicacion?.fechaVencimiento ?? null);
+    // Solo el cierre de ofertas tiene hora; el plazo de observaciones es un día.
+    const hora = abierta ? horaEnBogota(abierta.vencimiento) : null;
 
-    return { publicacion, apertura, recepcion, motivo, motivoFondo, vencimiento };
+    return { publicacion, apertura, recepcion, motivo, motivoFondo, vencimiento, hora };
   }
 
   /**
@@ -429,15 +507,34 @@ export class AdendasService {
    * Acortar un plazo ya anunciado recortaría el término de quien todavía puede
    * observar el pliego o presentar su oferta, y el módulo cuenta lo que llega
    * fuera de término contra esa misma fecha.
+   *
+   * El cierre de ofertas se compara con su hora (revisión de QA de EFDS-1155):
+   * pasarlo de las 10:00 a las 17:00 del mismo día también es prorrogarlo.
    */
   private validarNuevoVencimiento(
     nuevo: string,
-    ventana: { publicacion: PublicacionPliego | null; vencimiento: string | null },
+    horaNueva: string | null,
+    ventana: {
+      publicacion: PublicacionPliego | null;
+      vencimiento: string | null;
+      hora: string | null;
+    },
   ) {
     if (ventana.publicacion && nuevo <= ventana.publicacion.fechaPublicacion) {
       throw new BadRequestException(
         'El nuevo vencimiento debe ser posterior a la fecha de publicación del pliego',
       );
+    }
+
+    if (ventana.vencimiento && ventana.hora) {
+      const hora = horaNueva ?? ventana.hora;
+      const vigente = instanteEnBogota(ventana.vencimiento, ventana.hora);
+      if (instanteEnBogota(nuevo, hora).getTime() <= vigente.getTime()) {
+        throw new BadRequestException(
+          `El nuevo cierre (${nuevo} ${hora.slice(0, 5)}) debe ser posterior al vigente (${ventana.vencimiento} ${ventana.hora.slice(0, 5)}): una adenda de cronograma prorroga el plazo`,
+        );
+      }
+      return;
     }
 
     if (ventana.vencimiento && nuevo <= ventana.vencimiento) {
@@ -624,6 +721,11 @@ export class AdendasService {
 /** El día de un instante, en Bogotá. */
 function fechaEnBogota(instante: Date): string {
   return instante.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+
+/** Un día y una hora de Bogotá (HH:MM o HH:MM:SS) como instante. */
+function instanteEnBogota(dia: string, hora: string): Date {
+  return new Date(`${dia}T${hora.length === 5 ? `${hora}:00` : hora}-05:00`);
 }
 
 /** La hora de un instante en Bogotá, como HH:MM:SS. */

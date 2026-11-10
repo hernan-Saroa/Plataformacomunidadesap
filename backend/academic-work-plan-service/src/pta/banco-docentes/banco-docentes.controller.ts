@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
@@ -9,6 +9,8 @@ import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
 import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
+import { decodeRundCsv, normalizeRundUpload, rundContentDisposition } from './rund-text-encoding';
+import { RUND_COLUMNAS_CARGA } from './rund-carga-original';
 import { Public } from '../../auth/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
@@ -17,6 +19,7 @@ import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
+import { standaloneSupportCategory } from './rund-evidence-data';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 import {
@@ -72,6 +75,8 @@ export class BancoDocentesController {
   private supportCategory(bloque: string, tipoSoporte: string): string {
     const block = String(bloque || '').toUpperCase();
     const type = String(tipoSoporte || '').toLowerCase();
+    const codificada = standaloneSupportCategory(type);
+    if (codificada) return codificada;
     if (block === 'IDENTIDAD') return 'IDENTIDAD';
     if (block === 'FORMACION') return 'TITULOS';
     if (type.includes('contrato')) return 'CONTRATOS';
@@ -173,6 +178,7 @@ export class BancoDocentesController {
     @Query('genero') genero?: string,
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
+    @Query('convocatoria') convocatoria?: string,
   ) {
     const result = await this.service.list({
       territorial,
@@ -185,6 +191,7 @@ export class BancoDocentesController {
       genero,
       nivelFormacion,
       nucleoTematico,
+      convocatoria,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -212,6 +219,7 @@ export class BancoDocentesController {
     @Query('genero') genero?: string,
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
+    @Query('convocatoria') convocatoria?: string,
   ) {
     return {
       success: true,
@@ -225,6 +233,7 @@ export class BancoDocentesController {
         genero,
         nivelFormacion,
         nucleoTematico,
+        convocatoria,
       }),
     };
   }
@@ -355,14 +364,18 @@ export class BancoDocentesController {
     let periodoCargaFromFile: string | null = null;
 
     if (file) {
+      normalizeRundUpload(file);
       const extension = extname(file.originalname || '').toLowerCase();
       if (!['.xlsx', '.xls', '.csv'].includes(extension)) {
         throw new BadRequestException('El soporte de carga masiva debe ser un archivo XLSX, XLS o CSV.');
       }
       let workbook: xlsx.WorkBook;
       try {
-        workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
-      } catch {
+        workbook = extension === '.csv'
+          ? xlsx.read(decodeRundCsv(file.buffer), { type: 'string', cellDates: true })
+          : xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
+      } catch (error) {
+        if (error instanceof BadRequestException) throw error;
         throw new BadRequestException('El archivo de carga masiva esta corrupto o no tiene un formato Excel/CSV valido.');
       }
 
@@ -388,6 +401,7 @@ export class BancoDocentesController {
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9]/g, '')
         .toUpperCase();
+      const canonicalHeaders = new Map(RUND_COLUMNAS_CARGA.map(header => [normalizeHeader(header), header]));
       const headerRowIndex = matrix.findIndex((row) => {
         const keys = new Set((row || []).map(normalizeHeader));
         return (keys.has('DOCUMENTOIDENTIDAD') || keys.has('DOCUMENTO') || keys.has('DOCUMENTODEIDENTIDAD'))
@@ -402,7 +416,11 @@ export class BancoDocentesController {
           .map((row, idx) => {
             const record: Record<string, any> = { __sourceRowNumber: headerRowIndex + idx + 2 };
             headers.forEach((header, colIdx) => {
-              if (header) record[header] = row?.[colIdx] ?? null;
+              if (header) {
+                record[header] = row?.[colIdx] ?? null;
+                const canonical = canonicalHeaders.get(normalizeHeader(header));
+                if (canonical && !(canonical in record)) record[canonical] = row?.[colIdx] ?? null;
+              }
             });
             return record;
           });
@@ -445,6 +463,7 @@ export class BancoDocentesController {
     const supportContent = file?.buffer || Buffer.from(JSON.stringify(rows), 'utf8');
     const result = await this.service.bulkUpsert(rows, {
       rejectExisting: false,
+      convocatoria: body?.convocatoria,
       dryRun,
       omitErrors,
       periodoCarga: periodoCargaQuery || periodoCargaFromFile || undefined,
@@ -483,6 +502,12 @@ export class BancoDocentesController {
         message: 'La carga finalizó. El detalle no está disponible temporalmente; consulte el listado antes de volver a importar.',
       } };
     }
+  }
+
+  @Get('convocatorias')
+  @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  async convocatorias(@Query('periodoCarga') periodoCarga: string) {
+    return { success: true, data: await this.service.getConvocatorias(periodoCarga) };
   }
 
   @Get('bulk/historial')
@@ -691,6 +716,7 @@ export class BancoDocentesController {
     @Req() req: any,
   ) {
     this.assertIncorporationUpload(body, req);
+    normalizeRundUpload(file);
     const actor = this.requestActor(req);
     // modo=agregar: the document library adds another evidence (it never overwrites a legacy one).
     const data = await this.documentos.create(id, { ...body, nuevaEvidencia: body?.modo === 'agregar', soporteHistoricoId: undefined },
@@ -711,6 +737,7 @@ export class BancoDocentesController {
     @Req() req: any,
   ) {
     if (this.isLimitedIncorporator(req)) await this.documentos.assertIncorporationDocument(id, documentId);
+    normalizeRundUpload(file);
     const actor = this.requestActor(req);
     const data = await this.documentos.replace(id, documentId, file, actor.actorId, body?.descripcion, actor.ip, body?.campo);
     return { success: true, data: this.documentos.protectMetadata(data, actor.fullAccess) };
@@ -729,11 +756,9 @@ export class BancoDocentesController {
   ) {
     await this.assertOwnProfileForDocente(id, undefined, req);
     const content = await this.documentos.content(id, documentId, this.requestActor(req));
-    const disposition = download === 'true' ? 'attachment' : 'inline';
-    const asciiName = content.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     response.setHeader('Content-Type', content.mimeType);
     response.setHeader('Content-Length', content.buffer.length);
-    response.setHeader('Content-Disposition', `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(content.fileName)}`);
+    response.setHeader('Content-Disposition', rundContentDisposition(content.fileName, download === 'true'));
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Cache-Control', 'private, no-store');
     response.send(content.buffer);
@@ -834,6 +859,22 @@ export class BancoDocentesController {
       rundSensitiveAccess: { roles: actor.roles, fullAccess: actor.fullAccess, endpoint: 'EDITAR_PERFIL_RUND' },
     });
     return { success: true, data: protectRundSensitiveData(result, actor.fullAccess) };
+  }
+
+  /** RUND-013 — Edición de un dato de contacto desde el cabezote (sin soporte; queda auditada). */
+  @Patch(':id/contacto')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.MANAGE)
+  async updateContacto(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const result = await this.service.updateContactoDocente(id, {
+      campo: body?.campo,
+      valor: body?.valor,
+      periodoCarga: body?.periodoCarga || body?.periodo_carga,
+      actorId: actor.actorId,
+      ip: actor.ip,
+    });
+    return { success: true, data: result };
   }
 
   @Put(':id/estado')
@@ -945,6 +986,7 @@ export class BancoDocentesController {
     this.assertIncorporationUpload({ ...body, bloque }, req);
     validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
     if (!file) throw new BadRequestException('Adjunte el archivo de soporte para registrar una carga documental.');
+    normalizeRundUpload(file);
     const technical = isTechnicalRundSupport(body.tipoSoporte);
     const actor = this.requestActor(req);
     const validacionTipo = await this.docTypeValidator.validate({

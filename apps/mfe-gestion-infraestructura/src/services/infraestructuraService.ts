@@ -178,6 +178,12 @@ export interface SolicitudMantenimiento {
   motivoRechazo?: string | null;
   __meta?: { warning?: string };
   sede?: Sede;
+  idDireccionTerritorial?: number | string | null;
+  idCetap?: number | string | null;
+  ubicacionAdicionalTexto?: string | null;
+  direccionTerritorialNombre?: string | null;
+  cetapNombre?: string | null;
+  nombreUbicacionDisplay?: string | null;
   espacio?: EspacioFisico;
   evidencias?: SolicitudEvidencia[];
   // ----- EFDS-1735 RF-INF-006 -----
@@ -353,7 +359,7 @@ export interface EvidenciaCierreFoto {
   url: string;
   bucket?: string;
   key?: string;
-  categoria?: 'EJECUCION_TECNICA' | 'SOPORTE_CONTRATACION' | 'ACTA_RECEPCION_INSUMOS' | string;
+  categoria?: 'EJECUCION_TECNICA' | 'SOPORTE_CONTRATACION' | 'ACTA_RECEPCION_INSUMOS' | 'ACTA_RECIBO_SATISFACCION' | string;
 }
 
 export interface CierreTecnicoPayload {
@@ -478,7 +484,10 @@ export interface ReporteGestionDto {
 }
 
 export interface CreateMantenimientoPayload {
-  idSede: string;
+  idSede?: string;
+  idDireccionTerritorial?: number;
+  idCetap?: number;
+  ubicacionAdicionalTexto?: string;
   idEspacio?: string;
   nombreAreaSolicitante: string;
   idAreaSolicitante?: string;
@@ -1371,6 +1380,31 @@ export const infraestructuraService = {
     } catch (err) {
       console.warn('[infra] getJerarquiaSedesDemo falló:', err);
       return { sedesActuales: [], territorialesNacionales: [] };
+    }
+  },
+
+  async getTerritorialesConCetaps(): Promise<{
+    sedesNivelCentral: any[];
+    direccionesTerritoriales: any[];
+  }> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sedes/territoriales-cetaps`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getTerritorialesConCetaps falló:', err);
+      return { sedesNivelCentral: [], direccionesTerritoriales: [] };
+    }
+  },
+
+  async getBloquesPorCetap(idCetap: number | string): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sedes/cetap/${idCetap}/bloques`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infra] getBloquesPorCetap(${idCetap}) falló:`, err);
+      return [];
     }
   },
 

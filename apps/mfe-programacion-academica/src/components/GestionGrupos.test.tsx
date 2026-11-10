@@ -2,12 +2,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GestionGrupos } from './GestionGrupos';
-import { actualizarOfertaCetapGrupo, crearGrupos, getGrupos, getOfertasCetapGrupo } from '../services/api/catalogoApi';
+import { actualizarOfertaCetapGrupo, crearGrupos, getEstadoOfertasCetap, getGrupos, getOfertasCetapGrupo } from '../services/api/catalogoApi';
 import type { OfertaCetapGrupo } from '../services/api/catalogoApi';
 
 vi.mock('../services/api/catalogoApi', () => ({
   actualizarOfertaCetapGrupo: vi.fn(), crearGrupos: vi.fn(), eliminarGrupo: vi.fn(),
-  getGrupos: vi.fn(), getOfertasCetapGrupo: vi.fn(),
+  getGrupos: vi.fn(), getOfertasCetapGrupo: vi.fn(), getEstadoOfertasCetap: vi.fn(),
 }));
 vi.mock('./CalendarioHorario', () => ({ CalendarioHorario: () => null }));
 
@@ -28,6 +28,7 @@ beforeEach(() => {
     oferta('165', 'Sede Central'), oferta('166', 'Neiva'), oferta('167', 'Sin cruce', null),
   ] as any);
   vi.mocked(crearGrupos).mockResolvedValue([]);
+  vi.mocked(getEstadoOfertasCetap).mockResolvedValue({ periodoModelo: 'plataforma', periodoCodigo: '2027-1', programa: 'AP', ofertasDelPeriodo: 5, ofertasDelPrograma: 3, cetapsCatalogo: 290, sinTerritorial: 0, motivo: null });
   vi.mocked(actualizarOfertaCetapGrupo).mockImplementation(async (_id, idOfertaCetap) =>
     ({ ...grupo, idOfertaCetap }) as any);
 });
@@ -41,7 +42,7 @@ describe('oferta CETAP de grupos', () => {
     fireEvent.change(screen.getByLabelText('Oferta CETAP para grupos nuevos', { selector: 'select' }),
       { target: { value: '165' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
-    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', '165'));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', '165', 'presencial'));
     fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar oferta cetap para grupos nuevos' }),
       { target: { value: 'Neiva' } });
     expect(screen.getByLabelText('Oferta CETAP para grupos nuevos', { selector: 'select' }).textContent).toContain('Neiva');
@@ -82,14 +83,14 @@ describe('oferta CETAP de grupos', () => {
     render(<GestionGrupos {...props} />);
     expect(await screen.findByText(/No hay ofertas CETAP activas/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
-    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'presencial'));
   });
 
   it('permite crear grupos sin oferta mientras se consultan las ofertas', async () => {
     vi.mocked(getOfertasCetapGrupo).mockImplementation(() => new Promise<OfertaCetapGrupo[]>(() => {}));
     render(<GestionGrupos {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
-    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'presencial'));
   });
 
   it('permite crear grupos sin oferta si la consulta de ofertas falla', async () => {
@@ -98,6 +99,37 @@ describe('oferta CETAP de grupos', () => {
     expect(await screen.findByText(/No se pudieron cargar las ofertas CETAP/)).toBeTruthy();
     expect(screen.getByText(/Puedes crear grupos sin oferta y asignarla después/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
-    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'presencial'));
+  });
+});
+
+describe('grupo virtual (063): horario opcional que define el docente', () => {
+  it('se crea como virtual, avisa que el horario es opcional y lo muestra en la lista', async () => {
+    vi.mocked(getGrupos).mockResolvedValue([{ ...grupo, modalidad: 'virtual' }] as any);
+    render(<GestionGrupos {...props} />);
+    expect(await screen.findByText('Virtual')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Modalidad de los grupos nuevos'), { target: { value: 'virtual' } });
+    expect(screen.getByRole('note').textContent).toMatch(/el horario es opcional/);
+    fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'virtual'));
+  });
+});
+
+describe('por qué no hay CETAP que elegir', () => {
+  it('periodo sin oferta cargada: el servidor lo explica y la pantalla lo muestra', async () => {
+    vi.mocked(getOfertasCetapGrupo).mockResolvedValue([]);
+    vi.mocked(getEstadoOfertasCetap).mockResolvedValue({ periodoModelo: 'plataforma', periodoCodigo: '2027-1', programa: 'AP', ofertasDelPeriodo: 0, ofertasDelPrograma: 0, cetapsCatalogo: 290, sinTerritorial: 0,
+      motivo: 'El periodo 2027-1 no tiene la oferta por CETAP cargada. Un administrador debe importar el Excel del catálogo para este periodo.' });
+    render(<GestionGrupos {...props} />);
+    expect(await screen.findByText(/no tiene la oferta por CETAP cargada/)).toBeTruthy();
+    expect(getEstadoOfertasCetap).toHaveBeenCalledWith('asig-1', '11');
+  });
+
+  it('con CETAP que elegir pero sin territorial en algunos, avisa sin bloquear', async () => {
+    vi.mocked(getEstadoOfertasCetap).mockResolvedValue({ periodoModelo: 'plataforma', periodoCodigo: '2027-1', programa: 'AP', ofertasDelPeriodo: 5, ofertasDelPrograma: 3, cetapsCatalogo: 290, sinTerritorial: 2,
+      motivo: '2 de 3 CETAP no tienen territorial vinculada: un grupo ubicado allí no se podrá concertar.' });
+    render(<GestionGrupos {...props} />);
+    expect(await screen.findByText(/2 de 3 CETAP no tienen territorial vinculada/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Crear grupos' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

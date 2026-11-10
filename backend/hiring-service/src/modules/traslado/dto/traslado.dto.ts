@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -39,6 +40,20 @@ export class TrasladarInformeDto {
   @MinLength(10, { message: 'Describe la publicación: una palabra no prueba el traslado' })
   @MaxLength(500)
   medioPublicacion: string;
+
+  /** El enlace del proceso en SECOP II (sesión de QA del 04/11). */
+  @ApiPropertyOptional({ description: 'Enlace del proceso' })
+  @IsOptional()
+  @IsUrl({}, { message: 'El enlace del proceso no tiene un formato válido' })
+  @MaxLength(1000)
+  enlaceProceso?: string;
+
+  /** Lo relevante del traslado, en texto libre (sesión de QA del 04/11). */
+  @ApiPropertyOptional({ description: 'Observaciones relevantes del traslado' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  observaciones?: string;
 
   /** Solo si la 6.4 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })

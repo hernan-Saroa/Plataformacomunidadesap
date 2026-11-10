@@ -169,6 +169,7 @@ describe('ConsultasJuridicasService', () => {
                 'abogado@esap.edu.co',
                 expect.stringContaining('CJ-2026-0006'),
                 expect.any(String),
+                'RESPUESTA_APROBADA',
             );
         });
 
@@ -211,6 +212,7 @@ describe('ConsultasJuridicasService', () => {
                 'abogado2@esap.edu.co',
                 expect.stringContaining('CJ-2026-0008'),
                 expect.any(String),
+                'RESPUESTA_DEVUELTA',
             );
         });
 

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Conversacion } from './entities/conversacion.entity';
@@ -8,6 +8,10 @@ import { CreateMensajeDto } from './dto/create-mensaje.dto';
 import { institutionalGuidance } from './institutional-guidance';
 import type { ChatbotAuthContext } from '../../auth/chatbot-auth.guard';
 import { IsolucionService, searchTerms } from '../isolucion/isolucion.service';
+import { KnowledgeAnswerService } from '../knowledge/knowledge-answer.service';
+import { contentPolicy } from './content-policy';
+import { briefDocumentAnswer } from '../knowledge/fast-knowledge';
+import { relevantSources } from '../knowledge/evidence-policy';
 
 export type ConversacionVisible = Omit<Conversacion, 'propietarioUsuarioId'> & { puedeEscribir: boolean };
 
@@ -19,6 +23,7 @@ export class ChatService {
     @InjectRepository(Mensaje)
     private readonly mensajeRepo: Repository<Mensaje>,
     private readonly isolucion: IsolucionService,
+    @Optional() private readonly knowledge?: KnowledgeAnswerService,
   ) {}
 
   async crearConversacion(dto: CreateConversacionDto, actor: ChatbotAuthContext): Promise<ConversacionVisible> {
@@ -151,6 +156,9 @@ export class ChatService {
   }
 
   private async generarRespuesta(pregunta: string, contexto: string) {
+    const policy = contentPolicy(pregunta);
+    if (policy) return policy;
+    if (this.knowledge?.isEnabled()) return this.knowledge.answer(pregunta, 'private');
     if (!this.isolucion.isSearchEnabled() || !searchTerms(pregunta).length) {
       return {
         contenido: institutionalGuidance(pregunta, contexto),
@@ -158,17 +166,12 @@ export class ChatService {
       };
     }
     try {
-      const sources = await this.isolucion.search(pregunta);
+      const sources = relevantSources(pregunta, await this.isolucion.search(pregunta));
       if (!sources.length) return {
         contenido: 'No encontré documentos habilitados de Isolución que coincidan con tu consulta. Puedes indicar el nombre del procedimiento o palabras más específicas. No tengo una respuesta documental verificada para esa pregunta.',
         metadatos: { motor: 'isolucion-documentos', fuentes: [], estado_fuente: 'sin_coincidencias' },
       };
-      return {
-        contenido: 'Encontré estos extractos en la fuente documental de Isolución:\n\n' + sources.map((source, index) =>
-          `[${index + 1}] ${source.titulo}\nCódigo: ${source.id}${source.version ? ` · Versión: ${source.version}` : ''}\n${source.extracto}${source.url ? `\nFuente: ${source.url}` : ''}`,
-        ).join('\n\n'),
-        metadatos: { motor: 'isolucion-documentos', fuentes: sources, estado_fuente: 'consultada' },
-      };
+      return briefDocumentAnswer(pregunta, sources);
     } catch {
       // La falta de red nunca se presenta como ausencia de documentos ni expone errores SQL.
       return {

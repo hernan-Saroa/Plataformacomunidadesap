@@ -7,10 +7,14 @@ Se mantiene la API /extract-text de la imagen y sus volúmenes de modelos.
 """
 import threading
 from functools import partial
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
-from flask import jsonify
+import numpy as np
+from flask import jsonify, request
 from paddle import inference
+from ocr_lines import recognized_page
+from visual_pages import render_visual_pages, MAX_BYTES
 
 original_config = inference.Config
 
@@ -44,6 +48,31 @@ def preserve_document_image(image):
 
 
 ocr_app.preprocess_image = preserve_document_image
+
+
+# Paddle predictors keep native thread-local state. A lock alone serializes
+# requests but Flask still uses different threads, which can crash later calls.
+# Construct AND invoke every predictor on this same dedicated thread.
+inference_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='rund-paddle')
+
+
+def recognize_image(image_data):
+    image = np.asarray(image_data) if hasattr(image_data, 'mode') else image_data
+    result = ocr_app.get_ocr_engine().ocr(preserve_document_image(image), cls=True)
+    recognitions = []
+    if result and result[0]:
+        for line in result[0]:
+            if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
+                raise ValueError('Incomplete OCR line')
+            recognitions.append((line[1][0], line[1][1]))
+    return recognized_page(recognitions)
+
+
+def extract_text_with_line_confidence(image_data):
+    return inference_worker.submit(recognize_image, image_data).result()
+
+
+ocr_app.extract_text_from_image = extract_text_with_line_confidence
 gate = threading.Lock()
 original_extract = ocr_app.app.view_functions['extract_text']
 
@@ -60,6 +89,21 @@ def extract_one_document():
 
 ocr_app.app.view_functions['extract_text'] = extract_one_document
 
+
+@ocr_app.app.route('/render-pages', methods=['POST'])
+def render_pages():
+    if not gate.acquire(blocking=False):
+        return jsonify({'error': 'OCR ocupado. Reintente después.'}), 503
+    try:
+        file = request.files.get('file')
+        if file is None:
+            return jsonify({'error': 'PDF requerido'}), 400
+        return jsonify(render_visual_pages(file.stream.read(MAX_BYTES + 1)))
+    except Exception:
+        return jsonify({'error': 'No se pudieron preparar las vistas del PDF.'}), 422
+    finally:
+        gate.release()
+
 if __name__ == '__main__':
-    ocr_app.get_ocr_engine()
+    inference_worker.submit(ocr_app.get_ocr_engine).result()
     ocr_app.app.run(host='0.0.0.0', port=8000, debug=False, threaded=True)

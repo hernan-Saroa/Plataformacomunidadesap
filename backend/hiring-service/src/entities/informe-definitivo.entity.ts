@@ -18,6 +18,10 @@ export interface VersionDefinitivo {
   generadoPor: string | null;
   /** Nulo en la primera: actualizar exige decir por qué. */
   motivo: string | null;
+  /** Por qué el definitivo cambia frente al preliminar (138), si cambia. */
+  justificacionCambios?: string | null;
+  /** Los anexos que se agregaron con esta versión (138). */
+  anexosIds?: string[];
   evidenciaDocumentoId: string | null;
   enlacePublicacion: string | null;
   publicadoAt: string | null;
@@ -102,6 +106,21 @@ export class InformeDefinitivo {
   /** Cada versión generada, en orden; la última es la vigente (119). */
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   versiones: VersionDefinitivo[];
+
+  /**
+   * Documentos adicionales del informe, además del soporte principal (sesión de
+   * QA del 04/11, 138). Opcionales; se acumulan entre versiones.
+   */
+  @Column({ name: 'anexos_ids', type: 'uuid', array: true, default: () => "'{}'" })
+  anexosIds: string[];
+
+  /**
+   * Por qué el definitivo cambia frente al preliminar —otro ganador, otro valor,
+   * una oferta descartada por falta de garantías— (138). Queda también en la
+   * versión y en la trazabilidad, con fecha y usuario.
+   */
+  @Column({ name: 'justificacion_cambios', type: 'text', nullable: true })
+  justificacionCambios: string | null;
 
   @Column({ name: 'generado_por', length: 200, nullable: true })
   generadoPor: string | null;

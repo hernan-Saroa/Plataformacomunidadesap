@@ -72,6 +72,30 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
     expect(await screen.findByRole('button', { name: /Retirar de aprobación/ })).toBeInTheDocument();
   });
 
+  it('retirada, deja volver a enviarla sin rehacer el trabajo de abajo', async () => {
+    // Como la 4.2: el CDP sigue cargado y el panel no ofrece registrarlo otra
+    // vez. Sin este botón el flujo se quedaba detenido.
+    const enviar = vi
+      .spyOn(contratacionService, 'enviarAprobacion')
+      .mockResolvedValue({ estado: 'EN_REVISION' } as never);
+    montar(
+      estado({ estado: 'BORRADOR', esMia: true, ronda: { estado: 'RETIRADA', escalones: [] } }),
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Volver a enviar a aprobación/ }));
+
+    expect(enviar).toHaveBeenCalledWith(PROCESO, '5.9');
+  });
+
+  it('sin retiro previo no ofrece enviar desde aquí', async () => {
+    montar(
+      estado({ estado: 'BORRADOR', esMia: true, ronda: { estado: 'CANCELADA', escalones: [] } }),
+    );
+
+    expect(await screen.findByText(/Se envía sola al registrar la actividad/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Volver a enviar/ })).toBeNull();
+  });
+
   it('a los demás les muestra la espera sin botón de retirar', async () => {
     montar(estado({ estado: 'EN_REVISION', esMia: false }));
 

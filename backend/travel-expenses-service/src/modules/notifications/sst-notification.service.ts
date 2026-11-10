@@ -305,6 +305,7 @@ export class SstNotificationService {
       if (this.notificationClient?.sendEmail) {
         for (const correo of todosDestinatarios) {
           await this.notificationClient.sendEmail({
+            evento: 'NOTIFICACION_SST',
             to: correo,
             subject: `[SST] Notificación de Desplazamiento en Comisión: ${consecutivo} - ${payload.nombre_completo_comisionado}`,
             html: cuerpoHtml,

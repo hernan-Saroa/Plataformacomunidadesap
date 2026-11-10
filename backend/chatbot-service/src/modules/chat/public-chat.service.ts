@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { institutionalGuidance } from './institutional-guidance';
+import { ChatTurn, KnowledgeAnswerService } from '../knowledge/knowledge-answer.service';
+import { contentPolicy } from './content-policy';
 
 @Injectable()
 export class PublicChatService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(@InjectDataSource() private readonly dataSource: DataSource,
+    @Optional() private readonly knowledge?: KnowledgeAnswerService) {}
 
   async configuracion(): Promise<{ activo: boolean }> {
     try {
@@ -17,8 +20,14 @@ export class PublicChatService {
   }
 
   // Orientación sin identidad, historial ni escritura en la base de datos.
-  async consultar(contenido: string): Promise<{ respuesta: string }> {
+  async consultar(contenido: string, historial: ChatTurn[] = []): Promise<{ respuesta: string }> {
     if (!(await this.configuracion()).activo) throw new NotFoundException('El asistente no está habilitado.');
+    const policy = contentPolicy(contenido, historial);
+    if (policy) return { respuesta: policy.contenido };
+    if (this.knowledge?.isEnabled()) {
+      const result = await this.knowledge.answer(contenido, 'public', historial);
+      return { respuesta: result.contenido };
+    }
     const pregunta = contenido.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (/contrasena|clave|sesion|ingresar|acceso|login/.test(pregunta)) {
       return { respuesta: 'Para acceder a tus gestiones personales, utiliza Iniciar sesión. Si olvidaste tu contraseña, usa la opción de recuperación de acceso de esa pantalla. No compartas tu contraseña en el chat.' };

@@ -65,6 +65,7 @@ export class InformeDefinitivoService extends AdjudicacionBase {
       informes.flatMap((i) => [
         i.informeDocumentoId,
         i.evidenciaDocumentoId,
+        ...(i.anexosIds ?? []),
         ...(i.versiones ?? []).flatMap((v) => [v.documentoId, v.evidenciaDocumentoId]),
       ]),
     );
@@ -114,7 +115,13 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     hash: string | null,
     acceso: HiringAccess,
     motivo?: string,
-    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
+    decision: {
+      oferenteId?: string;
+      valorEvaluado?: number;
+      justificacion?: string;
+      justificacionCambios?: string;
+    } = {},
+    anexos: { archivo: ArchivoCargado; hash: string }[] = [],
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
@@ -184,7 +191,27 @@ export class InformeDefinitivoService extends AdjudicacionBase {
           ).id
         : (previo?.informeDocumentoId ?? null);
 
+      // Los documentos adicionales (138): opcionales, y se suman a los de las
+      // versiones anteriores.
+      const anexosNuevos: string[] = [];
+      for (const anexo of anexos) {
+        const doc = await this.guardarDocumento(
+          em,
+          procesoId,
+          NUMERAL_INFORME_DEFINITIVO,
+          'Informe de evaluación definitivo · documento adicional',
+          anexo.archivo,
+          anexo.hash,
+          acceso,
+        );
+        anexosNuevos.push(doc.id);
+      }
+      const justificacionCambios =
+        decision.justificacionCambios?.trim() || previo?.justificacionCambios || null;
+
       const informe = previo ?? em.create(InformeDefinitivo, { procesoId });
+      informe.anexosIds = [...(previo?.anexosIds ?? []), ...anexosNuevos];
+      informe.justificacionCambios = justificacionCambios;
 
       informe.informePreliminarId = preliminar.id;
       informe.resultadoId = resultado.id;
@@ -210,6 +237,8 @@ export class InformeDefinitivoService extends AdjudicacionBase {
           generadoAt: informe.generadoAt.toISOString(),
           generadoPor: acceso.userName,
           motivo: elMotivo,
+          justificacionCambios: decision.justificacionCambios?.trim() || null,
+          anexosIds: anexosNuevos,
           evidenciaDocumentoId: null,
           enlacePublicacion: null,
           publicadoAt: null,
@@ -236,6 +265,10 @@ export class InformeDefinitivoService extends AdjudicacionBase {
           cambioLaGanadora: cambios.cambioLaGanadora,
           version: informe.versiones.length,
           motivo: elMotivo,
+          ...(decision.justificacionCambios?.trim()
+            ? { justificacionCambios: decision.justificacionCambios.trim() }
+            : {}),
+          ...(anexosNuevos.length ? { anexos: anexosNuevos } : {}),
           estabaPublicado: previo?.estado === 'PUBLICADO',
         },
       );
@@ -412,6 +445,13 @@ export class InformeDefinitivoService extends AdjudicacionBase {
         ? { id: evidencia.id, nombre: evidencia.nombre, archivoUrl: evidencia.archivoUrl }
         : null,
       enlacePublicacion: informe.enlacePublicacion,
+      /** Documentos adicionales del informe (138). */
+      anexos: (informe.anexosIds ?? [])
+        .map((id) => documentos.get(id))
+        .filter((d): d is Documento => !!d)
+        .map((d) => ({ id: d.id, nombre: d.archivoNombreOriginal ?? d.nombre, archivoUrl: d.archivoUrl })),
+      /** Por qué cambia frente al preliminar (138). */
+      justificacionCambios: informe.justificacionCambios ?? null,
       versiones: (informe.versiones ?? []).map((v) => {
         const documento = v.documentoId ? documentos.get(v.documentoId) : undefined;
         const soporte = v.evidenciaDocumentoId ? documentos.get(v.evidenciaDocumentoId) : undefined;
@@ -420,6 +460,7 @@ export class InformeDefinitivoService extends AdjudicacionBase {
           generadoAt: v.generadoAt,
           generadoPor: v.generadoPor,
           motivo: v.motivo,
+          justificacionCambios: v.justificacionCambios ?? null,
           informe: documento
             ? { id: documento.id, nombre: documento.nombre, archivoUrl: documento.archivoUrl }
             : null,

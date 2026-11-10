@@ -16,6 +16,8 @@ export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA
 
 export interface ConfiguracionConcertacion {
   habilitada: boolean;
+  /** Por qué está apagada (en este servicio, en el PTA o sin corte); null si está encendida. */
+  motivo?: string | null;
   /** Primer periodo (AAAA-S) en que la Docencia se concerta; antes de él la aprueba el PTA. */
   desdePeriodo?: string | null;
   firmaSimulada: boolean;

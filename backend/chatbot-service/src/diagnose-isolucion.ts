@@ -7,7 +7,7 @@ import { IsolucionService } from './modules/isolucion/isolucion.service';
 
 // Diagnóstico independiente: no conecta a PostgreSQL ni arranca el servidor HTTP.
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '.env.local'] }), IsolucionModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.knowledge', '.env', '.env.local'] }), IsolucionModule],
 })
 class DiagnosticModule {}
 

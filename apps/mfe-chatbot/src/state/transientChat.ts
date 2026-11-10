@@ -24,7 +24,7 @@ class TransientChat {
     const revision = this.revision;
     this.update({ busy: true, error: '' });
     try {
-      const result = await this.api.consultarPublico(question);
+      const result = await this.api.consultarPublico(question, this.state.messages.slice(-2).map((message) => ({ pregunta: message.question, respuesta: message.answer })));
       if (revision !== this.revision) return;
       this.update({ messages: [...this.state.messages, { question, answer: result.respuesta }], draft: '' });
     } catch (failure) {

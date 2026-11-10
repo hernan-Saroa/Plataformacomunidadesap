@@ -83,7 +83,103 @@
 .rund-checkpoint-evidence__add{font:inherit;font-size:11px;font-weight:700}
 .rund-checkpoint-evidence__add:disabled{opacity:.6;cursor:not-allowed}
 .rund-checkpoint-evidence__limit{margin:0;font-size:11px;color:#92400e}
+.rund-review-workspace{container:rund-review / inline-size}
+.rund-review-section-intro{padding:22px 24px 0;background:#fff}
+.rund-review-section-intro h4{margin:0;font-size:18px;font-weight:750;line-height:1.5;color:#0f172a}
+.rund-review-section-intro p{margin:4px 0 0;font-size:12px;line-height:1.7;color:#64748b}
+.rund-review-guide{display:flex;gap:12px;padding:18px 24px;background:#fff;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}
+.rund-review-guide>button{display:flex;align-items:center;gap:10px;flex:1 1 200px;min-width:0;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font:inherit;text-align:left;cursor:pointer}
+.rund-review-guide>button:hover{border-color:#93b4ed;background:#f7faff}
+.rund-review-guide>button>span,.rund-section-step{display:grid;place-items:center;flex-shrink:0;width:32px;height:32px;border-radius:9px;background:#edf3fd;color:#003da5;font-size:13px;font-weight:750}
+.rund-review-guide>button>div{min-width:0;flex:1}
+.rund-review-guide strong{display:block;color:#1e293b;font-size:12px;line-height:1.5}
+.rund-review-guide small{display:block;margin-top:3px;font-size:11px;line-height:1.5;color:#64748b}
+.rund-review-guide svg{flex-shrink:0;color:#94a3b8}
+.rund-section-heading{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.rund-section-heading>div{min-width:0;flex:1 1 240px}
+.rund-section-heading h4{margin:0;font-size:15px;color:#0f172a;font-weight:750;line-height:1.6}
+.rund-section-heading p{margin:4px 0 0;font-size:12px;color:#64748b;line-height:1.7}
+.rund-section-progress{font-size:11px;line-height:1.6;color:#475569;padding:5px 9px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;margin-left:auto}
+.rund-review-guide>button[data-review-step=".rund-documents"]>span{background:#edf0f4;color:#4b596d}
+.rund-review-guide>button[data-review-step=".rund-data-section"]>span{background:#e9f5f1;color:#2d7162}
+.rund-review-guide>button[data-review-step=".rund-review-confirmation"]>span{background:#edf4ec;color:#53754d}
+.rund-data-section{padding:20px;border:1px solid #dce7e2;border-radius:16px;background:#fff}
+.rund-data-section>.rund-section-heading .rund-section-step{background:#e9f5f1;color:#2d7162}
+.rund-data-section>.rund-section-heading h4{color:#244e45}
+.rund-review-workspace .rund-checkpoint-grid{gap:14px;align-items:stretch}
+.rund-review-workspace .rund-checkpoint-row{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr auto;gap:0;box-shadow:none;border-radius:10px}
+.rund-review-workspace .rund-checkpoint-row__data{grid-column:1;grid-row:1;padding:16px 20px 4px;background:#fff;border-right:0}
+.rund-review-workspace .rund-checkpoint-row__evidence{grid-column:1;grid-row:2;padding:4px 20px 15px;border:0;gap:6px;background:#fff;justify-content:flex-start}
+.rund-review-workspace .rund-checkpoint-row__status{grid-column:1;grid-row:3;padding:12px 20px;background:#fafcfb;border-left:0;border-top:1px solid #edf1ef;text-align:left;justify-content:flex-start}
+.rund-checkpoint-label{display:block;max-width:100%;box-sizing:border-box;padding:0;background:transparent;font-size:11px;font-weight:700;letter-spacing:.025em;color:#66736f;margin-bottom:8px;line-height:1.5;overflow-wrap:anywhere}
+.rund-review-workspace .rund-checkpoint-row[data-state=Derivado]{background:#fafbfc}
+.rund-review-workspace .rund-checkpoint-row[data-state=Derivado] .rund-checkpoint-row__status{background:#f6f7f8}
+.rund-review-workspace .rund-checkpoint-row[data-state=Rechazado]{box-shadow:inset 3px 0 #ef4444}
+.rund-review-workspace .rund-checkpoint-row[data-state=Aprobado]{box-shadow:inset 3px 0 #10b981}
+.rund-review-workspace .rund-data-decision>strong{color:#65736f;font-size:11px;font-weight:600}
+.rund-review-workspace .rund-data-decision>strong[data-state=Aprobado]{color:#047857}
+.rund-review-workspace .rund-data-decision>strong[data-state=Rechazado]{color:#b91c1c}
+.rund-review-workspace .rund-checkpoint-row__status[data-empty=true] .rund-data-decision>strong{color:#94a3b8}
+.rund-review-workspace .rund-data-decision>div{justify-content:flex-start}
+.rund-review-workspace .rund-data-decision button{font-weight:600;min-height:34px;border-radius:7px}
+.rund-review-workspace .rund-data-decision button[data-variant=approve]{background:#f0fdf8;border-color:#a7dfcb}
+.rund-review-workspace .rund-data-decision button[data-variant=return]{background:#fff;border-color:#fecaca}
+.rund-review-workspace .rund-checkpoint-row__status[data-empty=true] button[data-variant=approve]:disabled{display:none}
+.rund-review-workspace .rund-checkpoint-row__status[data-empty=true] button[data-variant=return]{color:#64748b;border-color:#e2e8f0}
+.rund-review-tools{margin-top:20px;border:1px solid #e2daee;border-left:3px solid #a991c6;border-radius:12px;background:#fff;box-shadow:0 2px 6px #1e3a5f05}
+.rund-review-tools--after-documents{margin:18px clamp(12px,2vw,24px) 20px}
+.rund-review-tools>summary{display:flex;align-items:center;gap:14px;padding:17px 18px;cursor:pointer;list-style:none;color:#72548b;background:linear-gradient(110deg,#f6f2fb,#fdfcfe);border-radius:10px}
+.rund-review-tools>summary::-webkit-details-marker{display:none}
+.rund-review-tools>summary:hover{background:#f1ebf8}
+.rund-review-tools__icon{display:grid;place-items:center;flex-shrink:0;width:42px;height:42px;border:1px solid #e3d8ef;border-radius:12px;background:#fff;color:#7d5b9d}
+.rund-review-tools__copy{min-width:0;flex:1}
+.rund-review-tools__heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rund-review-tools__heading>strong{font-size:14px;font-weight:750;color:#614a76;line-height:1.5}
+.rund-review-tools__optional{display:inline-block;padding:2px 7px;border:1px solid #dbe5f3;border-radius:5px;background:#fff;color:#526681;font-size:10px;font-weight:500;line-height:1.4}
+.rund-review-tools__copy>small{display:block;margin-top:4px;font-size:12px;line-height:1.6;color:#526985;overflow-wrap:anywhere}
+.rund-review-tools__action{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex-shrink:0;padding:8px 11px;min-height:34px;border:1px solid #dcd0e9;border-radius:8px;background:#fff;color:#72548b;font-size:12px;font-weight:650;line-height:1.5}
+.rund-review-tools__action>svg{flex-shrink:0}
+.rund-review-tools__when-open{display:none}
+.rund-review-tools[open]>summary{border-bottom:1px solid #e5dfee;border-radius:10px 10px 0 0}
+.rund-review-tools[open] .rund-review-tools__when-closed{display:none}
+.rund-review-tools[open] .rund-review-tools__when-open{display:inline}
+.rund-review-tools[open] .rund-review-tools__action>svg{transform:rotate(180deg)}
+.rund-review-tools>div{padding:16px;min-width:0}
+.rund-review-confirmation{margin-top:24px;padding:22px;border:1px solid #d8e5d7;border-radius:16px;background:#f6faf5}
+.rund-review-confirmation .rund-section-step{background:#e5efe2;color:#53754d}
+.rund-review-confirmation .rund-section-heading h4{color:#3c6037}
+.rund-review-confirmation .rund-validation-actions>button.rund-review-approve{background:#236955}
+.rund-review-confirmation .rund-validation-actions>button.rund-review-approve:hover:not(:disabled){background:#19533f}
+.rund-review-confirmation>.rund-section-heading{margin-bottom:16px}
+.rund-review-remaining{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.rund-review-remaining>span{padding:5px 8px;border-radius:6px;background:#f1f5f9;color:#475569;font-size:11px;line-height:1.6}
+.rund-review-remaining>span[data-state=Devuelto]{background:#fff1f2;color:#b91c1c}
+.rund-review-remaining>button{display:inline-flex;align-items:center;gap:4px;padding:5px 0;border:0;background:transparent;color:#003da5;font:inherit;font-size:12px;cursor:pointer}
+.rund-review-workspace :is(.rund-documents,.rund-data-section,.rund-review-confirmation){scroll-margin-top:90px}
+.rund-review-guide button:focus-visible,.rund-review-tools>summary:focus-visible,.rund-review-remaining>button:focus-visible{outline:2px solid #2563eb;outline-offset:3px}
+@container rund-review (min-width:880px){
+ .rund-data-section>.rund-checkpoint-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+ .rund-review-section-intro{padding:16px 12px 0}
+ .rund-review-guide{padding:12px;gap:8px}
+ .rund-review-guide>button{flex:1 1 100%;padding:10px 12px}
+ .rund-review-workspace .rund-checkpoint-row{grid-template-columns:minmax(0,1fr)}
+ .rund-review-workspace .rund-checkpoint-row__data{grid-column:1;grid-row:1;padding:14px 16px 4px}
+ .rund-review-workspace .rund-checkpoint-row__evidence{grid-column:1;grid-row:2;padding:4px 16px 12px}
+ .rund-review-workspace .rund-checkpoint-row__status{grid-column:1;grid-row:3;padding:12px 16px;border-left:0;border-top:1px solid #edf1f6;text-align:left;justify-content:flex-start}
+ .rund-review-workspace .rund-data-decision>div{justify-content:flex-start}
+ .rund-section-heading>div{flex-basis:150px}
+ .rund-section-progress{margin-left:44px}
+ .rund-review-confirmation{padding:16px}
+ .rund-data-section{padding:16px 12px}
+}
 @media(max-width:600px){
+  .rund-review-tools>summary{display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px 12px;padding:15px 12px}
+  .rund-review-tools__icon{width:36px;height:36px;border-radius:10px;align-self:start}
+  .rund-review-tools__heading>strong{font-size:13px}
+  .rund-review-tools__copy>small{font-size:11px}
+  .rund-review-tools__action{grid-column:2;justify-self:start;font-size:11px;min-height:32px;padding:6px 10px}
   .rund-validation-actions>span{flex-basis:100%;text-align:left}
   .rund-validation-actions>button{flex:1 1 160px;min-height:44px;justify-content:center}
   /* nowrap: a wrapping column would size itself to the longest file name. */
@@ -94,3 +190,9 @@
   .rund-checkpoint-evidence__icon-button{flex:0 0 40px;width:40px}
   .rund-checkpoint-evidence__add{align-self:stretch;justify-content:center;min-height:44px}
 }
+
+/* RUND-003: etiqueta de origen del título (precargado / adicional) */
+.rund-titulo-etiqueta{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;line-height:1.6}
+.rund-titulo-etiqueta[data-origen="precargada"]{background:#ecfdf5;color:#047857}
+.rund-titulo-etiqueta[data-origen="adicional"]{background:#f5f3ff;color:#6d28d9;margin:0 0 0 8px}
+.rund-titulos-adicionales{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}

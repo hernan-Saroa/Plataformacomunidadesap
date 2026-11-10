@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
-import { ObservacionPliego } from '../../entities/observacion-pliego.entity';
+import { ObservacionPliego, PliegoObservado } from '../../entities/observacion-pliego.entity';
+import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -44,6 +45,23 @@ export interface SoporteCargado {
 /** Actividad 5.6 de la matriz: las observaciones al proyecto de pliego. */
 export const NUMERAL_OBSERVACIONES = '5.6';
 
+/**
+ * Las observaciones al pliego definitivo (138, sesión de QA del 04/11): después
+ * de la apertura y la audiencia de riesgos, con la misma metodología que las del
+ * proyecto. Tercer nivel de numeral, como la 5.6.1, para no renumerar la etapa.
+ */
+export const NUMERAL_OBSERVACIONES_DEFINITIVO = '5.12.1';
+
+/** La actividad que lleva las observaciones de cada pliego. */
+export const numeralDe = (pliego: PliegoObservado) =>
+  pliego === 'DEFINITIVO' ? NUMERAL_OBSERVACIONES_DEFINITIVO : NUMERAL_OBSERVACIONES;
+
+/** Cómo se nombra el pliego en los mensajes. */
+const NOMBRE_PLIEGO: Record<PliegoObservado, string> = {
+  PROYECTO: 'proyecto de pliego',
+  DEFINITIVO: 'pliego definitivo',
+};
+
 @Injectable()
 export class ObservacionesService {
   constructor(
@@ -61,11 +79,15 @@ export class ObservacionesService {
   }
 
   /** Si la modalidad del proceso pasa por la recepción de observaciones. */
-  async aplicaObservaciones(modalidad: string | null, em?: EntityManager): Promise<boolean> {
+  async aplicaObservaciones(
+    modalidad: string | null,
+    em?: EntityManager,
+    pliego: PliegoObservado = 'PROYECTO',
+  ): Promise<boolean> {
     if (!modalidad) return true;
     const manager = em ?? this.dataSource.manager;
     const excluida = await manager.getRepository(ActividadExcluida).findOne({
-      where: { numeral: NUMERAL_OBSERVACIONES, modalidad },
+      where: { numeral: numeralDe(pliego), modalidad },
     });
     return !excluida;
   }
@@ -78,13 +100,19 @@ export class ObservacionesService {
    * El resumen se calcula aquí y no en el cliente porque de él depende si la
    * actividad está cumplida, y esa cuenta no debería existir en dos sitios.
    */
-  async listar(procesoId: string, em?: EntityManager, acceso?: HiringAccess) {
+  async listar(
+    procesoId: string,
+    em?: EntityManager,
+    acceso?: HiringAccess,
+    pliego: PliegoObservado = 'PROYECTO',
+  ) {
     const manager = em ?? this.dataSource.manager;
     const proceso = await this.exigirProceso(manager, procesoId);
+    const numeral = numeralDe(pliego);
 
-    const puedeGestionar = await this.alcance.puedeEn(acceso, 'editar', NUMERAL_OBSERVACIONES);
+    const puedeGestionar = await this.alcance.puedeEn(acceso, 'editar', numeral);
 
-    if (!(await this.aplicaObservaciones(proceso.modalidad, em))) {
+    if (!(await this.aplicaObservaciones(proceso.modalidad, em, pliego))) {
       return {
         aplica: false,
         publicado: false,
@@ -95,31 +123,43 @@ export class ObservacionesService {
         puedeCerrarse: false,
         puedeGestionar,
         puedeTerminarPlazo: false,
+        pliego,
       };
     }
 
     const publicacion = await this.publicacion.delProceso(procesoId, em);
+    // El definitivo se publica con la apertura (5.7): sin ella no hay sobre qué
+    // observar. Su término no es el de publicidad del proyecto, así que se
+    // puede cerrar sin observaciones en cualquier momento después de abrir.
+    const apertura =
+      pliego === 'DEFINITIVO'
+        ? await manager.getRepository(AperturaProceso).findOne({ where: { procesoId } })
+        : null;
+    const publicado = pliego === 'DEFINITIVO' ? !!apertura && publicacion !== null : publicacion !== null;
 
     const observaciones = await manager.getRepository(ObservacionPliego).find({
-      where: { procesoId },
+      where: { procesoId, pliego },
       order: { fechaPresentacion: 'ASC', createdAt: 'ASC' },
     });
 
     const pendientes = observaciones.filter((o) => o.respondidaAt === null).length;
     const plazoVencido =
-      publicacion?.fechaVencimiento !== undefined &&
-      publicacion?.fechaVencimiento !== null &&
-      publicacion.fechaVencimiento < this.hoy();
+      pliego === 'DEFINITIVO'
+        ? publicado
+        : publicacion?.fechaVencimiento !== undefined &&
+          publicacion?.fechaVencimiento !== null &&
+          publicacion.fechaVencimiento < this.hoy();
 
     const actividad = await manager.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_OBSERVACIONES },
+      where: { procesoId, numeral },
     });
     const cumplida = actividad?.estado === 'APROBADO';
 
     return {
       aplica: true,
+      pliego,
       /** Sin pliego publicado no hay sobre qué observar. */
-      publicado: publicacion !== null,
+      publicado,
       observaciones,
       resumen: {
         total: observaciones.length,
@@ -134,8 +174,7 @@ export class ObservacionesService {
        * más. Antes del vencimiento, que no haya ninguna no significa nada; y
        * una vez cerrada, ofrecerlo otra vez sería un botón que no hace nada.
        */
-      puedeCerrarse:
-        observaciones.length === 0 && plazoVencido && publicacion !== null && !cumplida,
+      puedeCerrarse: observaciones.length === 0 && plazoVencido && publicado && !cumplida,
       puedeGestionar,
       /**
        * La llave de pruebas para no esperar los días hábiles del término.
@@ -146,6 +185,7 @@ export class ObservacionesService {
        * recorrer en una sesión de QA. El botón llama al mismo endpoint.
        */
       puedeTerminarPlazo:
+        pliego === 'PROYECTO' &&
         tienePermiso(acceso, PERMISO_PLAZO_TERMINAR) &&
         publicacion?.fechaVencimiento != null &&
         publicacion.fechaVencimiento >= this.hoy(),
@@ -167,13 +207,14 @@ export class ObservacionesService {
     dto: RegistrarObservacionDto,
     soportes: SoporteCargado[],
     acceso: HiringAccess,
+    pliego: PliegoObservado = 'PROYECTO',
   ) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
 
-      if (!(await this.aplicaObservaciones(proceso.modalidad, em))) {
+      if (!(await this.aplicaObservaciones(proceso.modalidad, em, pliego))) {
         throw new BadRequestException(
-          'Esta modalidad no recibe observaciones al proyecto de pliego',
+          `Esta modalidad no recibe observaciones al ${NOMBRE_PLIEGO[pliego]}`,
         );
       }
 
@@ -181,6 +222,15 @@ export class ObservacionesService {
       if (!publicacion) {
         throw new ConflictException(
           'El proyecto de pliego no está publicado: no hay sobre qué observar',
+        );
+      }
+      const apertura =
+        pliego === 'DEFINITIVO'
+          ? await em.getRepository(AperturaProceso).findOne({ where: { procesoId } })
+          : null;
+      if (pliego === 'DEFINITIVO' && !apertura) {
+        throw new ConflictException(
+          'El proceso todavía no se abre (5.7): el pliego definitivo se publica con la apertura',
         );
       }
 
@@ -191,27 +241,30 @@ export class ObservacionesService {
           'La fecha de presentación no puede ser futura: se registra lo que ya se recibió',
         );
       }
-      if (fechaPresentacion < publicacion.fechaPublicacion) {
+      const desde = apertura ? apertura.resolucionFecha : publicacion.fechaPublicacion;
+      if (fechaPresentacion < desde) {
         throw new BadRequestException(
-          `La observación no puede ser anterior a la publicación del pliego (${publicacion.fechaPublicacion})`,
+          `La observación no puede ser anterior a la publicación del ${NOMBRE_PLIEGO[pliego]} (${desde})`,
         );
       }
 
       // Se congela al registrar: depende del vencimiento que tiene la
       // publicación hoy, y ese dato no debe cambiar después. Llegar tarde no
-      // impide registrarla, solo la marca.
+      // impide registrarla, solo la marca. El definitivo no tiene ese término.
       const fueraDeTermino =
+        pliego === 'PROYECTO' &&
         publicacion.fechaVencimiento !== null &&
         fechaPresentacion > publicacion.fechaVencimiento;
 
       const documentos = [];
       for (const { archivo, hash } of soportes) {
-        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso));
+        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso, pliego));
       }
 
       const observacion = await em.save(
         em.create(ObservacionPliego, {
           procesoId,
+          pliego,
           publicacionId: publicacion.id,
           presentadoPor: dto.presentadoPor?.trim() || null,
           identificacion: dto.identificacion ?? null,
@@ -227,16 +280,17 @@ export class ObservacionesService {
 
       // Entra una observación sin responder, así que la actividad queda abierta
       // aunque antes estuviera cerrada.
-      await this.marcarActividad(em, procesoId, 'BORRADOR', acceso);
+      await this.marcarActividad(em, procesoId, 'BORRADOR', acceso, undefined, pliego);
 
       await this.traza(em, procesoId, observacion.id, 'CREAR', acceso, {
+        actividad: numeralDe(pliego),
         presentadoPor: dto.presentadoPor ?? null,
         fechaPresentacion,
         fueraDeTermino,
         archivos: documentos.length,
       });
 
-      return this.listar(procesoId, em, acceso);
+      return this.listar(procesoId, em, acceso, pliego);
     });
   }
 
@@ -246,10 +300,11 @@ export class ObservacionesService {
     observacionId: string,
     dto: ResponderObservacionDto,
     acceso: HiringAccess,
+    pliego: PliegoObservado = 'PROYECTO',
   ) {
     return this.dataSource.transaction(async (em) => {
       const observacion = await em.getRepository(ObservacionPliego).findOne({
-        where: { id: observacionId, procesoId },
+        where: { id: observacionId, procesoId, pliego },
       });
       if (!observacion) throw new NotFoundException('La observación no existe en este proceso');
 
@@ -266,14 +321,15 @@ export class ObservacionesService {
       observacion.updatedAt = new Date();
       await em.save(observacion);
 
-      await this.sincronizarActividad(em, procesoId, acceso, dto.firma);
+      await this.sincronizarActividad(em, procesoId, acceso, dto.firma, pliego);
 
       await this.traza(em, procesoId, observacion.id, 'APROBAR', acceso, {
+        actividad: numeralDe(pliego),
         accion: 'RESPONDER',
         modificoPliego: dto.modificoPliego ?? null,
       });
 
-      return this.listar(procesoId, em, acceso);
+      return this.listar(procesoId, em, acceso, pliego);
     });
   }
 
@@ -289,10 +345,11 @@ export class ObservacionesService {
     dto: ResponderTodasDto,
     soportes: SoporteCargado[],
     acceso: HiringAccess,
+    pliego: PliegoObservado = 'PROYECTO',
   ) {
     return this.dataSource.transaction(async (em) => {
       const pendientes = await em.getRepository(ObservacionPliego).find({
-        where: { procesoId, respondidaAt: IsNull() },
+        where: { procesoId, pliego, respondidaAt: IsNull() },
         lock: { mode: 'pessimistic_write' },
       });
       if (!pendientes.length) {
@@ -301,7 +358,7 @@ export class ObservacionesService {
 
       const documentos = [];
       for (const { archivo, hash } of soportes) {
-        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso));
+        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso, pliego));
       }
 
       const ahora = new Date();
@@ -316,16 +373,17 @@ export class ObservacionesService {
       }
       await em.save(pendientes);
 
-      await this.sincronizarActividad(em, procesoId, acceso, dto.firma);
+      await this.sincronizarActividad(em, procesoId, acceso, dto.firma, pliego);
 
       await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
+        actividad: numeralDe(pliego),
         accion: 'RESPONDER_TODAS',
         interesados: pendientes.length,
         archivos: documentos.length,
         modificoPliego: dto.modificoPliego ?? null,
       });
 
-      return this.listar(procesoId, em, acceso);
+      return this.listar(procesoId, em, acceso, pliego);
     });
   }
 
@@ -336,9 +394,14 @@ export class ObservacionesService {
    * pendiente eterno en el riel. Se exige que el plazo haya vencido: antes de
    * eso, que no haya ninguna no significa nada.
    */
-  async cerrarSinObservaciones(procesoId: string, acceso: HiringAccess, firma?: FirmaOtpDto) {
+  async cerrarSinObservaciones(
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+    pliego: PliegoObservado = 'PROYECTO',
+  ) {
     return this.dataSource.transaction(async (em) => {
-      const estado = await this.listar(procesoId, em, acceso);
+      const estado = await this.listar(procesoId, em, acceso, pliego);
 
       if (estado.resumen.total > 0) {
         throw new ConflictException(
@@ -346,7 +409,11 @@ export class ObservacionesService {
         );
       }
       if (!estado.publicado) {
-        throw new ConflictException('El proyecto de pliego no está publicado');
+        throw new ConflictException(
+          pliego === 'DEFINITIVO'
+            ? 'El proceso todavía no se abre (5.7): no hay pliego definitivo publicado'
+            : 'El proyecto de pliego no está publicado',
+        );
       }
       if (!estado.plazoVencido) {
         throw new ConflictException(
@@ -354,16 +421,17 @@ export class ObservacionesService {
         );
       }
 
-      if (await this.cierre.exigeFirma(em, NUMERAL_OBSERVACIONES)) {
+      if (await this.cierre.exigeFirma(em, numeralDe(pliego))) {
         this.cierre.exigirFirmaValida(firma);
       }
 
-      await this.marcarActividad(em, procesoId, 'APROBADO', acceso, firma);
+      await this.marcarActividad(em, procesoId, 'APROBADO', acceso, firma, pliego);
       await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
+        actividad: numeralDe(pliego),
         accion: 'CERRAR_SIN_OBSERVACIONES',
       });
 
-      return this.listar(procesoId, em, acceso);
+      return this.listar(procesoId, em, acceso, pliego);
     });
   }
 
@@ -375,9 +443,11 @@ export class ObservacionesService {
     procesoId: string,
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
+    pliego: PliegoObservado = 'PROYECTO',
   ) {
+    const numeral = numeralDe(pliego);
     const pendientes = await em.getRepository(ObservacionPliego).count({
-      where: { procesoId, respondidaAt: IsNull() },
+      where: { procesoId, pliego, respondidaAt: IsNull() },
     });
     const cumple = pendientes === 0;
 
@@ -385,17 +455,17 @@ export class ObservacionesService {
     // observación que reabrió y volvió a cerrarse no debe repetir el pedido.
     if (cumple) {
       const actividad = await em.getRepository(ProcesoActividad).findOne({
-        where: { procesoId, numeral: NUMERAL_OBSERVACIONES },
+        where: { procesoId, numeral },
       });
       if (
         (!actividad || actividad.estado !== 'APROBADO') &&
-        (await this.cierre.exigeFirma(em, NUMERAL_OBSERVACIONES))
+        (await this.cierre.exigeFirma(em, numeral))
       ) {
         this.cierre.exigirFirmaValida(firma);
       }
     }
 
-    await this.marcarActividad(em, procesoId, cumple ? 'APROBADO' : 'BORRADOR', acceso, firma);
+    await this.marcarActividad(em, procesoId, cumple ? 'APROBADO' : 'BORRADOR', acceso, firma, pliego);
   }
 
   private async guardarSoporte(
@@ -404,6 +474,7 @@ export class ObservacionesService {
     archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
+    pliego: PliegoObservado = 'PROYECTO',
   ) {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
     if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
@@ -411,7 +482,7 @@ export class ObservacionesService {
     return em.save(
       em.create(Documento, {
         expedienteId: expediente.id,
-        numeral: NUMERAL_OBSERVACIONES,
+        numeral: numeralDe(pliego),
         tipo: 'ADJUNTO',
         nombre: archivo.originalname,
         archivoUrl: `hiring/files/${archivo.filename}`,
@@ -437,21 +508,23 @@ export class ObservacionesService {
     estado: 'BORRADOR' | 'APROBADO',
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
+    pliego: PliegoObservado = 'PROYECTO',
   ) {
+    const numeral = numeralDe(pliego);
     const cumplida = estado === 'APROBADO';
     const revisadoPor = (cumplida ? acceso.userName : null) as any;
     const revisadoAt = (cumplida ? new Date() : null) as any;
     const datosFirma = cumplida && firma ? { firma } : {};
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_OBSERVACIONES },
+      where: { procesoId, numeral },
     });
 
     if (!actividad) {
       await em.save(
         em.create(ProcesoActividad, {
           procesoId,
-          numeral: NUMERAL_OBSERVACIONES,
+          numeral,
           estado,
           datos: datosFirma,
           revisadoPor,

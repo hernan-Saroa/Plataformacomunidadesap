@@ -4,17 +4,23 @@ import { apiClient } from '../../../../../shell/src/services/api';
 import { ESAPLogo } from '../../../../../shell/src/components/assets/ESAPLogo';
 import { vincularRundSoporte } from '../../../services/api/ptaApi';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
+import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 
 // Catálogo de soportes por bloque RUND (alineado con BancoDocentesService.CATALOGO_SOPORTE).
 // Se presenta un subconjunto curado con etiquetas amigables para la autogestión del docente.
 const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; label: string; required?: boolean }[] }[] = [
   {
-    bloque: 'IDENTIDAD', label: 'Identidad',
-    tipos: [{ key: 'documento_identidad', label: 'Documento de identidad (cédula)', required: true }],
+    bloque: 'IDENTIDAD', label: RUND_BLOCK_LABELS.IDENTIDAD,
+    tipos: [
+      { key: 'documento_identidad', label: 'Documento de identidad (cédula)', required: true },
+      { key: 'tarjeta_profesional', label: 'Tarjeta profesional' },
+      { key: 'hoja_vida', label: 'Hoja de vida' },
+    ],
   },
   {
-    bloque: 'FORMACION', label: 'Formación Académica',
+    bloque: 'FORMACION', label: RUND_BLOCK_LABELS.FORMACION,
     tipos: [
+      { key: 'diploma_bachiller', label: 'Diploma de bachiller' },
       { key: 'diploma_pregrado', label: 'Diploma o acta de grado de pregrado', required: true },
       { key: 'diploma_especializacion', label: 'Diploma de especialización' },
       { key: 'diploma_maestria', label: 'Diploma de maestría' },
@@ -38,11 +44,18 @@ const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; 
     ],
   },
   {
-    bloque: 'ACADEMICO', label: 'Académico',
+    bloque: 'ACADEMICO', label: RUND_BLOCK_LABELS.ACADEMICO,
     tipos: [
       { key: 'acto_asignacion_nucleo', label: 'Acto de asignación del núcleo temático' },
       { key: 'certificacion_investigacion', label: 'Certificación de investigación' },
       { key: 'acta_evaluacion_desempeno', label: 'Acta de evaluación de desempeño' },
+      { key: 'experiencia_docente', label: '02 Experiencia docente' },
+      { key: 'experiencia_laboral', label: '03 Experiencia laboral' },
+      { key: 'experiencia_investigativa', label: 'Experiencia investigativa' },
+      { key: 'productividad_academica', label: 'Productividad académica' },
+      { key: 'dominio_segunda_lengua', label: 'Dominio de segunda lengua' },
+      { key: 'formacion_no_formal', label: 'Formación no formal' },
+      { key: 'estudio_hoja_vida', label: 'Estudio de hoja de vida' },
     ],
   },
   { bloque: 'TRANSVERSAL', label: 'Transversal', tipos: [{ key: 'autorizacion_habeas_data', label: 'Autorización de tratamiento de datos firmada', required: true }] },

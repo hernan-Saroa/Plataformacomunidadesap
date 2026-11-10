@@ -234,6 +234,10 @@ services:
       NOTIFICATION_SERVICE_URL: http://notifications-service-qa:3009
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://135.237.81.133}}
       FRONTEND_URL: ${FRONTEND_URL:-http://135.237.81.133}
+      # Concertación de la docencia (EFDS-2315): el MISMO interruptor que en Programación
+      # Académica. Apagado, el PTA sigue aprobando la Docencia y el submódulo no aparece.
+      PROG_CONCERTACION_HABILITADA: ${PROG_CONCERTACION_HABILITADA:-true}
+      ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
     ports:
       - "3003:3003"
     depends_on:
@@ -609,6 +613,11 @@ services:
 
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
       API_GATEWAY_URL: http://api-gateway:3000
+      # Concertación de la docencia (EFDS-2315): rige solo si está encendida aquí Y en el PTA,
+      # y solo para periodos >= PROG_CONCERTACION_DESDE_PERIODO (sin corte = apagada).
+      PROG_CONCERTACION_HABILITADA: ${PROG_CONCERTACION_HABILITADA:-true}
+      PROG_CONCERTACION_DESDE_PERIODO: ${PROG_CONCERTACION_DESDE_PERIODO:-2026-1}
+      ACADEMIC_WORK_PLAN_SERVICE_URL: http://academic-work-plan-service:3003
     ports:
       - "3013:3013"
     depends_on:
@@ -648,6 +657,9 @@ services:
 
   # ============ CHATBOT SERVICE ============
   chatbot-service:
+    env_file:
+      - path: ${CHATBOT_KNOWLEDGE_ENV_FILE:-./backend/chatbot-service/.env.knowledge}
+        required: false
     build:
       context: ./backend/chatbot-service
       dockerfile: Dockerfile

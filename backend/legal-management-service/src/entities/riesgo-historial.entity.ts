@@ -12,7 +12,9 @@ export type TipoEventoRiesgo =
     | 'ARCHIVADO'
     | 'CONTROL_AGREGADO'
     | 'CONTROL_MODIFICADO'
-    | 'TRATAMIENTO_AGREGADO';
+    | 'TRATAMIENTO_AGREGADO'
+    | 'SEGUIMIENTO_CONTROL'
+    | 'SEGUIMIENTO_VENCIDO';
 
 /**
  * Entidad para almacenar el historial de cambios de un riesgo

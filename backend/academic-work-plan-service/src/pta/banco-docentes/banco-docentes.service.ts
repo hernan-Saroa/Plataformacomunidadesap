@@ -3,12 +3,14 @@ import { dataReviewContext, loadDataReviewProfile, loadDataReviews } from './run
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
-import { RundEvidenceWorkflow, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
+import { isRundContactoCampo, normalizarContacto, RUND_CONTACTO_MENSAJES, type RundContactoCampo } from './rund-contacto';
+import { EVIDENCE_TYPES, RundEvidenceWorkflow, currentBlockRows, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
 import { RundIncorporacion } from './rund-incorporacion';
 import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } from './rund-registration-history';
+import { convocatoriaName, convocatoriaKey, convocatoriaPeriod, CONVOCATORIA_MEMBERS_SQL } from './rund-convocatorias';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Like, Repository } from 'typeorm';
+import { DataSource, Like, Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { DocenteEntity } from '../entities/docente.entity';
@@ -16,12 +18,16 @@ import { PersonaEntity } from '../entities/persona.entity';
 import { UsuarioEntity } from '../entities/usuario.entity';
 import { BancoDocenteInvitacionEntity } from '../entities/banco-docente-invitacion.entity';
 import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity';
+import { auditCambios, singleFieldAuditValues } from './rund-audit-cambios';
+import { clearsObservaciones, countsAsFieldChange } from './rund-campo-vacio';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
 import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
 import { capturarDatosCarga, fechaCivilPersistencia, stableJson } from './rund-carga-original';
+import { leerTitulosAdicionales, resolverTitulosAdicionales, titulosAdicionalesGuardados } from './rund-titulos-adicionales';
+import { deducirTitulosAdicionales } from './rund-perfil-titulos';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { confirmRundDeletion, deletionFingerprint, deletionIds } from './rund-registro-eliminacion';
@@ -71,6 +77,7 @@ type BulkUpsertOptions = {
   dryRun?: boolean;
   omitErrors?: boolean;
   periodoCarga?: string;
+  convocatoria?: string;
   actorId?: string;
   ip?: string;
   support?: BulkSupport;
@@ -80,7 +87,7 @@ type BulkUpsertOptions = {
 
 function toCleanString(value: any): string | null {
   if (value === undefined || value === null) return null;
-  const n = sanitizeText(String(value)).trim();
+  const n = sanitizeText(String(value)).normalize('NFC').trim();
   return n === '' ? null : n;
 }
 
@@ -513,7 +520,7 @@ export function normalizeBancoDocentePayload(raw: any) {
     else if (gNorm === 'f' || gNorm.startsWith('fem') || gNorm.startsWith('muje')) gender = 'F';
   }
 
-  return {
+  const normalizado = {
     orderIndex: parseMaybeInt(raw?.ordenListado ?? raw?.orderIndex ?? raw?.['ORDEN_LISTADO'] ?? raw?.['Orden Listado']),
     documentNumber: docNum,
     documentType: docType,
@@ -563,6 +570,8 @@ export function normalizeBancoDocentePayload(raw: any) {
     observaciones: observationsList.length > 0 ? observationsList.join('. ') : null,
     idRund: firstNonEmpty(raw?.ID_RUND, raw?.idRund, raw?.id_rund, raw?.['ID RUND'], raw?.['ID_RUND']),
   };
+  // RUND-003: undefined = la solicitud no los trae y se conservan los guardados.
+  return { ...normalizado, titulosAdicionales: leerTitulosAdicionales(raw, normalizado) };
 }
 
 function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
@@ -819,6 +828,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     maestria: docente.maestria ?? null,
     doctorado: docente.doctorado ?? null,
     posdoctorado: docente.posDoctorado ?? null,
+    titulos_adicionales: titulosAdicionalesGuardados(docente.titulosAdicionales),
     investigacion: docente.investigacion ?? null,
     origen_vinculacion: docente.origenVinculacion ?? null,
     acto_administrativo_vinculacion: docente.actoAdministrativoVinculacion ?? null,
@@ -872,6 +882,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     usuario_id: row.usuario_id,
     docente_id: row.docente_id || null,
     orden_listado: row.orden_listado ?? null,
+    convocatorias: row.convocatorias || [],
     documento_identidad: row.documento_identidad ?? null,
     tipo_documento: row.tipo_documento ?? null,
     nombre_completo: nombreCompleto,
@@ -903,6 +914,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     maestria: row.maestria ?? null,
     doctorado: row.doctorado ?? null,
     posdoctorado: row.posdoctorado ?? null,
+    titulos_adicionales: titulosAdicionalesGuardados(row.titulos_adicionales),
     investigacion: row.investigacion ?? null,
     origen_vinculacion: row.origen_vinculacion ?? null,
     acto_administrativo_vinculacion: row.acto_administrativo_vinculacion ?? null,
@@ -940,6 +952,9 @@ function buildAuthBancoDocenteResponse(row: any) {
 
 // â”€â”€â”€ service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+const RUND_CONSULTA_SENSIBLE = 'CONSULTAR_DATOS_SENSIBLES';
+const RUND_AUDITORIA_CONSULTAS = 20;
+
 @Injectable()
 export class BancoDocentesService implements OnModuleInit {
   private readonly logger = new Logger(BancoDocentesService.name);
@@ -972,6 +987,7 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT,
           ADD COLUMN IF NOT EXISTS "territorialReportada" TEXT,
           ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB,
+          ADD COLUMN IF NOT EXISTS "titulosAdicionales" JSONB,
           ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
@@ -1063,7 +1079,8 @@ export class BancoDocentesService implements OnModuleInit {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, html }),
+        // Credenciales de acceso: la configuración de notificaciones lo trae como obligatorio.
+        body: JSON.stringify({ to, subject, text, html, modulo: 'pta', evento: 'rund_credenciales_docente' }),
       });
 
       if (!response.ok) {
@@ -1087,14 +1104,18 @@ export class BancoDocentesService implements OnModuleInit {
     return (direct || 'http://localhost:3000').replace(/\/$/, '');
   }
 
-  /** Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}. */
-  private async sendEmail(to: string, subject: string, text: string, html: string): Promise<{ sent: boolean; error?: string }> {
+  /**
+   * Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}.
+   * `evento` es la clave con la que la configuración de notificaciones (EFDS-2406)
+   * decide si el correo sale.
+   */
+  private async sendEmail(to: string, subject: string, text: string, html: string, evento: string): Promise<{ sent: boolean; error?: string }> {
     const baseUrl = this.resolveNotificationsBaseUrl();
     try {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, html }),
+        body: JSON.stringify({ to, subject, text, html, modulo: 'pta', evento }),
       });
       if (!response.ok) {
         const body = await response.text().catch(() => '');
@@ -1168,6 +1189,7 @@ export class BancoDocentesService implements OnModuleInit {
           d.maestria,
           d.doctorado,
           d."posDoctorado" AS posdoctorado,
+          d."titulosAdicionales" AS titulos_adicionales,
           d.investigacion,
           d."origenVinculacion" AS origen_vinculacion,
           d."actoAdministrativoVinculacion" AS acto_administrativo_vinculacion,
@@ -1218,7 +1240,7 @@ export class BancoDocentesService implements OnModuleInit {
     `;
   }
 
-  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }, params: any[]) {
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string }, params: any[]) {
     const conditions: string[] = [];
 
     if (filters.territorial === 'SIN_TERRITORIAL') {
@@ -1270,6 +1292,13 @@ export class BancoDocentesService implements OnModuleInit {
       conditions.push(`periodo_carga = $${params.length}`);
     }
 
+    if (filters.convocatoria) {
+      params.push(convocatoriaKey(filters.convocatoria));
+      conditions.push(`EXISTS (SELECT 1 FROM (${CONVOCATORIA_MEMBERS_SQL}) cm
+        WHERE cm.docente_id=auth_docentes.docente_id::text AND cm.periodo=auth_docentes.periodo_carga
+          AND cm.clave=$${params.length})`);
+    }
+
     if (filters.categoria) {
       params.push(filters.categoria);
       conditions.push(`LOWER(categoria) = LOWER($${params.length})`);
@@ -1307,7 +1336,7 @@ export class BancoDocentesService implements OnModuleInit {
     return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
-  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; page?: number; limit?: number }) {
+  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
@@ -1324,9 +1353,15 @@ export class BancoDocentesService implements OnModuleInit {
     params.push(limit, skip);
     const rows = await this.dataSource.query(
       `
-      ${baseSql}
-      SELECT *
+      ${baseSql}, convocatoria_docentes AS (
+        SELECT docente_id AS docente_ref,periodo AS periodo_ref,array_agg(nombre ORDER BY nombre) AS nombres
+        FROM (SELECT docente_id,periodo,clave,MIN(nombre) AS nombre
+          FROM (${CONVOCATORIA_MEMBERS_SQL}) cm GROUP BY docente_id,periodo,clave) members
+        GROUP BY docente_id,periodo
+      )
+      SELECT auth_docentes.*,COALESCE(cv.nombres,ARRAY[]::text[]) AS convocatorias
       FROM auth_docentes
+      LEFT JOIN convocatoria_docentes cv ON cv.docente_ref=auth_docentes.docente_id::text AND cv.periodo_ref=auth_docentes.periodo_carga
       ${where}
       ORDER BY orden_listado ASC NULLS LAST, nombre_completo ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -1369,7 +1404,7 @@ export class BancoDocentesService implements OnModuleInit {
 
   async previewRegistroDeletion(body: any) {
     const params: any[] = [];
-    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga'];
+    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga', 'convocatoria'];
     const filters: any = {};
     if (body?.ids !== undefined) {
       params.push(deletionIds(body.ids));
@@ -1432,6 +1467,83 @@ export class BancoDocentesService implements OnModuleInit {
     return buildRundPerfilCabezote({ ...perfil, canal_origen: canalOrigen });
   }
 
+  /**
+   * RUND-013 — Edita un solo dato de contacto desde el cabezote.
+   * No exige soporte documental (a diferencia de `updateDocente`): es una
+   * corrección puntual de contacto. Deja rastro en `RundAprobacionLog` con
+   * usuario, fecha, valor anterior y valor nuevo. El origen del dato no cambia.
+   */
+  async updateContactoDocente(id: string, body: {
+    campo?: unknown; valor?: unknown; periodoCarga?: string; actorId?: string; ip?: string;
+  }): Promise<{ campo: RundContactoCampo; valor: string | null; valor_anterior: string | null }> {
+    if (!isRundContactoCampo(body?.campo)) throw new BadRequestException(RUND_CONTACTO_MENSAJES.campo);
+    const campo = body.campo;
+    const docenteId = await this.resolveDocenteId(id, body.periodoCarga);
+
+    return this.dataSource.transaction(async (manager) => {
+      const docente = await manager.findOne(DocenteEntity, { where: { id: docenteId }, lock: { mode: 'pessimistic_write' } });
+      if (!docente) throw new NotFoundException(`Docente ${id} no encontrado`);
+      const personaRows = await manager.query(
+        `SELECT id_person, dir_email, tel_celular FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
+        [docente.personaId],
+      );
+      const persona = personaRows[0];
+      if (!persona) throw new NotFoundException('No se encontró la persona asociada al docente.');
+
+      const anterior = campo === 'CORREO_INSTITUCIONAL' ? (docente.correoInstitucional ?? persona.dir_email ?? null)
+        : campo === 'CORREO_ALTERNATIVO' ? (docente.correoAlternativo ?? null)
+          : (persona.tel_celular ?? null);
+      const otroCorreo = campo === 'CORREO_INSTITUCIONAL' ? docente.correoAlternativo
+        : campo === 'CORREO_ALTERNATIVO' ? (docente.correoInstitucional ?? persona.dir_email) : null;
+      const nuevo = normalizarContacto(campo, body.valor, otroCorreo);
+
+      if ((anterior ?? null) === nuevo) return { campo, valor: nuevo, valor_anterior: anterior };
+
+      if (campo === 'TELEFONO') {
+        await manager.query(
+          `UPDATE auth.personas SET tel_celular = $2, fec_modificacion = CURRENT_DATE WHERE id_person = $1`,
+          [docente.personaId, nuevo],
+        );
+      } else if (campo === 'CORREO_ALTERNATIVO') {
+        await manager.update(DocenteEntity, { id: docenteId }, { correoAlternativo: nuevo } as any);
+      } else {
+        // El correo institucional también es el usuario de ingreso: no puede duplicar a otra cuenta.
+        const duplicado = await manager.query(
+          `SELECT 1 FROM auth."user" WHERE LOWER(username) = $1 AND id_person::text <> $2 LIMIT 1`,
+          [nuevo, String(docente.personaId)],
+        );
+        if (duplicado[0]) {
+          throw new BadRequestException({
+            message: 'Ya existe otra cuenta con ese correo institucional.',
+            columna: campo, datoErrado: nuevo, valorEsperado: 'Un correo institucional no registrado',
+          });
+        }
+        await manager.update(DocenteEntity, { id: docenteId }, { correoInstitucional: nuevo } as any);
+        await manager.query(
+          `UPDATE auth.personas SET dir_email = $2, fec_modificacion = CURRENT_DATE WHERE id_person = $1`,
+          [docente.personaId, nuevo],
+        );
+        await manager.query(
+          `UPDATE auth."user" SET username = $2, updated_at = now() WHERE id_person = $1`,
+          [docente.personaId, nuevo],
+        );
+      }
+
+      await this.writeAuditWithManager(manager, {
+        docenteId,
+        accion: 'EDITAR_CONTACTO',
+        actorId: body.actorId || 'SISTEMA',
+        canalOrigen: 'CABEZOTE',
+        campoAfectado: campo,
+        datoPrevio: anterior ?? undefined,
+        datoNuevo: nuevo ?? undefined,
+        ip: body.ip,
+        metadata: { origen: 'cabezote-perfil-docente' },
+      });
+      return { campo, valor: nuevo, valor_anterior: anterior };
+    });
+  }
+
   private async writeAuditWithManager(manager: any, entry: {
     docenteId: string;
     bloque?: string;
@@ -1460,7 +1572,7 @@ export class BancoDocentesService implements OnModuleInit {
     );
   }
 
-  private async createBulkSupport(support: BulkSupport, actorId: string, ip?: string, trace?: any): Promise<string> {
+  private async createBulkSupport(support: BulkSupport, actorId: string, ip?: string, trace?: any, convocatoria: Record<string, any> = {}): Promise<string> {
     const id = randomUUID();
     const sha256 = createHash('sha256').update(support.content).digest('hex');
     await this.dataSource.query(
@@ -1471,7 +1583,7 @@ export class BancoDocentesService implements OnModuleInit {
       [
         id, support.fileName, support.mimeType, support.content.length, sha256,
         support.content, actorId, support.justificacion || 'Carga masiva de perfiles docentes RUND', ip || null,
-        JSON.stringify(trace ? { trazabilidad: trace } : {}),
+        JSON.stringify({ ...convocatoria, ...(trace ? { trazabilidad: trace } : {}) }),
       ],
     );
     return id;
@@ -1779,6 +1891,13 @@ export class BancoDocentesService implements OnModuleInit {
         nextIdRund = `RUND-${String(seqRes[0].next_val).padStart(4, '0')}`;
       }
 
+      // RUND-003: en la carga masiva los títulos adicionales se deducen de PERFIL_ACADEMICO (lista separada por comas),
+      // salvo que la fila los traiga explícitos. Se une con lo ya registrado para no borrar lo agregado a mano.
+      const deduccionTitulos = options.bulkImport && payload.titulosAdicionales === undefined
+        ? deducirTitulosAdicionales(payload.perfilAcademico, payload, titulosAdicionalesGuardados(existingDocente?.titulosAdicionales))
+        : null;
+
+      const clearObservaciones = clearsObservaciones(rawPayload, payload.observaciones, Boolean(existingDocente));
       const docenteData: Partial<DocenteEntity> = {
         personaId: authPersonId,
         territorialId: options.preserveTerritorial ? existingDocente?.territorialId || '' : territorial?.id || existingDocente?.territorialId || '',
@@ -1803,6 +1922,7 @@ export class BancoDocentesService implements OnModuleInit {
         maestria: payload.maestria ?? existingDocente?.maestria ?? null,
         doctorado: payload.doctorado ?? existingDocente?.doctorado ?? null,
         posDoctorado: payload.posDoctorado ?? existingDocente?.posDoctorado ?? null,
+        titulosAdicionales: resolverTitulosAdicionales(deduccionTitulos ? deduccionTitulos.adicionales : payload.titulosAdicionales, existingDocente?.titulosAdicionales),
         investigacion: payload.investigacion ?? existingDocente?.investigacion ?? null,
         origenVinculacion: payload.origenVinculacion ?? existingDocente?.origenVinculacion ?? null,
         actoAdministrativoVinculacion: payload.actoAdministrativoVinculacion ?? existingDocente?.actoAdministrativoVinculacion ?? null,
@@ -1819,7 +1939,7 @@ export class BancoDocentesService implements OnModuleInit {
         rangoEdad: payload.rangoEdad ?? existingDocente?.rangoEdad ?? null,
         regimenNormativo: payload.regimenNormativo ?? existingDocente?.regimenNormativo ?? null,
         periodoCarga: payload.periodoCarga ?? existingDocente?.periodoCarga ?? null,
-        observaciones: payload.observaciones ?? existingDocente?.observaciones ?? null,
+        observaciones: clearObservaciones ? null : (payload.observaciones ?? existingDocente?.observaciones ?? null),
         idRund: nextIdRund,
         // Â§6 â€” Canal de origen para auditorÃ­a
         canalOrigen: existingDocente?.canalOrigen || rawPayload?.canal_origen || 'MASIVO',
@@ -1835,14 +1955,14 @@ export class BancoDocentesService implements OnModuleInit {
         docente = await manager.save(DocenteEntity, manager.create(DocenteEntity, docenteData));
       } else {
         let hasChanges = false;
-        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
+        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'titulosAdicionales', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
         
         fieldsToCheck.push('territorialReportada', 'datosCargaMasiva');
         for (const field of fieldsToCheck) {
           const newVal = docenteData[field];
           const oldVal = existingDocente[field];
-          const changed = field === 'datosCargaMasiva' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
-          if (newVal !== undefined && newVal !== null && changed) {
+          const changed = field === 'datosCargaMasiva' || field === 'titulosAdicionales' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
+          if (countsAsFieldChange(String(field), newVal, changed, clearObservaciones)) {
             hasChanges = true;
             changedFields.push(String(field));
             profileChanges[String(field)] = field === 'puntajeSalarial' || field === 'datosCargaMasiva'
@@ -1932,6 +2052,8 @@ export class BancoDocentesService implements OnModuleInit {
           actorId: options.audit.actorId,
           canalOrigen: options.audit.canalOrigen,
           campoAfectado: action === 'insert' ? undefined : [...personaChangedFields, ...changedFields].join(','),
+          // NF002: con un solo campo modificado, valor anterior y nuevo quedan también en sus columnas.
+          ...(action === 'insert' ? {} : singleFieldAuditValues(profileChanges)),
           observacion: options.audit.observacion,
           soporteId: options.audit.soporteId,
           ip: options.audit.ip,
@@ -1989,6 +2111,8 @@ export class BancoDocentesService implements OnModuleInit {
         email: emailFinal,
         territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
+        titulosDeducidos: deduccionTitulos?.deducidos ?? 0,
+        titulosSinClasificar: deduccionTitulos?.sinClasificar ?? [],
         welcomeEmail: { sent: false, skipped: !authUserCreated },
         message: action === 'insert' ? 'Docente creado correctamente.' : action === 'unchanged' ? 'Docente ya existe sin cambios.' : 'Docente actualizado correctamente.',
       };
@@ -2085,6 +2209,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async bulkUpsert(rows: any[], options: BulkUpsertOptions = {}) {
+    const nombreConvocatoria = convocatoriaName(options.convocatoria);
     const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' AND NOT extraordinario LIMIT 1`);
     const activePeriod = periodRows.length > 0 ? periodRows[0].codigo : null;
     const fallbackPeriod = options.periodoCarga || activePeriod;
@@ -2096,13 +2221,27 @@ export class BancoDocentesService implements OnModuleInit {
       return row;
     });
 
+    let convocatoria: Record<string, any> = {};
+    if (nombreConvocatoria) {
+      const periodo = convocatoriaPeriod(fallbackPeriod);
+      if (preparedRows.some(row => String(normalizeBancoDocentePayload(row).periodoCarga || '') !== periodo)) {
+        throw new BadRequestException('Todos los registros de una convocatoria deben pertenecer al período seleccionado. Revise PERIODO_CARGA en el archivo.');
+      }
+      const clave = convocatoriaKey(nombreConvocatoria)!;
+      const existing = await this.dataSource.query(`SELECT resumen->>'convocatoria' AS nombre
+        FROM academic_work_plan."RundCargaMasiva"
+        WHERE resumen->>'convocatoriaClave'=$1 AND resumen->>'convocatoriaPeriodo'=$2
+        ORDER BY "createdAt",id LIMIT 1`, [clave, periodo]);
+      convocatoria = { convocatoria: existing[0]?.nombre || nombreConvocatoria, convocatoriaClave: clave, convocatoriaPeriodo: periodo };
+    }
+
     if (!options.dryRun && !options.support) {
       throw new BadRequestException('La carga masiva definitiva requiere conservar el archivo como soporte documental.');
     }
 
     const bulkSupportId = options.dryRun
       ? null
-      : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip, bulkRegistrationTrace(preparedRows));
+      : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip, bulkRegistrationTrace(preparedRows), convocatoria);
 
     let finalResults: any[] = [];
     let finalErrors: any[] = [];
@@ -2138,6 +2277,7 @@ export class BancoDocentesService implements OnModuleInit {
               observacion: options.support?.justificacion || 'Carga masiva de perfiles docentes RUND',
               metadata: {
                 cargaMasivaId: bulkSupportId,
+                ...convocatoria,
                 archivo: options.support?.fileName,
                 filaOrigen: row.__sourceRowNumber,
               },
@@ -2203,7 +2343,7 @@ export class BancoDocentesService implements OnModuleInit {
       if (bulkSupportId) {
         await this.finishBulkSupport(
           bulkSupportId,
-          { total: preparedRows.length, error: String(error?.message || 'Error no controlado'),
+          { ...convocatoria, total: preparedRows.length, error: String(error?.message || 'Error no controlado'),
             trazabilidad: bulkRegistrationTrace(preparedRows) },
           'FALLIDA',
         ).catch((auditError: any) => {
@@ -2214,10 +2354,13 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     const summary = {
+      ...convocatoria,
       total: preparedRows.length,
       created: finalResults.filter((r) => r.action === 'insert').length,
       updated: finalResults.filter((r) => r.action === 'update').length,
       unchanged: finalResults.filter((r) => r.action === 'unchanged').length,
+      titulosDeducidos: finalResults.reduce((total, r) => total + (r.titulosDeducidos || 0), 0),
+      titulosSinClasificar: finalResults.reduce((total, r) => total + (r.titulosSinClasificar?.length || 0), 0),
       errors: finalErrors.length,
       results: finalResults,
       errorDetails: finalErrors,
@@ -2228,6 +2371,7 @@ export class BancoDocentesService implements OnModuleInit {
       await this.finishBulkSupport(
         bulkSupportId,
         {
+          ...convocatoria,
           total: summary.total,
           created: summary.created,
           updated: summary.updated,
@@ -2240,6 +2384,15 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     return summary;
+  }
+
+  async getConvocatorias(periodoCarga: string) {
+    const periodo = convocatoriaPeriod(periodoCarga);
+    return this.dataSource.query(`SELECT resumen->>'convocatoriaClave' AS clave,
+      (array_agg(resumen->>'convocatoria' ORDER BY "createdAt",id))[1] AS nombre
+      FROM academic_work_plan."RundCargaMasiva"
+      WHERE resumen->>'convocatoriaPeriodo'=$1 AND resumen->>'convocatoriaClave' IS NOT NULL
+      GROUP BY resumen->>'convocatoriaClave' ORDER BY nombre`, [periodo]);
   }
 
   async getBulkHistory(limit = 50): Promise<any[]> {
@@ -2480,7 +2633,7 @@ export class BancoDocentesService implements OnModuleInit {
     return suggestionIds.length ? this.dataSource.transaction(execute) : execute();
   }
 
-  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }) {
+  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string }) {
     const baseSql = this.authDocentesBaseSql();
     const params: any[] = [];
     const whereClause = filters ? this.buildAuthDocentesFilters(filters, params) : '';
@@ -2617,6 +2770,18 @@ export class BancoDocentesService implements OnModuleInit {
       ORDER BY total DESC
     `, s.p);
 
+    const cv = mkParams();
+    const porConvocatoria = await this.dataSource.query(`
+      ${baseSql}, convocatoria_members AS (${CONVOCATORIA_MEMBERS_SQL}), filtered AS (
+        SELECT * FROM auth_docentes ${cv.w}
+      )
+      SELECT cm.clave AS convocatoria_clave, MIN(cm.nombre) AS convocatoria,
+        COUNT(DISTINCT (f.docente_id,f.periodo_carga))::int AS total
+      FROM filtered f JOIN convocatoria_members cm
+        ON cm.docente_id=f.docente_id::text AND cm.periodo=f.periodo_carga
+      GROUP BY cm.clave ORDER BY total DESC,convocatoria
+    `, cv.p);
+
     const total = Number(summary?.total || 0);
     const activos = Number(summary?.activos || 0);
     return {
@@ -2625,6 +2790,7 @@ export class BancoDocentesService implements OnModuleInit {
       inactivos: total - activos,
       total_horas: Number(summary?.total_horas || 0),
       promedio_horas: Number(summary?.promedio_horas || 0),
+      por_convocatoria: porConvocatoria,
       por_dedicacion: porDedicacion,
       por_territorial: porTerritorial,
       por_categoria: porCategoria,
@@ -2762,7 +2928,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p><a href="${link}">${link}</a></p>
       <p>Este enlace expira el ${fechaExpiracion.toLocaleDateString('es-CO')}.</p>
     `;
-    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html);
+    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html, 'rund_invitacion');
     this.logger.log(`[RUND] Invitación procesada (enviada=${emailResult.sent}).`);
 
     const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -2840,7 +3006,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p>
       <p>Vence en 10 minutos. Si no solicitaste este código, ignora este correo.</p>
     `;
-    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html);
+    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html, 'rund_codigo_acceso');
 
     this.logger.log(`[RUND][OTP] Solicitud procesada (enviado=${emailResult.sent}).`);
 
@@ -2987,6 +3153,7 @@ export class BancoDocentesService implements OnModuleInit {
           maestria: docenteDirecto.maestria,
           doctorado: docenteDirecto.doctorado,
           posdoctorado: docenteDirecto.posDoctorado,
+          titulos_adicionales: titulosAdicionalesGuardados(docenteDirecto.titulosAdicionales),
           perfil_academico: docenteDirecto.perfilAcademico,
           perfil_academico_pro: docenteDirecto.perfilAcademicoPro,
           nucleo_tematico: docenteDirecto.nucleoTematico,
@@ -3140,14 +3307,8 @@ export class BancoDocentesService implements OnModuleInit {
   /**
    * BR-039 â€” CatÃ¡logo de tipos de soporte vÃ¡lidos por bloque.
    */
-  private static readonly CATALOGO_SOPORTE: Record<string, string[]> = {
-    IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
-    CONTACTO: [],
-    FORMACION: ['diploma_pregrado', 'acta_grado_pregrado', 'diploma_especializacion', 'acta_grado_especializacion', 'diploma_maestria', 'acta_grado_maestria', 'diploma_doctorado', 'acta_grado_doctorado', 'certificado_posdoctoral', 'convalidacion_men', 'hoja_vida_pro'],
-    VINCULACION: ['acto_administrativo_vinculacion', 'resolucion_convocatoria', 'contrato', 'acto_administrativo_dedicacion', 'acto_administrativo_situacion', 'acto_adscripcion_territorial', 'resolucion_escalafon', 'resolucion_puntaje_salarial'],
-    ACADEMICO: ['acto_asignacion_nucleo', 'certificacion_investigacion', 'acta_evaluacion_desempeno'],
-    TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
-  };
+  private static readonly CATALOGO_SOPORTE: Record<string, string[]> = EVIDENCE_TYPES;
+
 
   // DDL for RundCampoEstado and RundSoporteCampo moved to:
   //   db/migrations/333_create_rund_tables_and_sequence.sql
@@ -3205,12 +3366,12 @@ export class BancoDocentesService implements OnModuleInit {
     let bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
       [docenteId],
-    );
+    ).then(currentBlockRows);
 
     // Si no existen bloques, inicializarlos
     if (bloques.length < 6) {
       await this.inicializarBloques(docenteId);
-      bloques = await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]);
+      bloques = currentBlockRows(await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]));
     }
 
     // Cargar soportes por bloque
@@ -3706,13 +3867,19 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async getAuditoria(docenteId: string, limit = 50): Promise<any[]> {
     docenteId = await this.resolveDocenteId(docenteId);
-    const logs = await this.auditLogRepo.find({
-      where: { docenteId },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+    // resolveDocenteId devuelve el id original si no encuentra nada: un perfil inexistente no es un historial vacío.
+    if (!(await this.docenteRepo.findOne({ where: { id: docenteId }, select: ['id'] }))) {
+      throw new NotFoundException(`Docente ${docenteId} no encontrado`);
+    }
+    // Las consultas de datos sensibles se generan en cada apertura de la ficha y llenarían el tope:
+    // se piden aparte (las más recientes) para que ediciones y decisiones sigan visibles en el historial.
+    const [actions, consultations] = await Promise.all([
+      this.auditLogRepo.find({ where: { docenteId, accion: Not(RUND_CONSULTA_SENSIBLE) }, order: { createdAt: 'DESC' }, take: limit }),
+      this.auditLogRepo.find({ where: { docenteId, accion: RUND_CONSULTA_SENSIBLE }, order: { createdAt: 'DESC' }, take: RUND_AUDITORIA_CONSULTAS }),
+    ]);
+    const logs = [...actions, ...consultations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const names = await resolveRundActorNames(this.dataSource, logs.map(log => log.actorId));
-    return logs.map(log => ({ ...log, actorNombre: rundActorName(names, log.actorId) }));
+    return logs.map(log => ({ ...log, cambios: auditCambios(log), actorNombre: rundActorName(names, log.actorId) }));
   }
 
   /**
@@ -3801,6 +3968,7 @@ export class BancoDocentesService implements OnModuleInit {
             { campo: 'TITULO_MAESTRIA', valor: (docente as any).maestria || null, editable: true },
             { campo: 'TITULO_DOCTORADO', valor: (docente as any).doctorado || null, editable: true },
             { campo: 'TITULO_POSDOCTORADO', valor: (docente as any).posDoctorado || null, editable: true },
+            { campo: 'TITULOS_ADICIONALES', valor: titulosAdicionalesGuardados((docente as any).titulosAdicionales), editable: true },
             { campo: 'PERFIL_ACADEMICO_PRO', valor: (docente as any).perfilAcademicoPro || null, editable: true },
             { campo: 'PERFIL_ACADEMICO', valor: (docente as any).perfilAcademico || null, editable: true },
           ],

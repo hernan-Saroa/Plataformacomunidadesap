@@ -649,7 +649,8 @@ export class AuthService {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ to, subject, text }),
+        // Correo del sistema: en la configuración de notificaciones nace obligatorio (EFDS-2406).
+        body: JSON.stringify({ to, subject, text, modulo: 'sistema', evento: 'auth_recuperacion_contrasena' }),
       });
     } catch (error: any) {
       this.logger.warn(
@@ -726,7 +727,7 @@ export class AuthService {
       </div>
     `;
 
-    await this.sendEmail(to, subject, text, html);
+    await this.sendEmail(to, subject, text, html, 'auth_otp_firma');
   }
 
   private escapeHtml(value: string): string {
@@ -742,11 +743,13 @@ export class AuthService {
     });
   }
 
+  /** `evento` es la clave en la configuración de notificaciones (EFDS-2406); sin él, el correo sale siempre. */
   private async sendEmail(
     to: string,
     subject: string,
     text: string,
     html?: string,
+    evento?: string,
   ): Promise<void> {
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/send`;
@@ -758,7 +761,7 @@ export class AuthService {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ to, subject, text, html }),
+        body: JSON.stringify({ to, subject, text, html, ...(evento ? { modulo: 'sistema', evento } : {}) }),
       });
     } catch (error: any) {
       this.logger.warn(

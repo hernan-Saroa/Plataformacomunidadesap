@@ -23,6 +23,8 @@ import type { RundEvidenceOption } from '../../../utils/rundEvidenceData';
 import { rundActorName } from '../../../utils/rundActorName';
 import { RUND_BLOCK_LABELS, rundDocumentBlock } from '../../../utils/rundDocumentScope';
 import { RUND_MAX_EVIDENCES_PER_TYPE, rundEvidenceGroup } from '../../../utils/rundEvidenceRules';
+import { RundSupportList, type RundSupportReview, type RundSupportGroup } from './RundSupportList';
+import { RundPdfPicker } from './RundCheckpointEvidence';
 
 type Category = {
   codigo: string;
@@ -50,6 +52,7 @@ export type RundProfileDocument = {
   creadoEn?: string;
   /** When the evidence joined its checkpoint; kept across replacements. */
   soporteCreadoEn?: string | null;
+  rundSoporteId?: string | null;
   contenidoUrl: string | null;
   contenidoRestringido?: boolean;
   soporteGestion?: boolean;
@@ -63,6 +66,7 @@ type Props = {
   activeBlock?: string;
   activeBlockLabel?: string;
   evidenceOptions?: RundEvidenceOption[];
+  supportReview?: RundSupportReview;
   onView: (url: string, name: string, label: string) => void;
   onChanged?: () => Promise<void> | void;
 };
@@ -82,6 +86,8 @@ const fileSize = (bytes: number) => {
 const evidenceCategory = (block: string, type: string) => {
   if (block === 'IDENTIDAD') return 'IDENTIDAD';
   if (block === 'FORMACION') return 'TITULOS';
+  if (['experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa'].includes(type)) return 'EXPERIENCIA';
+  if (['productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida'].includes(type)) return 'CERTIFICADOS';
   if (type.includes('contrato')) return 'CONTRATOS';
   if (type.includes('certif') || type.includes('evaluacion')) return 'CERTIFICADOS';
   if (type.includes('resolucion') || type.includes('acto_')) return 'RESOLUCIONES';
@@ -89,7 +95,7 @@ const evidenceCategory = (block: string, type: string) => {
   return 'OTROS';
 };
 
-export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel }: Props) {
+export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel, supportReview }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [documents, setDocuments] = useState<RundProfileDocument[]>([]);
   const [category, setCategory] = useState('');
@@ -218,6 +224,30 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
       && (!query || normalize([document.nombreArchivo, document.descripcion, document.categoriaNombre].filter(Boolean).join(' ')).includes(query)));
   }, [scopedDocuments, effectiveFilter, search]);
 
+  const reviewingSupports = !!supportReview && !history && uploadMode === 'support';
+  const reviewEvidences = supportReview?.groups.flatMap(group => group.evidences) || [];
+  // A support ID survives replacement; its tools must refer to the displayed version.
+  const sameSupport = (document: RundProfileDocument, evidence: any) => document.id === evidence.documento_perfil_id
+    || !!document.rundSoporteId && document.rundSoporteId === evidence.id
+    || !evidence.documento_perfil_id && !!document.contenidoUrl && document.contenidoUrl === evidence.documento_carpeta_id;
+  const supportDocument = (evidence: any) => sectionDocuments.find(document => document.estado === 'ACTIVO'
+    && (evidence.documento_perfil_id ? document.id === evidence.documento_perfil_id : sameSupport(document, evidence)));
+  const isReviewedDocument = (document: RundProfileDocument) => document.estado === 'ACTIVO'
+    && reviewEvidences.some(evidence => sameSupport(document, evidence));
+  const matchesSupport = (evidence: any, group: RundSupportGroup) => {
+    const document = supportDocument(evidence);
+    const category = document?.categoria || evidenceCategory(activeBlock || '', evidence.tipo_soporte);
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const text = [evidence.nombre_archivo, document?.nombreArchivo, document?.descripcion, document?.categoriaNombre,
+      group.field.documento, ...group.fields.map(field => field.campo)].filter(Boolean).join(' ');
+    return (effectiveFilter === 'TODAS' || category === effectiveFilter) && normalize(text).includes(normalize(search.trim()));
+  };
+  const remainingDocuments = reviewingSupports ? visibleDocuments.filter(document => !isReviewedDocument(document)) : visibleDocuments;
+  const visibleSupportCount = reviewingSupports ? supportReview!.groups.reduce((total, group) => total + group.evidences.filter(evidence => matchesSupport(evidence, group)).length, 0) : 0;
+  const documentCount = reviewingSupports ? reviewEvidences.length + scopedDocuments.filter(document => !isReviewedDocument(document)).length : scopedDocuments.length;
+  const visibleCount = visibleSupportCount + remainingDocuments.length;
+  const actionsDisabled = !!busy || deleting || loading || !!supportReview?.disabled;
+
   useEffect(() => {
     setSearch('');
     setFilterCategory('TODAS');
@@ -266,7 +296,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
   };
 
   const upload = async (file: File) => {
-    if (busy || !canManage || allowedSupportTypes && uploadMode === 'attachment') return;
+    if (actionsDisabled || !canManage || allowedSupportTypes && uploadMode === 'attachment') return;
     if (uploadMode === 'support' && (!selectedEvidence || !selectedCategory)) {
       toast.error('Registre primero el dato correspondiente o seleccione otro punto de control.');
       return;
@@ -308,7 +338,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
   };
 
   const replace = async (document: RundProfileDocument, file: File) => {
-    if (!canManageDocument(document)) return;
+    if (actionsDisabled || !canManageDocument(document)) return;
     if (!canReplaceEvidence(document.tipoSoporte)) {
       toast.error('Registre primero el dato correspondiente antes de reemplazar su soporte.');
       return;
@@ -357,7 +387,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
   };
 
   const remove = async () => {
-    if (!deleteTarget || deleteLock.current || busy || !canManage || deleteTarget.docenteId !== docenteId) return;
+    if (!deleteTarget || deleteLock.current || actionsDisabled || !canManage || deleteTarget.docenteId !== docenteId) return;
     const document = documents.find(item => item.id === deleteTarget.document.id);
     if (document && !canManageDocument(document)) return;
     if (!document || document.estado !== 'ACTIVO' || document.soporteGestion) return;
@@ -383,18 +413,30 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
     }
   };
 
+  const toolbarActions = <div className="rund-documents__toolbar-actions">
+    {(search || effectiveFilter !== 'TODAS') && <button type="button" onClick={() => { setSearch(''); setFilterCategory('TODAS'); }} style={secondaryButton(false)}>Limpiar filtros</button>}
+    <button type="button" onClick={() => setHistory(value => !value)} aria-pressed={history} style={secondaryButton(history)}>
+      <History size={14} /> {history ? 'Ver vigentes' : 'Historial'}
+    </button>
+    <button type="button" onClick={load} disabled={loading} style={secondaryButton(false)} title="Actualizar documentos">
+      <RefreshCw size={14} /> Actualizar
+    </button>
+  </div>;
+
   return (
-    <section className="rund-documents" aria-label="Documentos del perfil">
+    <section className={`rund-documents${supportReview ? ' rund-documents--workspace' : ''}`} aria-label="Documentos del perfil">
       <div className="rund-documents__header">
         <div className="rund-documents__heading">
-          <span className="rund-documents__folder"><FileText size={20} aria-hidden="true" /></span>
+          <span className={supportReview ? 'rund-section-step' : 'rund-documents__folder'}>{supportReview ? '1' : <FileText size={20} aria-hidden="true" />}</span>
           <div>
-            <h3 className="rund-documents__title">{title} <span className="rund-documents__count">{scopedDocuments.filter(item => item.estado === 'ACTIVO').length}</span></h3>
+            <h3 className="rund-documents__title">{title} {supportReview && <span className="rund-documents__optional">Opcional</span>}<span className="rund-documents__count">{reviewingSupports ? documentCount : scopedDocuments.filter(item => item.estado === 'ACTIVO').length}</span></h3>
             <p className="rund-documents__subtitle">{!activeBlock ? 'Archivos de todas las secciones del docente.'
-              : uploadMode === 'attachment' ? 'Archivos complementarios del perfil, sin sección asignada.' : 'Archivos vinculados a la pestaña seleccionada.'}</p>
+              : uploadMode === 'attachment' ? 'Archivos complementarios del perfil, sin sección asignada.'
+              : supportReview ? 'Consulta o adjunta archivos que respalden los datos del docente.' : 'Archivos vinculados a la pestaña seleccionada.'}</p>
           </div>
         </div>
         <div className="rund-documents__header-actions">
+          {supportReview && expanded && toolbarActions}
           {canManage && configuration?.habilitado === true && <button type="button" disabled={busy === 'expediente'} style={secondaryButton(false)} onClick={async () => {
             setBusy('expediente');
             try {
@@ -404,7 +446,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
               toast.error(error?.message || 'No fue posible preparar el expediente. Puede reintentar.');
             } finally { setBusy(null); }
           }}>{busy === 'expediente' ? 'Preparando…' : 'Preparar expediente'}</button>}
-          {canManage && <button type="button" onClick={() => { setShowUpload(value => expanded ? !value : true); setExpanded(true); }} aria-expanded={showUpload && expanded} style={secondaryButton(showUpload)}>
+          {canManage && <button type="button" className={supportReview ? 'rund-documents__add-primary' : undefined} disabled={actionsDisabled} onClick={() => { setShowUpload(value => expanded ? !value : true); setExpanded(true); }} aria-expanded={showUpload && expanded} style={supportReview ? undefined : secondaryButton(showUpload)}>
             <FilePlus2 size={15} /> {showUpload && expanded ? 'Cerrar carga' : 'Agregar documento'}
           </button>}
           <button type="button" className="rund-documents__collapse" aria-label={expanded ? 'Contraer documentos' : 'Expandir documentos'} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
@@ -489,18 +531,16 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
             <label className="rund-documents__description">Descripción <span>Opcional</span>
               <input value={description} onChange={event => setDescription(event.target.value)} maxLength={1000} placeholder={uploadMode === 'support' ? `Ej. ${selectedEvidence?.label} del docente` : '¿Qué contiene este archivo?'} aria-label="Descripción del documento" style={inputStyle}/>
             </label>
-            <label className="rund-documents__file-action" style={{ ...primaryButton, opacity: busy === 'upload' || !uploadReady ? 0.6 : 1, cursor: busy === 'upload' || !uploadReady ? 'wait' : 'pointer' }}>
+            <RundPdfPicker label="Cargar PDF" className="rund-documents__file-action" disabled={actionsDisabled || !uploadReady} onFile={upload}
+              style={{ ...primaryButton, opacity: actionsDisabled || !uploadReady ? 0.6 : 1, cursor: actionsDisabled || !uploadReady ? 'not-allowed' : 'pointer' }}>
               <UploadCloud size={16}/>{busy === 'upload' ? 'Cargando…' : 'Cargar PDF'}
-              <input type="file" aria-label="Cargar PDF" accept="application/pdf,.pdf" disabled={busy === 'upload' || !uploadReady} hidden onChange={event => {
-                const file = event.target.files?.[0]; if (file) upload(file); event.target.value = '';
-              }}/>
-            </label>
+            </RundPdfPicker>
             <p className="rund-documents__upload-limit">PDF · Hasta {fileSize(Number(selectedCategory?.tamano_maximo_bytes || 10 * 1024 * 1024))} por archivo.</p>
           </div>}
         </div>}
 
-        <div className="rund-documents__toolbar">
-          {scopedDocuments.length > 0 && <label className="rund-documents__search">
+        {(scopedDocuments.length > 0 || reviewingSupports && reviewEvidences.length > 0 || !supportReview) && <div className="rund-documents__toolbar">
+          {(scopedDocuments.length > 0 || reviewingSupports && reviewEvidences.length > 0) && <label className="rund-documents__search">
             <Search size={16} aria-hidden="true" />
             <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar archivo o descripción..." aria-label="Buscar documentos" />
           </label>}
@@ -508,30 +548,47 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
             <option value="TODAS">Todas las categorías ({scopedDocuments.length})</option>
             {filterOptions.map(item => <option key={item.codigo} value={item.codigo}>{item.nombre} ({item.count})</option>)}
           </select>}
-          <div className="rund-documents__toolbar-actions">
-            {(search || effectiveFilter !== 'TODAS') && <button type="button" onClick={() => { setSearch(''); setFilterCategory('TODAS'); }} style={secondaryButton(false)}>Limpiar filtros</button>}
-            <button type="button" onClick={() => setHistory(value => !value)} aria-pressed={history} style={secondaryButton(history)}>
-              <History size={14} /> {history ? 'Ver vigentes' : 'Historial'}
-            </button>
-            <button type="button" onClick={load} disabled={loading} style={secondaryButton(false)} title="Actualizar documentos">
-              <RefreshCw size={14} /> Actualizar
-            </button>
-          </div>
-        </div>
-        <div className="rund-documents__list-heading">
+          {!supportReview && toolbarActions}
+        </div>}
+        {(!reviewingSupports || documentCount > 0) && <div className="rund-documents__list-heading">
           <span>{history ? 'Archivos y versiones anteriores' : 'Archivos vigentes'}</span>
-          <span role="status">{visibleDocuments.length} de {scopedDocuments.length} {history ? 'archivos y versiones' : 'documentos'}</span>
-        </div>
-        <div ref={listRef} className="rund-documents__list" role="region" aria-label="Lista de documentos del perfil" tabIndex={0} aria-busy={loading}>
-          {loading && scopedDocuments.length === 0 ? (
+          <span role="status">{visibleCount} de {documentCount} {history ? 'archivos y versiones' : 'documentos'}</span>
+        </div>}
+        {reviewingSupports && documentCount > 0 && <p className="rund-documents__review-hint">Revisar un archivo no valida automáticamente los datos que respalda.</p>}
+        <div ref={listRef} className={`rund-documents__list${reviewingSupports ? ' rund-documents__list--review' : ''}`} role="region" aria-label="Lista de documentos del perfil" tabIndex={0} aria-busy={loading}>
+          {reviewingSupports && <RundSupportList {...supportReview!} disabled={actionsDisabled}
+            matches={matchesSupport} filtered={!!search.trim() || effectiveFilter !== 'TODAS'}
+            renderDetails={evidence => {
+              const document = supportDocument(evidence);
+              if (!document) return null;
+              return <details className="rund-documents__details"><summary>Detalles</summary><dl>
+                <dt>Documento</dt><dd>{document.categoriaNombre} · v{document.version} · {fileSize(document.tamanoBytes)}</dd>
+                {document.descripcion && <><dt>Descripción</dt><dd>{document.descripcion}</dd></>}
+              </dl></details>;
+            }}
+            renderActions={evidence => {
+              const document = supportDocument(evidence);
+              if (!document) return null;
+              return <>
+                {document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={actionsDisabled}><Download size={14} /></IconButton>}
+                {canManageDocument(document) && !document.soporteGestion && <IconButton title="Eliminar" danger disabled={actionsDisabled}
+                  onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                    deleteTrigger.current = event.currentTarget;
+                    setDeleteError(null);
+                    setDeleteTarget({ docenteId, document });
+                  }}><Trash2 size={14} /></IconButton>}
+                {document.totalVersiones > 1 && <span title={`${document.totalVersiones} versiones`} style={{ ...iconButtonStyle, cursor: 'default', color: '#7C3AED' }}><FileClock size={14} /></span>}
+              </>;
+            }} />}
+          {loading && scopedDocuments.length === 0 && !reviewingSupports ? (
             <div style={emptyStyle}>Consultando documentos…</div>
-          ) : visibleDocuments.length === 0 ? (
+          ) : visibleCount === 0 && (!reviewingSupports || !!search.trim() || effectiveFilter !== 'TODAS') ? (
             <div style={emptyStyle}>{scopedDocuments.length === 0 ? activeBlock
               ? uploadMode === 'attachment' ? history ? 'No hay anexos generales ni versiones anteriores.' : 'Este perfil no tiene anexos generales vigentes.'
                 : history ? `No hay archivos ni versiones anteriores de ${sectionLabel}.` : `No hay documentos vigentes de ${sectionLabel}.`
               : history ? 'No hay archivos ni versiones anteriores para este perfil.' : 'Este perfil no tiene documentos vigentes. Puedes consultar el historial o agregar un documento.'
               : 'No hay documentos que coincidan con la búsqueda o categoría.'}</div>
-          ) : visibleDocuments.map((document) => (
+          ) : remainingDocuments.map((document) => (
             <article key={document.id} className={`rund-documents__document${document.estado !== 'ACTIVO' ? ' rund-documents__document--archived' : ''}`}>
               <div style={{ minWidth: 0, display: 'flex', gap: 10, alignItems: 'center' }}>
                 <div style={{ width: 34, height: 34, borderRadius: 8, background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><FileText size={17} /></div>
@@ -587,7 +644,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
             </article>
           ))}
         </div>
-        {visibleDocuments.length > 4 && <p className="rund-documents__scroll-hint">Desplázate dentro de la lista para ver más archivos.</p>}
+        {visibleCount > 4 && <p className="rund-documents__scroll-hint">Desplázate dentro de la lista para ver más archivos.</p>}
       </>}
       <AlertDialog.Root open={deleteTarget?.docenteId === docenteId && canManage} onOpenChange={open => {
         if (!open && !deleteLock.current) { setDeleteTarget(null); setDeleteError(null); }

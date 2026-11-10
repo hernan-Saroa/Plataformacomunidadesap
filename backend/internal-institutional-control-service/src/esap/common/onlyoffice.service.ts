@@ -158,7 +158,7 @@ export class OnlyOfficeService {
           comments: false,
           help: false,
           plugins: false,
-          toolbarNoTabs: true,
+          // Sin toolbarNoTabs: con él OnlyOffice pide index_loader.html, que la 9.4 ya no trae (404)
           hideRightMenu: true,
           // -2 = ajustar al ancho (el Programa Anual en PDF es una hoja muy ancha)
           ...(opciones.ajustarAlAncho ? { zoom: -2 } : {}),

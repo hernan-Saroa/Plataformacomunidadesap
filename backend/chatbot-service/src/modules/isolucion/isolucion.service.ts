@@ -8,18 +8,31 @@ export const ISOLUCION_SQL = Symbol('ISOLUCION_SQL');
 type TimedRequestConstructor = new (pool: Sql.ConnectionPool, overrides: { requestTimeout: number }) => Sql.Request;
 export interface DocumentSource {
   id: string; titulo: string; extracto: string; version?: string; url?: string;
+  codigo?: string; proceso?: string; contenidoDisponible?: boolean;
 }
 
 const STOP_WORDS = new Set('para como donde cual cuales sobre quiero necesito puedes favor documento documentos informacion consultar buscar saber esta este esto una unos unas los las del que por con sin desde hasta tiene son uso usar ayuda hola gracias'.split(' '));
 
 export function searchTerms(question: string): string[] {
-  return [...new Set(question.toLowerCase().match(/[\p{L}\p{N}]{3,40}/gu) || [])]
-    .filter((word) => !STOP_WORDS.has(word.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))).slice(0, 4);
+  const normalized = question.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const code = normalized.match(/\b[a-z]{2,5}-[a-z]{1,5}-\d{2,5}\b/)?.[0];
+  if (code) return [code];
+  if (/certific|constancia/.test(normalized) && /labor/.test(normalized)) return ['certific', 'labor'];
+  const ignored = new Set('solicito solicitar legalizo legalizar puedo puedes debo hacer pasos requisitos necesito obtener funciona funcionan modulo modulos plataforma persona personas servicio servicios realizar favor tramite tramites'.split(' '));
+  const terms = [...new Set(normalized.match(/[\p{L}\p{N}]{3,40}/gu) || [])]
+    .filter((word) => !STOP_WORDS.has(word) && !ignored.has(word));
+  if (terms.some((word) => /^viatic|^comision/.test(word))) return ['viatic', 'comision'];
+  return terms.slice(0, 6);
 }
 
-export function safeDocumentUrl(value: unknown): string | undefined {
+export function safeDocumentUrl(value: unknown, base?: string, pathPrefix = ''): string | undefined {
   try {
-    const url = new URL(String(value || ''));
+    if (!value || String(value).startsWith('//')) return undefined;
+    const url = new URL(String(value), base || undefined);
+    if (pathPrefix && String(value).startsWith('/')) {
+      if (!pathPrefix.startsWith('/') || pathPrefix.includes('..') || /[?#]/.test(pathPrefix)) return undefined;
+      if (!url.pathname.startsWith(pathPrefix.replace(/\/$/, '') + '/')) url.pathname = pathPrefix.replace(/\/$/, '') + url.pathname;
+    }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return undefined;
     return url.href;
   } catch { return undefined; }
@@ -37,6 +50,10 @@ export class IsolucionService implements OnModuleDestroy {
     // La integración desactivada no debe afectar el chat por configuración incompleta.
     return this.config.get('CHATBOT_ISOLUCION_ENABLED') === 'true'
       && this.config.get('CHATBOT_ISOLUCION_SEARCH_ENABLED') === 'true';
+  }
+
+  isPublicSearchEnabled(): boolean {
+    return this.isSearchEnabled() && this.config.get('CHATBOT_ISOLUCION_PUBLIC_ENABLED') === 'true';
   }
 
   private getReadyConfig(): IsolucionConfig {
@@ -118,7 +135,7 @@ export class IsolucionService implements OnModuleDestroy {
       || !config.columns.allowed || !config.allowedValue) throw new IsolucionError('MAPPING_REQUIRED');
     if (config.allowedValue.length > 512) throw new IsolucionError('INVALID_MAPPING');
     const names = new Set(columns.map((column) => column.columna));
-    for (const column of Object.values(config.columns).filter(Boolean)) {
+    for (const column of [...Object.values(config.columns), ...config.extraTextColumns, config.publicColumn].filter(Boolean)) {
       identifier(column);
       if (!names.has(column)) throw new IsolucionError('INVALID_MAPPING');
     }
@@ -139,14 +156,16 @@ export class IsolucionService implements OnModuleDestroy {
     }
   }
 
-  async search(question: string): Promise<DocumentSource[]> {
+  async search(question: string, audience: 'private' | 'public' = 'private'): Promise<DocumentSource[]> {
     if (!this.isSearchEnabled()) return [];
+    if (audience === 'public' && !this.isPublicSearchEnabled()) throw new IsolucionError('PUBLIC_SOURCE_DISABLED');
     const terms = searchTerms(question);
     if (!terms.length) return [];
     try {
       const config = this.getReadyConfig();
       // No consultar registros con un mapeo incompleto, incluso antes de conectar.
-      this.validateMapping(config, Object.values(config.columns).filter(Boolean).map((columna) => ({ columna })));
+      this.validateMapping(config, [...Object.values(config.columns), ...config.extraTextColumns, config.publicColumn].filter(Boolean).map((columna) => ({ columna })));
+      if (audience === 'public' && (!config.publicColumn || !config.publicValue)) throw new IsolucionError('PUBLIC_FILTER_REQUIRED');
       const deadline = Date.now() + 14000;
       const pool = await this.getPool(config);
       const metadata = await this.inspect(pool, config, deadline);
@@ -155,24 +174,34 @@ export class IsolucionService implements OnModuleDestroy {
       const asText = (column: string, length: number | 'max') => `CONVERT(nvarchar(${length}), ${identifier(column)})`;
       const request = this.request(pool, deadline)
         .input('allowed', this.sql.NVarChar(512), config.allowedValue);
+      if (audience === 'public') request.input('publicAllowed', this.sql.NVarChar(512), config.publicValue);
+      const textColumns = [...new Set([c.text, ...config.extraTextColumns])];
+      const body = textColumns.map((column) => `COALESCE(${asText(column, 'max')}, N'')`).join(" + NCHAR(10) + ");
+      const searchColumns = [...new Set([c.title, c.code, c.process, ...textColumns].filter(Boolean))];
       const conditions = terms.map((term, index) => {
         request.input(`term${index}`, this.sql.NVarChar(100), `%${term}%`);
-        return `(${asText(c.title, 2000)} LIKE @term${index} OR ${asText(c.text, 'max')} LIKE @term${index})`;
+        return '(' + searchColumns.map((column) => `${asText(column, 'max')} COLLATE Latin1_General_CI_AI LIKE @term${index}`).join(' OR ') + ')';
       });
+      const rank = conditions.map((condition, index) => `(CASE WHEN ${condition} THEN ${terms.length - index} ELSE 0 END)`).join(' + ');
       const result = await request.query(`SELECT TOP (3)
         ${asText(c.id, 200)} AS id, ${asText(c.title, 500)} AS titulo,
-        ${asText(c.text, 2000)} AS extracto,
+        LEFT(${body}, 16000) AS extracto,
         ${c.url ? asText(c.url, 2000) : 'NULL'} AS url,
-        ${c.version ? asText(c.version, 100) : 'NULL'} AS version
+        ${c.version ? asText(c.version, 100) : 'NULL'} AS version,
+        ${c.code ? asText(c.code, 100) : 'NULL'} AS codigo,
+        ${c.process ? asText(c.process, 200) : 'NULL'} AS proceso
         FROM ${metadata.qualifiedView}
-        WHERE ${asText(c.allowed, 'max')} = @allowed AND ${conditions.join(' AND ')}
-        ORDER BY ${asText(c.title, 500)}, ${asText(c.id, 200)}`);
+        WHERE ${asText(c.allowed, 'max')} = @allowed AND (${conditions.join(terms[0] === 'certific' && terms[1] === 'labor' ? ' AND ' : ' OR ')})
+        ${audience === 'public' ? `AND ${asText(config.publicColumn, 'max')} = @publicAllowed` : ''}
+        ORDER BY (${rank}) DESC, ${asText(c.title, 500)}, ${asText(c.id, 200)}`);
       return result.recordset.map((row) => ({
         id: String(row.id ?? '').slice(0, 200), titulo: String(row.titulo ?? '').slice(0, 500),
         extracto: String(row.extracto ?? '').slice(0, 2000),
         ...(row.version ? { version: String(row.version).slice(0, 100) } : {}),
-        ...(safeDocumentUrl(row.url) ? { url: safeDocumentUrl(row.url) } : {}),
-      })).filter((row) => row.id && row.titulo && row.extracto);
+        ...(row.codigo ? { codigo: String(row.codigo).slice(0, 100) } : {}),
+        ...(row.proceso ? { proceso: String(row.proceso).slice(0, 200) } : {}),
+        ...(safeDocumentUrl(row.url, config.documentBaseUrl, config.documentPathPrefix) ? { url: safeDocumentUrl(row.url, config.documentBaseUrl, config.documentPathPrefix) } : {}),
+      })).filter((row) => row.id && row.titulo);
     } catch (error) { throw this.safeError(error); }
   }
 

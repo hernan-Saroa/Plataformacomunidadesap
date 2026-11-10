@@ -1,17 +1,32 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DataSource, QueryRunner } from 'typeorm';
-import { hasRundData } from './rund-evidence-data';
+import { hasRundData, IDENTITY_TYPES, STANDALONE_SUPPORT_TYPES, isStandaloneSupport } from './rund-evidence-data';
+export { IDENTITY_TYPES, STANDALONE_SUPPORT_TYPES, isStandaloneSupport };
 import { dataApprovalProblem, dataReviewContext, loadDataReviewProfile, loadDataReviews, RUND_DATA_FIELDS } from './rund-data-review';
 
 export const EVIDENCE_TYPES: Record<string, string[]> = {
-  IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
+  IDENTIDAD: [...IDENTITY_TYPES, ...STANDALONE_SUPPORT_TYPES.IDENTIDAD],
   CONTACTO: [],
-  FORMACION: ['diploma_pregrado', 'acta_grado_pregrado', 'diploma_especializacion', 'acta_grado_especializacion', 'diploma_maestria', 'acta_grado_maestria', 'diploma_doctorado', 'acta_grado_doctorado', 'certificado_posdoctoral', 'convalidacion_men', 'hoja_vida_pro'],
+  FORMACION: ['diploma_pregrado', 'acta_grado_pregrado', 'diploma_especializacion', 'acta_grado_especializacion', 'diploma_maestria', 'acta_grado_maestria', 'diploma_doctorado', 'acta_grado_doctorado', 'certificado_posdoctoral', 'convalidacion_men', 'hoja_vida_pro', ...STANDALONE_SUPPORT_TYPES.FORMACION],
   VINCULACION: ['acto_administrativo_vinculacion', 'resolucion_convocatoria', 'contrato', 'acto_administrativo_dedicacion', 'acto_administrativo_situacion', 'acto_adscripcion_territorial', 'resolucion_escalafon', 'resolucion_puntaje_salarial'],
-  ACADEMICO: ['acto_asignacion_nucleo', 'certificacion_investigacion', 'acta_evaluacion_desempeno'],
+  ACADEMICO: ['acto_asignacion_nucleo', 'certificacion_investigacion', 'acta_evaluacion_desempeno', ...STANDALONE_SUPPORT_TYPES.ACADEMICO],
   TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
 };
+/**
+ * Una carrera al crear el expediente pudo dejar dos filas del mismo bloque (no hay restricción única).
+ * Todas las lecturas y revisiones usan la misma: la de mayor versión y, si empatan, la más antigua. Conserva el orden en que llegan los bloques.
+ */
+export function currentBlockRows<T extends { bloque: string; version?: number | string; createdAt?: Date | string }>(rows: T[]): T[] {
+  const time = (row: T) => (row.createdAt ? new Date(row.createdAt).getTime() : 0) || 0;
+  const best = new Map<string, T>();
+  for (const row of rows) {
+    const current = best.get(row.bloque);
+    if (!current || Number(row.version) > Number(current.version)
+      || (Number(row.version) === Number(current.version) && time(row) < time(current))) best.set(row.bloque, row);
+  }
+  return [...best.values()];
+}
 export const isReviewableEvidence = (type: string) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type);
 // Each checkpoint can keep several current evidences; each one is reviewed on its own.
 export const RUND_MAX_EVIDENCES_PER_TYPE = 10;
@@ -42,7 +57,7 @@ export function evidenceSummary(rows: { bloque: string; estado: string }[]) {
   return { activable: estado === 'ACTIVO_RUND', completitud, estado };
 }
 export function evidenceFields(type: string): string[] {
-  if (['documento_identidad', 'cedula_extranjeria', 'pasaporte'].includes(type)) {
+  if (IDENTITY_TYPES.includes(type)) {
     return ['DOCUMENTO_IDENTIDAD', 'NOMBRE_COMPLETO', 'GENERO', 'SEXO_BIOLOGICO', 'FECHA_NACIMIENTO'];
   }
   if (type === 'contrato') return ['ACTO_ADMINISTRATIVO', 'FECHAS_VINCULACION'];
@@ -59,7 +74,7 @@ export function evidenceFieldDecision(support: any, campo: string) {
 }
 /** CC, CE and passport accredit the same identity rows, so they share one checkpoint. */
 export function evidenceGroup(type: string): string[] {
-  return EVIDENCE_TYPES.IDENTIDAD.includes(type) ? EVIDENCE_TYPES.IDENTIDAD : [type];
+  return IDENTITY_TYPES.includes(type) ? IDENTITY_TYPES : [type];
 }
 
 /** Row decision of one evidence; older rows may keep a return only at support level. */
@@ -100,15 +115,21 @@ export function evidenceApprovalProblem(block: string, docente: any, supports: a
   return null;
 }
 
-/** Marks the block returned while a return stays open; only then the reason is shown at block level. */
-async function blockStateAfterReturn(runner: Pick<QueryRunner, 'query'>, docenteId: string, block: string, note?: string) {
-  const supports = await runner.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
-  if (hasOpenEvidenceReturn(supports)) {
-    await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = 'Devuelto', observacion = COALESCE($3, observacion)
-      WHERE docente_id::text = $1 AND bloque = $2`, [docenteId, block, note || null]);
+/** Only data or an explicit block return requests profile correction. Files are optional. */
+async function blockStateAfterReturn(runner: Pick<QueryRunner, 'query'>, docenteId: string, block: string, preserveBlockReturn = false) {
+  if (preserveBlockReturn) {
+    const [lastBlockReview] = await runner.query(`SELECT accion, observacion FROM academic_work_plan."RundAprobacionLog"
+      WHERE docente_id::text=$1 AND bloque=$2 AND accion IN ('APROBAR','DEVOLVER','REABRIR_POR_EDICION')
+      ORDER BY "createdAt" DESC, id DESC LIMIT 1`,[docenteId,block]);
+    if (lastBlockReview?.accion === 'DEVOLVER') {
+      await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado='Devuelto', observacion=$3 WHERE docente_id::text=$1 AND bloque=$2`,
+        [docenteId,block,lastBlockReview.observacion]);
+      return;
+    }
   }
   const reviews = await loadDataReviews(runner, docenteId);
   if (reviews.some((review: any) => review.bloque === block && review.metadata?.estado === 'Rechazado')) {
+    const supports = await runner.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
     const context = dataReviewContext(block, await loadDataReviewProfile(runner, docenteId), await withCurrentEvidenceDocuments(runner, docenteId, supports), reviews);
     const returned = Object.values(context).find(decision => decision.estado === 'Rechazado');
     if (returned) await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado='Devuelto', observacion=$3 WHERE docente_id::text=$1 AND bloque=$2`,[docenteId,block,returned.observacion]);
@@ -119,7 +140,7 @@ export function validateEvidenceType(block: string, type: string) {
   if (!EVIDENCE_TYPES[block]?.includes(type)) throw new BadRequestException('El tipo de soporte no corresponde al bloque seleccionado.');
 }
 export function requiredEvidence(block: string, docente: any): string[][] {
-  if (block === 'IDENTIDAD') return [EVIDENCE_TYPES.IDENTIDAD];
+  if (block === 'IDENTIDAD') return [IDENTITY_TYPES];
   if (block === 'VINCULACION') return EVIDENCE_TYPES.VINCULACION.map(type => [type]);
   if (block === 'TRANSVERSAL') return [['autorizacion_habeas_data']];
   if (block === 'ACADEMICO') return [['acto_asignacion_nucleo'], ['acta_evaluacion_desempeno'], ...(hasRundData(docente.investigacion) ? [['certificacion_investigacion']] : [])];
@@ -188,7 +209,7 @@ export async function resetEvidenceBlock(runner: Pick<QueryRunner, 'query'>, doc
   await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = $1, cargado_por = $2,
     revisado_por = NULL, fecha_revision = NULL, observacion = NULL, version = version + 1, "updatedAt" = NOW()
     WHERE docente_id::text = $3 AND bloque = $4`, [missing ? 'Soporte faltante' : 'En revisión', actorId, docenteId, block]);
-  // A different returned support must remain visible until it is corrected or covered by another evidence.
+  // A still-current data return survives a change to an optional file.
   await blockStateAfterReturn(runner, docenteId, block);
   await syncEvidenceSummary(runner, docenteId);
 }
@@ -228,7 +249,7 @@ export class RundEvidenceWorkflow {
         throw new BadRequestException('El soporte no tiene un documento disponible en este bloque. Cargue una versión actual antes de revisarlo.');
       }
       if (!data.documentoVersionId || data.documentoVersionId !== (support.documento_perfil_id || support.documento_carpeta_id)) throw new ConflictException('El documento cambió. Actualice y revise la versión vigente.');
-      const [currentBlock] = await runner.query('SELECT version FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
+      const [currentBlock] = await runner.query('SELECT version, estado FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2 ORDER BY version DESC, "createdAt" ASC LIMIT 1', [docenteId, block]);
       if (!currentBlock || data.blockVersion !== Number(currentBlock.version)) throw new ConflictException('La información del espacio cambió. Actualice los datos antes de revisar el soporte.');
       if (data.estado === 'Aprobado' && support.fecha_vencimiento && new Date(support.fecha_vencimiento) < new Date()) throw new BadRequestException('El soporte está vencido. Cargue una versión vigente.');
       const fields = evidenceFields(support.tipo_soporte);
@@ -249,9 +270,9 @@ export class RundEvidenceWorkflow {
       await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = $1, revisado_por = $2,
         fecha_revision = NOW(), observacion = $3, version = version + 1, "updatedAt" = NOW() WHERE docente_id::text = $4 AND bloque = $5`,
         ['En revisión', actorId, null, docenteId, block]);
-      // Returning one of several evidences is final only when no other evidence can accredit the row;
-      // otherwise the reason stays on that evidence and the block remains in review.
-      await blockStateAfterReturn(runner, docenteId, block, data.estado === 'Rechazado' ? data.observacion!.trim() : undefined);
+      // The file's reason stays on the evidence; preserve actual data/block returns.
+      // Uploads/replacements already reopen the block: do not revive an older return.
+      await blockStateAfterReturn(runner, docenteId, block, currentBlock.estado === 'Devuelto');
       const checkpoint = (await runner.query('SELECT id, tipo_soporte, "createdAt" FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]))
         .filter((s: any) => evidenceGroup(support.tipo_soporte).includes(s.tipo_soporte))
         .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || String(a.id).localeCompare(String(b.id)));
@@ -271,7 +292,7 @@ export class RundEvidenceWorkflow {
     if (data.estado === 'Rechazado' && (typeof data.observacion !== 'string' || !data.observacion.trim())) throw new BadRequestException('Indique qué dato está incorrecto y la corrección requerida.');
     if (data.observacion && data.observacion.length > 2000) throw new BadRequestException('La observación admite máximo 2000 caracteres.');
     return this.transaction(docenteId, async (runner,docente) => {
-      const [current] = await runner.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text=$1 AND bloque=$2 FOR UPDATE',[docenteId,block]);
+      const [current] = await runner.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text=$1 AND bloque=$2 ORDER BY version DESC, "createdAt" ASC LIMIT 1 FOR UPDATE',[docenteId,block]);
       if (!current || !Number.isInteger(data.blockVersion) || data.blockVersion !== Number(current.version)) throw new ConflictException('La información cambió. Actualice antes de revisar el dato.');
       await runner.query('SELECT id_person FROM auth.personas WHERE id_person::text=$1 FOR SHARE',[docente.personaId]);
       const supports = await withCurrentEvidenceDocuments(runner,docenteId,await runner.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text=$1 AND bloque=$2',[docenteId,block]));
@@ -299,7 +320,7 @@ export class RundEvidenceWorkflow {
     const returning = observation !== undefined;
     if (returning && (typeof observation !== 'string' || !observation.trim())) throw new BadRequestException('La devolución requiere un motivo y la corrección requerida.');
     return this.transaction(docenteId, async (runner, docente) => {
-      const [current] = await runner.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2 FOR UPDATE', [docenteId, block]);
+      const [current] = await runner.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2 ORDER BY version DESC, "createdAt" ASC LIMIT 1 FOR UPDATE', [docenteId, block]);
       if (!current) throw new NotFoundException('Bloque no encontrado.');
       if (!Number.isInteger(blockVersion) || blockVersion !== Number(current.version)) {
         throw new ConflictException('La información del espacio cambió. Actualice los datos antes de aprobar o devolver el bloque.');

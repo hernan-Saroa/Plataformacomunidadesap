@@ -173,9 +173,12 @@ export class ConfiguracionController {
   @Put('actividades/:numeral/aplicabilidad')
   @UseGuards(PermisosGuard)
   @Permisos('contratacion.config.manage')
-  @ApiOperation({ summary: 'Marcar si la actividad aplica a una modalidad' })
-  cambiarAplicabilidad(@Param('numeral') numeral: string, @Body() dto: AplicabilidadDto) {
-    return this.service.cambiarAplicabilidad(numeral, dto);
+  @ApiOperation({
+    summary: 'Marcar si la actividad aplica a una modalidad',
+    description: 'Llega también a los procesos vivos de la modalidad, sin reabrir lo que ya dejaron atrás.',
+  })
+  cambiarAplicabilidad(@Param('numeral') numeral: string, @Body() dto: AplicabilidadDto, @Req() req: any) {
+    return this.service.cambiarAplicabilidad(numeral, dto, getHiringAccess(req));
   }
 
   // ------------------------------------------- que se le pide al gestor ----
@@ -206,7 +209,7 @@ export class ConfiguracionController {
   @ApiOperation({
     summary: 'Configurar la aprobación de la actividad',
     description:
-      'Se guarda en el borrador del flujo: rige al activarlo, y los procesos en curso siguen con su versión.',
+      'Se guarda en el borrador del flujo: rige al activarlo, también en los procesos en curso.',
   })
   guardarAprobacion(
     @Param('numeral') numeral: string,

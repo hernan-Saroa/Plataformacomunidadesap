@@ -580,7 +580,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
             await this.notificationClient.sendEmail(
                 detail.email,
                 `${titulo} - Radicado ${radicado}`,
-                emailHtml
+                emailHtml,
+                esAprobada ? 'RESPUESTA_APROBADA' : 'RESPUESTA_DEVUELTA',
             );
         }
 

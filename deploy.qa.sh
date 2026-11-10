@@ -117,18 +117,40 @@ BACKEND_ENV_SERVICES=(
 
 # La validación documental requiere ENABLED=true y PERSISTENT=true; por defecto queda aplazada.
 source "$(dirname "${BASH_SOURCE[0]}")/scripts/rund-documental/deploy-guard.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/scripts/chatbot/compose-profile.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/scripts/rund-ai/compose-profile.sh"
 
 compose_env() {
+    local chatbot_compose_args=()
+    if { [ -n "${CHATBOT_KNOWLEDGE_ENV_FILE:-}" ] || [ -f ./backend/chatbot-service/.env.knowledge.qa ]; } && chatbot_command_needs_profile "$@"; then
+        chatbot_prepare_compose qa || return $?
+        chatbot_compose_args=("${CHATBOT_COMPOSE_ARGS[@]}")
+    fi
+    local rund_ai_args=()
+    if { [ -n "${RUND_AI_ENV_FILE:-}" ] || [ -f ./backend/academic-work-plan-service/.env.rund-ai.qa ]; } && rund_ai_command_needs_profile "$@"; then
+        rund_ai_prepare_compose qa || return $?
+        rund_ai_args=("${RUND_AI_COMPOSE_ARGS[@]}")
+    fi
     local rund_compose_args=()
     if [ "${RUND_DOCUMENTAL_ENABLED:-false}" = "true" ] && [ "${RUND_DOCUMENTAL_PERSISTENT:-false}" = "true" ]; then
         rund_compose_args=(-f docker-compose.rund-documental.yml)
         rund_documental_preflight qa "$@" || return $?
     fi
     ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
-    docker compose -f "$COMPOSE_FILE_ENV" "${rund_compose_args[@]}" --env-file "$ENV_FILE" "$@"
+    docker compose -f "$COMPOSE_FILE_ENV" "${rund_compose_args[@]}" --env-file "$ENV_FILE" "${chatbot_compose_args[@]}" "${rund_ai_args[@]}" "$@"
 }
 
 compose_env_mfe() {
+    local chatbot_compose_args=()
+    if { [ -n "${CHATBOT_KNOWLEDGE_ENV_FILE:-}" ] || [ -f ./backend/chatbot-service/.env.knowledge.qa ]; } && chatbot_command_needs_profile "$@"; then
+        chatbot_prepare_compose qa || return $?
+        chatbot_compose_args=("${CHATBOT_COMPOSE_ARGS[@]}")
+    fi
+    local rund_ai_args=()
+    if { [ -n "${RUND_AI_ENV_FILE:-}" ] || [ -f ./backend/academic-work-plan-service/.env.rund-ai.qa ]; } && rund_ai_command_needs_profile "$@"; then
+        rund_ai_prepare_compose qa || return $?
+        rund_ai_args=("${RUND_AI_COMPOSE_ARGS[@]}")
+    fi
     local rund_compose_args=()
     if [ "${RUND_DOCUMENTAL_ENABLED:-false}" = "true" ] && [ "${RUND_DOCUMENTAL_PERSISTENT:-false}" = "true" ]; then
         rund_compose_args=(-f docker-compose.rund-documental.yml)
@@ -140,7 +162,7 @@ compose_env_mfe() {
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
     FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-/onlyoffice}" \
     ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
-    docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" "${rund_compose_args[@]}" --env-file "$ENV_FILE" "$@"
+    docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" "${rund_compose_args[@]}" --env-file "$ENV_FILE" "${chatbot_compose_args[@]}" "${rund_ai_args[@]}" "$@"
 }
 
 compose_env_mfe_prebuilt() {

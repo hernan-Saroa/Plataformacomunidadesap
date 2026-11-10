@@ -44,7 +44,7 @@ export function PublicChatbotModule({ apiBaseUrl, isWidget = false }: { apiBaseU
         <p className="esap-chatbot-module__bubble esap-chatbot-temporary__question"><strong>Tú: </strong>{message.question}</p>
         <div className="esap-chatbot-module__bubble esap-chatbot-temporary__answer"><strong>Asistente: </strong><ChatMessageText text={message.answer} /></div>
       </article>)}
-      {busy && <p role="status" className="esap-chatbot-temporary__pending">Consultando servicio…</p>}
+      {busy && <p role="status" className="esap-chatbot-temporary__pending">Preparando respuesta…</p>}
     </div>
     {error && <div role="alert" className="esap-chatbot-module__notice esap-chatbot-temporary__error">{error} Tu consulta sigue en el campo de texto.</div>}
     <div className="esap-chatbot-module__composer p-4 bg-white border-t border-slate-200">

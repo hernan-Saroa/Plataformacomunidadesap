@@ -40,7 +40,7 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     expect(RUND_CABEZOTE_CAMPOS).toHaveLength(7);
   });
 
-  it('no expone la cedula ni ningun campo editable del perfil', () => {
+  it('no expone la cedula; el contacto (RUND-013) si llega para mostrarse en el cabezote', () => {
     const cabezote: any = buildRundPerfilCabezote({
       ...filaListado,
       documento_identidad: '1020304050',
@@ -49,8 +49,8 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     });
 
     expect(cabezote.documento_identidad).toBeUndefined();
-    expect(cabezote.telefono).toBeUndefined();
-    expect(cabezote.correo_personal).toBeUndefined();
+    expect(cabezote.telefono).toBe('3001234567');
+    expect(cabezote.correo_personal).toBe('personal@correo.com');
     expect(Object.keys(cabezote)).not.toContain('editable');
   });
 

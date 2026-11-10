@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RundExtractionPanel } from './RundExtractionPanel';
+import { RundExtractionPanel, RundExtractionProgress } from './RundExtractionPanel';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../../shell/src/utils/connectivity';
 
@@ -21,6 +21,70 @@ const openAssistant=async()=>{
 };
 
 describe('revisión humana de OCR',()=>{
+  it.each([
+    ['IDENTIDAD','documento_identidad','documentNumber','Número de documento','12345678'],
+    ['FORMACION','diploma_pregrado','pregrado','Pregrado','Economista'],
+    ['VINCULACION','contrato','actoAdministrativoVinculacion','Acto administrativo','Contrato 123 de 2026'],
+    ['ACADEMICO','acto_asignacion_nucleo','nucleoTematico','Núcleo temático','Gestión Pública'],
+  ])('presenta coincidencias de %s en el mismo asistente sin aprobar automáticamente',async(block,type,campo,label,valor)=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],bloque:block,tipo_soporte:type,
+      sugerencias:[{...suggestion,campo,label,valor,valor_previo:valor,lectura_visual:true}]}]});
+    render(<RundExtractionPanel {...props} activeBlock={block}/>);await openAssistant();
+    expect(screen.getByText(label,{exact:true})).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Confirmar coincidencia'})).toBeTruthy();
+    expect(screen.getByText(/Lectura visual: el dato coincide/)).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it('conserva propuestas parciales y explica que el cotejo no pudo completarse',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],motor:{visual:{estado:'LECTURA_VISUAL_PARCIAL'}}}]});
+    render(<RundExtractionPanel {...props}/>);await openAssistant();
+    expect(screen.getByText(/Hay datos recuperados, pero no se pudo completar todo el cotejo visual/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Aplicar al perfil'})).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it('identifica la lectura visual cotejada sin aprobar el dato ni el soporte',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],sugerencias:[{...suggestion,lectura_visual:true}]}]});
+    render(<RundExtractionPanel {...props}/>);await openAssistant();
+    expect(screen.getByText(/Lectura visual: el dato coincide en dos vistas/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Aplicar al perfil'})).toBeTruthy();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it('muestra el cotejo visual como parte de la extracción y no lo anuncia como terminado',async()=>{
+    render(<RundExtractionProgress job={{id:'visual',estado:'PROCESANDO',etapa:'VISION',worker_activo:true}}/>);
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50');
+    expect(screen.getByText('Lectura visual del PDF')).toBeTruthy();
+    expect(screen.queryByText('Análisis completado')).toBeNull();
+  });
+  it('identifica el campo comparado y no llama Documento al título reconocido',async()=>{
+    render(<RundExtractionPanel {...props}/>);
+    await openAssistant();
+    expect(screen.getByText('Reconocido para Pregrado')).toBeTruthy();
+    expect(screen.queryByText('Documento',{exact:true})).toBeNull();
+  });
+  it('no presenta una lectura histórica incoherente como cambio aplicable ni la precarga al corregir',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],sugerencias:[{
+      ...suggestion,valor:'AENTACIONHDEIUAHTUNT',valor_previo:'Economista',baja_confianza:false,
+      lectura_no_confiable:'El título reconocido contiene texto incoherente o unido por el OCR.',
+    }]}]});
+    render(<RundExtractionPanel {...props}/>);
+    await openAssistant();
+    expect(screen.getByText('Sin lectura fiable')).toBeTruthy();
+    expect(screen.getByText('Economista')).toBeTruthy();
+    expect(screen.queryByText('AENTACIONHDEIUAHTUNT')).toBeNull();
+    expect(screen.queryByText('Cambio detectado')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Corregir dato'}));
+    expect((screen.getByLabelText('Valor corregido de Pregrado') as HTMLInputElement).value).toBe('');
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+  it('explica una extracción vacía y conserva disponible la consulta del PDF sin exigir usar OCR',async()=>{
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],campos_esperados:['Pregrado'],sugerencias:[]}]});
+    render(<RundExtractionPanel {...props}/>);
+    await openAssistant();
+    expect(screen.getByText('No fue posible reconocer Pregrado con suficiente fiabilidad.')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
   it('presenta el OCR como opcional y no obliga a usar o rechazar sus propuestas',async()=>{
     render(<RundExtractionPanel {...props}/>);
     await openAssistant();
@@ -56,9 +120,9 @@ describe('revisión humana de OCR',()=>{
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
-  it('conserva visible la corrección humana para el aprobador aunque exista otro análisis más reciente',async()=>{
+  it('conserva visible la corrección humana de otro archivo para el aprobador',async()=>{
     vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[
-      {...data.jobs[0],id:'nuevo',estado:'PROCESANDO',sugerencias:[]},
+      {...data.jobs[0],id:'nuevo',documento_id:'otro-pdf',estado:'PROCESANDO',sugerencias:[]},
       {...data.jobs[0],sugerencias:[{...suggestion,estado:'CORREGIDA',valor_confirmado:'Título verificado por el cargador',motivo:'El OCR omitió una palabra.'}]},
     ]});
     render(<RundExtractionPanel {...props} canEdit={false}/>);
@@ -149,6 +213,26 @@ describe('revisión humana de OCR',()=>{
     await waitFor(()=>expect(props.onConfirmed).toHaveBeenCalledTimes(1));
     await waitFor(()=>expect(apiClient.get).toHaveBeenCalledTimes(2));
   });
+  it.each(['cambio de docente','cierre del panel'])('una respuesta tardía no recarga ni altera otro expediente después de %s',async action=>{
+    let complete!:(value:any)=>void;
+    vi.mocked(apiClient.post).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+    const view=render(<RundExtractionPanel {...props}/>);
+    await openAssistant();
+    fireEvent.click(screen.getByRole('button',{name:'Aplicar al perfil'}));
+    if(action==='cierre del panel')view.unmount();
+    else{
+      view.rerender(<RundExtractionPanel {...props} docenteId="doc-2"/>);
+      await openAssistant();
+      expect((screen.getByRole('button',{name:'Aplicar al perfil'}) as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(screen.getByRole('button',{name:'Corregir dato'}));
+      fireEvent.change(screen.getByLabelText('Valor corregido de Pregrado'),{target:{value:'Dato del docente actual'}});
+    }
+    const reads=vi.mocked(apiClient.get).mock.calls.length;
+    await act(async()=>{complete({success:true,data:{confirmed:true,changed:true}});});
+    expect(props.onConfirmed).not.toHaveBeenCalled();
+    expect(apiClient.get).toHaveBeenCalledTimes(reads);
+    if(action==='cambio de docente')expect((screen.getByLabelText('Valor corregido de Pregrado') as HTMLInputElement).value).toBe('Dato del docente actual');
+  });
 
   it('ofrece el PDF exacto de la versión de origen',async()=>{
     render(<RundExtractionPanel {...props}/>);
@@ -211,8 +295,45 @@ describe('revisión humana de OCR',()=>{
   it('no permite aplicar una sugerencia cuyo PDF fue reemplazado',async()=>{
     vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],documento_estado:'REEMPLAZADO'}]});
     render(<RundExtractionPanel {...props}/>);
-    await openAssistant();
+    await waitFor(()=>expect(screen.queryByText('Consultando análisis…')).toBeNull());
     expect(screen.queryByText('Aplicar al perfil')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Organizar análisis'})).toBeNull();
+  });
+
+  it.each([
+    ['IDENTIDAD','nombreCompleto'],['FORMACION','pregrado'],
+    ['VINCULACION','actoAdministrativoVinculacion'],['ACADEMICO','ultimaEvaluacion'],
+  ])('excluye los archivos eliminados y reemplazados de las pestañas, el selector y los contadores de %s',async(activeBlock,campo)=>{
+    const current={...data.jobs[0],bloque:activeBlock,nombre_archivo:'vigente.pdf',sugerencias:[{...suggestion,campo}]};
+    const removed={...current,id:'deleted-job',documento_id:'deleted-file',nombre_archivo:'eliminado.pdf',documento_estado:'ELIMINADO'};
+    const replaced={...current,id:'replaced-job',documento_id:'replaced-file',nombre_archivo:'reemplazado.pdf',documento_estado:'REEMPLAZADO',estado:'PROCESANDO'};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[removed,current,replaced]});
+    const onPendingChange=vi.fn();
+    render(<RundExtractionPanel {...props} activeBlock={activeBlock} onPendingChange={onPendingChange}/>);
+    await openAssistant();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option').textContent).toContain('vigente.pdf');
+    expect(screen.queryByRole('tablist',{name:'Análisis por archivo'})).toBeNull();
+    expect(screen.queryByText(/eliminado.pdf|reemplazado.pdf/)).toBeNull();
+    expect(onPendingChange).toHaveBeenLastCalledWith(activeBlock,1,false);
+    expect(screen.getByText('1 pendientes')).toBeTruthy();
+  });
+  it('si se elimina el archivo seleccionado cambia al vigente y actualiza sus contadores',async()=>{
+    const other={...data.jobs[0],id:'j-2',documento_id:'d-2',nombre_archivo:'otro-vigente.pdf',sugerencias:[{...suggestion,id:'s-2'}]};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],other]});
+    const view=render(<RundExtractionPanel {...props}/>);await openAssistant();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-1'}});
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...data.jobs[0],documento_estado:'ELIMINADO'},other]});
+    view.rerender(<RundExtractionPanel {...props} revision={1}/>);
+    await waitFor(()=>expect(screen.getAllByRole('option')).toHaveLength(1));
+    expect((screen.getByLabelText('Archivo para revisar') as HTMLSelectElement).value).toBe('j-2');
+    expect(screen.queryByText(/diploma.pdf/)).toBeNull();
+    expect(screen.getByText('1 pendientes')).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...other,documento_estado:'ELIMINADO'}]});
+    view.rerender(<RundExtractionPanel {...props} revision={2}/>);
+    await waitFor(()=>expect(screen.queryByLabelText('Archivo para revisar')).toBeNull());
+    expect(screen.queryByText(/otro-vigente.pdf/)).toBeNull();
+    expect(screen.queryByText('1 pendientes')).toBeNull();
   });
 
   it('muestra claramente el dato confirmado por el operador',async()=>{
@@ -224,17 +345,50 @@ describe('revisión humana de OCR',()=>{
     expect(screen.queryByText('Aplicar al perfil')).toBeNull();
   });
 
-  it('muestra el análisis vigente y permite consultar resultados anteriores sin aplicar sus sugerencias descartadas',async()=>{
+  it('muestra únicamente el último resultado por archivo y elimina la navegación redundante',async()=>{
     const old={...data.jobs[0],id:'j-old',nombre_archivo:'resultado-anterior.pdf',sugerencias:[{...suggestion,id:'s-old',estado:'DESCARTADA'}]};
     vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],old]});
     render(<RundExtractionPanel {...props}/>);
     await openAssistant();
     expect(screen.getAllByText(/diploma.pdf/).length).toBeGreaterThan(0);
-    expect(screen.getByRole('option',{name:/resultado-anterior.pdf/})).toBeTruthy();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.queryByText(/resultado-anterior.pdf/)).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.getByText('Perfil actual')).toBeTruthy();
-    expect(screen.getByText('Documento')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-old'}});
-    expect(screen.getByText('Descartado')).toBeTruthy();
+    expect(screen.getByText('Reconocido para Pregrado')).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Aplicar al perfil'})).toBeTruthy();
+    expect(screen.queryByText('Descartado')).toBeNull();
+  });
+
+  it.each(['ERROR','COMPLETADO'])('el nuevo resultado %s sustituye las propuestas anteriores sin recuperarlas',async estado=>{
+    const onPendingChange=vi.fn();
+    const old={...data.jobs[0],bloque:'FORMACION',actualizado_en:'2026-11-03T12:00:00Z'};
+    const latest={...old,id:'j-new',estado,actualizado_en:'2026-11-04T12:00:00Z',campos_esperados:['Pregrado'],sugerencias:[]};
+    // Legacy responses can contain attempts in a different order.
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[old,latest]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION" onPendingChange={onPendingChange}/>);
+    await openAssistant();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect((screen.getByLabelText('Archivo para revisar') as HTMLSelectElement).value).toBe('j-new');
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(screen.queryByText('Administración Pública')).toBeNull();
+    expect(onPendingChange).toHaveBeenLastCalledWith('FORMACION',0,false);
+    if(estado==='ERROR')expect(screen.getByRole('button',{name:'Reintentar'})).toBeTruthy();
+    else expect(screen.getByText('No fue posible reconocer Pregrado con suficiente fiabilidad.')).toBeTruthy();
+  });
+
+  it('distingue archivos con el mismo nombre y mantiene la selección al sustituir su análisis',async()=>{
+    const other={...data.jobs[0],id:'j-2',documento_id:'d-2',sugerencias:[{...suggestion,id:'s-2'}]};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],other]});
+    const view=render(<RundExtractionPanel {...props}/>);await openAssistant();
+    fireEvent.change(screen.getByLabelText('Archivo para revisar'),{target:{value:'j-2'}});
+    const latest={...other,id:'j-new',estado:'PENDIENTE',sugerencias:[]};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[data.jobs[0],latest,other]});
+    view.rerender(<RundExtractionPanel {...props} revision={1}/>);
+    await waitFor(()=>expect((screen.getByLabelText('Archivo para revisar') as HTMLSelectElement).value).toBe('j-new'));
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(screen.queryByRole('option',{name:/análisis anterior/})).toBeNull();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
     expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
   });
 
@@ -277,25 +431,83 @@ describe('revisión humana de OCR',()=>{
 });
 
 describe('OCR con varias evidencias',()=>{
+  it('un único selector separa el progreso y las propuestas de cada archivo al actualizarse',async()=>{
+    const running={...data.jobs[0],estado:'PROCESANDO',etapa:'OCR',sugerencias:[],worker_activo:true};
+    const complete={...data.jobs[0],id:'j-2',documento_id:'d-2',nombre_archivo:'segundo.pdf'};
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[running,complete]});
+    render(<RundExtractionPanel {...props}/>);await openAssistant();
+    const picker=screen.getByRole('combobox',{name:'Archivo para revisar'});
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+    fireEvent.change(picker,{target:{value:'j-2'}});
+    expect(document.getElementById(picker.getAttribute('aria-controls')!)?.getAttribute('aria-labelledby')).toBeTruthy();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+    expect(screen.getByRole('button',{name:'Aplicar al perfil'})).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({...data,jobs:[{...running,etapa:'MODELO'},complete]});
+    fireEvent.click(screen.getByRole('button',{name:'Actualizar sugerencias'}));
+    await waitFor(()=>expect(apiClient.get).toHaveBeenCalledTimes(2));
+    expect((picker as HTMLSelectElement).value).toBe('j-2');
+    fireEvent.change(picker,{target:{value:'j-1'}});
+    await waitFor(()=>expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50'));
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+  });
   const documents=[
     {id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',nombre_archivo:'maestria-1.pdf',bloque:'FORMACION',tipo_soporte:'diploma_maestria'},
     {id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',nombre_archivo:'maestria-2.pdf',bloque:'FORMACION',tipo_soporte:'diploma_maestria'},
     {id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',nombre_archivo:'pregrado.pdf',bloque:'FORMACION',tipo_soporte:'diploma_pregrado'},
   ];
-  beforeEach(()=>{vi.mocked(apiClient.post).mockResolvedValue({success:true,data:{queued:2}});});
+  beforeEach(()=>{vi.mocked(apiClient.post).mockImplementation(async(_url,body:any)=>({success:true,data:{queued:body.documentos?.length||1}}));});
 
-  it('permite volver a procesar un PDF antiguo con propuestas pendientes después de confirmarlo',async()=>{
+  it.each(['Volver a procesar','Volver a procesar este PDF'])('el botón %s solicita directamente un nuevo trabajo y muestra su avance',async button=>{
     const old={...documents[0],analizado_previamente:true};
-    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[old],jobs:[{...data.jobs[0],documento_id:old.id,bloque:'FORMACION'}]});
+    const previous={...data.jobs[0],documento_id:old.id,bloque:'FORMACION'};
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[old],jobs:[previous]});
+    let complete!:(value:any)=>void;
+    vi.mocked(apiClient.post).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
     render(<RundExtractionPanel {...props} canEdit={false} canAnalyze activeBlock="FORMACION"/>);
     await openAssistant();
     expect(screen.getByRole('combobox',{name:'Archivo para revisar'}).getAttribute('aria-describedby')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button',{name:'Volver a procesar este PDF'}));
-    expect(screen.getByRole('region',{name:'Confirmar nuevo análisis OCR'})).toBeTruthy();
-    expect(apiClient.post).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button',{name:'Confirmar nuevo análisis'}));
-    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/reprocesar'),{documentos:[old.id]},expect.anything()));
+    const trigger=screen.getByRole('button',{name:button,exact:true});
+    fireEvent.click(trigger);fireEvent.click(trigger);
+    expect(screen.queryByRole('region',{name:'Confirmar nuevo análisis OCR'})).toBeNull();
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/extracciones/reprocesar'),{documentos:[old.id]},expect.anything());
+    const queued={...previous,id:'new-job',estado:'PENDIENTE',sugerencias:[],posicion_cola:1};
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[],jobs:[queued,previous]});
+    await act(async()=>{complete({success:true,data:{queued:1,reprocessed:true}});});
+    await waitFor(()=>expect((screen.getByRole('combobox',{name:'Archivo para revisar'}) as HTMLSelectElement).value).toBe('new-job'));
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+    expect(screen.getByText(/Solicitud aceptada\. Consulta abajo el estado/)).toBeTruthy();
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[],jobs:[{...queued,estado:'PROCESANDO',etapa:'OCR'},previous]});
+    fireEvent.click(screen.getByRole('button',{name:'Actualizar sugerencias'}));
+    await waitFor(()=>expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25'));
     expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+  });
+  it('muestra el rechazo del servidor y permite volver a intentarlo sin anunciar una cola inexistente',async()=>{
+    const old={...documents[0],analizado_previamente:true};
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[old],jobs:[{...data.jobs[0],documento_id:old.id,bloque:'FORMACION'}]});
+    vi.mocked(apiClient.post).mockRejectedValueOnce(new Error('El documento ya está en procesamiento.'));
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    fireEvent.click(screen.getByRole('button',{name:'Volver a procesar este PDF'}));
+    expect((await screen.findByRole('alert')).textContent).toContain('El documento ya está en procesamiento.');
+    expect(screen.queryByText(/Solicitud aceptada\./)).toBeNull();
+    expect((screen.getByRole('button',{name:'Volver a procesar este PDF'}) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button',{name:'Volver a procesar este PDF'}));
+    await screen.findByText(/Solicitud aceptada\. Consulta abajo el estado/);
+    expect(apiClient.post).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+  it('permite solicitar el reprocesado del resultado vigente aunque no esté en la lista auxiliar',async()=>{
+    const previous={...data.jobs[0],bloque:'FORMACION'};
+    vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:[],jobs:[previous]});
+    render(<RundExtractionPanel {...props} activeBlock="FORMACION"/>);
+    await openAssistant();
+    fireEvent.click(screen.getByRole('button',{name:'Volver a procesar este PDF'}));
+    await screen.findByText(/Solicitud aceptada\. Consulta abajo el estado/);
+    expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/reprocesar'),{documentos:[previous.documento_id]},expect.anything());
   });
   it('prepara reprocesados antiguos en el orden elegido y cancelar no modifica nada',async()=>{
     vi.mocked(apiClient.get).mockResolvedValue({enabled:true,documents:documents.map(document=>({...document,analizado_previamente:true})),jobs:[]});
@@ -385,6 +597,43 @@ describe('OCR con varias evidencias',()=>{
     expect(screen.getByText(/El dato del perfil cambió después de este análisis/)).toBeTruthy();
     expect(screen.queryByRole('button',{name:'Aplicar al perfil'})).toBeNull();
     expect(screen.getAllByRole('button',{name:'Rechazar sugerencia'})).toHaveLength(1);
+  });
+});
+
+describe('información de procesamiento sin avances ficticios',()=>{
+  it('explica el error y cuenta la espera antes del siguiente intento',()=>{
+    vi.useFakeTimers();
+    render(<RundExtractionProgress job={{id:'retry',estado:'PENDIENTE',intentos:1,error_codigo:'OCR_TIMEOUT',disponible_en:new Date(Date.now()+60000).toISOString()}}/>);
+    expect(screen.getByText(/motor OCR superó los 3 minutos/)).toBeTruthy();
+    expect(screen.getByText(/Próximo intento en 60 s/)).toBeTruthy();
+    act(()=>vi.advanceTimersByTime(1000));
+    expect(screen.getByText(/Próximo intento en 59 s/)).toBeTruthy();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+  });
+  it('conserva el avance por etapas mientras espera al motor y advierte si pierde el worker',()=>{
+    vi.useFakeTimers();
+    const job={id:'slow',estado:'PROCESANDO',etapa:'OCR',worker_activo:true,etapa_desde:new Date(Date.now()-61000).toISOString()};
+    const view=render(<RundExtractionProgress job={job}/>);
+    expect(screen.getByText(/Esta etapa lleva 1 min/)).toBeTruthy();
+    act(()=>vi.advanceTimersByTime(15000));
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+    view.rerender(<RundExtractionProgress job={{...job,worker_activo:false}}/>);
+    expect(screen.getByRole('status').textContent).toContain('Procesamiento interrumpido');
+    view.rerender(<RundExtractionProgress job={job} unavailable/>);
+    expect(screen.getByRole('status').textContent).toContain('Sin actualización del servidor');
+    expect(screen.getByText(/último estado recibido/)).toBeTruthy();
+  });
+  it('una consulta bloqueada muestra el fallo y permite la siguiente actualización',async()=>{
+    vi.useFakeTimers();
+    let resume!:(value:any)=>void;
+    vi.mocked(apiClient.get).mockReturnValueOnce(new Promise(()=>undefined))
+      .mockReturnValueOnce(new Promise(resolve=>{resume=resolve;}));
+    render(<RundExtractionPanel {...props}/>);
+    await act(async()=>{await vi.advanceTimersByTimeAsync(30001);});
+    expect(screen.getByText('No fue posible actualizar el análisis')).toBeTruthy();
+    await act(async()=>{resume(data);});
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(1);
+    expect(screen.queryByText('No fue posible actualizar el análisis')).toBeNull();
   });
 });
 

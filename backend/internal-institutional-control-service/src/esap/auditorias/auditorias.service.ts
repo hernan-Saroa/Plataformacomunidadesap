@@ -1767,6 +1767,8 @@ export class AuditoriasService {
         .map((e) => String(e.personaId)),
     };
     const impresoAntes = this.datosImpresosPrograma(auditoria);
+    // Para avisar al responsable del área solo cuando se le asigna o cambia (EFDS-2325)
+    const correoResponsableAntes = (auditoria.responsableAreaEmail || '').trim().toLowerCase();
 
     // Validar fechas si se actualizan
     if (updateDto.fechaInicio || updateDto.fechaFin || updateDto.fechaFinPlaneacion || updateDto.fechaFinEjecucion) {
@@ -1794,11 +1796,16 @@ export class AuditoriasService {
         }
       }
       
+      // Igual que al crear: una Especial puede no tener Planeación (EFDS-1923)
+      const esEspecialSinPlaneacion =
+        this.resolveTipoKanban(updateDto.tipoKanban ?? auditoria.tipoKanban, updateDto.tipo ?? auditoria.tipo) === TipoKanban.ESPECIAL &&
+        !fechaFinPlaneacion;
+
       if (fechaFinEjecucion) {
-        if (!fechaFinPlaneacion) {
+        if (!fechaFinPlaneacion && !esEspecialSinPlaneacion) {
           throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
         }
-        if (fechaFinEjecucion <= fechaFinPlaneacion) {
+        if (fechaFinPlaneacion && fechaFinEjecucion <= fechaFinPlaneacion) {
           throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
         }
       }
@@ -2218,6 +2225,12 @@ export class AuditoriasService {
       } catch (notifError) {
         console.error('[AuditoriasService.update] Error al notificar a los auditores:', notifError);
       }
+    }
+
+    // El responsable del área auditada que se asigna o cambia se entera de su designación (EFDS-2325)
+    const correoResponsable = (saved.responsableAreaEmail || '').trim();
+    if (correoResponsable && correoResponsable.toLowerCase() !== correoResponsableAntes) {
+      await this.notificarResponsableAreaDesignado(auditoriaActualizada || saved);
     }
 
     // ✅ Registrar evento de actualización en el historial si hay cambios importantes
@@ -4744,6 +4757,48 @@ export class AuditoriasService {
         `[AuditoriasService] ⚠️ La auditoría ${auditoria.codigo} no tiene "Responsable del Área Auditada" configurado. ` +
         `No se enviará notificación al auditado.`
       );
+    }
+  }
+
+  /**
+   * Avisa al responsable del área auditada que fue designado para atender la
+   * auditoría (EFDS-2325). Al crear la auditoría ya se le avisa; esto cubre la
+   * asignación o el cambio posterior, para que se prepare antes de que inicie.
+   * Va por campana y por correo, y no detiene la edición si el aviso falla.
+   */
+  private async notificarResponsableAreaDesignado(auditoria: Auditoria): Promise<void> {
+    const inicio = auditoria.fechaInicio
+      ? this.serializeDate(auditoria.fechaInicio).split('-').reverse().join('/')
+      : null;
+    try {
+      const enviada = await this.notificacionesService.notificarAuditadoPortal({
+        responsableAreaEmail: auditoria.responsableAreaEmail || '',
+        responsableAreaNombre: auditoria.responsableAreaNombre,
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        auditoriaNombre: auditoria.nombre,
+        tipoNotificacion: 'EVT-AUD-001',
+        titulo: `Fue designado responsable del área auditada: ${auditoria.codigo}`,
+        mensaje:
+          `Estimado/a ${auditoria.responsableAreaNombre || 'Responsable'}, ` +
+          `la Oficina de Control Interno lo designó como responsable del área auditada en la auditoría ` +
+          `"${auditoria.nombre}" (${auditoria.codigo})` +
+          (inicio ? `, programada para iniciar el ${inicio}` : '') +
+          `. Acceda al portal transaccional — Control Interno de Gestión — para conocer el alcance, los plazos y prepararse para el inicio.`,
+        metadata: {
+          nombreAuditoria: auditoria.nombre,
+          responsable: auditoria.responsableAreaNombre,
+          motivo: 'responsable_designado',
+        },
+      });
+      if (!enviada) {
+        console.warn(
+          `[AuditoriasService] Sin usuario activo para el responsable del área "${auditoria.responsableAreaEmail}" ` +
+          `(${auditoria.codigo}); no se envió el aviso de designación.`,
+        );
+      }
+    } catch (error) {
+      console.error(`[AuditoriasService] Error al avisar al responsable del área (${auditoria.codigo}):`, error.message);
     }
   }
 

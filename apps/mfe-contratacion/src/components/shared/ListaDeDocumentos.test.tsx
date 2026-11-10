@@ -222,8 +222,40 @@ describe('ListaDeDocumentos', () => {
     await waitFor(() => expect(onFaltantes).toHaveBeenLastCalledWith(2));
   });
 
-  it('una actividad que no pide ni tiene documentos no pinta nada', async () => {
-    const { container } = pintar(estado([]));
+  it('una actividad que no pide documentos deja adjuntar varios a quien puede cargar', async () => {
+    pintar(estado([]));
+
+    expect(await screen.findByRole('button', { name: /Adjuntar documentos/ })).toBeInTheDocument();
+    expect(screen.getByText(/no pide documentos fijos/)).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"][multiple]')).not.toBeNull();
+  });
+
+  it('sube en serie todos los archivos elegidos, como anexos sin código', async () => {
+    pintar(estado([]));
+    const cargar = vi
+      .spyOn(contratacionService, 'cargarDocumentoDeActividad')
+      .mockResolvedValue({ id: 'd-9', nombre: 'anexo' });
+
+    await screen.findByRole('button', { name: /Adjuntar documentos/ });
+    const acta = new File(['a'], 'acta.pdf', { type: 'application/pdf' });
+    const matriz = new File(['m'], 'matriz.xlsx', { type: 'application/vnd.ms-excel' });
+    const input = document.querySelector('input[type="file"][multiple]') as HTMLInputElement;
+    await userEvent.upload(input, [acta, matriz]);
+
+    await waitFor(() => expect(cargar).toHaveBeenCalledTimes(2));
+    expect(cargar).toHaveBeenNthCalledWith(1, 'p-1', '3.1', acta);
+    expect(cargar).toHaveBeenNthCalledWith(2, 'p-1', '3.1', matriz);
+  });
+
+  it('vacía y sin permiso para cargar no pinta nada', async () => {
+    const { container } = pintar(estado([], { puedeCargar: false }));
+
+    await waitFor(() => expect(contratacionService.documentosDeActividad).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('vacía y bloqueada —quien revisa— no pinta nada', async () => {
+    const { container } = pintar(estado([]), { bloqueo: 'Estás revisando' });
 
     await waitFor(() => expect(contratacionService.documentosDeActividad).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();

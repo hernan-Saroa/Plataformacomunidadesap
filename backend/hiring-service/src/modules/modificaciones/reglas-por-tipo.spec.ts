@@ -55,17 +55,26 @@ describe('porQueNoAdmiteTipo · qué modificación cabe ahora', () => {
     }
   });
 
-  it('no deja modificar un contrato que todavía no arrancó', () => {
-    for (const estado of ['GENERADO', 'ACEPTADO', 'PERFECCIONADO', 'LEGALIZADO'] as EstadoContrato[]) {
+  it('no deja modificar un contrato que las dos partes no han firmado', () => {
+    for (const estado of ['GENERADO', 'ACEPTADO'] as EstadoContrato[]) {
       expect(porQueNoAdmiteTipo({ estado, suspendido: false }, 'PRORROGA')).toMatch(
-        /todavía no está en ejecución/i,
+        /no lo han firmado las dos partes/i,
       );
     }
   });
 
-  it('los siete tipos de la matriz tienen trámite', () => {
-    expect(TIPOS_CON_TRAMITE).toHaveLength(7);
+  it('desde la firma del contrato ya se puede modificar, sin esperar el acta de inicio', () => {
+    // Sesión de QA del 04/11 (EFDS-1162).
+    for (const estado of ['PERFECCIONADO', 'LEGALIZADO'] as EstadoContrato[]) {
+      expect(porQueNoAdmiteTipo({ estado, suspendido: false }, 'PRORROGA')).toBeNull();
+      expect(porQueNoAdmiteTipo({ estado, suspendido: false }, 'OTRO')).toBeNull();
+    }
+  });
+
+  it('los siete tipos de la matriz y «Otro» tienen trámite', () => {
+    expect(TIPOS_CON_TRAMITE).toHaveLength(8);
     expect(TIPOS_CON_TRAMITE).toContain('TERMINACION_ANTICIPADA' as TipoModificacion);
+    expect(TIPOS_CON_TRAMITE).toContain('OTRO' as TipoModificacion);
   });
 
   it('un contrato terminado ya no se modifica', () => {

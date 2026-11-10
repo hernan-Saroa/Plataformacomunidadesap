@@ -9109,7 +9109,8 @@ export class PtaService {
       const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: input.to, subject, text, html }),
+        // OTP de firma: la configuración de notificaciones lo trae como obligatorio.
+        body: JSON.stringify({ to: input.to, subject, text, html, modulo: 'pta', evento: 'pta_otp_firma' }),
       });
 
       if (!response.ok) {
