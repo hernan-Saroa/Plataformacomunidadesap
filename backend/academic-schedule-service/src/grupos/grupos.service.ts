@@ -6,7 +6,10 @@ import { GrupoEntity, MODALIDADES_GRUPO, TIPOS_OFERTA, type ModalidadGrupo, type
 import { parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 import { siguienteNumeroGrupo } from './numeracion-grupo.js';
 import { AsignaturaCatalogoEntity } from '../catalogo/entities/asignatura.readonly.entity.js';
-import { aulasQueNoCoinciden, ofertasCetapDe, validarOfertaDelGrupo, type OfertaCetap } from './oferta-cetap.js';
+import {
+  aulasQueNoCoinciden, estadoOfertasCetap, ofertasCetapDe, validarOfertaDelGrupo,
+  type EstadoOfertasCetap, type OfertaCetap,
+} from './oferta-cetap.js';
 
 export interface CrearGrupoDto {
   idAsignatura: string;
@@ -207,6 +210,23 @@ export class GruposService {
     if (!ref) throw new BadRequestException('El periodo no es válido.');
     if (ref.modelo !== 'plataforma') return [];
     return ofertasCetapDe(this.grupoRepo.manager, String(idAsignatura), String(ref.id));
+  }
+
+  /**
+   * Por qué el selector de ofertas CETAP está vacío (o incompleto) para esta asignatura y este
+   * periodo. Un periodo legado no tiene ofertas por CETAP: se dice, no se deja un selector mudo.
+   */
+  async estadoOfertasCetap(idAsignatura: string, idPeriodo: string): Promise<EstadoOfertasCetap> {
+    const ref = parsearPeriodo(idPeriodo);
+    if (!ref) throw new BadRequestException('El periodo no es válido.');
+    if (ref.modelo !== 'plataforma') {
+      return {
+        periodoModelo: 'legado', periodoCodigo: null, programa: null, ofertasDelPeriodo: 0, ofertasDelPrograma: 0,
+        cetapsCatalogo: 0, sinTerritorial: 0,
+        motivo: 'El periodo seleccionado es del modelo anterior (legado) y no tiene ofertas por CETAP. Seleccione un periodo de la plataforma.',
+      };
+    }
+    return estadoOfertasCetap(this.grupoRepo.manager, String(idAsignatura), String(ref.id));
   }
 
   /** Elimina el grupo. Sus franjas caen con él (ON DELETE CASCADE): son suyas. */

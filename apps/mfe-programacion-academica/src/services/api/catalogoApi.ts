@@ -166,6 +166,25 @@ export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): P
   );
 }
 
+/** Por qué el selector de oferta CETAP está vacío o incompleto (periodo sin carga, programa no ofertado…). */
+export interface EstadoOfertasCetap {
+  periodoModelo: 'plataforma' | 'legado';
+  periodoCodigo: string | null;
+  programa: string | null;
+  ofertasDelPeriodo: number;
+  ofertasDelPrograma: number;
+  cetapsCatalogo: number;
+  sinTerritorial: number;
+  motivo: string | null;
+}
+
+export function getEstadoOfertasCetap(idAsignatura: string, idPeriodo: string): Promise<EstadoOfertasCetap> {
+  return pedirJson<EstadoOfertasCetap>(
+    `${BASE_GRUPOS}/ofertas-cetap/estado?asignatura=${encodeURIComponent(idAsignatura)}&periodo=${encodeURIComponent(idPeriodo)}`,
+    { method: 'GET' },
+  );
+}
+
 /** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
 export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null, idOfertaCetap?: string | null, modalidad: ModalidadGrupo = 'presencial'): Promise<Grupo[]> {
   return pedirJson<Grupo[]>(BASE_GRUPOS, {

@@ -36,7 +36,9 @@ interface GestionPeriodosProps {
 }
 
 export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged }: GestionPeriodosProps) {
-  const { hasPermission, loading: cargandoPermisos } = useAuth();
+  const { hasPermission, hasRole, loading: cargandoPermisos } = useAuth();
+  // Solo el superusuario elimina periodos; el backend lo vuelve a exigir.
+  const esSuper = !cargandoPermisos && (hasRole('SUPER_ADMIN') || hasRole('super_admin'));
   const puedeActivarExtraordinario = !cargandoPermisos && hasPermission(PERMISO_ACTIVAR_EXTRAORDINARIO);
   const [extraordinarioParaActivar, setExtraordinarioParaActivar] = useState<{ periodo: any; foco: HTMLElement } | null>(null);
   const {
@@ -44,6 +46,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
     createPeriodo,
     updatePeriodo,
     deletePeriodo,
+    cambiarEstadoPeriodo,
     getLastImport,
     getPeriodoDetalle,
     loading,
@@ -238,6 +241,36 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
       setUpdating(false);
     }
   };
+
+  const handleCambiarEstado = async (p: any, accion: 'cerrar' | 'desactivar') => {
+    const texto = accion === 'cerrar'
+      ? `¿Cerrar el periodo ${p.codigo}? Quedará en estado Cerrado.${p.estado === 'en_curso' && !p.extraordinario ? ' La plataforma se quedará sin periodo activo hasta que active otro.' : ''}`
+      : `¿Desactivar el periodo ${p.codigo}? Volverá a Planeación.`;
+    if (!window.confirm(texto)) return;
+    try {
+      await cambiarEstadoPeriodo(p.id, accion);
+      toast.success(accion === 'cerrar' ? `Periodo ${p.codigo} cerrado.` : `Periodo ${p.codigo} desactivado.`);
+      setRefreshTrigger((previous) => previous + 1);
+      onPeriodosChanged?.();
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo cambiar el estado del periodo');
+    }
+  };
+
+  const botonesEstado = (p: any) => (
+    <>
+      {p.estado === 'en_curso' && (
+        <button type="button" title={`Desactivar ${p.codigo}`}
+          onClick={(e) => { e.stopPropagation(); handleCambiarEstado(p, 'desactivar'); }}
+          className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold border border-amber-200">Desactivar</button>
+      )}
+      {p.estado !== 'cerrado' && (
+        <button type="button" title={`Cerrar ${p.codigo}`}
+          onClick={(e) => { e.stopPropagation(); handleCambiarEstado(p, 'cerrar'); }}
+          className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-[11px] font-bold border border-gray-300">Cerrar periodo</button>
+      )}
+    </>
+  );
 
   const handleDeletePeriodo = async () => {
     if (!periodoToDelete) return;
@@ -568,7 +601,8 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
-                              {p.estado === 'planeacion' && (
+                              {botonesEstado(p)}
+                              {esSuper && p.estado !== 'en_curso' && (
                                 <button
                                   type="button"
                                   title={`Eliminar periodo ${p.codigo}`}
@@ -951,7 +985,8 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                         <button onClick={() => handleEditOpen(p)} className="flex-1 flex items-center justify-center gap-1 py-2 hover:bg-gray-100 text-gray-600 rounded-xl text-xs font-bold border border-gray-200 bg-white transition-all">
                           <Edit2 className="w-3 h-3" /> Editar
                         </button>
-                        {p.estado === 'planeacion' && (
+                        {botonesEstado(p)}
+                        {esSuper && p.estado !== 'en_curso' && (
                           <button
                             onClick={() => setPeriodoToDelete(p)}
                             className="p-2.5 hover:bg-red-100 text-red-600 rounded-xl border border-red-200 bg-red-50 transition-all"
