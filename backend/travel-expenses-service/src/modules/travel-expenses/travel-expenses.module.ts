@@ -12,6 +12,7 @@ import { CommonModule } from '../../common/common.module';
 import { AssignmentsModule } from '../assignments/assignments.module';
 import { LiquidationModule } from '../liquidation/liquidation.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { KlicModule } from '../klic/klic.module';
 import { SecondLevelSodGuard } from '../../common/second-level-sod.guard';
 import { AuthorizationSodGuard } from '../../common/authorization-sod.guard';
 import { SodGuard } from '../../common/sod.guard';
@@ -32,6 +33,7 @@ import { RecordatorioViajeService } from './recordatorio-viaje.service';
     AssignmentsModule,
     LiquidationModule,
     TicketsModule,
+    KlicModule,
   ],
   controllers: [TravelExpensesController],
   providers: [
