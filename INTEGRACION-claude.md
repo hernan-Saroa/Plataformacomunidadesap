@@ -1301,3 +1301,11 @@ Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado 
 - `DELETE /periodos-academicos/:id`: solo `SUPER_ADMIN`. Puede eliminar un periodo en planeación, concertación o cerrado; nunca el «En curso», ni uno con ofertas, CETAP o PTA asociados (409 con el detalle).
 - `POST /periodos-academicos/:id/cerrar` y `/desactivar` (ADMIN_PROGRAMACION, GESTION_PROFESORAL, SUPER_ADMIN): cerrar deja el periodo en «Cerrado» aunque sea el principal en curso (la plataforma queda sin activo hasta activar otro); desactivar saca un periodo en curso (principal o extraordinario) y lo devuelve a planeación.
 - Front (Programas Académicos → Periodos): botones «Desactivar», «Cerrar periodo» y, solo para el super, la papelera. Pruebas: `periodo-cerrar-desactivar.spec.ts`.
+
+## 36. Concertación invisible en QA/pre: era el interruptor, no los roles
+
+- El submódulo «Concertación de la docencia» no depende del rol: aparece si `GET /concertacion/configuracion` dice `habilitada`. Eso exige `PROG_CONCERTACION_HABILITADA=true` en Programación Académica **y** en el PTA, más `PROG_CONCERTACION_DESDE_PERIODO` en Programación Académica.
+- `docker-compose.pre.yml` y `docker-compose.qa.yml` no traían ninguna de esas variables: la concertación estaba apagada, el PTA seguía aprobando la Docencia y el único submódulo de aprobación era el antiguo «Aprobación territorial», que solo ve la jefatura territorial. Por eso «hacía falta» JEFATURA_TERRITORIAL.
+- Ahora ambos archivos encienden la concertación (corte 2026-1, sobreescribible con variables de entorno del servidor) y fijan las URL entre servicios. Dev y prod no se tocaron.
+- El menú muestra «Concertación de la docencia» también apagada, con el motivo, en vez de desaparecer.
+- Para que tome efecto hay que **recrear** los contenedores `academic-schedule-service` y `academic-work-plan-service` del ambiente (`docker compose -f docker-compose.<amb>.yml up -d academic-schedule-service academic-work-plan-service`) y desplegar el MFE de Programación Académica.
