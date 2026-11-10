@@ -334,10 +334,12 @@ export function ProgramacionAcademicaModule({
           icon: iconoAprobacion,
           color: '#059669',
         }] : []),
-        ...(concertacion?.habilitada ? [{
+        // Se muestra también APAGADA, con el motivo: antes desaparecía sin explicación y parecía
+        // un problema de roles. La visibilidad no depende del rol: la bandeja filtra por permisos.
+        ...(concertacion ? [{
           id: 'concertacion',
           label: 'Concertación de la docencia',
-          subtitle: 'Revisar y aprobar la docencia de los docentes',
+          subtitle: concertacion.habilitada ? 'Revisar y aprobar la docencia de los docentes' : 'Apagada en este ambiente',
           icon: iconoAprobacion,
           color: '#003DA5',
         }] : []),
@@ -523,6 +525,13 @@ export function ProgramacionAcademicaModule({
       {seccion === 'aprobacion' && <AprobacionJefatura />}
       {seccion === 'concertacion' && concertacion?.habilitada && (
         <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
+      )}
+      {seccion === 'concertacion' && concertacion && !concertacion.habilitada && (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
+          <p className="font-bold">La concertación de la docencia está apagada en este ambiente.</p>
+          {concertacion.motivo && <p>{concertacion.motivo}</p>}
+          <p>Mientras esté apagada, la Docencia la aprueba el PTA y la jefatura territorial ve «Aprobación territorial». Para encenderla, el equipo de despliegue debe poner <code>PROG_CONCERTACION_HABILITADA=true</code> en Programación Académica y en el PTA, y <code>PROG_CONCERTACION_DESDE_PERIODO</code> (p. ej. 2026-1) en Programación Académica.</p>
+        </div>
       )}
 
       {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.

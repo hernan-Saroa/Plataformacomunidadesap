@@ -99,12 +99,18 @@ export function bancoDocentesTitle(periodo: string, registros: number): string {
 
 export type BancoDocentesCellValue = string | number | null | undefined;
 
+/** RUND-003: un título registrado de un docente (precargado o adicional), para la hoja de formación del reporte. */
+export interface BancoDocentesTituloRow { documento: string; nombre: string; nivel: string; titulo: string; origen: string }
+export const TITULOS_FORMACION_SHEET_NAME = 'Títulos de formación';
+
 export interface BuildBancoDocentesWorkbookOptions {
   periodo?: string;
   /** Filas de datos, indexadas por encabezado. Vacío = plantilla en blanco. */
   rows?: Array<Record<string, BancoDocentesCellValue>>;
   /** Filas formateadas (con listas desplegables) cuando no hay datos. */
   emptyRows?: number;
+  /** Si trae filas, se agrega una hoja con todos los títulos registrados; la hoja oficial no cambia. */
+  titulosFormacion?: BancoDocentesTituloRow[];
 }
 
 /** Índice de columna base 0 → letra de Excel (0 = A, 26 = AA). */
@@ -189,6 +195,28 @@ export async function buildBancoDocentesWorkbook(options: BuildBancoDocentesWork
       error: 'Seleccione un valor de la lista.',
     });
   });
+
+  if (options.titulosFormacion?.length) {
+    const titulos = workbook.addWorksheet(TITULOS_FORMACION_SHEET_NAME, { views: [{ state: 'frozen', ySplit: 1 }] });
+    const columnas: Array<[string, keyof BancoDocentesTituloRow, number]> = [
+      ['DOCUMENTO_IDENTIDAD', 'documento', 20], ['NOMBRE_COMPLETO', 'nombre', 38], ['NIVEL', 'nivel', 18], ['TITULO', 'titulo', 56], ['ORIGEN', 'origen', 24],
+    ];
+    columnas.forEach(([encabezado, , ancho], index) => {
+      titulos.getColumn(index + 1).width = ancho;
+      const cell = titulos.getCell(1, index + 1);
+      cell.value = encabezado;
+      cell.font = { name: 'Arial', bold: true, size: 9 };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    options.titulosFormacion.forEach((fila, r) => {
+      columnas.forEach(([, clave], index) => {
+        const cell = titulos.getCell(r + 2, index + 1);
+        cell.value = fila[clave];
+        cell.font = { name: 'Arial', size: 9 };
+        cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+      });
+    });
+  }
 
   return workbook;
 }

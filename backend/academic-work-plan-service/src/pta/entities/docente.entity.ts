@@ -83,6 +83,10 @@ export class DocenteEntity {
   @Column({ name: 'posDoctorado', type: 'text', nullable: true })
   posDoctorado: string | null;
 
+  /** RUND-003: títulos adicionales por nivel ("Información adicional"); los de arriba son la "Información precargada". */
+  @Column({ name: 'titulosAdicionales', type: 'jsonb', nullable: true })
+  titulosAdicionales: Partial<Record<'pregrado' | 'especializacion' | 'maestria' | 'doctorado' | 'posDoctorado', string[]>> | null;
+
   @Column({ type: 'text', nullable: true })
   investigacion: string | null;
 

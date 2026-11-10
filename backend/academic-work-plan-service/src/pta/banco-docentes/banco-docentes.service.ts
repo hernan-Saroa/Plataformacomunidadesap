@@ -24,6 +24,8 @@ import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
 import { capturarDatosCarga, fechaCivilPersistencia, stableJson } from './rund-carga-original';
+import { leerTitulosAdicionales, resolverTitulosAdicionales, titulosAdicionalesGuardados } from './rund-titulos-adicionales';
+import { deducirTitulosAdicionales } from './rund-perfil-titulos';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { confirmRundDeletion, deletionFingerprint, deletionIds } from './rund-registro-eliminacion';
@@ -516,7 +518,7 @@ export function normalizeBancoDocentePayload(raw: any) {
     else if (gNorm === 'f' || gNorm.startsWith('fem') || gNorm.startsWith('muje')) gender = 'F';
   }
 
-  return {
+  const normalizado = {
     orderIndex: parseMaybeInt(raw?.ordenListado ?? raw?.orderIndex ?? raw?.['ORDEN_LISTADO'] ?? raw?.['Orden Listado']),
     documentNumber: docNum,
     documentType: docType,
@@ -566,6 +568,8 @@ export function normalizeBancoDocentePayload(raw: any) {
     observaciones: observationsList.length > 0 ? observationsList.join('. ') : null,
     idRund: firstNonEmpty(raw?.ID_RUND, raw?.idRund, raw?.id_rund, raw?.['ID RUND'], raw?.['ID_RUND']),
   };
+  // RUND-003: undefined = la solicitud no los trae y se conservan los guardados.
+  return { ...normalizado, titulosAdicionales: leerTitulosAdicionales(raw, normalizado) };
 }
 
 function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
@@ -822,6 +826,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     maestria: docente.maestria ?? null,
     doctorado: docente.doctorado ?? null,
     posdoctorado: docente.posDoctorado ?? null,
+    titulos_adicionales: titulosAdicionalesGuardados(docente.titulosAdicionales),
     investigacion: docente.investigacion ?? null,
     origen_vinculacion: docente.origenVinculacion ?? null,
     acto_administrativo_vinculacion: docente.actoAdministrativoVinculacion ?? null,
@@ -907,6 +912,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     maestria: row.maestria ?? null,
     doctorado: row.doctorado ?? null,
     posdoctorado: row.posdoctorado ?? null,
+    titulos_adicionales: titulosAdicionalesGuardados(row.titulos_adicionales),
     investigacion: row.investigacion ?? null,
     origen_vinculacion: row.origen_vinculacion ?? null,
     acto_administrativo_vinculacion: row.acto_administrativo_vinculacion ?? null,
@@ -976,6 +982,7 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT,
           ADD COLUMN IF NOT EXISTS "territorialReportada" TEXT,
           ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB,
+          ADD COLUMN IF NOT EXISTS "titulosAdicionales" JSONB,
           ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
@@ -1177,6 +1184,7 @@ export class BancoDocentesService implements OnModuleInit {
           d.maestria,
           d.doctorado,
           d."posDoctorado" AS posdoctorado,
+          d."titulosAdicionales" AS titulos_adicionales,
           d.investigacion,
           d."origenVinculacion" AS origen_vinculacion,
           d."actoAdministrativoVinculacion" AS acto_administrativo_vinculacion,
@@ -1878,6 +1886,12 @@ export class BancoDocentesService implements OnModuleInit {
         nextIdRund = `RUND-${String(seqRes[0].next_val).padStart(4, '0')}`;
       }
 
+      // RUND-003: en la carga masiva los títulos adicionales se deducen de PERFIL_ACADEMICO (lista separada por comas),
+      // salvo que la fila los traiga explícitos. Se une con lo ya registrado para no borrar lo agregado a mano.
+      const deduccionTitulos = options.bulkImport && payload.titulosAdicionales === undefined
+        ? deducirTitulosAdicionales(payload.perfilAcademico, payload, titulosAdicionalesGuardados(existingDocente?.titulosAdicionales))
+        : null;
+
       const docenteData: Partial<DocenteEntity> = {
         personaId: authPersonId,
         territorialId: options.preserveTerritorial ? existingDocente?.territorialId || '' : territorial?.id || existingDocente?.territorialId || '',
@@ -1902,6 +1916,7 @@ export class BancoDocentesService implements OnModuleInit {
         maestria: payload.maestria ?? existingDocente?.maestria ?? null,
         doctorado: payload.doctorado ?? existingDocente?.doctorado ?? null,
         posDoctorado: payload.posDoctorado ?? existingDocente?.posDoctorado ?? null,
+        titulosAdicionales: resolverTitulosAdicionales(deduccionTitulos ? deduccionTitulos.adicionales : payload.titulosAdicionales, existingDocente?.titulosAdicionales),
         investigacion: payload.investigacion ?? existingDocente?.investigacion ?? null,
         origenVinculacion: payload.origenVinculacion ?? existingDocente?.origenVinculacion ?? null,
         actoAdministrativoVinculacion: payload.actoAdministrativoVinculacion ?? existingDocente?.actoAdministrativoVinculacion ?? null,
@@ -1934,13 +1949,13 @@ export class BancoDocentesService implements OnModuleInit {
         docente = await manager.save(DocenteEntity, manager.create(DocenteEntity, docenteData));
       } else {
         let hasChanges = false;
-        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
+        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'titulosAdicionales', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
         
         fieldsToCheck.push('territorialReportada', 'datosCargaMasiva');
         for (const field of fieldsToCheck) {
           const newVal = docenteData[field];
           const oldVal = existingDocente[field];
-          const changed = field === 'datosCargaMasiva' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
+          const changed = field === 'datosCargaMasiva' || field === 'titulosAdicionales' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
           if (newVal !== undefined && newVal !== null && changed) {
             hasChanges = true;
             changedFields.push(String(field));
@@ -2088,6 +2103,8 @@ export class BancoDocentesService implements OnModuleInit {
         email: emailFinal,
         territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
+        titulosDeducidos: deduccionTitulos?.deducidos ?? 0,
+        titulosSinClasificar: deduccionTitulos?.sinClasificar ?? [],
         welcomeEmail: { sent: false, skipped: !authUserCreated },
         message: action === 'insert' ? 'Docente creado correctamente.' : action === 'unchanged' ? 'Docente ya existe sin cambios.' : 'Docente actualizado correctamente.',
       };
@@ -2334,6 +2351,8 @@ export class BancoDocentesService implements OnModuleInit {
       created: finalResults.filter((r) => r.action === 'insert').length,
       updated: finalResults.filter((r) => r.action === 'update').length,
       unchanged: finalResults.filter((r) => r.action === 'unchanged').length,
+      titulosDeducidos: finalResults.reduce((total, r) => total + (r.titulosDeducidos || 0), 0),
+      titulosSinClasificar: finalResults.reduce((total, r) => total + (r.titulosSinClasificar?.length || 0), 0),
       errors: finalErrors.length,
       results: finalResults,
       errorDetails: finalErrors,
@@ -3126,6 +3145,7 @@ export class BancoDocentesService implements OnModuleInit {
           maestria: docenteDirecto.maestria,
           doctorado: docenteDirecto.doctorado,
           posdoctorado: docenteDirecto.posDoctorado,
+          titulos_adicionales: titulosAdicionalesGuardados(docenteDirecto.titulosAdicionales),
           perfil_academico: docenteDirecto.perfilAcademico,
           perfil_academico_pro: docenteDirecto.perfilAcademicoPro,
           nucleo_tematico: docenteDirecto.nucleoTematico,
@@ -3934,6 +3954,7 @@ export class BancoDocentesService implements OnModuleInit {
             { campo: 'TITULO_MAESTRIA', valor: (docente as any).maestria || null, editable: true },
             { campo: 'TITULO_DOCTORADO', valor: (docente as any).doctorado || null, editable: true },
             { campo: 'TITULO_POSDOCTORADO', valor: (docente as any).posDoctorado || null, editable: true },
+            { campo: 'TITULOS_ADICIONALES', valor: titulosAdicionalesGuardados((docente as any).titulosAdicionales), editable: true },
             { campo: 'PERFIL_ACADEMICO_PRO', valor: (docente as any).perfilAcademicoPro || null, editable: true },
             { campo: 'PERFIL_ACADEMICO', valor: (docente as any).perfilAcademico || null, editable: true },
           ],
