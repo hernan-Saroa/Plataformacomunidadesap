@@ -2,12 +2,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GestionGrupos } from './GestionGrupos';
-import { actualizarOfertaCetapGrupo, crearGrupos, getGrupos, getOfertasCetapGrupo } from '../services/api/catalogoApi';
+import { actualizarOfertaCetapGrupo, crearGrupos, getEstadoOfertasCetap, getGrupos, getOfertasCetapGrupo } from '../services/api/catalogoApi';
 import type { OfertaCetapGrupo } from '../services/api/catalogoApi';
 
 vi.mock('../services/api/catalogoApi', () => ({
   actualizarOfertaCetapGrupo: vi.fn(), crearGrupos: vi.fn(), eliminarGrupo: vi.fn(),
-  getGrupos: vi.fn(), getOfertasCetapGrupo: vi.fn(),
+  getGrupos: vi.fn(), getOfertasCetapGrupo: vi.fn(), getEstadoOfertasCetap: vi.fn(),
 }));
 vi.mock('./CalendarioHorario', () => ({ CalendarioHorario: () => null }));
 
@@ -28,6 +28,7 @@ beforeEach(() => {
     oferta('165', 'Sede Central'), oferta('166', 'Neiva'), oferta('167', 'Sin cruce', null),
   ] as any);
   vi.mocked(crearGrupos).mockResolvedValue([]);
+  vi.mocked(getEstadoOfertasCetap).mockResolvedValue({ periodoModelo: 'plataforma', periodoCodigo: '2027-1', programa: 'AP', ofertasDelPeriodo: 5, ofertasDelPrograma: 3, cetapsCatalogo: 290, sinTerritorial: 0, motivo: null });
   vi.mocked(actualizarOfertaCetapGrupo).mockImplementation(async (_id, idOfertaCetap) =>
     ({ ...grupo, idOfertaCetap }) as any);
 });
@@ -111,5 +112,24 @@ describe('grupo virtual (063): horario opcional que define el docente', () => {
     expect(screen.getByRole('note').textContent).toMatch(/el horario es opcional/);
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
     await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'virtual'));
+  });
+});
+
+describe('por qué no hay CETAP que elegir', () => {
+  it('periodo sin oferta cargada: el servidor lo explica y la pantalla lo muestra', async () => {
+    vi.mocked(getOfertasCetapGrupo).mockResolvedValue([]);
+    vi.mocked(getEstadoOfertasCetap).mockResolvedValue({ periodoModelo: 'plataforma', periodoCodigo: '2027-1', programa: 'AP', ofertasDelPeriodo: 0, ofertasDelPrograma: 0, cetapsCatalogo: 290, sinTerritorial: 0,
+      motivo: 'El periodo 2027-1 no tiene la oferta por CETAP cargada. Un administrador debe importar el Excel del catálogo para este periodo.' });
+    render(<GestionGrupos {...props} />);
+    expect(await screen.findByText(/no tiene la oferta por CETAP cargada/)).toBeTruthy();
+    expect(getEstadoOfertasCetap).toHaveBeenCalledWith('asig-1', '11');
+  });
+
+  it('con CETAP que elegir pero sin territorial en algunos, avisa sin bloquear', async () => {
+    vi.mocked(getEstadoOfertasCetap).mockResolvedValue({ periodoModelo: 'plataforma', periodoCodigo: '2027-1', programa: 'AP', ofertasDelPeriodo: 5, ofertasDelPrograma: 3, cetapsCatalogo: 290, sinTerritorial: 2,
+      motivo: '2 de 3 CETAP no tienen territorial vinculada: un grupo ubicado allí no se podrá concertar.' });
+    render(<GestionGrupos {...props} />);
+    expect(await screen.findByText(/2 de 3 CETAP no tienen territorial vinculada/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Crear grupos' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
