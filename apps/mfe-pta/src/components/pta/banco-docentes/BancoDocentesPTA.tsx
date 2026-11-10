@@ -9,7 +9,8 @@ import {
 import {
   getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes
 } from '../../../services/api/ptaApi';
-import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
+import { downloadBancoDocentesExport, downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
+import { recopilarTodasLasPaginas } from '../../../utils/recopilarPaginas';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { BancoDocenteEstadoModal } from './BancoDocenteEstadoModal';
@@ -172,6 +173,8 @@ export function BancoDocentesPTA() {
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
   const canDelete = hasPermission('banco-docentes.rund.carga') || hasPermission('banco-docentes.rund.manage');
+  const canExport = hasPermission('banco-docentes.rund.export');
+  const [exporting, setExporting] = useState(false);
   const [markedIds, setMarkedIds] = useState<Set<string>>(() => new Set());
   const [allFiltered, setAllFiltered] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RundDeletionSelection | null>(null);
@@ -349,6 +352,28 @@ export function BancoDocentesPTA() {
       loadData(1);
     } else {
       showToast(res.error || 'Error en la carga masiva');
+    }
+  };
+
+  // RUND-003 (CA-03): exporta todo lo filtrado, con todos los títulos de formación. Los datos protegidos llegan ya
+  // enmascarados desde el listado según el rol, así que el archivo no revela más que la pantalla.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const items = await recopilarTodasLasPaginas<any>(async (pagina) => {
+        const res = await getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: pagina, limit: 50, periodoCarga: filterPeriodo || undefined });
+        if (!res.success || !res.data) return null;
+        const datos = res.data as { items?: any[]; data?: any[]; pages?: number };
+        return { items: datos.items || datos.data || [], pages: datos.pages || 1 };
+      });
+      const filas = filterEstado ? items.filter((docente: any) => getDocenteEstadoKey(docente) === filterEstado) : items;
+      if (!filas.length) { showToast('No hay docentes para exportar con los filtros actuales'); return; }
+      await downloadBancoDocentesExport(filas, undefined, filterPeriodo || undefined);
+      showToast(`Exportados ${filas.length} docentes a Excel`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'No fue posible exportar el Excel');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -656,6 +681,12 @@ export function BancoDocentesPTA() {
                 </p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {canExport && (
+                  <button type="button" onClick={handleExport} disabled={exporting || loading || total === 0}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: '12px', fontWeight: 600, cursor: exporting || loading || total === 0 ? 'not-allowed' : 'pointer', opacity: exporting || loading || total === 0 ? 0.6 : 1 }}>
+                    <Download size={14} aria-hidden="true" /> {exporting ? 'Exportando…' : 'Exportar Excel'}
+                  </button>
+                )}
                 <span style={{ padding: '4px 10px', borderRadius: 9999, border: '1px solid #E5E7EB', fontSize: '12px', fontWeight: 600, color: '#374151', background: '#fff' }}>
                   Total: {total}
                 </span>
