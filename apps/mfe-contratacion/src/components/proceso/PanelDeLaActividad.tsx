@@ -30,6 +30,8 @@ import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSuscripcionActa } from '../acta-inicio/PanelSuscripcionActa';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
+import { CronogramaPorEtapas } from '../cronograma/CronogramaPorEtapas';
+import { CronogramaPorActividad } from '../cronograma/CronogramaPorActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelCausal } from '../causal/PanelCausal';
@@ -51,6 +53,7 @@ import {
   NUMERAL_CIERRE_FINANCIERO,
   NUMERAL_COMITE,
   NUMERAL_COMITE_CONTRATACION,
+  NUMERAL_CRONOGRAMA,
   NUMERAL_CONTRATO,
   NUMERAL_DOCUMENTOS,
   NUMERAL_EVALUACION,
@@ -60,6 +63,7 @@ import {
   NUMERAL_MIPYME,
   NUMERAL_MODIFICACIONES,
   NUMERAL_OBSERVACIONES,
+  NUMERAL_OBSERVACIONES_DEFINITIVO,
   NUMERAL_OFERTAS,
   NUMERAL_PAGOS,
   NUMERAL_PUBLICACION,
@@ -86,6 +90,8 @@ interface Props {
   recargarToken?: number;
   /** Lleva a la pantalla de revisión, para quien tiene que decidir. */
   onRevisar?: (numeral: string) => void;
+  /** Abre otra actividad del proceso; sin él, el panel no ofrece el salto. */
+  onIrA?: (numeral: string) => void;
 }
 
 /**
@@ -107,6 +113,7 @@ export function PanelDeLaActividad({
   devuelta = false,
   recargarToken,
   onRevisar,
+  onIrA,
 }: Props) {
   return (
     <>
@@ -137,7 +144,11 @@ export function PanelDeLaActividad({
       ) : numeral === NUMERAL_ADENDAS ? (
         <PanelAdendas procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_OFERTAS ? (
-        <PanelOfertas procesoId={procesoId} onCambio={onCambio} />
+        <PanelOfertas
+          procesoId={procesoId}
+          onCambio={onCambio}
+          onIrAAdendas={onIrA ? () => onIrA(NUMERAL_ADENDAS) : undefined}
+        />
       ) : numeral === NUMERAL_COMITE ? (
         <PanelComite procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_EVALUACION ? (
@@ -190,17 +201,29 @@ export function PanelDeLaActividad({
           <PanelIncumplimiento procesoId={procesoId} onCambio={onCambio} />
         </div>
       ) : numeral && NUMERALES_CON_REGISTRO.includes(numeral) ? (
-        <PanelRegistroActividad
-          procesoId={procesoId}
-          numeral={numeral!}
-          onCambio={onCambio}
-          requiereAprobacion={requiereAprobacion}
-          devuelta={devuelta}
-          /* Donde el bloque de documentos recibe el soporte, cargarlo
-           ahi es lo que desbloquea el boton de registrar: sin este
-           token el formulario no se enteraba. */
-          recargarToken={recargarToken}
-        />
+        <div className="space-y-3">
+          <PanelRegistroActividad
+            procesoId={procesoId}
+            numeral={numeral!}
+            onCambio={onCambio}
+            requiereAprobacion={requiereAprobacion}
+            devuelta={devuelta}
+            /* Donde el bloque de documentos recibe el soporte, cargarlo
+             ahi es lo que desbloquea el boton de registrar: sin este
+             token el formulario no se enteraba. */
+            recargarToken={recargarToken}
+          />
+          {/* El cronograma por etapas macro (135): opcional, no cierra ni
+              bloquea la 5.2, y alerta cuando una etapa se acerca a su fin. */}
+          {numeral === NUMERAL_CRONOGRAMA ? (
+            <>
+              <CronogramaPorEtapas procesoId={procesoId} onCambio={onCambio} />
+              {/* Y por actividad (138, sesión de QA del 04/11): plazos
+                  propios dentro de cada etapa, con su aviso configurable. */}
+              <CronogramaPorActividad procesoId={procesoId} onCambio={onCambio} />
+            </>
+          ) : null}
+        </div>
       ) : numeral === NUMERAL_GARANTIAS || numeral === NUMERAL_ARL ? (
         <PanelLegalizacion
           procesoId={procesoId}
@@ -230,6 +253,8 @@ export function PanelDeLaActividad({
         </div>
       ) : numeral === NUMERAL_OBSERVACIONES ? (
         <PanelObservaciones procesoId={procesoId} onCambio={onCambio} />
+      ) : numeral === NUMERAL_OBSERVACIONES_DEFINITIVO ? (
+        <PanelObservaciones procesoId={procesoId} onCambio={onCambio} pliego="DEFINITIVO" />
       ) : numeral === NUMERAL_MIPYME ? (
         <PanelMipyme procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === '3.1' ? (

@@ -119,12 +119,20 @@ export const NUMERAL_SEGUNDA_SESION = '5.6.1';
 export const NUMERAL_APERTURA = '5.7';
 /** Audiencia de asignación de riesgos (EFDS-1153), después de la apertura. */
 export const NUMERAL_RIESGOS = '5.12';
+/**
+ * Observaciones al pliego definitivo (138, sesión de QA del 04/11): después de
+ * la audiencia, con la misma metodología que la 5.6. Tercer nivel, como la
+ * 5.6.1, para no renumerar la etapa.
+ */
+export const NUMERAL_OBSERVACIONES_DEFINITIVO = '5.12.1';
 /** Adendas al pliego (EFDS-1154): a partir de la apertura, en cualquier momento. */
 export const NUMERAL_ADENDAS = '5.13';
 /** Cierre del proceso y recepción de ofertas, primera actividad de la etapa 6 (EFDS-1155). */
 export const NUMERAL_OFERTAS = '6.1';
 /** Designación del comité que evaluará las ofertas (EFDS-1156). */
 export const NUMERAL_COMITE = '6.2';
+/** Elaboración del cronograma: además del soporte, el cronograma por etapas (135). */
+export const NUMERAL_CRONOGRAMA = '5.2';
 
 /** Evaluación de las ofertas (EFDS-1157). */
 export const NUMERAL_EVALUACION = '6.3';
@@ -157,8 +165,21 @@ export const NUMERALES_ETAPA_5 = [
   NUMERAL_SEGUNDA_SESION,
   NUMERAL_APERTURA,
   NUMERAL_RIESGOS,
+  NUMERAL_OBSERVACIONES_DEFINITIVO,
   NUMERAL_ADENDAS,
 ];
+
+/**
+ * Actividades cuya revisión aprueba sobre el proceso entero, no solo sobre lo
+ * que se cargó en ellas.
+ *
+ * En la 5.6.1 el abogado revisor y la directora aprueban el pliego definitivo,
+ * y eso se lee contra el estudio previo, el CDP, la respuesta a las
+ * observaciones y lo que dijo la primera sesión del comité: nada de eso se
+ * carga en la 5.6.1. La pantalla de revisión les abre además el estudio previo
+ * y el expediente del proceso, sin tener que salir a buscarlos.
+ */
+export const NUMERALES_QUE_SE_REVISAN_CON_EL_PROCESO = [NUMERAL_SEGUNDA_SESION];
 
 /**
  * Las de la etapa 6 que ya tienen panel.

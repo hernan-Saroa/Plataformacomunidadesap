@@ -117,6 +117,8 @@ export class VistaService {
               nt.id::text AS "idArea", nt.codigo AS "codigoArea", nt.nombre AS "area",
               g.id_grupo::text AS "idGrupo", g.numero_grupo AS "numeroGrupo", g.estado AS "estadoGrupo",
               g.tipo_oferta AS "tipoOferta", g.cupo_maximo AS "cupoMaximo", g.id_oferta_cetap::text AS "idOfertaCetap",
+              g.modalidad,
+              (SELECT ad.id_docente::text FROM "academic-schedule".asignacion_docente ad WHERE ad.id_grupo = g.id_grupo) AS "idDocenteGrupo",
               to_char(g.fecha_inicio,'YYYY-MM-DD') AS "grupoInicio", to_char(g.fecha_fin,'YYYY-MM-DD') AS "grupoFin",
               ${SQL_CICLO_EFECTIVO},
               f.id_franja::text AS "idFranja", f.dia_semana AS "diaSemana",
@@ -135,7 +137,7 @@ export class VistaService {
       params,
     );
 
-    const docentes = await this.docentes(filas.map((f) => f.idDocente));
+    const docentes = await this.docentes([...filas.map((f) => f.idDocente), ...filas.map((f) => f.idDocenteGrupo)]);
     const ofertas = await ofertasCetapPorId(this.dataSource, filas.map((f) => f.idOfertaCetap));
     const horas = this.calculadorHoras(token);
 
@@ -167,6 +169,8 @@ export class VistaService {
         g = {
           idGrupo: f.idGrupo, numeroGrupo: f.numeroGrupo, estado: f.estadoGrupo, tipoOferta: f.tipoOferta,
           cicloInicio: f.cicloInicio, cicloFin: f.cicloFin, cupoMaximo: f.cupoMaximo,
+          modalidad: f.modalidad ?? 'presencial',
+          _idDocenteGrupo: f.idDocenteGrupo ?? null,
           oferta: oferta
             ? { idOfertaCetap: oferta.idOfertaCetap, cetap: oferta.cetap,
                 territorial: { codigo: oferta.territorial.codigo, nombre: oferta.territorial.nombre } }
@@ -215,9 +219,16 @@ export class VistaService {
             docentesGrupo.push({ ...d, fraccion: h?.fraccion ?? this.docencia.fraccion(g.franjas, id), horas: h?.horas ?? null,
               horasPlan: h?.horasPlan ?? null, base: h?.base ?? null, descontadas: h?.descontadas ?? null, avisos: h?.avisos ?? [] });
           }
-          const { _fechas, ...resto } = g;
+          const { _fechas, _idDocenteGrupo, ...resto } = g;
+          // Grupo virtual sin franjas (063): el horario lo define el docente asignado.
+          const horarioPorDefinir = g.modalidad === 'virtual' && g.franjas.length === 0;
+          const asignado = horarioPorDefinir && _idDocenteGrupo
+            ? docentes.get(_idDocenteGrupo) ?? { idDocente: _idDocenteGrupo, documento: null, nombre: null, vinculacion: null }
+            : null;
           grupos.push({
             ...resto,
+            horarioPorDefinir,
+            docenteHorarioPorDefinir: asignado ? { idDocente: asignado.idDocente, documento: asignado.documento, nombre: asignado.nombre } : null,
             horas: horasDelGrupo(_fechas[0], _fechas[1], g.franjas, a.horasClase),
             estadoFranjas,
             docentes: docentesGrupo,

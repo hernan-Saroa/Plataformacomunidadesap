@@ -8,9 +8,10 @@ import {
   Post,
   Req,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
@@ -55,9 +56,14 @@ export class InformeDefinitivoController {
   @Post()
   @Puede('editar', '7.2')
   @UseInterceptors(
-    FileInterceptor(
-      'file',
-      opcionesDeCarga(MIME_DOCUMENTOS, 'El informe definitivo se carga en PDF, Word o Excel'),
+    // El informe y, desde la sesión de QA del 04/11, hasta diez documentos
+    // adicionales opcionales en el campo anexos.
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'anexos', maxCount: 10 },
+      ],
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El informe definitivo y sus anexos se cargan en PDF, Word o Excel'),
     ),
   )
   @ApiConsumes('multipart/form-data')
@@ -69,29 +75,30 @@ export class InformeDefinitivoController {
   async generar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Body() dto: GenerarDefinitivoDto,
-    @UploadedFile() file: any,
+    @UploadedFiles() archivos: { file?: any[]; anexos?: any[] },
     @Req() req: any,
   ) {
-    // Sin archivo es un caso legítimo: regenerar la fotografía porque el comité
-    // rectificó, conservando el documento que ya se había adjuntado.
-    if (!file) {
-      return this.service.generar(procesoId, null, null, getHiringAccess(req), dto.motivo, dto);
-    }
-
-    const ruta = join(STORAGE_PATH, file.filename);
+    const file = archivos?.file?.[0] ?? null;
+    const anexos = archivos?.anexos ?? [];
+    const todos = [...(file ? [file] : []), ...anexos];
 
     try {
-      const hash = await sha256Archivo(ruta);
+      const conHash = await Promise.all(
+        anexos.map(async (a) => ({ archivo: a, hash: await sha256Archivo(join(STORAGE_PATH, a.filename)) })),
+      );
+      // Sin archivo es un caso legítimo: regenerar la fotografía porque el
+      // comité rectificó, conservando el documento que ya se había adjuntado.
       return await this.service.generar(
         procesoId,
         file,
-        hash,
+        file ? await sha256Archivo(join(STORAGE_PATH, file.filename)) : null,
         getHiringAccess(req),
         dto.motivo,
         dto,
+        conHash,
       );
     } catch (error) {
-      await unlink(ruta).catch(() => undefined);
+      await Promise.all(todos.map((a) => unlink(join(STORAGE_PATH, a.filename)).catch(() => undefined)));
       throw error;
     }
   }

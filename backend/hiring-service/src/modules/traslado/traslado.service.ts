@@ -302,6 +302,9 @@ export class TrasladoService {
 
       informe.estado = 'TRASLADADO';
       informe.evidenciaDocumentoId = doc.id;
+      informe.medioPublicacion = dto.medioPublicacion.trim();
+      informe.enlaceProceso = dto.enlaceProceso?.trim() || null;
+      informe.observacionesTraslado = dto.observaciones?.trim() || null;
       informe.trasladadoPor = acceso.userName;
       informe.trasladadoAt = new Date();
       informe.plazoDiasHabiles = plazo.diasHabiles;
@@ -313,6 +316,8 @@ export class TrasladoService {
         actividad: NUMERAL_TRASLADO,
         numero: informe.numero,
         medio: dto.medioPublicacion.trim(),
+        ...(dto.enlaceProceso?.trim() ? { enlaceProceso: dto.enlaceProceso.trim() } : {}),
+        ...(dto.observaciones?.trim() ? { observaciones: dto.observaciones.trim() } : {}),
         plazoDiasHabiles: plazo.diasHabiles,
         venceEl: informe.venceEl,
         // Que el plazo aplicado sea un supuesto del equipo queda en la traza:
@@ -405,6 +410,9 @@ export class TrasladoService {
       generadoAt: informe.generadoAt,
       trasladadoPor: informe.trasladadoPor,
       trasladadoAt: informe.trasladadoAt,
+      medioPublicacion: informe.medioPublicacion ?? null,
+      enlaceProceso: informe.enlaceProceso ?? null,
+      observacionesTraslado: informe.observacionesTraslado ?? null,
       plazoDiasHabiles: informe.plazoDiasHabiles,
       venceEl: informe.venceEl,
       diasRestantes,

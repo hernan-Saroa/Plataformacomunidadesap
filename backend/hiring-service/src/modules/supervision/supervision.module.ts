@@ -12,7 +12,6 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
-import { ParticipacionModule } from '../participacion/participacion.module';
 
 @Module({
   imports: [
@@ -26,8 +25,6 @@ import { ParticipacionModule } from '../participacion/participacion.module';
       Expediente,
     ]),
     CierreActividadModule,
-    // Designar ocupa el puesto que avala la 9.4 (121).
-    ParticipacionModule,
   ],
   controllers: [SupervisionController],
   providers: [SupervisionService],

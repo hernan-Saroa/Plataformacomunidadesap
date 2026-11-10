@@ -1,6 +1,5 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { AlcanceService } from '../src/auth/alcance.service';
 import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
@@ -80,8 +79,15 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
     roles: ['SUPERVISOR_CONTRATO'],
   };
 
-  /** El supervisor designado; su cuenta se resuelve en beforeAll. */
-  let supervisor: HiringAccess;
+  /**
+   * Quien registra lo del supervisor, que no entra a la aplicación (136): su
+   * aval y su informe los carga el gestor de archivo y supervisión.
+   */
+  const archivista: HiringAccess = {
+    userId: '00000000-0000-0000-0000-000000000009',
+    userName: 'prueba.gestor.archivo',
+    roles: ['GESTOR_DE_ARCHIVO_Y_SUPERVISION'],
+  };
   let juridica: { acceso: HiringAccess; personaId: string };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -138,23 +144,6 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
         userName: 'prueba.juridica',
         roles: ['EVALUADOR_JURIDICO'],
       },
-    };
-
-    // El supervisor es una cuenta que puede ocupar su puesto (121): la que
-    // avala la 9.4 y elabora la 10.1. La 8.2 la designa por su `id_user`, que
-    // es el mismo con el que inicia sesión.
-    const alcance = app.get(AlcanceService);
-    const avalan = await alcance.cuentasQuePueden('aprobar', '9.4');
-    const elaboran = new Set(await alcance.cuentasQuePueden('editar', '10.1'));
-    const [candidata] = await dataSource.query(
-      `SELECT id_user::text AS id, username FROM auth."user"
-        WHERE is_active AND id_user::text = ANY($1::text[]) ORDER BY id_user`,
-      [avalan.filter((id) => elaboran.has(id))],
-    );
-    supervisor = {
-      userId: candidata.id,
-      userName: candidata.username,
-      roles: ['SUPERVISOR_CONTRATO'],
     };
   });
 
@@ -375,8 +364,9 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
     await supervision.designar(
       proceso.id,
       {
-        usuarioId: supervisor.userId,
+        nombre: 'Supervisora del contrato',
         cargo: 'Profesional especializada',
+        email: 'supervision@esap.edu.co',
         fechaDesignacion: hoy(),
       },
       archivo('acto-supervision.pdf'),
@@ -410,7 +400,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       { fechaInicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
-      supervisor,
+      archivista,
     );
 
     return proceso;
@@ -432,7 +422,14 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
     );
 
     const pagoId = radicado.pagos[0].id;
-    await pagos.avalar(procesoId, pagoId, {}, supervisor);
+    await pagos.avalar(
+      procesoId,
+      pagoId,
+      {},
+      archivo('aval-supervisor.pdf'),
+      'v'.repeat(64),
+      archivista,
+    );
     await pagos.tramitar(
       procesoId,
       pagoId,
@@ -464,7 +461,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       { fechaElaboracion: hoy(), conclusion: CONCLUSION, ...datos } as any,
       archivo('informe-final.pdf'),
       'w'.repeat(64),
-      supervisor,
+      archivista,
     );
 
   // ------------------------------------------------------------- criterio --
@@ -494,7 +491,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
         { descripcion: 'Informe técnico del primer trimestre', fechaEntrega: haceDias(20) },
         archivo('entregable-1.pdf'),
         'a'.repeat(64),
-        supervisor,
+        archivista,
       );
       // Sin fecha: es lo que se pactó y no se cumplió, y el informe final
       // también sirve para decirlo.
@@ -506,7 +503,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
         },
         null,
         null,
-        supervisor,
+        archivista,
       );
 
       const entregables = (estado.informe as any).entregables;
@@ -527,7 +524,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
           { descripcion: 'Suelto' },
           null,
           null,
-          supervisor,
+          archivista,
         ),
       ).rejects.toThrow(/no tiene informe final vigente/i);
     });
@@ -541,7 +538,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
 
       // Entra un pago rezagado después de firmar.
       await pagar(proceso.id, 10_000_000);
-      const estado = await informeFinal.estado(proceso.id, supervisor);
+      const estado = await informeFinal.estado(proceso.id, archivista);
 
       // El informe sigue diciendo lo que era cierto el día en que se firmó...
       expect((estado.informe as any).balance.valorPagado).toBe(30_000_000);
@@ -565,7 +562,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       const proceso = await contratoEnEjecucion();
       await dejarPendiente(proceso.id, 15_000_000);
 
-      const antes = await informeFinal.estado(proceso.id, supervisor);
+      const antes = await informeFinal.estado(proceso.id, archivista);
       expect(antes.advertencia).toMatch(/sin tramitar/i);
 
       // Y aun así se puede elaborar: cerrar con un cobro en disputa es decisión
@@ -576,19 +573,18 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
   });
 
   describe('Criterio 3 · lo firma quien vigiló', () => {
-    it('el supervisor de otro contrato no puede elaborarlo', async () => {
+    // El supervisor no entra a la aplicación (136): su informe firmado lo carga
+    // quien tenga la 10.1, pero tiene que haber un supervisor de quien sea.
+    it('sin supervisor designado no hay de quién sea el informe', async () => {
       const proceso = await contratoEnEjecucion();
       await pagar(proceso.id, 10_000_000);
+      await supervision.relevar(
+        proceso.id,
+        { motivo: 'La supervisora se trasladó a otra dependencia' },
+        ordenador,
+      );
 
-      await expect(
-        informeFinal.elaborar(
-          proceso.id,
-          { fechaElaboracion: hoy(), conclusion: CONCLUSION } as any,
-          archivo('informe-final.pdf'),
-          'w'.repeat(64),
-          otroSupervisor,
-        ),
-      ).rejects.toThrow(/no eres el supervisor de este contrato/i);
+      await expect(elaborar(proceso.id)).rejects.toThrow(/no tiene supervisor designado/i);
     });
 
     it('no hay informe final sobre un contrato que no arrancó', async () => {
@@ -615,7 +611,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       const anulado = await informeFinal.anular(
         proceso.id,
         { motivo: 'Entró un pago rezagado y el balance quedó incompleto' },
-        supervisor,
+        archivista,
       );
 
       expect(anulado.informe).toBeNull();
@@ -649,7 +645,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       await informeFinal.anular(
         proceso.id,
         { motivo: 'Hay que rehacerlo con el consolidado completo' },
-        supervisor,
+        archivista,
       );
       expect(await estadoDe()).toBe('BORRADOR');
     });

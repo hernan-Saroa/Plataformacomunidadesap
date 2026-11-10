@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { GestionPeriodos } from './GestionPeriodos';
 import { useImportAsignaturas } from '../hooks/useImportAsignaturas';
 
-vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: () => false, loading: false }) }));
+vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: () => false, hasRole: () => false, loading: false }) }));
 vi.mock('../hooks/useImportAsignaturas', () => ({ useImportAsignaturas: vi.fn() }));
 const toastError = vi.fn();
 vi.mock('sonner', () => ({ toast: { error: (m: string) => toastError(m), success: vi.fn() } }));

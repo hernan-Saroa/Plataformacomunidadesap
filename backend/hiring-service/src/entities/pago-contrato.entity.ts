@@ -138,7 +138,9 @@ export type TipoSoportePago =
   | 'SEGURIDAD_SOCIAL'
   | 'RUT'
   | 'CERTIFICACION_BANCARIA'
-  | 'OTRO';
+  | 'OTRO'
+  // El aval firmado del supervisor (136): solo entra al avalar, no como soporte suelto.
+  | 'AVAL_SUPERVISOR';
 
 /**
  * Documento que acompaña la cuenta de cobro.

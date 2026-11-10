@@ -1,6 +1,5 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { AlcanceService } from '../src/auth/alcance.service';
 import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
@@ -91,8 +90,15 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
     roles: ['SUPERVISOR_CONTRATO'],
   };
 
-  /** El supervisor designado; su cuenta se resuelve en beforeAll. */
-  let supervisor: HiringAccess;
+  /**
+   * Quien registra lo del supervisor, que no entra a la aplicación (136): su
+   * aval y su informe los carga el gestor de archivo y supervisión.
+   */
+  const archivista: HiringAccess = {
+    userId: '00000000-0000-0000-0000-000000000009',
+    userName: 'prueba.gestor.archivo',
+    roles: ['GESTOR_DE_ARCHIVO_Y_SUPERVISION'],
+  };
   let juridica: { acceso: HiringAccess; personaId: string };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -153,23 +159,6 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
         userName: 'prueba.juridica',
         roles: ['EVALUADOR_JURIDICO'],
       },
-    };
-
-    // El supervisor es una cuenta que puede ocupar su puesto (121): la que
-    // avala la 9.4 y elabora la 10.1. La 8.2 la designa por su `id_user`, que
-    // es el mismo con el que inicia sesión.
-    const alcance = app.get(AlcanceService);
-    const avalan = await alcance.cuentasQuePueden('aprobar', '9.4');
-    const elaboran = new Set(await alcance.cuentasQuePueden('editar', '10.1'));
-    const [candidata] = await dataSource.query(
-      `SELECT id_user::text AS id, username FROM auth."user"
-        WHERE is_active AND id_user::text = ANY($1::text[]) ORDER BY id_user`,
-      [avalan.filter((id) => elaboran.has(id))],
-    );
-    supervisor = {
-      userId: candidata.id,
-      userName: candidata.username,
-      roles: ['SUPERVISOR_CONTRATO'],
     };
   });
 
@@ -410,8 +399,9 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
     await supervision.designar(
       proceso.id,
       {
-        usuarioId: supervisor.userId,
+        nombre: 'Supervisora del contrato',
         cargo: 'Profesional especializada',
+        email: 'supervision@esap.edu.co',
         fechaDesignacion: hoy(),
       },
       archivo('acto-supervision.pdf'),
@@ -445,7 +435,7 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       { fechaInicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
-      supervisor,
+      archivista,
     );
 
     return proceso;
@@ -467,7 +457,14 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
     );
 
     const pagoId = radicado.pagos[0].id;
-    await pagos.avalar(procesoId, pagoId, {}, supervisor);
+    await pagos.avalar(
+      procesoId,
+      pagoId,
+      {},
+      archivo('aval-supervisor.pdf'),
+      'v'.repeat(64),
+      archivista,
+    );
     await pagos.tramitar(
       procesoId,
       pagoId,
@@ -523,14 +520,14 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
-      supervisor,
+      archivista,
     );
     await informeFinal.elaborar(
       proceso.id,
       { fechaElaboracion: hoy(), conclusion: CONCLUSION } as any,
       archivo('informe-final.pdf'),
       'w'.repeat(64),
-      supervisor,
+      archivista,
     );
 
     return proceso;
@@ -595,7 +592,7 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
-      supervisor,
+      archivista,
     );
 
     if (pagado > 0) await pagar(proceso.id, pagado);
@@ -605,7 +602,7 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       { fechaElaboracion: hoy(), conclusion: CONCLUSION } as any,
       archivo('informe-final.pdf'),
       'w'.repeat(64),
-      supervisor,
+      archivista,
     );
     await liquidar(proceso.id);
 
@@ -639,7 +636,7 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
-      supervisor,
+      archivista,
     );
 
     return proceso;
