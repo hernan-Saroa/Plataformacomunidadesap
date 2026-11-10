@@ -1295,3 +1295,9 @@ Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado 
 1. Un administrador (ADMIN_PROGRAMACION o SUPER_ADMIN) importa el Excel del catálogo para el periodo (`esap/programacion/resultados/2026-1/catalogo-importable-2026-1.xlsx`). Los programadores no pueden importar: dependen de ese paso.
 2. Los programadores crean los grupos y eligen el CETAP; si no sale ninguno, la pantalla ya dice por qué.
 3. Si la causa no es esa, correr `diagnostico-oferta-cetap.sql` en QA y compartir el resultado.
+
+## 35. Periodos: eliminar (superusuario) y cerrar/desactivar (quien los crea)
+
+- `DELETE /periodos-academicos/:id`: solo `SUPER_ADMIN`. Puede eliminar un periodo en planeación, concertación o cerrado; nunca el «En curso», ni uno con ofertas, CETAP o PTA asociados (409 con el detalle).
+- `POST /periodos-academicos/:id/cerrar` y `/desactivar` (ADMIN_PROGRAMACION, GESTION_PROFESORAL, SUPER_ADMIN): cerrar deja el periodo en «Cerrado» aunque sea el principal en curso (la plataforma queda sin activo hasta activar otro); desactivar saca un periodo en curso (principal o extraordinario) y lo devuelve a planeación.
+- Front (Programas Académicos → Periodos): botones «Desactivar», «Cerrar periodo» y, solo para el super, la papelera. Pruebas: `periodo-cerrar-desactivar.spec.ts`.
