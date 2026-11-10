@@ -1,3 +1,4 @@
+import { AvisoTitulosDeducidos } from './AvisoTitulosDeducidos';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -758,6 +759,8 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                   </div>
                 ))}
               </div>
+
+              <AvisoTitulosDeducidos deducidos={result?.data?.titulosDeducidos} sinClasificar={result?.data?.titulosSinClasificar} />
 
               {/* Vista previa de docentes válidos ("correctos") */}
               {previewValidos.length > 0 && (
