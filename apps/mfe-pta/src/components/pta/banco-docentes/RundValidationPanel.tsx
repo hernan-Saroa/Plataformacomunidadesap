@@ -28,6 +28,7 @@ import './RundCheckpointEvidence.css';
 import { PHOTO_MANAGE, PHOTO_VALIDATE } from '../../../../../shared/profile-photos';
 import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 import { rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
+import { auditCambiosOf, formatAuditValue } from './rundAuditCambios';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -748,7 +749,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       {canValidateRund && <div style={{ padding: '12px 24px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
         <button onClick={() => setShowRundAudit(v => !v)} style={{ border: 0, background: 'transparent', color: '#003DA5', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}><History size={16} /> {showRundAudit ? 'Ocultar trazabilidad' : 'Ver trazabilidad de revisiones y documentos'}</button>
         {showRundAudit && <div role="region" aria-label="Trazabilidad de revisiones y documentos" style={{ maxHeight: 320, overflowY: 'auto', marginTop: 12 }}>
-          <p style={{ fontSize: 12, color: '#64748B' }}>Últimas 50 acciones. Se conserva el historial de cargas, versiones y decisiones.</p>
+          <p style={{ fontSize: 12, color: '#64748B' }}>Últimas 50 acciones y las 20 consultas más recientes de datos sensibles. Se conserva el historial de cargas, versiones y decisiones.</p>
           {auditError ? <p role="alert" style={{ fontSize: 12, color: '#B91C1C' }}>No fue posible consultar la trazabilidad. <button onClick={fetchRundData}>Reintentar</button></p> : rundAuditLog.length === 0 && <p style={{ fontSize: 12 }}>Sin acciones registradas.</p>}
           {rundAuditLog.map((entry: any) => <div key={entry.id} style={{ borderLeft: '2px solid #CBD5E1', padding: '8px 14px', marginBottom: 8, fontSize: 12 }}>
             <strong>{String(entry.accion).replace(/_/g, ' ')} ·{CATALOGO_BR039[entry.bloque]?.label || (entry.bloque === 'DOCUMENTAL' ? 'Expediente documental' : entry.bloque)}</strong>
@@ -761,6 +762,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             {entry.metadata?.nombreArchivo && <div>{entry.metadata.nombreArchivo}</div>}
             {entry.metadata?.version && <div>Versión {entry.metadata.version}</div>}
             {entry.metadata?.versionNueva && <div>Versión {entry.metadata.versionAnterior} → {entry.metadata.versionNueva}</div>}
+            {auditCambiosOf(entry).map(cambio => <div key={cambio.campo} data-testid="rund-audit-cambio" style={{ marginTop: 2, overflowWrap: 'anywhere' }}>
+              <strong>{cambio.campo}</strong>: {formatAuditValue(cambio.anterior)} → {formatAuditValue(cambio.nuevo)}
+            </div>)}
             {entry.observacion && <div style={{ marginTop: 4 }}>{entry.observacion}</div>}
           </div>)}
         </div>}

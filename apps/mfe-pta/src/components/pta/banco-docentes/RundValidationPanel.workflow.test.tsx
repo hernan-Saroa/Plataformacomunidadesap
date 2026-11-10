@@ -37,7 +37,8 @@ beforeEach(() => {
   blocks[0] = { bloque: 'IDENTIDAD', version: 1, estado: 'En revisión', soportes: [{ id: 'soporte-1', tipo_soporte: 'documento_identidad', documento_perfil_id: 'version-1', documento_carpeta_id: '/pta/documento-1', nombre_archivo: 'identidad.pdf', estado: 'Pendiente' }] };
   vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
     if (url.includes('/bloques')) return fixtureBlocks();
-    if (url.includes('/auditoria')) return [{ id: 'log-1', accion: 'CARGAR_DOCUMENTO', bloque: 'IDENTIDAD', actorId: '770e8400-e29b-41d4-a716-446655440001', actorNombre: 'Gestor Documental', createdAt: '2026-09-08T12:00:00Z', metadata: { version: 1, nombreArchivo: 'identidad.pdf' } }];
+    if (url.includes('/auditoria')) return [{ id: 'log-1', accion: 'CARGAR_DOCUMENTO', bloque: 'IDENTIDAD', actorId: '770e8400-e29b-41d4-a716-446655440001', actorNombre: 'Gestor Documental', createdAt: '2026-09-08T12:00:00Z', metadata: { version: 1, nombreArchivo: 'identidad.pdf' } },
+      { id: 'log-2', accion: 'EDITAR', bloque: 'GENERAL', actorId: 'u-2', actorNombre: 'Super User', createdAt: '2026-09-09T12:00:00Z', metadata: {}, cambios: [{ campo: 'dedicacion', anterior: 'MT', nuevo: 'TC' }, { campo: 'observaciones', anterior: null, nuevo: 'texto' }] }];
     return { docenteId: 'docente-1', idRund: 'RUND-PRUEBA', proteccion_datos: { acceso_completo: true }, bloques: profileBlocks };
   });
   vi.mocked(apiClient.post).mockImplementation(async (url: string, body: any) => {
@@ -511,6 +512,9 @@ describe('Revisión documental persistida en el panel RUND', () => {
     expect(audit.getByText('identidad.pdf')).toBeTruthy();
     expect(audit.getByText('Versión 1')).toBeTruthy();
     expect(audit.getByText(/Gestor Documental/)).toBeTruthy();
+    // HU 1365: cada edición muestra campo, valor anterior y valor nuevo.
+    const cambios = audit.getAllByTestId('rund-audit-cambio').map(node => node.textContent);
+    expect(cambios).toEqual(['dedicacion: MT → TC', 'observaciones: (vacío) → texto']);
     expect(document.body.textContent).not.toContain('770e8400-e29b-41d4-a716-446655440001');
   });
   it('recupera las aprobaciones del servidor al montar una pantalla nueva', async () => {

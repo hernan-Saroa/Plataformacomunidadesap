@@ -10,7 +10,7 @@ import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } 
 import { convocatoriaName, convocatoriaKey, convocatoriaPeriod, CONVOCATORIA_MEMBERS_SQL } from './rund-convocatorias';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Like, Repository } from 'typeorm';
+import { DataSource, Like, Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { DocenteEntity } from '../entities/docente.entity';
@@ -18,6 +18,8 @@ import { PersonaEntity } from '../entities/persona.entity';
 import { UsuarioEntity } from '../entities/usuario.entity';
 import { BancoDocenteInvitacionEntity } from '../entities/banco-docente-invitacion.entity';
 import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity';
+import { auditCambios, singleFieldAuditValues } from './rund-audit-cambios';
+import { clearsObservaciones, countsAsFieldChange } from './rund-campo-vacio';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
 import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
@@ -949,6 +951,9 @@ function buildAuthBancoDocenteResponse(row: any) {
 }
 
 // â”€â”€â”€ service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const RUND_CONSULTA_SENSIBLE = 'CONSULTAR_DATOS_SENSIBLES';
+const RUND_AUDITORIA_CONSULTAS = 20;
 
 @Injectable()
 export class BancoDocentesService implements OnModuleInit {
@@ -1892,6 +1897,7 @@ export class BancoDocentesService implements OnModuleInit {
         ? deducirTitulosAdicionales(payload.perfilAcademico, payload, titulosAdicionalesGuardados(existingDocente?.titulosAdicionales))
         : null;
 
+      const clearObservaciones = clearsObservaciones(rawPayload, payload.observaciones, Boolean(existingDocente));
       const docenteData: Partial<DocenteEntity> = {
         personaId: authPersonId,
         territorialId: options.preserveTerritorial ? existingDocente?.territorialId || '' : territorial?.id || existingDocente?.territorialId || '',
@@ -1933,7 +1939,7 @@ export class BancoDocentesService implements OnModuleInit {
         rangoEdad: payload.rangoEdad ?? existingDocente?.rangoEdad ?? null,
         regimenNormativo: payload.regimenNormativo ?? existingDocente?.regimenNormativo ?? null,
         periodoCarga: payload.periodoCarga ?? existingDocente?.periodoCarga ?? null,
-        observaciones: payload.observaciones ?? existingDocente?.observaciones ?? null,
+        observaciones: clearObservaciones ? null : (payload.observaciones ?? existingDocente?.observaciones ?? null),
         idRund: nextIdRund,
         // Â§6 â€” Canal de origen para auditorÃ­a
         canalOrigen: existingDocente?.canalOrigen || rawPayload?.canal_origen || 'MASIVO',
@@ -1956,7 +1962,7 @@ export class BancoDocentesService implements OnModuleInit {
           const newVal = docenteData[field];
           const oldVal = existingDocente[field];
           const changed = field === 'datosCargaMasiva' || field === 'titulosAdicionales' ? stableJson(newVal) !== stableJson(oldVal) : String(newVal) !== String(oldVal);
-          if (newVal !== undefined && newVal !== null && changed) {
+          if (countsAsFieldChange(String(field), newVal, changed, clearObservaciones)) {
             hasChanges = true;
             changedFields.push(String(field));
             profileChanges[String(field)] = field === 'puntajeSalarial' || field === 'datosCargaMasiva'
@@ -2046,6 +2052,8 @@ export class BancoDocentesService implements OnModuleInit {
           actorId: options.audit.actorId,
           canalOrigen: options.audit.canalOrigen,
           campoAfectado: action === 'insert' ? undefined : [...personaChangedFields, ...changedFields].join(','),
+          // NF002: con un solo campo modificado, valor anterior y nuevo quedan también en sus columnas.
+          ...(action === 'insert' ? {} : singleFieldAuditValues(profileChanges)),
           observacion: options.audit.observacion,
           soporteId: options.audit.soporteId,
           ip: options.audit.ip,
@@ -3859,13 +3867,19 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async getAuditoria(docenteId: string, limit = 50): Promise<any[]> {
     docenteId = await this.resolveDocenteId(docenteId);
-    const logs = await this.auditLogRepo.find({
-      where: { docenteId },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+    // resolveDocenteId devuelve el id original si no encuentra nada: un perfil inexistente no es un historial vacío.
+    if (!(await this.docenteRepo.findOne({ where: { id: docenteId }, select: ['id'] }))) {
+      throw new NotFoundException(`Docente ${docenteId} no encontrado`);
+    }
+    // Las consultas de datos sensibles se generan en cada apertura de la ficha y llenarían el tope:
+    // se piden aparte (las más recientes) para que ediciones y decisiones sigan visibles en el historial.
+    const [actions, consultations] = await Promise.all([
+      this.auditLogRepo.find({ where: { docenteId, accion: Not(RUND_CONSULTA_SENSIBLE) }, order: { createdAt: 'DESC' }, take: limit }),
+      this.auditLogRepo.find({ where: { docenteId, accion: RUND_CONSULTA_SENSIBLE }, order: { createdAt: 'DESC' }, take: RUND_AUDITORIA_CONSULTAS }),
+    ]);
+    const logs = [...actions, ...consultations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const names = await resolveRundActorNames(this.dataSource, logs.map(log => log.actorId));
-    return logs.map(log => ({ ...log, actorNombre: rundActorName(names, log.actorId) }));
+    return logs.map(log => ({ ...log, cambios: auditCambios(log), actorNombre: rundActorName(names, log.actorId) }));
   }
 
   /**

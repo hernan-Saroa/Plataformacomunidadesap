@@ -74,9 +74,35 @@ describe('Nombres de actores documentales RUND', () => {
     const service = Object.create(BancoDocentesService.prototype) as any;
     service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
     const log = { id: 'log', actorId: author, accion: 'CARGAR_DOCUMENTO' };
-    service.auditLogRepo = { find: jest.fn().mockResolvedValue([log]) };
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue({ id: 'docente' }) };
+    service.auditLogRepo = { find: jest.fn().mockResolvedValueOnce([log]).mockResolvedValueOnce([]) };
     service.dataSource = { query: jest.fn().mockResolvedValue([{ actor_id: author, nombre: 'Gestor Documental' }]) };
-    expect(await service.getAuditoria('docente')).toEqual([{ ...log, actorNombre: 'Gestor Documental' }]);
+    expect(await service.getAuditoria('docente')).toEqual([{ ...log, cambios: [], actorNombre: 'Gestor Documental' }]);
     expect(log).not.toHaveProperty('actorNombre');
+    expect(log).not.toHaveProperty('cambios');
+  });
+
+  it('un docente inexistente responde 404 en lugar de un historial vacío', async () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    service.resolveDocenteId = jest.fn().mockResolvedValue('no-existe');
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    service.auditLogRepo = { find: jest.fn() };
+    await expect(service.getAuditoria('no-existe')).rejects.toThrow('no encontrado');
+    expect(service.auditLogRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('mantiene visibles las ediciones aunque haya muchas consultas sensibles más recientes', async () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue({ id: 'docente' }) };
+    const edit = { id: 'e', actorId: author, accion: 'EDITAR', createdAt: new Date('2026-11-10T10:00:00Z') };
+    const consult = { id: 'c', actorId: author, accion: 'CONSULTAR_DATOS_SENSIBLES', createdAt: new Date('2026-11-10T11:00:00Z') };
+    service.auditLogRepo = { find: jest.fn().mockResolvedValueOnce([edit]).mockResolvedValueOnce([consult]) };
+    service.dataSource = { query: jest.fn().mockResolvedValue([]) };
+    const rows = await service.getAuditoria('docente');
+    expect(rows.map((r: any) => r.id)).toEqual(['c', 'e']);
+    const [[actionsQuery], [consultQuery]] = service.auditLogRepo.find.mock.calls;
+    expect(actionsQuery.take).toBe(50);
+    expect(consultQuery.take).toBe(20);
   });
 });
