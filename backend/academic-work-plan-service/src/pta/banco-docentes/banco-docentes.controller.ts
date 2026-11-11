@@ -20,6 +20,7 @@ import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
 import { standaloneSupportCategory } from './rund-evidence-data';
+import { RundCarpetasConfigService } from './rund-carpetas-config';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 import {
@@ -51,7 +52,13 @@ export class BancoDocentesController {
     private readonly docTypeValidator: DocumentTypeValidatorService,
     @Optional() private readonly documentosService?: RundDocumentosService,
     @Optional() private readonly nucleosService?: RundNucleosService,
+    @Optional() private readonly carpetasConfigService?: RundCarpetasConfigService,
   ) { }
+
+  private get carpetasConfig(): RundCarpetasConfigService {
+    if (!this.carpetasConfigService) throw new Error('El servicio de configuración de carpetas RUND no está disponible.');
+    return this.carpetasConfigService;
+  }
 
   private get documentos(): RundDocumentosService {
     if (!this.documentosService) throw new Error('El servicio documental RUND no está disponible.');
@@ -236,6 +243,22 @@ export class BancoDocentesController {
         convocatoria,
       }),
     };
+  }
+
+  /** Carpetas del expediente que aplican a cada tipo de vinculación. Solo con el permiso de configuración. */
+  @Get('carpetas/configuracion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.CONFIGURE)
+  async carpetasConfiguracion() {
+    return { success: true, data: await this.carpetasConfig.matriz() };
+  }
+
+  @Put('carpetas/configuracion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.CONFIGURE)
+  async definirCarpetaConfiguracion(@Body() body: { tipoVinculacion: string; bloque: string; activo: boolean }, @Req() req: any) {
+    const data = await this.carpetasConfig.definir(body?.tipoVinculacion, body?.bloque, body?.activo, this.requestActor(req).actorId);
+    return { success: true, data };
   }
 
   @Get('invitaciones')

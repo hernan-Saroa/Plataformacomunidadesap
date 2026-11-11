@@ -1,7 +1,7 @@
 import { RUND_PROFILE_PERMISSIONS } from './rund-permissions';
 
 const profiles = new Set<string>(Object.values(RUND_PROFILE_PERMISSIONS));
-const photoPermissions = new Set(['banco-docentes.rund.photos.manage', 'banco-docentes.rund.photos.validate']);
+const photoPermissions = new Set(['banco-docentes.rund.photos.manage', 'banco-docentes.rund.photos.validate', 'banco-docentes.rund.configure']);
 export const isRundProfilePermission = (permission: { id: string; code?: string }) => profiles.has(permission.code || permission.id);
 export const isLegacyRundPermission = (permission: { id: string; code?: string }) => {
   const code = permission.code || permission.id;

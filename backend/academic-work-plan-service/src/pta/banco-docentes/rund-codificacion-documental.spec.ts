@@ -1,6 +1,6 @@
 import { assertRundEvidenceData, standaloneSupportCategory } from './rund-evidence-data';
 import {
-  EVIDENCE_TYPES, IDENTITY_TYPES, currentBlockRows, STANDALONE_SUPPORT_TYPES, evidenceFields, evidenceGroup, requiredEvidence, validateEvidenceType,
+  EVIDENCE_TYPES, IDENTITY_TYPES, RUND_REQUIRED_BLOCKS, RUND_REVIEW_BLOCKS, currentBlockRows, evidenceSummary, STANDALONE_SUPPORT_TYPES, evidenceFields, evidenceGroup, requiredEvidence, validateEvidenceType,
 } from './rund-evidence-workflow';
 
 // RUND-002: soportes de la codificación documental del GGP sin campo en RUND.
@@ -68,5 +68,35 @@ describe('codificación documental RUND', () => {
     expect(unico.map(row => row.bloque)).toEqual(['IDENTIDAD', 'ACADEMICO']);
     expect(unico.map(row => row.id)).toEqual(['a', 'd']);
     expect([...currentBlockRows([...rows].reverse())].map(row => row.id).sort()).toEqual(['a', 'd']);
+  });
+
+  it('la activación del perfil no cambia: siguen obligatorios los mismos cinco bloques', () => {
+    expect(RUND_REQUIRED_BLOCKS).toEqual(['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL']);
+  });
+
+  it('las carpetas nuevas son revisables pero opcionales para activar el perfil', () => {
+    const nuevas = ['EXPERIENCIA_DOCENTE', 'EXPERIENCIA_LABORAL', 'PRODUCTIVIDAD_ACADEMICA', 'SEGUNDA_LENGUA',
+      'FORMACION_NO_FORMAL', 'ESTUDIO_HOJA_VIDA', 'DOCUMENTOS_NO_VALIDOS'];
+    for (const bloque of nuevas) {
+      expect(RUND_REVIEW_BLOCKS).toContain(bloque);
+      expect(RUND_REQUIRED_BLOCKS).not.toContain(bloque);
+      expect(requiredEvidence(bloque, {})).toEqual([]);
+    }
+    const aprobados = Object.fromEntries(RUND_REQUIRED_BLOCKS.map(bloque => [bloque, 'Aprobado']));
+    expect(evidenceSummary(Object.entries({ ...aprobados, EXPERIENCIA_DOCENTE: 'Soporte faltante' }).map(([bloque, estado]) => ({ bloque, estado }))).activable).toBe(true);
+  });
+
+  it('una carpeta devuelta sí devuelve el perfil, aunque sea opcional', () => {
+    const aprobados = Object.fromEntries(RUND_REQUIRED_BLOCKS.map(bloque => [bloque, 'Aprobado']));
+    const resumen = evidenceSummary(Object.entries({ ...aprobados, SEGUNDA_LENGUA: 'Devuelto' }).map(([bloque, estado]) => ({ bloque, estado })));
+    expect(resumen.estado).toBe('DEVUELTO');
+    expect(resumen.activable).toBe(false);
+  });
+
+  it('cada soporte nuevo solo es válido en su carpeta', () => {
+    expect(() => validateEvidenceType('EXPERIENCIA_DOCENTE', 'experiencia_docente')).not.toThrow();
+    expect(() => validateEvidenceType('ACADEMICO', 'experiencia_docente')).toThrow();
+    expect(() => validateEvidenceType('ACADEMICO', 'experiencia_investigativa')).not.toThrow();
+    expect(() => validateEvidenceType('DOCUMENTOS_NO_VALIDOS', 'documento_no_valido')).not.toThrow();
   });
 });
