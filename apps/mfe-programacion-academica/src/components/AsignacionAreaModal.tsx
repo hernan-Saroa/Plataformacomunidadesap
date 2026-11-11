@@ -33,13 +33,13 @@ export function AsignacionAreaModal({ grupo, asignatura, cerrar, retornarFoco }:
   };
   return <ModalConfirmacion titulo={`Asignar docente · ${asignatura} · Grupo ${grupo.numeroGrupo}`} onCancelar={cerrar} onConfirmar={asignar} ocupado={ocupado} confirmarDeshabilitado={!apto || !hayQueAsignar || !!datos?.mensaje} retornarFoco={retornarFoco}
     advertencia={sinHorario
-      ? 'Grupo virtual sin horario: se asigna el docente al grupo y él define el horario en «Mi programación», con la validación de cruces, horas y tope. Se le reservan las horas del plan.'
+      ? 'Grupo virtual o a distancia sin horario: se asigna el docente al grupo y él define el horario en «Mi programación», con la validación de cruces, horas y tope. Se le reservan las horas del plan.'
       : 'Solo se puede asignar un docente del área. Se cambiarán únicamente las franjas marcadas; el servidor vuelve a comprobar área, cruces y topes al confirmar.'}>
     <fieldset disabled={ocupado} className="space-y-2"><legend className="font-bold">Franjas a asignar (todas por defecto)</legend>
       {grupo.franjas.map(f => <label key={f.idFranja} className="block"><input type="checkbox" checked={franjas.includes(f.idFranja)} onChange={e => { setElegido(''); setDatos(null); setFranjas(ids => e.target.checked ? [...ids, f.idFranja] : ids.filter(id => id !== f.idFranja)); }} /> {f.diaSemana} {f.horaInicio}–{f.horaFin} · {grupo.docentes.find(d => d.idDocente === f.idDocente)?.nombre ?? 'Sin docente'}</label>)}
     </fieldset>
     {sinHorario && <p role="note" className="bg-violet-50 text-violet-900 p-3 rounded-lg">Horario por definir: lo define el docente asignado.</p>}
-    {!hayQueAsignar && <p>{grupo.franjas.length === 0 ? 'Este grupo aún no tiene franjas de horario: no hay nada que asignar. Programe primero su horario (o, si es virtual, márquelo como virtual al crearlo) y luego asigne el docente.' : 'Selecciona al menos una franja.'}</p>}
+    {!hayQueAsignar && <p>{grupo.franjas.length === 0 ? 'Este grupo aún no tiene franjas de horario: no hay nada que asignar. Programe primero su horario (o, si es virtual o a distancia, créelo con esa modalidad) y luego asigne el docente.' : 'Selecciona al menos una franja.'}</p>}
     {hayQueAsignar && !datos && !error && <p role="status">{sinHorario ? 'Consultando candidatos…' : 'Consultando candidatos para estas franjas…'}</p>}
     {apto?.avisos?.length ? <p role="status" className="bg-amber-50 text-amber-900 p-3 rounded-lg">Al confirmar con {apto.nombre}: {apto.avisos.join('. ')}.</p> : null}
     {error && <p role="alert" className="whitespace-pre-wrap text-red-700">{error}</p>}

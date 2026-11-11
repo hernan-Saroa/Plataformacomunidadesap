@@ -25,7 +25,7 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
 
   beforeEach(() => {
     reiniciarCacheProgramacion();
-    delete process.env.PROG_CONCERTACION_HABILITADA;
+    process.env.PROG_CONCERTACION_HABILITADA = 'false';
     pa = { habilitada: true, desdePeriodo: '2050-1' };
     fetchMock = jest.fn(async () => {
       if (pa === 'caido') throw new Error('ECONNREFUSED');
@@ -125,7 +125,7 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
       ['ambos encendidos', true, true],
     ];
     it.each(casos)('%s', async (_n, ptaOn, paOn) => {
-      if (ptaOn) encender(); else delete process.env.PROG_CONCERTACION_HABILITADA;
+      if (ptaOn) encender(); else process.env.PROG_CONCERTACION_HABILITADA = 'false';
       pa = { habilitada: paOn && ptaOn, desdePeriodo: '2050-1' }; // PA solo se declara encendida si el PTA también
       const regimen = await regimenDocencia(borrador);
       const apruebaElPta = regimen === 'actual';

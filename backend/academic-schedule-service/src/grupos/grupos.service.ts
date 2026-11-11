@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
-import { GrupoEntity, MODALIDADES_GRUPO, TIPOS_OFERTA, type ModalidadGrupo, type TipoOferta } from './grupo.entity.js';
+import { esSinAula, GrupoEntity, MODALIDADES_GRUPO, TIPOS_OFERTA, type ModalidadGrupo, type TipoOferta } from './grupo.entity.js';
 import { parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 import { siguienteNumeroGrupo } from './numeracion-grupo.js';
 import { AsignaturaCatalogoEntity } from '../catalogo/entities/asignatura.readonly.entity.js';
@@ -31,7 +31,7 @@ export interface CrearGrupoDto {
 function validarModalidad(m: unknown): ModalidadGrupo {
   if (m === undefined || m === null) return 'presencial';
   if (!MODALIDADES_GRUPO.includes(m as ModalidadGrupo)) {
-    throw new BadRequestException("La modalidad del grupo debe ser 'presencial' o 'virtual'.");
+    throw new BadRequestException("La modalidad del grupo debe ser 'presencial', 'virtual' o 'distancia'.");
   }
   return m as ModalidadGrupo;
 }
@@ -177,13 +177,13 @@ export class GruposService {
     }
     if (dto.modalidad !== undefined) {
       const modalidad = validarModalidad(dto.modalidad);
-      if (modalidad === 'virtual' && grupo.modalidad !== 'virtual') {
+      if (esSinAula(modalidad) && !esSinAula(grupo.modalidad)) {
         const presenciales = await this.grupoRepo.query(
           `SELECT 1 FROM "academic-schedule".franja_horaria
             WHERE id_grupo = $1 AND (tipo_sesion = 'presencial' OR aula_codigo IS NOT NULL) LIMIT 1`, [idGrupo]);
         if (presenciales.length) {
           throw new BadRequestException(
-            'El grupo tiene sesiones presenciales o con aula: quítelas antes de volverlo virtual.');
+            `El grupo tiene sesiones presenciales o con aula: quítelas antes de volverlo ${modalidad === 'distancia' ? 'a distancia' : 'virtual'}.`);
         }
       }
       grupo.modalidad = modalidad;

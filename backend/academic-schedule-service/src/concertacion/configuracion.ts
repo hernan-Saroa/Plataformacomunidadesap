@@ -22,13 +22,19 @@
  * igual que en el PTA, pero la firma SÍ se registra en el servidor.
  */
 export function concertacionHabilitada(): boolean {
-  return String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim().toLowerCase() === 'true'
+  // ENCENDIDA POR DEFECTO (nov-2026, pedido de Tomás): la concertación es el ÚNICO camino
+  // para concertar la docencia en todos los ambientes. Solo `false` la apaga.
+  return String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim().toLowerCase() !== 'false'
     && desdePeriodo() !== null;
 }
+
+/** Corte cuando el ambiente no define PROG_CONCERTACION_DESDE_PERIODO. */
+export const CORTE_POR_DEFECTO = '2026-1';
 
 /** Código del periodo de corte (año-semestre). null = sin corte válido. */
 export function desdePeriodo(): string | null {
   const v = String(process.env.PROG_CONCERTACION_DESDE_PERIODO ?? '').trim();
+  if (!v) return CORTE_POR_DEFECTO; // sin variable: corte por defecto; mal escrita: null (apagada)
   return /^\d{4}-[12]$/.test(v) ? v : null;
 }
 

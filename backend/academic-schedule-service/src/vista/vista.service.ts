@@ -11,6 +11,7 @@ import { SQL_CICLO_EFECTIVO } from '../horarios/choque.js';
 import { condicionPeriodoGrupo, parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 import { topeDeDocencia } from '../asignaciones/tope.js';
 import { normalizarVinculacion, type Vinculacion } from './vinculacion.js';
+import { esSinAula } from '../grupos/grupo.entity.js';
 
 /**
  * Datos de las dos vistas que construye Codex — contratos en INTEGRACION-claude.md §19.
@@ -221,7 +222,7 @@ export class VistaService {
           }
           const { _fechas, _idDocenteGrupo, ...resto } = g;
           // Grupo virtual sin franjas (063): el horario lo define el docente asignado.
-          const horarioPorDefinir = g.modalidad === 'virtual' && g.franjas.length === 0;
+          const horarioPorDefinir = esSinAula(g.modalidad) && g.franjas.length === 0;
           const asignado = horarioPorDefinir && _idDocenteGrupo
             ? docentes.get(_idDocenteGrupo) ?? { idDocente: _idDocenteGrupo, documento: null, nombre: null, vinculacion: null }
             : null;
