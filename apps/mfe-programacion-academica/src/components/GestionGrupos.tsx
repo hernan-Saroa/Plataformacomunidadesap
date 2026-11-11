@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Layers3, Loader2, Plus, Trash2, User, Users } from 'lucide-react';
 
 import {
-  actualizarOfertaCetapGrupo, crearGrupos, eliminarGrupo, getGrupos, getOfertasCetapGrupo,
-  type Grupo, type ModalidadGrupo, type OfertaCetapGrupo,
+  actualizarOfertaCetapGrupo, crearGrupos, eliminarGrupo, getEstadoOfertasCetap, getGrupos, getOfertasCetapGrupo,
+  type EstadoOfertasCetap, type Grupo, type ModalidadGrupo, type OfertaCetapGrupo,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 
@@ -95,6 +95,8 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const [ofertas, setOfertas] = useState<OfertaCetapGrupo[]>([]);
   const [cargandoOfertas, setCargandoOfertas] = useState(true);
   const [errorOfertas, setErrorOfertas] = useState('');
+  // Por qué no hay (o faltan) CETAP que elegir: periodo sin carga, programa no ofertado, sin territorial.
+  const [estadoOfertas, setEstadoOfertas] = useState<EstadoOfertasCetap | null>(null);
   const [ofertaNueva, setOfertaNueva] = useState('');
   const [ofertaEditada, setOfertaEditada] = useState<Record<string, string>>({});
   const [guardandoOferta, setGuardandoOferta] = useState<string | null>(null);
@@ -123,6 +125,10 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       .then((data) => { if (vigente) setOfertas(data); })
       .catch((e) => { if (vigente) setErrorOfertas(e?.message || 'No se pudieron cargar las ofertas CETAP.'); })
       .finally(() => { if (vigente) setCargandoOfertas(false); });
+    setEstadoOfertas(null);
+    getEstadoOfertasCetap(idAsignatura, idPeriodo)
+      .then((e) => { if (vigente) setEstadoOfertas(e); })
+      .catch(() => { /* el diagnóstico es un apoyo: si falla, queda el mensaje general */ });
     return () => { vigente = false; };
   }, [idAsignatura, idPeriodo]);
 
@@ -239,9 +245,13 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
 
       {cargandoOfertas && <p className="px-4 py-2 text-xs text-slate-500">Consultando ofertas CETAP…</p>}
       {errorOfertas && <p role="alert" className="px-4 py-2 text-xs text-amber-800">No se pudieron cargar las ofertas CETAP. Puedes crear grupos sin oferta y asignarla después. {errorOfertas}</p>}
+      {!cargandoOfertas && !errorOfertas && ofertas.length > 0 && estadoOfertas?.motivo && (
+        <p role="note" className="px-4 py-2 text-xs text-amber-800">{estadoOfertas.motivo}</p>
+      )}
       {!cargandoOfertas && !errorOfertas && ofertas.length === 0 && (
         <div className="px-4 py-3 text-xs text-slate-600">
           <p>No hay ofertas CETAP activas para esta asignatura y periodo. La oferta se crea al cargar el Excel del periodo; sin ella, los grupos pueden crearse, pero no concertarse.</p>
+          {estadoOfertas?.motivo && <p role="note" className="mt-2 font-semibold text-amber-800">{estadoOfertas.motivo}</p>}
           {irACarga && <button type="button" onClick={irACarga} className="mt-2 font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
         </div>
       )}

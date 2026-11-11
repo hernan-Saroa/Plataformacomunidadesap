@@ -1239,3 +1239,73 @@ Pedido de Tomás: al crear un grupo virtual (mediado por tecnologías, sin aula)
 - **Vista por niveles:** cada grupo trae `modalidad`, `horarioPorDefinir` y `docenteHorarioPorDefinir`.
 - **Pantallas:** selector de modalidad al crear grupos (Presencial / Virtual) con aviso; insignia «Virtual» en la lista y el árbol, «Horario por definir» y el docente asignado; el calendario del grupo virtual fija «Mediada por tecnología» y explica que el horario es opcional; el modal de asignación permite asignar sin franjas; en «Mi programación», la sección «Horario de mis grupos virtuales» con horas programadas/requeridas/máximas, alta y baja de sesiones y el motivo del servidor.
 - **Pruebas:** agregado real nuevo `portal-docente/grupo-virtual.agregado.spec.ts` (11 casos: presencial vacío no se asigna, candidatos y reserva de 64 h, asignación sin horario, envío bloqueado y desbloqueado, choque, alta correcta, exceso de horas, otro docente, quitar y concertación). Front: `HorarioGruposVirtuales.test.tsx` (5), `AsignacionAreaModal.virtual.test.tsx` (1) y un caso en `GestionGrupos.test.tsx`. PA backend 283/283; MFE 58/58.
+
+## 33. Roles que inciden en Programación Académica y migración 064 (9 de noviembre)
+
+Problema en QA: no se podía completar el flujo (ver la concertación de los grupos de un docente) porque faltaban roles y el superusuario no tenía todos los permisos del módulo. Los permisos se leen de `auth.role` / `auth.role_permissions`; el módulo se muestra por el **prefijo** del permiso (`programacion-academica.*`), por eso cada rol de decisión lleva también «Disponibilidad de docentes».
+
+### 33.1 · Roles y lo que pueden
+
+| Rol | Permisos | Qué hace en el flujo |
+|---|---|---|
+| **SUPER_ADMIN** (`superuser@esap.edu.co`) | los 10 de Programación Académica y los 2 del portal; `pta.review.all`, `pta.approve.all`; activar periodo extraordinario | Todo: periodos, programar, asignar, enviar, revisar, aprobar. Sin restricción geográfica. |
+| **ADMIN_PROGRAMACION** | `programacion-academica.all`, catálogo pregrado y posgrado, disponibilidad, publicar | Administra: crea y activa periodos, aulas y ofertas, programa y publica ambos niveles, y puede asignar. No decide la concertación (no tiene permisos `pta.*`). |
+| **SUBDIRECTOR_ACADEMICO** | `programacion-academica.all`, disponibilidad | Igual que administración dentro del módulo. |
+| **PROGRAMADOR_PREGRADO** / **PROGRAMADOR_POSGRADO** | `catalogo.<nivel>`, disponibilidad, publicar | Crea grupos, franjas y ciclos de SU nivel y los publica. No asigna docentes. |
+| **PROGRAMADOR_DOCENTE_PREGRADO** / **PROGRAMADOR_DOCENTE_POSGRADO** | `asignacion-docente.<nivel>`, disponibilidad | Asigna el docente del área a los grupos de su nivel y **envía a revisión**. No programa. |
+| **REVISOR_DOCENCIA_PREGRADO** / **REVISOR_DOCENCIA_POSGRADO** (nuevos) | `pta.review.academica.<nivel>`, disponibilidad | Etapa 2: revisa y firma la docencia de su nivel; puede devolverla al programador. |
+| **APROBADOR_DOCENCIA** (nuevo si no existía) | `pta.approve.academica.pregrado` y `.posgrado`, disponibilidad | Etapa 3: aprueba y firma la docencia ya revisada. |
+| **JEFATURA_TERRITORIAL** | `pta.approve.academica.<nivel>` y `.territorial.<nivel>`, `aprobacion.territorial`, disponibilidad | Aprueba la docencia de su territorial (alcance por la seccional de su persona). |
+| **DOCENTE** | `portal-transaccional.programacion-academica.view` y `.tomar` | Etapa 4: «Mi programación» (aceptar y firmar o reportar novedad) y, en grupos virtuales, define su horario. |
+| **GESTION_PROFESORAL** | (rol del PTA, sin permisos de Programación Académica) | Puede crear y activar periodos (el endpoint del PTA lo admite junto con `ADMIN_PROGRAMACION` y `SUPER_ADMIN`). |
+
+Para completar el flujo con usuarios reales basta asignar: **ADMIN_PROGRAMACION** (periodos y catálogo) → **PROGRAMADOR_PREGRADO** (grupos) → **PROGRAMADOR_DOCENTE_PREGRADO** (asigna y envía) → **REVISOR_DOCENCIA_PREGRADO** → **APROBADOR_DOCENCIA** (o JEFATURA_TERRITORIAL) → **DOCENTE**. Activar un periodo como extraordinario solo lo tiene `SUPER_ADMIN`.
+
+### 33.2 · Migración `064_roles_flujo_concertacion_y_superadmin.sql` (PA)
+- **SUPER_ADMIN** recibe todos los permisos de Programación Académica y del portal (le faltaban «Asignar docentes» pregrado y posgrado y «Publicar»; tenía 7 de 10).
+- Crea **REVISOR_DOCENCIA_PREGRADO**, **REVISOR_DOCENCIA_POSGRADO** y **APROBADOR_DOCENCIA** (solo si no existen) y les agrega los permisos que falten; si el aprobador ya existía, no se le quita nada.
+- Idempotente (probada dos veces) y con canarios: SUPER_ADMIN no puede quedar sin ningún permiso del módulo, los revisores resuelven su permiso `pta.review.academica.<nivel>` (si no está sembrado el del PTA, la migración falla y lo dice) y no pueden programar, asignar ni publicar.
+- Prueba de agregado `auth/roles-flujo.agregado.spec.ts` (4 casos).
+- Verificado con un usuario de prueba con el rol revisor (`qa.revisor@esap.edu.co`, clave `Programacion2026*`, solo en la base local): la bandeja de concertación responde 200 y la lista de periodos 403, que es el perfil de «solo revisión» que ya usa la jefatura.
+
+### 33.3 · Para QA
+Aplicar la 064 en la base de QA y asignar los roles desde **Gestión de Usuarios** con el superusuario. Además, la concertación debe estar encendida en los dos servicios (`PROG_CONCERTACION_HABILITADA=true` en Programación Académica y la configuración equivalente en el PTA); si no, el flujo cae al orden anterior.
+
+## 34. Oferta CETAP al crear grupos: qué se revisó y qué se agregó (9 de noviembre)
+
+Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado sobre `micro-frontend`.
+
+### 34.1 · Cómo se arma la información (verificado)
+- El selector «Oferta CETAP» (`GET /grupos/ofertas-cetap?asignatura&periodo`) lista las **ofertas CETAP × programa × periodo** (`oferta_cetap_programa`) del programa de la asignatura en el periodo seleccionado. **No vienen del RUND ni del catálogo de CETAP:** las crea la **carga del Excel del catálogo para ese periodo** (Programas Académicos → Periodos → Importar, hoja `MATRIZ_OFERTA`). Un periodo sin carga, o cargado sin el programa de la asignatura, no tiene nada que ofrecer aunque el catálogo de CETAP esté completo.
+- El catálogo de CETAP y de direcciones territoriales lo cargan la estructura organizacional o la propia carga del Excel (`ensureCetapsFromMatriz` crea los CETAP y territoriales que falten).
+- La territorial de cada oferta sale de `direccion_territorial.codigo = auth.seccionales.cod_seccional` (cruce exacto, falla cerrado): sin esa vinculación el CETAP se puede elegir pero el grupo no se puede concertar.
+
+### 34.2 · Lo comprobado contra el código de `micro-frontend`
+- Con la oferta cargada, el flujo funciona por API y por pantalla (programadores de pregrado y posgrado, asignador y administración; la jefatura no programa y recibe 403, como corresponde).
+- **Escenario «base sin catálogo de CETAP»** (copia de la base con `cetap` en cero y sin periodos): la carga del Excel crea los 290 CETAP y las 325 ofertas, sin rechazos. Es decir, el catálogo de CETAP no tiene que estar sembrado de antemano.
+- No encontré un defecto de código que deje vacío el selector con la oferta cargada. La causa más probable en QA, por tanto, es de **datos del periodo**: el periodo no tiene cargado el Excel (o se cargó sin el programa), o se eligió un periodo del modelo anterior (legado), que no tiene ofertas por CETAP. Sin acceso a la base de QA no puedo confirmarlo: por eso lo siguiente.
+
+### 34.3 · Qué se agregó para que la causa se vea y se arregle
+- **`GET /grupos/ofertas-cetap/estado?asignatura&periodo`** (solo lectura): devuelve cuántas ofertas tiene el periodo, cuántas el programa de la asignatura, cuántos CETAP hay en el catálogo, cuántos CETAP elegibles no tienen territorial y un `motivo` listo para mostrar.
+- **Pantalla de grupos:** cuando no hay CETAP que elegir explica por qué («El periodo X no tiene la oferta por CETAP cargada: un administrador debe importar el Excel del catálogo para este periodo», «tiene N ofertas pero ninguna del programa Y», «el periodo es del modelo anterior») y avisa cuando hay CETAP sin territorial. Antes solo decía «No hay ofertas CETAP activas…».
+- **`backend/academic-schedule-service/scripts/diagnostico-oferta-cetap.sql`** (solo lectura) para correr en QA: catálogo de CETAP y territoriales, territoriales sin seccional, ofertas por periodo (0 = sin carga), programas sin oferta en periodos cargados y grupos sin oferta.
+- Pruebas: `grupos/estado-oferta-cetap.agregado.spec.ts` (4 casos contra la base real) y 2 casos en `GestionGrupos.test.tsx`.
+
+### 34.4 · Para completar el flujo en QA
+1. Un administrador (ADMIN_PROGRAMACION o SUPER_ADMIN) importa el Excel del catálogo para el periodo (`esap/programacion/resultados/2026-1/catalogo-importable-2026-1.xlsx`). Los programadores no pueden importar: dependen de ese paso.
+2. Los programadores crean los grupos y eligen el CETAP; si no sale ninguno, la pantalla ya dice por qué.
+3. Si la causa no es esa, correr `diagnostico-oferta-cetap.sql` en QA y compartir el resultado.
+
+## 35. Periodos: eliminar (superusuario) y cerrar/desactivar (quien los crea)
+
+- `DELETE /periodos-academicos/:id`: solo `SUPER_ADMIN`. Puede eliminar un periodo en planeación, concertación o cerrado; nunca el «En curso», ni uno con ofertas, CETAP o PTA asociados (409 con el detalle).
+- `POST /periodos-academicos/:id/cerrar` y `/desactivar` (ADMIN_PROGRAMACION, GESTION_PROFESORAL, SUPER_ADMIN): cerrar deja el periodo en «Cerrado» aunque sea el principal en curso (la plataforma queda sin activo hasta activar otro); desactivar saca un periodo en curso (principal o extraordinario) y lo devuelve a planeación.
+- Front (Programas Académicos → Periodos): botones «Desactivar», «Cerrar periodo» y, solo para el super, la papelera. Pruebas: `periodo-cerrar-desactivar.spec.ts`.
+
+## 36. Concertación invisible en QA/pre: era el interruptor, no los roles
+
+- El submódulo «Concertación de la docencia» no depende del rol: aparece si `GET /concertacion/configuracion` dice `habilitada`. Eso exige `PROG_CONCERTACION_HABILITADA=true` en Programación Académica **y** en el PTA, más `PROG_CONCERTACION_DESDE_PERIODO` en Programación Académica.
+- `docker-compose.pre.yml` y `docker-compose.qa.yml` no traían ninguna de esas variables: la concertación estaba apagada, el PTA seguía aprobando la Docencia y el único submódulo de aprobación era el antiguo «Aprobación territorial», que solo ve la jefatura territorial. Por eso «hacía falta» JEFATURA_TERRITORIAL.
+- Ahora ambos archivos encienden la concertación (corte 2026-1, sobreescribible con variables de entorno del servidor) y fijan las URL entre servicios. Dev y prod no se tocaron.
+- El menú muestra «Concertación de la docencia» también apagada, con el motivo, en vez de desaparecer.
+- Para que tome efecto hay que **recrear** los contenedores `academic-schedule-service` y `academic-work-plan-service` del ambiente (`docker compose -f docker-compose.<amb>.yml up -d academic-schedule-service academic-work-plan-service`) y desplegar el MFE de Programación Académica.

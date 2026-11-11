@@ -56,6 +56,68 @@ export async function ofertasCetapDe(q: Consultable, idAsignatura: string, idPer
   return filas.map(aOferta);
 }
 
+/**
+ * Estado de la oferta CETAP para una asignatura y un periodo: lo que explica por qué el
+ * selector de «Oferta CETAP» sale vacío (o con CETAP sin territorial). Solo lectura.
+ *
+ * Las ofertas (CETAP × programa × periodo) NO vienen del RUND ni del catálogo de CETAP: las
+ * crea la carga del Excel del catálogo PARA ESE PERIODO (Programas Académicos → Periodos →
+ * Importar). Un periodo sin carga —o cargado sin el programa de la asignatura— no tiene
+ * ninguna que ofrecer, aunque el catálogo de CETAP esté completo.
+ */
+export interface EstadoOfertasCetap {
+  periodoModelo: 'plataforma' | 'legado';
+  periodoCodigo: string | null;
+  programa: string | null;
+  /** Ofertas activas del periodo, de cualquier programa. */
+  ofertasDelPeriodo: number;
+  /** Ofertas activas del programa de la asignatura en el periodo (las que se pueden elegir). */
+  ofertasDelPrograma: number;
+  /** CETAP del catálogo (los carga la estructura organizacional o el Excel del catálogo). */
+  cetapsCatalogo: number;
+  /** De las elegibles, las que no tienen territorial vinculada: el grupo no se podría concertar. */
+  sinTerritorial: number;
+  /** Explicación lista para mostrar; null si todo está bien. */
+  motivo: string | null;
+}
+
+export async function estadoOfertasCetap(q: Consultable, idAsignatura: string, idPeriodoAcademico: string): Promise<EstadoOfertasCetap> {
+  const [fila] = await q.query(
+    `SELECT pa.codigo AS "periodoCodigo", pr.nombre AS programa,
+            (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa o
+              WHERE o.id_periodo_academico = pa.id AND o.activa = TRUE AND o.deleted_at IS NULL)::int AS "ofertasDelPeriodo",
+            (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa o
+              WHERE o.id_periodo_academico = pa.id AND o.id_programa = a.id_programa
+                AND o.activa = TRUE AND o.deleted_at IS NULL)::int AS "ofertasDelPrograma",
+            (SELECT COUNT(*) FROM academic_work_plan.cetap)::int AS "cetapsCatalogo"
+       FROM academic_work_plan.periodo_academico pa, academic_work_plan.asignatura a
+       JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
+      WHERE pa.id = $2::bigint AND a.id = $1::bigint`,
+    [idAsignatura, idPeriodoAcademico]);
+  const elegibles = fila ? await ofertasCetapDe(q, idAsignatura, idPeriodoAcademico) : [];
+  const sinTerritorial = elegibles.filter((o) => !o.territorial.idSeccional).length;
+  const e: EstadoOfertasCetap = {
+    periodoModelo: 'plataforma',
+    periodoCodigo: fila?.periodoCodigo ?? null,
+    programa: fila?.programa ?? null,
+    ofertasDelPeriodo: Number(fila?.ofertasDelPeriodo ?? 0),
+    ofertasDelPrograma: Number(fila?.ofertasDelPrograma ?? 0),
+    cetapsCatalogo: Number(fila?.cetapsCatalogo ?? 0),
+    sinTerritorial,
+    motivo: null,
+  };
+  if (!fila) {
+    e.motivo = 'No se encontró el periodo o la asignatura.';
+  } else if (e.ofertasDelPeriodo === 0) {
+    e.motivo = `El periodo ${e.periodoCodigo} no tiene la oferta por CETAP cargada. Un administrador debe importar el Excel del catálogo para este periodo (Programas Académicos → Periodos → Importar); sin esa carga no hay CETAP que elegir.`;
+  } else if (e.ofertasDelPrograma === 0) {
+    e.motivo = `El periodo ${e.periodoCodigo} tiene ${e.ofertasDelPeriodo} ofertas cargadas, pero ninguna del programa «${e.programa}»: según el Excel cargado, ese programa no se ofrece en este periodo.`;
+  } else if (sinTerritorial > 0) {
+    e.motivo = `${sinTerritorial} de ${e.ofertasDelPrograma} CETAP no tienen territorial vinculada: un grupo ubicado allí no se podrá concertar.`;
+  }
+  return e;
+}
+
 /** Ofertas por id (activas). */
 export async function ofertasCetapPorId(q: Consultable, ids: readonly string[]): Promise<Map<string, OfertaCetap>> {
   const unicos = [...new Set(ids.filter(Boolean))];

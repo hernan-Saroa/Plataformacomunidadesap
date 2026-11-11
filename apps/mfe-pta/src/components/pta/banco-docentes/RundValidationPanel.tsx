@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, ShieldAlert, Lock, History, ChevronDown, ChevronRight,
@@ -10,6 +11,8 @@ import { apiClient } from '../../../../../shell/src/services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
+import { nivelTituloDeFila, titulosAdicionalesDeCampos } from '../../../utils/titulosFormacion';
+import { TitulosOrigenFila } from './TitulosOrigenFila';
 import { RundDocumentManager } from './RundDocumentManager';
 import { RundExtractionPanel } from './RundExtractionPanel';
 import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
@@ -349,6 +352,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     };
   }, [viewingDoc?.displayUrl]);
   const [isEditing, setIsEditing] = useState(false);
+  // Referencia estable: el modal reinicia su formulario cuando cambia `docente`, y un objeto nuevo en cada render borraba lo digitado.
+  const docenteEdicion = useMemo(() => ({ id: tarjetaRund?.docenteId, ...docente }), [tarjetaRund?.docenteId, docente]);
   const auth = useAuth();
 
   const requestSequence = useRef(0);
@@ -1028,6 +1033,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                       const isDerived = c.obligatorio === 'Derivado';
                       const rowHasData = canUploadRundField(b.bloque, c, tarjetaRund);
                       const datoExtraido = getDatoExtraido(b.bloque, c.campo, tarjetaRund);
+                      // RUND-003: el título de la plantilla es la información precargada; los demás del nivel, información adicional.
+                      const nivelTitulo = b.bloque === 'FORMACION' ? nivelTituloDeFila(c.campo) : null;
+                      const titulosAdicionales = nivelTitulo ? titulosAdicionalesDeCampos(tarjetaRund?.bloques?.FORMACION?.campos, nivelTitulo) : [];
 
                       return (
                         <div key={idx} className="rund-checkpoint-row" data-state={isDerived ? 'Derivado' : dataState} style={{
@@ -1037,6 +1045,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                           <div className="rund-checkpoint-row__data">
                             <div className="rund-checkpoint-label">{c.campo}</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: datoExtraido !== null ? '#0F172A' : '#64748B', overflowWrap: 'anywhere' }}>{datoExtraido ?? (c.tipoSoporte === 'autorizacion_habeas_data' ? 'Validación a criterio del revisor; soporte opcional' : c.tipoSoporte === 'convalidacion_men' ? 'Origen de los títulos no informado' : 'No registrado')}</div>
+                            {nivelTitulo && <TitulosOrigenFila nivel={c.campo} tienePrecargado={datoExtraido !== null} adicionales={titulosAdicionales} />}
                             {c.tipoSoporte === 'convalidacion_men' && <p style={{ margin: '6px 0 0', fontSize: 11, lineHeight: 1.5, color: '#64748B' }}>El perfil no indica si los títulos se obtuvieron en Colombia o en otro país. Tener un título registrado no confirma que sea del exterior.</p>}
                             {hasDoc && !rowHasData && c.tipoSoporte !== 'convalidacion_men' && <p style={{ margin: '6px 0 0', fontSize: 11, lineHeight: 1.5, color: '#92400E' }}>Hay un soporte previo, pero falta registrar el dato del perfil. La revisión del archivo se conserva.</p>}
                           </div>
@@ -1216,19 +1225,18 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           </div>
         </div>
       )}
-      {isEditing && (
+      {/* Portal al body: dentro de la fila expandida el encabezado fijo de la tabla interceptaba los clics del modal. */}
+      {isEditing && createPortal(
         <BancoDocenteEditModal
-          docente={{
-            id: tarjetaRund.docenteId,
-            ...docente, // Usar datos del docente para prellenar si están disponibles
-          }}
+          docente={docenteEdicion}
           onClose={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
             fetchRundData();
             onUpdated?.();
           }}
-        />
+        />,
+        document.body,
       )}
     </div>
   );

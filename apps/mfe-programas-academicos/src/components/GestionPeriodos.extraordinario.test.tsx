@@ -5,7 +5,7 @@ import { GestionPeriodos } from './GestionPeriodos';
 import { useImportAsignaturas } from '../hooks/useImportAsignaturas';
 import { apiClient } from '../services/api/apiClient';
 const hasPermission = vi.fn();
-vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission, loading: false }) }));
+vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission, hasRole: () => false, loading: false }) }));
 vi.mock('../hooks/useImportAsignaturas', () => ({ useImportAsignaturas: vi.fn() }));
 vi.mock('../services/api/apiClient', () => ({ apiClient: { post: vi.fn() } }));
 const principal = { id: '12', codigo: '2027-2', tipo: 'semestral', nombre: null, anio: 2027, semestre: 2, fechaInicio: '2027-07-01', fechaFin: '2027-12-15', estado: 'en_curso', extraordinario: false, motivoExtraordinario: null };

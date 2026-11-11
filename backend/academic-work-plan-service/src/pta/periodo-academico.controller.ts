@@ -328,7 +328,50 @@ export class PeriodoAcademicoController {
     }
   }
 
-  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  /**
+   * POST /periodos-academicos/:id/cerrar — quien crea periodos puede cerrar uno cuando quiera,
+   * también el principal en curso (la plataforma queda sin periodo activo hasta activar otro).
+   */
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
+  @Post(':id/cerrar')
+  async cerrar(@Param('id') id: string) {
+    const period = await this.repo.findOne({ where: { id } });
+    if (!period) throw new NotFoundException('Periodo académico no encontrado.');
+    if (period.estado === 'cerrado') {
+      throw new BadRequestException(`El periodo ${period.codigo} ya está cerrado.`);
+    }
+    period.estado = 'cerrado';
+    period.extraordinario = false;
+    try {
+      return await this.repo.save(period);
+    } catch (error) {
+      this.rethrowDatabaseError(error, period.codigo);
+    }
+  }
+
+  /**
+   * POST /periodos-academicos/:id/desactivar — saca un periodo «En curso» (principal o
+   * extraordinario) y lo devuelve a planeación, sin cerrarlo.
+   */
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
+  @Post(':id/desactivar')
+  async desactivar(@Param('id') id: string) {
+    const period = await this.repo.findOne({ where: { id } });
+    if (!period) throw new NotFoundException('Periodo académico no encontrado.');
+    if (period.estado !== 'en_curso') {
+      throw new BadRequestException(`Solo se desactiva un periodo en curso; ${period.codigo} está en ${period.estado}.`);
+    }
+    period.estado = 'planeacion';
+    period.extraordinario = false;
+    try {
+      return await this.repo.save(period);
+    } catch (error) {
+      this.rethrowDatabaseError(error, period.codigo);
+    }
+  }
+
+  /** Solo el superusuario elimina periodos (jamás el activo ni uno con información asociada). */
+  @Roles('SUPER_ADMIN', 'super_admin')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     const period = await this.repo.findOne({ where: { id } });
@@ -339,12 +382,6 @@ export class PeriodoAcademicoController {
     if (period.estado === 'en_curso') {
       throw new BadRequestException('No se puede eliminar el periodo académico activo.');
     }
-    if (period.estado !== 'planeacion') {
-      throw new BadRequestException(
-        'Solo se pueden eliminar periodos que estén en planeación.',
-      );
-    }
-
     const usage = await this.getPeriodUsage(period.id, period.codigo);
     if (usage.total > 0) {
       throw new ConflictException(
