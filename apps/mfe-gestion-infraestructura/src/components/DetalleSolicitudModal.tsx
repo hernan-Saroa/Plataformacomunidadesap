@@ -190,8 +190,30 @@ const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; color
   VISTO_BUENO_REGISTRADO: { badge: 'bg-violet-100 text-violet-800 border-violet-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: BadgeCheck },
   VOBO_VALORACION_APROBADO: { badge: 'bg-violet-100 text-violet-800 border-violet-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: BadgeCheck },
   VINCULACION_TRAMITE_CONTRACTUAL: { badge: 'bg-purple-100 text-purple-800 border-purple-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: FileText },
+  CIERRE_POR_FALTA_DE_INSUMOS: { badge: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-600', colorHex: '#e11d48', icon: PackageX },
+  CIERRE_TECNICO_CONTRATACION_VALIDADO: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: CheckCircle2 },
   VOBO_VALORACION_OBSERVADO: { badge: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500', colorHex: '#d97706', icon: AlertTriangle },
+  VOBO_REVISION_TECNICA_FAVORABLE: { badge: 'bg-teal-100 text-teal-800 border-teal-200', dot: 'bg-teal-600', colorHex: '#0d9488', icon: ClipboarCheckIcon },
+  VOBO_REVISION_TECNICA_OBSERVADA: { badge: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500', colorHex: '#d97706', icon: AlertTriangle },
 };
+
+const ESTADOS_PRE_APROBACION_UMI: string[] = [
+  'RECIBIDA',
+  'EN_ANALISIS',
+  'PENDIENTE_CLASIFICACION',
+  'PENDIENTE_APROBACION',
+];
+const ESTADOS_PRE_APROBACION_TI: string[] = [
+  'REMITIDA_TI',
+  'PENDIENTE_APROBACION',
+  'RECIBIDA',
+];
+const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
+  'COMPLETADA',
+  'CERRADA',
+  'CERRADA_SIN_ATENCION',
+  'RECHAZADA',
+];
 
 const EMPTY_CS: CatalogoItem[] = [];
 
@@ -253,8 +275,31 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       });
       return mayorList.length > 0 ? mayorList : tecnicosCatalogo;
     }
-    return tecnicosCatalogo;
+    // Mantenimiento Menor: solo técnicos eléctricos y multipropósito (P3 y P4), se excluyen P5 (Coordinador)
+    const menorList = tecnicosCatalogo.filter((t) => {
+      const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+      const cod = String(t.codigo || '').toUpperCase();
+      const esP5 = rol === 'P5' || rol === 'COORDINADOR_INFRAESTRUCTURA' || cod.includes('P5');
+      if (esP5) return false;
+      const esOperativo =
+        rol === 'P3' ||
+        rol === 'P4' ||
+        rol === 'TECNICO_ELECTRICO_ESPECIALIZADO' ||
+        rol === 'TECNICO_UMI_MULTIPROPOSITO' ||
+        cod.includes('P3') ||
+        cod.includes('P4');
+      return esOperativo;
+    });
+    return menorList.length > 0
+      ? menorList
+      : tecnicosCatalogo.filter((t) => {
+          const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+          const cod = String(t.codigo || '').toUpperCase();
+          return rol !== 'P5' && rol !== 'COORDINADOR_INFRAESTRUCTURA' && !cod.includes('P5');
+        });
   }, [tecnicosCatalogo, clasificacionMantenimiento]);
+
+  
 
   // Fase 3: Visto Bueno (VoBo)
   const [mostrarModalTramiteContractual, setMostrarModalTramiteContractual] = useState<boolean>(false);
@@ -264,6 +309,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [observacionesContratoInput, setObservacionesContratoInput] = useState<string>('');
   const [enviandoTramiteContractual, setEnviandoTramiteContractual] = useState<boolean>(false);
   const [errorTramiteContractual, setErrorTramiteContractual] = useState<string>('');
+  const [voboConfigModal, setVoboConfigModal] = useState<{ modalidadVoBo?: 'UN_ACTOR' | 'DOS_ACTORES' } | null>(null);
+  const [mostrarModalRevisionVoBo, setMostrarModalRevisionVoBo] = useState<boolean>(false);
+  const [revisionConcepto, setRevisionConcepto] = useState<'FAVORABLE' | 'CON_OBSERVACIONES'>('FAVORABLE');
+  const [revisionObservacionesInput, setRevisionObservacionesInput] = useState<string>('');
+  const [ejecutandoRevisionVoBo, setEjecutandoRevisionVoBo] = useState<boolean>(false);
+  const [errorRevisionVoBo, setErrorRevisionVoBo] = useState<string>('');
   const [mostrarModalVoBo, setMostrarModalVoBo] = useState<boolean>(false);
   const [voboDecision, setVoboDecision] = useState<boolean>(true);
   const [voboObservacionesInput, setVoboObservacionesInput] = useState<string>('');
@@ -272,6 +323,97 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
 
   const [mostrarModalHistorico, setMostrarModalHistorico] = useState<boolean>(false);
   const [toastModal, setToastModal] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
+
+  // EFDS-2354: Marcar Requiere Contratación / Compra Externa directamente por Técnico o Coordinador
+  const [mostrarModalMarcarContratacion, setMostrarModalMarcarContratacion] = useState<boolean>(false);
+  const [marcarMotivoContratacion, setMarcarMotivoContratacion] = useState<string>('');
+  const [marcarInsumosContratacion, setMarcarInsumosContratacion] = useState<string>('');
+  const [enviandoMarcarContratacion, setEnviandoMarcarContratacion] = useState<boolean>(false);
+  const [errorMarcarContratacion, setErrorMarcarContratacion] = useState<string>('');
+
+  // EFDS-1735: Cierre formal por no disponibilidad de insumos
+  const [mostrarModalCierreFaltaInsumos, setMostrarModalCierreFaltaInsumos] = useState<boolean>(false);
+  const [insumosFaltantesCierre, setInsumosFaltantesCierre] = useState<string>('');
+  const [motivoCierreFaltaInsumos, setMotivoCierreFaltaInsumos] = useState<string>('');
+  const [guardandoCierreFaltaInsumos, setGuardandoCierreFaltaInsumos] = useState<boolean>(false);
+  const [errorCierreFaltaInsumos, setErrorCierreFaltaInsumos] = useState<string>('');
+  const [mostrarModalVerMotivoCierre, setMostrarModalVerMotivoCierre] = useState<boolean>(false);
+
+
+
+  const infoContratacionTecnico = useMemo(() => {
+    if (!detalle?.asignaciones || !Array.isArray(detalle.asignaciones)) return null;
+    const entry = [...detalle.asignaciones].reverse().find((a: any) =>
+      a?.requiere_contratacion === true || String(a?.motivo || '').includes('REQUIERE CONTRATACION')
+    );
+    if (!entry) return null;
+    let parsed: any = null;
+    try {
+      parsed = typeof entry.observaciones === 'string' ? JSON.parse(entry.observaciones) : entry.observaciones;
+    } catch {}
+    const rawMotivo = parsed?.motivo || entry.motivo || '';
+    const cleanMotivo = typeof rawMotivo === 'string'
+      ? rawMotivo.replace(/^Técnico marcó la solicitud como REQUIERE CONTRATACION \/ COMPRA EXTERNA\.\s*Motivo:\s*/i, '').split(' · Insumos:')[0]
+      : rawMotivo;
+    return {
+      motivo: cleanMotivo,
+      insumos: parsed?.insumosRequeridos || null,
+      marcadoPor: parsed?.marcadoPor || entry.usuario_email || null,
+      fecha: parsed?.fecha || entry.fecha || null,
+    };
+  }, [detalle?.asignaciones]);
+
+  const handleConfirmarCierreFaltaInsumos = async () => {
+    if (!idSolicitud) return;
+    const motivo = motivoCierreFaltaInsumos.trim();
+    if (motivo.length < 5) {
+      setErrorCierreFaltaInsumos('Indique la causa / motivo del cierre por falta de insumos (mínimo 5 caracteres).');
+      return;
+    }
+    setGuardandoCierreFaltaInsumos(true);
+    setErrorCierreFaltaInsumos('');
+    try {
+      const act = await infraestructuraService.cerrarPorFaltaDeInsumos(idSolicitud, {
+        insumosFaltantes: insumosFaltantesCierre.trim() || undefined,
+        motivo,
+      });
+      setDetalle(act);
+      setMostrarModalCierreFaltaInsumos(false);
+      setToastModal({ tipo: 'ok', texto: 'Solicitud cerrada formalmente por no disponibilidad de insumos (EFDS-1735).' });
+      if (onActualizar) onActualizar();
+    } catch (err: any) {
+      setErrorCierreFaltaInsumos(err?.message || 'Error al cerrar solicitud por falta de insumos.');
+    } finally {
+      setGuardandoCierreFaltaInsumos(false);
+    }
+  };
+
+  const handleMarcarRequiereContratacion = async () => {
+    if (!idSolicitud) return;
+    if (!marcarMotivoContratacion.trim() || marcarMotivoContratacion.trim().length < 5) {
+      setErrorMarcarContratacion('Por favor indica un motivo o justificación técnica válida (mínimo 5 caracteres).');
+      return;
+    }
+    setEnviandoMarcarContratacion(true);
+    setErrorMarcarContratacion('');
+    try {
+      const res = await infraestructuraService.marcarRequiereContratacion(idSolicitud, {
+        motivo: marcarMotivoContratacion.trim(),
+        insumosRequeridos: marcarInsumosContratacion.trim() || undefined,
+      });
+      if (res) setDetalle(res);
+      setToastModal({ tipo: 'ok', texto: 'Solicitud marcada como REQUIERE CONTRATACIÓN y notificada a Coordinación.' });
+      setMostrarModalMarcarContratacion(false);
+      setMarcarMotivoContratacion('');
+      setMarcarInsumosContratacion('');
+      if (onActualizar) onActualizar();
+    } catch (err: any) {
+      setErrorMarcarContratacion(err?.message || 'Error al registrar requerimiento de contratación.');
+    } finally {
+      setEnviandoMarcarContratacion(false);
+    }
+  };
+
 
   // ---------------------------------------------------------------------------
   // EFDS-1735 RF-INF-006: Valoración en campo + insumos
@@ -749,7 +891,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         idTecnicoAsignado: areaTI ? undefined : (idTecnicoAsignado || undefined),
         observaciones: aprobacionObservaciones.trim() || undefined,
         clasificacionMantenimiento,
-        requiereContratacion,
+        requiereContratacion: clasificacionMantenimiento === 'MAYOR',
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
       if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
@@ -899,6 +1041,36 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setEnviandoTramiteContractual(false);
     }
   };
+  const registrarRevisionVoBoHandler = async () => {
+    if (!idSolicitud || !detalle) return;
+    if (!revisionObservacionesInput.trim() || revisionObservacionesInput.trim().length < 5) {
+      setErrorRevisionVoBo('Debe ingresar un concepto u observaciones técnicas de al menos 5 caracteres.');
+      return;
+    }
+    setEjecutandoRevisionVoBo(true);
+    setErrorRevisionVoBo('');
+    try {
+      await infraestructuraService.registrarRevisionVoBo(idSolicitud, {
+        concepto: revisionConcepto,
+        observaciones: revisionObservacionesInput.trim(),
+      });
+      setToastModal({
+        tipo: 'ok',
+        texto: revisionConcepto === 'FAVORABLE'
+          ? 'Concepto Técnico FAVORABLE registrado exitosamente.'
+          : 'Concepto Técnico CON OBSERVACIONES registrado.',
+      });
+      setMostrarModalRevisionVoBo(false);
+      setRevisionObservacionesInput('');
+      await recargarDetalle();
+      await onCambioExitoso?.();
+    } catch (err: any) {
+      setErrorRevisionVoBo(err?.message || 'Error al registrar la revisión técnica.');
+    } finally {
+      setEjecutandoRevisionVoBo(false);
+    }
+  };
+
   const registrarVoBoHandler = async () => {
     if (!idSolicitud || !detalle) return;
     if (!voboDecision && (!voboObservacionesInput.trim() || voboObservacionesInput.trim().length < 5)) {
@@ -1173,24 +1345,24 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // Helpers permisos EFDS-1735: decidir qué botones renderizar según estado
   // ---------------------------------------------------------------------------
   const estadoActual = (detalle?.estado || '').toUpperCase();
-  // EFDS-1730 / EFDS-1734: estados pre-aprobación donde sí tiene sentido Aprobar o Rechazar la primera vez.
-  const ESTADOS_PRE_APROBACION_UMI: string[] = [
-    'RECIBIDA',
-    'EN_ANALISIS',
-    'PENDIENTE_CLASIFICACION',
-    'PENDIENTE_APROBACION',
-  ];
-  const ESTADOS_PRE_APROBACION_TI: string[] = [
-    'REMITIDA_TI',
-    'PENDIENTE_APROBACION',
-    'RECIBIDA',
-  ];
-  const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
-    'COMPLETADA',
-    'CERRADA',
-    'CERRADA_SIN_ATENCION',
-    'RECHAZADA',
-  ];
+
+  const esCerradaPorFaltaInsumos = useMemo(() => {
+    const est = String(detalle?.estado || '').toUpperCase();
+    if (est !== 'CERRADA_SIN_ATENCION') return false;
+    const mot = String(detalle?.motivoRechazo || '').toLowerCase();
+    if (mot.includes('insumo') || mot.includes('1735') || mot.includes('material')) return true;
+    if (Array.isArray(detalle?.asignaciones)) {
+      return detalle.asignaciones.some((a: any) => a?.accion === 'CIERRE_POR_FALTA_DE_INSUMOS');
+    }
+    return true;
+  }, [detalle?.estado, detalle?.motivoRechazo, detalle?.asignaciones]);
+
+  const trazaCierreInsumos = useMemo(() => {
+    if (!esCerradaPorFaltaInsumos) return null;
+    const asigs = Array.isArray(detalle?.asignaciones) ? detalle!.asignaciones : [];
+    return [...asigs].reverse().find((a: any) => a?.accion === 'CIERRE_POR_FALTA_DE_INSUMOS') || null;
+  }, [esCerradaPorFaltaInsumos, detalle?.asignaciones]);
+  // Estados pre-aprobación y finales declarados a nivel de módulo
   const sesionUmiDetalle = useMemo(() => obtenerSesionUMI(), []);
   const tienePerm = (codigo: string) => hasPerm(sesionUmiDetalle, codigo);
 
@@ -1241,10 +1413,37 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'));
 
   const esMantenimientoMayor = Boolean(
-    detalle?.clasificacionMantenimiento === 'MAYOR' ||
-    clasificacionMantenimiento === 'MAYOR' ||
-    detalle?.requiereContratacion
+    String(detalle?.clasificacionMantenimiento || '').toUpperCase() === 'MAYOR' ||
+    clasificacionMantenimiento === 'MAYOR'
   );
+  // Filtrado para modal de redistribución (EFDS-2353/2354)
+  const tecnicosRedistFiltrados = useMemo(() => {
+    if (!Array.isArray(tecnicosCatalogo)) return [];
+    if (esMantenimientoMayor) {
+      const mayorList = tecnicosCatalogo.filter((t) => {
+        const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+        const cod = String(t.codigo || '').toUpperCase();
+        return rol === 'P5' || rol === 'P3' || cod.includes('P5') || cod.includes('P3');
+      });
+      return mayorList.length > 0 ? mayorList : tecnicosCatalogo;
+    }
+    const menorList = tecnicosCatalogo.filter((t) => {
+      const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+      const cod = String(t.codigo || '').toUpperCase();
+      const esP5 = rol === 'P5' || rol === 'COORDINADOR_INFRAESTRUCTURA' || cod.includes('P5');
+      if (esP5) return false;
+      return (
+        rol === 'P3' ||
+        rol === 'P4' ||
+        rol === 'TECNICO_ELECTRICO_ESPECIALIZADO' ||
+        rol === 'TECNICO_UMI_MULTIPROPOSITO' ||
+        cod.includes('P3') ||
+        cod.includes('P4')
+      );
+    });
+    return menorList.length > 0 ? menorList : tecnicosCatalogo;
+  }, [tecnicosCatalogo, esMantenimientoMayor]);
+
   const puedeConfirmarRecepcionMateriales =
     detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS' &&
     (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all') || tienePerm('infraestructura.solicitud.execute_assigned') || tienePerm('infraestructura.solicitud.cierre_tecnico'));
@@ -1257,10 +1456,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // La validación real de "si el técnico es el asignado" la hace el backend (403 si no corresponde).
   // El frontend solo separa quién ve el botón para no confundir.
   const puedeConfirmarRecepcionMaterialesFinal = puedeConfirmarRecepcionMateriales && !esMantenimientoMayor;
-  const puedeEmitirVoBo =
-    detalle &&
-    !esAreaTI &&
-    (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.solicitud.approve') || tienePerm('infraestructura.view_all'));
+
   const puedeIniciarEjecOValoracionAsignado =
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
@@ -1313,6 +1509,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     rolesNormConformidad.has('COORDINADOR_INFRAESTRUCTURA') ||
     rolesNormConformidad.has('P5')
   ));
+
   const esResponsableTecnicoAsignado = useMemo(() => {
     if (!detalle || !sesionUmi) return false;
     const userId = String(sesionUmi.userId || '').trim().toLowerCase();
@@ -1340,6 +1537,51 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const mostrarSeccionValoraciones = tieneValoracionesRegistradas;
   const mostrarSeccionHistorico = tieneHistoricoAsignaciones;
 
+  const mostrarCardVoBo = Boolean(
+    detalle &&
+    !esAreaTI &&
+    (
+      detalle.voboFecha ||
+      detalle.requiereVoBo ||
+      (esMantenimientoMayor && !ESTADOS_PRE_APROBACION_UMI.includes(estadoActual)) ||
+      (tieneValoracionesRegistradas && !ESTADOS_PRE_APROBACION_UMI.includes(estadoActual))
+    )
+  );
+
+    const puedeEmitirVoBo = Boolean(
+    detalle &&
+    !esAreaTI &&
+    !ESTADOS_PRE_APROBACION_UMI.includes(estadoActual) &&
+    (
+      esAdminFuncionalInfra ||
+      rolesNormConformidad.has('SUPER_ADMIN') ||
+      rolesNormConformidad.has('COORDINADOR_INFRAESTRUCTURA') ||
+      rolesNormConformidad.has('P5')
+    )
+  );
+
+  const ultimaRevisionTecnica = useMemo(() => {
+    if (!Array.isArray((detalle as any)?.asignaciones)) return null;
+    const revs = (detalle as any).asignaciones.filter(
+      (a: any) => a.accion === 'VOBO_REVISION_TECNICA_FAVORABLE' || a.accion === 'VOBO_REVISION_TECNICA_OBSERVADA'
+    );
+    return revs.length > 0 ? revs[revs.length - 1] : null;
+  }, [(detalle as any)?.asignaciones]);
+
+  const puedeEmitirRevisionTecnica = Boolean(
+    detalle &&
+    !esAreaTI &&
+    !ESTADOS_PRE_APROBACION_UMI.includes(estadoActual) &&
+    (
+      esAdminFuncionalInfra ||
+      esResponsableTecnicoAsignado ||
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.execute_assigned') ||
+      tienePerm('infraestructura.solicitud.assign') ||
+      puedeAprobarAsignarUMI
+    )
+  );
+
   // EFDS-1736 helpers footer
   // Reapertura por rechazo conformidad (EFDS-1737 RF-INF-008 RECHAZADA_Y_REABIERTA):
   // Backend L2266-L2268 NUNCA borra fechaCierreTecnico (preserva auditoría del cierre #1).
@@ -1349,11 +1591,13 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     (detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION')
     && !conformidadRechazadaReabierta
   );
-  const puedeCerrarTecnicamente = Boolean(
+    const voboBloqueantePendiente = Boolean(detalle?.requiereVoBo && !detalle?.voboAprobado);
+const puedeCerrarTecnicamente = Boolean(
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
     estadoActual === 'EN_PROGRESO' &&
     !yaCerradoTecnicamente &&
+    !voboBloqueantePendiente &&
     !esSolicitanteOriginalDeEstaSolicitud &&
     !rolesNormConformidad.has('SOLICITANTE_INFRA') &&
     !rolesNormConformidad.has('ANALISTA_ASIGNADOR_UMI') &&
@@ -1402,18 +1646,6 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     ? valoraciones.filter((v) => !v.estadoAlFinalizar && !v.fechaFinValoracion).length
     : 0;
 
-  const puedeRegistrarRecepcionInsumosTecnico = !esMantenimientoMayor && !!(
-    detalle &&
-    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    estadoActual === 'EN_PROGRESO' &&
-    (
-      tienePerm('infraestructura.solicitud.execute_assigned') ||
-      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
-      tienePerm('infraestructura.solicitud.assign') ||
-      tienePerm('infraestructura.view_all')
-    )
-  );
-
   const ultimaRecepcionInsumosTecnico = useMemo(() => {
     const arr: any[] = Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones : [];
     const item = arr
@@ -1439,6 +1671,25 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       tecnico: item.tecnico_nombre_display || item.tecnico_codigo || 'Técnico',
     };
   }, [detalle]);
+
+  const tieneInsumosRelevantesParaRecepcion = Boolean(
+    detalle?.requiereContratacion ||
+    (detalle as any)?.esperaInsumosFlag ||
+    ((detalle as any)?.totalEstimadoInsumosCop && Number((detalle as any)?.totalEstimadoInsumosCop) > 0) ||
+    ultimaRecepcionInsumosTecnico
+  );
+
+  const puedeRegistrarRecepcionInsumosTecnico = !esMantenimientoMayor && !voboBloqueantePendiente && tieneInsumosRelevantesParaRecepcion && !!(
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    estadoActual === 'EN_PROGRESO' &&
+    (
+      tienePerm('infraestructura.solicitud.execute_assigned') ||
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.assign') ||
+      tienePerm('infraestructura.view_all')
+    )
+  );
 
   const usuarioEsSolicitanteOAsignador = !!(detalle && esUsuarioSolicitanteConforme);
 
@@ -1540,7 +1791,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       detalle.costoFinalEfectivoCop != null ||
       (Array.isArray(detalle.asignaciones) &&
         detalle.asignaciones.some((item) =>
-          ['FINALIZA_VALORACION_EN_ESPERA', 'FINALIZA_VALORACION_CON_DISPONIBLES', 'CIERRE_TECNICO'].includes(
+          ['FINALIZA_VALORACION_EN_ESPERA', 'FINALIZA_VALORACION_CON_DISPONIBLES', 'CIERRE_TECNICO', 'CIERRE_POR_FALTA_DE_INSUMOS', 'CIERRE_TECNICO_CONTRATACION_VALIDADO'].includes(
             String(item?.accion || ''),
           ),
         ));
@@ -1634,10 +1885,18 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   </span>
                   {detalle && (
                     <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shadow-sm ${claseEstado(detalle.estado)}`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shadow-sm ${
+                        esCerradaPorFaltaInsumos
+                          ? 'bg-rose-100 text-rose-900 border-rose-300'
+                          : claseEstado(detalle.estado)
+                      }`}
                     >
-                      {iconoEstado(detalle.estado, 13)}
-                      {detalle.estado || 'RECIBIDA'}
+                      {esCerradaPorFaltaInsumos ? (
+                        <PackageX className="w-3 h-3 text-rose-700" />
+                      ) : (
+                        iconoEstado(detalle.estado, 13)
+                      )}
+                      {esCerradaPorFaltaInsumos ? 'CERRADA POR FALTA DE INSUMOS' : (detalle.estado || 'RECIBIDA')}
                     </span>
                   )}
                   {detalle && (
@@ -1752,7 +2011,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-7 bg-white min-h-0">
+            <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-6 bg-white min-h-0">
               {cargando && !detalle && (
                 <div className="py-16 text-center text-slate-400 text-sm bg-white border border-slate-200 rounded-2xl shadow-sm">
                   <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
@@ -1854,16 +2113,27 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
 
                     <div className="space-y-2.5">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 inline-flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5" />
+                        <Building2 className="w-3.5 h-3.5 text-blue-600" />
                         Ubicación
                       </div>
                       <div className="font-semibold text-slate-800 text-base leading-6">
-                        {detalle.sede?.nombre || detalle.idSede || '—'}
+                        {detalle.nombreUbicacionDisplay ||
+                          detalle.sede?.nombre ||
+                          (detalle.cetapNombre
+                            ? `CETAP ${detalle.cetapNombre}${detalle.direccionTerritorialNombre ? ` (${detalle.direccionTerritorialNombre})` : ''}`
+                            : detalle.direccionTerritorialNombre
+                            ? `Territorial ${detalle.direccionTerritorialNombre}`
+                            : detalle.espacio?.bloque?.nombre || detalle.idSede || '—')}
                       </div>
-                      {(detalle.piso || detalle.salon || detalle.ubicacionDetalle) && (
+                      {(detalle.piso || detalle.salon || detalle.ubicacionDetalle || detalle.ubicacionAdicionalTexto) && (
                         <div className="text-xs text-slate-500 inline-flex items-start gap-1.5 leading-5">
                           <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-400" />
-                          {[detalle.piso && `Piso ${detalle.piso}`, detalle.salon, detalle.ubicacionDetalle].filter(Boolean).join(' · ')}
+                          {[
+                            detalle.piso && `Piso ${detalle.piso}`,
+                            detalle.salon,
+                            detalle.ubicacionDetalle,
+                            detalle.ubicacionAdicionalTexto,
+                          ].filter(Boolean).join(' · ')}
                         </div>
                       )}
                     </div>
@@ -2127,6 +2397,14 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                                   onClick={() => {
                                     setClasificacionMantenimiento('MENOR');
                                     setRequiereContratacion(false);
+                                    if (tecnicoManualSeleccionado) {
+                                      const sel = tecnicosCatalogo.find((t) => t.codigo === tecnicoManualSeleccionado);
+                                      const r = String(sel?.metadata?.roleCod || sel?.roleCod || '').toUpperCase();
+                                      const cd = String(sel?.codigo || '').toUpperCase();
+                                      if (r === 'P5' || r === 'COORDINADOR_INFRAESTRUCTURA' || cd.includes('P5')) {
+                                        setTecnicoManualSeleccionado('');
+                                      }
+                                    }
                                   }}
                                   className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
                                     clasificacionMantenimiento === 'MENOR'
@@ -2145,6 +2423,14 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                                   onClick={() => {
                                     setClasificacionMantenimiento('MAYOR');
                                     setRequiereContratacion(true);
+                                    if (tecnicoManualSeleccionado) {
+                                      const sel = tecnicosCatalogo.find((t) => t.codigo === tecnicoManualSeleccionado);
+                                      const r = String(sel?.metadata?.roleCod || sel?.roleCod || '').toUpperCase();
+                                      const cd = String(sel?.codigo || '').toUpperCase();
+                                      if (r === 'P4' || cd.includes('P4')) {
+                                        setTecnicoManualSeleccionado('');
+                                      }
+                                    }
                                   }}
                                   className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
                                     clasificacionMantenimiento === 'MAYOR'
@@ -2175,17 +2461,6 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                                 </div>
                               )}
 
-                              <label className="flex items-center gap-2.5 pt-1 cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={requiereContratacion}
-                                  onChange={(e) => setRequiereContratacion(e.target.checked)}
-                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-                                />
-                                <span className="text-xs font-semibold text-slate-700">
-                                  ¿Requiere Contratación / Trámite Precontractual?
-                                </span>
-                              </label>
                             </div>
 
                             {/* Selección de Técnico / Responsable de Diagnóstico */}
@@ -2628,7 +2903,11 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   )}
 
                   {/* ===== Fase 3: Visto Bueno (VoBo) Técnico / Coordinación ===== */}
-                  <div className="rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50/60 via-white to-violet-50/30 p-4 space-y-3 shadow-sm">
+                  {mostrarCardVoBo && (
+                    <div
+                      className="rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50/60 via-white to-violet-50/30 p-4 space-y-3 shadow-sm mt-5"
+                      style={{ marginTop: '1.25rem' }}
+                    >
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center border border-violet-200 shadow-sm shrink-0">
@@ -2647,7 +2926,15 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                                   ? 'bg-amber-100 text-amber-800 border-amber-300'
                                   : 'bg-purple-100 text-purple-800 border-purple-300'
                               }`}>
-                                {detalle.voboAprobado === true ? 'VoBo Aprobado · Trámite Contractual' : detalle.voboAprobado === false ? 'VoBo Observado' : 'VoBo Requerido (Mantenimiento Mayor)'}
+                                {detalle.voboAprobado === true
+                                  ? 'VoBo Aprobado · Trámite Contractual'
+                                  : detalle.voboAprobado === false
+                                  ? 'VoBo Observado'
+                                  : esMantenimientoMayor
+                                  ? 'VoBo Requerido (Mantenimiento Mayor)'
+                                  : detalle.requiereContratacion
+                                  ? 'VoBo Requerido (Compras / Insumos)'
+                                  : 'VoBo Requerido'}
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-600 border border-slate-200">
@@ -2658,6 +2945,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           <p className="text-[11px] text-slate-500 mt-0.5">
                             {detalle.voboFecha
                               ? `Emitido el ${formatearFecha(detalle.voboFecha)}${detalle.voboObservaciones ? `: "${detalle.voboObservaciones}"` : ''}`
+                              : detalle.requiereContratacion
+                              ? 'Aval formal de Coordinación GIM para autorizar el trámite de contratación externa o adquisición de insumos solicitados por el técnico.'
                               : 'Revisión y aval formal de la valoración técnica por Encargado UMI o Coordinador.'}
                           </p>
                         </div>
@@ -2674,16 +2963,20 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm shadow-violet-500/20 transition-all shrink-0"
                         >
                           <BadgeCheck className="w-3.5 h-3.5" />
-                          {detalle.voboFecha ? 'Actualizar VoBo' : (esMantenimientoMayor ? 'Emitir VoBo Coordinación' : 'Emitir Visto Bueno')}
+                          {detalle.voboFecha ? 'Actualizar VoBo' : (detalle.requiereContratacion ? 'Avalar Contratación (VoBo)' : (esMantenimientoMayor ? 'Emitir VoBo Coordinación' : 'Emitir Visto Bueno'))}
                         </button>
                       )}
                     </div>
                   </div>
+                  )}
 
                   
                   {/* ===== Fase 4: Gestión de Trámite Contractual (EFDS-2353) ===== */}
-                  {esMantenimientoMayor && (detalle.voboAprobado === true || detalle.requiereContratacion) && (
-                    <div className="rounded-2xl border-2 border-purple-200 bg-gradient-to-r from-purple-50/70 via-white to-purple-50/30 p-4 space-y-3 shadow-sm">
+                  {esMantenimientoMayor && (detalle.voboAprobado === true || Boolean(ultimoTramiteContractual)) && (
+                    <div
+                      className="rounded-2xl border-2 border-purple-200 bg-gradient-to-r from-purple-50/70 via-white to-purple-50/30 p-4 space-y-3 shadow-sm mt-5"
+                      style={{ marginTop: '1.25rem' }}
+                    >
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex items-start gap-3">
                           <div
@@ -2749,7 +3042,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   )}
 
 {mostrarSeccionHistorico && (
-                    <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/60 via-white to-indigo-50/30 p-4">
+                    <div
+                      className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/60 via-white to-indigo-50/30 p-4 mt-5"
+                      style={{ marginTop: '1.25rem' }}
+                    >
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center border border-indigo-200 shadow-sm shrink-0">
@@ -2904,7 +3200,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                       <button
                         type="button"
                         onClick={handleIniciarEjecucionDirecta}
-                        disabled={bloqueado || !!idValoracionAbierta}
+                        disabled={bloqueado || !!idValoracionAbierta || Boolean(detalle?.requiereVoBo && !detalle?.voboAprobado)}
                         title="El alcance es evidente y no requiere inspección previa. Pasa ASIGNADA → EN_PROGRESO inmediatamente."
                         className={[
                           'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
@@ -2959,6 +3255,29 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           : (idValoracionAbierta ? 'Continuar Valoración' : 'Registrar Valoración Previa')}
                       </span>
                     </button>
+
+
+
+                    {/* EFDS-1735: Cierre formal por falta de disponibilidad de insumos */}
+                    {puedeIniciarEjecOValoracion && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInsumosFaltantesCierre('');
+                          setMotivoCierreFaltaInsumos('');
+                          setErrorCierreFaltaInsumos('');
+                          setMostrarModalCierreFaltaInsumos(true);
+                        }}
+                        disabled={bloqueado}
+                        title="Cerrar solicitud formalmente si no se dispone de materiales ni alternativa viable de compra oportuna (EFDS-1735)."
+                        style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af', color: '#9f1239' }}
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm hover:bg-rose-100"
+                      >
+                        <PackageX className="w-3.5 h-3.5 text-rose-600" />
+                        Cerrar por Falta de Insumos
+                      </button>
+                    )}
+
                     {esCategoriaElectricas48 && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold whitespace-nowrap">
                         <Zap className="w-3.5 h-3.5" />
@@ -2991,6 +3310,35 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                     </button>
                   )
                 )}
+                
+                {estadoActual === 'EN_PROGRESO' && !voboBloqueantePendiente && !detalle?.requiereContratacion && (esAdminFuncionalInfra || (esResponsableTecnicoAsignado && !detalle?.voboAprobado && detalle?.estadoValoracion !== 'FINALIZADA')) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMarcarContratacion('');
+                      setMostrarModalMarcarContratacion(true);
+                    }}
+                    disabled={bloqueado}
+                    title="Indicar que la ejecución en curso requiere compras adicionales o contratación externa (EFDS-2354)."
+                    style={{ backgroundColor: '#fff1f2', borderColor: '#fecdd3', color: '#be123c' }}
+                        className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm hover:brightness-95"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5 text-rose-700" />
+                    Requiere Contratación / Compras
+                  </button>
+                )}
+
+{voboBloqueantePendiente && estadoActual === 'EN_PROGRESO' && !yaCerradoTecnicamente && (
+                  <button
+                    type="button"
+                    disabled
+                    title="Esta solicitud requiere Visto Bueno institucional (VoBo) sobre la valoración técnica. Coordinación debe aprobar la valoración antes de permitir el cierre técnico."
+                    className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl border border-amber-200 bg-amber-50/80 text-amber-800 text-xs font-bold cursor-not-allowed shadow-none"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    En espera de VoBo para Cierre
+                  </button>
+                )}
                 {puedeCerrarTecnicamente && (
                   <button
                     type="button"
@@ -3008,10 +3356,28 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                     style={{ backgroundColor: '#059669', color: '#ffffff' }}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                    {esMantenimientoMayor ? 'Cierre / Recibo a Satisfacción de Obra' : 'Cierre Técnico'}
+                    {esMantenimientoMayor
+                      ? 'Cierre / Recibo a Satisfacción de Obra'
+                      : detalle?.requiereContratacion && (rolesNormConformidad.has('COORDINADOR_INFRAESTRUCTURA') || rolesNormConformidad.has('P5') || esAdminFuncionalInfra)
+                      ? 'Validar Evidencias y Cerrar'
+                      : 'Cierre Técnico'}
                   </button>
                 )}
-                {puedeVerCierreTecnico && (
+                {/* EFDS-1735: Ver Motivo de Cierre cuando fue cerrada por falta de insumos */}
+                {esCerradaPorFaltaInsumos && (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarModalVerMotivoCierre(true)}
+                    style={{ backgroundColor: '#fff1f2', borderColor: '#fecdd3', color: '#9f1239' }}
+                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm hover:bg-rose-100"
+                    title="Ver los materiales faltantes y el motivo formal por el cual se cerró la solicitud (EFDS-1735)."
+                  >
+                    <PackageX className="w-3.5 h-3.5 text-rose-600" />
+                    Ver Motivo de Cierre
+                  </button>
+                )}
+
+                {puedeVerCierreTecnico && !esCerradaPorFaltaInsumos && (
                   <button
                     type="button"
                     onClick={() => {
@@ -3094,21 +3460,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                       </span>
                     </div>
                   )}
-                {detalle && idSolicitud && (
-                  <button
-                    type="button"
-                    onClick={handleDescargarZipEvidencias}
-                    disabled={descargandoZip}
-                    title="Descargar todas las evidencias de la solicitud empaquetadas en un archivo ZIP (radicación, valoración, cierre técnico y conformidad)."
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-indigo-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    {descargandoZip ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generando ZIP…</>
-                    ) : (
-                      <><Package className="w-3.5 h-3.5" /> Descargar ZIP evidencias</>
-                    )}
-                  </button>
-                )}
+
               </div>
               <div className="flex flex-wrap items-center gap-3 ml-auto">
                 {puedeReenviarTI && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
@@ -3791,7 +4143,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           disabled={cargandoTecnicos}
                         >
                           <option value="">— Seleccione el técnico a asignar —</option>
-                          {(tecnicosCatalogo.length > 0 ? tecnicosCatalogo : []).map((t, i) => (
+                          {(tecnicosRedistFiltrados.length > 0 ? tecnicosRedistFiltrados : []).map((t, i) => (
                             <option key={`${t.codigo || i}`} value={t.codigo}>
                               [{t.codigo}] {t.nombreDisplay || t.nombre} · Carga vigente {t.cargaVigente ?? 0}
                               {Array.isArray(t.metadata?.especialidades) && t.metadata.especialidades.length > 0
@@ -4412,7 +4764,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black">Aprobar VoBo</span>
+                            <span className="text-xs font-black">
+                              {detalle?.requiereContratacion ? "Avalar Contratación / Compra" : "Aprobar VoBo"}
+                            </span>
                             {voboDecision && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
                           </div>
                           <span className="text-[10px] text-slate-500">
@@ -4429,7 +4783,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black">Con Observaciones</span>
+                            <span className="text-xs font-black">
+                              {detalle?.requiereContratacion ? "Observar / Desestimar" : "Con Observaciones"}
+                            </span>
                             {!voboDecision && <AlertCircle className="w-4 h-4 text-amber-600" />}
                           </div>
                           <span className="text-[10px] text-slate-500">
@@ -4481,7 +4837,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                         </>
                       ) : (
                         <>
-                          <BadgeCheck className="w-3.5 h-3.5" /> Confirmar VoBo
+                          <BadgeCheck className="w-3.5 h-3.5" /> {voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}
                         </>
                       )}
                     </button>
@@ -4497,7 +4853,26 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   
       {/* Modal Vincular / Actualizar Trámite Contractual (EFDS-2353) */}
       {mostrarModalTramiteContractual && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100050,
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          className="animate-in fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !enviandoTramiteContractual) {
+              setMostrarModalTramiteContractual(false);
+            }
+          }}
+        >
           <div className="bg-white rounded-2xl max-w-lg w-full border border-purple-200 shadow-2xl overflow-hidden space-y-4">
             <div
               className="p-4 sm:p-5 text-white flex items-center justify-between border-b border-purple-800"
@@ -4631,6 +5006,322 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           onSaved={handleValoracionSaved}
         />
       )}
+    
+      {/* Modal Ver Motivo de Cierre por Falta de Insumos (EFDS-1735) */}
+      {mostrarModalVerMotivoCierre && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', zIndex: 100050 }}
+          className="flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMostrarModalVerMotivoCierre(false);
+          }}
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-rose-200 overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-rose-50 via-white to-rose-50 border-b border-rose-200/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 shadow-sm">
+                  <PackageX className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Motivo de Cierre por Falta de Insumos</h3>
+                  <p className="text-[11px] text-rose-700 font-medium">Requerimiento EFDS-1735 · Solicitud #{detalle?.consecutivo}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarModalVerMotivoCierre(false)}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1.5 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 text-xs text-rose-900 leading-relaxed">
+                Esta solicitud fue cerrada formalmente debido a que no se cuenta con los insumos en sede ni existe una alternativa viable de compra oportuna durante el periodo (evitando acumulación de pendientes en el ciclo anual).
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="block text-[10px] uppercase font-bold text-slate-500 mb-0.5">Estado de Cierre</span>
+                  <span className="font-bold text-rose-800">CERRADA POR FALTA DE INSUMOS</span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="block text-[10px] uppercase font-bold text-slate-500 mb-0.5">Fecha de Cierre</span>
+                  <span className="font-semibold text-slate-800">
+                    {detalle?.fechaCierreTecnico ? formatearFecha(detalle.fechaCierreTecnico) : 'Registrada'}
+                  </span>
+                </div>
+              </div>
+
+              {trazaCierreInsumos?.observaciones && (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Materiales / Insumos relacionados
+                  </label>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-medium">
+                    {trazaCierreInsumos.observaciones}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Causa / Justificación formal registrada
+                </label>
+                <div className="p-3.5 rounded-xl bg-white border border-rose-200 text-xs text-slate-900 font-medium leading-relaxed shadow-sm">
+                  {detalle?.motivoRechazo || trazaCierreInsumos?.motivo || 'Cierre técnico por falta de disponibilidad de insumos (EFDS-1735)'}
+                </div>
+              </div>
+
+              {(trazaCierreInsumos?.tecnico_nombre_display || detalle?.responsableAsignado) && (
+                <div className="text-[11px] text-slate-500 flex items-center gap-1.5 pt-1">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Registrado por: <strong>{trazaCierreInsumos?.tecnico_nombre_display || detalle?.responsableAsignado}</strong></span>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setMostrarModalVerMotivoCierre(false)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-xs font-bold text-white transition shadow-sm"
+              >
+                Cerrar vista
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cierre por Falta de Insumos (EFDS-1735) */}
+      {mostrarModalCierreFaltaInsumos && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 100050 }}
+          className="flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !guardandoCierreFaltaInsumos) {
+              setMostrarModalCierreFaltaInsumos(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-rose-200 overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-rose-50 via-white to-rose-50 border-b border-rose-200/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 shadow-sm">
+                  <PackageX className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Cierre por Falta de Insumos</h3>
+                  <p className="text-[11px] text-rose-700 font-medium">Requerimiento EFDS-1735 · Solicitud #{detalle?.consecutivo}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarModalCierreFaltaInsumos(false)}
+                disabled={guardandoCierreFaltaInsumos}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1.5 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 text-xs text-rose-900 leading-relaxed">
+                Permite formalizar el cierre técnico cuando, durante la evaluación, se comprueba que no se cuenta con los insumos en sede ni existe una alternativa viable de compra oportuna (evita mantener la solicitud abierta hasta el siguiente ciclo anual). La causa se conservará en la trazabilidad inmutable y se notificará al solicitante.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Materiales / Insumos faltantes requeridos (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={insumosFaltantesCierre}
+                  onChange={(e) => setInsumosFaltantesCierre(e.target.value)}
+                  placeholder="Ej: Bombillo tubular 32W, interruptor bipolar, tornillos autorroscantes..."
+                  className="w-full text-xs rounded-xl border border-slate-200 px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Causa / Justificación formal del cierre <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={motivoCierreFaltaInsumos}
+                  onChange={(e) => setMotivoCierreFaltaInsumos(e.target.value)}
+                  placeholder="Describa la no disponibilidad de los insumos y la razón por la que no es viable la compra o reposición inmediata..."
+                  className="w-full text-xs rounded-xl border border-slate-200 p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-300"
+                />
+              </div>
+
+              {errorCierreFaltaInsumos && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                  {errorCierreFaltaInsumos}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setMostrarModalCierreFaltaInsumos(false)}
+                disabled={guardandoCierreFaltaInsumos}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarCierreFaltaInsumos}
+                disabled={guardandoCierreFaltaInsumos}
+                style={{ backgroundColor: '#be123c', color: '#ffffff', borderColor: '#9f1239' }}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border text-xs font-bold text-white transition-all shadow-md active:scale-95 disabled:opacity-50 hover:brightness-110"
+              >
+                {guardandoCierreFaltaInsumos ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    <span style={{ color: '#ffffff' }}>Cerrando solicitud...</span>
+                  </>
+                ) : (
+                  <>
+                    <PackageX className="w-3.5 h-3.5 text-white" />
+                    <span style={{ color: '#ffffff' }}>Confirmar Cierre por Falta de Insumos (EFDS-1735)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Marcar Requiere Contratación (EFDS-2354) */}
+      {mostrarModalMarcarContratacion && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100050,
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          className="animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !enviandoMarcarContratacion) {
+              setMostrarModalMarcarContratacion(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-rose-50 via-purple-50 to-white border-b border-rose-200/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  style={{ backgroundColor: '#ffe4e6', color: '#be123c', borderColor: '#fecdd3' }}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center border shadow-sm shrink-0"
+                >
+                  <ShoppingCart className="w-5 h-5" style={{ color: '#be123c' }} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">
+                    Requerimiento de Contratación / Compra
+                  </h3>
+                  <p className="text-xs text-rose-700 font-semibold">
+                    EFDS-2354 · Notificación y seguimiento UMI
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarModalMarcarContratacion(false)}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1.5 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div
+                style={{ backgroundColor: '#fff1f2', borderColor: '#fecdd3', color: '#9f1239' }}
+                className="rounded-xl border p-3.5 text-xs leading-relaxed"
+              >
+                <strong>Atención:</strong> Al marcar esta opción, la solicitud pasa a estado de seguimiento contractual o de compras. El cierre técnico quedará condicionado a la validación de evidencias de contratación y recepción de insumos avaladas por Coordinación GIM.
+              </div>
+
+              {errorMarcarContratacion && (
+                <div className="rounded-xl border border-rose-300 bg-rose-100/80 p-3 text-xs text-rose-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{errorMarcarContratacion}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Justificación Técnica / Motivo de Contratación o Compra <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  value={marcarMotivoContratacion}
+                  onChange={(e) => setMarcarMotivoContratacion(e.target.value)}
+                  rows={3}
+                  placeholder="Explica detalladamente por qué el mantenimiento supera los recursos en sede y depende de compra externa o contrato..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 transition-all resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Insumos o Servicios Externos Requeridos (Opcional)
+                </label>
+                <textarea
+                  value={marcarInsumosContratacion}
+                  onChange={(e) => setMarcarInsumosContratacion(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: Tuberías de alta presión 2 pulg, accesorios de acople, cuadrilla especializada..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 transition-all resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setMostrarModalMarcarContratacion(false)}
+                disabled={enviandoMarcarContratacion}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleMarcarRequiereContratacion}
+                disabled={enviandoMarcarContratacion}
+                style={{ backgroundColor: '#be123c', color: '#ffffff', borderColor: '#9f1239' }}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50 hover:brightness-105"
+              >
+                {enviandoMarcarContratacion ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    <span style={{ color: '#ffffff' }}>Registrando...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="w-3.5 h-3.5 text-white" style={{ color: '#ffffff' }} />
+                    <span style={{ color: '#ffffff' }}>Confirmar y Notificar a Coordinación</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 };

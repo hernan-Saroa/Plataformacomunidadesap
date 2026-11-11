@@ -3,6 +3,17 @@ $ErrorActionPreference = 'Stop'
 if ($Model -notmatch '^qwen3\.5:4b(?:-[a-zA-Z0-9_.-]+)?$' -or $Model -match 'cloud') { throw 'Seleccione la etiqueta local qwen3.5:4b validada para RUND.' }
 $rundRoot = Split-Path -Parent $PSScriptRoot
 $rundConfig = Join-Path $rundRoot '.env.rund-ocr.local'
+# Este instalador corresponde al experimento LOCAL/Qwen, no al RUND/Gemma activo.
+# Nunca convertir una instalacion existente ni reemplazar su modelo silenciosamente.
+if (Test-Path -LiteralPath $rundConfig) {
+  $rundExisting = Get-Content -LiteralPath $rundConfig -Raw
+  if ($rundExisting -match '(?m)^RUND_OCR_PROVIDER=RUND\s*$' -or
+      $rundExisting -notmatch ('(?m)^RUND_OLLAMA_MODEL=' + [regex]::Escape($Model) + '\s*$') -or
+      $rundExisting -notmatch '(?m)^RUND_OCR_URL=http://localhost:8091\s*$' -or
+      $rundExisting -notmatch '(?m)^RUND_OLLAMA_URL=http://localhost:11435\s*$') {
+    throw 'Se conservo la configuracion existente. Para RUND/Gemma use node scripts/rund-ai/manage.cjs <ambiente> init; no ejecute este instalador experimental.'
+  }
+}
 if (-not (Test-Path -LiteralPath $rundConfig)) {
   $rundBytes = New-Object byte[] 32
   $rundRng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -11,6 +22,7 @@ if (-not (Test-Path -LiteralPath $rundConfig)) {
   $rundToken = [Convert]::ToBase64String($rundBytes)
   @"
 RUND_OCR_TOKEN=$rundToken
+RUND_OCR_PROVIDER=LOCAL
 RUND_OCR_URL=http://localhost:8091
 RUND_OLLAMA_URL=http://localhost:11435
 RUND_OLLAMA_MODEL=$Model
@@ -29,9 +41,6 @@ Write-Host ('RAM libre: {0:N1} GB. GPU NVIDIA compatible detectada: {1}.' -f ($r
 if (-not $rundGpu -and $rundMemory.FreePhysicalMemory -lt 8GB / 1KB) {
   Write-Warning 'La RAM disponible es reducida para CPU. Ollama comprobará si puede cargar el modelo; cierre aplicaciones si solicita más memoria.'
 }
-$rundValues = Get-Content -LiteralPath $rundConfig
-$rundValues = $rundValues -replace '^RUND_OLLAMA_MODEL=.*$', "RUND_OLLAMA_MODEL=$Model"
-$rundValues | Set-Content -LiteralPath $rundConfig -Encoding ascii
 $rundCompose = @('compose','--env-file',$rundConfig,'-f',(Join-Path $rundRoot 'docker-compose.rund-ocr.yml'))
 if ($rundGpu) { $rundCompose += @('-f',(Join-Path $rundRoot 'docker-compose.rund-ocr.gpu.yml')) }
 docker info --format '{{.ServerVersion}}'
@@ -44,14 +53,5 @@ docker @rundCompose exec -T rund-ocr python warmup.py
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar los modelos de PaddleOCR.' }
 node (Join-Path $rundRoot 'scripts/warm-rund-ollama.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Qwen 3.5 no pudo inicializar el contexto de extracción local.' }
-# El reemplazo se hace al final: solo se eliminan los pesos anteriores cuando
-# Qwen y PP-OCRv6 ya quedaron descargados y respondieron correctamente.
-$installedModels = @(docker @rundCompose exec -T rund-ollama ollama list)
-if ($LASTEXITCODE -ne 0) { throw 'No fue posible consultar los modelos locales instalados.' }
-foreach ($oldModel in @('gemma4:rund-e2b-text', 'gemma4:e2b-it-qat')) {
-  if ($installedModels -match ('^' + [regex]::Escape($oldModel) + '\s')) {
-    docker @rundCompose exec -T rund-ollama ollama rm $oldModel
-    if ($LASTEXITCODE -ne 0) { throw "No fue posible eliminar el modelo anterior $oldModel." }
-  }
-}
+# Conservar siempre los modelos existentes, aunque otro perfil ya no los use.
 Write-Host 'Motores preparados. Aplique la migración 656 y cargue las variables locales en el servicio PTA antes de habilitar RUND_OCR_ENABLED=true.'

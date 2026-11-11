@@ -592,6 +592,48 @@ export class ComiteContratacionService {
     return { cargada: true, numeral };
   }
 
+  // -------------------------------------------------------- configuración --
+
+  /**
+   * Las modalidades con umbral propio, para la pantalla de Configuración.
+   *
+   * La cuantía general se edita ahí mismo, pero una fila propia manda sobre
+   * ella para su modalidad (126): sin verla, quien cambia la general cree que
+   * movió también la directa. Con el salario del año, para decir en pesos qué
+   * significa cada cifra.
+   */
+  async umbralesPorModalidad() {
+    const em = this.dataSource.manager;
+    const filas: {
+      modalidad: string;
+      nombre: string | null;
+      valor: string;
+      unidad: 'SMMLV' | 'PESOS';
+      fundamento: string | null;
+      confirmado: boolean;
+    }[] = await em.query(
+      `SELECT u.modalidad, m.nombre, u.valor, u.unidad, u.fundamento, u.confirmado
+         FROM hiring.umbrales_comite_contratacion u
+         LEFT JOIN hiring.modalidades m ON m.codigo = u.modalidad
+        ORDER BY m.orden NULLS LAST, u.modalidad`,
+    );
+
+    const anio = Number(this.hoy().slice(0, 4));
+    const salario = await em.getRepository(Smmlv).findOne({ where: { anio } });
+
+    return {
+      smmlv: salario ? { anio: salario.anio, valor: salario.valor, confirmado: salario.confirmado } : null,
+      umbrales: filas.map((f) => ({
+        modalidad: f.modalidad,
+        modalidadNombre: f.nombre ?? f.modalidad,
+        valor: Number(f.valor),
+        unidad: f.unidad,
+        fundamento: f.fundamento,
+        confirmado: f.confirmado,
+      })),
+    };
+  }
+
   // ---------------------------------------------------------- auxiliares ---
 
   /**

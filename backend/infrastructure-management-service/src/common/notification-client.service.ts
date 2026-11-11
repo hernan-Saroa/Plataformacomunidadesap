@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { createHash } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 
@@ -18,7 +19,12 @@ export interface SendNotificationDto {
   texto_boton_accion?: string;
   url_accion?: string;
   datos_adicionales?: Record<string, any>;
+  /** Código del módulo en la configuración de notificaciones (EFDS-2406); si no viene, es este módulo. */
+  modulo?: string;
 }
+
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+const MODULO = 'gestion-infraestructura';
 
 @Injectable()
 export class NotificationClientService {
@@ -74,7 +80,8 @@ export class NotificationClientService {
       }
       await this.sendMany([{ ...dto, id_usuario_destinatario: detail.id_user }]);
       if (emailOptions && detail.email) {
-        await this.sendEmail(detail.email, emailOptions.subject, emailOptions.html);
+        // El correo es el mismo evento que la campana: la configuración los decide juntos.
+        await this.sendEmail(detail.email, emailOptions.subject, emailOptions.html, false, dto.tipo_notificacion);
       }
     } catch (err: any) {
       this.logger.error(`[notifyUser] Error notificando usuario "${userId}": ${err?.message}`);
@@ -129,8 +136,9 @@ export class NotificationClientService {
     await this.sendMany([dto]);
   }
 
-  async sendMany(dtos: SendNotificationDto[]): Promise<void> {
-    if (!dtos.length) return;
+  async sendMany(entrada: SendNotificationDto[]): Promise<void> {
+    if (!entrada.length) return;
+    const dtos = entrada.map((dto) => ({ ...dto, modulo: dto.modulo ?? MODULO }));
 
     let sentHttp = false;
     const baseUrls = this.getCandidateBaseUrls();
@@ -151,6 +159,13 @@ export class NotificationClientService {
       );
       try {
         for (const dto of dtos) {
+          // El respaldo también obedece a la configuración de notificaciones: un
+          // módulo apagado no debe avisar justo cuando el servicio central falla.
+          const decision = await this.permitidoPorConfiguracion(dto);
+          if (!decision.permitido) {
+            await this.registrarOmision(dto, decision.motivo || 'omitida');
+            continue;
+          }
           await this.dataSource.query(
             `INSERT INTO notifications.notificacion
               (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
@@ -164,7 +179,7 @@ export class NotificationClientService {
               dto.descripcion_corta ?? null,
               dto.icono ?? null,
               dto.color ?? null,
-              dto.prioridad ?? 'Media',
+              decision.prioridad ?? dto.prioridad ?? 'Media',
               dto.categoria ?? null,
               dto.tiene_accion ?? false,
               dto.texto_boton_accion ?? null,
@@ -172,11 +187,121 @@ export class NotificationClientService {
               dto.datos_adicionales ? JSON.stringify(dto.datos_adicionales) : null,
             ],
           );
+          await this.copiarAdicionales(dto, decision);
         }
         this.logger.log(`[notify][DB] Insertadas ${dtos.length} notificaciones directamente en BD`);
       } catch (err: any) {
         this.logger.error(`[notify][DB] Falló insert directo en BD: ${err?.message}`);
       }
+    }
+  }
+
+  /**
+   * Lee directo el catálogo de la configuración de notificaciones (EFDS-2406),
+   * misma base de datos. Si no existe o falla, deja pasar: el respaldo existe
+   * para no perder avisos.
+   */
+  private async permitidoPorConfiguracion(
+    dto: SendNotificationDto,
+  ): Promise<{ permitido: boolean; motivo?: string; prioridad?: string | null; adicionales?: Adicionales }> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT m.activo AS modulo_activo, e.activo AS evento_activo, e.obligatorio,
+                COALESCE(e.canal, m.canal_defecto) AS canal, e.prioridad,
+                e.roles_adicionales, e.dependencias_adicionales, e.sedes_adicionales
+           FROM notifications.modulo_notificacion m
+           LEFT JOIN notifications.evento_notificacion e
+             ON e.clave = $2 AND e.codigo_modulo = m.codigo
+          WHERE m.codigo = $1`,
+        [dto.modulo ?? MODULO, dto.tipo_notificacion],
+      );
+      if (!fila) return { permitido: true };
+      const adicionales = {
+        roles: (fila.roles_adicionales || []).map((r: string) => String(r).toUpperCase()),
+        dependencias: (fila.dependencias_adicionales || []).map(String),
+        sedes: (fila.sedes_adicionales || []).map(String),
+      };
+      if (fila.obligatorio) return { permitido: true, prioridad: fila.prioridad, adicionales };
+      if (fila.modulo_activo === false) return { permitido: false, motivo: 'modulo_inactivo' };
+      if (fila.evento_activo === false) return { permitido: false, motivo: 'evento_inactivo' };
+      if (fila.canal === 'correo') return { permitido: false, motivo: 'canal_solo_correo' };
+      return { permitido: true, prioridad: fila.prioridad, adicionales };
+    } catch (err: any) {
+      this.logger.warn(`[notify][DB] No se pudo leer la configuración de notificaciones: ${err?.message}`);
+      return { permitido: true };
+    }
+  }
+
+  /**
+   * Copia la campana a los destinatarios que el administrador sumó al aviso por
+   * rol, dependencia o sede (EFDS-2406, función 4), igual que el servicio central.
+   * El id sale del contenido y del día, con la misma fórmula del central: si luego
+   * el central manda el mismo aviso, ON CONFLICT evita duplicarlo. Nunca rompe el
+   * respaldo: si algo falla, la campana original ya quedó guardada.
+   */
+  private async copiarAdicionales(dto: SendNotificationDto, decision: { prioridad?: string | null; adicionales?: Adicionales }): Promise<void> {
+    const a = decision.adicionales;
+    if (!a || (!a.roles.length && !a.dependencias.length && !a.sedes.length)) return;
+    try {
+      const usuarios: { id_user: string }[] = await this.dataSource.query(
+        `SELECT DISTINCT u.id_user::text AS id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE COALESCE(u.is_active, true) = true
+            AND (
+              (cardinality($1::text[]) > 0 AND EXISTS (
+                 SELECT 1 FROM auth.user_roles ur
+                   JOIN auth.role r ON r.id = ur.id_rol
+                  WHERE ur.id_user = u.id_user
+                    AND COALESCE(ur.is_active, true) = true
+                    AND UPPER(r.code) = ANY($1::text[])))
+              OR (cardinality($2::bigint[]) > 0 AND p.id_dependencia = ANY($2::bigint[]))
+              OR (cardinality($3::bigint[]) > 0 AND p.id_sede = ANY($3::bigint[]))
+            )`,
+        [a.roles, a.dependencias, a.sedes],
+      );
+      const dia = new Date().toISOString().slice(0, 10);
+      for (const u of usuarios) {
+        if (!u.id_user || u.id_user === dto.id_usuario_destinatario) continue;
+        await this.dataSource.query(
+          `INSERT INTO notifications.notificacion
+            (id_notificacion, id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
+             icono, color, prioridad, categoria, tiene_accion, texto_boton_accion, url_accion, datos_adicionales)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (id_notificacion) DO NOTHING`,
+          [
+            idDeterminista(`${dto.tipo_notificacion}|${dto.titulo}|${dto.mensaje}|${u.id_user}|${dia}`),
+            u.id_user,
+            dto.tipo_notificacion,
+            dto.titulo,
+            dto.mensaje,
+            dto.descripcion_corta ?? null,
+            dto.icono ?? null,
+            dto.color ?? null,
+            decision.prioridad ?? dto.prioridad ?? 'Media',
+            dto.categoria ?? null,
+            dto.tiene_accion ?? false,
+            dto.texto_boton_accion ?? null,
+            dto.url_accion ?? null,
+            dto.datos_adicionales ? JSON.stringify(dto.datos_adicionales) : null,
+          ],
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify][DB] No se copiaron los destinatarios adicionales de "${dto.tipo_notificacion}": ${err?.message}`);
+    }
+  }
+
+  private async registrarOmision(dto: SendNotificationDto, motivo: string): Promise<void> {
+    try {
+      await this.dataSource.query(
+        `INSERT INTO notifications.envio_omitido (codigo_modulo, clave_evento, canal, destinatario, motivo, titulo)
+         VALUES ($1, $2, 'plataforma', $3, $4, $5)`,
+        [dto.modulo ?? MODULO, dto.tipo_notificacion, dto.id_usuario_destinatario, motivo, (dto.titulo || '').slice(0, 255)],
+      );
+      this.logger.log(`[notify][DB] Omitida "${dto.tipo_notificacion}" por configuración (${motivo})`);
+    } catch (err: any) {
+      this.logger.warn(`[notify][DB] No se registró la omisión: ${err?.message}`);
     }
   }
 
@@ -204,8 +329,10 @@ export class NotificationClientService {
    * Envía correo institucional a través de notifications-service (/api/v1/emails/send).
    * Log agresivo para trazabilidad de errores y resolución multi-entorno.
    * Por defecto enviarCopiaPrueba es FALSE para evitar correos duplicados innecesarios.
+   * `evento` es la clave con la que la configuración de notificaciones (EFDS-2406)
+   * decide si el correo sale; sin él, sale siempre.
    */
-  async sendEmail(to: string, subject: string, html: string, enviarCopiaPrueba = false): Promise<boolean> {
+  async sendEmail(to: string, subject: string, html: string, enviarCopiaPrueba = false, evento?: string): Promise<boolean> {
     if (!to || !to.includes('@')) {
       this.logger.warn(`[EMAIL_DISPATCH][SKIP] Destinatario "${to}" no es un correo electrónico válido.`);
       return false;
@@ -228,7 +355,8 @@ export class NotificationClientService {
     for (const targetUrl of candidateUrls) {
       try {
         this.logger.log(`[EMAIL_DISPATCH][TRY] Enviando POST a ${targetUrl}...`);
-        const res = await this.httpPostJson(targetUrl, { to, subject, html }, 5000);
+        const identidad = evento ? { modulo: MODULO, evento } : {};
+        const res = await this.httpPostJson(targetUrl, { to, subject, html, ...identidad }, 5000);
         if (res.ok) {
           this.logger.log(
             `[EMAIL_DISPATCH][SUCCESS] Correo entregado exitosamente a ${to} vía ${targetUrl} (Status: ${res.status})`,
@@ -260,7 +388,7 @@ export class NotificationClientService {
         for (const targetUrl of candidateUrls) {
           const resCopia = await this.httpPostJson(
             targetUrl,
-            { to: CORREO_PRUEBA, subject: copiaSubject, html },
+            { to: CORREO_PRUEBA, subject: copiaSubject, html, ...(evento ? { modulo: MODULO, evento } : {}) },
             5000,
           );
           if (resCopia.ok) {
@@ -275,4 +403,13 @@ export class NotificationClientService {
 
     return sent;
   }
+}
+
+/** Destinatarios que el administrador sumó al aviso (EFDS-2406, función 4). */
+type Adicionales = { roles: string[]; dependencias: string[]; sedes: string[] };
+
+/** UUID (formato v4) derivado de un texto: el mismo texto da siempre el mismo id (igual que el servicio central). */
+function idDeterminista(texto: string): string {
+  const h = createHash('sha1').update(texto).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }

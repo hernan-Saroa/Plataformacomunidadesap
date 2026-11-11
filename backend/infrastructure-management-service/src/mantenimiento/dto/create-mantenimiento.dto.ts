@@ -3,11 +3,24 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateMantenimientoDto {
-  @ApiProperty({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud' })
+  @ApiPropertyOptional({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud (Nivel Central Bogotá)' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID()
-  idSede: string;
+  idSede?: string;
+
+  @ApiPropertyOptional({ example: 1, description: 'ID de la Dirección Territorial (academic_work_plan.direccion_territorial)' })
+  @IsOptional()
+  idDireccionTerritorial?: number;
+
+  @ApiPropertyOptional({ example: 12, description: 'ID del CETAP municipal (academic_work_plan.cetap)' })
+  @IsOptional()
+  idCetap?: number;
+
+  @ApiPropertyOptional({ example: 'Salón 2do piso al lado de coordinación', description: 'Texto libre de ubicación cuando el CETAP no tiene inventario detallado (Fallback)' })
+  @IsString()
+  @IsOptional()
+  ubicacionAdicionalTexto?: string;
 
   @ApiPropertyOptional({ example: 'id-espacio-uuid', description: 'Espacio fisico asociado (catálogo de espacios)' })
   @IsString()
@@ -333,6 +346,32 @@ export class GuardarValoracionCompletaDto {
   @ValidateNested({ each: true })
   @Type(() => ValoracionInsumoDto)
   insumos: ValoracionInsumoDto[];
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'EFDS-2354: Indica si el técnico identificó que la atención depende de contratación externa o compras.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  requiereContratacion?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'EFDS-1735: Indica si la solicitud debe cerrarse directamente por no disponibilidad de insumos sin alternativa viable de compra oportuna.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  cerrarPorFaltaInsumos?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'No se dispone de insumos en bodega ni viabilidad presupuestal para compra oportuna este año fiscal.',
+    description: 'EFDS-1735: Justificación del cierre por falta de materiales.',
+  })
+  @IsString()
+  @IsOptional()
+  motivoCierreFaltaInsumos?: string;
 }
 
 export class ConfirmarRecepcionInsumosDto {
@@ -430,6 +469,16 @@ export class AsignarTecnicoPayload {
   requiereContratacion?: boolean;
 }
 
+export class RegistrarRevisionVoBoDto {
+  @ApiPropertyOptional({ example: 'FAVORABLE', enum: ['FAVORABLE', 'CON_OBSERVACIONES'], description: 'Concepto técnico de la revisión previa.' })
+  @IsString()
+  concepto: 'FAVORABLE' | 'CON_OBSERVACIONES';
+
+  @ApiPropertyOptional({ example: 'Se verificó el dimensionamiento de insumos y actividades según inspección en campo.', description: 'Observaciones del concepto técnico de revisión.' })
+  @IsString()
+  observaciones: string;
+}
+
 export class RegistrarVoBoDto {
   @ApiPropertyOptional({ example: true, description: 'Visto Bueno aprobado (true) u observado (false).' })
   @IsOptional()
@@ -472,4 +521,17 @@ export class VincularTramiteContractualDto {
   @IsOptional()
   @IsString()
   observaciones?: string;
+}
+
+
+export class MarcarRequiereContratacionDto {
+  @ApiProperty({ example: 'Se requiere contratación externa para arreglo de tuberías de alta presión.', description: 'Justificación técnica del requerimiento de contratación o compra (mínimo 5 caracteres).' })
+  @IsNotEmpty({ message: 'El motivo o justificación técnica es obligatorio.' })
+  @IsString()
+  motivo: string;
+
+  @ApiPropertyOptional({ example: 'Tubería PVC presión 2 pulgadas, codos y pegamento.', description: 'Insumos o servicios requeridos.' })
+  @IsOptional()
+  @IsString()
+  insumosRequeridos?: string;
 }

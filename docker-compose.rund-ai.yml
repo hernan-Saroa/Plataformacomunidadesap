@@ -1,0 +1,45 @@
+# Motores independientes por ambiente. No incluye PTA, chatbot ni bases de datos.
+services:
+  rund-ocr:
+    build:
+      context: ./backend/rund-ocr-service
+      dockerfile: Dockerfile.rund
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${RUND_AI_OCR_PORT:-8091}:8000'
+    volumes:
+      - paddle-models:/root/.paddleocr
+      - ocr-temp:/tmp/ocr-processing
+    networks: [rund-ai]
+    cpus: 2
+    mem_limit: 6g
+    security_opt: [no-new-privileges:true]
+  rund-ollama:
+    image: ollama/ollama@sha256:32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: '1'
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    ports:
+      - '127.0.0.1:${RUND_AI_OLLAMA_PORT:-11435}:11434'
+    volumes:
+      - ollama-models:/root/.ollama
+    networks: [rund-ai]
+    cpus: 4
+    mem_limit: 16g
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    security_opt: [no-new-privileges:true]
+networks:
+  rund-ai:
+    name: ${RUND_AI_NETWORK:?Inicialice el perfil RUND del ambiente}
+volumes:
+  paddle-models:
+  ocr-temp:
+  ollama-models:

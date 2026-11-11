@@ -24,7 +24,14 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
-import { MIME_DOCUMENTOS, MIME_ZIP, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import {
+  MAX_BYTES_OFERTA,
+  MIME_DOCUMENTOS,
+  MIME_ZIP,
+  opcionesDeCarga,
+  sha256Archivo,
+  STORAGE_PATH,
+} from '../archivos';
 
 /**
  * Recepción de ofertas — actividad 6.1 (EFDS-1155).
@@ -45,8 +52,8 @@ export class OfertasController {
     description:
       'Si la modalidad recibe ofertas, cuándo vence el plazo, cuántos días hábiles faltan y qué oferentes van registrados.',
   })
-  estado(@Param('id', ParseUUIDPipe) procesoId: string) {
-    return this.service.estado(procesoId);
+  estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.estado(procesoId, getHiringAccess(req));
   }
 
   @Put('plazo')
@@ -54,7 +61,7 @@ export class OfertasController {
   @ApiOperation({
     summary: 'Fijar o corregir el vencimiento del plazo',
     description:
-      'Hace falta cuando la modalidad no tiene plazo parametrizado, y cuando el cronograma fija una hora distinta del final del día que calcula la plataforma. Solo con la recepción abierta.',
+      'Fijarlo hace falta cuando la modalidad no tiene plazo parametrizado. Corregir uno ya fijado queda para las pruebas internas del super administrador: en la operación el cierre se mueve con una adenda de cronograma. Solo con la recepción abierta.',
   })
   fijarPlazo(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -69,10 +76,12 @@ export class OfertasController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      // Ofimáticos o un .zip con todos los documentos de la oferta (EFDS-1155).
+      // Ofimáticos o un .zip con todos los documentos de la oferta (EFDS-1155),
+      // de hasta 200 MB.
       opcionesDeCarga(
         [...MIME_DOCUMENTOS, ...MIME_ZIP],
         'El soporte de la oferta se carga en PDF, Word, Excel o un .zip con todos sus documentos',
+        MAX_BYTES_OFERTA,
       ),
     ),
   )

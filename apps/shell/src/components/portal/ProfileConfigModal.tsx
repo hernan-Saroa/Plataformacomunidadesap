@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PHOTO_ACCEPT, PHOTO_HELP, uploadOwnPhoto, usePublishedPhoto } from '../../../../shared/profile-photos';
 import { X, Save, Upload, Mail, Phone, MapPin, User, Lock, Bell } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -43,23 +44,17 @@ export function ProfileConfigModal({ isOpen, onClose, userData }: ProfileConfigM
     confirmPassword: '',
   });
 
-  const [photoPreview, setPhotoPreview] = useState(userData.foto || '');
+  const photoPreview = usePublishedPhoto();
 
   if (!isOpen) return null;
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('La imagen no debe superar 2MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-        toast.success('Foto actualizada');
-      };
-      reader.readAsDataURL(file);
+      try {
+        await uploadOwnPhoto(file);
+        toast.success('Foto enviada a validación del grupo. Se conserva la foto aprobada.');
+      } catch (error: any) { toast.error(error.message || 'No se pudo cargar la foto.'); }
     }
   };
 
@@ -136,18 +131,18 @@ export function ProfileConfigModal({ isOpen, onClose, userData }: ProfileConfigM
                 {/* Foto de Perfil */}
                 <div className="flex items-center gap-6 p-4 bg-gray-50 rounded-lg">
                   <Avatar className="w-20 h-20">
-                    <AvatarImage src={photoPreview} alt={formData.nombre} />
+                    <AvatarImage src={photoPreview || undefined} alt={formData.nombre} />
                     <AvatarFallback className="bg-[#003DA5] text-white text-xl">
                       {formData.nombre.charAt(0)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
                     <h4 className="font-semibold text-gray-900 mb-1">Foto de Perfil</h4>
-                    <p className="text-sm text-gray-600 mb-3">JPG, PNG o GIF. Máximo 2MB.</p>
+                    <p className="text-sm text-gray-600 mb-3">{PHOTO_HELP} La nueva foto requiere validación del grupo RUND.</p>
                     <input
                       type="file"
                       id="photo-upload"
-                      accept="image/*"
+                      accept={PHOTO_ACCEPT}
                       onChange={handlePhotoChange}
                       className="hidden"
                     />

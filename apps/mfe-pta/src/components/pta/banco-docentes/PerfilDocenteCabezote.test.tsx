@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
+vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn().mockResolvedValue({ id: null, url: null }) } }));
 
 // Sin `globals: true` en vitest.config.ts, @testing-library/react no desmonta
 // el render anterior por su cuenta.
@@ -104,8 +105,9 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
 
     const region = container.querySelector('section[aria-label="Cabezote del perfil docente"]');
     expect(region).toBeTruthy();
-    expect(container.querySelectorAll('dl > div > dt')).toHaveLength(6);
-    expect(container.querySelectorAll('dl > div > dd')).toHaveLength(6);
+    // 6 campos de vinculación + 3 de contacto (RUND-013).
+    expect(container.querySelectorAll('dl > div > dt')).toHaveLength(9);
+    expect(container.querySelectorAll('dl > div > dd')).toHaveLength(9);
   });
 
   it('no rompe la vista cuando el perfil llega incompleto', () => {
@@ -114,9 +116,10 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     expect(screen.getByRole('heading', { name: 'JUAN PEREZ' })).toBeTruthy();
     expect(screen.getByText('Perfil del Registro Único Nacional Docente')).toBeTruthy();
     // Sin metadatos de permisos el puntaje permanece restringido.
-    expect(screen.getAllByText('No registrado').length).toBe(3);
+    // 3 de vinculación + 3 de contacto sin dato.
+    expect(screen.getAllByText('No registrado').length).toBe(6);
     expect(screen.getByText('Información restringida')).toBeTruthy();
-    expect(container.querySelectorAll('dl > div')).toHaveLength(6);
+    expect(container.querySelectorAll('dl > div')).toHaveLength(9);
   });
 
   it('no renderiza nada sin perfil', () => {

@@ -54,6 +54,10 @@ export interface RundPerfilCabezote {
   puntaje_salarial: number | null;
   ultima_evaluacion: string | null;
   ultima_evaluacion_origen: RundUltimaEvaluacionOrigen;
+  /** RUND-013 — datos de contacto; se editan desde el cabezote con PATCH :id/contacto. */
+  correo_institucional: string | null;
+  correo_personal: string | null;
+  telefono: string | null;
   id_rund: string | null;
   periodo_carga: string | null;
   solo_lectura: true;
@@ -204,6 +208,9 @@ export function buildRundPerfilCabezote(source: Record<string, any> | null | und
     puntaje_salarial: primerNumero(perfil, ['puntaje_salarial', 'puntajeSalarial']),
     ultima_evaluacion: evaluacion.valor,
     ultima_evaluacion_origen: evaluacion.origen,
+    correo_institucional: primerTexto(perfil, ['correo_institucional', 'correoInstitucional', 'email']),
+    correo_personal: primerTexto(perfil, ['correo_personal', 'correoPersonal', 'correo_alternativo', 'correoAlternativo']),
+    telefono: primerTexto(perfil, ['telefono', 'tel_celular']),
     id_rund: primerTexto(perfil, ['id_rund', 'idRund']),
     periodo_carga: primerTexto(perfil, ['periodo_carga', 'periodoCarga']),
     solo_lectura: true,

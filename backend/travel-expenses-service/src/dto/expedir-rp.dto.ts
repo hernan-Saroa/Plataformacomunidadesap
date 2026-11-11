@@ -58,12 +58,19 @@ export class ExpedirRpDto {
   })
   codigoRp?: string;
 
-  @ApiPropertyOptional({
-    description: 'Ruta o nombre del archivo soporte PDF del RP.',
+  @ApiProperty({
+    description: 'Ruta o nombre del archivo soporte PDF del RP (obligatorio).',
     example: '20260916_RP_24567.pdf',
   })
-  @IsOptional()
-  @IsString()
+  @IsNotEmpty({ message: 'El archivo soporte del RP (comprometido) es obligatorio.' })
+  @IsString({ message: 'El archivo soporte del RP debe ser una cadena de texto.' })
+  @Matches(
+    /^.*(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i,
+    {
+      message:
+        'El archivo soporte o nomenclatura debe cumplir con la regla Fecha_RP_Número (ejemplo: 20260916_RP_24567.pdf o 2026-09-16_RP_24567.pdf).',
+    },
+  )
   soporteRpPath?: string;
 
   @ApiPropertyOptional({

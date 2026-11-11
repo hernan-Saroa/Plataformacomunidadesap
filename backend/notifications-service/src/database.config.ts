@@ -13,6 +13,7 @@ for (const candidate of envPaths) {
 }
 
 import { Notification } from './notifications/entities/notification.entity';
+import { ENTIDADES_CONFIGURACION } from './configuracion/entities/configuracion.entities';
 
 const parseBooleanEnv = (value: string | undefined, defaultValue = false): boolean => {
   if (value === undefined) return defaultValue;
@@ -27,7 +28,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   password: process.env.DB_PASS ?? 'postgres',
   database: process.env.DB_NAME ?? 'esap_db',
   schema: process.env.DB_SCHEMA ?? 'notifications',
-  entities: [Notification],
+  entities: [Notification, ...ENTIDADES_CONFIGURACION],
   synchronize: parseBooleanEnv(process.env.TYPEORM_SYNCHRONIZE, false) || process.env.TYPEORM_SYNC === 'true',
   logging: parseBooleanEnv(process.env.TYPEORM_LOGGING, false),
 };

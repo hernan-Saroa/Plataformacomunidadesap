@@ -3,7 +3,9 @@
 .rund-trace button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #ccd9ec;background:#fff;color:#174c97;border-radius:8px;padding:10px 13px;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
 .rund-trace button:hover:not(:disabled){background:#f3f7fe;border-color:#9fbae1}.rund-trace button:disabled{opacity:.5;cursor:default}
 .rund-trace button:focus-visible,.rund-trace input:focus-visible,.rund-trace select:focus-visible{outline:2px solid #4582eb;outline-offset:3px}
-.rund-trace__header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:26px;border-bottom:1px solid #e8edf5;background:linear-gradient(115deg,#f5f8ff,#fff 78%)}
+.rund-trace__header{display:flex;height:auto;min-height:0;align-items:center;justify-content:space-between;gap:18px;padding:26px;border-bottom:1px solid #e8edf5;background:linear-gradient(115deg,#f5f8ff,#fff 78%)}
+/* El modo compacto global fija la altura de cualquier clase que contenga "header". */
+.rund-trace .rund-trace__header{height:auto!important;min-height:0!important}
 .rund-trace__heading{display:flex;gap:15px;align-items:center}.rund-trace__heading h3{font-size:19px;font-weight:750;letter-spacing:-.3px;margin:4px 0 6px}
 .rund-trace__header-eyebrow{font-size:10px;color:#6680a3;font-weight:650;letter-spacing:.35px}
 .rund-trace__heading p,.rund-trace__detail-heading p{margin:0;color:#687d98;font-size:12px;line-height:1.65}

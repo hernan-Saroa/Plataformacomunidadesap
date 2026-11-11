@@ -50,7 +50,7 @@ const EXTRACTION_TEXT_LIMITS: Record<string,{ min:number; max:number }> = {
  * generada por una versión anterior tampoco pueda llegar a la base de datos.
  */
 export function extractionValueValidationError(fieldName:string, rawValue:unknown):string|null {
-  const field=EXTRACTION_FIELDS[fieldName];
+  const field=Object.prototype.hasOwnProperty.call(EXTRACTION_FIELDS,fieldName)?EXTRACTION_FIELDS[fieldName]:undefined;
   const value=typeof rawValue==='string'?rawValue.trim():'';
   if(!field)return 'El campo no admite extracción automática.';
   if(!value)return 'El valor reconocido está vacío.';
@@ -71,12 +71,18 @@ export function extractionValueValidationError(fieldName:string, rawValue:unknow
   const limit=EXTRACTION_TEXT_LIMITS[fieldName]||{min:1,max:1000};
   if(value.length<limit.min||value.length>limit.max)return `El valor debe tener entre ${limit.min} y ${limit.max} caracteres.`;
   if(['pregrado','especializacion','maestria','doctorado','posDoctorado'].includes(fieldName)
-    && ['PREGRADO','ESPECIALIZACION','MAESTRIA','DOCTORADO','POSDOCTORADO','POS DOCTORADO'].includes(comparable(value)))
+    && ['PREGRADO','ESPECIALIZACION','MAESTRIA','DOCTORADO','POSDOCTORADO','POS DOCTORADO',
+      'LICENCIADO','LICENCIADA','MAGISTER','MASTER','DOCTOR','DOCTORA','BACHELOR','ESPECIALISTA','PHD','PH.D.'].includes(comparable(value)))
     return 'Debe indicarse el nombre del título, no solamente su nivel académico.';
   return null;
 }
 
 export const allowedExtractionFields = (type: string) => Object.keys(EXTRACTION_FIELDS).filter(key => EXTRACTION_FIELDS[key].types.includes(type));
+/**
+ * Fields a document may propose. An evidence linked to a checkpoint only proposes the rows of
+ * its support type (and therefore of its tab). A general attachment is limited to its category;
+ * "Otros" accredits no profile row, so it is not analyzed.
+ */
 export function extractionFieldsForDocument(document: any) {
   if (document.tipo_soporte) return allowedExtractionFields(document.tipo_soporte);
   const categories: Record<string,string[]> = {
@@ -85,10 +91,11 @@ export function extractionFieldsForDocument(document: any) {
     CONTRATOS: ['actoAdministrativoVinculacion','fechaInicioVinculacion','fechaFinVinculacion'],
     RESOLUCIONES: ['actoAdministrativoVinculacion','fechaInicioVinculacion','fechaFinVinculacion','origenVinculacion','situacionAdministrativa','escalafon','nucleoTematico'],
     CERTIFICADOS: ['investigacion','ultimaEvaluacion','perfilAcademico'],
-    OTROS: Object.keys(EXTRACTION_FIELDS),
   };
   return categories[document.categoria_codigo] || [];
 }
+/** A suggestion is applicable only when its source document can accredit that row. */
+export const extractionFieldInScope = (document: any, campo: string) => extractionFieldsForDocument(document).includes(campo);
 export const extractionValue = (value: any) => value == null ? '' : value instanceof Date ? value.toISOString().slice(0,10) : String(value).trim();
 export const comparable = (value: any) => extractionValue(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toUpperCase();
 /** Compara códigos del perfil con los valores legibles del asistente. */
@@ -102,23 +109,97 @@ export function extractionComparisonValue(field: string, value: unknown): string
 }
 const compactAlphanumeric = (value: any) => comparable(value).replace(/[^A-Z0-9]/g, '');
 const words = (value: any): string[] => comparable(value).match(/[A-Z]{2,}/g) || [];
+const extractionMonths=['ENERO|ENE|JANUARY|JAN','FEBRERO|FEB|FEBRUARY','MARZO|MAR|MARCH','ABRIL|ABR|APRIL|APR','MAYO|MAY','JUNIO|JUN|JUNE','JULIO|JUL|JULY','AGOSTO|AGO|AUGUST|AUG','SEPTIEMBRE|SETIEMBRE|SEP|SEPT|SEPTEMBER','OCTUBRE|OCT|OCTOBER','NOVIEMBRE|NOV|NOVEMBER','DICIEMBRE|DIC|DECEMBER|DEC'];
+function explicitDateCells(text:string):string|undefined {
+  const dates=new Set<string>();
+  const cells=/\b(?:DIA|DAY)\s*[:\[\]()]*\s*([\d\s.,|/\[\]()-]+?)\s*(?:MES|MONTH)\s*[:\[\]()]*\s*([\d\s.,|/\[\]()-]+?)\s*(?:ANO|YEAR)\s*[:\[\]()]*\s*([\d\s.,|/\[\]()-]+)/g;
+  for(const match of comparable(text).matchAll(cells)){
+    const [day,month,year]=match.slice(1).map(value=>value.replace(/\D/g,''));
+    if(/^\d{1,2}$/.test(day)&&/^\d{1,2}$/.test(month)&&/^\d{4}$/.test(year))dates.add(`${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`);
+  }
+  return dates.size===1?[...dates][0]:undefined;
+}
+export const MIN_EXTRACTION_CONFIDENCE = 0.85;
+const academicFields = new Set(['pregrado','especializacion','maestria','doctorado','posDoctorado']);
+const confidenceValue = (value: unknown) => {
+  const number = typeof value === 'number' || typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(number) && number >= 0 && number <= 1 ? number : 0;
+};
+const literalValueIndex = (quote: string, value: string) => {
+  const text = comparable(quote), target = comparable(value);
+  if (!target) return -1;
+  for (let index = text.indexOf(target); index >= 0; index = text.indexOf(target, index + 1)) {
+    if (!/[\p{L}\p{N}]/u.test(text[index - 1] || '') && !/[\p{L}\p{N}]/u.test(text[index + target.length] || '')) return index;
+  }
+  return -1;
+};
+
+/** Conservative checks on OCR proposals, separate from validation of a human correction. */
+export function extractionSuggestionQualityError(suggestion: any): string | null {
+  if (!suggestion || typeof suggestion !== 'object') return 'La lectura no contiene un dato válido.';
+  const { campo, valor, evidencia } = suggestion;
+  if (extractionValueValidationError(campo, valor)) return 'El texto reconocido no tiene un formato válido para este dato.';
+  if (confidenceValue(suggestion.confianza) < MIN_EXTRACTION_CONFIDENCE) return 'La lectura no tiene suficiente confianza para proponer este dato.';
+  if (typeof evidencia !== 'string' || evidencia.trim().length < 3 || evidencia.length > 600
+    || !normalizedValueIsGrounded(EXTRACTION_FIELDS[campo], valor, evidencia)) return 'No hay un fragmento legible que respalde el valor propuesto.';
+  if (!academicFields.has(campo)) return null;
+  const tokens = words(valor);
+  if(/\b(?:FACULTAD|UNIVERSIDAD|ACTA|RECTOR|SECRETARIA|REPUBLICA|CONSIDERANDO)\b/.test(comparable(valor))) {
+    return 'El texto corresponde a un encabezado o autoridad, no a un título académico.';
+  }
+  // Do not turn merged OCR lines, identifiers or an unreadable seal into an academic title.
+  if (!tokens.length || /[\d\uFFFD_<>|]/u.test(valor) || tokens.some(token => token.length > 24 || /^[BCDFGHJKLMNPQRSTVWXYZ]{5,}$/.test(token))
+    || tokens.length === 1 && (tokens[0].length > 18 || !/[AEIOUY]/.test(tokens[0]))) {
+    return 'El título reconocido contiene texto incoherente o unido por el OCR.';
+  }
+  const index = literalValueIndex(evidencia, valor);
+  const before = comparable(evidencia).slice(Math.max(0, index - 120), index);
+  const title = comparable(valor);
+  const award = /\b(?:TITULO(?:\s+(?:PROFESIONAL|ACADEMICO|UNIVERSITARIO))?|GRADO(?:\s+ACADEMICO)?|DIPLOMA|DEGREE)\s*(?:(?:DE|EN|OF|IN|COMO|A|:|["'«»“”])\s*)*$/.test(before);
+  const level: Record<string, RegExp> = {
+    pregrado: /^(?:LICENCIAD[OA]|BACHELOR)\b/,
+    especializacion: /^(?:ESPECIALISTA|ESPECIALIZACION|SPECIALIST)\b/,
+    maestria: /^(?:MAGISTER|MAESTR[OA]|MAESTRIA|MASTER)\b/,
+    doctorado: /^(?:DOCTOR(?:A)?\s+(?:EN|OF|IN)|DOCTORADO|PH\.?D\.?)\b/,
+    posDoctorado: /\b(?:POSDOCTORAL|POSTDOCTORAL|POSDOCTORADO|POSTDOCTORADO|POST[- ]DOCTORAL)\b/,
+  };
+  if (!award && !level[campo].test(title)) return 'No se pudo identificar un título otorgado o un programa certificado en el fragmento reconocido.';
+  const detectedLevels = Object.entries(level).filter(([, pattern]) => pattern.test(title)).map(([name]) => name);
+  if (detectedLevels.some(name => name !== campo) || campo !== 'pregrado' && !detectedLevels.includes(campo)) {
+    return 'El título reconocido no corresponde de forma inequívoca al nivel académico de este dato.';
+  }
+  return null;
+}
 
 function documentTypeFromEvidence(text: string): string | undefined {
   // El OCR puede unir palabras de una etiqueta pequeña. Solo se ignoran
   // separadores: siguen siendo obligatorias las palabras del tipo documental.
   const compact = compactAlphanumeric(text);
-  const matches = [
-    /CEDULA(?:DE)?CIUDADANIA/.test(compact) && 'CC',
+  const matches = new Set([
+    /CEDULA(?:DE)?[CG]IUDADANIA/.test(compact) && 'CC',
     /CEDULA(?:DE)?EXTRANJERIA/.test(compact) && 'CE',
-    /PASAPORTE/.test(compact) && 'PA',
+    /PASAPORTE|PASSPORT/.test(compact) && 'PA',
     (/PERMISO(?:ESPECIAL)?DEPERMANENCIA/.test(compact) || /\bPEP\b/.test(comparable(text))) && 'PEP',
-  ].filter(Boolean);
-  return matches.length === 1 ? matches[0] as string : undefined;
+    /\bC\.?\s*C\.?\s*\(\s*[X✓✔]\s*\)/i.test(text) && 'CC',
+    /\bC\.?\s*E\.?\s*\(\s*[X✓✔]\s*\)/i.test(text) && 'CE',
+    /\bPAS\.?\s*\(\s*[X✓✔]\s*\)/i.test(text) && 'PA',
+  ].filter(Boolean));
+  const explicit=/\b(?:CON|TIPO\s+(?:DE\s+)?DOCUMENTO|CEDULA)\s*:?\s*(C\.?\s*C\.?|C\.?\s*E\.?|PA|PEP)\b/i.exec(text);
+  if(explicit)matches.add(explicit[1].replace(/[^A-Z]/gi,'').toUpperCase());
+  return matches.size === 1 ? [...matches][0] as string : undefined;
 }
 
 function normalizedValueIsGrounded(field: ExtractionField, value: string, quote: string): boolean {
-  if (field.date) return true;
-  if (!field.match || field.match === 'literal') return comparable(quote).includes(comparable(value));
+  if (field.date) {
+    const [year, month, day] = value.split('-');
+    const text = comparable(quote);
+    if (literalValueIndex(text, value) >= 0) return true;
+    if(explicitDateCells(quote)===value)return true;
+    if(new RegExp(`\\b0?${Number(day)}(?:[\\s./-]+|\\s+DE\\s+)(?:0?${Number(month)}|${extractionMonths[Number(month) - 1]})(?:[\\s./-]+|\\s+DE\\s+)${year}\\b`).test(text))return true;
+    return new RegExp(`\\b(?:DIA|DAY)\\s+0?${Number(day)}\\s+(?:MES|MONTH)\\s+0?${Number(month)}\\s+(?:ANO|YEAR)\\s+${year}\\b`)
+      .test(text.replace(/[\[\](){}:]/g,' ').replace(/\s+/g,' '));
+  }
+  if (!field.match || field.match === 'literal') return literalValueIndex(quote, value) >= 0;
   if (field.match === 'documentNumber') {
     const normalized = compactAlphanumeric(value);
     return normalized.length >= 5 && compactAlphanumeric(quote).includes(normalized);
@@ -131,17 +212,35 @@ function normalizedValueIsGrounded(field: ExtractionField, value: string, quote:
   if (field.match === 'documentType') {
     return documentTypeFromEvidence(quote) === comparable(value);
   }
-  const evidence = comparable(quote);
-  const hasSexMarker = /\b(SEXO|GENERO)\b/.test(evidence);
-  const female = /\bF\b|\bFEMENIN[AO]\b|\bMUJER\b/.test(evidence);
-  const male = /\bM\b|\bMASCULIN[AO]\b|\bHOMBRE\b/.test(evidence);
-  if (!hasSexMarker) return false;
+  const evidence = identityMarkerText(quote);
+  const joined=new Set([...evidence.matchAll(/\b(?:SEXO|GENERO)([FM])\b/g)].map(match=>match[1]));
+  const hasSexMarker = /\b(SEXO|GENERO)\b/.test(evidence)||joined.size>0;
+  const marked=new Set([...evidence.matchAll(/\b([FM])\s*\(\s*[X✓✔]\s*\)/g)].map(match=>match[1]));
+  if(marked.size>1||joined.size>1)return false;
+  const female = marked.size?marked.has('F'):joined.size?joined.has('F'):/\bF\b|\bFEMENIN[AO]\b|\bMUJER\b/.test(evidence);
+  const male = marked.size?marked.has('M'):joined.size?joined.has('M'):/\bM\b|\bMASCULIN[AO]\b|\bHOMBRE\b/.test(evidence);
+  if (!hasSexMarker || female === male) return false;
   if (field.match === 'gender') return (comparable(value) === 'FEMENINO' && female) || (comparable(value) === 'MASCULINO' && male);
   return (comparable(value) === 'MUJER' && female) || (comparable(value) === 'HOMBRE' && male);
 }
 
+/** Normalize spacing in fixed form labels only, never in personal values. */
+export function identityMarkerText(text: string): string {
+  return comparable(text).replace(/\bS\s+E\s+X\s+O\b/g, 'SEXO')
+    .replace(/\bG\s+E\s+N\s+E\s+R\s+O\b/g, 'GENERO');
+}
+
 function normalizeCandidateValue(fieldName: string, value: string): string {
   const normalized = comparable(value);
+  if(EXTRACTION_FIELDS[fieldName]?.date&&!/^\d{4}-\d{2}-\d{2}$/.test(value)){
+    const cells=explicitDateCells(value);
+    if(cells)return cells;
+    const date=/^(\d{1,2})(?:[\s./-]+|\s+DE\s+)([A-Z]+|\d{1,2})(?:[\s./-]+|\s+DE\s+)(\d{4})$/.exec(normalized);
+    if(date){
+      const month=/^\d+$/.test(date[2])?Number(date[2]):extractionMonths.findIndex(names=>names.split('|').includes(date[2]))+1;
+      if(month>=1&&month<=12)return `${date[3]}-${String(month).padStart(2,'0')}-${date[1].padStart(2,'0')}`;
+    }
+  }
   if (fieldName === 'documentType') return normalized;
   if (fieldName === 'documentNumber') return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   if (fieldName === 'genero') {
@@ -152,7 +251,7 @@ function normalizeCandidateValue(fieldName: string, value: string): string {
     if (['F', 'FEMENINO', 'FEMENINA', 'MUJER'].includes(normalized)) return 'Mujer';
     if (['M', 'MASCULINO', 'MASCULINA', 'HOMBRE'].includes(normalized)) return 'Hombre';
   }
-  return value.replace(/\s+/g, ' ').trim();
+  return value.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
 function compactIdentityEvidence(fieldName: string, pageText: string, value: string): string {
@@ -184,7 +283,7 @@ function compactIdentityEvidence(fieldName: string, pageText: string, value: str
     if (indexes.length < 2) return '';
     const start = Math.min(...indexes), lastValue = Math.max(...indexes);
     const end = /\b(NOMBRES?|APELLIDOS?)\b/.test(comparable(lines[lastValue + 1] || '')) ? lastValue + 1 : lastValue;
-    return end - start <= 6 ? excerpt(start, end) : indexes.map(index => lines[index]).join('\n').slice(0, 600);
+    return end - start <= 6 ? excerpt(start, end) : '';
   }
   if (fieldName === 'genero' || fieldName === 'sexoBiologico') {
     const marker = lines.findIndex(line => /\b(SEXO|GENERO)\b/.test(comparable(line)));
@@ -199,28 +298,67 @@ function compactIdentityEvidence(fieldName: string, pageText: string, value: str
   return '';
 }
 
-export function validateCandidates(raw: any, pages: any[], allowed: string[]) {
+/** Locate the actual source span, including when the model quotes only part of an OCR line. */
+function evidenceConfidence(page: any, quote: string, bestIdentityOccurrence=false): number {
+  if (!Array.isArray(page.lineas)) return confidenceValue(page.confianza);
+  const text = comparable(page.texto), target = comparable(quote);
+  if (!target) return 0;
+  const spans: { start: number; end: number; confidence: number }[] = [];
+  let cursor = 0;
+  for (const line of page.lineas) {
+    const value = comparable(line.texto);
+    const start = value ? text.indexOf(value, cursor) : -1;
+    if (start < 0) return 0;
+    cursor = start + value.length;
+    spans.push({ start, end: cursor, confidence: confidenceValue(line.confianza) });
+  }
+  let confidence = bestIdentityOccurrence?0:1, found = false, lineIndex = 0;
+  for (let start = text.indexOf(target); start >= 0; start = text.indexOf(target, start + 1)) {
+    const end = start + target.length;
+    let occurrenceConfidence=1,occurrenceFound=false;
+    while (lineIndex < spans.length && spans[lineIndex].end <= start) lineIndex++;
+    for (let index = lineIndex; index < spans.length && spans[index].start < end; index++) {
+      occurrenceConfidence = Math.min(occurrenceConfidence, spans[index].confidence);
+      occurrenceFound = true;
+    }
+    if(occurrenceFound){confidence=bestIdentityOccurrence?Math.max(confidence,occurrenceConfidence):Math.min(confidence,occurrenceConfidence);found=true;}
+  }
+  return found ? confidence : 0;
+}
+
+export type ExtractionCandidate = {
+  campo:string; valor:string; pagina:number; evidencia:string; confianza:number; baja_confianza:boolean;
+};
+
+export function validateCandidates(raw: any, pages: any[], allowed: string[]):ExtractionCandidate[] {
   if (!raw || !Array.isArray(raw.sugerencias)) throw new Error('RESPUESTA_MODELO_INVALIDA');
   const used = new Set<string>();
-  const candidates=raw.sugerencias.slice(0, 40).flatMap((item: any) => {
-    const field = EXTRACTION_FIELDS[item?.campo];
+  const candidates:ExtractionCandidate[]=raw.sugerencias.slice(0, 40).flatMap((item: any) => {
+    const field = Object.prototype.hasOwnProperty.call(EXTRACTION_FIELDS,item?.campo)?EXTRACTION_FIELDS[item.campo]:undefined;
     const page = pages.find(p => p.pagina === item?.pagina);
     const value = typeof item?.valor === 'string' ? normalizeCandidateValue(item.campo, item.valor.trim()) : '';
     let quote = typeof item?.evidencia === 'string' ? item.evidencia.trim() : '';
-    if (!field || !allowed.includes(item.campo) || used.has(item.campo) || !page || extractionValueValidationError(item.campo,value)
+    if (!field || !allowed.includes(item.campo) || used.has(item.campo) || !page || typeof item.confianza !== 'number' || extractionValueValidationError(item.campo,value)
       || quote.length < 3 || (!field.match && quote.length > 600)) return [];
     const compactQuote = field.match ? compactIdentityEvidence(item.campo, page.texto, value) : '';
     if (compactQuote && normalizedValueIsGrounded(field, value, compactQuote)) quote = compactQuote;
-    else if (!comparable(page.texto).includes(comparable(quote))) return [];
+    if (literalValueIndex(page.texto, quote) < 0) return [];
     // No se presenta un valor que no esté sustentado por el fragmento OCR.
     const grounded = normalizedValueIsGrounded(field, value, quote);
     if (!grounded) return [];
-    const confidence = Math.max(0, Math.min(1, Number(item.confianza) || 0, Number(page.confianza) || 0));
+    // An average page score must not lend confidence to an unreadable title line.
+    const confidence = Math.min(confidenceValue(item.confianza), evidenceConfidence(page, quote,Boolean(field.match)));
+    if (extractionSuggestionQualityError({ campo: item.campo, valor: value, evidencia: quote, confianza: confidence })) return [];
     used.add(item.campo);
     return [{ campo: item.campo, valor: value, pagina: page.pagina, evidencia: quote, confianza: confidence, baja_confianza: confidence < 0.85 }];
   });
   // Coherencia transversal equivalente al formulario manual: solo el
   // pasaporte admite letras; CC, CE y PEP deben conservar un número decimal.
+  return coherentIdentityCandidates(candidates);
+}
+
+/** Recheck after merging native OCR and visual fields, not only within each pass. */
+export function coherentIdentityCandidates<T extends { campo:string; valor:string }>(candidates:T[]):T[] {
   const documentType=candidates.find(item=>item.campo==='documentType')?.valor;
   return candidates.filter(item=>item.campo!=='documentNumber'||!documentType||documentType==='PA'||/^\d+$/.test(item.valor));
 }
@@ -242,11 +380,11 @@ export function extractionIds(input: any): string[] {
 }
 
 /** Se ejecuta en la MISMA transacción que la edición manual validada del perfil. */
-export async function lockExtractionSuggestions(db: any, docenteId: string, ids: string[], payload: any) {
+export async function lockExtractionSuggestions(db: any, docenteId: string, ids: string[], payload: any, humanCorrection = false) {
   await db.query('SELECT id FROM academic_work_plan."Docente" WHERE id::text = $1 FOR UPDATE', [docenteId]);
   await db.query(`SELECT p.id_person FROM auth.personas p JOIN academic_work_plan."Docente" d
     ON d."personaId"::text = p.id_person::text WHERE d.id::text = $1 FOR UPDATE OF p`, [docenteId]);
-  const rows = await db.query(`SELECT s.*, d.estado AS documento_estado, j.estado AS trabajo_estado
+  const rows = await db.query(`SELECT s.*, d.estado AS documento_estado, j.estado AS trabajo_estado, d.tipo_soporte, d.categoria_codigo
     FROM academic_work_plan."RundExtraccionSugerencia" s
     JOIN academic_work_plan."RundExtraccionTrabajo" j ON j.id = s.trabajo_id
     JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id = j.documento_id
@@ -255,7 +393,12 @@ export async function lockExtractionSuggestions(db: any, docenteId: string, ids:
   const profile = await extractionProfile(db, docenteId);
   for (const s of rows) {
     if (s.estado !== 'PENDIENTE' || s.documento_estado !== 'ACTIVO' || s.trabajo_estado !== 'COMPLETADO') throw new ConflictException('La sugerencia ya fue revisada o su PDF dejó de estar vigente. Actualice el expediente.');
-    if (!EXTRACTION_FIELDS[s.campo] || typeof payload[s.campo] !== 'string' || !payload[s.campo].trim()) throw new BadRequestException('Revise el valor del campo sugerido antes de confirmar.');
+    if (!Object.prototype.hasOwnProperty.call(EXTRACTION_FIELDS,s.campo) || typeof payload[s.campo] !== 'string' || !payload[s.campo].trim()) throw new BadRequestException('Revise el valor del campo sugerido antes de confirmar.');
+    // Older analyses of general attachments could propose rows the document does not accredit.
+    if ((s.tipo_soporte || s.categoria_codigo) && !extractionFieldInScope(s, s.campo)) throw new ConflictException('Este documento no acredita ese dato. Rechace la sugerencia.');
+    if (!humanCorrection && comparable(payload[s.campo]) === comparable(s.valor) && extractionSuggestionQualityError(s)) {
+      throw new ConflictException('La lectura OCR no es fiable. Revise el PDF y corrija el dato con su motivo o vuelva a analizar el archivo.');
+    }
     if (comparable(profile[s.campo]) !== comparable(s.valor_previo)) throw new ConflictException('El dato del perfil cambió desde la extracción. Descarte esta sugerencia y vuelva a procesar el documento.');
   }
   return rows;

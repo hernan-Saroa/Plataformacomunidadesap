@@ -22,6 +22,28 @@ import { Puede } from '../../auth/puede.guard';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
+ * Configuración: las modalidades con umbral de cuantía propio para el comité.
+ *
+ * Solo lectura. La cuantía general vive en los parámetros (126) y se guarda por
+ * su endpoint; esto es lo que la pantalla necesita para decir dónde no rige.
+ */
+@ApiTags('Etapa 3 · Comité de contratación')
+@Controller('configuracion/umbrales-comite')
+export class UmbralesComiteController {
+  constructor(private readonly service: ComiteContratacionService) {}
+
+  @Get()
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
+  @ApiOperation({
+    summary: 'Modalidades con umbral propio para ir al Comité de Contratación',
+    description: 'Cada fila manda sobre la cuantía general para su modalidad. Incluye el SMMLV del año.',
+  })
+  listar() {
+    return this.service.umbralesPorModalidad();
+  }
+}
+
+/**
  * Comité de contratación — actividad 3.7 (la 3.6 de la matriz, RF-DOC-05).
  *
  * No confundir con el comité **evaluador** de la 6.2, que es otro cuerpo y otra

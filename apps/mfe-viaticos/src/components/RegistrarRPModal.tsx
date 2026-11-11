@@ -195,22 +195,65 @@ export default function RegistrarRPModal({
     return `${f}_RP_${n}.pdf`;
   }, [fechaRp, hoy, numeroRp]);
 
-  // Validación en tiempo real del archivo PDF adjunto
+  // Validación en tiempo real del archivo PDF adjunto (obligatorio y nomenclatura Fecha_RP_Número)
   const validacionArchivo = useMemo(() => {
-    if (!nombreArchivo) {
-      return { esValido: false, mensaje: 'Adjuntar el soporte oficial del RP en formato PDF.' };
+    const limpio = (nombreArchivo || '').trim();
+    if (!limpio) {
+      return {
+        esValido: false,
+        mensaje: 'Adjuntar el soporte oficial del RP en formato PDF (obligatorio).',
+      };
     }
-    if (!nombreArchivo.toLowerCase().endsWith('.pdf')) {
-      return { esValido: false, mensaje: 'El archivo debe ser un documento en formato PDF (.pdf).' };
+
+    const nombreBase = limpio.split(/[/\\]/).pop() || '';
+    if (!nombreBase.toLowerCase().endsWith('.pdf')) {
+      return {
+        esValido: false,
+        mensaje: 'El archivo debe ser un documento en formato PDF (.pdf).',
+      };
     }
-    if (!REGEX_NOMENCLATURA_PDF.test(nombreArchivo)) {
+
+    const match = nombreBase.match(REGEX_NOMENCLATURA_PDF);
+    if (!match) {
       return {
         esValido: false,
         mensaje: `La nomenclatura del soporte es inválida. Debe cumplir el patrón 'YYYYMMDD_RP_Numero.pdf' (ej: ${nombreEsperadoEjemplo}).`,
       };
     }
-    return { esValido: true, mensaje: 'Nomenclatura oficial válida según estándar SIIF Nación.' };
-  }, [nombreArchivo, nombreEsperadoEjemplo]);
+
+    const fechaArchivoRaw = match[1];
+    const fechaArchivoSinGuiones = fechaArchivoRaw.replace(/-/g, '');
+    const mes = Number(fechaArchivoSinGuiones.slice(4, 6));
+    const dia = Number(fechaArchivoSinGuiones.slice(6, 8));
+    if (mes < 1 || mes > 12 || dia < 1 || dia > 31) {
+      return {
+        esValido: false,
+        mensaje: `La fecha '${fechaArchivoRaw}' en el nombre del archivo no es una fecha válida. Debe cumplir el patrón 'YYYYMMDD_RP_Numero.pdf' (ej: ${nombreEsperadoEjemplo}).`,
+      };
+    }
+
+    const numeroArchivo = match[2];
+    const numRpTrim = numeroRp.trim();
+    if (numRpTrim && numeroArchivo.toLowerCase() !== numRpTrim.toLowerCase()) {
+      return {
+        esValido: false,
+        mensaje: `La nomenclatura del soporte es inválida: el número en el archivo (${numeroArchivo}) no coincide con el RP registrado (${numRpTrim}). Debe cumplir el patrón 'YYYYMMDD_RP_Numero.pdf' (ej: ${nombreEsperadoEjemplo}).`,
+      };
+    }
+
+    const fechaRpSinGuiones = (fechaRp || '').trim().replace(/-/g, '');
+    if (fechaRpSinGuiones && fechaArchivoSinGuiones !== fechaRpSinGuiones) {
+      return {
+        esValido: false,
+        mensaje: `La nomenclatura del soporte es inválida: la fecha en el archivo (${fechaArchivoRaw}) no coincide con la fecha del RP (${fechaRp}). Debe cumplir el patrón 'YYYYMMDD_RP_Numero.pdf' (ej: ${nombreEsperadoEjemplo}).`,
+      };
+    }
+
+    return {
+      esValido: true,
+      mensaje: 'Nomenclatura oficial válida según estándar SIIF Nación.',
+    };
+  }, [nombreArchivo, nombreEsperadoEjemplo, numeroRp, fechaRp]);
 
   // Proyección de modalidad de pago (RF-PRE-003) con días hábiles y festivos
   const proyeccionModalidad = useMemo(() => {
@@ -230,13 +273,26 @@ export default function RegistrarRPModal({
 
     setArchivoPdf(file);
     setNombreArchivo(file.name);
+    setError(null);
 
-    if (!REGEX_NOMENCLATURA_PDF.test(file.name)) {
+    const match = file.name.match(REGEX_NOMENCLATURA_PDF);
+    if (match) {
+      const rawDate = match[1].replace(/-/g, '');
+      const mes = Number(rawDate.slice(4, 6));
+      const dia = Number(rawDate.slice(6, 8));
+      const fechaIsoArchivo = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
+      const numEnArchivo = match[2];
+
+      // Si el usuario aún no ha diligenciado el número de RP, autocompletar fecha y número desde el archivo válido
+      if (!numeroRp.trim() && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+        setNumeroRp(numEnArchivo);
+        setFechaRp(fechaIsoArchivo);
+      }
+      setErrorArchivo(null);
+    } else {
       setErrorArchivo(
         `El soporte '${file.name}' no cumple con la regla Fecha_RP_Número (ejemplo: ${nombreEsperadoEjemplo}).`,
       );
-    } else {
-      setErrorArchivo(null);
     }
   };
 
@@ -249,7 +305,8 @@ export default function RegistrarRPModal({
     Boolean(fechaRp) &&
     valorComprometido > 0 &&
     Boolean(rubroPresupuestal.trim()) &&
-    (!nombreArchivo || validacionArchivo.esValido) &&
+    Boolean(nombreArchivo.trim()) &&
+    validacionArchivo.esValido &&
     !guardando &&
     !solicitandoOtp &&
     !estaComprometida;
@@ -294,12 +351,17 @@ export default function RegistrarRPModal({
 
   // Iniciar flujo de firma digital con código OTP
   const handleIniciarFirmaOtp = async () => {
-    if (!puedeEnviar) return;
-
-    if (nombreArchivo && !validacionArchivo.esValido) {
-      setError(`La nomenclatura del archivo soporte '${nombreArchivo}' es inválida.`);
+    if (!nombreArchivo || !nombreArchivo.trim()) {
+      setError('Debe adjuntar el soporte oficial del RP en formato PDF respetando la nomenclatura Fecha_RP_Número.');
       return;
     }
+
+    if (!validacionArchivo.esValido) {
+      setError(validacionArchivo.mensaje || `La nomenclatura del archivo soporte '${nombreArchivo}' es inválida.`);
+      return;
+    }
+
+    if (!puedeEnviar) return;
 
     // Si la función solicitarOtpFirma existe en el servicio, ejecutar flujo OTP institucional
     if (typeof viaticosService.solicitarOtpFirma === 'function') {
@@ -701,10 +763,10 @@ export default function RegistrarRPModal({
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-slate-800 flex items-center space-x-1.5">
                   <FileCheck2 className="w-4 h-4 text-indigo-700" />
-                  <span>Soporte Oficial RP (PDF)</span>
+                  <span>Soporte Oficial RP (PDF) *</span>
                 </label>
                 <span className="text-[10px] text-slate-500 font-mono">
-                  Regla: YYYYMMDD_RP_Numero.pdf
+                  Obligatorio · Regla: YYYYMMDD_RP_Numero.pdf
                 </span>
               </div>
 
@@ -726,7 +788,7 @@ export default function RegistrarRPModal({
                 >
                   <UploadCloud className="w-7 h-7 text-slate-400 group-hover:text-indigo-600 mx-auto transition-colors" />
                   <p className="text-xs font-bold text-slate-700 mt-2">
-                    Haz clic para adjuntar el PDF de soporte expedido en SIIF
+                    Haz clic para adjuntar el PDF de soporte expedido en SIIF (Obligatorio)
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     El archivo debe llamarse <span className="font-mono text-indigo-700 font-bold">{nombreEsperadoEjemplo}</span>
@@ -753,6 +815,9 @@ export default function RegistrarRPModal({
                         setArchivoPdf(null);
                         setNombreArchivo('');
                         setErrorArchivo(null);
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = '';
+                        }
                       }}
                       className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 shrink-0 ml-2 cursor-pointer"
                     >

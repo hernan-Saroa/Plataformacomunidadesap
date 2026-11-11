@@ -5,11 +5,16 @@
   "author": "ESAP - Plataforma ComUNIdad",
   "private": true,
   "license": "UNLICENSED",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "nest build",
+    "build": "npm run platform:check && nest build",
+    "platform:check": "node scripts/check-platform-guidance.cjs",
     "isolucion:check": "node dist/diagnose-isolucion.js",
+    "knowledge:check": "node dist/diagnose-knowledge.js",
     "test": "node --test test/*.test.cjs",
+    "test:ci": "node --test --test-concurrency=1 test/*.test.cjs",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -26,14 +31,18 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.7",
     "@nestjs/typeorm": "^11.0.1",
+    "cheerio": "1.1.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "mammoth": "1.11.0",
     "mssql": "12.7.11",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdf-parse": "2.4.5",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "tough-cookie": "6.0.0",
     "typeorm": "^0.3.28"
   },
   "devDependencies": {

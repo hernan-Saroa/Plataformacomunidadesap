@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BancoDocentesPTA } from './BancoDocentesPTA';
 import { getBancoDocentes, previewRundDeletion, confirmRundDeletion } from '../../../services/api/ptaApi';
+import { downloadBancoDocentesExport } from '../../../utils/bancoDocentesExcel';
 
-vi.mock('../../../services/api/ptaApi', () => ({
+vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]),
   getBancoDocentes: vi.fn(),
   getBancoDocenteStats: vi.fn().mockResolvedValue({ success: true, data: { total: 1 } }),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -14,7 +15,7 @@ vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: {
 } }));
 let grantedPermissions: string[] | null = null;
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: (permission: string) => grantedPermissions === null || grantedPermissions.includes(permission) }) }));
-vi.mock('../../../utils/bancoDocentesExcel', () => ({ downloadBancoDocentesTemplate: vi.fn() }));
+vi.mock('../../../utils/bancoDocentesExcel', () => ({ downloadBancoDocentesTemplate: vi.fn(), downloadBancoDocentesExport: vi.fn() }));
 vi.mock('./BancoDocenteDetalleInline', () => ({ BancoDocenteDetalleInline: () => <tr><td>Detalle abierto</td></tr> }));
 vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null }));
 vi.mock('./BancoDocenteEstadoModal', () => ({ BancoDocenteEstadoModal: () => null }));
@@ -23,6 +24,24 @@ vi.mock('./TableroInvitacionesRUND', () => ({ TableroInvitacionesRUND: () => nul
 vi.mock('./RundRegistrationHistory', () => ({ RundRegistrationHistory: ({ periodoCarga }: any) => <div>Historial del periodo {periodoCarga}</div> }));
 afterEach(() => { cleanup(); localStorage.removeItem('esap_user'); sessionStorage.removeItem('esap_user'); });
 beforeEach(() => { vi.clearAllMocks(); grantedPermissions = null; });
+
+it('distingue en todos los registros la revisión pendiente, la corrección solicitada y la aprobación',async()=>{
+  const approved=Object.fromEntries(['IDENTIDAD','FORMACION','VINCULACION','ACADEMICO','TRANSVERSAL'].map(block=>[block,'Aprobado']));
+  vi.mocked(getBancoDocentes).mockResolvedValue({success:true,data:{data:[
+    {id:'pending',nombre_completo:'PERFIL SIN REVISAR',completitud:null},
+    {id:'returned',nombre_completo:'PERFIL CON DATO DEVUELTO',completitud:{IDENTIDAD:'Devuelto'}},
+    {id:'approved',nombre_completo:'PERFIL APROBADO',completitud:approved},
+  ],total:3,pages:1}} as any);
+  render(<BancoDocentesPTA/>);
+  const pending=(await screen.findByText('PERFIL SIN REVISAR')).closest('tr')!;
+  expect(within(pending).getByText('Pendiente de revisión').getAttribute('title')).toContain('soportes es opcional');
+  expect(within(pending).queryByText('Pendiente de corrección')).toBeNull();
+  const returned=screen.getByText('PERFIL CON DATO DEVUELTO').closest('tr')!;
+  expect(within(returned).getByText('Pendiente de corrección').getAttribute('title')).toContain('datos o un bloque');
+  const accepted=screen.getByText('PERFIL APROBADO').closest('tr')!;
+  expect(within(accepted).getByText('Perfil RUND aprobado')).toBeTruthy();
+  expect(within(accepted).queryByText('Pendiente de revisión')).toBeNull();
+});
 
 it('abre trazabilidad con el periodo del encabezado y conserva el regreso al listado', async () => {
   grantedPermissions = ['banco-docentes.rund.carga'];
@@ -129,4 +148,25 @@ it('conserva el listado del periodo activo cuando una consulta inicial termina t
   fireEvent.click(screen.getByRole('button', { name: '2', exact: true }));
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
   expect(vi.mocked(getBancoDocentes).mock.calls.at(-1)?.[0]).toMatchObject({ page: 2, periodoCarga: '2026-2' });
+});
+
+it('RUND-003: exporta a Excel todas las páginas del listado filtrado, solo con permiso de exportación', async () => {
+  grantedPermissions = ['banco-docentes.rund.view', 'banco-docentes.rund.export'];
+  vi.mocked(getBancoDocentes).mockImplementation(((filtros: any) => Promise.resolve({ success: true, data: {
+    data: [{ id: `d${filtros.page}`, nombre_completo: `DOCENTE PAGINA ${filtros.page}`, titulos_adicionales: { pregrado: ['Abogado'] } }], total: 2, pages: 2 } })) as unknown as typeof getBancoDocentes);
+  render(<BancoDocentesPTA />);
+  await screen.findByText('DOCENTE PAGINA 1');
+  fireEvent.click(screen.getByRole('button', { name: /Exportar Excel/ }));
+  await waitFor(() => expect(downloadBancoDocentesExport).toHaveBeenCalledOnce());
+  const exportados = vi.mocked(downloadBancoDocentesExport).mock.calls[0][0] as any[];
+  expect(exportados.map(d => d.id)).toEqual(['d1', 'd2']);
+  expect(exportados[0].titulos_adicionales).toEqual({ pregrado: ['Abogado'] });
+});
+
+it('RUND-003: sin permiso de exportación no se ofrece el botón', async () => {
+  grantedPermissions = ['banco-docentes.rund.view'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [{ id: 'x', nombre_completo: 'DOCENTE X' }], total: 1, pages: 1 } } as any);
+  render(<BancoDocentesPTA />);
+  await screen.findByText('DOCENTE X');
+  expect(screen.queryByRole('button', { name: /Exportar Excel/ })).toBeNull();
 });

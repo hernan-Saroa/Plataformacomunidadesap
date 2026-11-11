@@ -3,7 +3,7 @@
  * Modal para crear nuevos indicadores del Plan de Acción Institucional
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Target, Calendar, Users, TrendingUp } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
@@ -12,7 +12,8 @@ import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
-import { legalService } from '../../../../services/api/legal.service';
+import { SelectorResponsable, useResponsablesProcesoLegal } from './SelectorResponsable';
+import { MENSAJE_RESPONSABLE_OBLIGATORIO } from './responsablesIndicador';
 
 interface ModalNuevoIndicadorProps {
   isOpen: boolean;
@@ -26,20 +27,8 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
   const ejesActivos = getEjesEstrategicosActivos();
   const tiposIndicadorActivos = getTiposIndicadoresActivos();
 
-  // Cargar lista de abogados/profesionales
-  const [abogados, setAbogados] = useState<{ id: string; nombreCompleto: string; especialidad?: string }[]>([]);
-  useEffect(() => {
-    legalService.getAbogados()
-      .then((data: any[]) => {
-        const activos = data.filter((a: any) => !a.estado || a.estado === 'ACTIVO');
-        setAbogados(activos.map((a: any) => ({
-          id: a.id,
-          nombreCompleto: a.nombreCompleto,
-          especialidad: a.especialidad,
-        })));
-      })
-      .catch(() => { /* silencioso si falla */ });
-  }, []);
+  // Usuarios activos del proceso Gestión Legal
+  const { responsables, error: errorResponsables } = useResponsablesProcesoLegal(isOpen);
 
   // 🐛 DEBUG: Ver si los ejes están cargando
   console.log('🔍 Ejes Estratégicos Activos:', ejesActivos);
@@ -50,6 +39,7 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
     descripcion: '',
     ejeEstrategico: 'GESTION_INSTITUCIONAL',
     responsable: '',
+    responsableId: '',
     meta: '',
     unidadMedida: '%',
     fechaInicio: '',
@@ -71,8 +61,8 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
       toast.error('La meta debe ser un valor mayor a cero');
       return;
     }
-    if (!formData.responsable.trim()) {
-      toast.error('Debe asignar un responsable');
+    if (!formData.responsableId || !responsables?.some(r => r.id === formData.responsableId)) {
+      toast.error(MENSAJE_RESPONSABLE_OBLIGATORIO);
       return;
     }
 
@@ -308,23 +298,17 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
                 <Label htmlFor="responsable" className="text-sm font-semibold text-gray-700">
                   Responsable del Indicador <span className="text-red-600">*</span>
                 </Label>
-                <select
+                <SelectorResponsable
                   id="responsable"
-                  value={formData.responsable}
-                  onChange={(e) => handleChange('responsable', e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  required
-                >
-                  <option value="">-- Seleccione un responsable --</option>
-                  {abogados.map(a => (
-                    <option key={a.id} value={a.nombreCompleto}>
-                      {a.nombreCompleto}{a.especialidad ? ` — ${a.especialidad}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {abogados.length === 0 && (
-                  <p className="text-xs text-amber-600">Cargando profesionales... Si no aparecen, verifique la conexión.</p>
-                )}
+                  opciones={responsables}
+                  error={errorResponsables}
+                  valor={formData.responsableId}
+                  onChange={(r) => setFormData(prev => ({ ...prev, responsableId: r.id, responsable: r.nombreCompleto }))}
+                  className="focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500">
+                  Solo usuarios activos del proceso Gestión Legal. Busque por nombre, documento o correo.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

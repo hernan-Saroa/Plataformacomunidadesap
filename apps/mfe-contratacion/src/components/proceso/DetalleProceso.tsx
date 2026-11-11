@@ -1172,13 +1172,16 @@ export function DetalleProceso({
                 devuelta={fueDevuelta}
                 recargarToken={tokenExpediente}
                 onRevisar={onRevisar}
+                // Solo si la modalidad tiene adendas: es a donde salta la 6.1
+                // para extender el cierre (EFDS-1155).
+                onIrA={adendas ? trabajarEn : undefined}
               />
             </div>
 
             {/* La lista de documentos de la actividad, debajo del panel: primero
                 se trabaja, después se adjunta. Es la misma para las sesenta y
-                tres —sale de lo que Configuración le pide a cada una— y no se
-                pinta donde la actividad no pide ni tiene documentos. */}
+                tres —sale de lo que Configuración le pide a cada una— y, aunque
+                no pida nada, deja adjuntar varios soportes a quien puede cargar. */}
             {actividadSeleccionada &&
             !NUMERALES_CON_LISTA_PROPIA.includes(actividadSeleccionada.numeral) ? (
               <div className="mt-3">

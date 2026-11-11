@@ -2,11 +2,12 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ChatbotModule } from './ChatbotModule';
+import { getTransientChat } from '../state/transientChat';
 
 let fetchMock: ReturnType<typeof vi.fn>;
-beforeEach(() => { fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ respuesta: 'Orientación del servidor' }) }); vi.stubGlobal('fetch', fetchMock); });
+beforeEach(() => { for(const base of [undefined,'/services','/new-services'])getTransientChat(base).reset(); fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ respuesta: 'Orientación del servidor' }) }); vi.stubGlobal('fetch', fetchMock); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function send(text = 'Certificados') { fireEvent.change(screen.getByRole('textbox', { name: 'Consulta pública' }), { target: { value: text } }); fireEvent.click(screen.getByRole('button', { name: 'Enviar' })); }
+function send(text = 'Certificados') { fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje para el asistente' }), { target: { value: text } }); fireEvent.click(screen.getByRole('button', { name: 'Enviar' })); }
 
 it('el modo público no consulta historial ni permisos y envía solo el texto sin cookie', async () => {
   render(<ChatbotModule mode="public" apiBaseUrl="/services" userId="ignored" />);
@@ -43,11 +44,11 @@ it('no duplica consultas pendientes y descarta respuestas de un gateway anterior
   expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
 });
 
-it('permite abrir el inicio de sesión sin solicitar información personal', () => {
+it('no exige inicio de sesión aunque el contenedor ofrezca esa acción', () => {
   const login = vi.fn();
   render(<ChatbotModule mode="public" onLogin={login} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
-  expect(login).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: 'Iniciar sesión' })).toBeNull();
+  expect(login).not.toHaveBeenCalled();
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
@@ -55,7 +56,7 @@ it('informa una desactivación sobrevenida sin hablar de conversaciones privadas
   fetchMock.mockResolvedValueOnce({ ok: false, status: 404 });
   render(<ChatbotModule mode="public" />);
   send();
-  expect((await screen.findByRole('alert')).textContent).toContain('El asistente público ya no está habilitado.');
+  expect((await screen.findByRole('alert')).textContent).toContain('El asistente no está habilitado en este momento.');
   expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Certificados');
 });
 
@@ -63,7 +64,7 @@ it('inicia una consulta pública nueva limpiando únicamente la memoria local y 
   render(<ChatbotModule mode="public" />);
   send();
   await screen.findByText('Orientación del servidor', { exact: false });
-  fireEvent.click(screen.getByRole('button', { name: 'Nueva consulta' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Nueva conversación' }));
   expect(screen.queryByText('Orientación del servidor', { exact: false })).toBeNull();
   expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
   expect(document.activeElement).toBe(screen.getByRole('textbox'));

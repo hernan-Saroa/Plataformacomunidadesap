@@ -2,11 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
-import { GrupoEntity, TIPOS_OFERTA, type TipoOferta } from './grupo.entity.js';
+import { GrupoEntity, MODALIDADES_GRUPO, TIPOS_OFERTA, type ModalidadGrupo, type TipoOferta } from './grupo.entity.js';
 import { parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 import { siguienteNumeroGrupo } from './numeracion-grupo.js';
 import { AsignaturaCatalogoEntity } from '../catalogo/entities/asignatura.readonly.entity.js';
-import { aulasQueNoCoinciden, ofertasCetapDe, validarOfertaDelGrupo, type OfertaCetap } from './oferta-cetap.js';
+import {
+  aulasQueNoCoinciden, estadoOfertasCetap, ofertasCetapDe, validarOfertaDelGrupo,
+  type EstadoOfertasCetap, type OfertaCetap,
+} from './oferta-cetap.js';
 
 export interface CrearGrupoDto {
   idAsignatura: string;
@@ -21,6 +24,16 @@ export interface CrearGrupoDto {
   cantidad?: number;
   /** Oferta CETAP donde se dicta (EFDS-2315). Opcional al crear; sin ella no se concerta. */
   idOfertaCetap?: string | number | null;
+  /** Presencial (por defecto) o virtual: horario opcional, lo define el docente (063). */
+  modalidad?: ModalidadGrupo;
+}
+
+function validarModalidad(m: unknown): ModalidadGrupo {
+  if (m === undefined || m === null) return 'presencial';
+  if (!MODALIDADES_GRUPO.includes(m as ModalidadGrupo)) {
+    throw new BadRequestException("La modalidad del grupo debe ser 'presencial' o 'virtual'.");
+  }
+  return m as ModalidadGrupo;
 }
 
 /** Dónde vive el grupo según su periodo; `null` = sin periodo. */
@@ -33,6 +46,8 @@ function ubicacion(ref: RefPeriodo | null, tipoOferta?: TipoOferta) {
 export interface ActualizarGrupoDto {
   /** Oferta CETAP donde se dicta (EFDS-2315); null la quita. */
   idOfertaCetap?: string | number | null;
+  /** Cambiar a virtual exige que ninguna sesión sea presencial ni tenga aula. */
+  modalidad?: ModalidadGrupo;
   idDocente?: string | null;
   cupoMaximo?: number;
   estado?: string;
@@ -73,6 +88,7 @@ export class GruposService {
     if (dto.tipoOferta !== undefined && !TIPOS_OFERTA.includes(dto.tipoOferta)) {
       throw new BadRequestException(`La oferta debe ser una de: ${TIPOS_OFERTA.join(', ')}.`);
     }
+    const modalidad = validarModalidad(dto.modalidad);
     const donde = ubicacion(ref, dto.tipoOferta);
     const oferta = dto.idOfertaCetap != null
       ? await validarOfertaDelGrupo(this.grupoRepo.manager, dto.idOfertaCetap,
@@ -109,6 +125,7 @@ export class GruposService {
           estado: 'PROGRAMADO',
           observaciones: dto.observaciones ?? null,
           idOfertaCetap: oferta?.idOfertaCetap ?? null,
+          modalidad,
         }),
       );
     }
@@ -158,6 +175,19 @@ export class GruposService {
         grupo.idOfertaCetap = oferta.idOfertaCetap;
       }
     }
+    if (dto.modalidad !== undefined) {
+      const modalidad = validarModalidad(dto.modalidad);
+      if (modalidad === 'virtual' && grupo.modalidad !== 'virtual') {
+        const presenciales = await this.grupoRepo.query(
+          `SELECT 1 FROM "academic-schedule".franja_horaria
+            WHERE id_grupo = $1 AND (tipo_sesion = 'presencial' OR aula_codigo IS NOT NULL) LIMIT 1`, [idGrupo]);
+        if (presenciales.length) {
+          throw new BadRequestException(
+            'El grupo tiene sesiones presenciales o con aula: quítelas antes de volverlo virtual.');
+        }
+      }
+      grupo.modalidad = modalidad;
+    }
     if (dto.idDocente !== undefined) grupo.idDocente = dto.idDocente;
     if (dto.cupoMaximo !== undefined) {
       if (!Number.isInteger(dto.cupoMaximo) || dto.cupoMaximo < 1) {
@@ -180,6 +210,23 @@ export class GruposService {
     if (!ref) throw new BadRequestException('El periodo no es válido.');
     if (ref.modelo !== 'plataforma') return [];
     return ofertasCetapDe(this.grupoRepo.manager, String(idAsignatura), String(ref.id));
+  }
+
+  /**
+   * Por qué el selector de ofertas CETAP está vacío (o incompleto) para esta asignatura y este
+   * periodo. Un periodo legado no tiene ofertas por CETAP: se dice, no se deja un selector mudo.
+   */
+  async estadoOfertasCetap(idAsignatura: string, idPeriodo: string): Promise<EstadoOfertasCetap> {
+    const ref = parsearPeriodo(idPeriodo);
+    if (!ref) throw new BadRequestException('El periodo no es válido.');
+    if (ref.modelo !== 'plataforma') {
+      return {
+        periodoModelo: 'legado', periodoCodigo: null, programa: null, ofertasDelPeriodo: 0, ofertasDelPrograma: 0,
+        cetapsCatalogo: 0, sinTerritorial: 0,
+        motivo: 'El periodo seleccionado es del modelo anterior (legado) y no tiene ofertas por CETAP. Seleccione un periodo de la plataforma.',
+      };
+    }
+    return estadoOfertasCetap(this.grupoRepo.manager, String(idAsignatura), String(ref.id));
   }
 
   /** Elimina el grupo. Sus franjas caen con él (ON DELETE CASCADE): son suyas. */

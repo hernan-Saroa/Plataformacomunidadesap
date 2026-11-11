@@ -20,14 +20,15 @@ import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma
  */
 export class PublicarContratoDto {
   /**
-   * La historia habla de SECOP II y la matriz de la pagina web de la ESAP. Se
-   * pide el destino en vez de suponer cual de las dos manda.
+   * Solo la página web de la ESAP (sesión de QA del 04/11): en SECOP II el
+   * contrato ya se publicó con la adjudicación. Si no llega, es la web.
    */
-  @ApiProperty({ description: 'Dónde se publicó', enum: ['SECOP_II', 'WEB_ESAP'] })
-  @IsIn(['SECOP_II', 'WEB_ESAP'], {
-    message: 'El destino de la publicación es SECOP_II o WEB_ESAP',
+  @ApiPropertyOptional({ description: 'Dónde se publicó', enum: ['WEB_ESAP'], default: 'WEB_ESAP' })
+  @IsOptional()
+  @IsIn(['WEB_ESAP'], {
+    message: 'La 8.8 es la publicación en la página web de la ESAP: SECOP II ya se publicó con la adjudicación',
   })
-  destino: 'SECOP_II' | 'WEB_ESAP';
+  destino: 'WEB_ESAP' = 'WEB_ESAP';
 
   /** La real, no la del registro: es la que cuenta para el plazo. */
   @ApiProperty({ description: 'Fecha real de la publicación (YYYY-MM-DD)' })

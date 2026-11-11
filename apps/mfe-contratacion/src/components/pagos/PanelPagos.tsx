@@ -77,7 +77,13 @@ const ETIQUETA_SOPORTE: Record<TipoSoportePago, string> = {
   RUT: 'RUT',
   CERTIFICACION_BANCARIA: 'Certificación bancaria',
   OTRO: 'Otro anexo',
+  AVAL_SUPERVISOR: 'Aval del supervisor',
 };
+
+/** Los que se cargan con «Cargar soporte»: el aval entra solo al avalar (136). */
+const SOPORTES_SUELTOS = (Object.keys(ETIQUETA_SOPORTE) as TipoSoportePago[]).filter(
+  (tipo) => tipo !== 'AVAL_SUPERVISOR',
+);
 
 const VACIO = {
   periodoDesde: hoyEnBogota(),
@@ -88,10 +94,11 @@ const VACIO = {
 /**
  * Actividad 9.4 · Trámite de pagos (EFDS-1170).
  *
- * Tres actos con tres responsables, y la pantalla los mantiene separados: se
- * radica la cuenta, el supervisor la avala o la devuelve, y se registra el
- * trámite del pago: lo hace Contratación o el supervisor del contrato (133).
- * Los botones de avalar y tramitar solo aparecen para quien de verdad puede.
+ * Tres actos y la pantalla los mantiene separados: se radica la cuenta, se
+ * carga el aval que firmó el supervisor (o su devolución) y se registra el
+ * trámite del pago. El supervisor no entra a la aplicación (136): lo suyo lo
+ * carga el gestor de archivo y supervisión. Los botones de avalar y tramitar
+ * solo aparecen para quien de verdad puede.
  *
  * La integración con Click quedó fuera del alcance, así que los soportes se
  * cargan a mano. Se dice de frente en la pantalla: es la carga triple que la
@@ -113,6 +120,11 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
   const [soporteDe, setSoporteDe] = useState<string | null>(null);
   const [tipoSoporte, setTipoSoporte] = useState<TipoSoportePago>('SEGURIDAD_SOCIAL');
   const [archivoSoporte, setArchivoSoporte] = useState<File | null>(null);
+
+  /** La cuenta cuyo aval se está cargando, con el documento que firmó el supervisor. */
+  const [avalDe, setAvalDe] = useState<string | null>(null);
+  const [archivoAval, setArchivoAval] = useState<File | null>(null);
+  const [observacionAval, setObservacionAval] = useState('');
 
   const leer = () =>
     contratacionService
@@ -140,6 +152,12 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
     setSoporteDe(null);
     setTipoSoporte('SEGURIDAD_SOCIAL');
     setArchivoSoporte(null);
+  };
+
+  const limpiarAval = () => {
+    setAvalDe(null);
+    setArchivoAval(null);
+    setObservacionAval('');
   };
 
   /** Envuelve la acción para no repetir el guardando/toast/onCambio en cada una. */
@@ -185,30 +203,27 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
     if (listo) limpiarSoporte();
   };
 
-  const avalar = async (pagoId: string) => {
-    // Cancelar ahora cancela. Con `window.prompt`, cerrar el cuadro devolvía
-    // `undefined` y la cuenta se avalaba igual, sin observación: el aval es de
-    // lo más comprometido que firma un supervisor como para dejarlo salir de
-    // un diálogo que alguien cerró para no contestarlo.
-    const observacion = await dialogo.pedirMotivo({
-      titulo: 'Avalar la cuenta de cobro',
-      descripcion: 'El aval habilita el trámite de pago en la Dirección Financiera.',
-      etiqueta: 'Observación al avalar',
-      opcional: true,
-      confirmar: 'Avalar la cuenta',
-    });
-    if (observacion === null) return;
+  const avalar = async () => {
+    if (!avalDe || !archivoAval) return;
 
-    return ejecutar(
-      () => contratacionService.avalarPago(procesoId, pagoId, observacion || undefined),
-      'Cuenta avalada; queda el trámite de Financiera',
+    const listo = await ejecutar(
+      () =>
+        contratacionService.avalarPago(
+          procesoId,
+          avalDe,
+          archivoAval,
+          observacionAval.trim() || undefined,
+        ),
+      'Aval del supervisor cargado; queda registrar el trámite del pago',
     );
+    if (listo) limpiarAval();
   };
 
   const devolver = async (pagoId: string) => {
     const motivo = await dialogo.pedirMotivo({
       titulo: 'Devolver la cuenta de cobro',
-      descripcion: 'Vuelve al contratista para que la corrija y la radique de nuevo.',
+      descripcion:
+        'Lo que el supervisor pidió corregir. Vuelve al contratista para que la corrija y la radique de nuevo.',
       etiqueta: 'Qué debe corregir el contratista',
       placeholder: 'Falta la planilla de seguridad social del mes…',
       confirmar: 'Devolver la cuenta',
@@ -284,7 +299,9 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
       <Titulo>Trámite de pagos</Titulo>
       <Ayuda>
         El contratista presenta su cuenta de cobro con la factura y el informe de actividades, el
-        supervisor la avala y la Dirección Financiera tramita el pago.
+        supervisor la avala y la Dirección Financiera tramita el pago. Como el supervisor no entra a
+        la aplicación, aquí se carga su aval firmado. La actividad sigue abierta mientras dure el
+        contrato: pasar a la etapa 10 no la cierra, y las cuentas que falten se siguen registrando.
       </Ayuda>
 
       {!estado.admitePagos ? (
@@ -345,10 +362,17 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
             <CuentaDeCobro
               key={pago.id}
               pago={pago}
-              esSupervisor={estado.esSupervisor}
-              puedeTramitar={estado.puedeTramitar !== false}
+              puedeAvalar={estado.puedeAvalar}
+              puedeTramitar={estado.puedeTramitar}
               guardando={guardando}
-              onAvalar={() => avalar(pago.id)}
+              onAvalar={() => setAvalDe(pago.id)}
+              avalAbierto={avalDe === pago.id}
+              archivoAval={archivoAval}
+              onArchivoAval={setArchivoAval}
+              observacionAval={observacionAval}
+              onObservacionAval={setObservacionAval}
+              onGuardarAval={avalar}
+              onCancelarAval={limpiarAval}
               onDevolver={() => devolver(pago.id)}
               onTramitar={() => tramitar(pago.id)}
               onAnular={() => anular(pago.id)}
@@ -466,10 +490,17 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
 
 interface CuentaProps {
   pago: PagoContrato;
-  esSupervisor: boolean;
+  puedeAvalar: boolean;
   puedeTramitar: boolean;
   guardando: boolean;
   onAvalar: () => void;
+  avalAbierto: boolean;
+  archivoAval: File | null;
+  onArchivoAval: (archivo: File | null) => void;
+  observacionAval: string;
+  onObservacionAval: (observacion: string) => void;
+  onGuardarAval: () => void;
+  onCancelarAval: () => void;
   onDevolver: () => void;
   onTramitar: () => void;
   onAnular: () => void;
@@ -486,10 +517,17 @@ interface CuentaProps {
 /** Una cuenta de cobro con sus documentos y lo que se puede hacer con ella. */
 function CuentaDeCobro({
   pago,
-  esSupervisor,
+  puedeAvalar,
   puedeTramitar,
   guardando,
   onAvalar,
+  avalAbierto,
+  archivoAval,
+  onArchivoAval,
+  observacionAval,
+  onObservacionAval,
+  onGuardarAval,
+  onCancelarAval,
   onDevolver,
   onTramitar,
   onAnular,
@@ -589,15 +627,15 @@ function CuentaDeCobro({
           {/* La cuenta recién radicada se avala o se devuelve solo en la
               pantalla de revisión. Devolver una ya avalada es corregir un aval
               dado, no la decisión pendiente, y se queda aquí. */}
-          {esSupervisor && pago.estado === 'RADICADO' && enLaRevision ? (
+          {puedeAvalar && pago.estado === 'RADICADO' && enLaRevision ? (
             <>
               <BotonSecundario
                 decision
                 icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                disabled={guardando}
+                disabled={guardando || avalAbierto}
                 onClick={onAvalar}
               >
-                Avalar
+                Cargar el aval
               </BotonSecundario>
               <BotonSecundario
                 decision
@@ -608,9 +646,9 @@ function CuentaDeCobro({
                 Devolver
               </BotonSecundario>
             </>
-          ) : esSupervisor && pago.estado === 'RADICADO' ? (
-            <IrALaRevision numeral="9.4" que="avalarla o devolverla" />
-          ) : esSupervisor && pago.estado === 'AVALADO' ? (
+          ) : puedeAvalar && pago.estado === 'RADICADO' ? (
+            <IrALaRevision numeral="9.4" que="cargar el aval del supervisor o devolverla" />
+          ) : puedeAvalar && pago.estado === 'AVALADO' ? (
             <BotonSecundario
               icono={<Undo2 className="w-3.5 h-3.5" />}
               disabled={guardando}
@@ -648,6 +686,55 @@ function CuentaDeCobro({
         </div>
       ) : null}
 
+      {avalAbierto ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 space-y-2.5">
+          <SelectorArchivo
+            decision
+            id={`aval-archivo-${pago.id}`}
+            etiqueta="Aval firmado por el supervisor"
+            ayuda="El supervisor no entra a la aplicación: su aval firmado es lo que respalda el pago."
+            archivo={archivoAval}
+            onElegir={onArchivoAval}
+          />
+
+          <div>
+            <label
+              htmlFor={`aval-observacion-${pago.id}`}
+              className="block text-xs font-bold text-gray-600 mb-1.5"
+            >
+              Observación del supervisor (opcional)
+            </label>
+            <textarea
+              id={`aval-observacion-${pago.id}`}
+              rows={2}
+              maxLength={2000}
+              value={observacionAval}
+              onChange={(e) => onObservacionAval(e.target.value)}
+              className={campo}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Boton
+              decision
+              icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+              disabled={guardando || !archivoAval}
+              onClick={onGuardarAval}
+            >
+              Registrar el aval
+            </Boton>
+            <BotonSecundario
+              decision
+              icono={<Undo2 className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={onCancelarAval}
+            >
+              Cancelar
+            </BotonSecundario>
+          </div>
+        </div>
+      ) : null}
+
       {soporteAbierto ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 space-y-2.5">
           <div>
@@ -663,7 +750,7 @@ function CuentaDeCobro({
               onChange={(e) => onTipoSoporte(e.target.value as TipoSoportePago)}
               className={campo}
             >
-              {(Object.keys(ETIQUETA_SOPORTE) as TipoSoportePago[]).map((tipo) => (
+              {SOPORTES_SUELTOS.map((tipo) => (
                 <option key={tipo} value={tipo}>
                   {ETIQUETA_SOPORTE[tipo]}
                 </option>

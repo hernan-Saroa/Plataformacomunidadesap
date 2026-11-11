@@ -210,6 +210,20 @@ export class Contrato {
   plazoDias: number | null;
 
   /**
+   * El plazo como se pactó en la 8.1 (138): un número con su unidad o una
+   * fecha cierta. `plazo_dias` se llena de entrada si es en días y, si no, al
+   * fijar el acta de inicio el primer día de ejecución.
+   */
+  @Column({ name: 'plazo_unidad', type: 'varchar', length: 10, nullable: true })
+  plazoUnidad: 'DIAS' | 'MESES' | 'ANIOS' | null;
+
+  @Column({ name: 'plazo_cantidad', type: 'int', nullable: true })
+  plazoCantidad: number | null;
+
+  @Column({ name: 'plazo_fecha_fin', type: 'date', nullable: true })
+  plazoFechaFin: string | null;
+
+  /**
    * Datos del adjudicatario copiados, no referenciados.
    *
    * El contrato dice con quién se contrató ese día: si mañana se corrige el

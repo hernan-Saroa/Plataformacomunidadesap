@@ -23,7 +23,15 @@ import { UnifiedStatsCards, type StatCardData } from './UnifiedStatsCards';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 
+import { RundConvocatoriaField } from '../../../shared/RundConvocatoriaField';
+
 const BD_BASE = '/pta/api/v1/pta/banco-docentes';
+async function fetchConvocatorias(periodoCarga: string) {
+  const raw = await apiClient.get<any>(`${BD_BASE}/convocatorias`, { periodoCarga }, { cache: 'no-store' });
+  const data = Array.isArray(raw) ? raw : raw?.data;
+  if (!Array.isArray(data)) throw new Error('No fue posible consultar las convocatorias.');
+  return data as { nombre: string; clave: string }[];
+}
 const PERIODOS_BASE = '/pta/api/v1/periodos-academicos';
 
 interface PeriodoAcademico {
@@ -47,6 +55,7 @@ interface FiltrosPlantaDocente {
   nivelFormacion: string;
   nucleoTematico: string;
   periodoCarga: string;
+  convocatoria: string;
 }
 
 const FILTROS_VACIOS: FiltrosPlantaDocente = {
@@ -57,9 +66,11 @@ const FILTROS_VACIOS: FiltrosPlantaDocente = {
   nivelFormacion: '',
   nucleoTematico: '',
   periodoCarga: '',
+  convocatoria: '',
 };
 
 interface StatsResponse {
+  por_convocatoria?: { convocatoria: string; total: number }[];
   total: number;
   activos: number;
   inactivos: number;
@@ -91,6 +102,7 @@ async function fetchDetalle(filters: Partial<FiltrosPlantaDocente>, page: number
 }
 
 const FILTRO_LABELS: Record<keyof FiltrosPlantaDocente, string> = {
+  convocatoria: 'Convocatoria',
   territorial: 'Territorial',
   vinculacion: 'Tipo de vinculación',
   categoria: 'Categoría',
@@ -114,6 +126,7 @@ const AGREGADO_COLUMNAS: RundColumn[] = [
 
 const DETALLE_COLUMNAS: RundColumn[] = [
   { header: 'Nombre completo', key: 'nombre_completo' },
+  { header: 'Convocatorias', key: 'convocatorias_texto' },
   { header: 'Territorial', key: 'territorial' },
   { header: 'Tipo de vinculación', key: 'vinculacion' },
   { header: 'Categoría', key: 'categoria' },
@@ -125,6 +138,7 @@ const DETALLE_COLUMNAS: RundColumn[] = [
 function buildAgregadoRows(stats: StatsResponse) {
   return [
     { dimension: 'Total', valor: 'Total', total: stats.total },
+    ...(stats.por_convocatoria || []).map(r => ({ dimension: 'Convocatoria', valor: r.convocatoria, total: r.total })),
     ...stats.por_territorial.map((r) => ({ dimension: 'Territorial', valor: r.territorial, total: r.total })),
     ...stats.por_vinculacion.map((r) => ({ dimension: 'Tipo de vinculación', valor: r.vinculacion, total: r.total })),
     ...stats.por_categoria.map((r) => ({ dimension: 'Categoría', valor: r.categoria, total: r.total })),
@@ -320,8 +334,9 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
       toast.info('No hay detalle para exportar con el filtro actual');
       return;
     }
+    const rows = detalle.items.map(row => ({ ...row, convocatorias_texto: (row.convocatorias || []).join('; ') }));
     if (formato === 'csv') {
-      exportToCSV(detalle.items, 'reporte-planta-docente-detalle');
+      exportToCSV(rows, 'reporte-planta-docente-detalle');
       toast.success('Detalle exportado (página actual)');
       return;
     }
@@ -331,8 +346,8 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
       filtros: filtrosConEtiquetas(appliedFiltros),
       totalRegistros: detalle.items.length,
     };
-    if (formato === 'excel') exportRundReportToExcel(detalle.items, DETALLE_COLUMNAS, meta, 'RUND_Planta_Docente_Detalle');
-    else exportRundReportToPDF(detalle.items, DETALLE_COLUMNAS, meta, 'RUND_Planta_Docente_Detalle');
+    if (formato === 'excel') exportRundReportToExcel(rows, DETALLE_COLUMNAS, meta, 'RUND_Planta_Docente_Detalle');
+    else exportRundReportToPDF(rows, DETALLE_COLUMNAS, meta, 'RUND_Planta_Docente_Detalle');
     toast.success('Detalle exportado (página actual)');
   };
 
@@ -403,10 +418,14 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
             label="Período académico"
             value={filtros.periodoCarga}
             options={periodoOptions}
-            onChange={(v) => setFiltros((f) => ({ ...f, periodoCarga: v }))}
+            onChange={(v) => setFiltros((f) => ({ ...f, periodoCarga: v, convocatoria: '' }))}
           />
         </div>
 
+        <div className="mt-4">
+          <RundConvocatoriaField key={filtros.periodoCarga} periodoCarga={filtros.periodoCarga} value={filtros.convocatoria}
+            loadOptions={fetchConvocatorias} onChange={convocatoria => setFiltros(f => ({ ...f, convocatoria }))} />
+        </div>
         <div className="flex flex-wrap gap-2 mt-4">
           <button
             onClick={generarReporte}
@@ -452,6 +471,10 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {!!stats.por_convocatoria?.length && <div>
+              <AggregationTable title="Por convocatoria" icon={Layers} rows={stats.por_convocatoria} labelKey="convocatoria" />
+              <p className="text-xs text-gray-500 mt-2">Cada docente se cuenta una vez por convocatoria y puede pertenecer a varias.</p>
+            </div>}
             <AggregationTable title="Por territorial" icon={Building2} rows={stats.por_territorial} labelKey="territorial" />
             <AggregationTable title="Por tipo de vinculación" icon={Layers} rows={stats.por_vinculacion} labelKey="vinculacion" />
             <AggregationTable title="Por categoría" icon={Layers} rows={stats.por_categoria} labelKey="categoria" />
@@ -493,6 +516,7 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
                     <thead>
                       <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                         <th className="py-2 pr-3">Nombre</th>
+                        <th className="py-2 pr-3">Convocatorias</th>
                         <th className="py-2 pr-3">Territorial</th>
                         <th className="py-2 pr-3">Vinculación</th>
                         <th className="py-2 pr-3">Categoría</th>
@@ -505,6 +529,7 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
                       {detalle.items.map((row: any, idx: number) => (
                         <tr key={row.docente_id || row.persona_id || idx} className="border-b border-gray-50">
                           <td className="py-2 pr-3">{row.nombre_completo || '—'}</td>
+                          <td className="py-2 pr-3">{(row.convocatorias || []).join('; ') || 'Sin convocatoria registrada'}</td>
                           <td className="py-2 pr-3">{row.territorial || '—'}</td>
                           <td className="py-2 pr-3">{row.vinculacion || '—'}</td>
                           <td className="py-2 pr-3">{row.categoria || '—'}</td>
