@@ -293,12 +293,12 @@ export class EvaluacionService {
       const vigente = await this.resultadoVigente(procesoId, em);
       if (!vigente) {
         throw new ConflictException(
-          'Primero se registra el resultado con su informe; las evidencias lo sustentan',
+          'Registra primero el resultado con su informe: después se cargan las evidencias',
         );
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -372,7 +372,7 @@ export class EvaluacionService {
     }
 
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     const nombres = informes.map((_, i) => {
       const dimension: DimensionInforme = dimensiones[i] ?? 'CONSOLIDADO';
@@ -582,7 +582,7 @@ export class EvaluacionService {
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

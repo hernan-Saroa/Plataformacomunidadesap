@@ -307,7 +307,7 @@ export class ComiteContratacionService {
 
       if (proceso.estado !== 'EN_CURSO') {
         throw new ConflictException(
-          'El proceso ya no está en curso: lo que terminó no es la etapa, es la contratación',
+          'El proceso ya no está en curso: no admite registrar sesiones del comité',
         );
       }
 
@@ -329,12 +329,12 @@ export class ComiteContratacionService {
       }
       if (estadoActual === 'APROBADO') {
         throw new ConflictException(
-          'El comité ya aprobó este proceso: registrar otra sesión reescribiría una etapa que pudo cerrarse',
+          'El comité ya aprobó este proceso: no se registra otra sesión sobre una decisión ya tomada',
         );
       }
       if (estadoActual === 'NEGADO') {
         throw new ConflictException(
-          'El comité ya rechazó este proceso: lo que terminó no es la etapa, es la contratación',
+          'El comité ya rechazó este proceso: con el rechazo la contratación terminó y no admite otra sesión',
         );
       }
 
@@ -357,16 +357,16 @@ export class ComiteContratacionService {
       // le falta al formulario.
       if (dto.decision === 'APROBADO_CON_CONDICIONES' && !condiciones) {
         throw new BadRequestException(
-          'Di a qué queda condicionada la aprobación: sin condiciones, es una aprobación a secas',
+          'Escribe a qué queda condicionada la aprobación; si no tiene condiciones, regístrala como aprobada',
         );
       }
       if (exigeObservaciones(dto.decision, numerales.length > 0) && !observaciones) {
         throw new BadRequestException(
           dto.decision === 'RECHAZADO'
-            ? 'Escribe por qué el comité rechaza el proceso: a quien se lo rechazan no le queda ocasión de preguntarlo corrigiendo'
+            ? 'Escribe por qué el comité rechaza el proceso: el área necesita conocer el motivo'
             : dto.decision === 'OBSERVADO'
               ? 'Escribe las observaciones de fondo: sin ellas el proceso queda devuelto sin saber qué corregir'
-              : 'Escribe qué hay que validar: la actividad que reabres le llega a su responsable sin decirle qué mirar',
+              : 'Escribe qué hay que validar: es lo que verá el responsable de la actividad que se reabre',
         );
       }
       // Qué actividades se reabren (EFDS-2068). Sin esto, observar devolvía la
@@ -374,7 +374,7 @@ export class ComiteContratacionService {
       // el comité no tenía dónde aplicarse.
       if (dto.decision === 'OBSERVADO' && numerales.length === 0) {
         throw new BadRequestException(
-          'Di a qué actividades vuelve el proceso: sin eso la corrección no tiene dónde aplicarse',
+          'Elige a qué actividades vuelve el proceso para que las corrijan',
         );
       }
       // Y al rechazar no se reabre nada: el proceso queda negado, y una
@@ -382,7 +382,7 @@ export class ComiteContratacionService {
       // pide a alguien para nada.
       if (!laSesionAdmiteReabrir(dto.decision) && numerales.length > 0) {
         throw new BadRequestException(
-          'Un proceso rechazado no deja actividades que corregir: si lo que procede es devolver para corregir, el desenlace es observar',
+          'Un proceso rechazado no vuelve a ninguna actividad: si hay que corregir algo, la decisión es observar, no rechazar',
         );
       }
 
@@ -505,11 +505,11 @@ export class ComiteContratacionService {
       const estadoActual = actividad?.estado ?? 'BORRADOR';
 
       if (estadoActual === 'NO_APLICA') {
-        throw new ConflictException('Ya está constando que este proceso no pasa por comité');
+        throw new ConflictException('Ya quedó constancia de que este proceso no pasa por comité');
       }
       if (estadoActual === 'APROBADO' || estadoActual === 'NEGADO') {
         throw new ConflictException(
-          'El comité ya se pronunció sobre este proceso: no puede constar que no fue',
+          'El comité ya decidió sobre este proceso: no se puede dejar constancia de que no pasó por él',
         );
       }
 
@@ -520,7 +520,7 @@ export class ComiteContratacionService {
         throw new ConflictException(
           noVa === 'MODALIDAD'
             ? 'Esta modalidad ya no pasa por comité según la matriz: no hay constancia que dejar'
-            : 'Este proceso sí pasa por comité: registra lo que decidió, no que no fue',
+            : 'Este proceso sí pasa por comité: registra la decisión de la sesión',
         );
       }
 
@@ -728,7 +728,7 @@ export class ComiteContratacionService {
     acceso: HiringAccess,
   ) {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     return em.save(
       em.create(Documento, {
@@ -758,7 +758,7 @@ export class ComiteContratacionService {
     if (bloquear) consulta.setLock('pessimistic_write');
 
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

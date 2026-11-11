@@ -257,7 +257,7 @@ export class EstudioPrevioService implements OnModuleInit {
     const proceso = await this.dataSource.getRepository(Proceso).findOne({
       where: { id: procesoId },
     });
-    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const loRadico = this.loRadico(proceso, acceso);
 
@@ -464,7 +464,7 @@ export class EstudioPrevioService implements OnModuleInit {
   async borrarProceso(procesoId: string, dto: BorrarProcesoDto, acceso: HiringAccess) {
     const { radicado, archivos } = await this.dataSource.transaction(async (em) => {
       const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-      if (!proceso) throw new NotFoundException('Proceso no encontrado');
+      if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
       if (dto.radicado.trim() !== proceso.radicado) {
         throw new BadRequestException(
           `Para borrarlo escribe el radicado tal cual: ${proceso.radicado}`,
@@ -530,7 +530,7 @@ export class EstudioPrevioService implements OnModuleInit {
       where: { id: procesoId },
       relations: ['expediente'],
     });
-    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     /**
      * Estar en el proceso también da acceso (EFDS-1183).
@@ -566,7 +566,7 @@ export class EstudioPrevioService implements OnModuleInit {
       if (!puedeRecibirlo) {
         // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
         // no debe verlo que el proceso existe.
-        throw new NotFoundException('Proceso no encontrado');
+        throw new NotFoundException('El proceso no existe o fue eliminado');
       }
     }
 
@@ -927,7 +927,7 @@ export class EstudioPrevioService implements OnModuleInit {
         .map((c) => ({ codigo: c.codigo, etiqueta: c.etiqueta, grupo: c.grupo }));
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       /*
        * Enviar es radicar: el proceso aparece en la bandeja de la Dirección en
@@ -1124,7 +1124,7 @@ export class EstudioPrevioService implements OnModuleInit {
     const proceso = await this.dataSource
       .getRepository(Proceso)
       .findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return { radicadoGestionDocumental: proceso.radicadoGestionDocumental ?? null };
   }
 
@@ -1147,7 +1147,7 @@ export class EstudioPrevioService implements OnModuleInit {
       await this.exigirPaqueteEditable(em, procesoId, acceso);
 
       const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-      if (!proceso) throw new NotFoundException('Proceso no encontrado');
+      if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
       proceso.radicadoGestionDocumental = radicado?.trim() || null;
       await em.save(proceso);
@@ -1331,7 +1331,7 @@ export class EstudioPrevioService implements OnModuleInit {
   async negar(procesoId: string, observaciones: string, acceso: HiringAccess) {
     if (!observaciones?.trim()) {
       throw new BadRequestException(
-        'El motivo es obligatorio al negar: a quien le niegan un proceso hay que decirle por qué, y no va a tener ocasión de preguntarlo corrigiendo',
+        'Escribe el motivo de la negación: el área necesita saber por qué se niega el proceso',
       );
     }
     return this.decidirRevision(procesoId, 'NEGADO', observaciones, acceso);
@@ -1493,7 +1493,7 @@ export class EstudioPrevioService implements OnModuleInit {
   async expediente(procesoId: string) {
     const proceso = await this.obtenerProceso(procesoId);
     const expediente = proceso.expediente;
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     const documentos = await this.dataSource.getRepository(Documento).find({
       where: { expedienteId: expediente.id },
@@ -1576,7 +1576,7 @@ export class EstudioPrevioService implements OnModuleInit {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const documento = await em.save(Documento, {
         expedienteId: expediente.id,
@@ -1614,7 +1614,7 @@ export class EstudioPrevioService implements OnModuleInit {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const documento = await em.findOne(Documento, {
         where: { id: documentoId, expedienteId: expediente.id },
@@ -1630,7 +1630,7 @@ export class EstudioPrevioService implements OnModuleInit {
       // prueba nada.
       if (documento.tipo !== 'ADJUNTO') {
         throw new BadRequestException(
-          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+          'Este registro no es un adjunto sino la copia de lo que se envió a revisión: no se retira ni se reemplaza',
         );
       }
 
@@ -1668,7 +1668,7 @@ export class EstudioPrevioService implements OnModuleInit {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const anterior = await em.findOne(Documento, {
         where: { id: documentoId, expedienteId: expediente.id },
@@ -1683,7 +1683,7 @@ export class EstudioPrevioService implements OnModuleInit {
       // reemplazar: es la copia de lo que se envió a revisión.
       if (anterior.tipo !== 'ADJUNTO') {
         throw new BadRequestException(
-          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+          'Este registro no es un adjunto sino la copia de lo que se envió a revisión: no se retira ni se reemplaza',
         );
       }
 
@@ -1725,7 +1725,7 @@ export class EstudioPrevioService implements OnModuleInit {
 
   private async validarEtapa(em: EntityManager, procesoId: string) {
     const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     if (proceso.etapa !== ETAPA_ESTUDIOS_PREVIOS) {
       throw new ConflictException(
         `El proceso está en la etapa ${proceso.etapa}; el estudio previo solo se edita en la etapa ${ETAPA_ESTUDIOS_PREVIOS}`,
@@ -1768,7 +1768,7 @@ export class EstudioPrevioService implements OnModuleInit {
 
       if (inventados.length > 0) {
         throw new BadRequestException(
-          `Campos no definidos para el estudio previo: ${inventados.join(', ')}`,
+          `El formulario envió campos que el estudio previo no tiene (${inventados.join(', ')}): recarga la página e inténtalo de nuevo`,
         );
       }
 
@@ -1812,7 +1812,7 @@ export class EstudioPrevioService implements OnModuleInit {
             throw new BadRequestException(`El campo "${campo.etiqueta}" debe ser texto`);
           }
           if (valor.length > 20000) {
-            throw new BadRequestException(`El campo "${campo.etiqueta}" excede el tamaño permitido`);
+            throw new BadRequestException(`El campo "${campo.etiqueta}" admite hasta 20.000 caracteres`);
           }
           limpio[codigo] = valor;
         }

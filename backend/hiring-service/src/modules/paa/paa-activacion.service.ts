@@ -88,12 +88,12 @@ export class PaaActivacionService {
         : null;
       if (activa && !comparacion) {
         throw new ConflictException(
-          `La versión ${version.numero} se comparó con otra distinta de la activa (${activa.numero}). Cárguela de nuevo.`,
+          `La versión ${version.numero} se comparó con otra distinta de la activa (${activa.numero}). Cárgala de nuevo.`,
         );
       }
       if (comparacion && !comparacion.confiable) {
         throw new ConflictException(
-          'La comparación con la versión activa no es confiable (códigos repetidos): activarla podría pegarle a un proceso los datos de otra línea.',
+          'La comparación con la versión activa no es confiable (códigos repetidos): activarla podría pasarle a un proceso los datos de otra línea. Corrige los códigos repetidos en el archivo y cárgalo de nuevo.',
         );
       }
 

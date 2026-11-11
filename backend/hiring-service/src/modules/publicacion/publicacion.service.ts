@@ -325,7 +325,7 @@ export class PublicacionService {
   /** Por qué el plazo mostrado puede no ser de fiar. */
   private advertenciaDelPlazo(plazo: PlazoPublicacion | null): string | null {
     if (!plazo) {
-      return 'Esta modalidad no tiene plazo de publicidad parametrizado: la publicación se registra pero no hay término que contar';
+      return 'Esta modalidad no tiene plazo de publicidad configurado: la publicación se registra pero no hay término que contar';
     }
     if (!plazo.confirmado) {
       return 'El plazo de esta modalidad es provisional y está pendiente de confirmación por la Dirección de Contratación';
@@ -374,7 +374,7 @@ export class PublicacionService {
       await this.validarFecha(em, proceso, dto.fechaPublicacion);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const { plazoDiasHabiles, fechaVencimiento } = await this.calcularPlazo(
         em,
@@ -514,7 +514,7 @@ export class PublicacionService {
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 
@@ -592,7 +592,7 @@ export class PublicacionService {
 
       if (!publicacion.fechaVencimiento) {
         throw new ConflictException(
-          'Esta publicación no tiene término que contar: su modalidad no tiene plazo de publicidad parametrizado',
+          'Esta publicación no tiene término que contar: su modalidad no tiene plazo de publicidad configurado',
         );
       }
 

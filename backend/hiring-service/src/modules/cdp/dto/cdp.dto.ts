@@ -41,7 +41,7 @@ export class CargarCdpDto {
   valor: number;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)', example: '2026-08-06' })
-  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Vigencia fiscal a la que se imputa', example: 2026 })
@@ -86,7 +86,7 @@ export class RegistrarCdpExistenteDto {
   rubro: string;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)', example: '2026-08-06' })
-  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Vigencia fiscal a la que se imputa', example: 2026 })

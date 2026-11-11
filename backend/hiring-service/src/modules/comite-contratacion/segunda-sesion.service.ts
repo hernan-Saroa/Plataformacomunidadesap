@@ -275,7 +275,7 @@ export class SegundaSesionService implements OnModuleInit {
       const observaciones = dto.observaciones?.trim() || null;
       if (dto.decision === 'APROBADO_CON_CONDICIONES' && !condiciones) {
         throw new BadRequestException(
-          'Di a qué queda condicionada la aprobación: sin condiciones, es una aprobación a secas',
+          'Escribe a qué queda condicionada la aprobación; si no tiene condiciones, regístrala como aprobada',
         );
       }
       if (exigeObservaciones(dto.decision, false) && !observaciones) {
@@ -415,7 +415,7 @@ export class SegundaSesionService implements OnModuleInit {
     const consulta = em.getRepository(Proceso).createQueryBuilder('p').where('p.id = :procesoId', { procesoId });
     if (bloquear) consulta.setLock('pessimistic_write');
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

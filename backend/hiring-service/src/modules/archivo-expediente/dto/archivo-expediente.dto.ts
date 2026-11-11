@@ -30,7 +30,7 @@ export class PublicarActaDto {
   destino: DestinoPublicacionActa;
 
   @ApiProperty({ description: 'Fecha real de la publicación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato AAAA-MM-DD' })
   fechaPublicacion: string;
 
   @ApiPropertyOptional({ description: 'Número con el que quedó publicada en SECOP II' })

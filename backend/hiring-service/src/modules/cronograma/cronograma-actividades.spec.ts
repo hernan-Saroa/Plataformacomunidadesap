@@ -80,7 +80,7 @@ describe('cronograma por actividad', () => {
     it('una del flujo no lleva nombre propio', () => {
       expect(() =>
         validarActividades([{ numeral: '6.1', nombre: 'Otro nombre', fechaFin: '2026-12-01', avisarA: ['QUIEN_LA_HACE'] }], validos),
-      ).toThrow(/del flujo/);
+      ).toThrow(/ya tiene su nombre en el flujo/);
     });
   });
 

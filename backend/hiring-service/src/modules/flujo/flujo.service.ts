@@ -151,7 +151,7 @@ export class FlujoService {
       const errores = (await this.validar(borrador, em)).filter((p) => p.gravedad === 'ERROR');
       if (errores.length) {
         throw new ConflictException({
-          message: `El flujo no se puede activar: ${errores.length === 1 ? 'hay 1 actividad' : `hay ${errores.length} problemas`} por corregir`,
+          message: `El flujo no se puede activar: ${errores.length === 1 ? 'hay 1 problema' : `hay ${errores.length} problemas`} por corregir`,
           problemas: errores,
         });
       }
@@ -358,6 +358,9 @@ export class FlujoService {
          JOIN auth."user" u ON u.id_user = ur.id_user AND u.is_active
         WHERE ur.is_active`,
     );
+    const nombresRol = new Map<string, string>(
+      (await em.query(`SELECT code, name FROM auth.role`)).map((f: any) => [f.code, f.name]),
+    );
     const cuentas: { persona: string; id: string }[] = await em.query(
       `SELECT id_person::text AS persona, id_user::text AS id FROM auth."user" WHERE is_active AND id_person IS NOT NULL`,
     );
@@ -376,6 +379,7 @@ export class FlujoService {
       orden: actividades.map((a) => a.numeral),
       pueden: (accion, numeral) => permisos.get(`${accion}|${numeral}`) ?? new Set(),
       conRol: (rol) => new Set(roles.filter((r) => r.code === rol).map((r) => r.id)),
+      nombreRol: (rol) => nombresRol.get(rol) ?? rol,
       cuentaDe: (persona) => cuentas.find((c) => c.persona === persona)?.id ?? null,
       puestos,
       cadenas,
@@ -387,7 +391,7 @@ export class FlujoService {
     const aplicanEn = (modalidad: string | null) =>
       actividades.filter((a) => aplica(a.numeral, modalidad) && !SIN_PANEL.has(a.numeral));
 
-    return { actividades, modalidades, filas, datos, aplica, aplicanEn, puestos, cadenas, roles };
+    return { actividades, modalidades, filas, datos, aplica, aplicanEn, puestos, cadenas, roles, nombresRol };
   }
 
   // ---------------------------------------------------------------- diagrama --
@@ -404,9 +408,7 @@ export class FlujoService {
     const ctx = await this.contexto(em, version);
     const problemas = validarModalidad({ ...ctx.datos, actividades: ctx.aplicanEn(modalidad), modalidad });
 
-    const nombresRol = new Map<string, string>(
-      (await em.query(`SELECT code, name FROM auth.role`)).map((f: any) => [f.code, f.name]),
-    );
+    const { nombresRol } = ctx;
     const idsPersona = [
       ...new Set(
         ctx.filas.flatMap((f) => [
@@ -503,7 +505,7 @@ export class FlujoService {
         WHERE p.id::text = $1`,
       [procesoId],
     );
-    if (!fila) throw new NotFoundException('El proceso no existe');
+    if (!fila) throw new NotFoundException('El proceso no existe o fue eliminado');
     return {
       version: fila.version as number | null,
       activa: fila.activa as number | null,

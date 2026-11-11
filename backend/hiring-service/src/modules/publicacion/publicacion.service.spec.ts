@@ -96,7 +96,7 @@ describe('advertenciaDelPlazo', () => {
   const advertencia = (plazo: any) => (servicio() as any).advertenciaDelPlazo(plazo);
 
   it('avisa cuando la modalidad no tiene plazo parametrizado', () => {
-    expect(advertencia(null)).toMatch(/no tiene plazo de publicidad parametrizado/);
+    expect(advertencia(null)).toMatch(/no tiene plazo de publicidad configurado/);
   });
 
   it('avisa cuando el plazo aún no está confirmado', () => {

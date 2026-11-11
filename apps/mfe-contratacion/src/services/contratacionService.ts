@@ -187,12 +187,35 @@ const SERVICE_PREFIX = '/hiring/api/v1';
  * de leer el cuerpo del 422 (camposFaltantes), que un `throw new Error(status)`
  * descartaría.
  */
+/**
+ * El mensaje del servidor, si es uno que se le pueda mostrar a una persona.
+ *
+ * Los errores de validación llegan como lista. Los que el servidor no escribió
+ * («Internal server error», «Cannot GET /…») llegan en inglés y no dicen nada
+ * que sirva: se descartan para que salga el texto propio de cada caso.
+ */
+export function textoDelError(mensaje: unknown): string | null {
+  const texto = Array.isArray(mensaje) ? mensaje.filter(Boolean).join('. ') : typeof mensaje === 'string' ? mensaje.trim() : '';
+  if (!texto) return null;
+  if (/file too large/i.test(texto)) return 'El archivo es demasiado grande para subirlo';
+  if (/^(internal server error|cannot (get|post|put|patch|delete) |bad request|not found|forbidden|unauthorized|bad gateway|service unavailable|gateway timeout|payload too large|unprocessable entity)/i.test(texto)) {
+    return null;
+  }
+  return texto;
+}
+
 async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${ruta}`, {
-    credentials: 'include',
-    headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
-    ...init,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${ruta}`, {
+      credentials: 'include',
+      headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+      ...init,
+    });
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err;
+    throw new Error('No se pudo conectar con el servidor: revisa tu conexión a internet e inténtalo de nuevo');
+  }
 
   if (res.ok) {
     const texto = await res.text();
@@ -214,17 +237,32 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
       Array.isArray(cuerpo.documentosDeLaLista) ? cuerpo.documentosDeLaLista : [],
     );
   }
+  const mensaje = textoDelError(cuerpo?.message);
   if (res.status === 409) {
-    throw new ConflictoError(cuerpo?.message ?? 'El estudio previo cambió en otra sesión');
+    throw new ConflictoError(
+      mensaje ?? 'Alguien más cambió esto mientras lo tenías abierto: recarga la página e inténtalo de nuevo',
+    );
   }
   if (res.status === 401) {
     throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
   }
   if (res.status === 403) {
-    throw new Error(cuerpo?.message ?? 'No tienes permisos para realizar esta acción');
+    throw new Error(mensaje ?? 'No tienes permiso para hacer esta acción');
+  }
+  if (res.status === 413) {
+    throw new Error('El archivo es demasiado grande para subirlo');
+  }
+  // Un 5xx no trae nada que la persona pueda corregir: se dice qué pasó y qué hacer.
+  if (res.status >= 500) {
+    throw new Error(
+      'El servicio de Contratación tuvo un problema y no pudo completar la acción. Inténtalo de nuevo en unos minutos; si sigue igual, avisa a soporte',
+    );
+  }
+  if (res.status === 404) {
+    throw new Error(mensaje ?? 'No se encontró lo que buscabas: puede que ya no exista. Recarga la página');
   }
 
-  throw new Error(cuerpo?.message ?? `Error ${res.status}`);
+  throw new Error(mensaje ?? 'No se pudo completar la acción: revisa los datos e inténtalo de nuevo');
 }
 
 /**

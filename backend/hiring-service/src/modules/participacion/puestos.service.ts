@@ -247,7 +247,7 @@ export class PuestosService {
         problemas.push({
           puestoId: p.id,
           numeral: null,
-          mensaje: `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez ${this.permisosQuePide(suyos)}. Dalo en Permisos por etapa o quita alguna de esas actividades del puesto`,
+          mensaje: `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez permiso para ${this.permisosQuePide(suyos)}. Dáselo a un mismo rol en Permisos por etapa o quita alguna de esas actividades del puesto`,
         });
       }
     }
@@ -371,7 +371,7 @@ export class PuestosService {
       const candidatos = await this.idsCandidatos(usos);
       if (!candidatos.includes(usuarioId)) {
         throw new BadRequestException(
-          `Esa persona no puede ocupar el puesto ${puesto.nombre}: le falta poder ${this.permisosQuePide(usos)}`,
+          `Esa persona no puede ocupar el puesto ${puesto.nombre}: le falta permiso para ${this.permisosQuePide(usos)}. Dáselo a su rol en Permisos por etapa o elige a otra persona`,
         );
       }
 
@@ -554,7 +554,7 @@ export class PuestosService {
     const consulta = em.getRepository(Proceso).createQueryBuilder('p').where('p.id = :procesoId', { procesoId });
     if (bloquear) consulta.setLock('pessimistic_write');
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

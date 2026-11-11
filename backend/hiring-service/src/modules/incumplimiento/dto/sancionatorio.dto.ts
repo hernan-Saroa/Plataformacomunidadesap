@@ -27,7 +27,7 @@ class DatosDeResolucion {
   numero: string;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato AAAA-MM-DD' })
   fechaExpedicion: string;
 }
 
@@ -84,7 +84,7 @@ export class CitarAudienciaDto {
 /** Registro de lo que ocurrio en la audiencia (EFDS-1181). */
 export class CelebrarAudienciaDto {
   @ApiProperty({ description: 'Fecha en que se celebró (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de la audiencia debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de la audiencia debe tener el formato AAAA-MM-DD' })
   celebradaEl: string;
 
   @ApiProperty({ description: 'Que paso en la audiencia' })
@@ -112,14 +112,14 @@ export class CerrarSinCelebrarDto {
 /** Notificacion de la resolucion y, cuando la hay, su firmeza (EFDS-1181). */
 export class NotificarResolucionDto {
   @ApiProperty({ description: 'Fecha de la notificación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de notificación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de notificación debe tener el formato AAAA-MM-DD' })
   notificadaEl: string;
 
   @ApiPropertyOptional({
     description: 'Fecha en que quedó en firme; se omite mientras no lo este',
   })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de firmeza debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de firmeza debe tener el formato AAAA-MM-DD' })
   firmeEl?: string;
 }
 

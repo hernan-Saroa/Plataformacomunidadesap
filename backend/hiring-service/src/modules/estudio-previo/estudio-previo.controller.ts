@@ -251,7 +251,7 @@ export class EstudioPrevioController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!file) throw new BadRequestException('Adjunta el archivo: no llegó ninguno');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.registrarAdjunto(id, file, hash, getHiringAccess(req));
   }
@@ -299,7 +299,7 @@ export class EstudioPrevioController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!file) throw new BadRequestException('Adjunta el archivo: no llegó ninguno');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.reemplazarAdjunto(id, documentoId, file, hash, getHiringAccess(req));
   }

@@ -30,7 +30,7 @@ export class PermisosGuard implements CanActivate {
     if (!exigidos?.length) return true;
 
     const { user } = context.switchToHttp().getRequest();
-    if (!user) throw new ForbiddenException('Usuario no autenticado');
+    if (!user) throw new ForbiddenException('Tu sesión no está activa: vuelve a iniciar sesión');
 
     /*
      * Tres fuentes, de la más autorizada a la menos:
@@ -53,7 +53,7 @@ export class PermisosGuard implements CanActivate {
     // Se dice qué permiso falta, no qué rol: el rol que lo otorga depende de
     // cómo esté configurada la entidad, y nombrarlo aquí sería adivinar.
     throw new ForbiddenException(
-      `No tienes el permiso necesario para esta acción: ${exigidos.join(' o ')}`,
+      `No tienes permiso para esta acción: pídele a quien administra los roles el permiso ${exigidos.join(' o ')}`,
     );
   }
 }

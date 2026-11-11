@@ -70,7 +70,7 @@ export class ExpedirRpDto {
   valor: number;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato AAAA-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Rubro presupuestal al que se imputa' })
@@ -134,7 +134,7 @@ export class CargarRpDto {
   valor: number;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)', example: '2026-10-20' })
-  @IsDateString({}, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Vigencia fiscal', example: 2026 })

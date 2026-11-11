@@ -238,7 +238,7 @@ describe('cadena de aprobación', () => {
       expect(problemas).toEqual([
         'El escalón 1 necesita un nombre',
         'El escalón 1 no tiene quién decida: elige un rol, una persona, un puesto o un papel',
-        'El escalón 2 tiene que poder aprobar: sin eso la cadena no tiene salida',
+        'El escalón 2 tiene que poder aprobar: si no, la actividad nunca podría quedar aprobada',
       ]);
     });
 

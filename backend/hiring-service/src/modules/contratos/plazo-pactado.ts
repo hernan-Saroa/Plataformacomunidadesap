@@ -29,7 +29,7 @@ export function leerPlazoPactado(datos: {
   const conUnidad = !!plazoUnidad || (plazoCantidad !== undefined && plazoCantidad !== null);
 
   if (conUnidad && plazoFechaFin) {
-    return { error: 'El plazo es un número con su unidad o una fecha cierta, no las dos cosas' };
+    return { error: 'Indica el plazo de una sola forma: un número con su unidad, o una fecha cierta' };
   }
 
   if (plazoFechaFin) {

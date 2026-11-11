@@ -690,7 +690,7 @@ export class CronogramaService {
     const [proceso] = await this.dataSource.query(`SELECT id FROM hiring.procesos WHERE id = $1`, [
       procesoId,
     ]);
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
   }
 }
 
@@ -699,7 +699,7 @@ export function validarEtapas(etapas: EtapaCronogramaDto[]) {
   const vistas = new Set<number>();
   for (const e of etapas) {
     if (vistas.has(e.etapa)) {
-      throw new BadRequestException(`La etapa ${e.etapa} viene dos veces`);
+      throw new BadRequestException(`La etapa ${e.etapa} aparece dos veces`);
     }
     vistas.add(e.etapa);
     if (e.fechaInicio && !e.fechaFin) {

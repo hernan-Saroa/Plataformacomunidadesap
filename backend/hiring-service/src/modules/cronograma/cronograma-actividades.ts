@@ -74,9 +74,9 @@ export function validarActividades(
   for (const a of actividades) {
     if (a.numeral) {
       if (a.id || a.nombre) {
-        throw new BadRequestException(`La actividad ${a.numeral} es del flujo: no lleva nombre propio`);
+        throw new BadRequestException(`La actividad ${a.numeral} ya tiene su nombre en el flujo: no se le pone otro`);
       }
-      if (vistos.has(a.numeral)) throw new BadRequestException(`La actividad ${a.numeral} viene dos veces`);
+      if (vistos.has(a.numeral)) throw new BadRequestException(`La actividad ${a.numeral} aparece dos veces`);
       vistos.add(a.numeral);
       if (!numeralesValidos.has(a.numeral)) {
         throw new BadRequestException(`La actividad ${a.numeral} no hace parte del proceso`);
@@ -94,11 +94,11 @@ export function validarActividades(
     }
     for (const d of a.avisarA ?? []) {
       if (!(DESTINOS_CRONOGRAMA as readonly string[]).includes(d)) {
-        throw new BadRequestException(`${n}: no se sabe a quién es «${d}»`);
+        throw new BadRequestException(`${n}: «${d}» no es un destinatario que se pueda elegir`);
       }
     }
     if (a.canal && !(CANALES_CRONOGRAMA as readonly string[]).includes(a.canal)) {
-      throw new BadRequestException(`${n}: el canal es campanita, correo o ambos`);
+      throw new BadRequestException(`${n}: elige el canal del aviso: campanita, correo o ambos`);
     }
     for (const c of a.correos ?? []) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.trim())) {
@@ -106,7 +106,7 @@ export function validarActividades(
       }
     }
     if (a.fechaFin && !(a.avisarA?.length || a.correos?.length)) {
-      throw new BadRequestException(`${n}: di a quién se le avisa del vencimiento`);
+      throw new BadRequestException(`${n}: elige a quién se le avisa del vencimiento`);
     }
   }
 }
@@ -130,7 +130,7 @@ function validarPropia(a: ActividadProgramada, propiasDelProceso: Set<string>, v
     if (!propiasDelProceso.has(a.id)) {
       throw new BadRequestException(`«${nombre}» no es una actividad de este proceso`);
     }
-    if (vistos.has(a.id)) throw new BadRequestException(`«${nombre}» viene dos veces`);
+    if (vistos.has(a.id)) throw new BadRequestException(`«${nombre}» aparece dos veces`);
     vistos.add(a.id);
   }
 }
@@ -162,18 +162,18 @@ export function validarCambiosDeAdenda(cambios: CambioDeAdenda[], mueveElCierre:
   const vistos = new Set<string>();
   for (const c of cambios) {
     if (c.ambito !== 'ETAPA' && c.ambito !== 'ACTIVIDAD') {
-      throw new BadRequestException('Cada fecha de la adenda es de una etapa o de una actividad del cronograma');
+      throw new BadRequestException('Cada fecha de la adenda debe decir si mueve una etapa o una actividad del cronograma');
     }
-    if (!c.clave) throw new BadRequestException('Falta qué etapa o actividad mueve la adenda');
+    if (!c.clave) throw new BadRequestException('Indica qué etapa o actividad mueve la adenda');
     const quien = c.ambito === 'ETAPA' ? `Etapa ${c.clave}` : (c.nombre ?? c.clave);
     const llave = `${c.ambito}:${c.clave}`;
-    if (vistos.has(llave)) throw new BadRequestException(`${quien} viene dos veces en la adenda`);
+    if (vistos.has(llave)) throw new BadRequestException(`${quien} aparece dos veces en la adenda`);
     vistos.add(llave);
     if (!c.fechaFin || !FECHA.test(c.fechaFin)) {
-      throw new BadRequestException(`${quien}: falta la nueva fecha de fin (YYYY-MM-DD)`);
+      throw new BadRequestException(`${quien}: falta la nueva fecha de fin`);
     }
     if (c.fechaInicio && !FECHA.test(c.fechaInicio)) {
-      throw new BadRequestException(`${quien}: la nueva fecha de inicio va en formato YYYY-MM-DD`);
+      throw new BadRequestException(`${quien}: la nueva fecha de inicio no es una fecha válida`);
     }
     if (c.fechaInicio && c.fechaInicio > c.fechaFin) {
       throw new BadRequestException(`${quien}: la fecha de inicio no puede ser posterior a la de fin`);

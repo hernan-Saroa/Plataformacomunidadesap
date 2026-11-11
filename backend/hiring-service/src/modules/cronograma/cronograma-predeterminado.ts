@@ -42,11 +42,11 @@ export function validarPredeterminado(filas: FilaPredeterminada[], numeralesVali
     let quien: string;
     if (f.numeral) {
       quien = f.numeral;
-      if (f.nombre) throw new BadRequestException(`La ${f.numeral} es del flujo: no lleva nombre propio`);
+      if (f.nombre) throw new BadRequestException(`La ${f.numeral} ya tiene su nombre en el flujo: no se le pone otro`);
       if (!numeralesValidos.has(f.numeral)) {
         throw new BadRequestException(`La ${f.numeral} no es de las etapas 5 a 10 de esta modalidad`);
       }
-      if (vistos.has(f.numeral)) throw new BadRequestException(`La ${f.numeral} viene dos veces`);
+      if (vistos.has(f.numeral)) throw new BadRequestException(`La ${f.numeral} aparece dos veces`);
       vistos.add(f.numeral);
     } else {
       const nombre = f.nombre?.trim();
@@ -56,28 +56,28 @@ export function validarPredeterminado(filas: FilaPredeterminada[], numeralesVali
         throw new BadRequestException(`${quien}: di en qué etapa va (5 a 10)`);
       }
       const llave = `${f.etapa}:${nombre.toLowerCase()}`;
-      if (vistos.has(llave)) throw new BadRequestException(`${quien} viene dos veces en la etapa ${f.etapa}`);
+      if (vistos.has(llave)) throw new BadRequestException(`${quien} aparece dos veces en la etapa ${f.etapa}`);
       vistos.add(llave);
     }
 
     if (!enRango(f.diaFin, 0, 730)) throw new BadRequestException(`${quien}: el día de fin va de 0 a 730`);
     if (f.diaInicio !== null && f.diaInicio !== undefined) {
       if (!enRango(f.diaInicio, 0, 730)) throw new BadRequestException(`${quien}: el día de inicio va de 0 a 730`);
-      if (f.diaInicio > f.diaFin) throw new BadRequestException(`${quien}: empieza después de terminar`);
+      if (f.diaInicio > f.diaFin) throw new BadRequestException(`${quien}: el día de inicio no puede ser posterior al de fin`);
     }
     if (f.tipoDias && !(TIPOS_DE_DIAS as readonly string[]).includes(f.tipoDias)) {
-      throw new BadRequestException(`${quien}: los días son hábiles o calendario`);
+      throw new BadRequestException(`${quien}: indica si los días son hábiles o calendario`);
     }
     if (f.diasAntes !== null && f.diasAntes !== undefined && !enRango(f.diasAntes, 0, 90)) {
       throw new BadRequestException(`${quien}: los días de aviso van de 0 a 90`);
     }
     for (const d of f.avisarA ?? []) {
       if (!(DESTINOS_CRONOGRAMA as readonly string[]).includes(d)) {
-        throw new BadRequestException(`${quien}: no se sabe a quién es «${d}»`);
+        throw new BadRequestException(`${quien}: «${d}» no es un destinatario que se pueda elegir`);
       }
     }
     if (f.canal && !(CANALES_CRONOGRAMA as readonly string[]).includes(f.canal)) {
-      throw new BadRequestException(`${quien}: el canal es campanita, correo o ambos`);
+      throw new BadRequestException(`${quien}: elige el canal del aviso: campanita, correo o ambos`);
     }
     for (const c of f.correos ?? []) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.trim())) {
@@ -85,7 +85,7 @@ export function validarPredeterminado(filas: FilaPredeterminada[], numeralesVali
       }
     }
     if (!(f.avisarA?.length || f.correos?.length)) {
-      throw new BadRequestException(`${quien}: di a quién se le avisa del vencimiento`);
+      throw new BadRequestException(`${quien}: elige a quién se le avisa del vencimiento`);
     }
   }
 }

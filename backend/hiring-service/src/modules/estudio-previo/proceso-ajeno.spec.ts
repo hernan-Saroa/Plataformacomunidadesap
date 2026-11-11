@@ -89,7 +89,7 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
   it('responde 404 y no 403: no confirma que el proceso exista', async () => {
     // Un 403 le diría a quien no debe verlo que ese radicado es real.
     await expect(servicio(ajeno).obtenerProceso('p-1', quien('yo@esap.edu.co'))).rejects.toThrow(
-      /no encontrado/i,
+      /no existe/i,
     );
   });
 

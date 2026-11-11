@@ -65,7 +65,7 @@ export class CierreDefinitivoService {
         tieneLiquidacion: false,
         amparos: null as EstadoDeAmparos | null,
         puedeCerrar: false,
-        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+        motivoNoPuede: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         advertencias: [] as string[],
         cierre: null as unknown,
         historial: [] as unknown[],
@@ -162,7 +162,7 @@ export class CierreDefinitivoService {
       let documento: Documento | null = null;
       if (soporte && hash) {
         const expediente = await em.findOne(Expediente, { where: { procesoId } });
-        if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+        if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
         documento = await this.guardarDocumento(
           em,
@@ -332,7 +332,7 @@ export class CierreDefinitivoService {
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const consulta = em
       .getRepository(Contrato)
@@ -347,7 +347,7 @@ export class CierreDefinitivoService {
 
   private async exigirContrato(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
     return contrato;
   }
 

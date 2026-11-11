@@ -107,7 +107,7 @@ export class CronogramaPredeterminadoService {
    */
   async propuesta(procesoId: string, diaCero: string) {
     if (!FECHA.test(diaCero ?? '')) {
-      throw new BadRequestException('Indica el día cero del cronograma (YYYY-MM-DD)');
+      throw new BadRequestException('Indica el día cero del cronograma: la fecha desde la que se cuentan los plazos');
     }
     const [proceso] = await this.dataSource.query(
       `SELECT p.modalidad, m.nombre FROM hiring.procesos p
@@ -115,7 +115,7 @@ export class CronogramaPredeterminadoService {
         WHERE p.id = $1`,
       [procesoId],
     );
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     if (!proceso.modalidad) {
       return { modalidad: null, modalidadNombre: null, diaCero, actividades: [] };
     }

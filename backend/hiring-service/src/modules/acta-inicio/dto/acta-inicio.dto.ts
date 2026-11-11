@@ -16,7 +16,7 @@ import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma
 /** El acta de inicio suscrita por las dos partes (actividad 8.7, migración 089). */
 export class SuscribirActaDto {
   @ApiProperty({ description: 'Fecha en que las dos partes firmaron el acta (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato AAAA-MM-DD' })
   fechaSuscripcion: string;
 
   /** Solo si la 8.7 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
@@ -32,7 +32,7 @@ export class SuscribirActaDto {
 export class SuscribirActaInicioDto {
   /** La de la reunion, no la del registro: es cuando arranco la ejecucion. */
   @ApiProperty({ description: 'Fecha de la reunión de inicio (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de inicio debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de inicio debe tener el formato AAAA-MM-DD' })
   fechaInicio: string;
 
   @ApiProperty({ description: 'Alcance, cronograma y entregables socializados' })

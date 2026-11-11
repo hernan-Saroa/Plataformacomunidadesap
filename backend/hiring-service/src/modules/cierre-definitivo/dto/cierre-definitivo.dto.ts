@@ -16,7 +16,7 @@ import {
  */
 export class CerrarDefinitivamenteDto {
   @ApiProperty({ description: 'Fecha del cierre definitivo (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha del cierre debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del cierre debe tener el formato AAAA-MM-DD' })
   fechaCierre: string;
 
   @ApiPropertyOptional({ description: 'Observaciones del cierre definitivo' })

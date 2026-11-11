@@ -92,7 +92,7 @@ export class IncumplimientoService {
       return {
         enEjecucion: false,
         puedeReportar: false,
-        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+        motivoNoPuede: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         contrato: null,
         casos: [],
       };
@@ -224,7 +224,7 @@ export class IncumplimientoService {
       let documentoId: string | null = null;
       if (archivo && hash) {
         const expediente = await em.findOne(Expediente, { where: { procesoId } });
-        if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+        if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
         const doc = await this.guardarDocumento(
           em,
@@ -285,7 +285,7 @@ export class IncumplimientoService {
 
   private async exigirContratoEnEjecucion(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
 
     if (!admiteReporteIncumplimiento(contrato.estado)) {
       throw new ConflictException(
@@ -317,7 +317,7 @@ export class IncumplimientoService {
 
   private async exigirProceso(em: EntityManager, procesoId: string) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

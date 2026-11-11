@@ -266,7 +266,7 @@ export class SubsanacionesService extends TrasladoService {
         .getRepository(Subsanacion)
         .findOne({ where: { id: subsanacionId, informeId: informe.id } });
       if (!subsanacion) {
-        throw new NotFoundException('Eso no se presentó contra el informe en juego');
+        throw new NotFoundException('Ese escrito no corresponde al informe que está en traslado');
       }
 
       const doc = documento
@@ -349,7 +349,7 @@ export class SubsanacionesService extends TrasladoService {
       }
       if (!informe.venceEl) {
         throw new ConflictException(
-          'Este traslado no tiene término que contar: su modalidad no tiene plazo parametrizado',
+          'Este traslado no tiene término que contar: su modalidad no tiene plazo configurado',
         );
       }
       if (informe.venceEl < this.hoy()) {

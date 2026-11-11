@@ -381,7 +381,7 @@ export class CdpService {
   async estadoRespaldo(procesoId: string, em?: EntityManager, acceso?: HiringAccess) {
     const manager = em ?? this.dataSource.manager;
     const proceso = await manager.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     // Quién puede hacer qué lo responde el backend, que ya tiene los roles del
     // token. Si la pantalla lo dedujera por su cuenta, ofrecería botones que la
@@ -423,7 +423,7 @@ export class CdpService {
       motivo: expedido
         ? null
         : cdp
-          ? `El CDP del proceso está en estado ${cdp.estado} y aún no ha sido expedido`
+          ? `El CDP del proceso está ${cdp.estado.toLowerCase()} y aún no ha sido expedido`
           : 'El proceso no tiene CDP cargado',
       ...permisos,
     };
@@ -433,7 +433,7 @@ export class CdpService {
   async transicionar(cdp: Cdp, hacia: EstadoCdp) {
     if (!puedeTransicionar(cdp.estado, hacia)) {
       throw new BadRequestException(
-        `Un CDP en estado ${cdp.estado} no puede pasar a ${hacia}`,
+        `Un CDP ${cdp.estado.toLowerCase()} no puede pasar a ${hacia.toLowerCase()}`,
       );
     }
     cdp.estado = hacia;
@@ -562,7 +562,7 @@ export class CdpService {
 
       if (cdp.estado !== 'EXPEDIDO') {
         throw new ConflictException(
-          `El CDP está en estado ${cdp.estado}: el soporte se adjunta una vez expedido`,
+          `El CDP está ${cdp.estado.toLowerCase()}: el soporte se adjunta una vez expedido`,
         );
       }
 
@@ -591,7 +591,7 @@ export class CdpService {
     acceso: HiringAccess,
   ): Promise<Documento> {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     return em.save(
       em.create(Documento, {
@@ -836,7 +836,7 @@ export class CdpService {
       throw new ConflictException(
         enCurso.origen === 'REGISTRADO_EN_ETAPA_3'
           ? 'El proceso ya tiene registrado un CDP'
-          : `El proceso ya tiene un CDP en estado ${enCurso.estado}`,
+          : `El proceso ya tiene un CDP ${enCurso.estado.toLowerCase()}`,
       );
     }
   }
@@ -984,7 +984,7 @@ export class CdpService {
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

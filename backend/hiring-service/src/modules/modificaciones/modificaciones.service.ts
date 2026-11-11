@@ -122,7 +122,7 @@ export class ModificacionesService {
         tope,
         margen: null as MargenDeAdicion | null,
         puedeSolicitar: false,
-        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+        motivoNoPuede: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         modificaciones: [] as unknown[],
         // La misma forma que cuando sí hay contrato. Omitir `tipos` dejaba a
         // la pantalla recorriendo un `undefined`: abrir la 9.5 antes de tener
@@ -131,7 +131,7 @@ export class ModificacionesService {
           tipo,
           nombre: NOMBRE_TIPO[tipo],
           puede: false,
-          motivo: 'el proceso todavía no tiene contrato generado',
+          motivo: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         })),
         suspension: null,
       };
@@ -579,14 +579,14 @@ export class ModificacionesService {
       if (objetoCambio(modificacion.objetoContrato, contrato.objeto)) {
         throw new ConflictException(
           'No se puede aprobar la modificación: el objeto del contrato no es el mismo sobre el que se solicitó, ' +
-            'y el objeto no se modifica (RF-MOD-04). Revísalo antes de suscribir el acto.',
+            'y el objeto de un contrato no se modifica. Revísalo antes de suscribir el acto.',
         );
       }
 
       this.validarFecha(dto.fechaSuscripcion);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const documento = await this.guardarDocumento(
         em,
@@ -936,7 +936,7 @@ export class ModificacionesService {
       this.validarFecha(dto.fechaPublicacion);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const documento = await this.guardarDocumento(
         em,
@@ -1262,7 +1262,7 @@ export class ModificacionesService {
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const consulta = em
       .getRepository(Contrato)
@@ -1277,7 +1277,7 @@ export class ModificacionesService {
 
   private async exigirContrato(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
     return contrato;
   }
 

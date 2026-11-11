@@ -409,7 +409,7 @@ export class ParticipacionService {
     if (bloquear) consulta.setLock('pessimistic_write');
 
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

@@ -43,7 +43,7 @@ export class RegistrarObservacionDto {
     example: '2026-08-14',
   })
   @IsOptional()
-  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaPresentacion?: string;
 
   @ApiPropertyOptional({ description: 'Asunto, si se quiere distinguir' })

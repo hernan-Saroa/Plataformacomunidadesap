@@ -57,7 +57,7 @@ describe('cronograma predeterminado', () => {
     });
 
     it('no deja empezar después de terminar', () => {
-      expect(() => validarPredeterminado([fila({ diaInicio: 21 })], validos)).toThrow(/empieza después/);
+      expect(() => validarPredeterminado([fila({ diaInicio: 21 })], validos)).toThrow(/no puede ser posterior al de fin/);
     });
 
     it('no repite una actividad ni una propia con el mismo nombre en la etapa', () => {

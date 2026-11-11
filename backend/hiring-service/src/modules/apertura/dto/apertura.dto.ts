@@ -13,7 +13,7 @@ export class RegistrarAperturaDto {
    * términos que corren desde la apertura.
    */
   @ApiProperty({ description: 'Fecha de la resolución (YYYY-MM-DD)', example: '2026-08-12' })
-  @IsDateString({}, { message: 'La fecha de la resolución debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de la resolución debe tener el formato AAAA-MM-DD' })
   resolucionFecha: string;
 
   @ApiPropertyOptional({ description: 'Enlace del proceso en SECOP II' })

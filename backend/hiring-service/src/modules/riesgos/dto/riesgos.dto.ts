@@ -18,7 +18,7 @@ export class RegistrarAudienciaDto {
    * de riesgos, y de él depende que el proceso pueda abrirse.
    */
   @ApiProperty({ description: 'Fecha en que se celebró la audiencia (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de la audiencia debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de la audiencia debe tener el formato AAAA-MM-DD' })
   fechaCelebracion: string;
 
   @ApiPropertyOptional({ description: 'Observaciones o acuerdos relevantes de la audiencia' })

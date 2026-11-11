@@ -142,7 +142,7 @@ export class FilesController {
     const base = resolve(STORAGE_PATH);
     const ruta = resolve(join(base, nombre));
     if (!ruta.startsWith(base + sep)) {
-      throw new NotFoundException('Documento no encontrado');
+      throw new NotFoundException('El documento no existe o ya no está disponible');
     }
     if (!existsSync(ruta)) {
       // Una pestaña recibe una página que se pueda leer; el visor y los
@@ -151,7 +151,7 @@ export class FilesController {
         res.status(404).type('html').send(PAGINA_NO_ENCONTRADO);
         return;
       }
-      throw new NotFoundException('Documento no encontrado');
+      throw new NotFoundException('El documento no existe o ya no está disponible');
     }
 
     /**

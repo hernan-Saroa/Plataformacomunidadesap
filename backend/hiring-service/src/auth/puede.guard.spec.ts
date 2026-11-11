@@ -102,7 +102,7 @@ describe('PuedeGuard', () => {
 
     await expect(
       guard.canActivate(contexto('ruta', { ...usuario, params: { numeral: '4.2x' } })),
-    ).rejects.toThrow('no es un destino válido');
+    ).rejects.toThrow('no es una actividad, etapa ni trámite del módulo');
     // Ni siquiera llega a consultar: todo el módulo no debe tapar un
     // numeral mal formado.
     expect(alcanceService.deRoles).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe('PuedeGuard', () => {
     const { guard } = guardCon(financiera);
 
     await expect(guard.canActivate(contexto('fijo', { params: {} }))).rejects.toThrow(
-      'Usuario no autenticado',
+      'Tu sesión no está activa: vuelve a iniciar sesión',
     );
   });
 

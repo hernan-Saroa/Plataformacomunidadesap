@@ -31,7 +31,7 @@ export class LiquidarDto {
   tipo: TipoLiquidacion;
 
   @ApiProperty({ description: 'Fecha del acta o de la resolución (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha del acta debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del acta debe tener el formato AAAA-MM-DD' })
   fechaActa: string;
 
   /** Multipart manda todo como texto: hay que convertirlo antes de validar. */

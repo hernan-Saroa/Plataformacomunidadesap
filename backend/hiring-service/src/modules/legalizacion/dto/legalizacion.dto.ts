@@ -31,11 +31,11 @@ export class AmparoDto {
   valorAsegurado: number;
 
   @ApiProperty({ description: 'Inicio de la vigencia (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La vigencia debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La vigencia debe tener el formato AAAA-MM-DD' })
   vigenciaDesde: string;
 
   @ApiProperty({ description: 'Fin de la vigencia (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La vigencia debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La vigencia debe tener el formato AAAA-MM-DD' })
   vigenciaHasta: string;
 }
 
@@ -136,7 +136,7 @@ export class RegistrarArlDto {
   numeroAfiliacion?: string;
 
   @ApiProperty({ description: 'Fecha de la afiliación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de afiliación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de afiliación debe tener el formato AAAA-MM-DD' })
   fechaAfiliacion: string;
 
   /** Solo si la 8.5 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */

@@ -75,6 +75,8 @@ export interface DatosDeValidacion {
   pueden: (accion: Exclude<Accion, 'ver'>, numeral: string) => Set<string>;
   /** Las cuentas activas con ese rol. */
   conRol: (rol: string) => Set<string>;
+  /** Cómo se llama el rol, para nombrarlo en los mensajes. Sin él, su código. */
+  nombreRol?: (rol: string) => string;
   /** La cuenta activa de una persona del directorio, si la tiene. */
   cuentaDe: (personaId: string) => string | null;
   /** Los puestos activos, por id. */
@@ -83,6 +85,17 @@ export interface DatosDeValidacion {
 }
 
 const ACCION: Record<string, string> = { editar: 'editar', aprobar: 'aprobar', decidir: 'decidir' };
+
+/** «a, b y c». */
+function enLista(partes: string[]): string {
+  if (partes.length <= 1) return partes.join('');
+  return `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`;
+}
+
+/** Los permisos que exige un puesto, dichos de corrido: «editar la 3.6 y aprobar la 3.1». */
+function permisosDe(usos: { accion: Exclude<Accion, 'ver'>; numeral: string }[]): string {
+  return enLista(usos.map((u) => `${ACCION[u.accion]} la ${u.numeral}`));
+}
 
 /** Los escalones de una aprobación, sea una cadena o un escalón suelto. */
 export function escalonesDe(
@@ -178,7 +191,7 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
           parte: 'HACE',
           gravedad: 'ERROR',
           mensaje: hace.personas.length
-            ? `Ninguna de las personas elegidas tiene una cuenta con permiso para ${queHace}`
+            ? `Ninguna de las personas elegidas tiene una cuenta con permiso para ${queHace}: dale el permiso a su rol en Permisos por etapa o elige a otra persona`
             : 'Falta elegir a la persona que la hace',
         });
       } else if (validas.length < hace.personas.length) {
@@ -186,7 +199,7 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
           ...base,
           parte: 'HACE',
           gravedad: 'AVISO',
-          mensaje: `Alguna de las personas elegidas no tiene una cuenta con permiso para ${queHace}`,
+          mensaje: `Alguna de las personas elegidas no tiene una cuenta con permiso para ${queHace}: esa persona no podrá hacerla`,
         });
       }
     } else if (a.numeral === NUMERAL_QUE_ASIGNA_PUESTOS) {
@@ -196,11 +209,16 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
       if (!nombre) {
         problemas.push({ ...base, parte: 'HACE', gravedad: 'ERROR', mensaje: 'La hace un puesto que ya no existe: elige otro' });
       } else if (!candidatosDe(usos.get(hace.puestoId) ?? [], d.pueden).size) {
+        const suyos = usos.get(hace.puestoId) ?? [];
         problemas.push({
           ...base,
           parte: 'HACE',
           gravedad: 'ERROR',
-          mensaje: `Nadie puede ocupar el puesto ${nombre}: ninguna cuenta tiene todos sus permisos`,
+          mensaje:
+            `Nadie puede ocupar el puesto ${nombre}: quien lo ocupe necesita permiso para ${permisosDe(suyos)}, ` +
+            (suyos.length > 1
+              ? 'y ninguna cuenta los tiene todos. Dáselos a un mismo rol en Permisos por etapa'
+              : 'y ninguna cuenta lo tiene. Dáselo a un rol en Permisos por etapa'),
         });
       }
     }
@@ -219,25 +237,43 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
       });
       continue;
     }
+    const cadena = rige.aprobacion.tipo === 'CADENA' ? d.cadenas.get(rige.aprobacion.cadenaId)?.nombre : null;
+    const dondeSeCambia = cadena ? `en la cadena «${cadena}»` : 'en la aprobación de la actividad';
     escalones.forEach((e, i) => {
-      const cual = escalones.length > 1 ? `El escalón ${i + 1} (${e.nombre})` : 'La aprobación';
+      const donde = escalones.length > 1 ? `En el escalón ${i + 1} (${e.nombre})` : 'En la aprobación';
       const pueden = d.pueden('aprobar', a.numeral);
       const porRol = e.roles.some((r) => [...d.conRol(r)].some((c) => pueden.has(c)));
       const porPersona = e.personas.some((p) => !!d.cuentaDe(p));
       const porPapel = e.papeles.length > 0;
       const puestos = e.puestos ?? [];
-      const puestosMuertos = puestos.filter((p) => !d.puestos.has(p));
       const porPuesto = puestos.some((p) => d.puestos.has(p) && candidatosDe(usos.get(p) ?? [], d.pueden).size > 0);
-      if (!porRol && !porPersona && !porPapel && !porPuesto) {
-        problemas.push({
-          ...base,
-          parte: 'APRUEBA',
-          gravedad: 'ERROR',
-          mensaje: puestosMuertos.length
-            ? `${cual} nombra un puesto que ya no existe: elige otro`
-            : `${cual} no tiene quién lo decida con permiso de aprobar la ${a.numeral}`,
-        });
-      }
+      if (porRol || porPersona || porPapel || porPuesto) return;
+
+      // Por qué no sirve cada uno de los que el escalón nombra, y cómo se arregla.
+      const rol = (r: string) => d.nombreRol?.(r) ?? r;
+      const motivos = [
+        ...e.roles.map((r) =>
+          d.conRol(r).size
+            ? `el rol ${rol(r)} no tiene permiso de aprobar la ${a.numeral} (dáselo en Permisos por etapa)`
+            : `ninguna cuenta activa tiene el rol ${rol(r)} (asígnaselo a alguien)`,
+        ),
+        ...(e.personas.length
+          ? [e.personas.length > 1 ? 'las personas elegidas no tienen cuenta activa' : 'la persona elegida no tiene cuenta activa']
+          : []),
+        ...puestos.map((p) =>
+          d.puestos.has(p)
+            ? `nadie puede ocupar el puesto ${d.puestos.get(p)}, que exige permiso para ${permisosDe(usos.get(p) ?? [])} (dáselo a un mismo rol en Permisos por etapa)`
+            : 'nombra un puesto que ya no existe (elige otro)',
+        ),
+      ];
+      problemas.push({
+        ...base,
+        parte: 'APRUEBA',
+        gravedad: 'ERROR',
+        mensaje: motivos.length
+          ? `${donde} nadie puede decidir: ${motivos.join('; ')}. También puedes cambiar quién decide ${dondeSeCambia}`
+          : `${donde} no hay nadie que decida: elige un rol, una persona o un puesto ${dondeSeCambia}`,
+      });
     });
   }
   return problemas;

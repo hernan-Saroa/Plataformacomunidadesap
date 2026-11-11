@@ -106,7 +106,7 @@ export function validarEscalones(entrada: unknown): { escalones: EscalonConfigur
     const accionRara = acciones.find((a) => !ACCIONES.includes(a));
     if (accionRara) problemas.push(`El escalón ${n} tiene una acción que no existe: ${accionRara}`);
     if (!acciones.includes('APROBAR')) {
-      problemas.push(`El escalón ${n} tiene que poder aprobar: sin eso la cadena no tiene salida`);
+      problemas.push(`El escalón ${n} tiene que poder aprobar: si no, la actividad nunca podría quedar aprobada`);
     }
     // Con TODOS, cada miembro tiene que ser alguien concreto: una persona
     // nombrada o quien ocupe un puesto en el proceso. Un rol o un papel no

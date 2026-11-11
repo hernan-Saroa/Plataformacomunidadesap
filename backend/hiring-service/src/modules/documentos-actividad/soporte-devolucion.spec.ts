@@ -102,7 +102,7 @@ describe('soporte de la devolución', () => {
 
     await expect(
       service.cargarSoporteDeDevolucion('p-1', '5.6.1', archivo, 'hash', otro),
-    ).rejects.toThrow(/quien decidió/);
+    ).rejects.toThrow(/quien tomó la última decisión/);
   });
 
   it('quien negó adjunta lo que funda la negativa, aunque el proceso ya terminó', async () => {
@@ -124,7 +124,7 @@ describe('soporte de la devolución', () => {
 
     await expect(
       service.cargarSoporteDeDevolucion('p-1', '5.6.1', archivo, 'hash', otro),
-    ).rejects.toThrow(/quien decidió/);
+    ).rejects.toThrow(/quien tomó la última decisión/);
   });
 
   it('llega tarde si el área ya reenvió', async () => {
@@ -132,7 +132,7 @@ describe('soporte de la devolución', () => {
 
     await expect(
       service.cargarSoporteDeDevolucion('p-1', '3.1', archivo, 'hash', abogado),
-    ).rejects.toThrow(/llegaría tarde/);
+    ).rejects.toThrow(/ya no se adjunta soporte/);
   });
 
   it('una devolución puede llevar varios soportes, en el orden en que llegan', async () => {

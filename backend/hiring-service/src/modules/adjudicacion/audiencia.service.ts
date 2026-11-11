@@ -172,7 +172,7 @@ export class AudienciaService extends AdjudicacionBase {
       const audiencia = await this.audienciaVigente(em, procesoId);
       if (!audiencia) {
         throw new ConflictException(
-          'Primero se registra la audiencia con su acta; lo demás la documenta',
+          'Registra primero la audiencia con su acta: después se cargan sus demás documentos',
         );
       }
 

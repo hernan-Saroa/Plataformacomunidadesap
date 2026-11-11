@@ -96,7 +96,7 @@ export class CdpController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!file) throw new BadRequestException('Adjunta el archivo: no llegó ninguno');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
   }

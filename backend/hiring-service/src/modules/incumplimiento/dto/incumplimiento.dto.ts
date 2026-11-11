@@ -16,6 +16,6 @@ export class ReportarIncumplimientoDto {
 
   /** La del hecho, no la del reporte: de ella cuelgan los terminos del tramite. */
   @ApiProperty({ description: 'Fecha del hecho (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha del hecho debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del hecho debe tener el formato AAAA-MM-DD' })
   fechaHecho: string;
 }

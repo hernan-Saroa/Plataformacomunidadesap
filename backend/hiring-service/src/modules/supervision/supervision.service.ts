@@ -158,7 +158,7 @@ export class SupervisionService {
     if (!contrato) {
       return {
         admiteSupervisor: false,
-        motivoNoAdmite: 'el proceso todavía no tiene contrato generado',
+        motivoNoAdmite: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         supervisor: null,
         historial: [] as any[],
         avisoPendiente: false,
@@ -269,7 +269,7 @@ export class SupervisionService {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -393,7 +393,7 @@ export class SupervisionService {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -466,7 +466,7 @@ export class SupervisionService {
       if (!vigente) throw new NotFoundException('El contrato no tiene supervisor designado');
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const nuevos = await this.guardarAnexos(em, expediente.id, contrato.numero, anexos, acceso);
       vigente.anexosCorreo = [...(vigente.anexosCorreo ?? []), ...nuevos];
@@ -512,7 +512,7 @@ export class SupervisionService {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -631,7 +631,7 @@ export class SupervisionService {
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const consulta = em
       .getRepository(Contrato)
@@ -649,7 +649,7 @@ export class SupervisionService {
 
   private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
 
     if (!admiteSupervisor(contrato.estado)) {
       throw new ConflictException(
