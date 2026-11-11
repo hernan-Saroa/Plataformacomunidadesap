@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 import {
-  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura,
+  getTodasLasSesiones, getAulas, getCrucesHistoricos,
   publicarProgramacion, retirarProgramacion,
   type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
@@ -38,7 +38,6 @@ import { ArbolProgramacion } from './ArbolProgramacion';
 import { DisponibilidadDocente } from './DisponibilidadDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
-import { AprobacionJefatura } from './AprobacionJefatura';
 import { getMisPermisos, type MisPermisos } from '../services/api/vistaApi';
 import { ConcertacionBandeja } from './ConcertacionBandeja';
 import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
@@ -72,7 +71,7 @@ interface FranjaHoraria {
   periodoCodigo: string | null;
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion' | 'concertacion';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'concertacion';
 
 /** Los cinco estados del ciclo de la franja, con su etiqueta y color (§1.2). */
 const BADGE_ESTADO: Record<string, { etiqueta: string; clase: string }> = {
@@ -135,27 +134,20 @@ export function ProgramacionAcademicaModule({
   const [detalle, setDetalle] = useState<FranjaHoraria | null>(null);
   // 3.9 — Cruces del histórico. Se cargan aparte del panel: son otra fuente.
   const [historico, setHistorico] = useState<ValidacionHistorico | null>(null);
-  // EFDS-1939 — el item de aprobación solo aparece si el usuario ES jefatura. Se
-  // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
-  const [esJefatura, setEsJefatura] = useState(false);
-  // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
-  // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
+  // EFDS-2315 — La concertación es el ÚNICO camino para concertar la docencia (nov-2026): la
+  // antigua «Aprobación territorial» ya no se muestra. El submódulo aparece SIEMPRE —también al
+  // superusuario sin nada que concertar—; quién decide qué lo filtra el backend con los permisos del PTA.
   const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
+  const [errorConcertacion, setErrorConcertacion] = useState('');
   // EFDS-2342 — quién asigna docentes y no programa (PROGRAMADOR_DOCENTE_<NIVEL>) solo ve la
   // programación y la asignación: el resto le respondería 403. El servidor decide; esto solo ordena el menú.
   const [misPermisos, setMisPermisos] = useState<MisPermisos | null>(null);
   useEffect(() => { getMisPermisos().then(setMisPermisos).catch(() => setMisPermisos(null)); }, []);
-  useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
-  // Con la concertación encendida el endpoint de jefatura responde 409 a propósito: no se consulta. Se espera la
-  // configuración; si falla, no se consulta un régimen desconocido.
   useEffect(() => {
-    let vigente = true;
-    setEsJefatura(false);
-    if (concertacion && !concertacion.habilitada) {
-      getPendientesJefatura().then(() => { if (vigente) setEsJefatura(true); }).catch(() => {});
-    }
-    return () => { vigente = false; };
-  }, [concertacion]);
+    getConfiguracionConcertacion()
+      .then((c) => { setConcertacion(c); setErrorConcertacion(''); })
+      .catch((e) => { setConcertacion(null); setErrorConcertacion(e?.message || 'No se pudo consultar la concertación.'); });
+  }, []);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
   // periodo seleccionado en la cabecera; se persiste entre recargas.
@@ -196,8 +188,8 @@ export function ProgramacionAcademicaModule({
   const [soloRevision, setSoloRevision] = useState(false);
   useEffect(() => {
     if (!soloRevision) return;
-    setSeccion((s) => (s === 'concertacion' || s === 'aprobacion') ? s : (concertacion?.habilitada ? 'concertacion' : 'aprobacion'));
-  }, [soloRevision, concertacion]);
+    setSeccion('concertacion');
+  }, [soloRevision]);
 
   const elegirPeriodo = (id: string) => {
     setPeriodoSel(id);
@@ -326,23 +318,16 @@ export function ProgramacionAcademicaModule({
           badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
         ] as MenuGroup['items']).filter((i) => !!misPermisos && (i.id === 'horarios' ? misPermisos.ver.length > 0 : i.id === 'docentes' ? misPermisos.disponibilidad : misPermisos.programar.length > 0))),
-        // EFDS-1939 — solo para jefaturas territoriales.
-        ...(esJefatura ? [{
-          id: 'aprobacion',
-          label: 'Aprobación territorial',
-          subtitle: 'Aprobar o devolver franjas de tus docentes',
-          icon: iconoAprobacion,
-          color: '#059669',
-        }] : []),
-        // Se muestra también APAGADA, con el motivo: antes desaparecía sin explicación y parecía
-        // un problema de roles. La visibilidad no depende del rol: la bandeja filtra por permisos.
-        ...(concertacion ? [{
+        // SIEMPRE visible (también al superusuario sin nada que concertar), aun si la configuración
+        // no responde: entonces el panel dice por qué. La bandeja filtra por permisos en el servidor.
+        // La antigua «Aprobación territorial» (EFDS-1939) ya no se muestra: la concertación la reemplaza.
+        ...[{
           id: 'concertacion',
           label: 'Concertación de la docencia',
-          subtitle: concertacion.habilitada ? 'Revisar y aprobar la docencia de los docentes' : 'Apagada en este ambiente',
+          subtitle: !concertacion || concertacion.habilitada ? 'Revisar y aprobar la docencia de los docentes' : 'Apagada en este ambiente',
           icon: iconoAprobacion,
           color: '#003DA5',
-        }] : []),
+        }],
       ],
     },
   ];
@@ -522,7 +507,6 @@ export function ProgramacionAcademicaModule({
         abrirProgramasAcademicos={abrirProgramasAcademicos}
       />}
 
-      {seccion === 'aprobacion' && <AprobacionJefatura />}
       {seccion === 'concertacion' && concertacion?.habilitada && (
         <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
       )}
@@ -530,7 +514,13 @@ export function ProgramacionAcademicaModule({
         <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
           <p className="font-bold">La concertación de la docencia está apagada en este ambiente.</p>
           {concertacion.motivo && <p>{concertacion.motivo}</p>}
-          <p>Mientras esté apagada, la Docencia la aprueba el PTA y la jefatura territorial ve «Aprobación territorial». Para encenderla, el equipo de despliegue debe poner <code>PROG_CONCERTACION_HABILITADA=true</code> en Programación Académica y en el PTA, y <code>PROG_CONCERTACION_DESDE_PERIODO</code> (p. ej. 2026-1) en Programación Académica.</p>
+          <p>Está encendida por defecto: solo se apaga si el ambiente define <code>PROG_CONCERTACION_HABILITADA=false</code> en Programación Académica o en el PTA, o un <code>PROG_CONCERTACION_DESDE_PERIODO</code> mal escrito. Quite esa variable y recree los servicios.</p>
+        </div>
+      )}
+      {seccion === 'concertacion' && !concertacion && (
+        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-bold">No se pudo consultar la concertación.</p>
+          <p>{errorConcertacion || 'Consultando…'}</p>
         </div>
       )}
 

@@ -267,7 +267,8 @@ export function UsersPersonsModulePremium() {
           item.idCargo || item.person?.idCargo || undefined,
         cargo: item.cargo || item.person?.cargo || undefined,
         sedes: [], // Mantener para compatibilidad
-        enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
+        enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive',
+        created_at: item.user?.created_at || undefined
       }));
 
       if (!isMountedRef.current || requestId !== latestLoadUsersRequestRef.current) {

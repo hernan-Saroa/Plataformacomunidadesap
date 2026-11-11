@@ -8,8 +8,10 @@ import type { OfertaCetapGrupo } from '../services/api/catalogoApi';
 vi.mock('../services/api/catalogoApi', () => ({
   actualizarOfertaCetapGrupo: vi.fn(), crearGrupos: vi.fn(), eliminarGrupo: vi.fn(),
   getGrupos: vi.fn(), getOfertasCetapGrupo: vi.fn(), getEstadoOfertasCetap: vi.fn(),
+  esSinAula: (m: string) => m === 'virtual' || m === 'distancia',
+  etiquetaModalidad: (m: string) => m === 'distancia' ? 'A distancia' : m === 'virtual' ? 'Virtual' : 'Presencial',
 }));
-vi.mock('./CalendarioHorario', () => ({ CalendarioHorario: () => null }));
+vi.mock('./CalendarioHorario', () => ({ CalendarioHorario: ({ numeroGrupo }: any) => <p>Calendario del grupo {numeroGrupo}</p> }));
 
 const oferta = (id: string, nombre: string, territorial: string | null = '900001') => ({
   idOfertaCetap: id, idPrograma: '5', idPeriodoAcademico: '11',
@@ -35,18 +37,32 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('oferta CETAP de grupos', () => {
-  it('consulta por asignatura y periodo, busca y guarda la oferta al crear grupos', async () => {
+  it('sin buscador ni selector general: la oferta se elige en cada grupo; al crear va sin oferta si hay varias', async () => {
     render(<GestionGrupos {...props} />);
     await waitFor(() => expect(getOfertasCetapGrupo).toHaveBeenCalledWith('asig-1', '11'));
-    await waitFor(() => expect((screen.getByRole('combobox', { name: 'Oferta CETAP para grupos nuevos' }) as HTMLSelectElement).disabled).toBe(false));
-    fireEvent.change(screen.getByLabelText('Oferta CETAP para grupos nuevos', { selector: 'select' }),
-      { target: { value: '165' } });
+    await screen.findByLabelText('Oferta CETAP del grupo 1', { selector: 'select' });
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByLabelText('Oferta CETAP para grupos nuevos')).toBeNull();
+    expect(screen.getAllByRole('combobox').filter((c) => /Oferta CETAP/.test(c.getAttribute('aria-label') || ''))).toHaveLength(1);
+    await waitFor(() => expect((screen.getByLabelText('Oferta CETAP del grupo 1', { selector: 'select' }) as HTMLSelectElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'presencial'));
+  });
+
+  it('con UNA sola oferta posible, los grupos nuevos quedan en ella (unívoca)', async () => {
+    vi.mocked(getOfertasCetapGrupo).mockResolvedValue([oferta('165', 'Sede Central')] as any);
+    render(<GestionGrupos {...props} />);
+    await waitFor(() => expect((screen.getByLabelText('Oferta CETAP del grupo 1', { selector: 'select' }) as HTMLSelectElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
     await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', '165', 'presencial'));
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar oferta cetap para grupos nuevos' }),
-      { target: { value: 'Neiva' } });
-    expect(screen.getByLabelText('Oferta CETAP para grupos nuevos', { selector: 'select' }).textContent).toContain('Neiva');
-    expect(screen.getByLabelText('Oferta CETAP para grupos nuevos', { selector: 'select' }).textContent).not.toContain('Sin cruce');
+  });
+
+  it('«Asignar horario» abre el horario del grupo', async () => {
+    render(<GestionGrupos {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Asignar horario' }));
+    expect(await screen.findByText('Calendario del grupo 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar horario' }));
+    expect(screen.queryByText('Calendario del grupo 1')).toBeNull();
   });
 
   it('asigna y quita la oferta de un grupo existente con PATCH', async () => {
@@ -57,11 +73,11 @@ describe('oferta CETAP de grupos', () => {
     const selector = await screen.findByLabelText('Oferta CETAP del grupo 1', { selector: 'select' });
     await waitFor(() => expect((selector as HTMLSelectElement).disabled).toBe(false));
     fireEvent.change(selector, { target: { value: '166' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar ubicación' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar grupo' }));
     await waitFor(() => expect(actualizarOfertaCetapGrupo).toHaveBeenCalledWith('grupo-1', '166'));
     await waitFor(() => expect((screen.getByLabelText('Oferta CETAP del grupo 1', { selector: 'select' }) as HTMLSelectElement).value).toBe('166'));
     fireEvent.change(await screen.findByLabelText('Oferta CETAP del grupo 1', { selector: 'select' }), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar ubicación' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar grupo' }));
     await waitFor(() => expect(actualizarOfertaCetapGrupo).toHaveBeenCalledWith('grupo-1', null));
   });
 
@@ -73,7 +89,7 @@ describe('oferta CETAP de grupos', () => {
     await waitFor(() => expect((selector as HTMLSelectElement).disabled).toBe(false));
     fireEvent.change(selector, { target: { value: '167' } });
     expect(screen.getByText(/no tiene territorial vinculada/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar ubicación' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar grupo' }));
     expect(await screen.findByText('Las aulas 101 del grupo no son del CETAP CET-167.')).toBeTruthy();
     expect((screen.getByLabelText('Oferta CETAP del grupo 1', { selector: 'select' }) as HTMLSelectElement).value).toBe('165');
   });
@@ -112,6 +128,18 @@ describe('grupo virtual (063): horario opcional que define el docente', () => {
     expect(screen.getByRole('note').textContent).toMatch(/el horario es opcional/);
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
     await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'virtual'));
+  });
+});
+
+describe('grupo a distancia (065): funciona igual que el virtual', () => {
+  it('se crea a distancia, avisa que el horario es opcional y lo muestra en la lista', async () => {
+    vi.mocked(getGrupos).mockResolvedValue([{ ...grupo, modalidad: 'distancia' }] as any);
+    render(<GestionGrupos {...props} />);
+    expect(await screen.findByText('A distancia')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Modalidad de los grupos nuevos'), { target: { value: 'distancia' } });
+    expect(screen.getByRole('note').textContent).toMatch(/a distancia: no lleva aula y el horario es opcional/);
+    fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
+    await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null, 'distancia'));
   });
 });
 

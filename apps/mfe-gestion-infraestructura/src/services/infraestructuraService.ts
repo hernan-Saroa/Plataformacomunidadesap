@@ -233,6 +233,32 @@ export interface SolicitudMantenimiento {
   voboFecha?: string | null;
 }
 
+export interface ConformidadConfig {
+  plazoValor: number;
+  plazoUnidad: 'DIAS_HABILES' | 'DIAS_CALENDARIO' | 'HORAS' | 'MINUTOS';
+  cierreAutomaticoActivo: boolean;
+  estadoDestino: string;
+  intervaloVerificacionSegundos: number;
+}
+
+export interface SolicitudPendienteConformidad {
+  idSolicitud: string;
+  codigo: string;
+  consecutivo?: string;
+  titulo: string;
+  estado: string;
+  nombreSede?: string;
+  nombreCategoria?: string;
+  fechaCompletada?: string;
+  fechaLimiteConformidad?: string;
+  vencida: boolean;
+  segundosRestantes?: number;
+  minutosRestantes: number;
+  horasRestantes: number;
+  diasRestantes: number;
+  tiempoRestanteTexto?: string;
+}
+
 export interface HistoricoAsignacionEntry {
   id: string;
   fecha: string;
@@ -2153,6 +2179,45 @@ export const infraestructuraService = {
     return data;
   },
 
+  async getConformidadConfig(): Promise<ConformidadConfig> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/conformidad-config`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error obteniendo configuración de conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarConformidadConfig(payload: Partial<ConformidadConfig>): Promise<ConformidadConfig> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/conformidad-config`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando configuración de conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async listarPendientesConformidad(): Promise<SolicitudPendienteConformidad[]> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/conformidad/pendientes`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error obteniendo solicitudes pendientes de conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
   async ejecutarCierresSinRespuesta(): Promise<{ actualizadas: number; ids: string[] }> {
     const res = await fetch(
       `${API_BASE_URL}/mantenimiento/ejecutar-cierres-sin-respuesta`,
@@ -2472,10 +2537,12 @@ export const infraestructuraService = {
   async vincularTramiteContractual(
     idSolicitud: string,
     payload: {
-      procesoContractual: string;
+      procesoContractual?: string;
       radicadoOrfeo?: string;
       presupuestoEstimadoCop?: number;
       observaciones?: string;
+      anexoNombre?: string;
+      anexoUrl?: string;
     },
   ): Promise<SolicitudMantenimiento> {
     const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/tramite-contractual`, {
