@@ -127,8 +127,10 @@ export class PaaAdminService {
     const contenido = await readFile(join(STORAGE_PATH, archivo.filename));
     const lectura = await leerPaa(contenido, { equivalencias: await this.equivalencias() });
     if (!lectura.regiones.length) {
-      throw new BadRequestException(
-        `No se pudo saber de qué territorio es el archivo: no se leyó ninguna línea con su región. ${resumenDeErrores(lectura.errores)}`,
+      throw archivoRechazado(
+        'No se pudo saber de qué territorio es el archivo: ninguna descripción empieza por el prefijo de su región, como «META 1 - …».',
+        lectura.errores,
+        lectura.advertencias,
       );
     }
 
@@ -138,7 +140,11 @@ export class PaaAdminService {
     ]);
     const ubicacion = ubicarArchivo(lectura.regiones, registradas, new Map(documentos.map((d) => [d.id, d.nombre])));
     if (ubicacion.errores.length && !ubicacion.documentoId) {
-      throw new BadRequestException(resumenDeErrores(ubicacion.errores));
+      throw archivoRechazado(
+        'No se pudo saber de qué territorio es el archivo: sus regiones no corresponden a un solo PAA.',
+        [...ubicacion.errores, ...lectura.errores],
+        lectura.advertencias,
+      );
     }
     lectura.errores.unshift(...ubicacion.errores);
 
@@ -497,6 +503,28 @@ export class PaaAdminService {
 }
 
 /** Los primeros errores, para un mensaje que no cabe en un reporte de versión. */
+/**
+ * El archivo que no se puede ni guardar como versión inválida.
+ *
+ * Si no se sabe de qué territorio es, no hay documento donde dejarlo con su
+ * reporte, y antes solo llegaba a la pantalla un resumen de cinco errores en
+ * una línea: un PAA con 86 filas mal escritas se veía como un error y no como
+ * 689. Ahora el 400 lleva los hallazgos completos —fila, columna, valor y qué
+ * pasa—, igual que los guarda una versión inválida, para que la pantalla los
+ * muestre con el mismo detalle. El `message` sigue siendo el resumen, para
+ * quien solo lea ese campo.
+ */
+function archivoRechazado(motivo: string, errores: HallazgoPaa[], advertencias: HallazgoPaa[]): BadRequestException {
+  return new BadRequestException({
+    statusCode: 400,
+    error: 'Bad Request',
+    message: `${motivo} ${resumenDeErrores(errores)}`.trim(),
+    motivo,
+    hallazgos: errores,
+    advertencias,
+  });
+}
+
 function resumenDeErrores(errores: HallazgoPaa[]): string {
   const primeros = errores.slice(0, 5).map((e) => (e.fila ? `Fila ${e.fila}: ${e.mensaje}` : e.mensaje));
   const resto = errores.length > 5 ? ` Y ${errores.length - 5} más.` : '';

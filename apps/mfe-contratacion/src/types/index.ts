@@ -1270,6 +1270,24 @@ export class CamposFaltantesError extends Error {
   }
 }
 
+/**
+ * Error 400 de la carga del PAA: el archivo no se pudo ni guardar como versión.
+ *
+ * Pasa cuando no se sabe de qué territorio es —ninguna descripción trae el
+ * prefijo de su región—. Trae los hallazgos completos, fila por fila, para
+ * mostrarlos con el mismo detalle que los de una versión inválida.
+ */
+export class ArchivoPaaRechazadoError extends Error {
+  constructor(
+    mensaje: string,
+    public readonly hallazgos: HallazgoPaa[],
+    public readonly advertencias: HallazgoPaa[] = [],
+  ) {
+    super(mensaje);
+    this.name = 'ArchivoPaaRechazadoError';
+  }
+}
+
 /** Error 409: otra sesión guardó cambios, o la actividad ya fue enviada. */
 export class ConflictoError extends Error {
   constructor(message: string) {
