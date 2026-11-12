@@ -64,31 +64,39 @@ export function useConsolaNotificaciones(): ConsolaNotificaciones {
   return { permisos, modulos, puede: permisos?.gestionar === true, recargar, mezclar, porCodigo };
 }
 
-/** Estado de las notificaciones de un módulo: activas / apagadas / sin avisos, con su número de avisos. */
 /**
- * Estado de las notificaciones del módulo en la tabla. Es también el botón que
- * abre su configuración: así la fila no necesita un botón aparte.
+ * Estado de las notificaciones del módulo en la tabla. Lo que se puede abrir se
+ * ve como botón y dice «Configurar»; un módulo que no notifica es texto plano.
+ * Antes ambos decían «Sin avisos» y solo los distinguía una campanita, y un
+ * módulo que sí notifica pero aún no había mandado avisos parecía no notificar.
  */
 export function EstadoNotificaciones({ modulo, nombre, onAbrir }: { modulo: ModuloNotificaciones | undefined; nombre: string; onAbrir: () => void }) {
   if (!modulo) {
-    return <span className="inline-flex rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-500">Sin avisos</span>;
+    return (
+      <span className="text-[11px] italic text-gray-400" title="Este módulo no manda notificaciones. Si empieza a mandarlas, aparece aquí para configurarlas.">
+        No notifica
+      </span>
+    );
   }
-  const color = modulo.eventos === 0
-    ? 'border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200'
-    : modulo.activo ? 'border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200';
+  const color = modulo.activo
+    ? 'border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+    : 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200';
+  const avisos = modulo.eventos === 0 ? 'Aún sin avisos' : `${modulo.eventos} ${modulo.eventos === 1 ? 'aviso' : 'avisos'}`;
   return (
     <button
       type="button"
       onClick={onAbrir}
       aria-label={`Configurar notificaciones de ${nombre}`}
       title="Configurar sus notificaciones"
-      className="inline-flex flex-col items-center gap-1 rounded-lg p-1"
+      className="inline-flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 hover:bg-gray-50"
     >
       <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${color}`}>
         {modulo.activo ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
-        {modulo.eventos === 0 ? 'Sin avisos' : modulo.activo ? 'Activas' : 'Apagadas'}
+        {modulo.activo ? 'Activas' : 'Apagadas'}
       </span>
-      {modulo.eventos > 0 && <span className="text-[11px] text-gray-500">{modulo.eventos} {modulo.eventos === 1 ? 'aviso' : 'avisos'}</span>}
+      <span className="text-[11px] text-gray-500">
+        {avisos} · <span className="font-medium text-blue-700">Configurar</span>
+      </span>
     </button>
   );
 }

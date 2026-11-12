@@ -198,8 +198,10 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
       {eventos === null ? <Cargando /> : visibles.length === 0 ? (
         <Vacio
           icono={<Bell className="h-6 w-6 text-slate-400" />}
-          titulo={buscando ? 'Ningún aviso coincide' : 'Este módulo todavía no ha mandado avisos'}
-          detalle={buscando ? 'Pruebe con otra palabra.' : 'Cuando mande el primero, aparece aquí y se puede configurar.'}
+          titulo={buscando ? 'Ningún aviso coincide' : 'Aún no hay avisos de este módulo'}
+          detalle={buscando
+            ? 'Pruebe con otra palabra.'
+            : 'Cada aviso aparece aquí solo, la primera vez que el módulo lo envía. Mientras tanto ya puede apagar las notificaciones del módulo o configurar el buzón de arriba.'}
         />
       ) : (
         <ul className="space-y-2">
