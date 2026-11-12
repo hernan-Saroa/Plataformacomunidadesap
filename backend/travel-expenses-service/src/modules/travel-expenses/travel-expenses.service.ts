@@ -91,6 +91,8 @@ import {
   CategoriaInvestigador,
 } from '../../dto/liquidation/calcular-liquidacion.dto';
 import { TicketsService } from '../tickets/tickets.service';
+import { KlicService } from '../klic/klic.service';
+import { KlicContratoDto } from '../klic/dto/klic-contrato.dto';
 
 /**
  * Estados que no corresponden a una comisión activa y, por tanto, no generan
@@ -206,9 +208,14 @@ export class TravelExpensesService implements OnModuleInit {
     private readonly eventEmitter?: EventEmitter2,
     @Optional()
     private readonly pendientesService?: PendientesService,
+    @Optional()
+    private readonly klicService?: KlicService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined) {
+      return;
+    }
     await this.asegurarRolYPermisosComisionado().catch((err) =>
       this.logger.warn(`[onModuleInit] No se pudo asegurar rol COMISIONADO: ${err?.message}`),
     );
@@ -1367,8 +1374,115 @@ export class TravelExpensesService implements OnModuleInit {
   }
 
   /**
+   * Extrae palabras clave significativas de una dependencia/área excluyendo
+   * preposiciones y prefijos organizacionales comunes ('oficina', 'subdireccion', 'direccion', etc.).
+   */
+  public extraerPalabrasClaveDependencia(nombre?: string | null): string[] {
+    if (!nombre) return [];
+    const stopWords = new Set([
+      'de', 'del', 'la', 'las', 'los', 'el', 'y', 'en', 'o', 'al', 'para', 'con', 'por', 'sobre',
+      'oficina', 'subdireccion', 'direccion', 'departamento', 'coordinacion', 'grupo', 'area',
+      'unidad', 'gerencia', 'secretaria', 'asesora', 'nacional', 'sede', 'gestion'
+    ]);
+    const normalizado = nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ');
+
+    return normalizado
+      .split(/\s+/)
+      .filter((palabra) => palabra.length > 2 && !stopWords.has(palabra));
+  }
+
+  /**
+   * Normaliza un nombre de dependencia/área para comparación flexible:
+   * - Convierte a minúsculas
+   * - Elimina acentos/tildes
+   * - Elimina caracteres especiales
+   * - Elimina conectores comunes ('de', 'del', 'la', 'las', 'los', 'el', 'y', 'en')
+   */
+  public parsearNombreDependencia(nombre?: string | null): string {
+    if (!nombre) return '';
+    const conectores = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'y', 'en', 'o', 'al']);
+    return nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((palabra) => palabra.length > 0 && !conectores.has(palabra))
+      .join(' ')
+      .trim();
+  }
+
+  /**
+   * Comprueba si dos nombres de dependencia coinciden buscando por nombre parseado.
+   */
+  public coincidenNombresDependencia(nombre1?: string | null, nombre2?: string | null): boolean {
+    const n1 = this.parsearNombreDependencia(nombre1);
+    const n2 = this.parsearNombreDependencia(nombre2);
+    if (!n1 || !n2) return false;
+    if (n1 === n2) return true;
+    if (n1.includes(n2) || n2.includes(n1)) return true;
+
+    const claves1 = this.extraerPalabrasClaveDependencia(nombre1);
+    const claves2 = this.extraerPalabrasClaveDependencia(nombre2);
+    if (claves1.length === 0 || claves2.length === 0) {
+      const palabras1 = n1.split(' ').filter((p) => p.length > 2);
+      const palabras2 = n2.split(' ').filter((p) => p.length > 2);
+      if (palabras1.length === 0 || palabras2.length === 0) return false;
+      const interseccion = palabras1.filter((p) => palabras2.includes(p));
+      return interseccion.length / Math.min(palabras1.length, palabras2.length) >= 0.5;
+    }
+
+    const interseccion = claves1.filter((p) => claves2.includes(p));
+    const score = interseccion.length / Math.min(claves1.length, claves2.length);
+    return score >= 0.5 || interseccion.length >= 2;
+  }
+
+  /**
+   * Valida si un área externa (Klic / Isolución) difiere de la dependencia del enlace.
+   * No es bloqueante: genera un mensaje de advertencia informativa para alertar al usuario,
+   * permitiendo continuar para que los revisores y aprobadores institucionales evalúen la pertinencia.
+   */
+  public verificarConflictoDependencia(
+    areaExterna: string | null | undefined,
+    depEsperada: number | null,
+    nombreDepEnlace: string | null | undefined,
+    doc: string,
+  ): string | null {
+    if (!depEsperada || !areaExterna || !areaExterna.trim()) {
+      return null;
+    }
+    const area = areaExterna.trim();
+    if (!nombreDepEnlace || !nombreDepEnlace.trim()) {
+      return null;
+    }
+
+    if (this.coincidenNombresDependencia(nombreDepEnlace, area)) {
+      return null;
+    }
+
+    const clavesArea = this.extraerPalabrasClaveDependencia(area);
+    const clavesEnlace = this.extraerPalabrasClaveDependencia(nombreDepEnlace);
+
+    if (clavesArea.length === 0) {
+      return null;
+    }
+
+    const interseccion = clavesArea.filter((c) => clavesEnlace.includes(c));
+    if (interseccion.length === 0) {
+      const mensaje = `El comisionado con documento ${doc} registra asignación al área "${area}" en la fuente externa, la cual difiere de su dependencia (${nombreDepEnlace}). Los aprobadores y validadores verificarán la pertinencia de la comisión.`;
+      this.logger.warn(`[verificarConflictoDependencia] ${mensaje}`);
+      return mensaje;
+    }
+    return null;
+  }
+
+  /**
    * Helper para resolver el id_dependencia institucional en auth.dependencias
-   * según el nombre o código de la dependencia retornado por Nómina.
+   * según el nombre o código de la dependencia retornado por fuentes externas (Klic, Isolución, Nómina).
    */
   private async resolverIdDependenciaPorNombre(
     depNombre?: string | null,
@@ -1377,21 +1491,62 @@ export class TravelExpensesService implements OnModuleInit {
     if (!dep) return null;
 
     try {
+      // 1. Coincidencia directa SQL
       const depMatch = await this.dataSource.query(
         `SELECT id_dependencia
            FROM auth.dependencias
-          WHERE UPPER(nom_dependencia) = UPPER($1)
-             OR UPPER(cod_dependencia) = UPPER($1)
+          WHERE UPPER(TRIM(nom_dependencia)) = UPPER(TRIM($1))
+             OR UPPER(TRIM(cod_dependencia)) = UPPER(TRIM($1))
           LIMIT 1`,
         [dep],
       );
       if (depMatch?.[0]?.id_dependencia != null) {
         return Number(depMatch[0].id_dependencia);
       }
+
+      // 2. Coincidencia por nombre parseado contra las dependencias del catálogo
+      const todas: { id_dependencia: any; nom_dependencia?: string; cod_dependencia?: string }[] =
+        await this.dataSource.query(
+          `SELECT id_dependencia, nom_dependencia, cod_dependencia
+             FROM auth.dependencias
+            WHERE activo = true OR activo IS NULL`,
+        );
+
+      for (const d of todas || []) {
+        if (
+          this.coincidenNombresDependencia(d.nom_dependencia, dep) ||
+          this.coincidenNombresDependencia(d.cod_dependencia, dep)
+        ) {
+          return Number(d.id_dependencia);
+        }
+      }
     } catch (err: any) {
       this.logger.debug?.(
         `[resolverIdDependenciaPorNombre] No se pudo mapear id_dependencia para "${dep}": ${err?.message}`,
       );
+    }
+    return null;
+  }
+
+  private resolverIdDependenciaPorNombreSync(
+    depNombre: string,
+    todas: { id_dependencia: any; nom_dependencia?: string; cod_dependencia?: string }[],
+  ): number | null {
+    const dep = (depNombre || '').trim();
+    if (!dep || !Array.isArray(todas)) return null;
+    for (const d of todas) {
+      if (
+        (d.nom_dependencia && d.nom_dependencia.trim().toUpperCase() === dep.toUpperCase()) ||
+        (d.cod_dependencia && d.cod_dependencia.trim().toUpperCase() === dep.toUpperCase())
+      ) {
+        return Number(d.id_dependencia);
+      }
+      if (
+        this.coincidenNombresDependencia(d.nom_dependencia, dep) ||
+        this.coincidenNombresDependencia(d.cod_dependencia, dep)
+      ) {
+        return Number(d.id_dependencia);
+      }
     }
     return null;
   }
@@ -1454,18 +1609,21 @@ export class TravelExpensesService implements OnModuleInit {
   }
 
   /**
-   * Consulta y validación de comisionado con lógica de prioridad en tabla local:
-   * 1. Busca PRIMERO en la tabla interna `travel_expenses.comisionados`.
-   *    - Si lo encuentra, analiza su fecha de fin de contrato (`fechaFinContrato`).
-   *    - Si la fecha fin está próxima a vencerse (o nula): consulta en Talento Humano / Nómina para actualizar
-   *      fechas de prórroga, salario, cargo y dependencia.
-   *    - Si tras esto la fecha fin está vencida: no puede generar la solicitud y arroja BadRequestException.
-   * 2. Si NO lo encuentra en comisionados locales:
-   *    - Consulta en Talento Humano / Nómina (API Nómina Oracle FNC).
-   *    - Si existe en Talento Humano:
-   *      * Si su fecha fin en Nómina está vencida: arroja BadRequestException impidiendo generar la solicitud.
-   *      * Si está vigente: se materializa en la tabla `travel_expenses.comisionados` y se retorna.
-   *    - Si NO existe tampoco en Talento Humano: arroja NotFoundException ("no es un comisionado").
+   * Consulta, registra o sincroniza un comisionado a partir de su documento de identidad.
+   *
+   * Flujo de integración jerárquico según reglas de negocio:
+   * 1. PASO 1: Buscar en la tabla interna de viáticos (travel_expenses.comisionados).
+   *    - Si existe y la fecha de contrato está vigente, se retorna directamente sin consultar otras fuentes.
+   *    - Si está vencido o sin fecha fin, se consultan fuentes externas (Klic / Isolución) para verificar renovación.
+   * 2. PASO 2: Si no está en la tabla interna, buscar en auth.personas (auth.user).
+   *    - Si existe, se guarda en la tabla interna comisionados con su cargo, dependencia y
+   *      se enriquecen certificados/cuentas bancarias y contrato desde Klic / Isolución si no los tiene.
+   *    - Se asegura usuario y rol COMISIONADO.
+   * 3. PASO 3: Si no existe en personas:
+   *    - Buscar en Fuente 1 (Isolución / Talento Humano).
+   *    - Si no existe en Fuente 1, buscar en Fuente 2 (Klic).
+   *    - Se valida vigencia y que pertenezca a la misma dependencia del enlace (por nombre parseado/no estricto).
+   *    - Se guarda en comisionados y se asegura usuario y rol COMISIONADO en auth.
    */
   async consultarComisionado(
     documento: string,
@@ -1482,6 +1640,26 @@ export class TravelExpensesService implements OnModuleInit {
       idDependencia != null && idDependencia !== ''
         ? Number(idDependencia)
         : null;
+
+    let alertaDependencia: string | null = null;
+    let nombreDepEnlace: string | null = null;
+    let codDepEnlace: string | null = null;
+    if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
+      try {
+        const depRow = await this.dataSource.query(
+          `SELECT nom_dependencia, cod_dependencia FROM auth.dependencias WHERE id_dependencia = $1 LIMIT 1`,
+          [depEsperada],
+        );
+        if (depRow?.[0]) {
+          nombreDepEnlace = depRow[0].nom_dependencia || null;
+          codDepEnlace = depRow[0].cod_dependencia || null;
+        }
+      } catch (err: any) {
+        this.logger.debug?.(
+          `[consultarComisionado] Error buscando dependencia ${depEsperada}: ${err?.message}`,
+        );
+      }
+    }
 
     const adjuntarSolicitudesPendientes = async (com: ComisionadoEntity) => {
       try {
@@ -1507,6 +1685,10 @@ export class TravelExpensesService implements OnModuleInit {
           },
         ];
       }
+      if (alertaDependencia) {
+        (com as any).alertaDependencia = alertaDependencia;
+        com.alertaDependencia = alertaDependencia;
+      }
       return com;
     };
 
@@ -1516,7 +1698,19 @@ export class TravelExpensesService implements OnModuleInit {
         return await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
       } catch (err: any) {
         this.logger.warn(
-          `[consultarComisionado] Error consultando API Nómina / Talento Humano para doc ${doc}: ${err?.message || err}.`,
+          `[consultarComisionado] Error consultando API Nómina / Isolución para doc ${doc}: ${err?.message || err}.`,
+        );
+        return null;
+      }
+    };
+
+    const consultarKlic = async (): Promise<KlicContratoDto[] | null> => {
+      if (!this.klicService) return null;
+      try {
+        return await this.klicService.getContratosByIdentificacion(doc);
+      } catch (err: any) {
+        this.logger.warn(
+          `[consultarComisionado] Error consultando Klic para doc ${doc}: ${err?.message || err}.`,
         );
         return null;
       }
@@ -1534,46 +1728,73 @@ export class TravelExpensesService implements OnModuleInit {
         `[consultarComisionado] Comisionado ${doc} encontrado en tabla local comisionados`,
       );
 
-      // Si la fecha fin está próxima a vencer o no está registrada, consultar en Humanos para actualizar
-      const proximaAVencer = this.esContratoProximoAVencer(comisionadoLocal.fechaFinContrato);
+      const estaVencido = this.esContratoVencido(comisionadoLocal.fechaFinContrato);
 
-      if (proximaAVencer && this.humanResourcesClient) {
-        this.logger.log(
-          `[consultarComisionado] Fecha fin de contrato para doc ${doc} (${comisionadoLocal.fechaFinContrato || 'sin registrar'}) próxima a vencer o ausente. Consultando Talento Humano para verificar actualización...`,
-        );
-        const funcionarioFnc = await consultarApiHumanos();
-        if (funcionarioFnc && funcionarioFnc.id_number) {
-          const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
-            this.parsearNombreFuncionario(funcionarioFnc.full_name || '');
-          const idDependenciaFnc = await this.resolverIdDependenciaPorNombre(
-            funcionarioFnc.organization_department || funcionarioFnc.cost_center,
-          );
-          const emailFnc = (funcionarioFnc.email || funcionarioFnc.personal_email || '').trim();
-          const phoneFnc = (funcionarioFnc.phone || '').trim();
-
-          if (primerNombre && primerNombre !== 'SIN NOMBRE') comisionadoLocal.primerNombre = primerNombre;
-          if (segundoNombre !== undefined) comisionadoLocal.segundoNombre = segundoNombre;
-          if (primerApellido && primerApellido !== 'SIN APELLIDO') comisionadoLocal.primerApellido = primerApellido;
-          if (segundoApellido !== undefined) comisionadoLocal.segundoApellido = segundoApellido;
-          if (emailFnc && emailFnc !== 'sin-correo@esap.edu.co') comisionadoLocal.email = emailFnc;
-          if (phoneFnc && phoneFnc !== '0000000000') comisionadoLocal.telefonoContacto = phoneFnc;
-          if (idDependenciaFnc != null) comisionadoLocal.idDependencia = idDependenciaFnc;
-          if (funcionarioFnc.monthly_salary != null) comisionadoLocal.salarioBasico = Number(funcionarioFnc.monthly_salary);
-          if (funcionarioFnc.position_name || funcionarioFnc.career_category) {
-            comisionadoLocal.cargo = funcionarioFnc.position_name || funcionarioFnc.career_category || null;
+      // Si existe en tabla local y la fecha de contrato está vigente: no necesita buscar en otras fuentes
+      if (!estaVencido) {
+        if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
+          if (comisionadoLocal.idDependencia != null && Number(comisionadoLocal.idDependencia) !== depEsperada) {
+            alertaDependencia = `El comisionado con documento ${doc} está registrado con dependencia ${comisionadoLocal.idDependencia}, la cual difiere de la dependencia del enlace (${nombreDepEnlace || depEsperada}). Los aprobadores y validadores verificarán la pertinencia de la comisión.`;
+            this.logger.warn(`[consultarComisionado] ${alertaDependencia}`);
+          } else if (comisionadoLocal.idDependencia == null) {
+            comisionadoLocal.idDependencia = depEsperada;
+            comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
           }
-          if (funcionarioFnc.hiring_date) comisionadoLocal.fechaInicioContrato = funcionarioFnc.hiring_date;
-          if (funcionarioFnc.contract_end_date) comisionadoLocal.fechaFinContrato = funcionarioFnc.contract_end_date;
-          comisionadoLocal.origenDatos = 'HUMANO';
+        }
+        return await adjuntarSolicitudesPendientes(comisionadoLocal);
+      }
 
+      // Si el contrato está vencido, consultar fuentes externas para renovación
+      this.logger.log(
+        `[consultarComisionado] Comisionado local ${doc} tiene contrato vencido. Consultando fuentes externas para renovación...`,
+      );
+
+      const contratosKlic = await consultarKlic();
+      if (contratosKlic && contratosKlic.length > 0) {
+        const contratoActivo = contratosKlic[0];
+        const advKlic = this.verificarConflictoDependencia(contratoActivo.area, depEsperada, nombreDepEnlace, doc);
+        if (advKlic) alertaDependencia = advKlic;
+
+        if (contratoActivo.fechaInicial) comisionadoLocal.fechaInicioContrato = contratoActivo.fechaInicial;
+        if (contratoActivo.fechaFinal) comisionadoLocal.fechaFinContrato = contratoActivo.fechaFinal;
+        if (
+          contratoActivo.cuentaBancaria &&
+          (!comisionadoLocal.cuentasBancarias || comisionadoLocal.cuentasBancarias.length === 0)
+        ) {
+          comisionadoLocal.cuentasBancarias = [
+            {
+              id: `cta-${Date.now()}`,
+              banco: 'BANCO REGISTRADO',
+              tipoCuenta: 'AHORROS',
+              numeroCuenta: contratoActivo.cuentaBancaria,
+              esPrincipal: true,
+              origen: 'KLIC',
+            },
+          ];
+        }
+        comisionadoLocal.origenDatos = 'KLIC';
+        comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
+      } else {
+        const funcHumano = await consultarApiHumanos();
+        if (funcHumano && funcHumano.id_number) {
+          const areaHumano = funcHumano.organization_department || funcHumano.cost_center;
+          const advHumano = this.verificarConflictoDependencia(areaHumano, depEsperada, nombreDepEnlace, doc);
+          if (advHumano) alertaDependencia = advHumano;
+
+          const idDepFnc = await this.resolverIdDependenciaPorNombre(areaHumano);
+          if (funcHumano.hiring_date) comisionadoLocal.fechaInicioContrato = funcHumano.hiring_date;
+          if (funcHumano.contract_end_date) comisionadoLocal.fechaFinContrato = funcHumano.contract_end_date;
+          if (funcHumano.monthly_salary != null) comisionadoLocal.salarioBasico = Number(funcHumano.monthly_salary);
+          if (funcHumano.position_name || funcHumano.career_category) {
+            comisionadoLocal.cargo = funcHumano.position_name || funcHumano.career_category || null;
+          }
+          if (idDepFnc != null) comisionadoLocal.idDependencia = idDepFnc;
+          comisionadoLocal.origenDatos = 'HUMANO';
           comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
-          this.logger.log(
-            `[consultarComisionado] Comisionado ${doc} actualizado exitosamente con datos de Talento Humano`,
-          );
         }
       }
 
-      // Validar si la fecha fin de contrato está vencida
+      // Validar si tras la consulta a fuentes externas el contrato sigue vencido
       if (this.esContratoVencido(comisionadoLocal.fechaFinContrato)) {
         const nombreCompleto = `${comisionadoLocal.primerNombre} ${comisionadoLocal.primerApellido}`.trim();
         const fechaFinFormateada = typeof comisionadoLocal.fechaFinContrato === 'string'
@@ -1583,16 +1804,17 @@ export class TravelExpensesService implements OnModuleInit {
           : String(comisionadoLocal.fechaFinContrato);
 
         throw new BadRequestException(
-          `No es posible generar la solicitud de comisión. El comisionado ${nombreCompleto} (Doc. ${doc}) tiene su contrato o vinculación laboral vencida con fecha ${fechaFinFormateada}. Por favor regularice su situación en Talento Humano antes de tramitar comisiones.`,
+          `No es posible generar la solicitud de comisión. El comisionado ${nombreCompleto} (Doc. ${doc}) tiene su contrato o vinculación laboral vencida con fecha ${fechaFinFormateada}. Por favor regularice su situación antes de tramitar comisiones.`,
         );
       }
 
-      // Validar restricción de dependencia si se solicita como enlace de dependencia
+      // Validar restricción de dependencia si se solicita como enlace de dependencia (no bloqueante, genera alerta)
       if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
         if (comisionadoLocal.idDependencia != null && Number(comisionadoLocal.idDependencia) !== depEsperada) {
-          throw new BadRequestException(
-            `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
-          );
+          alertaDependencia =
+            alertaDependencia ||
+            `El comisionado con documento ${doc} está asignado a otra dependencia (${comisionadoLocal.idDependencia}). Los aprobadores y validadores verificarán la pertinencia de la comisión.`;
+          this.logger.warn(`[consultarComisionado] ${alertaDependencia}`);
         } else if (comisionadoLocal.idDependencia == null) {
           comisionadoLocal.idDependencia = depEsperada;
           comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
@@ -1603,145 +1825,355 @@ export class TravelExpensesService implements OnModuleInit {
     }
 
     // =========================================================================
-    // PASO 2: NO se encontró en comisionados locales -> Consultar en Humanos
+    // PASO 2: Si NO está en la tabla interna, buscar en auth.personas (auth.user)
     // =========================================================================
     this.logger.log(
-      `[consultarComisionado] Comisionado ${doc} no encontrado en tabla local. Consultando en Talento Humano...`,
+      `[consultarComisionado] Comisionado ${doc} no encontrado en tabla local. Buscando en auth.personas...`,
     );
-    const funcionarioFnc = await consultarApiHumanos();
 
-    if (funcionarioFnc && funcionarioFnc.id_number) {
-      const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
-        this.parsearNombreFuncionario(funcionarioFnc.full_name || '');
-      const idDependenciaFnc = await this.resolverIdDependenciaPorNombre(
-        funcionarioFnc.organization_department || funcionarioFnc.cost_center,
-      );
-      const emailFnc = (funcionarioFnc.email || funcionarioFnc.personal_email || '').trim();
-      const phoneFnc = (funcionarioFnc.phone || '').trim();
-      const fechaFin = funcionarioFnc.contract_end_date || null;
-      const fechaInicio = funcionarioFnc.hiring_date || null;
-      const salario = funcionarioFnc.monthly_salary != null ? Number(funcionarioFnc.monthly_salary) : null;
-      const cargo = funcionarioFnc.position_name || funcionarioFnc.career_category || null;
-
-      // Si la fecha de fin de contrato de Talento Humano ya está vencida:
-      if (this.esContratoVencido(fechaFin)) {
-        const nombreCompleto = funcionarioFnc.full_name || `${primerNombre} ${primerApellido}`.trim();
-        const fechaFinFormateada = String(fechaFin).split('T')[0];
-        throw new BadRequestException(
-          `No es posible generar la solicitud de comisión. La persona ${nombreCompleto} (Doc. ${doc}) figura en Talento Humano pero su vinculación laboral/contractual está vencida desde el ${fechaFinFormateada}. No se pueden tramitar viáticos para personal inactivo o desvinculado.`,
-        );
-      }
-
-      const idDepAsignar = idDependenciaFnc != null ? idDependenciaFnc : depEsperada;
-
-      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDependenciaFnc != null && Number(idDependenciaFnc) !== depEsperada) {
-        throw new BadRequestException(
-          `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
-        );
-      }
-
-      this.logger.log(
-        `[consultarComisionado] Registrando nuevo comisionado ${doc} desde Talento Humano con contrato vigente`,
-      );
-      const nuevo = this.comisionadoRepo.create({
-        numeroDocumento: doc,
-        primerNombre,
-        segundoNombre,
-        primerApellido,
-        segundoApellido,
-        email: emailFnc || 'sin-correo@esap.edu.co',
-        telefonoContacto: phoneFnc || '0000000000',
-        tipoComisionado: 'FUNCIONARIO',
-        origenDatos: 'HUMANO',
-        autorizacionHabeasData: false,
-        idDependencia: idDepAsignar,
-        cuentasBancarias: [],
-        cargos: cargo
-          ? [
-              {
-                id: `crg-${Date.now()}`,
-                cargo,
-                salario: salario || 0,
-                idDependencia: idDepAsignar,
-                esPrincipal: true,
-              },
-            ]
-          : [],
-        fechaInicioContrato: fechaInicio,
-        fechaFinContrato: fechaFin,
-        esFacturadorElectronico: false,
-      } as Partial<ComisionadoEntity>);
-
-      const guardado = await this.comisionadoRepo.save(nuevo);
-      return await adjuntarSolicitudesPendientes(guardado);
-    }
-
-    // =========================================================================
-    // PASO 3: Fallback auth.personas / Tampoco existe en Humanos -> No es comisionado
-    // =========================================================================
-    const persona: AuthPersonaRow | undefined = await this.dataSource
+    const personaRow: any = await this.dataSource
       .query(
         `SELECT
+            p.id_person,
             p.num_identificacion,
             p.nom_tercero,
             p.pri_apellido,
+            p.seg_apellido,
             p.dir_email,
             p.tel_celular,
-            p.id_dependencia
+            p.id_dependencia,
+            p.id_cargo,
+            c.nom_cargo,
+            u.id_user
          FROM auth.personas p
+         LEFT JOIN auth."user" u ON u.id_person = p.id_person
+         LEFT JOIN auth.cargos c ON c.id_cargo = p.id_cargo
          WHERE p.num_identificacion = $1
          LIMIT 1`,
         [doc],
       )
       .then((rows: any[]) => rows?.[0])
       .catch((err) => {
-        console.error(
-          '[travel-expenses] Error consultando auth.personas:',
-          err,
+        this.logger.warn(
+          `[consultarComisionado] Error consultando auth.personas: ${err?.message}`,
         );
         return undefined;
       });
 
-    if (!persona) {
-      throw new NotFoundException(
-        `No se encontró un comisionado con documento ${doc}. La persona no existe en el registro local de comisionados ni se encuentra registrada en el sistema de Talento Humano / Nómina de la ESAP.`,
+    if (personaRow) {
+      this.logger.log(
+        `[consultarComisionado] Persona ${doc} encontrada en auth.personas`,
       );
+      const idDepPersona =
+        personaRow.id_dependencia != null ? Number(personaRow.id_dependencia) : null;
+      const idDependenciaFinal = idDepPersona != null ? idDepPersona : depEsperada;
+
+      if (
+        depEsperada != null &&
+        !isNaN(depEsperada) &&
+        depEsperada > 0 &&
+        idDepPersona != null &&
+        Number(idDepPersona) !== depEsperada
+      ) {
+        alertaDependencia = `El comisionado con documento ${doc} está asignado en auth.personas a la dependencia ${idDepPersona}, la cual difiere de la del enlace (${nombreDepEnlace || depEsperada}). Los aprobadores y validadores verificarán la pertinencia de la comisión.`;
+        this.logger.warn(`[consultarComisionado] ${alertaDependencia}`);
+      }
+
+      const nombres = (personaRow.nom_tercero || '').trim().split(/\s+/);
+      const apellidos = (personaRow.pri_apellido || '').trim().split(/\s+/);
+      const primerNombre = nombres.shift() || personaRow.nom_tercero || 'SIN NOMBRE';
+      const segundoNombre = nombres.join(' ') || null;
+      const primerApellido =
+        apellidos.shift() || personaRow.pri_apellido || 'SIN APELLIDO';
+      const segundoApellido = personaRow.seg_apellido || apellidos.join(' ') || null;
+
+      // Buscar cuentas bancarias / vigencia en otras fuentes (Klic / Isolución) si no las tiene
+      let cuentasBancarias: any[] = [];
+      let fechaInicioContrato: any = null;
+      let fechaFinContrato: any = null;
+      let cargoFinal = personaRow.nom_cargo || 'FUNCIONARIO';
+
+      const contratosKlic = await consultarKlic();
+      if (contratosKlic && contratosKlic.length > 0) {
+        const cKlic = contratosKlic[0];
+        if (cKlic.cuentaBancaria) {
+          cuentasBancarias.push({
+            id: `cta-${Date.now()}`,
+            banco: 'BANCO REGISTRADO',
+            tipoCuenta: 'AHORROS',
+            numeroCuenta: cKlic.cuentaBancaria,
+            esPrincipal: true,
+            origen: 'KLIC',
+          });
+        }
+        if (cKlic.fechaInicial) fechaInicioContrato = cKlic.fechaInicial;
+        if (cKlic.fechaFinal) fechaFinContrato = cKlic.fechaFinal;
+        if (cKlic.area) {
+          const advKlic = this.verificarConflictoDependencia(cKlic.area, depEsperada, nombreDepEnlace, doc);
+          if (advKlic) alertaDependencia = advKlic;
+        }
+      }
+
+      if (cuentasBancarias.length === 0 || !fechaFinContrato) {
+        const funcHumano = await consultarApiHumanos();
+        if (funcHumano && funcHumano.id_number) {
+          if (!fechaInicioContrato && funcHumano.hiring_date) fechaInicioContrato = funcHumano.hiring_date;
+          if (!fechaFinContrato && funcHumano.contract_end_date) fechaFinContrato = funcHumano.contract_end_date;
+          if (funcHumano.position_name) cargoFinal = funcHumano.position_name;
+        }
+      }
+
+      const nuevo = this.comisionadoRepo.create({
+        numeroDocumento: doc,
+        primerNombre,
+        segundoNombre,
+        primerApellido,
+        segundoApellido,
+        email: personaRow.dir_email || 'sin-correo@esap.edu.co',
+        telefonoContacto: personaRow.tel_celular || '0000000000',
+        tipoComisionado: 'FUNCIONARIO',
+        origenDatos: 'ESAP',
+        autorizacionHabeasData: false,
+        idDependencia: idDependenciaFinal,
+        cuentasBancarias,
+        cargo: cargoFinal,
+        cargos: cargoFinal
+          ? [
+              {
+                id: `crg-${Date.now()}`,
+                cargo: cargoFinal,
+                salario: 0,
+                idDependencia: idDependenciaFinal,
+                esPrincipal: true,
+              },
+            ]
+          : [],
+        fechaInicioContrato,
+        fechaFinContrato,
+        esFacturadorElectronico: false,
+      } as Partial<ComisionadoEntity>);
+
+      const guardado = await this.comisionadoRepo.save(nuevo);
+      await this.garantizarUsuarioYRolComisionado(
+        guardado,
+        idDependenciaFinal,
+        personaRow.id_user,
+      );
+      return await adjuntarSolicitudesPendientes(guardado);
     }
 
-    const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
-    const apellidos = (persona.pri_apellido || '').trim().split(/\s+/);
-    const primerNombre = nombres.shift() || persona.nom_tercero || 'SIN NOMBRE';
-    const segundoNombre = nombres.join(' ') || null;
-    const primerApellido =
-      apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
-    const segundoApellido = apellidos.join(' ') || null;
+    // =========================================================================
+    // PASO 3: Si NO existe en personas -> Buscar en Fuente 1 (Isolución) y sino Fuente 2 (Klic)
+    // =========================================================================
+    this.logger.log(
+      `[consultarComisionado] Persona ${doc} no encontrada en auth.personas. Consultando Fuente 1 (Isolución)...`,
+    );
 
-    const idDepPersona =
-      persona.id_dependencia != null ? Number(persona.id_dependencia) : null;
-    const idDependenciaFinal = idDepPersona != null ? idDepPersona : depEsperada;
-
-    if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDepPersona != null && Number(idDepPersona) !== depEsperada) {
-      throw new BadRequestException(
-        `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+    // --- FUENTE 1: Isolución / Talento Humano ---
+    const funcHumano = await consultarApiHumanos();
+    if (funcHumano && funcHumano.id_number) {
+      this.logger.log(
+        `[consultarComisionado] Encontrado en Fuente 1 (Isolución / Talento Humano) doc ${doc}`,
       );
+
+      // Validar vigencia de contrato
+      if (this.esContratoVencido(funcHumano.contract_end_date)) {
+        const nombreCompleto =
+          funcHumano.full_name || `${funcHumano.id_number}`.trim();
+        const fechaFinFormateada = String(funcHumano.contract_end_date).split('T')[0];
+        throw new BadRequestException(
+          `No es posible generar la solicitud de comisión. La persona ${nombreCompleto} (Doc. ${doc}) figura en Isolución / Talento Humano pero su vinculación laboral/contractual está vencida desde el ${fechaFinFormateada}. No se pueden tramitar viáticos para personal inactivo o desvinculado.`,
+        );
+      }
+
+      // Validar advertencia de dependencia (no bloqueante)
+      const areaIsolucion =
+        funcHumano.organization_department || funcHumano.cost_center;
+      const advIsolucion = this.verificarConflictoDependencia(
+        areaIsolucion,
+        depEsperada,
+        nombreDepEnlace,
+        doc,
+      );
+      if (advIsolucion) {
+        alertaDependencia = advIsolucion;
+      }
+
+      const idDepMapeado = await this.resolverIdDependenciaPorNombre(areaIsolucion);
+      const idDepFinal = idDepMapeado != null ? idDepMapeado : depEsperada;
+
+      if (
+        depEsperada != null &&
+        !isNaN(depEsperada) &&
+        depEsperada > 0 &&
+        idDepMapeado != null &&
+        Number(idDepMapeado) !== depEsperada
+      ) {
+        alertaDependencia =
+          alertaDependencia ||
+          `El comisionado con documento ${doc} está asignado al área "${areaIsolucion}". Los aprobadores y validadores verificarán la pertinencia de la comisión.`;
+        this.logger.warn(`[consultarComisionado] ${alertaDependencia}`);
+      }
+
+      const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
+        this.parsearNombreFuncionario(funcHumano.full_name || '');
+
+      let cuentasBancarias: any[] = [];
+      const contratosKlic = await consultarKlic();
+      if (contratosKlic && contratosKlic.length > 0 && contratosKlic[0].cuentaBancaria) {
+        cuentasBancarias.push({
+          id: `cta-${Date.now()}`,
+          banco: 'BANCO REGISTRADO',
+          tipoCuenta: 'AHORROS',
+          numeroCuenta: contratosKlic[0].cuentaBancaria,
+          esPrincipal: true,
+          origen: 'KLIC',
+        });
+      }
+
+      const cargo =
+        funcHumano.position_name || funcHumano.career_category || 'FUNCIONARIO';
+      const salario =
+        funcHumano.monthly_salary != null ? Number(funcHumano.monthly_salary) : 0;
+
+      const nuevo = this.comisionadoRepo.create({
+        numeroDocumento: doc,
+        primerNombre,
+        segundoNombre,
+        primerApellido,
+        segundoApellido,
+        email: (
+          funcHumano.email ||
+          funcHumano.personal_email ||
+          'sin-correo@esap.edu.co'
+        ).trim(),
+        telefonoContacto: (funcHumano.phone || '0000000000').trim(),
+        tipoComisionado: 'FUNCIONARIO',
+        origenDatos: 'HUMANO',
+        autorizacionHabeasData: false,
+        idDependencia: idDepFinal,
+        cuentasBancarias,
+        cargo,
+        cargos: [
+          {
+            id: `crg-${Date.now()}`,
+            cargo,
+            salario,
+            idDependencia: idDepFinal,
+            esPrincipal: true,
+          },
+        ],
+        fechaInicioContrato: funcHumano.hiring_date || null,
+        fechaFinContrato: funcHumano.contract_end_date || null,
+        esFacturadorElectronico: false,
+      } as Partial<ComisionadoEntity>);
+
+      const guardado = await this.comisionadoRepo.save(nuevo);
+      await this.garantizarUsuarioYRolComisionado(guardado, idDepFinal);
+      return await adjuntarSolicitudesPendientes(guardado);
     }
 
-    const nuevo = this.comisionadoRepo.create({
-      numeroDocumento: doc,
-      primerNombre,
-      segundoNombre,
-      primerApellido,
-      segundoApellido,
-      email: persona.dir_email || 'sin-correo@esap.edu.co',
-      telefonoContacto: persona.tel_celular || '0000000000',
-      tipoComisionado: 'FUNCIONARIO',
-      origenDatos: 'ESAP',
-      autorizacionHabeasData: false,
-      idDependencia: idDependenciaFinal,
-    } as Partial<ComisionadoEntity>);
+    // --- FUENTE 2: Klic ---
+    this.logger.log(
+      `[consultarComisionado] Persona ${doc} no encontrada en Isolución. Consultando Fuente 2 (Klic)...`,
+    );
+    const contratosKlic = await consultarKlic();
 
-    const guardado = await this.comisionadoRepo.save(nuevo);
-    return await adjuntarSolicitudesPendientes(guardado);
+    if (contratosKlic && contratosKlic.length > 0) {
+      this.logger.log(
+        `[consultarComisionado] Encontrado en Fuente 2 (Klic) doc ${doc} con ${contratosKlic.length} contrato(s)`,
+      );
+      const cKlic = contratosKlic[0];
+
+      // Validar vigencia de contrato
+      if (this.esContratoVencido(cKlic.fechaFinal)) {
+        const fechaFinFormateada = cKlic.fechaFinal
+          ? String(cKlic.fechaFinal).split('T')[0]
+          : 'desconocida';
+        throw new BadRequestException(
+          `No es posible generar la solicitud de comisión. El contratista ${cKlic.nombre || doc} figura en Klic pero su contrato está vencido (${cKlic.numeroContrato || ''}) desde el ${fechaFinFormateada}. Por favor regularice su situación antes de tramitar comisiones.`,
+        );
+      }
+
+      // Validar advertencia de dependencia (no bloqueante)
+      const advKlic = this.verificarConflictoDependencia(
+        cKlic.area,
+        depEsperada,
+        nombreDepEnlace,
+        doc,
+      );
+      if (advKlic) {
+        alertaDependencia = advKlic;
+      }
+
+      const idDepKlic = await this.resolverIdDependenciaPorNombre(cKlic.area);
+      const idDepFinal = idDepKlic != null ? idDepKlic : depEsperada;
+
+      if (
+        depEsperada != null &&
+        !isNaN(depEsperada) &&
+        depEsperada > 0 &&
+        idDepKlic != null &&
+        Number(idDepKlic) !== depEsperada
+      ) {
+        alertaDependencia =
+          alertaDependencia ||
+          `El comisionado con documento ${doc} registra asignación al área "${cKlic.area}" en Klic. Los aprobadores y validadores verificarán la pertinencia de la comisión.`;
+        this.logger.warn(`[consultarComisionado] ${alertaDependencia}`);
+      }
+
+      const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
+        this.parsearNombreFuncionario(cKlic.nombre || '');
+
+      const cuentasBancarias: any[] = [];
+      if (cKlic.cuentaBancaria) {
+        cuentasBancarias.push({
+          id: `cta-${Date.now()}`,
+          banco: 'BANCO REGISTRADO',
+          tipoCuenta: 'AHORROS',
+          numeroCuenta: cKlic.cuentaBancaria,
+          esPrincipal: true,
+          origen: 'KLIC',
+        });
+      }
+
+      const nuevo = this.comisionadoRepo.create({
+        numeroDocumento: doc,
+        primerNombre,
+        segundoNombre,
+        primerApellido,
+        segundoApellido,
+        email: 'sin-correo@esap.edu.co',
+        telefonoContacto: '0000000000',
+        tipoComisionado: 'CONTRATISTA',
+        origenDatos: 'KLIC',
+        autorizacionHabeasData: false,
+        idDependencia: idDepFinal,
+        cuentasBancarias,
+        cargo: 'CONTRATISTA',
+        cargos: [
+          {
+            id: `crg-${Date.now()}`,
+            cargo: 'CONTRATISTA',
+            salario: cKlic.valorContrato ? Number(cKlic.valorContrato) : 0,
+            idDependencia: idDepFinal,
+            esPrincipal: true,
+          },
+        ],
+        fechaInicioContrato: cKlic.fechaInicial || null,
+        fechaFinContrato: cKlic.fechaFinal || null,
+        esFacturadorElectronico: false,
+      } as Partial<ComisionadoEntity>);
+
+      const guardado = await this.comisionadoRepo.save(nuevo);
+      await this.garantizarUsuarioYRolComisionado(guardado, idDepFinal);
+      return await adjuntarSolicitudesPendientes(guardado);
+    }
+
+    // Si no se encontró en ninguna fuente:
+    throw new NotFoundException(
+      `No se encontró un comisionado con documento ${doc}. La persona no existe en el registro local de comisionados, ni en personas (auth), ni en Isolución, ni en el sistema Klic de la ESAP.`,
+    );
   }
 
   /**

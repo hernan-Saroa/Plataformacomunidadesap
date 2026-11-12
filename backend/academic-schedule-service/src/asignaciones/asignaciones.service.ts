@@ -17,6 +17,7 @@ import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
 import { tomaDeFranjasHabilitada } from '../portal-docente/flujo-docente.js';
 import { areaDelGrupo, docentesDelArea, motivoDeArea, nucleosDeDocentes } from './area-docente.js';
 import { ESTADOS_EN_CURSO } from '../concertacion/concertacion.service.js';
+import { esSinAula } from '../grupos/grupo.entity.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -259,7 +260,7 @@ export class AsignacionesService {
       seleccionadas,
       completo: seleccionadas.length === todas.length,
       // Virtual y sin franjas: se asigna sin horario; el docente lo define (063).
-      horarioPorDefinir: g.modalidad === 'virtual' && todas.length === 0,
+      horarioPorDefinir: esSinAula(g.modalidad) && todas.length === 0,
       idGrupo: g.id_grupo,
       cicloInicio: ciclo.cicloInicio,
       cicloFin: ciclo.cicloFin,

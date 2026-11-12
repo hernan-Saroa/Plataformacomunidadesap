@@ -4,7 +4,7 @@ import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
   X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight, Trash2,
   GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info, UserPlus, MailPlus,
-  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History
+  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History, Settings
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes
@@ -21,6 +21,8 @@ import { RundExtractionNotificationDetail } from './RundExtractionNotificationDe
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { hasRundPermission } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
+import { RundConfiguracionCarpetas } from './RundConfiguracionCarpetas';
+import { RUND_CONFIGURE_PERMISSION } from '../../../utils/rundCarpetasConfig';
 import { PublishedAvatar } from '../../../../../shared/profile-photos';
 import './BancoDocentesStatistics.css';
 import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaField';
@@ -131,7 +133,7 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones' | 'trazabilidad';
+type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones' | 'trazabilidad' | 'configuracion';
 
 export function BancoDocentesPTA() {
   const auth = useAuth();
@@ -605,6 +607,11 @@ export function BancoDocentesPTA() {
           {(hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
             <button style={TAB_STYLES(tab === 'trazabilidad')} onClick={() => setTab('trazabilidad')}>
               <History size={14} /> Trazabilidad
+            </button>
+          )}
+          {hasPermission(RUND_CONFIGURE_PERMISSION) && (
+            <button style={TAB_STYLES(tab === 'configuracion')} onClick={() => setTab('configuracion')}>
+              <Settings size={14} /> Configuración
             </button>
           )}
         </div>
@@ -1485,6 +1492,8 @@ export function BancoDocentesPTA() {
         <RundRegistrationHistory key={filterPeriodo || 'todos'} periodoCarga={filterPeriodo || undefined}
           canDownloadOriginal={hasPermission('banco-docentes.rund.import') || hasPermission('banco-docentes.rund.manage')} />
       )}
+
+      {tab === 'configuracion' && hasPermission(RUND_CONFIGURE_PERMISSION) && <RundConfiguracionCarpetas />}
 
       {tab === 'invitaciones' && (
         <div style={{ padding: '20px 24px' }}>

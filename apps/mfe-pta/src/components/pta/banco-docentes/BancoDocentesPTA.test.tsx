@@ -21,6 +21,7 @@ vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null })
 vi.mock('./BancoDocenteEstadoModal', () => ({ BancoDocenteEstadoModal: () => null }));
 vi.mock('./BancoDocentesBulkUpload', () => ({ BancoDocentesBulkUpload: () => null }));
 vi.mock('./TableroInvitacionesRUND', () => ({ TableroInvitacionesRUND: () => null }));
+vi.mock('./RundConfiguracionCarpetas', () => ({ RundConfiguracionCarpetas: () => <div>Configuración de carpetas abierta</div> }));
 vi.mock('./RundRegistrationHistory', () => ({ RundRegistrationHistory: ({ periodoCarga }: any) => <div>Historial del periodo {periodoCarga}</div> }));
 afterEach(() => { cleanup(); localStorage.removeItem('esap_user'); sessionStorage.removeItem('esap_user'); });
 beforeEach(() => { vi.clearAllMocks(); grantedPermissions = null; });
@@ -169,4 +170,19 @@ it('RUND-003: sin permiso de exportación no se ofrece el botón', async () => {
   render(<BancoDocentesPTA />);
   await screen.findByText('DOCENTE X');
   expect(screen.queryByRole('button', { name: /Exportar Excel/ })).toBeNull();
+});
+
+it('RUND-002: la pestaña Configuración solo aparece con su permiso propio', async () => {
+  grantedPermissions = ['banco-docentes.rund.manage', 'banco-docentes.rund.view'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [], total: 0, pages: 0 } } as any);
+  render(<BancoDocentesPTA />);
+  expect(screen.queryByRole('button', { name: 'Configuración' })).toBeNull();
+});
+
+it('RUND-002: con el permiso de configuración se abre la pestaña Configuración', async () => {
+  grantedPermissions = ['banco-docentes.rund.configure'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [], total: 0, pages: 0 } } as any);
+  render(<BancoDocentesPTA />);
+  fireEvent.click(screen.getByRole('button', { name: 'Configuración' }));
+  expect(await screen.findByText('Configuración de carpetas abierta')).toBeTruthy();
 });

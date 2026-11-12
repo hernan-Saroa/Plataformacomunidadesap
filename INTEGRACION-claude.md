@@ -1309,3 +1309,12 @@ Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado 
 - Ahora ambos archivos encienden la concertación (corte 2026-1, sobreescribible con variables de entorno del servidor) y fijan las URL entre servicios. Dev y prod no se tocaron.
 - El menú muestra «Concertación de la docencia» también apagada, con el motivo, en vez de desaparecer.
 - Para que tome efecto hay que **recrear** los contenedores `academic-schedule-service` y `academic-work-plan-service` del ambiente (`docker compose -f docker-compose.<amb>.yml up -d academic-schedule-service academic-work-plan-service`) y desplegar el MFE de Programación Académica.
+
+## 37. Concertación siempre encendida, modalidad a distancia, grupos y horario (nov-2026)
+
+- **Concertación encendida por defecto en todos los ambientes.** `concertacionHabilitada()` (PA) y `habilitadaLocal()` (PTA) ya no exigen `PROG_CONCERTACION_HABILITADA=true`: solo `false` la apaga. Sin `PROG_CONCERTACION_DESDE_PERIODO`, el corte es `2026-1` (`CORTE_POR_DEFECTO`); mal escrito, apagada. No depende de que el compose del ambiente traiga las variables.
+- **Un solo camino:** el menú ya no muestra «Aprobación territorial» (EFDS-1939). «Concertación de la docencia» aparece SIEMPRE, también al superusuario sin nada que concertar y aun si la configuración no responde (el panel dice por qué).
+- **Modalidad «a distancia»** (migración PA 065): funciona igual que la virtual — sin aula, sesiones mediadas por tecnología, horario opcional que define el docente. `esSinAula()` / `SQL_MODALIDADES_SIN_AULA` en `grupo.entity.ts` reemplazan las comparaciones con `'virtual'`.
+- **Aulas de la Sede Central** (065): estaban amarradas al código `CET-0288`; en QA la Sede Central es `CET-0001` y ningún aula salía válida. La migración las re-vincula al CETAP llamado exactamente «Sede Central» de la territorial SC, solo si es único (si no, avisa y no adivina).
+- **Crear grupos:** sin buscador de CETAP ni selector general; la oferta se elige en cada grupo («Guardar grupo»). Si hay UNA sola oferta posible, los grupos nuevos quedan en ella. Botón «Asignar horario» por grupo. Un grupo eliminado ya no queda abierto («Grupo no encontrado»).
+- **Horario:** botón «Agregar sesión» y clic/arrastre en la rejilla abren un MODAL centrado (día, horas, modalidad de la sesión, aula); funciona con ratón y táctil (un toque abre el modal) y la rejilla se desplaza en horizontal en pantallas pequeñas.

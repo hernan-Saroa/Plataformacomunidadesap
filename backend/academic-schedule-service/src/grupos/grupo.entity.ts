@@ -20,8 +20,17 @@ export type TipoOferta = (typeof TIPOS_OFERTA)[number];
  * tecnología y sin aula, y el horario es OPCIONAL al crearlo: el docente asignado
  * lo define después en «Mi programación».
  */
-export const MODALIDADES_GRUPO = ['presencial', 'virtual'] as const;
+export const MODALIDADES_GRUPO = ['presencial', 'virtual', 'distancia'] as const;
 export type ModalidadGrupo = (typeof MODALIDADES_GRUPO)[number];
+
+/**
+ * Modalidades SIN AULA (065): virtual y a distancia funcionan igual — sesiones mediadas
+ * por tecnología, sin aula, horario opcional que puede definir el docente asignado.
+ */
+export const MODALIDADES_SIN_AULA: readonly ModalidadGrupo[] = ['virtual', 'distancia'];
+export const esSinAula = (m: unknown): boolean => MODALIDADES_SIN_AULA.includes(m as ModalidadGrupo);
+/** Para SQL: `g.modalidad IN (${SQL_MODALIDADES_SIN_AULA})`. */
+export const SQL_MODALIDADES_SIN_AULA = "'virtual', 'distancia'";
 
 @Entity({ schema: 'academic-schedule', name: 'grupo' })
 export class GrupoEntity {

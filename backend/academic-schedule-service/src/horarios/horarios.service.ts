@@ -10,7 +10,7 @@ import {
   buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos,
 } from './solapamiento.js';
 import { buscarChoque, cargarFranjasCruceables, cicloDelGrupo } from './choque.js';
-import { GrupoEntity } from '../grupos/grupo.entity.js';
+import { esSinAula, GrupoEntity } from '../grupos/grupo.entity.js';
 import { exigirAulaDeLaOferta } from '../grupos/oferta-cetap.js';
 import { condicionNivelSql, type NivelAcademico } from '../catalogo/nivel-academico.js';
 import { condicionPeriodoGrupo, parsearPeriodo } from '../periodos/periodo-ref.js';
@@ -186,9 +186,9 @@ export class HorariosService {
     const grupo = await this.grupoRepo.findOne({ where: { idGrupo: dto.idGrupo } });
     if (!grupo) throw new NotFoundException('El grupo no existe.');
     // Grupo virtual (063): sus sesiones son mediadas por tecnología y no llevan aula.
-    if (grupo.modalidad === 'virtual') {
+    if (esSinAula(grupo.modalidad)) {
       if ((dto.tipoSesion && dto.tipoSesion !== 'mediada_tecnologia') || dto.aulaCodigo) {
-        throw new BadRequestException('El grupo es virtual: sus sesiones son mediadas por tecnología y sin aula.');
+        throw new BadRequestException(`El grupo es ${grupo.modalidad === 'distancia' ? 'a distancia' : 'virtual'}: sus sesiones son mediadas por tecnología y sin aula.`);
       }
       dto = { ...dto, tipoSesion: 'mediada_tecnologia', aulaCodigo: null, sedeCodigo: null };
     }
