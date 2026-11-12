@@ -82,35 +82,35 @@ describe('Notificaciones dentro de Gestión de módulos (EFDS-2406)', () => {
     expect(servicio.listarModulos).not.toHaveBeenCalled();
   });
 
-  it('la tabla muestra el estado, el número de avisos y «Configurar»; un módulo sin cruce dice «No notifica» y no es botón', async () => {
+  it('cada fila tiene el mismo botón «Configurar» y debajo su estado y número de avisos', async () => {
     render(<ModulesManagementModulePremium />);
     expect(await screen.findByText('Notificaciones', { selector: 'th' })).toBeInTheDocument();
-    expect(await screen.findByText('Activas')).toBeInTheDocument();
-    expect(screen.getAllByText(/2 avisos/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Configurar').length).toBeGreaterThan(0);
-    const filaContratacion = screen.getByText('Contratación').closest('tr') as HTMLElement;
-    expect(within(filaContratacion).getByText('No notifica')).toBeInTheDocument();
-    expect(within(filaContratacion).queryByRole('button', { name: /Configurar notificaciones/ })).not.toBeInTheDocument();
+    const filaPta = (await screen.findByRole('button', { name: /Configurar notificaciones de Plan de Trabajo/ })).closest('td') as HTMLElement;
+    expect(within(filaPta).getByText('Configurar')).toBeInTheDocument();
+    expect(within(filaPta).getByText(/Activas/)).toBeInTheDocument();
+    expect(within(filaPta).getByText(/2 avisos/)).toBeInTheDocument();
   });
 
-  it('un módulo que notifica pero aún no tiene avisos se ve activo, se puede abrir y explica qué hacer mientras tanto', async () => {
-    servicio.listarModulos.mockResolvedValue([modulo({ eventos: 0, eventos_activos: 0 })]);
+  it('un módulo que aún no está en la configuración también se configura: se ve activo, se abre y el primer cambio lo crea', async () => {
     servicio.listarEventos.mockResolvedValue([]);
+    servicio.actualizarModulo.mockResolvedValue(modulo({ codigo: 'contratacion', nombre: 'Contratación', activo: false, eventos: 0 }));
     render(<ModulesManagementModulePremium />);
-    const estado = await screen.findByRole('button', { name: /Configurar notificaciones de Plan de Trabajo/ });
-    expect(within(estado).getByText('Activas')).toBeInTheDocument();
-    expect(within(estado).getByText(/Aún sin avisos/)).toBeInTheDocument();
-    fireEvent.click(estado);
+    const boton = await screen.findByRole('button', { name: /Configurar notificaciones de Contratación/ });
+    const celda = boton.closest('td') as HTMLElement;
+    expect(within(celda).getByText(/Activas/)).toBeInTheDocument();
+    expect(within(celda).getByText(/aún sin avisos/)).toBeInTheDocument();
+    fireEvent.click(boton);
     expect(await screen.findByText('Aún no hay avisos de este módulo')).toBeInTheDocument();
     expect(screen.getByText(/ya puede apagar las notificaciones del módulo o configurar el buzón/)).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: /las notificaciones de Plan de Trabajo/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('switch', { name: /Desactivar las notificaciones de Contratación/ }));
+    await waitFor(() => expect(servicio.actualizarModulo).toHaveBeenCalledWith('contratacion', { activo: false, nombre: 'Contratación' }));
   });
 
   it('los módulos que no están en el menú van en "Otros remitentes de notificaciones"', async () => {
     render(<ModulesManagementModulePremium />);
     const bloque = await screen.findByLabelText('Otros remitentes de notificaciones');
     expect(within(bloque).getByText('Sistema')).toBeInTheDocument();
-    expect(within(bloque).getByText('Apagadas')).toBeInTheDocument();
+    expect(within(bloque).getByText(/Apagadas/)).toBeInTheDocument();
     expect(within(bloque).queryByText('Plan de Trabajo Académico (PTA)')).not.toBeInTheDocument();
   });
 
