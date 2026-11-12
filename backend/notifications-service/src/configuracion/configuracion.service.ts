@@ -4,7 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { permisosDeRoles } from '../auth/permisos.guard';
 import { EmailsService } from '../emails/emails.service';
 import { esOmitida, NotificationsService } from '../notifications/notifications.service';
-import { CompuertaService, compuertaEncendida } from './compuerta.service';
+import { CompuertaService, compuertaEncendida, nombreDesdeClave } from './compuerta.service';
 import { ActualizarEventoDto, ActualizarModuloDto } from './dto/configuracion.dto';
 import {
   ConfiguracionHistorial,
@@ -14,6 +14,9 @@ import {
 } from './entities/configuracion.entities';
 
 export const PERMISO_GESTIONAR = 'notificaciones.configuracion.gestionar';
+
+/** Códigos válidos para crear un módulo desde la consola: los de Gestión de módulos (minúsculas, números, - y _). */
+const CODIGO_MODULO = /^[a-z0-9][a-z0-9_-]{0,59}$/;
 
 export interface UsuarioConsola {
   userId: string;
@@ -103,8 +106,7 @@ export class ConfiguracionService {
   }
 
   async actualizarModulo(codigo: string, cambios: ActualizarModuloDto, usuario: UsuarioConsola): Promise<ModuloNotificacion> {
-    const modulo = await this.modulos.findOneBy({ codigo });
-    if (!modulo) throw new NotFoundException('El módulo no existe en la configuración de notificaciones.');
+    const modulo = (await this.modulos.findOneBy({ codigo })) ?? (await this.crearModulo(codigo, cambios.nombre));
 
     if (cambios.correo_desvio !== undefined) {
       cambios = { ...cambios, correo_desvio: validarCorreoDesvio(cambios.correo_desvio) };
@@ -118,6 +120,26 @@ export class ConfiguracionService {
     await this.registrarCambio('modulo', codigo, codigo, anterior, nuevo, usuario);
     this.compuerta.invalidar();
     return modulo;
+  }
+
+  /**
+   * Un módulo de Gestión de módulos que todavía no ha mandado avisos no está en
+   * la configuración. El administrador igual puede configurarlo de antemano
+   * (apagarlo, ponerle buzón): el primer cambio lo crea con el mismo código de
+   * Gestión de módulos, y cuando el módulo mande su primer aviso la compuerta
+   * ya encuentra esa configuración.
+   */
+  private async crearModulo(codigo: string, nombre?: string): Promise<ModuloNotificacion> {
+    if (!CODIGO_MODULO.test(codigo)) {
+      throw new NotFoundException('El módulo no existe en la configuración de notificaciones.');
+    }
+    await this.modulos
+      .createQueryBuilder()
+      .insert()
+      .values({ codigo, nombre: nombre?.trim() || nombreDesdeClave(codigo), activo: true, canal_defecto: 'ambos', orden: 500 })
+      .orIgnore()
+      .execute();
+    return this.modulos.findOneByOrFail({ codigo });
   }
 
   listarEventos(codigoModulo: string): Promise<EventoNotificacion[]> {

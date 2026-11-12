@@ -76,11 +76,17 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
     });
   }, []);
 
+  /**
+   * Un módulo que aún no está en la configuración se crea con su primer cambio:
+   * se manda también su nombre para que quede igual que en Gestión de módulos.
+   */
+  const conNombreSiEsNuevo = <T extends object>(cambios: T) => (modulo.sin_registrar ? { ...cambios, nombre: modulo.nombre } : cambios);
+
   const guardarModulo = async (cambios: Partial<ModuloNotificaciones>) => {
     onModulo(cambios);
     try {
-      const guardado = await notificacionesConfigService.actualizarModulo(codigo, cambios);
-      onModulo({ ...cambios, ...guardado });
+      const guardado = await notificacionesConfigService.actualizarModulo(codigo, conNombreSiEsNuevo(cambios));
+      onModulo({ ...cambios, ...guardado, sin_registrar: false });
       if ('activo' in cambios) {
         toast.success(cambios.activo ? `${modulo.nombre} vuelve a notificar` : `${modulo.nombre} dejó de notificar`, {
           description: cambios.activo ? undefined : 'Solo salen sus avisos obligatorios. Lo omitido queda en la bitácora.',
@@ -100,8 +106,8 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
     setGuardandoDesvio(true);
     try {
       const correo = desvio.trim().toLowerCase();
-      const guardado = await notificacionesConfigService.actualizarModulo(codigo, { correo_desvio: correo || null });
-      onModulo({ ...guardado, correo_desvio: correo || null });
+      const guardado = await notificacionesConfigService.actualizarModulo(codigo, conNombreSiEsNuevo({ correo_desvio: correo || null }));
+      onModulo({ ...guardado, correo_desvio: correo || null, sin_registrar: false });
       toast.success(correo ? 'Buzón de desvío guardado' : 'Buzón de desvío quitado');
     } catch {
       // apiClient ya muestra el mensaje del servidor
@@ -198,8 +204,10 @@ export function PanelAvisosModulo({ modulo, onModulo, onRecargar }: Props) {
       {eventos === null ? <Cargando /> : visibles.length === 0 ? (
         <Vacio
           icono={<Bell className="h-6 w-6 text-slate-400" />}
-          titulo={buscando ? 'Ningún aviso coincide' : 'Este módulo todavía no ha mandado avisos'}
-          detalle={buscando ? 'Pruebe con otra palabra.' : 'Cuando mande el primero, aparece aquí y se puede configurar.'}
+          titulo={buscando ? 'Ningún aviso coincide' : 'Aún no hay avisos de este módulo'}
+          detalle={buscando
+            ? 'Pruebe con otra palabra.'
+            : 'Cada aviso aparece aquí solo, la primera vez que el módulo lo envía. Mientras tanto ya puede apagar las notificaciones del módulo o configurar el buzón de arriba.'}
         />
       ) : (
         <ul className="space-y-2">
