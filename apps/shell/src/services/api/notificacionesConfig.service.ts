@@ -39,6 +39,8 @@ export interface ModuloNotificaciones {
   eventos: number;
   eventos_activos: number;
   omitidas_7d: number;
+  /** Solo en pantalla: módulo de Gestión de módulos que aún no está en la configuración; el primer cambio lo crea. */
+  sin_registrar?: boolean;
 }
 
 export interface EventoNotificaciones {

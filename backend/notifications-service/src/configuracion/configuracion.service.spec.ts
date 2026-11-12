@@ -50,11 +50,30 @@ describe('ConfiguracionService — la consola (EFDS-2406)', () => {
     expect(modulos.save).not.toHaveBeenCalled();
   });
 
-  it('módulo o evento inexistente: 404', async () => {
+  it('evento inexistente: 404', async () => {
     const { service } = armar();
-    await expect(service.actualizarModulo('nada', { activo: false }, usuario)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.actualizarEvento('pta', 'nada', { activo: false }, usuario)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.enviarPrueba('pta', 'nada', usuario)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('un módulo de Gestión de módulos que aún no notifica se crea con el primer cambio y queda configurado de antemano', async () => {
+    const { service, modulos, historial } = armar();
+    const execute = jest.fn().mockResolvedValue(undefined);
+    const valores: any[] = [];
+    const qb: any = { insert: () => qb, values: (v: any) => { valores.push(v); return qb; }, orIgnore: () => qb, execute };
+    (modulos as any).createQueryBuilder = jest.fn(() => qb);
+    (modulos as any).findOneByOrFail = jest.fn(async () => ({ ...valores[0] }));
+    const r = await service.actualizarModulo('auditoria', { activo: false, nombre: 'Auditoría' }, usuario);
+    expect(valores[0]).toMatchObject({ codigo: 'auditoria', nombre: 'Auditoría', activo: true, canal_defecto: 'ambos' });
+    expect(r.activo).toBe(false);
+    expect(historial.insert).toHaveBeenCalledWith(expect.objectContaining({ entidad: 'modulo', clave: 'auditoria', nuevo: { activo: false } }));
+  });
+
+  it('un código de módulo inválido no crea nada: 404', async () => {
+    const { service, modulos } = armar();
+    (modulos as any).createQueryBuilder = jest.fn();
+    await expect(service.actualizarModulo('No Valido!', { activo: false }, usuario)).rejects.toBeInstanceOf(NotFoundException);
+    expect((modulos as any).createQueryBuilder).not.toHaveBeenCalled();
   });
 
   it('"solo correo" no se puede elegir en un evento que no manda correo', async () => {
