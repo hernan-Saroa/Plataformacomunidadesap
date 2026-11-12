@@ -11,17 +11,21 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { join } from 'path';
-import { unlink } from 'fs/promises';
+import { createReadStream } from 'fs';
+import { stat, unlink } from 'fs/promises';
 
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 import { opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { disposicionConNombre } from '../estudio-previo/files.controller';
 import { PaaAdminService } from './paa-admin.service';
 import { PaaCamposService } from './paa-campos.service';
 import { PaaLineasService } from './paa-lineas.service';
@@ -39,6 +43,17 @@ import {
 } from './dto/paa.dto';
 
 const MIME_XLSX = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
+/**
+ * La guía del formato del Excel, la misma para todos los territorios.
+ *
+ * Viaja con el código (`src/assets`, copiada a `dist` por nest-cli) y no con
+ * los documentos cargados: es parte de las reglas del lector, y si el lector
+ * cambia, la guía cambia en el mismo commit. En `uploads` habría que subirla
+ * a mano en cada ambiente.
+ */
+const FORMATO_PAA = join(__dirname, '..', '..', 'assets', 'formato-del-paa.pdf');
+const NOMBRE_FORMATO_PAA = 'Formato del PAA - Contratación.pdf';
 
 /**
  * Administración del Plan Anual de Adquisiciones (migración 097).
@@ -127,6 +142,26 @@ export class PaaController {
     @Req() req: any,
   ) {
     return this.campos.guardar(id, anio, dto, getHiringAccess(req));
+  }
+
+  // --------------------------------------------------------------- formato --
+
+  /**
+   * La ruta termina en `.pdf` a propósito: el gateway trata como binario lo que
+   * termina así, y sin eso el PDF llegaría al navegador convertido en texto.
+   */
+  @Get('formato.pdf')
+  @Puede('ver', 'PAA')
+  @ApiOperation({
+    summary: 'Guía del formato del Excel del PAA',
+    description: 'Qué columnas, en qué orden y con qué valores debe venir el archivo para cargarse.',
+  })
+  async formato(@Res() res: Response) {
+    const { size } = await stat(FORMATO_PAA);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', disposicionConNombre('inline', NOMBRE_FORMATO_PAA));
+    res.setHeader('Content-Length', String(size));
+    createReadStream(FORMATO_PAA).pipe(res);
   }
 
   // ---------------------------------------------- documentos y vigencias --

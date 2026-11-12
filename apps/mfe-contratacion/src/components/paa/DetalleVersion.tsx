@@ -6,6 +6,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { AfectadosPaa, ComparacionPaa, HallazgoPaa, VersionPaa } from '../../types';
 import { Permitido } from '../shared/Permitido';
 import { useDialogo } from '../shared/useDialogo';
+import { ErroresDelArchivo, TablaDeHallazgos } from './ErroresDelArchivo';
 import { ESTADO_VERSION, TIPO_REVISION, fechaCorta, valorPaa } from './formato';
 
 interface Props {
@@ -210,54 +211,17 @@ function Validacion({ errores, advertencias }: { errores: HallazgoPaa[]; adverte
       </p>
     );
   }
-  return (
-    <div className="space-y-3">
-      {errores.length > 0 && (
-        <TablaHallazgos
-          titulo={`${errores.length} error(es): mientras los tenga, el archivo no se puede activar`}
-          tono="error"
-          hallazgos={errores}
-        />
-      )}
-      {advertencias.length > 0 && (
-        <TablaHallazgos titulo={`${advertencias.length} advertencia(s): no impiden activarlo`} tono="aviso" hallazgos={advertencias} />
-      )}
-    </div>
-  );
-}
-
-function TablaHallazgos({ titulo, tono, hallazgos }: { titulo: string; tono: 'error' | 'aviso'; hallazgos: HallazgoPaa[] }) {
+  if (errores.length) return <ErroresDelArchivo errores={errores} advertencias={advertencias} />;
   return (
     <div>
-      <p className={`m-0 mb-1.5 flex items-center gap-1.5 text-xs font-bold ${tono === 'error' ? 'text-red-700' : 'text-amber-800'}`}>
+      <p className="m-0 mb-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-800">
         <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-        {titulo}
+        {advertencias.length} advertencia(s): no impiden activarlo
       </p>
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-xs">
-          <thead className="bg-slate-50 text-left text-gray-500">
-            <tr>
-              <th className="px-2.5 py-1.5 font-bold">Fila</th>
-              <th className="px-2.5 py-1.5 font-bold">Columna</th>
-              <th className="px-2.5 py-1.5 font-bold">Valor</th>
-              <th className="px-2.5 py-1.5 font-bold">Qué pasa</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {hallazgos.slice(0, HALLAZGOS_VISIBLES).map((h, i) => (
-              <tr key={i}>
-                <td className="px-2.5 py-1.5 tabular-nums whitespace-nowrap">{h.fila ?? '—'}</td>
-                <td className="px-2.5 py-1.5">{h.columna ?? '—'}</td>
-                <td className="px-2.5 py-1.5 break-words">{h.valor ?? '—'}</td>
-                <td className="px-2.5 py-1.5 text-slate-700">{h.mensaje}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {hallazgos.length > HALLAZGOS_VISIBLES && (
+      <TablaDeHallazgos hallazgos={advertencias.slice(0, HALLAZGOS_VISIBLES)} />
+      {advertencias.length > HALLAZGOS_VISIBLES && (
         <p className="m-0 mt-1 text-xs text-gray-500">
-          Se muestran los primeros {HALLAZGOS_VISIBLES} de {hallazgos.length}. Corrigiendo estos suelen desaparecer los demás.
+          Se muestran las primeras {HALLAZGOS_VISIBLES} de {advertencias.length}.
         </p>
       )}
     </div>

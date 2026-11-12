@@ -9,6 +9,7 @@ import {
   PlazoDeActividad,
   SoporteDeDevolucion,
   CamposFaltantesError,
+  ArchivoPaaRechazadoError,
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
@@ -238,6 +239,13 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
     );
   }
   const mensaje = textoDelError(cuerpo?.message);
+  if (res.status === 400 && Array.isArray(cuerpo?.hallazgos)) {
+    throw new ArchivoPaaRechazadoError(
+      textoDelError(cuerpo.motivo) ?? mensaje ?? 'El archivo no se pudo cargar',
+      cuerpo.hallazgos,
+      Array.isArray(cuerpo.advertencias) ? cuerpo.advertencias : [],
+    );
+  }
   if (res.status === 409) {
     throw new ConflictoError(
       mensaje ?? 'Alguien más cambió esto mientras lo tenías abierto: recarga la página e inténtalo de nuevo',
@@ -2066,6 +2074,19 @@ export const contratacionService = {
   // -------------------------------------------- Plan Anual de Adquisiciones --
 
   paa: {
+    /**
+     * La guía del formato del Excel, en memoria para pintarla en pantalla.
+     *
+     * Por `fetch` con la cookie, como `contenidoDocumento`: el `src` de un
+     * visor que apunta al gateway no siempre lleva la sesión.
+     */
+    formato: async (): Promise<Blob> => {
+      const res = await fetch(`${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/paa/formato.pdf`, { credentials: 'include' });
+      if (res.status === 401) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      if (!res.ok) throw new Error(`No se pudo abrir la guía del formato (error ${res.status})`);
+      return res.blob();
+    },
+
     opcionesDeCreacion: () => pedir<OpcionesDeCreacionPaa>('/paa/opciones-de-creacion'),
 
     buscarLineas: (region: string, q: string, pagina = 1, anio?: number) => {

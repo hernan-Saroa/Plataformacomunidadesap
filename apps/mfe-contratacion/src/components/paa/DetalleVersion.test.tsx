@@ -90,8 +90,13 @@ describe('DetalleVersion', () => {
     });
     render(<DetalleVersion versionId="ver-32" onCambio={vi.fn()} />);
 
-    expect(await screen.findByText('El código LINEA 1 ya está en la fila 3.')).toBeInTheDocument();
+    // Primero el resumen por tipo, con cómo se corrige; el detalle, en «Fila por fila».
+    expect(await screen.findByText('Código de línea repetido')).toBeInTheDocument();
+    expect(screen.getByText(/Numéralas sin repetir/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Activar esta versión/ })).toBeNull();
+
+    await userEvent.click(screen.getByRole('tab', { name: /Fila por fila/ }));
+    expect(screen.getByText('El código LINEA 1 ya está en la fila 3.')).toBeInTheDocument();
   });
 
   it('muestra a qué procesos toca y activa después de confirmar', async () => {
