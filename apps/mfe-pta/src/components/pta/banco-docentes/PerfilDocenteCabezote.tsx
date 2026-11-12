@@ -52,6 +52,7 @@ const ACENTOS: Record<CabezoteCampoClave, string> = {
   ESTADO_VINCULACION: '#0891B2',
   PUNTAJE_SALARIAL: '#B45309',
   ULTIMA_EVALUACION: '#DB2777',
+  CLASE_DOCENTE: '#0F766E',
 };
 
 function CampoCabezote({ campo, activo }: { campo: CabezoteCampoVista; activo: boolean }) {

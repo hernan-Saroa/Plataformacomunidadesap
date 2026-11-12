@@ -27,7 +27,10 @@ import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
 import { capturarDatosCarga, fechaCivilPersistencia, stableJson } from './rund-carga-original';
-import { leerTitulosAdicionales, resolverTitulosAdicionales, titulosAdicionalesGuardados } from './rund-titulos-adicionales';
+import { leerTitulosAdicionales, resolverTitulosAdicionales, titulosAdicionalesGuardados, type NivelTitulo } from './rund-titulos-adicionales';
+import { decidirTituloSoporte, NIVEL_POR_SOPORTE_TITULO, quitarTitulo, renombrarTitulo, type CambioTitulo } from './rund-titulo-soporte';
+import { claseDesdeHoras, normalizarClaseDocente, resolverClaseDocente } from './rund-clase-docente';
+import { hasRundData as hasRundDataValue } from './rund-evidence-data';
 import { deducirTitulosAdicionales } from './rund-perfil-titulos';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
 import { rundDocumentalEnabled } from './rund-documental-feature';
@@ -564,6 +567,8 @@ export function normalizeBancoDocentePayload(raw: any) {
     edadReferencia: edad,
     rangoEdad: firstNonEmpty(raw?.RANGO_EDAD, raw?.rangoEdad, raw?.rango_edad, raw?.['Rango de edad']) || computeRangoEdad(edad),
     horasAsignables: horasPta,
+    // Planta si las horas PTA que trae la carga (o el formulario) son mayores que 0; con 0 o sin horas, cátedra.
+    claseDocente: claseDesdeHoras(horasPtaRaw),
     dedicacionHorasSemana: getHorasSemanalesFromDedicacion(dedicacion, dedicacionHorasSemanaRaw),
     situacionCategoria: situacionCategoriaRaw || categorizarSituacion(sitAdmin),
     estado: estadoDocente,
@@ -848,6 +853,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     edad,
     rango_edad: rangoEdad,
     horas_programables: docente.horasAsignables ?? 0,
+    clase_docente: resolverClaseDocente(docente.claseDocente, docente.horasAsignables),
     estado: docente.estado,
     email: usuario?.email ?? null,
     activo: usuario?.activo ?? true,
@@ -934,6 +940,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     edad,
     rango_edad: rangoEdad,
     horas_programables: row.horas_programables ?? 0,
+    clase_docente: resolverClaseDocente(row.clase_docente, row.horas_programables),
     estado: row.estado_efectivo || row.estado || (row.activo ? 'ACTIVO' : 'INACTIVO'),
     email,
     activo: row.activo_efectivo ?? row.activo,
@@ -988,6 +995,7 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT,
           ADD COLUMN IF NOT EXISTS "territorialReportada" TEXT,
           ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB,
+          ADD COLUMN IF NOT EXISTS "claseDocente" TEXT,
           ADD COLUMN IF NOT EXISTS "titulosAdicionales" JSONB,
           ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
       `);
@@ -1206,6 +1214,9 @@ export class BancoDocentesService implements OnModuleInit {
           d."edadReferencia" AS edad_referencia,
           d."rangoEdad" AS rango_edad,
           d."horasAsignables" AS horas_programables,
+          CASE WHEN d.id IS NULL THEN NULL
+               ELSE COALESCE(d."claseDocente", CASE WHEN COALESCE(d."horasAsignables", 0) > 0 THEN 'PLANTA' ELSE 'CATEDRA' END)
+          END AS clase_docente,
           d."regimenNormativo" AS regimen_normativo,
           d."periodoCarga" AS periodo_carga,
           d."updatedAt" AS docente_updated_at,
@@ -1241,7 +1252,7 @@ export class BancoDocentesService implements OnModuleInit {
     `;
   }
 
-  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string }, params: any[]) {
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string }, params: any[]) {
     const conditions: string[] = [];
 
     if (filters.territorial === 'SIN_TERRITORIAL') {
@@ -1269,6 +1280,12 @@ export class BancoDocentesService implements OnModuleInit {
     } else if (filters.dedicacion) {
       params.push(filters.dedicacion);
       conditions.push(`dedicacion_codigo = $${params.length}`);
+    }
+
+    const claseFiltro = normalizarClaseDocente(filters.clase);
+    if (claseFiltro) {
+      params.push(claseFiltro);
+      conditions.push(`clase_docente = $${params.length}`);
     }
 
     if (filters.estado) {
@@ -1337,7 +1354,7 @@ export class BancoDocentesService implements OnModuleInit {
     return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
-  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; page?: number; limit?: number }) {
+  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
@@ -1543,6 +1560,100 @@ export class BancoDocentesService implements OnModuleInit {
       });
       return { campo, valor: nuevo, valor_anterior: anterior };
     });
+  }
+
+  /**
+   * Registra el título que el usuario escribe al cargar un diploma desde la tabla de soportes. No exige soporte de
+   * edición porque el diploma que se carga a continuación es el soporte. Deja rastro en `RundAprobacionLog`.
+   */
+  async registrarTituloDesdeSoporte(id: string, body: { tipoSoporte?: string; titulo?: unknown; actorId?: string; ip?: string }):
+    Promise<{ nivel: NivelTitulo; destino: 'principal' | 'adicional'; titulo: string }> {
+    const nivel = NIVEL_POR_SOPORTE_TITULO[String(body?.tipoSoporte || '')];
+    if (!nivel) throw new BadRequestException('Este soporte no admite registrar un título.');
+    const docenteId = await this.resolveDocenteId(id);
+    return this.dataSource.transaction(async (manager) => {
+      const docente = await manager.findOne(DocenteEntity, { where: { id: docenteId }, lock: { mode: 'pessimistic_write' } });
+      if (!docente) throw new NotFoundException(`Docente ${id} no encontrado`);
+      const guardados = titulosAdicionalesGuardados(docente.titulosAdicionales);
+      const decision = decidirTituloSoporte((docente as any)[nivel], guardados[nivel] || [], body.titulo);
+      const etiqueta = nivel === 'posDoctorado' ? 'POSDOCTORADO' : nivel.toUpperCase();
+      let campo: string;
+      let anterior: string | null;
+      if (decision.destino === 'principal') {
+        await manager.update(DocenteEntity, { id: docenteId }, { [nivel]: decision.principal } as any);
+        campo = etiqueta;
+        anterior = hasRundDataValue((docente as any)[nivel]) ? String((docente as any)[nivel]) : null;
+      } else {
+        const nuevos = { ...guardados, [nivel]: decision.adicionales };
+        await manager.update(DocenteEntity, { id: docenteId }, { titulosAdicionales: nuevos } as any);
+        campo = `TITULOS_ADICIONALES_${etiqueta}`;
+        anterior = (guardados[nivel] || []).join('; ') || null;
+      }
+      const nuevo = decision.destino === 'principal' ? decision.titulo : decision.adicionales.join('; ');
+      await this.writeAuditWithManager(manager, {
+        docenteId,
+        bloque: 'FORMACION',
+        accion: 'EDITAR_TITULO_FORMACION',
+        actorId: body.actorId || 'SISTEMA',
+        canalOrigen: 'TABLA_SOPORTES',
+        campoAfectado: campo,
+        datoPrevio: anterior ?? undefined,
+        datoNuevo: nuevo,
+        ip: body.ip,
+        metadata: { origen: 'tabla-soportes-codificacion', tipoSoporte: body.tipoSoporte, cambios: { [campo]: { anterior, nuevo } } },
+      });
+      return { nivel, destino: decision.destino, titulo: decision.titulo };
+    });
+  }
+
+  /**
+   * Cambia el nombre de un título de formación (precargado o adicional) o lo quita de la lista del nivel.
+   * Se invoca desde la tabla de soportes; deja rastro en `RundAprobacionLog` con valor anterior y nuevo.
+   */
+  private async modificarTituloFormacion(id: string, modo: 'editar' | 'eliminar',
+    body: { tipoSoporte?: string; titulo?: unknown; nuevoTitulo?: unknown; actorId?: string; ip?: string }): Promise<{ nivel: NivelTitulo; titulo: string | null; anterior: string }> {
+    const nivel = NIVEL_POR_SOPORTE_TITULO[String(body?.tipoSoporte || '')];
+    if (!nivel) throw new BadRequestException('Este soporte no admite títulos.');
+    const docenteId = await this.resolveDocenteId(id);
+    return this.dataSource.transaction(async (manager) => {
+      const docente = await manager.findOne(DocenteEntity, { where: { id: docenteId }, lock: { mode: 'pessimistic_write' } });
+      if (!docente) throw new NotFoundException(`Docente ${id} no encontrado`);
+      const guardados = titulosAdicionalesGuardados(docente.titulosAdicionales);
+      const cambio: CambioTitulo = modo === 'editar'
+        ? renombrarTitulo((docente as any)[nivel], guardados[nivel] || [], body.titulo, body.nuevoTitulo)
+        : quitarTitulo((docente as any)[nivel], guardados[nivel] || [], body.titulo);
+      const etiqueta = nivel === 'posDoctorado' ? 'POSDOCTORADO' : nivel.toUpperCase();
+      const adicionales = { ...guardados } as Record<string, string[]>;
+      if (cambio.adicionales.length) adicionales[nivel] = cambio.adicionales; else delete adicionales[nivel];
+      const anteriorPrincipal = hasRundDataValue((docente as any)[nivel]) ? String((docente as any)[nivel]) : null;
+      await manager.update(DocenteEntity, { id: docenteId }, { [nivel]: cambio.principal, titulosAdicionales: Object.keys(adicionales).length ? adicionales : null } as any);
+      const cambios: Record<string, { anterior: string | null; nuevo: string | null }> = {};
+      if ((cambio.principal ?? null) !== anteriorPrincipal) cambios[etiqueta] = { anterior: anteriorPrincipal, nuevo: cambio.principal ?? null };
+      const antes = (guardados[nivel] || []).join('; ') || null;
+      const despues = cambio.adicionales.join('; ') || null;
+      if (antes !== despues) cambios[`TITULOS_ADICIONALES_${etiqueta}`] = { anterior: antes, nuevo: despues };
+      const campos = Object.keys(cambios);
+      await this.writeAuditWithManager(manager, {
+        docenteId, bloque: 'FORMACION',
+        accion: modo === 'editar' ? 'EDITAR_TITULO_FORMACION' : 'ELIMINAR_TITULO_FORMACION',
+        actorId: body.actorId || 'SISTEMA', canalOrigen: 'TABLA_SOPORTES',
+        campoAfectado: campos.join(','),
+        datoPrevio: campos.length === 1 ? cambios[campos[0]].anterior ?? undefined : undefined,
+        datoNuevo: campos.length === 1 ? cambios[campos[0]].nuevo ?? undefined : undefined,
+        observacion: modo === 'editar' ? `«${cambio.anterior}» → «${cambio.nuevo}»` : `Se eliminó «${cambio.anterior}»`,
+        ip: body.ip,
+        metadata: { origen: 'tabla-soportes-codificacion', tipoSoporte: body.tipoSoporte, cambios },
+      });
+      return { nivel, titulo: cambio.nuevo, anterior: cambio.anterior };
+    });
+  }
+
+  editarTituloFormacion(id: string, body: { tipoSoporte?: string; titulo?: unknown; nuevoTitulo?: unknown; actorId?: string; ip?: string }) {
+    return this.modificarTituloFormacion(id, 'editar', body);
+  }
+
+  eliminarTituloFormacion(id: string, body: { tipoSoporte?: string; titulo?: unknown; actorId?: string; ip?: string }) {
+    return this.modificarTituloFormacion(id, 'eliminar', body);
   }
 
   private async writeAuditWithManager(manager: any, entry: {
@@ -1909,6 +2020,7 @@ export class BancoDocentesService implements OnModuleInit {
         dedicacion: payload.dedicacion,
         escalafon: payload.escalafon ?? existingDocente?.escalafon ?? null,
         horasAsignables: payload.horasAsignables,
+        claseDocente: payload.claseDocente,
         estado: payload.estado,
         ordenListado: payload.orderIndex ?? existingDocente?.ordenListado ?? null,
         vinculacionDisplay: payload.vinculacionLabel ?? existingDocente?.vinculacionDisplay ?? null,
@@ -1956,7 +2068,7 @@ export class BancoDocentesService implements OnModuleInit {
         docente = await manager.save(DocenteEntity, manager.create(DocenteEntity, docenteData));
       } else {
         let hasChanges = false;
-        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'titulosAdicionales', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
+        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'claseDocente', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'titulosAdicionales', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
         
         fieldsToCheck.push('territorialReportada', 'datosCargaMasiva');
         for (const field of fieldsToCheck) {
@@ -2634,7 +2746,7 @@ export class BancoDocentesService implements OnModuleInit {
     return suggestionIds.length ? this.dataSource.transaction(execute) : execute();
   }
 
-  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string }) {
+  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string }) {
     const baseSql = this.authDocentesBaseSql();
     const params: any[] = [];
     const whereClause = filters ? this.buildAuthDocentesFilters(filters, params) : '';
@@ -3172,6 +3284,7 @@ export class BancoDocentesService implements OnModuleInit {
           ultima_evaluacion: docenteDirecto.ultimaEvaluacion,
           puntaje_salarial: docenteDirecto.puntajeSalarial,
           horas_programables: docenteDirecto.horasAsignables,
+          clase_docente: resolverClaseDocente(docenteDirecto.claseDocente, docenteDirecto.horasAsignables),
           estado: docenteDirecto.estado,
           periodo_carga: docenteDirecto.periodoCarga,
           id_rund: docenteDirecto.id,

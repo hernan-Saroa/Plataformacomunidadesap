@@ -14,6 +14,8 @@
  * partir de `proteccion_datos.acceso_completo`.
  */
 
+import { resolverClaseDocente } from './rund-clase-docente';
+
 export const RUND_CABEZOTE_CAMPOS = [
   'NOMBRE_COMPLETO',
   'TIPO_VINCULACION',
@@ -52,6 +54,8 @@ export interface RundPerfilCabezote {
   estado_vinculacion: 'ACTIVO' | 'INACTIVO';
   estado_vinculacion_detalle: string | null;
   puntaje_salarial: number | null;
+  /** Planta o Cátedra; no forma parte de los siete campos del contrato del cabezote. */
+  clase_docente: 'PLANTA' | 'CATEDRA' | null;
   ultima_evaluacion: string | null;
   ultima_evaluacion_origen: RundUltimaEvaluacionOrigen;
   /** RUND-013 — datos de contacto; se editan desde el cabezote con PATCH :id/contacto. */
@@ -206,6 +210,7 @@ export function buildRundPerfilCabezote(source: Record<string, any> | null | und
     estado_vinculacion: estado.codigo,
     estado_vinculacion_detalle: estado.detalle,
     puntaje_salarial: primerNumero(perfil, ['puntaje_salarial', 'puntajeSalarial']),
+    clase_docente: resolverClaseDocente(perfil.clase_docente ?? perfil.claseDocente, perfil.horas_programables ?? perfil.horasAsignables),
     ultima_evaluacion: evaluacion.valor,
     ultima_evaluacion_origen: evaluacion.origen,
     correo_institucional: primerTexto(perfil, ['correo_institucional', 'correoInstitucional', 'email']),

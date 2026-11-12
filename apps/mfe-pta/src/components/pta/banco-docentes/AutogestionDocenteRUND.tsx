@@ -1,3 +1,4 @@
+import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_ARCHIVO_MB } from '../../../utils/rundEvidenceRules';
 import { useState, useEffect } from 'react';
 import { Mail, ShieldCheck, ChevronRight, CheckCircle, Save, Loader2, User, Briefcase, GraduationCap, FileText, Upload, X, Paperclip } from 'lucide-react';
 import { apiClient } from '../../../../../shell/src/services/api';
@@ -327,8 +328,8 @@ export function AutogestionDocenteRUND() {
 
   // Manejo de archivos retenidos por bloque/tipo (no se suben hasta el envío final).
   const setSoporteFile = (bloque: string, tipo: string, file: File | null) => {
-    if (file && (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > 10 * 1024 * 1024)) {
-      setError('Seleccione un PDF válido de máximo 10 MB.');
+    if (file && (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > RUND_MAX_ARCHIVO_BYTES)) {
+      setError(`Seleccione un PDF válido de máximo ${RUND_MAX_ARCHIVO_MB} MB.`);
       return;
     }
     const key = `${bloque}__${tipo}`;
@@ -916,7 +917,7 @@ export function AutogestionDocenteRUND() {
                   <div>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a', fontWeight: 700 }}>Adjunta tus Documentos de Soporte</h2>
                     <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5 }}>
-                      Carga los documentos que respaldan tu información. Formato: PDF, máximo 10 MB por archivo. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
+                      Carga los documentos que respaldan tu información. Formato: PDF, máximo {RUND_MAX_ARCHIVO_MB} MB por archivo. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
                     </p>
                   </div>
                 </div>
@@ -948,7 +949,7 @@ export function AutogestionDocenteRUND() {
                                 <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
                                   {tipo.label}{tipo.required && <span style={{ color: '#ef4444' }}> *</span>}
                                 </div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 3 }}>PDF · Máximo 10 MB por archivo</div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 3 }}>PDF · Máximo {RUND_MAX_ARCHIVO_MB} MB por archivo</div>
                                 {saved && !file && <div style={{ fontSize: '0.72rem', color: saved.estado === 'Aprobado' ? '#047857' : saved.estado === 'Rechazado' ? '#B91C1C' : '#92400E' }}>
                                   {saved.estado === 'Aprobado' ? '✓ Aprobado' : saved.estado === 'Rechazado' ? 'Devuelto' : 'Pendiente de revisión'}: {saved.nombre}
                                   {saved.observacion && <div>Corrección requerida: {saved.observacion}</div>}

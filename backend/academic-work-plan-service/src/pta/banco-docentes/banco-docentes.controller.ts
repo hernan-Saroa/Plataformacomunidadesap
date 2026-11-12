@@ -19,6 +19,7 @@ import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
+import { RUND_MAX_ARCHIVO_BYTES } from './rund-limites';
 import { standaloneSupportCategory } from './rund-evidence-data';
 import { RundCarpetasConfigService } from './rund-carpetas-config';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
@@ -34,7 +35,7 @@ import {
 
 const RUND_DOCUMENT_UPLOAD_OPTIONS = {
   storage: memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  limits: { fileSize: RUND_MAX_ARCHIVO_BYTES, files: 1 },
 };
 
 const RUND_BULK_UPLOAD_OPTIONS = {
@@ -186,6 +187,7 @@ export class BancoDocentesController {
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
     @Query('convocatoria') convocatoria?: string,
+    @Query('clase') clase?: string,
   ) {
     const result = await this.service.list({
       territorial,
@@ -199,6 +201,7 @@ export class BancoDocentesController {
       nivelFormacion,
       nucleoTematico,
       convocatoria,
+      clase,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -227,6 +230,7 @@ export class BancoDocentesController {
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
     @Query('convocatoria') convocatoria?: string,
+    @Query('clase') clase?: string,
   ) {
     return {
       success: true,
@@ -241,6 +245,7 @@ export class BancoDocentesController {
         nivelFormacion,
         nucleoTematico,
         convocatoria,
+        clase,
       }),
     };
   }
@@ -885,6 +890,26 @@ export class BancoDocentesController {
   }
 
   /** RUND-013 — Edición de un dato de contacto desde el cabezote (sin soporte; queda auditada). */
+  /** Cambia el nombre de un título de formación desde la tabla de soportes (precargado o adicional). */
+  @Post(':id/titulos-formacion/editar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  async editarTituloFormacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const data = await this.service.editarTituloFormacion(id, { tipoSoporte: body?.tipoSoporte, titulo: body?.titulo, nuevoTitulo: body?.nuevoTitulo, actorId: actor.actorId, ip: actor.ip });
+    return { success: true, data };
+  }
+
+  /** Quita un título de la lista del nivel. El archivo que lo respalda se retira por el flujo documental. */
+  @Post(':id/titulos-formacion/eliminar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  async eliminarTituloFormacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const data = await this.service.eliminarTituloFormacion(id, { tipoSoporte: body?.tipoSoporte, titulo: body?.titulo, actorId: actor.actorId, ip: actor.ip });
+    return { success: true, data };
+  }
+
   @Patch(':id/contacto')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.MANAGE)
@@ -996,7 +1021,7 @@ export class BancoDocentesController {
 
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: RUND_MAX_ARCHIVO_BYTES, files: 1 } }))
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.INCORPORADOR, RUND_PERMISSIONS.MANAGE)
   async vincularSoporte(
@@ -1039,6 +1064,10 @@ export class BancoDocentesController {
     // modo=agregar adds another evidence to the checkpoint; documentoId replaces that exact evidence.
     // Without either, existing callers keep replacing the most recent current file.
     // soporteHistoricoId replaces a legacy evidence that only has a folder file (no document version).
+    // Cargar un diploma sin título previo: el título que escribe el usuario se registra antes de crear el soporte.
+    if (!technical && typeof body.titulo === 'string' && body.titulo.trim()) {
+      await this.service.registrarTituloDesdeSoporte(id, { tipoSoporte: body.tipoSoporte, titulo: body.titulo, actorId: actor.actorId, ip: actor.ip });
+    }
     const adding = !technical && body.modo === 'agregar';
     const legacySupportId = !technical && !adding && typeof body.soporteHistoricoId === 'string' ? body.soporteHistoricoId : undefined;
     // CC, CE and passport share the identity checkpoint, so an exact evidence is matched within its group.

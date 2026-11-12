@@ -50,6 +50,17 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     expect(screen.getByText('Registro RUND-001 · Periodo 2026-1')).toBeTruthy();
   });
 
+  it('agrega la clase del docente (Planta o Cátedra) como tercera fila del encabezado', () => {
+    const { rerender } = render(<PerfilDocenteCabezote docente={{ ...PERFIL_GGP, clase_docente: 'PLANTA' }} />);
+    expect(screen.getByText('Clase de docente')).toBeTruthy();
+    const valor = () => screen.getByText('Clase de docente').closest('div')!.querySelector('dd')!.textContent;
+    expect(valor()).toContain('Planta');
+    rerender(<PerfilDocenteCabezote docente={{ ...PERFIL_GGP, clase_docente: 'CATEDRA' }} />);
+    expect(valor()).toContain('Cátedra');
+    rerender(<PerfilDocenteCabezote docente={{ ...PERFIL_GGP, clase_docente: null, horas_programables: 0 }} />);
+    expect(valor()).toContain('Cátedra');
+  });
+
   it('es de solo lectura: no renderiza campos editables ni acciones', () => {
     const { container } = render(<PerfilDocenteCabezote docente={PERFIL_GGP} />);
 
@@ -106,8 +117,8 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     const region = container.querySelector('section[aria-label="Cabezote del perfil docente"]');
     expect(region).toBeTruthy();
     // 6 campos de vinculación + 3 de contacto (RUND-013).
-    expect(container.querySelectorAll('dl > div > dt')).toHaveLength(9);
-    expect(container.querySelectorAll('dl > div > dd')).toHaveLength(9);
+    expect(container.querySelectorAll('dl > div > dt')).toHaveLength(10);
+    expect(container.querySelectorAll('dl > div > dd')).toHaveLength(10);
   });
 
   it('no rompe la vista cuando el perfil llega incompleto', () => {
@@ -117,9 +128,9 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     expect(screen.getByText('Perfil del Registro Único Nacional Docente')).toBeTruthy();
     // Sin metadatos de permisos el puntaje permanece restringido.
     // 3 de vinculación + 3 de contacto sin dato.
-    expect(screen.getAllByText('No registrado').length).toBe(6);
+    expect(screen.getAllByText('No registrado').length).toBe(7);
     expect(screen.getByText('Información restringida')).toBeTruthy();
-    expect(container.querySelectorAll('dl > div')).toHaveLength(9);
+    expect(container.querySelectorAll('dl > div')).toHaveLength(10);
   });
 
   it('no renderiza nada sin perfil', () => {

@@ -29,8 +29,9 @@ import './RundCheckpointEvidence.css';
 import { PHOTO_MANAGE, PHOTO_VALIDATE } from '../../../../../shared/profile-photos';
 import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 import { RUND_CARPETA_ORDEN, rundCarpeta } from '../../../utils/rundCarpetas';
-import { rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
+import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_ARCHIVO_MB, rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
 import { auditCambiosOf, formatAuditValue } from './rundAuditCambios';
+import { esSoporteDeTitulo, NIVEL_TITULO_POR_SOPORTE } from '../../../utils/rundSoportesTabla';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -532,23 +533,66 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     }
   };
 
+  /** Cambia el nombre de un título de la lista de formación. Devuelve false si no se pudo guardar. */
+  const editarTituloFila = async (group: RundSupportGroup, tituloAnterior: string, tituloNuevo: string): Promise<boolean> => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError || !tarjetaRund?.docenteId) return false;
+    setRundActionLoading(`titulo-${tipoSoporte}`);
+    try {
+      await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/titulos-formacion/editar`, { tipoSoporte, titulo: tituloAnterior, nuevoTitulo: tituloNuevo });
+      toast.success('Título actualizado.');
+      await fetchRundData();
+      onUpdated?.();
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo actualizar el título.');
+      return false;
+    } finally {
+      setRundActionLoading(null);
+    }
+  };
+
+  /** Elimina la fila de un título: primero su archivo (si lo tiene) y luego el título, para que lista y archivos sigan alineados. */
+  const eliminarTituloFila = async (group: RundSupportGroup, titulo: string, evidence?: any) => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError || !tarjetaRund?.docenteId) return;
+    if (evidence && !evidence.documento_perfil_id) { toast.error('Este archivo es un soporte histórico y no se puede eliminar desde aquí.'); return; }
+    const mensaje = evidence ? `¿Eliminar el título «${titulo}» y su documento? Las versiones quedan en el historial.` : `¿Eliminar el título «${titulo}»?`;
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(mensaje)) return;
+    setRundActionLoading(`titulo-${tipoSoporte}`);
+    try {
+      if (evidence) await apiClient.delete(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/documentos/${evidence.documento_perfil_id}`);
+      await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/titulos-formacion/eliminar`, { tipoSoporte, titulo });
+      toast.success('Título eliminado.');
+      onUpdated?.();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el título.');
+    } finally {
+      await fetchRundData();
+      setDocumentRevision(value => value + 1);
+      setRundActionLoading(null);
+    }
+  };
+
   const toggleRundBloque = (bloque: string) => {
     setSelectedRundBloque(bloque);
   };
 
   /** Without a target the file is added as another evidence; with one, that exact evidence gets a new version. */
-  const handleUploadFile = async (file: File, tipoSoporte: string, campo: string, replaceTarget?: any) => {
+  const handleUploadFile = async (file: File, tipoSoporte: string, campo: string, replaceTarget?: any, titulo?: string) => {
     if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError) return;
     // Legacy evidences only have a folder file: they are replaced through their review row.
     const replaceDocumentId = replaceTarget?.documento_perfil_id;
     const replaceLegacySupportId = replaceTarget && !replaceDocumentId ? replaceTarget.id : undefined;
     const field = CATALOGO_BR039[selectedRundBloque]?.campos.find(item => item.campo === campo && item.tipoSoporte === tipoSoporte);
-    if (!field || !canUploadRundField(selectedRundBloque, field, tarjetaRund)) {
+    // Con título escrito en el formulario el backend registra el dato antes del soporte.
+    const tituloEscrito = esSoporteDeTitulo(tipoSoporte) ? titulo?.trim() : '';
+    if (!field || (!tituloEscrito && !canUploadRundField(selectedRundBloque, field, tarjetaRund))) {
       toast.error('Registre primero el dato de la fila antes de cargar su soporte.');
       return;
     }
-    if (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > 10 * 1024 * 1024) {
-      toast.error('Seleccione un PDF válido de máximo 10 MB.');
+    if (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > RUND_MAX_ARCHIVO_BYTES) {
+      toast.error(`Seleccione un PDF válido de máximo ${RUND_MAX_ARCHIVO_MB} MB.`);
       return;
     }
     toast(`Subiendo: ${file.name}...`);
@@ -580,6 +624,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       if (replaceDocumentId) formData.append('documentoId', replaceDocumentId);
       else if (replaceLegacySupportId) formData.append('soporteHistoricoId', replaceLegacySupportId);
       else formData.append('modo', 'agregar');
+      if (tituloEscrito) formData.append('titulo', tituloEscrito);
       formData.append('file', file);
 
       // CORRECTO: usar apiClient.upload (multipart/form-data) en vez de apiClient.post (JSON)
@@ -771,7 +816,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     .map(field => {
       const fields = activeConfig.campos.filter(item => item.tipoSoporte === field.tipoSoporte);
       const uploadField = fields.find(item => canUploadRundField(selectedRundBloque, item, tarjetaRund));
-      return { field, fields, uploadField: uploadField || field, canUpload: !!uploadField,
+      // Diplomas de nivel: cada título registrado (precargado y adicionales) es una fila de la tabla.
+      const nivelTitulo = selectedRundBloque === 'FORMACION' ? NIVEL_TITULO_POR_SOPORTE[field.tipoSoporte] : undefined;
+      const precargado = nivelTitulo ? getDatoExtraido('FORMACION', field.campo, tarjetaRund) : null;
+      const titulos = nivelTitulo
+        ? [...(hasRundData(precargado) ? [String(precargado)] : []), ...titulosAdicionalesDeCampos(tarjetaRund?.bloques?.FORMACION?.campos, nivelTitulo)]
+        : undefined;
+      return { field, fields, uploadField: uploadField || field, canUpload: !!uploadField, titulos,
         dataSummary: fields.map(item => getDatoExtraido(selectedRundBloque, item.campo, tarjetaRund))
           .filter(value => hasRundData(value)).join(' · '),
         canManage: canManageSupport(field.tipoSoporte),
@@ -967,15 +1018,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
 
         <RundDatosCargaOriginal bloque={selectedRundBloque} datos={tarjetaRund.datos_carga_masiva} accesoCompleto={tarjetaRund.proteccion_datos?.acceso_completo === true} />
 
-        {selectedRundBloque !== 'CONTACTO' && <RundSoportesCodificacion
-          grupos={supportGroups}
-          disabled={!!rundActionLoading || loadingRund || loadError}
-          onUpload={(file, group, evidence) => handleUploadFile(file, group.field.tipoSoporte, group.uploadField.campo, evidence)}
-          onView={(evidence, group, number) => openDocViewer(evidence.documento_carpeta_id || evidence.documentoCarpetaId || evidence.url || '',
-            group.evidences.length > 1 ? group.field.documento + ' · Evidencia ' + number : group.field.documento,
-            group.field.campo, { support: evidence, block: selectedRundBloque, field: group.field as CampoDoc })}
-          onDelete={evidence => deleteEvidenceFromTable(evidence)} />}
-
         {selectedRundBloque !== 'CONTACTO' && <RundDocumentManager
           key={tarjetaRund.docenteId}
           docenteId={tarjetaRund.docenteId}
@@ -984,6 +1026,17 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           revision={documentRevision}
           activeBlock={selectedRundBloque}
           activeBlockLabel={CATALOGO_BR039[selectedRundBloque]?.label}
+          renderSupportTable={({ accionesExtra }) => <RundSoportesCodificacion incrustada
+            grupos={supportGroups}
+            disabled={!!rundActionLoading || loadingRund || loadError}
+            accionesExtra={accionesExtra}
+            onUpload={(file, group, evidence, titulo) => handleUploadFile(file, group.field.tipoSoporte, group.uploadField.campo, evidence, titulo)}
+            onView={(evidence, group, number) => openDocViewer(evidence.documento_carpeta_id || evidence.documentoCarpetaId || evidence.url || '',
+              group.evidences.length > 1 ? group.field.documento + ' · Evidencia ' + number : group.field.documento,
+              group.field.campo, { support: evidence, block: selectedRundBloque, field: group.field as CampoDoc })}
+            onDelete={evidence => deleteEvidenceFromTable(evidence)}
+            onEditTitle={editarTituloFila}
+            onDeleteTitle={eliminarTituloFila} />}
           supportReview={{ groups: supportGroups, canValidate: canValidateRund,
             disabled: !!rundActionLoading || loadingRund || loadError, busy: rundActionLoading,
             onView: (evidence, group, number) => openDocViewer(evidence.documento_carpeta_id || evidence.documentoCarpetaId || evidence.url || '',

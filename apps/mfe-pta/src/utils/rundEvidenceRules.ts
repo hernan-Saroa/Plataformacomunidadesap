@@ -1,5 +1,9 @@
 /** Mirrors rund-evidence-workflow.ts: a checkpoint keeps several evidences, each reviewed on its own. */
-export const RUND_MAX_EVIDENCES_PER_TYPE = 10;
+/** Espejo de backend/academic-work-plan-service/src/pta/banco-docentes/rund-limites.ts: si cambian allá, cambian aquí. */
+export const RUND_MAX_EVIDENCES_PER_TYPE = 200;
+/** Tamaño máximo por archivo de soporte (25 MB). */
+export const RUND_MAX_ARCHIVO_MB = 25;
+export const RUND_MAX_ARCHIVO_BYTES = RUND_MAX_ARCHIVO_MB * 1024 * 1024;
 export const RUND_TECHNICAL_SUPPORTS = ['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'];
 const IDENTITY_TYPES = ['documento_identidad', 'cedula_extranjeria', 'pasaporte'];
 

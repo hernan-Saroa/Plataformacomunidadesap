@@ -22,7 +22,7 @@ import { apiClient } from '../../../../../shell/src/services/api';
 import type { RundEvidenceOption } from '../../../utils/rundEvidenceData';
 import { rundActorName } from '../../../utils/rundActorName';
 import { RUND_BLOCK_LABELS, rundDocumentBlock } from '../../../utils/rundDocumentScope';
-import { RUND_MAX_EVIDENCES_PER_TYPE, rundEvidenceGroup } from '../../../utils/rundEvidenceRules';
+import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_EVIDENCES_PER_TYPE, rundDocumentDecision, rundEvidenceGroup } from '../../../utils/rundEvidenceRules';
 import { RundSupportList, type RundSupportReview, type RundSupportGroup } from './RundSupportList';
 import { RundPdfPicker } from './RundCheckpointEvidence';
 
@@ -67,6 +67,8 @@ type Props = {
   activeBlockLabel?: string;
   evidenceOptions?: RundEvidenceOption[];
   supportReview?: RundSupportReview;
+  /** Si se entrega, la tabla de soportes por codificación reemplaza las tarjetas de soportes dentro de esta sección. */
+  renderSupportTable?: (contexto: { accionesExtra: (evidence: any, group: RundSupportGroup) => React.ReactNode }) => React.ReactNode;
   onView: (url: string, name: string, label: string) => void;
   onChanged?: () => Promise<void> | void;
 };
@@ -95,7 +97,7 @@ const evidenceCategory = (block: string, type: string) => {
   return 'OTROS';
 };
 
-export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel, supportReview }: Props) {
+export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel, supportReview, renderSupportTable }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [documents, setDocuments] = useState<RundProfileDocument[]>([]);
   const [category, setCategory] = useState('');
@@ -247,6 +249,25 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
   const documentCount = reviewingSupports ? reviewEvidences.length + scopedDocuments.filter(document => !isReviewedDocument(document)).length : scopedDocuments.length;
   const visibleCount = visibleSupportCount + remainingDocuments.length;
   const actionsDisabled = !!busy || deleting || loading || !!supportReview?.disabled;
+  const tableMode = reviewingSupports && !!renderSupportTable;
+  // Con la tabla, los archivos ya están en ella: la lista de abajo solo trae anexos y archivos sin punto de control.
+  const accionesExtra = (evidence: any, group: RundSupportGroup) => {
+    const document = supportDocument(evidence);
+    const pendiente = !!supportReview?.canValidate && rundDocumentDecision(evidence, group.fields).estado === 'Pendiente';
+    const revisando = supportReview?.busy === `review-${evidence.id}`;
+    return <>
+      {pendiente && <>
+        <button type="button" className="rund-soportes__accion rund-soportes__accion--validar" disabled={actionsDisabled || revisando}
+          onClick={() => supportReview!.onReview(evidence, group, 'Aprobado')}>Validar soporte</button>
+        <button type="button" className="rund-soportes__accion rund-soportes__accion--devolver" disabled={actionsDisabled || revisando}
+          onClick={() => supportReview!.onReview(evidence, group, 'Rechazado')}>Devolver soporte</button>
+      </>}
+      {document && <>
+      {document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={actionsDisabled}><Download size={14} /></IconButton>}
+      {document.totalVersiones > 1 && <span title={`${document.totalVersiones} versiones`} style={{ ...iconButtonStyle, cursor: 'default', color: '#7C3AED' }}><FileClock size={14} /></span>}
+      </>}
+    </>;
+  };
 
   useEffect(() => {
     setSearch('');
@@ -302,7 +323,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
       return;
     }
     if (!selectedCategory) { toast.error('Seleccione una categoría disponible para el anexo.'); return; }
-    const maxBytes = Number(selectedCategory?.tamano_maximo_bytes || 10 * 1024 * 1024);
+    const maxBytes = Number(selectedCategory?.tamano_maximo_bytes || RUND_MAX_ARCHIVO_BYTES);
     if (!validateClientFile(file, maxBytes)) return;
     setBusy('upload');
     try {
@@ -344,7 +365,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
       return;
     }
     const categoryConfig = categories.find((item) => item.codigo === document.categoria);
-    const maxBytes = Number(categoryConfig?.tamano_maximo_bytes || 10 * 1024 * 1024);
+    const maxBytes = Number(categoryConfig?.tamano_maximo_bytes || RUND_MAX_ARCHIVO_BYTES);
     if (!validateClientFile(file, maxBytes)) return;
     setBusy(`replace-${document.id}`);
     try {
@@ -535,12 +556,12 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
               style={{ ...primaryButton, opacity: actionsDisabled || !uploadReady ? 0.6 : 1, cursor: actionsDisabled || !uploadReady ? 'not-allowed' : 'pointer' }}>
               <UploadCloud size={16}/>{busy === 'upload' ? 'Cargando…' : 'Cargar PDF'}
             </RundPdfPicker>
-            <p className="rund-documents__upload-limit">PDF · Hasta {fileSize(Number(selectedCategory?.tamano_maximo_bytes || 10 * 1024 * 1024))} por archivo.</p>
+            <p className="rund-documents__upload-limit">PDF · Hasta {fileSize(Number(selectedCategory?.tamano_maximo_bytes || RUND_MAX_ARCHIVO_BYTES))} por archivo.</p>
           </div>}
         </div>}
 
-        {(scopedDocuments.length > 0 || reviewingSupports && reviewEvidences.length > 0 || !supportReview) && <div className="rund-documents__toolbar">
-          {(scopedDocuments.length > 0 || reviewingSupports && reviewEvidences.length > 0) && <label className="rund-documents__search">
+        {(tableMode ? remainingDocuments.length > 0 : (scopedDocuments.length > 0 || reviewingSupports && reviewEvidences.length > 0 || !supportReview)) && <div className="rund-documents__toolbar">
+          {(tableMode ? remainingDocuments.length > 0 : (scopedDocuments.length > 0 || reviewingSupports && reviewEvidences.length > 0)) && <label className="rund-documents__search">
             <Search size={16} aria-hidden="true" />
             <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar archivo o descripción..." aria-label="Buscar documentos" />
           </label>}
@@ -550,13 +571,14 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
           </select>}
           {!supportReview && toolbarActions}
         </div>}
-        {(!reviewingSupports || documentCount > 0) && <div className="rund-documents__list-heading">
+        {(tableMode ? remainingDocuments.length > 0 : (!reviewingSupports || documentCount > 0)) && <div className="rund-documents__list-heading">
           <span>{history ? 'Archivos y versiones anteriores' : 'Archivos vigentes'}</span>
-          <span role="status">{visibleCount} de {documentCount} {history ? 'archivos y versiones' : 'documentos'}</span>
+          <span role="status">{tableMode ? remainingDocuments.length : visibleCount} de {tableMode ? remainingDocuments.length : documentCount} {history ? 'archivos y versiones' : 'documentos'}</span>
         </div>}
-        {reviewingSupports && documentCount > 0 && <p className="rund-documents__review-hint">Revisar un archivo no valida automáticamente los datos que respalda.</p>}
+        {reviewingSupports && !tableMode && documentCount > 0 && <p className="rund-documents__review-hint">Revisar un archivo no valida automáticamente los datos que respalda.</p>}
         <div ref={listRef} className={`rund-documents__list${reviewingSupports ? ' rund-documents__list--review' : ''}`} role="region" aria-label="Lista de documentos del perfil" tabIndex={0} aria-busy={loading}>
-          {reviewingSupports && <RundSupportList {...supportReview!} disabled={actionsDisabled}
+          {tableMode && renderSupportTable!({ accionesExtra })}
+          {reviewingSupports && !tableMode && <RundSupportList {...supportReview!} disabled={actionsDisabled}
             matches={matchesSupport} filtered={!!search.trim() || effectiveFilter !== 'TODAS'}
             renderDetails={evidence => {
               const document = supportDocument(evidence);
@@ -582,7 +604,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
             }} />}
           {loading && scopedDocuments.length === 0 && !reviewingSupports ? (
             <div style={emptyStyle}>Consultando documentos…</div>
-          ) : visibleCount === 0 && (!reviewingSupports || !!search.trim() || effectiveFilter !== 'TODAS') ? (
+          ) : tableMode && remainingDocuments.length === 0 ? null : visibleCount === 0 && (!reviewingSupports || !!search.trim() || effectiveFilter !== 'TODAS') ? (
             <div style={emptyStyle}>{scopedDocuments.length === 0 ? activeBlock
               ? uploadMode === 'attachment' ? history ? 'No hay anexos generales ni versiones anteriores.' : 'Este perfil no tiene anexos generales vigentes.'
                 : history ? `No hay archivos ni versiones anteriores de ${sectionLabel}.` : `No hay documentos vigentes de ${sectionLabel}.`
@@ -625,7 +647,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
                 {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Visualizar" onClick={() => onView(document.contenidoUrl!, document.nombreArchivo, document.categoriaNombre)}><Eye size={14} /></IconButton>}
                 {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
                 {canManageDocument(document) && !document.soporteGestion && document.estado === 'ACTIVO' && canReplaceEvidence(document.tipoSoporte) && (
-                  <label title={`Reemplazar (PDF, máximo ${fileSize(Number(categories.find(item => item.codigo === document.categoria)?.tamano_maximo_bytes || 10 * 1024 * 1024))})`} style={iconButtonStyle}>
+                  <label title={`Reemplazar (PDF, máximo ${fileSize(Number(categories.find(item => item.codigo === document.categoria)?.tamano_maximo_bytes || RUND_MAX_ARCHIVO_BYTES))})`} style={iconButtonStyle}>
                     <Replace size={14} />
                     <input type="file" accept="application/pdf,.pdf" hidden disabled={busy === `replace-${document.id}`} onChange={(event) => {
                       const file = event.target.files?.[0];

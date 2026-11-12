@@ -2097,6 +2097,8 @@ export async function getBancoDocentes(filters?: {
   limit?: number;
   periodoCarga?: string;
   convocatoria?: string;
+  /** Planta o Cátedra. */
+  clase?: string;
 }) {
   try {
     // El backend devuelve { success, items:[...], total, pages } sin wrapper "data"
@@ -2111,7 +2113,7 @@ export async function getBancoDocentes(filters?: {
   }
 }
 
-export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; convocatoria?: string }) {
+export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; convocatoria?: string; clase?: string }) {
   try {
     const params = new URLSearchParams();
     if (filters?.territorial) params.set('territorial', filters.territorial);
@@ -2120,6 +2122,7 @@ export async function getBancoDocenteStats(filters?: { territorial?: string; ded
     if (filters?.estado) params.set('estado', filters.estado);
     if (filters?.periodoCarga) params.set('periodoCarga', filters.periodoCarga);
     if (filters?.convocatoria) params.set('convocatoria', filters.convocatoria);
+    if (filters?.clase) params.set('clase', filters.clase);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const raw = await apiClient.get<any>(`${BD_BASE}/stats${qs}`, undefined, { cache: 'no-store' });
     return normalizeResult<any>(raw, null);

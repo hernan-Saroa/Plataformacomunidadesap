@@ -1,5 +1,6 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
+import { RUND_MAX_ARCHIVO_BYTES } from './rund-limites';
 import { evidenceGroup, isReviewableEvidence, lockEvidenceProfile, requiredEvidence, resetEvidenceBlock, RUND_MAX_EVIDENCES_PER_TYPE, validateEvidenceType } from './rund-evidence-workflow';
 import {
   BadRequestException,
@@ -486,7 +487,7 @@ export class RundDocumentosService {
     if (extension !== '.pdf' || !allowedMimes.includes(file.mimetype) || !hasPdfSignature) {
       throw new BadRequestException('Archivo no permitido. Solo se aceptan documentos PDF válidos.');
     }
-    const configuredMax = Number(process.env.RUND_DOCUMENT_MAX_SIZE_BYTES || category.tamano_maximo_bytes || 10 * 1024 * 1024);
+    const configuredMax = Number(process.env.RUND_DOCUMENT_MAX_SIZE_BYTES || category.tamano_maximo_bytes || RUND_MAX_ARCHIVO_BYTES);
     const categoryMax = Number(category.tamano_maximo_bytes || configuredMax);
     const maxSize = Math.min(configuredMax, categoryMax);
     if (!Number.isFinite(maxSize) || file.size > maxSize) {

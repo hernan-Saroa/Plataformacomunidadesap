@@ -160,6 +160,7 @@ export function BancoDocentesPTA() {
   const [search, setSearch] = useState('');
   const [filterTerritorial, setFilterTerritorial] = useState('');
   const [filterDedicacion, setFilterDedicacion] = useState('');
+  const [filterClase, setFilterClase] = useState('');
   const [filterVinculacion, setFilterVinculacion] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [territorialFilterOptions, setTerritorialFilterOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -183,7 +184,7 @@ export function BancoDocentesPTA() {
   // In all-results mode, markedIds contains the explicitly excluded rows.
   const markedCount = allFiltered ? Math.max(0, total - markedIds.size) : markedIds.size;
   const clearMarked = () => { setMarkedIds(new Set()); setAllFiltered(false); };
-  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
+  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
   const markRow = (id: string) => {
     setMarkedIds(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
@@ -305,8 +306,8 @@ export function BancoDocentesPTA() {
     setLoading(true);
     try {
       const [res, listStatsRes] = await Promise.all([
-        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
-        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
       ]);
       if (requestId !== listadoRequest.current) return;
       if (res.success && res.data) {
@@ -329,14 +330,14 @@ export function BancoDocentesPTA() {
     } finally {
       if (requestId === listadoRequest.current) setLoading(false);
     }
-  }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, search, page, filterPeriodo]);
+  }, [filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado, search, page, filterPeriodo]);
 
-  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo]);
+  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado, filterPeriodo]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => { loadData(1); setPage(1); }, 400);
     return () => clearTimeout(searchTimeout.current);
-  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado]);
+  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     loadData(page);
@@ -363,7 +364,7 @@ export function BancoDocentesPTA() {
     setExporting(true);
     try {
       const items = await recopilarTodasLasPaginas<any>(async (pagina) => {
-        const res = await getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: pagina, limit: 50, periodoCarga: filterPeriodo || undefined });
+        const res = await getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: pagina, limit: 50, periodoCarga: filterPeriodo || undefined });
         if (!res.success || !res.data) return null;
         const datos = res.data as { items?: any[]; data?: any[]; pages?: number };
         return { items: datos.items || datos.data || [], pages: datos.pages || 1 };
@@ -662,6 +663,11 @@ export function BancoDocentesPTA() {
               {filterDedicacion === 'SIN_DEDICACION' && <option value="SIN_DEDICACION">Sin Dedicación</option>}
               {DEDICACION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
+            <select className="w-full lg:w-[150px]" value={filterClase} onChange={(e) => setFilterClase(e.target.value)} aria-label="Filtrar docentes por clase" style={{ flex: '0 1 150px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
+              <option value="">Todas las clases</option>
+              <option value="PLANTA">Planta</option>
+              <option value="CATEDRA">Cátedra</option>
+            </select>
             <select className="w-full lg:w-[165px]" value={filterVinculacion} onChange={(e) => setFilterVinculacion(e.target.value)} aria-label="Filtrar docentes por vinculación" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
                 <option value="">Todas las vinculaciones</option>
               {VINCULACION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -670,8 +676,8 @@ export function BancoDocentesPTA() {
               <option value="">Todos los estados</option>
               {ESTADO_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            {(filterTerritorial || filterDedicacion || filterVinculacion || filterEstado || search) && (
-              <button className="sm:col-span-2 lg:col-span-1 lg:w-auto justify-center" onClick={() => { setSearch(''); setFilterTerritorial(''); setFilterDedicacion(''); setFilterVinculacion(''); setFilterEstado(''); setPage(1); }} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fff1f2', cursor: 'pointer', fontSize: '0.74rem', color: '#dc2626', whiteSpace: 'nowrap' }}>
+            {(filterTerritorial || filterDedicacion || filterClase || filterVinculacion || filterEstado || search) && (
+              <button className="sm:col-span-2 lg:col-span-1 lg:w-auto justify-center" onClick={() => { setSearch(''); setFilterTerritorial(''); setFilterDedicacion(''); setFilterClase(''); setFilterVinculacion(''); setFilterEstado(''); setPage(1); }} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fff1f2', cursor: 'pointer', fontSize: '0.74rem', color: '#dc2626', whiteSpace: 'nowrap' }}>
                 <X size={12} /> Limpiar
               </button>
             )}

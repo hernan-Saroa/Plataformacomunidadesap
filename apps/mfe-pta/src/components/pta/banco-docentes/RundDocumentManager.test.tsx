@@ -5,7 +5,9 @@ import { RundDocumentManager } from './RundDocumentManager';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { toast } from 'sonner';
 import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
+import { RUND_MAX_EVIDENCES_PER_TYPE } from '../../../utils/rundEvidenceRules';
 import { RundSupportList, type RundSupportReview } from './RundSupportList';
+import { RundSoportesCodificacion } from './RundSoportesCodificacion';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -100,6 +102,57 @@ describe('Biblioteca compacta de documentos RUND', () => {
     await loaded();
     expect(screen.getByTitle('Descargar')).toBeTruthy();
     expect(screen.getByTitle('Eliminar')).toBeTruthy();
+  });
+
+  describe('tabla de soportes por codificación dentro de la sección', () => {
+    const conTabla = (review: RundSupportReview) => render(<RundDocumentManager {...props} activeBlock="FORMACION" activeBlockLabel="01 Títulos de formación" supportReview={review}
+      renderSupportTable={({ accionesExtra }) => <RundSoportesCodificacion incrustada grupos={review.groups} accionesExtra={accionesExtra}
+        onUpload={vi.fn()} onView={review.onView} onDelete={vi.fn()} />} />);
+
+    it('una sola sección «Documentos de <carpeta>» con la tabla dentro y sin las tarjetas repetidas', async () => {
+      const { review } = reviewFixture('FORMACION', 'diploma_maestria');
+      conTabla(review);
+      await loaded();
+      expect(screen.getAllByRole('heading', { name: /Documentos de 01 Títulos de formación/ })).toHaveLength(1);
+      expect(screen.getByRole('region', { name: 'Soportes documentales según codificación' })).toBeTruthy();
+      expect(screen.queryByText('Soportes documentales según codificación', { selector: 'h4' })).toBeNull();
+      expect(screen.queryByRole('group', { name: 'Soportes de esta sección' })).toBeNull();
+      expect(screen.queryByText('Agregar soportes')).toBeNull();
+      // Historial, Actualizar y Agregar documento siguen en el encabezado de la misma sección.
+      for (const nombre of ['Historial', 'Actualizar', 'Agregar documento']) expect(screen.getByRole('button', { name: new RegExp(nombre) })).toBeTruthy();
+    });
+
+    it('el archivo aparece una sola vez, con Ver, Descargar y la revisión del soporte', async () => {
+      const { file, support, review } = reviewFixture('FORMACION', 'diploma_maestria');
+      conTabla(review);
+      await loaded();
+      expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+      expect(screen.getByRole('button', { name: /^Ver / })).toBeTruthy();
+      expect(screen.getByTitle('Descargar')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Validar soporte' }));
+      expect(review.onReview).toHaveBeenCalledWith(support, review.groups[0], 'Aprobado');
+      fireEvent.click(screen.getByRole('button', { name: 'Devolver soporte' }));
+      expect(review.onReview).toHaveBeenCalledWith(support, review.groups[0], 'Rechazado');
+    });
+
+    it('quien solo consulta no ve Validar ni Devolver', async () => {
+      const { review } = reviewFixture('FORMACION', 'diploma_maestria');
+      review.canValidate = false;
+      conTabla(review);
+      await loaded();
+      expect(screen.queryByRole('button', { name: 'Validar soporte' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Devolver soporte' })).toBeNull();
+    });
+
+    it('el historial muestra los archivos y versiones anteriores en lugar de la tabla', async () => {
+      const { review } = reviewFixture('FORMACION', 'diploma_maestria');
+      conTabla(review);
+      await loaded();
+      fireEvent.click(screen.getByRole('button', { name: /Historial/ }));
+      await loaded();
+      expect(screen.queryByRole('region', { name: 'Soportes documentales según codificación' })).toBeNull();
+      expect(screen.getByRole('button', { name: /Ver vigentes/ })).toBeTruthy();
+    });
   });
 
   it('la carga principal de PDF se puede abrir con un botón enfocable', async () => {
@@ -827,11 +880,11 @@ describe('Varias evidencias por punto de control', () => {
   });
 
   it('impide agregar más evidencias al llegar al máximo', async () => {
-    setDocuments(Array.from({ length: 10 }, (_, index) => evidence(`e-${index}`, `Evidencia ${index}.pdf`, `2026-10-${String(index + 1).padStart(2, '0')}T10:00:00Z`)));
+    setDocuments(Array.from({ length: RUND_MAX_EVIDENCES_PER_TYPE }, (_, index) => evidence(`e-${index}`, `Evidencia ${index}.pdf`, `2026-10-${String(index % 28 + 1).padStart(2, '0')}T10:00:00Z`)));
     render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad" />);
     await screen.findByText('Evidencia 0.pdf');
     fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
-    expect(screen.getByText(/Este punto ya tiene 10 evidencias vigentes\. Reemplaza o elimina una/)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`Este punto ya tiene ${RUND_MAX_EVIDENCES_PER_TYPE} evidencias vigentes\\. Reemplaza o elimina una`))).toBeTruthy();
     expect((screen.getByLabelText('Cargar PDF') as HTMLInputElement).disabled).toBe(true);
   });
 });

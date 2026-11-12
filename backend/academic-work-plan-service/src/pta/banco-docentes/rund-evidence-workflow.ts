@@ -37,7 +37,7 @@ export function currentBlockRows<T extends { bloque: string; version?: number | 
 }
 export const isReviewableEvidence = (type: string) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type);
 // Each checkpoint can keep several current evidences; each one is reviewed on its own.
-export const RUND_MAX_EVIDENCES_PER_TYPE = 10;
+export { RUND_MAX_EVIDENCES_PER_TYPE } from './rund-limites';
 export const RUND_REVIEW_BLOCKS = Object.keys(EVIDENCE_TYPES);
 // Contact data can be reviewed, but never requires documentary evidence.
 // La activación del perfil no cambia con la codificación documental: siguen siendo estos cinco bloques.

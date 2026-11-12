@@ -1,5 +1,6 @@
 import type { RundSupportGroup } from '../components/pta/banco-docentes/RundSupportList';
 import { RUND_MAX_EVIDENCES_PER_TYPE } from './rundEvidenceRules';
+import type { NivelTitulo } from './titulosFormacion';
 
 /**
  * Códigos y nomenclaturas de los soportes según el archivo CODIFICACION.xlsx del GGP.
@@ -34,7 +35,14 @@ const PATRONES: Record<string, string> = {
   acto_adscripcion_territorial: PATRON_NOVEDADES, resolucion_escalafon: PATRON_NOVEDADES, resolucion_puntaje_salarial: PATRON_NOVEDADES,
 };
 
-export type RundEstadoSoporte = 'Sin cargar' | 'En revisión' | 'Aprobado' | 'Devuelto';
+/** Diplomas que acreditan un título de la ficha: se pueden cargar sin título previo (se pide al cargar). */
+export const NIVEL_TITULO_POR_SOPORTE: Record<string, NivelTitulo> = {
+  diploma_pregrado: 'pregrado', diploma_especializacion: 'especializacion', diploma_maestria: 'maestria',
+  diploma_doctorado: 'doctorado', certificado_posdoctoral: 'posDoctorado',
+};
+export const esSoporteDeTitulo = (tipoSoporte: string) => tipoSoporte in NIVEL_TITULO_POR_SOPORTE;
+
+export type RundEstadoSoporte ='Sin cargar' | 'En revisión' | 'Aprobado' | 'Devuelto';
 
 export type RundFilaSoporte = {
   clave: string;
@@ -52,6 +60,12 @@ export type RundFilaSoporte = {
   ultima: boolean;
   puedeCargar: boolean;
   puedeAgregar: boolean;
+  /** Título registrado para esta fila (solo diplomas de nivel); null si la fila aún no tiene título. */
+  titulo: string | null;
+  /** Cargar abre el formulario del título: es un diploma de nivel y la fila no tiene título. */
+  pideTitulo: boolean;
+  /** Texto del botón de la fila «Agregar otro …»: nombra el soporte (pregrado, maestría, etc.). */
+  etiquetaAgregar: string;
 };
 
 export const estadoDeEvidencia = (evidencia?: any): RundEstadoSoporte => {
@@ -86,11 +100,19 @@ export function nombreSoporte(grupo: RundSupportGroup, numero: number): string {
 export function filasSoportes(grupos: RundSupportGroup[]): RundFilaSoporte[] {
   return grupos.flatMap(grupo => {
     const evidencias = grupo.evidences;
-    const lista: Array<any | undefined> = evidencias.length ? evidencias : [undefined];
+    const tipo = grupo.field.tipoSoporte;
+    const deTitulo = esSoporteDeTitulo(tipo);
+    const titulos = deTitulo ? (grupo.titulos ?? []) : [];
+    // Cada título registrado tiene su fila aunque no tenga archivo; los archivos sin título conservan la suya.
+    const total = Math.max(evidencias.length, titulos.length, 1);
+    const lista: Array<any | undefined> = Array.from({ length: total }, (_, indice) => evidencias[indice]);
     return lista.map((evidencia, indice) => {
       const numero = indice + 1;
-      const tipo = grupo.field.tipoSoporte;
+      const titulo = titulos[indice] ?? null;
       return {
+        titulo,
+        pideTitulo: deTitulo && !titulo,
+        etiquetaAgregar: (NIVELES[tipo]?.nombre ?? nombreSoporte(grupo, 1)).toLowerCase(),
         clave: `${tipo}:${evidencia?.id ?? 'base'}`,
         tipoSoporte: tipo,
         codigo: codigoSoporte(tipo, numero),
@@ -102,8 +124,11 @@ export function filasSoportes(grupos: RundSupportGroup[]): RundFilaSoporte[] {
         evidencia,
         numero,
         ultima: numero === lista.length,
-        puedeCargar: grupo.canManage && grupo.canUpload,
-        puedeAgregar: grupo.canManage && grupo.canUpload && evidencias.length > 0 && evidencias.length < RUND_MAX_EVIDENCES_PER_TYPE,
+        // Los diplomas de nivel se cargan siempre: si no hay título, se pide al cargar.
+        puedeCargar: grupo.canManage && (deTitulo || grupo.canUpload),
+        // «Agregar otro» solo cuando todos los títulos ya tienen archivo: así cada archivo nuevo queda con su título.
+        puedeAgregar: grupo.canManage && (deTitulo || grupo.canUpload) && evidencias.length > 0
+          && evidencias.length >= titulos.length && evidencias.length < RUND_MAX_EVIDENCES_PER_TYPE,
       };
     });
   });

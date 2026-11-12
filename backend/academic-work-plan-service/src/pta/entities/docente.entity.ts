@@ -38,6 +38,10 @@ export class DocenteEntity {
   @Column({ name: 'horasAsignables', type: 'int', default: 0 })
   horasAsignables: number;
 
+  /** Planta o Cátedra: planta si las horas PTA de la carga son mayores que 0. Null en registros anteriores. */
+  @Column({ name: 'claseDocente', type: 'text', nullable: true })
+  claseDocente: 'PLANTA' | 'CATEDRA' | null;
+
   @Column({ name: 'sedeId', type: 'text', nullable: true })
   sedeId: string | null;
 
