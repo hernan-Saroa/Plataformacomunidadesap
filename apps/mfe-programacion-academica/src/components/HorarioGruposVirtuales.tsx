@@ -34,7 +34,7 @@ export function HorarioGruposVirtuales() {
   return (
     <section aria-label="Horario de mis grupos virtuales" className="bg-white p-4 rounded-xl border border-violet-200 shadow-xs space-y-3">
       <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-        <Monitor className="w-4 h-4 text-violet-700" /> Horario de mis grupos virtuales
+        <Monitor className="w-4 h-4 text-violet-700" /> Horario de mis grupos virtuales y a distancia
       </h4>
       <p className="text-xs text-slate-500">
         Estos grupos son mediados por tecnología y se te asignaron sin horario. Defínelo aquí: se valida que no se cruce
@@ -70,7 +70,7 @@ function GrupoVirtual({ g }: { g: GrupoVirtualDocente }) {
     <article className="rounded-xl border p-3 space-y-2" aria-label={`${g.asignatura} grupo ${g.numeroGrupo}`}>
       <h5 className="font-bold text-sm">
         {g.codigoAsignatura} · {g.asignatura} · Grupo {g.numeroGrupo}
-        <span className="ml-2 px-2 py-0.5 rounded-full text-[0.62rem] font-bold bg-violet-50 text-violet-700 border border-violet-200">Virtual</span>
+        <span className="ml-2 px-2 py-0.5 rounded-full text-[0.62rem] font-bold bg-violet-50 text-violet-700 border border-violet-200">{g.modalidad === 'distancia' ? 'A distancia' : 'Virtual'}</span>
       </h5>
       <p className="text-xs text-slate-600">
         {g.programa} · Periodo {g.periodoCodigo ?? 'sin periodo'} · Ciclo {g.cicloInicio ?? 'sin definir'} — {g.cicloFin ?? 'sin definir'}

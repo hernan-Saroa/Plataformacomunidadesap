@@ -203,7 +203,7 @@ export interface Comisionado {
   telefonoContacto: string;
   tipoComisionado: TipoComisionado;
   esFacturadorElectronico?: boolean;
-  origenDatos: 'HUMANO' | 'ESAP' | 'SECOP';
+  origenDatos: 'HUMANO' | 'ESAP' | 'SECOP' | 'KLIC';
   autorizacionHabeasData: boolean;
   fechaAutorizacionHabeasData?: Date;
   ipRegistroHabeasData?: string;
@@ -215,6 +215,7 @@ export interface Comisionado {
   cuentasBancarias?: CuentaBancariaComisionado[];
   cargos?: CargoComisionado[];
   solicitudesPendientes?: SolicitudPendiente023[];
+  alertaDependencia?: string | null;
   esUsuario?: boolean;
   usuarioId?: string | null;
   rolesUsuario?: string[];

@@ -50,7 +50,7 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo, programable =
           <p className="text-sm text-slate-500 mt-2">Área: {a.area?.nombre ?? 'Sin área'} · Créditos: {a.creditos ?? 'Sin definir'}</p>
           {a.grupos.map(g => <details key={g.idGrupo} className="mt-3 border rounded-lg p-3">
             <summary className="cursor-pointer font-semibold">Grupo {g.numeroGrupo} · {g.estado}
-              {g.modalidad === 'virtual' && <span className="ml-2 text-violet-700">Virtual</span>}
+              {(g.modalidad === 'virtual' || g.modalidad === 'distancia') && <span className="ml-2 text-violet-700">{g.modalidad === 'distancia' ? 'A distancia' : 'Virtual'}</span>}
               {g.horarioPorDefinir && <span className="ml-2 text-violet-700">Horario por definir</span>}
               {!g.oferta && <span className="ml-2 text-amber-800">Sin oferta CETAP</span>}
               {g.franjas.some(f => !f.idDocente) && <span className="ml-2 text-amber-800">Franjas sin docente</span>}
@@ -65,7 +65,7 @@ export function ArbolProgramacion({ periodo, permisos, abrirGrupo, programable =
               <p>{Object.entries(g.estadoFranjas).map(([estado, cantidad]) => `${estado}: ${cantidad}`).join(' · ')}</p>
               {g.horarioPorDefinir && (
                 <p role="note" className="bg-violet-50 text-violet-900 p-2 rounded-lg">
-                  Grupo virtual sin horario. {g.docenteHorarioPorDefinir
+                  Grupo {g.modalidad === 'distancia' ? 'a distancia' : 'virtual'} sin horario. {g.docenteHorarioPorDefinir
                     ? `Asignado a ${g.docenteHorarioPorDefinir.nombre ?? 'un docente'}: lo define en «Mi programación».`
                     : 'Asigne un docente y él definirá el horario en «Mi programación», o defínalo usted en «Ver horario del grupo».'}
                 </p>

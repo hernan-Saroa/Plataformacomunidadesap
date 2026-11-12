@@ -21,6 +21,7 @@ import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
 import { RundNucleosController } from './rund-nucleos.controller';
 import { RundNucleosService } from './rund-nucleos.service';
+import { RundCarpetasConfigService } from './rund-carpetas-config';
 import { RundPhotosService } from './rund-photos.service';
 import { RundPhotosController } from './rund-photos.controller';
 
@@ -41,7 +42,8 @@ import { RundPhotosController } from './rund-photos.controller';
     RundExtraccionService,
     RundExtraccionNotificationsService,
     RundNucleosService,
+    RundCarpetasConfigService,
   ],
-  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundNucleosService],
+  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundNucleosService, RundCarpetasConfigService],
 })
 export class BancoDocentesModule {}
