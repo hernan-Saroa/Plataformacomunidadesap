@@ -16,15 +16,19 @@ import {
   DollarSign,
   Layers,
   ShieldCheck,
+  Play,
+  RotateCcw,
 } from 'lucide-react';
 import {
   infraestructuraService,
   CatalogoItem,
   TecnicoMantenimientoPayload,
   clasificarSLA,
+  ConformidadConfig,
+  SolicitudPendienteConformidad,
 } from '../services/infraestructuraService';
 
-type TabActiva = 'tiempo' | 'reglas' | 'tecnicos' | 'vobo';
+type TabActiva = 'tiempo' | 'reglas' | 'tecnicos' | 'vobo' | 'conformidad';
 
 type ModalModoTecnico = 'crear' | 'editar' | null;
 
@@ -111,6 +115,19 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
     requiereVoBoContratacion: true,
     modalidadVoBo: 'UN_ACTOR',
   });
+
+  // Tab Conformidad y Cierre Automático (RF-INF-008)
+  const [cargandoConformidad, setCargandoConformidad] = useState(false);
+  const [guardandoConformidad, setGuardandoConformidad] = useState(false);
+  const [ejecutandoCierreBatch, setEjecutandoCierreBatch] = useState(false);
+  const [conformidadConfig, setConformidadConfig] = useState<ConformidadConfig>({
+    plazoValor: 5,
+    plazoUnidad: 'DIAS_HABILES',
+    cierreAutomaticoActivo: true,
+    estadoDestino: 'CERRADA_SIN_RESPUESTA',
+    intervaloVerificacionSegundos: 60,
+  });
+  const [pendientesConformidad, setPendientesConformidad] = useState<SolicitudPendienteConformidad[]>([]);
 
   const inputBase =
     'w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ';
@@ -451,6 +468,78 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
     if (tab === 'vobo') cargarVoBo();
   }, [tab]);
 
+  // ---------------- Tab Conformidad cargar / guardar / ejecutar ----------------
+  const cargarConformidad = async () => {
+    setCargandoConformidad(true);
+    try {
+      const [cfg, pends] = await Promise.all([
+        infraestructuraService.getConformidadConfig(),
+        infraestructuraService.listarPendientesConformidad(),
+      ]);
+      if (cfg) {
+        setConformidadConfig({
+          plazoValor: Number(cfg.plazoValor) || 5,
+          plazoUnidad: (cfg.plazoUnidad as any) || 'DIAS_HABILES',
+          cierreAutomaticoActivo: cfg.cierreAutomaticoActivo ?? true,
+          estadoDestino: cfg.estadoDestino || 'CERRADA_SIN_RESPUESTA',
+          intervaloVerificacionSegundos: Number(cfg.intervaloVerificacionSegundos) || 60,
+        });
+      }
+      setPendientesConformidad(Array.isArray(pends) ? pends : []);
+    } catch (err: any) {
+      setToast({ tipo: 'err', texto: err?.message || 'Error cargando configuración de conformidad.' });
+    } finally {
+      setCargandoConformidad(false);
+    }
+  };
+
+  const guardarConformidad = async () => {
+    if (readOnly) return;
+    setGuardandoConformidad(true);
+    try {
+      const res = await infraestructuraService.actualizarConformidadConfig({
+        plazoValor: Math.max(1, Math.trunc(Number(conformidadConfig.plazoValor) || 5)),
+        plazoUnidad: conformidadConfig.plazoUnidad,
+        cierreAutomaticoActivo: conformidadConfig.cierreAutomaticoActivo,
+        estadoDestino: conformidadConfig.estadoDestino,
+        intervaloVerificacionSegundos: conformidadConfig.intervaloVerificacionSegundos,
+      });
+      if (res) {
+        setConformidadConfig(res);
+      }
+      setToast({ tipo: 'ok', texto: 'Configuración de conformidad y cierre automático actualizada correctamente.' });
+      await cargarConformidad();
+    } catch (err: any) {
+      setToast({ tipo: 'err', texto: err?.message || 'Error guardando parámetros de conformidad.' });
+    } finally {
+      setGuardandoConformidad(false);
+    }
+  };
+
+  const ejecutarCierreInmediato = async () => {
+    if (readOnly) return;
+    setEjecutandoCierreBatch(true);
+    try {
+      const res = await infraestructuraService.ejecutarCierresSinRespuesta();
+      const n = Number(res?.actualizadas ?? 0);
+      setToast({
+        tipo: 'ok',
+        texto: n > 0
+          ? `Se cerraron automáticamente ${n} solicitud(es) vencidas sin respuesta.`
+          : 'No se encontraron solicitudes vencidas pendientes de cierre.',
+      });
+      await cargarConformidad();
+    } catch (err: any) {
+      setToast({ tipo: 'err', texto: err?.message || 'Error ejecutando cierres automáticos.' });
+    } finally {
+      setEjecutandoCierreBatch(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'conformidad') cargarConformidad();
+  }, [tab]);
+
   // ---------------- Derivados ----------------
   const slaPreviewPorDias = (dias: number) => {
     const d = Math.max(1, Math.min(3, Number.isFinite(+dias) ? +dias : 2));
@@ -470,6 +559,7 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
     { k: 'reglas', label: 'Reglas escalamiento', icono: Wand2, desc: 'Configurar reglas de escalamiento' },
     { k: 'tecnicos', label: 'Técnicos', icono: Users, desc: 'Configurar tecnicos' },
     { k: 'vobo', label: 'Visto Bueno (VoBo)', icono: BadgeCheck, desc: 'Configuración y reglas de obligatoriedad del VoBo' },
+    { k: 'conformidad', label: 'Conformidad y Cierre', icono: CheckCircle2, desc: 'Plazos de confirmación del usuario y cierre automático (RF-INF-008)' },
   ];
 
   return (
@@ -1454,6 +1544,308 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB CONFORMIDAD Y CIERRE AUTOMATICO (RF-INF-008) */}
+      {tab === 'conformidad' && (
+        <div className="space-y-5 pt-2">
+          {cargandoConformidad && (
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-400 text-xs font-semibold">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+              Cargando configuración de conformidad y solicitudes pendientes…
+            </div>
+          )}
+
+          {!cargandoConformidad && (
+            <div className="space-y-6">
+              {/* Encabezado explicativo */}
+              <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 via-white to-slate-50 p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md ring-2 ring-emerald-100 shrink-0">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-900 text-base tracking-tight">
+                      Confirmación de Conformidad y Cierre Automático (RF-INF-008)
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                      Controla el plazo máximo concedido al usuario solicitante para confirmar la satisfacción del servicio una vez el técnico o contratista realiza el cierre técnico (estado <span className="font-semibold text-slate-800">COMPLETADA</span>). Si el plazo vence sin respuesta, el worker en segundo plano cierra automáticamente la solicitud bajo el estado <span className="font-semibold text-slate-800">Cerrada – Sin respuesta</span>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Formulario de Configuración de Parámetros */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-indigo-600" />
+                    <h4 className="font-black text-slate-900 text-sm">
+                      Parámetros de Plazo y Regla de Inactividad
+                    </h4>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-500">
+                    Intervalo de revisión periódica: {conformidadConfig.intervaloVerificacionSegundos}s
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {/* Plazo Valor */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Plazo máximo de espera
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={conformidadConfig.plazoValor}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        setConformidadConfig({
+                          ...conformidadConfig,
+                          plazoValor: Math.max(1, parseInt(e.target.value, 10) || 1),
+                        })
+                      }
+                      className={inputBase + 'border-slate-200 font-semibold'}
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Cantidad de unidades de tiempo para emitir respuesta.
+                    </p>
+                  </div>
+
+                  {/* Unidad de Tiempo */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Unidad de tiempo
+                    </label>
+                    <select
+                      value={conformidadConfig.plazoUnidad}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        setConformidadConfig({
+                          ...conformidadConfig,
+                          plazoUnidad: e.target.value as any,
+                        })
+                      }
+                      className={inputBase + 'border-slate-200 font-semibold bg-white'}
+                    >
+                      <option value="DIAS_HABILES">Días hábiles (Lunes a Viernes - ERS estándar 5 días)</option>
+                      <option value="DIAS_CALENDARIO">Días calendario (Continuos)</option>
+                      <option value="HORAS">Horas continuas</option>
+                      <option value="MINUTOS">Minutos (Pruebas rápidas en vivo)</option>
+                    </select>
+                    <p className="text-[11px] text-slate-500">
+                      Selecciona &ldquo;Minutos&rdquo; para pruebas inmediatas en tiempo real.
+                    </p>
+                  </div>
+
+                  {/* Toggle Cierre Automático Activo */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Worker de cierre automático
+                    </label>
+                    <label
+                      className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer select-none transition-all ${
+                        conformidadConfig.cierreAutomaticoActivo
+                          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-200'
+                          : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100'
+                      } ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={readOnly}
+                        checked={conformidadConfig.cierreAutomaticoActivo}
+                        onChange={(e) =>
+                          setConformidadConfig({
+                            ...conformidadConfig,
+                            cierreAutomaticoActivo: e.target.checked,
+                          })
+                        }
+                        className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">
+                          {conformidadConfig.cierreAutomaticoActivo
+                            ? 'Activo (Monitoreo automático ON)'
+                            : 'Pausado (Monitoreo OFF)'}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Pasa a CERRADA_SIN_RESPUESTA al vencer
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Acciones de Guardar */}
+                {!readOnly && (
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={cargarConformidad}
+                      disabled={cargandoConformidad || guardandoConformidad}
+                      className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all disabled:opacity-50"
+                    >
+                      Descartar Cambios
+                    </button>
+                    <button
+                      type="button"
+                      onClick={guardarConformidad}
+                      disabled={guardandoConformidad || cargandoConformidad}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-sm transition-all disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" />
+                      {guardandoConformidad ? 'Guardando Parámetros…' : 'Guardar Parámetros de Conformidad'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Panel de Monitoreo en Vivo y Ejecución Manual */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shrink-0">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-black text-slate-900 text-sm">
+                          Solicitudes Pendientes de Conformidad (COMPLETADA)
+                        </h4>
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          {pendientesConformidad.length} en espera
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Inspección en tiempo real de solicitudes que tienen cierre técnico registrado y esperan pronunciamiento.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={cargarConformidad}
+                      disabled={cargandoConformidad}
+                      title="Refrescar lista"
+                      className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${cargandoConformidad ? 'animate-spin' : ''}`} />
+                    </button>
+
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={ejecutarCierreInmediato}
+                        disabled={ejecutandoCierreBatch || cargandoConformidad}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black shadow-sm transition-all disabled:opacity-50"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        {ejecutandoCierreBatch
+                          ? 'Cerrando solicitudes…'
+                          : 'Ejecutar Cierre Automático Ahora (Prueba en Vivo)'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {pendientesConformidad.length === 0 ? (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-8 text-center text-slate-400 text-xs font-semibold">
+                    <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    No hay solicitudes en estado COMPLETADA esperando conformidad en este momento.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                        <tr>
+                          <th className="px-4 py-3">Consecutivo / Solicitud</th>
+                          <th className="px-4 py-3">Sede / Categoría</th>
+                          <th className="px-4 py-3">Fecha Completada</th>
+                          <th className="px-4 py-3">Fecha Límite Conformidad</th>
+                          <th className="px-4 py-3">Plazo / Vencimiento</th>
+                          <th className="px-4 py-3 text-right">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                        {pendientesConformidad.map((p) => {
+                          const fechaCompStr = p.fechaCompletada
+                            ? new Date(p.fechaCompletada).toLocaleString('es-CO', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })
+                            : 'N/A';
+                          const fechaLimStr = p.fechaLimiteConformidad
+                            ? new Date(p.fechaLimiteConformidad).toLocaleString('es-CO', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })
+                            : 'Pendiente cálculo';
+
+                          return (
+                            <tr
+                              key={p.idSolicitud}
+                              className={`hover:bg-slate-50/80 transition-colors ${
+                                p.vencida ? 'bg-rose-50/30' : ''
+                              }`}
+                            >
+                              <td className="px-4 py-3">
+                                <div className="font-mono font-bold text-slate-900">
+                                  {p.codigo || p.consecutivo}
+                                </div>
+                                <div className="text-[11px] text-slate-500 truncate max-w-xs" title={p.titulo}>
+                                  {p.titulo}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="font-bold text-slate-800">{p.nombreSede || 'Sede UMI'}</div>
+                                <div className="text-[11px] text-slate-500">{p.nombreCategoria || 'General'}</div>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                                {fechaCompStr}
+                              </td>
+                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap font-mono">
+                                {fechaLimStr}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {p.vencida ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                    <Clock className="w-3 h-3 text-rose-600" />
+                                    Vencida (Lista para cierre)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    <Clock className="w-3 h-3 text-emerald-600" />
+                                    {p.tiempoRestanteTexto || (
+                                      p.diasRestantes > 0
+                                        ? `${p.diasRestantes} d restante(s)`
+                                        : p.horasRestantes > 0
+                                        ? `${p.horasRestantes} h restante(s)`
+                                        : p.minutosRestantes > 0
+                                        ? `${p.minutosRestantes} min y ${p.segundosRestantes || 0} s restante(s)`
+                                        : `${p.segundosRestantes || 0} s restante(s)`
+                                    )}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  {p.estado}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

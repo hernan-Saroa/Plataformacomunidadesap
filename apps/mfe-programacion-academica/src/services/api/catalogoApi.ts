@@ -111,7 +111,10 @@ export interface Grupo {
   modalidad?: ModalidadGrupo;
 }
 
-export type ModalidadGrupo = 'presencial' | 'virtual';
+export type ModalidadGrupo = 'presencial' | 'virtual' | 'distancia';
+/** Virtual y a distancia (065) funcionan igual: sin aula, horario opcional que define el docente. */
+export const esSinAula = (m: string | null | undefined) => m === 'virtual' || m === 'distancia';
+export const etiquetaModalidad = (m: string | null | undefined) => m === 'distancia' ? 'A distancia' : m === 'virtual' ? 'Virtual' : 'Presencial';
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
 

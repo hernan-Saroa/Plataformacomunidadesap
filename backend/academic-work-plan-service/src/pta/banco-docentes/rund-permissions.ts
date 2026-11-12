@@ -19,6 +19,7 @@ export const RUND_PERMISSIONS = {
   INVITE: 'banco-docentes.rund.invite',
   DOCUMENTS_MANAGE: 'banco-docentes.rund.documents.manage',
   SENSITIVE_VIEW: 'banco-docentes.rund.sensitive.view',
+  CONFIGURE: 'banco-docentes.rund.configure',
 } as const;
 
 export const RequireRundPermissions = (...permissions: string[]) =>

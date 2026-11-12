@@ -30,7 +30,8 @@ export type Regimen = 'actual' | 'programacion';
 interface ConfigProgramacion { habilitada: boolean; desdePeriodo: string | null }
 
 export function habilitadaLocal(): boolean {
-  return String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim().toLowerCase() === 'true';
+  // Encendida por defecto en todos los ambientes (nov-2026); solo 'false' la apaga.
+  return String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim().toLowerCase() !== 'false';
 }
 
 let cache: { valor: ConfigProgramacion; en: number } | null = null;

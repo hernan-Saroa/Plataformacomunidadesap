@@ -25,6 +25,7 @@ import { ContratoPtaClient } from './contrato-pta.client.js';
 import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma.js';
 import { decide, normalizarSeccional, PermisosPtaService, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
+import { SQL_MODALIDADES_SIN_AULA } from '../grupos/grupo.entity.js';
 
 /** APROBADA: solo filas del orden anterior. Diagrama: INTEGRACION-claude.md §23.1. */
 export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'POR_ACEPTAR' | 'ACEPTADA' | 'NOVEDAD' | 'DEVUELTA' | 'APROBADA';
@@ -221,7 +222,7 @@ export class ConcertacionService {
          FROM "academic-schedule".asignacion_docente ad
          JOIN "academic-schedule".grupo g ON g.id_grupo = ad.id_grupo
          JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
-        WHERE ad.id_docente = $1 AND g.modalidad = 'virtual'
+        WHERE ad.id_docente = $1 AND g.modalidad IN (${SQL_MODALIDADES_SIN_AULA})
           AND COALESCE(g.id_periodo_academico::text, g.id_periodo::text) = $2
           AND NOT EXISTS (SELECT 1 FROM "academic-schedule".franja_horaria f WHERE f.id_grupo = g.id_grupo)`,
       [docente.idPerson, periodoRef]);

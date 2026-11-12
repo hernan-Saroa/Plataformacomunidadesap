@@ -5,6 +5,7 @@ import { AsignacionesService } from '../asignaciones/asignaciones.service.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
 import { ConcertacionService } from './concertacion.service.js';
+import { concertacionHabilitada, desdePeriodo } from './configuracion.js';
 import { PermisosPtaService, type PermisoPta } from './permisos-pta.service.js';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -390,8 +391,12 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
     expect((await asignaciones().asignar({ idGrupo: f.grupo, documento: f.otroDocente.documento, franjas: [f.franjas[1]] })).asignado).toBe(true);
   }, false);
 
-  it('apagada por defecto: sin la variable, no está habilitada', async () => {
+  it('encendida por defecto: sin variables, Programación Académica la da por encendida con el corte por defecto', () => {
     delete process.env.PROG_CONCERTACION_HABILITADA;
-    expect((await servicio().configuracion()).habilitada).toBe(false);
+    delete process.env.PROG_CONCERTACION_DESDE_PERIODO;
+    expect(concertacionHabilitada()).toBe(true);
+    expect(desdePeriodo()).toBe('2026-1');
+    process.env.PROG_CONCERTACION_HABILITADA = 'false';
+    expect(concertacionHabilitada()).toBe(false);
   });
 });

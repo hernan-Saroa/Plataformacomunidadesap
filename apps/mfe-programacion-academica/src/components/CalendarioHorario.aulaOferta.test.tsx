@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CalendarioHorario } from './CalendarioHorario';
 import { actualizarOfertaCetapGrupo, crearSesion, getAulas, getGrupo, getHorasGrupo, getSesiones } from '../services/api/catalogoApi';
@@ -8,6 +8,8 @@ vi.mock('../services/actualizacionProgramacion', () => ({ useRevisionProgramacio
 vi.mock('../services/api/catalogoApi', () => ({
   actualizarOfertaCetapGrupo: vi.fn(), crearSesion: vi.fn(), eliminarSesion: vi.fn(),
   getAulas: vi.fn(), getGrupo: vi.fn(), getHorasGrupo: vi.fn(), getSesiones: vi.fn(), definirPeriodoGrupo: vi.fn(),
+  esSinAula: (m: string) => m === 'virtual' || m === 'distancia',
+  etiquetaModalidad: (m: string) => m === 'distancia' ? 'A distancia' : m === 'virtual' ? 'Virtual' : 'Presencial',
 }));
 
 const grupo = { idGrupo: 'grupo-1', idAsignatura: 'asig-1', idPeriodo: '11', idOfertaCetap: null,
@@ -33,11 +35,11 @@ describe('aula y oferta relacionadas', () => {
     render(<CalendarioHorario idGrupo="grupo-1" numeroGrupo={1} nombreAsignatura="Derecho" onOfertaActualizada={onOfertaActualizada} />);
     await waitFor(() => expect(getAulas).toHaveBeenCalledWith({ grupo: 'grupo-1' }));
     const dia = await screen.findByTitle(/Clic o arrastre para agregar una sesión el lun/i);
-    fireEvent.mouseDown(dia, { clientY: 0 }); fireEvent.mouseUp(dia);
+    fireEvent.pointerDown(dia, { clientY: 0, button: 0 }); fireEvent.pointerUp(dia);
     const aulaSelect = await screen.findByRole('combobox', { name: /Aula/i });
     fireEvent.change(aulaSelect, { target: { value: 'A-202' } });
     expect(screen.getByText(/oferta CETAP de esta aula se asignará automáticamente/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Agregar sesión' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Agregar sesión' }));
     await waitFor(() => expect(actualizarOfertaCetapGrupo).toHaveBeenCalledWith('grupo-1', '165'));
     await waitFor(() => expect(crearSesion).toHaveBeenCalledWith(expect.objectContaining({ idGrupo: 'grupo-1', aulaCodigo: 'A-202', tipoSesion: 'presencial' })));
     expect(onOfertaActualizada).toHaveBeenCalledWith(expect.objectContaining({ idOfertaCetap: '165' }));
@@ -49,10 +51,23 @@ describe('aula y oferta relacionadas', () => {
     render(<CalendarioHorario idGrupo="grupo-1" numeroGrupo={1} nombreAsignatura="Derecho" />);
     await waitFor(() => expect(getAulas).toHaveBeenCalledWith({ grupo: 'grupo-1' }));
     const dia = await screen.findByTitle(/Clic o arrastre para agregar una sesión el lun/i);
-    fireEvent.mouseDown(dia, { clientY: 0 }); fireEvent.mouseUp(dia);
+    fireEvent.pointerDown(dia, { clientY: 0, button: 0 }); fireEvent.pointerUp(dia);
     fireEvent.change(await screen.findByRole('combobox', { name: /Aula/i }), { target: { value: 'A-202' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Agregar sesión' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Agregar sesión' }));
     await waitFor(() => expect(crearSesion).toHaveBeenCalled());
     expect(actualizarOfertaCetapGrupo).not.toHaveBeenCalled();
+  });
+
+  it('el botón «Agregar sesión» abre el MODAL; un grupo a distancia solo permite sesiones mediadas, sin aula', async () => {
+    render(<CalendarioHorario idGrupo="grupo-1" numeroGrupo={1} nombreAsignatura="Derecho" modalidad="distancia" />);
+    expect(await screen.findByRole('note')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar sesión' }));
+    const dialogo = await screen.findByRole('dialog');
+    expect((within(dialogo).getByRole('radio', { name: 'Presencial' }) as HTMLInputElement).disabled).toBe(true);
+    expect((within(dialogo).getByRole('radio', { name: 'Mediada por tecnología' }) as HTMLInputElement).checked).toBe(true);
+    expect((within(dialogo).getByRole('combobox', { name: /Aula/i }) as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Agregar sesión' }));
+    await waitFor(() => expect(crearSesion).toHaveBeenCalledWith(expect.objectContaining({ tipoSesion: 'mediada_tecnologia', aulaCodigo: null })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });
