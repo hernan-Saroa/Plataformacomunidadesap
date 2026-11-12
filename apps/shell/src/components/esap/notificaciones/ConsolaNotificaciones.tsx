@@ -26,6 +26,12 @@ export interface ConsolaNotificaciones {
   recargar: () => Promise<void>;
   mezclar: (codigo: string, cambios: Partial<ModuloNotificaciones>) => void;
   porCodigo: (codigoAuth: string) => ModuloNotificaciones | undefined;
+  /**
+   * Devuelve el código del módulo para abrir su configuración. Si todavía no
+   * está en la configuración, lo agrega en pantalla con los valores por defecto;
+   * el primer cambio que se guarde lo crea en el servidor.
+   */
+  asegurar: (codigoAuth: string, nombre: string) => string;
 }
 
 export function useConsolaNotificaciones(): ConsolaNotificaciones {
@@ -61,35 +67,47 @@ export function useConsolaNotificaciones(): ConsolaNotificaciones {
     [modulos],
   );
 
-  return { permisos, modulos, puede: permisos?.gestionar === true, recargar, mezclar, porCodigo };
+  const asegurar = useCallback((codigoAuth: string, nombre: string) => {
+    const existente = porCodigo(codigoAuth);
+    if (existente) return existente.codigo;
+    const codigo = codigoAuth.trim().toLowerCase();
+    const nuevo: ModuloNotificaciones = {
+      codigo, nombre, activo: true, canal_defecto: 'ambos', correo_desvio: null, orden: 500,
+      actualizado_en: new Date().toISOString(), actualizado_por: null, eventos: 0, eventos_activos: 0, omitidas_7d: 0,
+      sin_registrar: true,
+    };
+    setModulos((lista) => (lista ? [...lista, nuevo] : [nuevo]));
+    return codigo;
+  }, [porCodigo]);
+
+  return { permisos, modulos, puede: permisos?.gestionar === true, recargar, mezclar, porCodigo, asegurar };
 }
 
-/** Estado de las notificaciones de un módulo: activas / apagadas / sin avisos, con su número de avisos. */
 /**
- * Estado de las notificaciones del módulo en la tabla. Es también el botón que
- * abre su configuración: así la fila no necesita un botón aparte.
+ * Notificaciones del módulo en la tabla: un botón «Configurar» igual en todas
+ * las filas (todo módulo se puede configurar, aunque aún no haya mandado avisos)
+ * y debajo su estado. Un módulo que todavía no está en la configuración se ve
+ * con los valores por defecto: activas y aún sin avisos.
  */
 export function EstadoNotificaciones({ modulo, nombre, onAbrir }: { modulo: ModuloNotificaciones | undefined; nombre: string; onAbrir: () => void }) {
-  if (!modulo) {
-    return <span className="inline-flex rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-500">Sin avisos</span>;
-  }
-  const color = modulo.eventos === 0
-    ? 'border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200'
-    : modulo.activo ? 'border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200';
+  const activo = modulo?.activo ?? true;
+  const eventos = modulo?.eventos ?? 0;
+  const avisos = eventos === 0 ? 'aún sin avisos' : `${eventos} ${eventos === 1 ? 'aviso' : 'avisos'}`;
   return (
-    <button
-      type="button"
-      onClick={onAbrir}
-      aria-label={`Configurar notificaciones de ${nombre}`}
-      title="Configurar sus notificaciones"
-      className="inline-flex flex-col items-center gap-1 rounded-lg p-1"
-    >
-      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${color}`}>
-        {modulo.activo ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
-        {modulo.eventos === 0 ? 'Sin avisos' : modulo.activo ? 'Activas' : 'Apagadas'}
+    <div className="inline-flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={onAbrir}
+        aria-label={`Configurar notificaciones de ${nombre}`}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition-all border border-gray-300 active:scale-95"
+      >
+        {activo ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+        <span>Configurar</span>
+      </button>
+      <span className={`text-[11px] font-medium ${activo ? 'text-emerald-700' : 'text-amber-700'}`}>
+        {activo ? 'Activas' : 'Apagadas'} · <span className="font-normal text-gray-500">{avisos}</span>
       </span>
-      {modulo.eventos > 0 && <span className="text-[11px] text-gray-500">{modulo.eventos} {modulo.eventos === 1 ? 'aviso' : 'avisos'}</span>}
-    </button>
+    </div>
   );
 }
 

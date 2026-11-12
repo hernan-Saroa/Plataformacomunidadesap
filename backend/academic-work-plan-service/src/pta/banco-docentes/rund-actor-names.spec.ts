@@ -1,3 +1,4 @@
+import { EVIDENCE_TYPES } from './rund-evidence-workflow';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { RundDocumentosService } from './rund-documentos.service';
 import { BancoDocentesService } from './banco-docentes.service';
@@ -58,7 +59,7 @@ describe('Nombres de actores documentales RUND', () => {
   it('resuelve nombres en bloques, soportes y decisiones por fila sin afectar la separación de actores', async () => {
     const service = Object.create(BancoDocentesService.prototype) as any;
     service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
-    const blocks = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'].map(bloque => ({ bloque, cargado_por: author, revisado_por: reviewer }));
+    const blocks = Object.keys(EVIDENCE_TYPES).map(bloque => ({ bloque, cargado_por: author, revisado_por: reviewer }));
     service.dataSource = { query: jest.fn().mockResolvedValueOnce(blocks).mockResolvedValueOnce([
       { bloque: 'IDENTIDAD', cargado_por: author, revisiones_campos: { NOMBRE_COMPLETO: { revisadoPor: reviewer } } },
     ]).mockResolvedValueOnce([{ actor_id: author, nombre: 'Gestor Documental' }, { actor_id: reviewer, nombre: 'Revisora Académica' }]) };
@@ -67,7 +68,8 @@ describe('Nombres de actores documentales RUND', () => {
       revisado_por: reviewer, revisadoPorNombre: 'Revisora Académica' });
     expect(result[0].soportes[0]).toMatchObject({ cargado_por: author, cargadoPorNombre: 'Gestor Documental',
       revisiones_campos: { NOMBRE_COMPLETO: { revisadoPor: reviewer, revisadoPorNombre: 'Revisora Académica' } } });
-    expect(service.dataSource.query).toHaveBeenCalledTimes(3);
+    // Bloques, soportes y nombres, más una sola consulta para la configuración de carpetas del docente (sin consultas por fila).
+    expect(service.dataSource.query).toHaveBeenCalledTimes(4);
   });
 
   it('agrega el nombre a la trazabilidad sin reescribir registros históricos', async () => {

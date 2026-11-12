@@ -408,7 +408,7 @@ export const ModulesManagementModulePremium: React.FC<ModulesManagementProps> = 
                         <EstadoNotificaciones
                           modulo={consola.porCodigo(mod.code)}
                           nombre={mod.name}
-                          onAbrir={() => setNotifCodigo(consola.porCodigo(mod.code)!.codigo)}
+                          onAbrir={() => setNotifCodigo(consola.asegurar(mod.code, mod.name))}
                         />
                       </td>
                     )}

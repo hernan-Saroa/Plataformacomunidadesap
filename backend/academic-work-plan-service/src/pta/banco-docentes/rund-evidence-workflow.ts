@@ -11,6 +11,14 @@ export const EVIDENCE_TYPES: Record<string, string[]> = {
   FORMACION: ['diploma_pregrado', 'acta_grado_pregrado', 'diploma_especializacion', 'acta_grado_especializacion', 'diploma_maestria', 'acta_grado_maestria', 'diploma_doctorado', 'acta_grado_doctorado', 'certificado_posdoctoral', 'convalidacion_men', 'hoja_vida_pro', ...STANDALONE_SUPPORT_TYPES.FORMACION],
   VINCULACION: ['acto_administrativo_vinculacion', 'resolucion_convocatoria', 'contrato', 'acto_administrativo_dedicacion', 'acto_administrativo_situacion', 'acto_adscripcion_territorial', 'resolucion_escalafon', 'resolucion_puntaje_salarial'],
   ACADEMICO: ['acto_asignacion_nucleo', 'certificacion_investigacion', 'acta_evaluacion_desempeno', ...STANDALONE_SUPPORT_TYPES.ACADEMICO],
+  // Carpetas de la codificación documental (02, 03, 05 a 09): opcionales, cada una con su propia aprobación.
+  EXPERIENCIA_DOCENTE: [...STANDALONE_SUPPORT_TYPES.EXPERIENCIA_DOCENTE],
+  EXPERIENCIA_LABORAL: [...STANDALONE_SUPPORT_TYPES.EXPERIENCIA_LABORAL],
+  PRODUCTIVIDAD_ACADEMICA: [...STANDALONE_SUPPORT_TYPES.PRODUCTIVIDAD_ACADEMICA],
+  SEGUNDA_LENGUA: [...STANDALONE_SUPPORT_TYPES.SEGUNDA_LENGUA],
+  FORMACION_NO_FORMAL: [...STANDALONE_SUPPORT_TYPES.FORMACION_NO_FORMAL],
+  ESTUDIO_HOJA_VIDA: [...STANDALONE_SUPPORT_TYPES.ESTUDIO_HOJA_VIDA],
+  DOCUMENTOS_NO_VALIDOS: [...STANDALONE_SUPPORT_TYPES.DOCUMENTOS_NO_VALIDOS],
   TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
 };
 /**
@@ -32,7 +40,9 @@ export const isReviewableEvidence = (type: string) => !['soporte_edicion_perfil'
 export const RUND_MAX_EVIDENCES_PER_TYPE = 10;
 export const RUND_REVIEW_BLOCKS = Object.keys(EVIDENCE_TYPES);
 // Contact data can be reviewed, but never requires documentary evidence.
-export const RUND_REQUIRED_BLOCKS = RUND_REVIEW_BLOCKS.filter(block => block !== 'CONTACTO');
+// La activación del perfil no cambia con la codificación documental: siguen siendo estos cinco bloques.
+// Las carpetas nuevas son opcionales; no entran en esta lista.
+export const RUND_REQUIRED_BLOCKS = ['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
 
 export function canReturnEvidenceBlock(block: string, supports: any[]): boolean {
   if (block === 'CONTACTO') return true;

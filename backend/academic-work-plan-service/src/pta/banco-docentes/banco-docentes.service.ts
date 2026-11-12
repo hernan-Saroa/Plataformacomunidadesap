@@ -4,6 +4,7 @@ import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { isRundContactoCampo, normalizarContacto, RUND_CONTACTO_MENSAJES, type RundContactoCampo } from './rund-contacto';
+import { claveTipoVinculacion } from './rund-carpetas-config';
 import { EVIDENCE_TYPES, RundEvidenceWorkflow, currentBlockRows, invalidateEditedEvidence, canReturnEvidenceBlock, withCurrentEvidenceDocuments } from './rund-evidence-workflow';
 import { RundIncorporacion } from './rund-incorporacion';
 import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } from './rund-registration-history';
@@ -3302,7 +3303,7 @@ export class BancoDocentesService implements OnModuleInit {
   // BR-038..BR-061 â€” Soporte documental, aprobaciÃ³n y validaciÃ³n RUND
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-  private static readonly BLOQUES = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'] as const;
+  private static readonly BLOQUES = Object.keys(EVIDENCE_TYPES);
 
   /**
    * BR-039 â€” CatÃ¡logo de tipos de soporte vÃ¡lidos por bloque.
@@ -3369,7 +3370,7 @@ export class BancoDocentesService implements OnModuleInit {
     ).then(currentBlockRows);
 
     // Si no existen bloques, inicializarlos
-    if (bloques.length < 6) {
+    if (bloques.length < BancoDocentesService.BLOQUES.length) {
       await this.inicializarBloques(docenteId);
       bloques = currentBlockRows(await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]));
     }
@@ -3399,8 +3400,10 @@ export class BancoDocentesService implements OnModuleInit {
       });
     }
 
+    const inactivas = await this.carpetasInactivasDe(docenteId);
     return bloques.map((b: any) => ({
       ...b,
+      aplica: !inactivas.has(b.bloque),
       cargadoPorNombre: b.cargado_por ? rundActorName(names, b.cargado_por) : null,
       revisadoPorNombre: b.revisado_por ? rundActorName(names, b.revisado_por) : null,
       ...(includeDataReview ? {revisionDatos:Object.fromEntries(Object.entries(dataReviewContext(b.bloque,dataProfile,soportesPorBloque[b.bloque] || [],dataReviews,b.estado))
@@ -3409,6 +3412,25 @@ export class BancoDocentesService implements OnModuleInit {
       puedeDevolver: canReturnEvidenceBlock(b.bloque, soportesPorBloque[b.bloque] || []),
       tiposSoporteRequeridos: BancoDocentesService.CATALOGO_SOPORTE[b.bloque] || [],
     }));
+  }
+
+  /**
+   * Carpetas que no aplican al tipo de vinculación del docente (Configuración de carpetas).
+   * Si la consulta falla, todas las carpetas aplican: nunca se oculta información por un error de configuración.
+   */
+  private async carpetasInactivasDe(docenteId: string): Promise<Set<string>> {
+    try {
+      const [docente] = (await this.dataSource.query(
+        `SELECT "tipoVinculacion", "vinculacionDisplay" FROM academic_work_plan."Docente" WHERE id::text = $1`, [docenteId])) || [];
+      if (!docente) return new Set();
+      const rows = await this.dataSource.query(
+        `SELECT bloque FROM academic_work_plan."RundCarpetaConfiguracion" WHERE tipo_vinculacion = $1 AND activo = FALSE`,
+        [claveTipoVinculacion(docente.tipoVinculacion || docente.vinculacionDisplay)]);
+      return new Set((Array.isArray(rows) ? rows : []).map((row: any) => String(row.bloque)));
+    } catch (error) {
+      this.logger.warn(`No se pudo leer la configuración de carpetas: ${(error as Error).message}`);
+      return new Set();
+    }
   }
 
   /**

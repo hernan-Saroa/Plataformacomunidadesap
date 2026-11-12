@@ -9,7 +9,14 @@ export const IDENTITY_TYPES = ['documento_identidad', 'cedula_extranjeria', 'pas
 export const STANDALONE_SUPPORT_TYPES: Record<string, string[]> = {
   IDENTIDAD: ['tarjeta_profesional', 'hoja_vida'],
   FORMACION: ['diploma_bachiller'],
-  ACADEMICO: ['experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa', 'productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida'],
+  ACADEMICO: ['experiencia_investigativa'],
+  EXPERIENCIA_DOCENTE: ['experiencia_docente'],
+  EXPERIENCIA_LABORAL: ['experiencia_laboral'],
+  PRODUCTIVIDAD_ACADEMICA: ['productividad_academica'],
+  SEGUNDA_LENGUA: ['dominio_segunda_lengua'],
+  FORMACION_NO_FORMAL: ['formacion_no_formal'],
+  ESTUDIO_HOJA_VIDA: ['estudio_hoja_vida'],
+  DOCUMENTOS_NO_VALIDOS: ['documento_no_valido'],
 };
 /** Categoría documental de cada soporte de la codificación; todas existen en el catálogo (migraciones 422, 665 y 678). */
 export function standaloneSupportCategory(type?: string | null): string | null {
@@ -17,6 +24,7 @@ export function standaloneSupportCategory(type?: string | null): string | null {
   if (type === 'diploma_bachiller') return 'TITULOS';
   if (['experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa'].includes(type || '')) return 'EXPERIENCIA';
   if (['productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida'].includes(type || '')) return 'CERTIFICADOS';
+  if (type === 'documento_no_valido') return 'OTROS';
   return null;
 }
 export const isStandaloneSupport = (type?: string | null) => Object.values(STANDALONE_SUPPORT_TYPES).some(types => types.includes(type || ''));

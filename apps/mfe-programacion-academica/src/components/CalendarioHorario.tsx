@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Clock, Loader2, MapPin, Monitor, Trash2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { CalendarDays, Clock, Loader2, MapPin, Monitor, Plus, Trash2, X } from 'lucide-react';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import type { CalendarioDocente } from '../services/api/vistaApi';
 
 import {
   crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo, actualizarOfertaCetapGrupo,
+  esSinAula, etiquetaModalidad,
   type Sesion, type TipoSesion, type Aula, type HorasGrupo, type Grupo,
 } from '../services/api/catalogoApi';
 
@@ -21,13 +23,13 @@ import {
  */
 
 const DIAS = [
-  { valor: 'LUNES', corto: 'Lun' },
-  { valor: 'MARTES', corto: 'Mar' },
-  { valor: 'MIERCOLES', corto: 'Mié' },
-  { valor: 'JUEVES', corto: 'Jue' },
-  { valor: 'VIERNES', corto: 'Vie' },
-  { valor: 'SABADO', corto: 'Sáb' },
-  { valor: 'DOMINGO', corto: 'Dom' },
+  { valor: 'LUNES', corto: 'Lun', largo: 'Lunes' },
+  { valor: 'MARTES', corto: 'Mar', largo: 'Martes' },
+  { valor: 'MIERCOLES', corto: 'Mié', largo: 'Miércoles' },
+  { valor: 'JUEVES', corto: 'Jue', largo: 'Jueves' },
+  { valor: 'VIERNES', corto: 'Vie', largo: 'Viernes' },
+  { valor: 'SABADO', corto: 'Sáb', largo: 'Sábado' },
+  { valor: 'DOMINGO', corto: 'Dom', largo: 'Domingo' },
 ] as const;
 
 /** Ventana visible del día. Las sesiones se ubican por minutos dentro de ella. */
@@ -58,8 +60,8 @@ interface Props {
   fechaInicioGrupo?: string | null;
   fechaFinGrupo?: string | null;
   onOfertaActualizada?: (grupo: Grupo) => void;
-  /** Virtual (063): sesiones solo mediadas por tecnología y horario opcional. */
-  modalidad?: 'presencial' | 'virtual';
+  /** Virtual (063) o a distancia (065): sesiones solo mediadas por tecnología y horario opcional. */
+  modalidad?: 'presencial' | 'virtual' | 'distancia';
 }
 
 /** El modo de consulta no monta los efectos ni los controles de escritura del grupo. */
@@ -109,7 +111,7 @@ function CalendarioConsulta({ calendario: c }: { calendario: CalendarioDocente }
 function CalendarioGrupoEditable({
   idGrupo, numeroGrupo, nombreAsignatura, onOfertaActualizada, modalidad = 'presencial',
 }: Props) {
-  const virtual = modalidad === 'virtual';
+  const virtual = esSinAula(modalidad);
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -209,7 +211,6 @@ function CalendarioGrupoEditable({
       aulaCodigo: '',
     });
     setError('');
-    setTimeout(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
   };
 
   const guardar = async () => {
@@ -308,15 +309,19 @@ function CalendarioGrupoEditable({
               </span>
             )
           )}
+          <button type="button" onClick={() => abrirRango('LUNES', 7 * 60, 9 * 60)}
+            className="flex items-center gap-1 rounded-lg bg-[#003DA5] px-3 py-1.5 text-xs font-bold text-white">
+            <Plus className="w-3.5 h-3.5" /> Agregar sesión
+          </button>
           <p className="text-xs text-slate-400 font-medium">
-            Haga clic en el calendario para agregar una sesión.
+            O haga clic (o arrastre) en el calendario.
           </p>
         </div>
       </div>
 
       {virtual && (
         <p role="note" className="mx-4 mt-3 text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-          Grupo virtual: sus sesiones son mediadas por tecnología y sin aula. El horario es opcional: si no lo define,
+          Grupo {etiquetaModalidad(modalidad).toLowerCase()}: sus sesiones son mediadas por tecnología y sin aula. El horario es opcional: si no lo define,
           el docente asignado lo define en «Mi programación». El ciclo de clases sí se necesita para calcular las horas.
         </p>
       )}
@@ -341,7 +346,7 @@ function CalendarioGrupoEditable({
         {avisoPeriodo && <span className="text-xs font-medium text-slate-500">{avisoPeriodo}</span>}
       </div>
 
-      {error && (
+      {error && !nueva && (
         <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm">
           {error}
         </div>
@@ -354,8 +359,8 @@ function CalendarioGrupoEditable({
         </div>
       ) : (
         <div className="p-4 overflow-x-auto">
-          <div className="min-w-[600px]">
-            <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
+          <div className="min-w-[640px]">
+            <div className="grid sticky top-0 z-10 bg-white" style={{ gridTemplateColumns: '48px repeat(7, minmax(80px, 1fr))' }}>
               <div />
               {DIAS.map((d) => (
                 <div key={d.valor} className="pb-2 text-center text-xs font-black text-slate-600 uppercase tracking-wider">
@@ -364,7 +369,7 @@ function CalendarioGrupoEditable({
               ))}
             </div>
 
-            <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
+            <div className="grid" style={{ gridTemplateColumns: '48px repeat(7, minmax(80px, 1fr))' }}>
               {/* Regla horaria */}
               <div className="relative" style={{ height: altoTotal }}>
                 {horas.map((h, i) => (
@@ -378,21 +383,24 @@ function CalendarioGrupoEditable({
               {DIAS.map((d) => (
                 <div
                   key={d.valor}
-                  onMouseDown={(e) => {
+                  // Puntero (ratón, lápiz o dedo). Con el dedo un toque abre el modal con una hora;
+                  // el arrastre queda para ratón/lápiz, así el gesto táctil sigue desplazando la página.
+                  onPointerDown={(e) => {
+                    if ((e.button ?? 0) !== 0) return; // solo botón principal
                     const m = minutoEn(e.clientY, e.currentTarget.getBoundingClientRect());
                     setArrastre({ dia: d.valor, desde: m, hasta: m });
                   }}
-                  onMouseMove={(e) => {
-                    if (!arrastre || arrastre.dia !== d.valor) return;
+                  onPointerMove={(e) => {
+                    if (e.pointerType === 'touch' || !arrastre || arrastre.dia !== d.valor) return;
                     const m = minutoEn(e.clientY, e.currentTarget.getBoundingClientRect());
                     if (m !== arrastre.hasta) setArrastre({ ...arrastre, hasta: m });
                   }}
-                  onMouseUp={() => {
+                  onPointerUp={() => {
                     if (!arrastre || arrastre.dia !== d.valor) return;
                     abrirRango(d.valor, arrastre.desde, arrastre.hasta);
                     setArrastre(null);
                   }}
-                  onMouseLeave={() => { if (arrastre?.dia === d.valor) setArrastre(null); }}
+                  onPointerLeave={(e) => { if (e.pointerType !== 'touch' && arrastre?.dia === d.valor) setArrastre(null); }}
                   className="relative select-none border-l border-slate-100 cursor-pointer hover:bg-blue-50/30 transition-colors"
                   style={{ height: altoTotal }}
                   title={`Clic o arrastre para agregar una sesión el ${d.corto.toLowerCase()}`}
@@ -424,6 +432,9 @@ function CalendarioGrupoEditable({
                       <div
                         key={s.idFranja}
                         onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
+                        title={`${hhmm(s.horaInicio)}–${hhmm(s.horaFin)} · ${s.tipoSesion === 'presencial' ? 'Presencial' : 'Mediada por tecnología'}${s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}`}
                         className="absolute left-1 right-1 rounded-md px-1.5 py-1 overflow-hidden group"
                         style={{
                           top: (ini / 60) * ALTO_HORA,
@@ -442,7 +453,8 @@ function CalendarioGrupoEditable({
                         <button
                           onClick={() => borrar(s)}
                           title="Eliminar sesión"
-                          className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-white/80 text-slate-400 hover:text-red-600 transition-opacity"
+                          aria-label={`Eliminar sesión ${hhmm(s.horaInicio)}–${hhmm(s.horaFin)}`}
+                          className="absolute top-0.5 right-0.5 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 p-0.5 rounded bg-white/80 text-slate-400 hover:text-red-600 transition-opacity"
                         >
                           <Trash2 className="w-2.5 h-2.5" />
                         </button>
@@ -466,87 +478,105 @@ function CalendarioGrupoEditable({
         </div>
       )}
 
-      {/* Formulario de sesión: se abre con clic, no arrastrando */}
-      {nueva && (
-        <div ref={panelRef} className="p-4 border-t border-slate-200 bg-slate-50">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-[#003DA5]" /> Nueva sesión
-            </h4>
-            <button onClick={() => setNueva(null)} className="p-1 rounded text-slate-400 hover:text-slate-700">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+      {/* Nueva sesión: MODAL centrado (nov-2026). Antes era un formulario al pie del calendario
+          que en pantallas pequeñas quedaba fuera de vista. Clic o arrastre en la rejilla lo abren
+          con el día y las horas ya puestos; aquí se confirman la modalidad de la sesión y el aula. */}
+      {/* Portal al body: dentro del modal de grupos un ancestro con transform deformaba el position:fixed. */}
+      {nueva && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.45)', padding: 16 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !guardando) setNueva(null); }}>
+          <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={`nueva-sesion-${idGrupo}`}
+            onKeyDown={(e) => { if (e.key === 'Escape' && !guardando) setNueva(null); }}
+            style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', background: '#fff', borderRadius: 16, boxShadow: '0 25px 50px -12px rgba(0,0,0,.35)' }}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+              <h4 id={`nueva-sesion-${idGrupo}`} className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-[#003DA5]" /> Nueva sesión · Grupo {numeroGrupo}
+              </h4>
+              <button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setNueva(null)} className="p-1 rounded text-slate-400 hover:text-slate-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Día</span>
-              <select value={nueva.diaSemana} onChange={(e) => setNueva({ ...nueva, diaSemana: e.target.value })}
-                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20">
-                {DIAS.map((d) => <option key={d.valor} value={d.valor}>{d.corto}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Inicio</span>
-              <input type="time" step={300} value={nueva.horaInicio}
-                onChange={(e) => setNueva({ ...nueva, horaInicio: e.target.value })}
-                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Fin</span>
-              <input type="time" step={300} value={nueva.horaFin}
-                onChange={(e) => setNueva({ ...nueva, horaFin: e.target.value })}
-                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[0.62rem] font-bold text-slate-500 uppercase flex items-center gap-1">
-                <Monitor className="w-3 h-3" /> Tipo de sesión
-              </span>
-              <select value={nueva.tipoSesion} disabled={virtual}
-                onChange={(e) => setNueva({ ...nueva, tipoSesion: e.target.value as TipoSesion })}
-                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20">
-                <option value="presencial">Presencial</option>
-                <option value="mediada_tecnologia">Mediada por tecnología</option>
-              </select>
-            </label>
-            {/* 3.4 — El salón SOLO aplica a sesiones presenciales, y sale de la
-                lista cerrada de aulas: nunca texto libre. Una sesión mediada por
-                tecnología no ocupa espacio físico, así que el campo se apaga y
-                se limpia para no arrastrar un aula fantasma al backend. */}
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[0.62rem] font-bold text-slate-500 uppercase flex items-center gap-1">
-                <MapPin className="w-3 h-3" /> Aula
-              </span>
-              <select
-                value={nueva.tipoSesion === 'presencial' ? nueva.aulaCodigo : ''}
-                disabled={nueva.tipoSesion !== 'presencial' || !!errorAulas}
-                onChange={(e) => setNueva({ ...nueva, aulaCodigo: e.target.value })}
-                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 disabled:text-slate-400">
-                <option value="">
-                  {nueva.tipoSesion === 'presencial' ? 'Sin asignar' : 'No aplica (mediada por tecnología)'}
-                </option>
-                {nueva.tipoSesion === 'presencial' && aulas.map((a) => (
-                  <option key={a.codigo} value={a.codigo}>{a.nombre} · {a.cetap?.nombre || a.cetap?.codigo || 'Sin CETAP'}</option>
-                ))}
-              </select>
-              {errorAulas && <span role="alert" className="text-xs text-amber-800">{errorAulas}</span>}
-              {nueva.tipoSesion === 'presencial' && aulas.length === 0 && !errorAulas && <span className="text-xs text-amber-800">No hay aulas válidas para la oferta de este grupo y periodo. Puedes dejar el aula sin asignar o cambiar la oferta.</span>}
-              {nueva.tipoSesion === 'presencial' && !ofertaGrupo && nueva.aulaCodigo && <span className="text-xs text-blue-800">Al guardar, la oferta CETAP de esta aula se asignará automáticamente al grupo.</span>}
-            </label>
-          </div>
+            <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Día</span>
+                <select autoFocus value={nueva.diaSemana} onChange={(e) => setNueva({ ...nueva, diaSemana: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20">
+                  {DIAS.map((d) => <option key={d.valor} value={d.valor}>{d.largo}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Inicio</span>
+                <input type="time" step={300} value={nueva.horaInicio}
+                  onChange={(e) => setNueva({ ...nueva, horaInicio: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Fin</span>
+                <input type="time" step={300} value={nueva.horaFin}
+                  onChange={(e) => setNueva({ ...nueva, horaFin: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
+              </label>
 
-          <div className="flex items-center gap-3 mt-3">
-            <button onClick={guardar} disabled={guardando}
-              className="px-4 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-all"
-              style={{ background: guardando ? '#9CA3AF' : '#003DA5' }}>
-              {guardando ? 'Guardando…' : 'Agregar sesión'}
-            </button>
-            <p className="text-[0.68rem] text-slate-400 font-medium">
-              La hora es libre, en múltiplos de 5 minutos. El tipo de sesión es independiente
-              de la modalidad de la asignatura.
-            </p>
+              <fieldset className="flex flex-col gap-1.5" style={{ gridColumn: "1 / -1" }}>
+                <legend className="text-[0.62rem] font-bold text-slate-500 uppercase flex items-center gap-1 mb-1.5">
+                  <Monitor className="w-3 h-3" /> Modalidad de la sesión
+                </legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['presencial', 'mediada_tecnologia'] as TipoSesion[]).map((t) => (
+                    <label key={t} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${nueva.tipoSesion === t ? 'border-[#003DA5] bg-blue-50 text-[#003DA5] font-bold' : 'border-slate-200 text-slate-600'} ${virtual && t === 'presencial' ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                      <input type="radio" name={`tipo-${idGrupo}`} value={t} checked={nueva.tipoSesion === t}
+                        disabled={virtual && t === 'presencial'}
+                        onChange={() => setNueva({ ...nueva, tipoSesion: t, aulaCodigo: t === 'presencial' ? nueva.aulaCodigo : '' })} />
+                      {t === 'presencial' ? 'Presencial' : 'Mediada por tecnología'}
+                    </label>
+                  ))}
+                </div>
+                {virtual && <span className="text-xs text-violet-700">Grupo {etiquetaModalidad(modalidad).toLowerCase()}: solo sesiones mediadas por tecnología, sin aula.</span>}
+              </fieldset>
+
+              {/* 3.4 — El salón SOLO aplica a sesiones presenciales y sale de la lista cerrada de aulas. */}
+              <label className="flex flex-col gap-1.5" style={{ gridColumn: "1 / -1" }}>
+                <span className="text-[0.62rem] font-bold text-slate-500 uppercase flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> Aula
+                </span>
+                <select
+                  value={nueva.tipoSesion === 'presencial' ? nueva.aulaCodigo : ''}
+                  disabled={nueva.tipoSesion !== 'presencial' || !!errorAulas}
+                  onChange={(e) => setNueva({ ...nueva, aulaCodigo: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 disabled:text-slate-400">
+                  <option value="">
+                    {nueva.tipoSesion === 'presencial' ? 'Sin asignar' : 'No aplica (mediada por tecnología)'}
+                  </option>
+                  {nueva.tipoSesion === 'presencial' && aulas.map((a) => (
+                    <option key={a.codigo} value={a.codigo}>{a.nombre} · {a.cetap?.nombre || a.cetap?.codigo || 'Sin CETAP'}</option>
+                  ))}
+                </select>
+                {errorAulas && <span role="alert" className="text-xs text-amber-800">{errorAulas}</span>}
+                {nueva.tipoSesion === 'presencial' && aulas.length === 0 && !errorAulas && <span className="text-xs text-amber-800">No hay aulas registradas en el CETAP de la oferta de este grupo. Puedes dejar el aula sin asignar o cambiar la oferta del grupo.</span>}
+                {nueva.tipoSesion === 'presencial' && !ofertaGrupo && nueva.aulaCodigo && <span className="text-xs text-blue-800">Al guardar, la oferta CETAP de esta aula se asignará automáticamente al grupo.</span>}
+              </label>
+            </div>
+
+            {error && (
+              <div role="alert" className="mx-5 mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm">{error}</div>
+            )}
+
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-3">
+              <button type="button" onClick={() => setNueva(null)} disabled={guardando}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 bg-white">
+                Cancelar
+              </button>
+              <button type="button" onClick={guardar} disabled={guardando}
+                className="px-4 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-all"
+                style={{ background: guardando ? '#9CA3AF' : '#003DA5' }}>
+                {guardando ? 'Guardando…' : 'Agregar sesión'}
+              </button>
+            </div>
+            <p className="px-5 pb-4 text-[0.68rem] text-slate-400">La hora es libre, en múltiplos de 5 minutos. El tipo de sesión es independiente de la modalidad de la asignatura.</p>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
