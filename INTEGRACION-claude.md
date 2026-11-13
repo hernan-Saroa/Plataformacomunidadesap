@@ -1471,3 +1471,7 @@ El 409 trae `{ code, message, concertacion: { id, docente, estado } | null }` pa
 14. Lockfile raíz desincronizado con los `package.json` de los workspaces (`npm ci` falla; faltan `@esap-mfe/chatbot`, `@esap-mfe/gestion-infraestructura`, `vitest`, `jsdom`…). Los Dockerfile de frontend usan `npm install`, ningún CI usa `npm ci` en la raíz: **no se tocó**; queda pendiente para los equipos dueños (ver DEPLOY §8).
 15. Pendiente para los dueños de **auth**: las migraciones del repo no crean `auth.dependencias`, `auth.dependencias_cargos` ni `auth.personas.id_dependencia/id_tercero` (punto 11). Pendiente para los dueños de **auditoría**: la función `audit.create_monthly_partition()` (punto 10); en DEPLOY es el PASO 0.
 16. Camino de prueba de EFDS-2435 en QA con un periodo **extraordinario** semestral: probado (DEPLOY §7). Advertencia verificada: `save` sin `id` reescribe el borrador de otro periodo del mismo docente (defecto del PTA anterior a esta ronda).
+
+### PUBLICADO
+
+**PUBLICADO el 13 de noviembre de 2026 en `micro-frontend`: merge `37ebc3c21`** (`6c2e935a7..37ebc3c21`, `merge --no-ff` de `feature/pa/bugs-qa`; sin rebase ni force). Compuertas 1–6 pasadas (ver el reporte final). Pendiente de Henrry: DEPLOY-bugs-qa.md, empezando por el PASO 0 (partición de auditoría).
