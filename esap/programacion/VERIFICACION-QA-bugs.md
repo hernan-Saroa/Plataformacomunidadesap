@@ -2,19 +2,22 @@
 
 **Para Javier · 13 de noviembre de 2026**
 
-**Ambiente:** [QA de ESAP](https://esap-qa.fabricasoftware.co/). **Periodo de prueba: 2050-2.** Es el periodo usado en las pruebas locales y probablemente todavía no existe en QA: hay que prepararlo antes de empezar. Se crea en planeación y con la programación abierta. Para probar el PTA, su activación **como extraordinario** queda condicionada a la confirmación de Claude que se explica en EFDS-2435. No lo actives como principal ni cierres el periodo principal actual.
+**Ambiente:** [QA de ESAP](https://esap-qa.fabricasoftware.co/). **Periodo de prueba: 2050-2, de tipo año-semestre.** Es el periodo usado en las pruebas locales y probablemente todavía no existe en QA: hay que prepararlo antes de empezar. Se crea en planeación y con la programación abierta. Para probar el PTA, actívalo **como extraordinario**, con motivo **Pruebas QA**, siguiendo EFDS-2435. No lo actives como principal ni cierres el periodo principal actual.
 
 ## Preparación en QA
 
 **Roles:** Administrador general o Administrador de Programación Académica para el periodo y la carga masiva; responsable de despliegue para la carga del puente de docentes y áreas.
 
 1. Entra a **Programación Académica → Periodos** y busca **2050-2**. No supongas que los datos de las pruebas locales ya están en QA.
-2. Si no existe, pulsa **Crear periodo**, indica **Año 2050**, **Segundo semestre** y completa Inicio y Fin con las fechas de pruebas acordadas para ese semestre. Pulsa **Crear periodo** y comprueba que aparece **2050-2**, en planeación y con la programación abierta. Conserva esta evidencia: **la creación sirve como prueba positiva de EFDS-2427**. Si ya existe, reutilízalo sin eliminarlo ni modificar sus fechas.
+2. Si no existe, pulsa **Crear periodo**, indica **Año 2050**, **Segundo semestre** y completa Inicio y Fin con las fechas de pruebas acordadas para ese semestre. Pulsa **Crear periodo** y comprueba que aparece **2050-2**, en planeación y con la programación abierta. Debe ser de **tipo año-semestre**, no Personalizado. Conserva esta evidencia: **la creación sirve como prueba positiva de EFDS-2427**. Si ya existe, reutilízalo sin eliminarlo ni modificar sus fechas.
 3. En **2050-2**, pulsa **Cargar asignaturas desde Excel**. Elige el catálogo entregado para QA y pulsa **Validar**. Revisa los programas, asignaturas, ofertas CETAP y cualquier error.
 4. Si la validación permite continuar, pulsa **Confirmar carga** o **Importar ahora**, según el rótulo que muestre la pantalla. Espera el mensaje de carga terminada. **Validar el Excel no lo guarda:** no salgas después de ver solamente la validación satisfactoria.
 5. Comprueba en **Catálogo Académico** que aparecen los programas y asignaturas de 2050-2, y que los grupos pueden consultar las ofertas CETAP del periodo.
 6. El responsable de despliegue debe **cargar el puente de docentes y áreas con el comando exacto indicado en las notas de despliegue para QA**. Comprueba que la carga haya terminado sin errores antes de probar los candidatos y el reparto de docentes. No sustituyas ese paso por los datos existentes en el entorno local.
-7. Continúa con las pruebas de grupos, sesiones y asignación sobre **2050-2**. Para crear los PTA de EFDS-2435, realiza primero la preparación extraordinaria de esa sección **solo después de la confirmación de Claude**. No uses la activación principal como alternativa.
+7. Continúa con las pruebas de grupos, sesiones y asignación sobre **2050-2**. Para crear los PTA de EFDS-2435, realiza primero la activación extraordinaria de esa sección con motivo **Pruebas QA**. No uses la activación principal como alternativa.
+8. Antes de crear los PTA, el Administrador del PTA debe comprobar que los dos docentes de prueba están **sin ningún PTA activo ni en borrador, en ningún periodo**. Hay un defecto conocido: crear un PTA nuevo reescribe el borrador de otro periodo; si el docente tiene un PTA en ejecución, la creación da error. Si alguno ya tiene un PTA activo o en borrador, usa otro docente de prueba.
+
+**Importante para EFDS-2435:** activar un periodo **como extraordinario** no lo convierte en Personalizado. Para probar el interruptor utiliza el periodo **año-semestre 2050-2**: un periodo personalizado, como un interperiodo, siempre queda en Docencia manual y no sirve para comprobar el cambio entre modo automático y manual.
 
 Si falta el catálogo, la carga del puente o un permiso de preparación, registra qué paso quedó pendiente y marca **No ejecutado** en los casos que dependan de él.
 
@@ -27,7 +30,7 @@ Si falta el catálogo, la carga del puente o un permiso de preparación, registr
 5. Usa las cuentas de prueba correspondientes a cada perfil. Cierra sesión antes de cambiar de usuario o usa ventanas separadas. Para comprobar que un perfil no tiene una acción, usa una cuenta que tenga únicamente los permisos de ese perfil.
 6. Repite la comprobación de horas y del panel con el navegador en **español de Colombia** y en **inglés de Estados Unidos**, y con zona horaria de **Bogotá** y **UTC**. Prueba los tamaños **1920×1080**, **1366×768**, **1280×720** y un teléfono en posición vertical.
 7. Conserva una captura del problema si algo falla. Registra: subtarea, usuario y rol, periodo, asignatura/grupo, pasos, resultado esperado y resultado obtenido.
-8. Si la pantalla del PTA no permite seleccionar 2050-2, revisa la preparación extraordinaria de EFDS-2435. Mientras no esté confirmada o no pueda completarse, registra **No ejecutado** para ese tramo. No cambies el periodo principal para forzar la prueba.
+8. Si la pantalla del PTA no permite seleccionar 2050-2, revisa su activación como extraordinario en EFDS-2435. Si no puede completarse, registra **No ejecutado** para ese tramo. No cambies el periodo principal para forzar la prueba.
 
 ### Roles que se necesitan
 
@@ -53,7 +56,7 @@ Los usuarios de programación y asignación son funciones distintas. Usa las cue
 4. Pulsa **Ir a Programación Académica**. Debe abrir ese módulo.
 5. Abre **Programación Académica → Periodos** y busca **Crear periodo**.
 6. Comprueba los campos Año, Tipo de periodo/Semestre, Inicio y Fin. El tipo debe ofrecer primer semestre, segundo semestre y **Personalizado**.
-7. Elige **Personalizado**. Deben aparecer Nombre del periodo y Código. Cambia de nuevo a un semestre: el formulario debe volver a la opción semestral.
+7. Elige **Personalizado**. Deben aparecer Nombre del periodo y Código. Cambia de nuevo a un semestre: el formulario debe volver a la opción semestral. Esta comprobación pertenece a EFDS-2427; para probar el interruptor de EFDS-2435 utiliza un periodo año-semestre, no uno personalizado.
 8. Si todavía no existe, crea **2050-2** siguiendo la preparación inicial y conserva la evidencia de que quedó guardado. Si ya lo creaste durante la preparación, usa esa evidencia como prueba positiva. No lo elimines para recrearlo: comprueba el intento duplicado del caso siguiente y deja anotado que no se creó otro periodo.
 
 **Resultado esperado:** «La sección Crear periodo debe estar disponible solo en el menú Programación Académica». En Programas Académicos, los periodos se muestran en consulta y existe un enlace de redirección, sin duplicar el formulario. Programación Académica conserva la creación semestral y personalizada.
@@ -203,11 +206,15 @@ Los usuarios de programación y asignación son funciones distintas. Usa las cue
 
 ## EFDS-2435 · Interoperabilidad del PTA con Programación Académica
 
-**Usuarios y roles:** Administrador del PTA; dos cuentas de Docente de prueba sin PTA en 2050-2; Asignador, Revisor y Aprobador para completar la concertación. Usa dos docentes si necesitas comparar un PTA manual y uno automático sin intentar crear dos PTA del mismo docente en el mismo periodo.
+**Usuarios y roles:** Administrador del PTA; dos cuentas de Docente de prueba **sin ningún PTA activo ni en borrador, en ningún periodo**; Asignador, Revisor y Aprobador para completar la concertación. Usa dos docentes para comparar un PTA manual y uno automático, sin intentar crear dos PTA del mismo docente.
+
+**Por qué:** hay un defecto conocido: crear el PTA nuevo reescribe un borrador de otro periodo; con un PTA en ejecución, la creación da error.
 
 ### Preparar el periodo extraordinario para los PTA de prueba
 
-**Pendiente de confirmación de Claude.** Realiza estos pasos únicamente cuando Claude confirme que, en QA, activar **2050-2 como extraordinario** permite crear los PTA de prueba **sin cerrar el periodo principal ni terminar ningún PTA real**. Hasta entonces, deja pendiente la creación de los PTA de este caso.
+**Procedimiento confirmado por Claude:** activar **2050-2 como extraordinario** permite crear los PTA de prueba **sin cerrar el periodo principal ni terminar ningún PTA real** y recorrer el interruptor.
+
+**Tipo obligatorio: año-semestre.** Usa **Año 2050 / Segundo semestre**, código **2050-2**. Un periodo Personalizado, como un interperiodo, siempre queda en Docencia manual y no sirve para esta prueba del interruptor. «Extraordinario» indica cómo se activa 2050-2; no cambia su tipo año-semestre.
 
 1. Con el rol autorizado para activar periodos extraordinarios, anota cuál es el periodo principal actual y su estado. Conserva una referencia del estado de los PTA reales para comprobar que no cambien.
 2. Entra a **Programación Académica → Periodos**, localiza **2050-2** y pulsa **Activar como extraordinario**. No pulses la activación principal.
@@ -236,26 +243,27 @@ Los usuarios de programación y asignación son funciones distintas. Usa las cue
 7. Como Administrador, consulta **Auditoría**: el cambio del interruptor debe indicar usuario, fecha/hora y estado anterior/nuevo.
 8. Restablece el estado que anotaste al comienzo y comprueba que quedó guardado. No uses PTAs ajenos para probar cambios de modo.
 
-**Resultado esperado:** una vez confirmada la preparación por Claude, los PTA de prueba se crean en **2050-2 como extraordinario**, con el motivo **Pruebas QA**, sin cerrar el principal ni terminar PTA reales. En **PTA → Configuración** existe el interruptor **Interoperabilidad con Programación Académica**. Encendido, la Docencia llega desde la concertación en consulta; apagado, el docente puede registrar y guardar asignaturas y horas manualmente en su PTA. Cambiarlo exige permiso y confirmación y queda auditado. **Apagar la interoperabilidad del PTA no debe impedir que la concertación se siga completando.** El mensaje de Docencia Directa debe reflejar el modo elegido.
+**Resultado esperado:** los PTA de prueba se crean en el periodo **año-semestre 2050-2 activado como extraordinario**, con el motivo **Pruebas QA**, sin cerrar el principal ni terminar PTA reales. En **PTA → Configuración** existe el interruptor **Interoperabilidad con Programación Académica**. Encendido, la Docencia llega desde la concertación en consulta; apagado, el docente puede registrar y guardar asignaturas y horas manualmente en su PTA. Cambiarlo exige permiso y confirmación y queda auditado. **Apagar la interoperabilidad del PTA no debe impedir que la concertación se siga completando.** El mensaje de Docencia Directa debe reflejar el modo elegido.
 
 **Debe fallar:** un Docente, Programador o Revisor sin permiso de configuración no debe poder cambiar el interruptor. Cancelar la confirmación no debe cambiar su estado. Encendido, no debe poder agregarse a mano una asignatura a la Docencia que corresponde a la concertación.
 
-**Evidencia:** confirmación de la activación extraordinaria con motivo Pruebas QA, principal y PTA reales sin cambios, interruptor y su confirmación, PTA manual guardado con el interruptor apagado, concertación completada mientras sigue apagado, PTA automático y registro de auditoría. Si la preparación extraordinaria sigue pendiente de confirmación o faltan los usuarios o una concertación reservada, marca el tramo correspondiente como No ejecutado.
+**Evidencia:** confirmación de la activación extraordinaria con motivo Pruebas QA, principal y PTA reales sin cambios, interruptor y su confirmación, PTA manual guardado con el interruptor apagado, concertación completada mientras sigue apagado, PTA automático y registro de auditoría. Si no puede completarse la preparación o faltan los usuarios aptos o una concertación reservada, marca el tramo correspondiente como No ejecutado.
 
 ## Al terminar
 
 1. Restaura el estado inicial de Interoperabilidad con Programación Académica.
 2. Retira las asignaciones y elimina las sesiones y grupos creados para la prueba. Conserva los registros que ya existían.
-3. No elimines el periodo 2050-2 ni cambies el periodo principal. No retires una aprobación o un PTA ajeno para facilitar la limpieza.
-4. Si un registro de prueba ya aprobado no puede retirarse con los controles autorizados, anota exactamente cuál es y deja **Limpieza pendiente**; no lo ocultes ni marques la limpieza como realizada.
-5. Para cada subtarea registra **Pasa**, **No pasa** o **No ejecutado**, con las capturas. Una falta de datos o de cuenta no es un resultado satisfactorio. Adjunta la evidencia a la subtarea correspondiente.
+3. Con el rol autorizado, **cierra el periodo extraordinario 2050-2** y comprueba que el periodo principal conserva su estado. **No elimines 2050-2** ni cierres el principal.
+4. **Pide al administrador que borre los PTA de prueba** creados durante este recorrido, identificando los docentes y el periodo 2050-2. Comprueba que solo se retiren esos PTA; no retires una aprobación o un PTA ajeno para facilitar la limpieza.
+5. Si no se puede completar el cierre del extraordinario o retirar un registro de prueba con los controles autorizados, anota exactamente qué quedó pendiente y deja **Limpieza pendiente**; no lo ocultes ni marques la limpieza como realizada.
+6. Para cada subtarea registra **Pasa**, **No pasa** o **No ejecutado**, con las capturas. Una falta de datos o de cuenta no es un resultado satisfactorio. Adjunta la evidencia a la subtarea correspondiente.
 
 ## Prueba de cinco minutos si no hay tiempo para el recorrido completo
 
-Necesita **2050-2 preparado en QA**, con el catálogo confirmado, el puente cargado, un grupo de prueba y un rol autorizado para las consultas de administración. Para el tramo del PTA necesita también la activación extraordinaria confirmada por Claude y realizada con motivo **Pruebas QA**. La preparación no forma parte de estos cinco minutos. Esta prueba detecta los bloqueos principales; no sustituye las comprobaciones por rol ni permite dar por cerradas las nueve subtareas.
+Necesita **2050-2 de tipo año-semestre preparado en QA**, con el catálogo confirmado, el puente cargado, un grupo de prueba y un rol autorizado para las consultas de administración. Para el tramo del PTA debe estar **activado como extraordinario**, con motivo **Pruebas QA**, y los docentes deben estar **sin ningún PTA activo ni en borrador, en ningún periodo**, antes de crear los PTA de prueba. No uses un periodo personalizado: siempre queda en Docencia manual. La preparación no forma parte de estos cinco minutos. Esta prueba detecta los bloqueos principales; no sustituye las comprobaciones por rol ni permite dar por cerradas las nueve subtareas.
 
 1. **Minuto 0–1 — Periodos y panel.** En Programas Académicos → Periodos comprueba que no hay Crear periodo y que el enlace lleva a Programación Académica. Abre una asignatura y un grupo: X y Cerrar deben verse; Esc debe permitir regresar.
 2. **Minuto 1–2 — Horas y días.** En Nueva sesión escribe 18:15–19:15, selecciona Lunes y Miércoles y pulsa Validar días. Debe verse 24 h y el resultado de ambos días antes de guardar. Si están libres y el grupo es de prueba, confirma; deben aparecer dos sesiones y cambiar las horas.
 3. **Minuto 2–3 — Cambios y protección.** Abre el lápiz de una sesión: datos cargados y Guardar cambios. Pulsa su papelera y cancela la confirmación; la sesión debe seguir. Modifica un dato sin guardarlo e intenta cerrar: Cancelar debe conservar lo escrito.
 4. **Minuto 3–4 — Docentes y calendario.** En Asignar docente comprueba que los bloqueados se ven con sus motivos y que es posible preparar un reparto por franjas. En el calendario semanal pulsa Ocultar horario: deben quedar docente, periodo, horas y tope; Ver horario debe recuperarlo.
-5. **Minuto 4–5 — PTA.** En PTA → Configuración comprueba el interruptor. Si la prueba está preparada y autorizada, verifica que Apagado deja Docencia manual y que Concertación continúa disponible. Restituye el estado inicial y elimina lo creado. La terminación completa de la concertación apagada y su auditoría se comprueban con el recorrido largo de EFDS-2435; no se consideran verificadas solo porque el menú se vea.
+5. **Minuto 4–5 — PTA.** En PTA → Configuración comprueba el interruptor. Si la prueba está preparada y autorizada, verifica que Apagado deja Docencia manual y que Concertación continúa disponible. Restituye el estado inicial y aplica la limpieza de Al terminar, incluido cerrar 2050-2 como extraordinario y pedir al administrador que borre los PTA de prueba, sin eliminar el periodo. La terminación completa de la concertación apagada y su auditoría se comprueban con el recorrido largo de EFDS-2435; no se consideran verificadas solo porque el menú se vea.
