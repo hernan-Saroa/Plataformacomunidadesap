@@ -52,18 +52,18 @@ AUTH="Authorization: Bearer $TOKEN"
 
 # 2. Puente docente–área (vista previa o definitivo).
 echo; echo "== Puente docente–área ($PUENTE)"
-curl -fsS -X POST "$URL/pta/api/v1/banco-docentes/nucleos/puente?dry_run=$DRY" -H "$AUTH" -F "file=@$PUENTE;type=text/csv" \
-  | tee /dev/stderr | head -c 0 || { echo; echo "La carga del puente falló." >&2; exit 1; }
-echo
+OUT="$(curl -sS -w '\n[HTTP %{http_code}]' -X POST "$URL/pta/api/v1/banco-docentes/nucleos/puente?dry_run=$DRY" -H "$AUTH" -F "file=@$PUENTE;type=text/csv")" || true
+echo "$OUT"
+case "$OUT" in *"[HTTP 200]"*|*"[HTTP 201]"*) ;; *) echo "La carga del puente falló." >&2; exit 1 ;; esac
 
 # 3. Catálogo (opcional): periodo por código.
 if [ -n "$CATALOGO" ]; then
   [ -f "$EXCEL" ] || { echo "No existe el Excel del catálogo: $EXCEL" >&2; exit 2; }
   echo; echo "== Catálogo en el periodo $CATALOGO ($EXCEL)"
-  curl -fsS -X POST "$URL/pta/api/v1/asignaturas-import/upload?dry_run=$DRY&periodo_codigo=$CATALOGO" -H "$AUTH" \
-    -F "file=@$EXCEL;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
-    | tee /dev/stderr | head -c 0 || { echo; echo "La carga del catálogo falló." >&2; exit 1; }
-  echo
+  OUT="$(curl -sS -w '\n[HTTP %{http_code}]' -X POST "$URL/pta/api/v1/asignaturas-import/upload?dry_run=$DRY&periodo_codigo=$CATALOGO" -H "$AUTH" \
+    -F "file=@$EXCEL;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")" || true
+  echo "$OUT"
+  case "$OUT" in *"[HTTP 200]"*|*"[HTTP 201]"*) ;; *) echo "La carga del catálogo falló." >&2; exit 1 ;; esac
 fi
 
 # 4. Cobertura resultante (solo lectura).
