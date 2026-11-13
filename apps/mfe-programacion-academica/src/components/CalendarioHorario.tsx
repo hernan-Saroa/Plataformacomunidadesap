@@ -549,7 +549,7 @@ function CalendarioGrupoEditable({
           con el día y las horas ya puestos; aquí se confirman la modalidad de la sesión y el aula. */}
       {/* Portal al body: dentro del modal de grupos un ancestro con transform deformaba el position:fixed. */}
       {nueva && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.45)', padding: 16 }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.45)', padding: 16 }}
           onMouseDown={(e) => { if (e.target === e.currentTarget) cerrarSesion(); }}>
           <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={`nueva-sesion-${idGrupo}`}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); cerrarSesion(); } }}

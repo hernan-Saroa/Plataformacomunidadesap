@@ -49,7 +49,7 @@ export function PanelGrupos({ titulo, onCerrar, children }: { titulo: string; on
     return () => { document.removeEventListener('keydown', teclado); document.body.style.overflow = overflow; previo?.focus(); };
   }, []);
   return createPortal(<Contexto.Provider value={borradores.current}>
-    <div className="fixed inset-0 flex items-center justify-center bg-slate-900/60 p-2 sm:p-4" style={{ zIndex: 900, background: 'rgba(15,23,42,.6)' }} onMouseDown={e => { if (e.target === e.currentTarget) solicitarCierre.current(); }}>
+    <div className="fixed inset-0 flex items-center justify-center bg-slate-900/60 p-2 sm:p-4" style={{ zIndex: 1000, background: 'rgba(15,23,42,.6)' }} onMouseDown={e => { if (e.target === e.currentTarget) solicitarCierre.current(); }}>
       <section ref={panel} role="dialog" aria-modal="true" aria-labelledby={id} className="flex w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" style={{ width: 'min(1440px, 100%)', maxWidth: '100%', maxHeight: 'calc(100dvh - 16px)', minHeight: 0 }}>
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <h2 id={id} className="min-w-0 break-words font-bold text-[#003DA5]">{titulo}</h2>
