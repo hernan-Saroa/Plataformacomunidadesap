@@ -77,6 +77,8 @@ export interface EstadoOfertasCetap {
   cetapsCatalogo: number;
   /** De las elegibles, las que no tienen territorial vinculada: el grupo no se podría concertar. */
   sinTerritorial: number;
+  /** EFDS-2429: el programa tiene EXACTAMENTE una oferta activa en el periodo (solo se dicta en una sede). */
+  unicaSede: boolean;
   /** Explicación lista para mostrar; null si todo está bien. */
   motivo: string | null;
 }
@@ -104,6 +106,7 @@ export async function estadoOfertasCetap(q: Consultable, idAsignatura: string, i
     ofertasDelPrograma: Number(fila?.ofertasDelPrograma ?? 0),
     cetapsCatalogo: Number(fila?.cetapsCatalogo ?? 0),
     sinTerritorial,
+    unicaSede: false,
     motivo: null,
   };
   if (!fila) {
@@ -114,6 +117,11 @@ export async function estadoOfertasCetap(q: Consultable, idAsignatura: string, i
     e.motivo = `El periodo ${e.periodoCodigo} tiene ${e.ofertasDelPeriodo} ofertas cargadas, pero ninguna del programa «${e.programa}»: según el Excel cargado, ese programa no se ofrece en este periodo.`;
   } else if (sinTerritorial > 0) {
     e.motivo = `${sinTerritorial} de ${e.ofertasDelPrograma} CETAP no tienen territorial vinculada: un grupo ubicado allí no se podrá concertar.`;
+  }
+  if (fila && e.ofertasDelPrograma === 1) {
+    e.unicaSede = true;
+    // Con una sola oferta no es un fallo: es lo que dice la oferta cargada. Se explica, y un problema de territorial sigue primero.
+    e.motivo = e.motivo ?? `Según la oferta cargada para ${e.periodoCodigo}, «${e.programa}» solo se dicta en ${elegibles[0]?.cetap?.nombre ?? 'una sede'}.`;
   }
   return e;
 }
