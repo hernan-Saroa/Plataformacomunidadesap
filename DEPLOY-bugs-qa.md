@@ -3,6 +3,23 @@
 Para Henrry. Ronda del 12–13 de noviembre de 2026. Rama de integración: `feature/pa/bugs-qa` → `micro-frontend`.
 Los comandos son los de siempre del ambiente (`./deploy.<ambiente>.sh …`); donde dice `<amb>` va `dev`, `qa`, `pre` o `prod`.
 
+## PASO 0 — PRIMERO, antes de cualquier otra cosa: partición de auditoría del mes siguiente
+
+**Por qué:** la tabla `audit.request_logs` es particionada por mes. Si falta la partición del mes en que se escribe, el `audit-service` responde 500 a cada `POST /logs`. Hoy (13 de noviembre) hace falta la de **diciembre de 2026** (`audit.request_logs_2026_12`); si QA o prod no la tienen, **desde el 1 de diciembre cada cambio auditado falla**. Es un defecto de antes de esta ronda, pero esta ronda añade auditoría (interruptor, editar/eliminar/crear sesiones) y la hace visible.
+
+**Qué pasa si falla la auditoría con esta ronda:** el cambio **sí se guarda** (apagar/encender el interruptor, editar una sesión) y el usuario ve éxito; el error solo queda en el log del servicio (`No se pudo registrar la auditoría de …`) y **ese registro de auditoría se pierde** (no se reintenta). Por eso hay que dejarla creada.
+
+**Verificar** (solo lectura):
+```sql
+SELECT inhrelid::regclass FROM pg_inherits WHERE inhparent = 'audit.request_logs'::regclass ORDER BY 1;
+-- debe aparecer audit.request_logs_AAAA_MM del mes en curso Y del mes siguiente
+```
+**Crear** (idempotente; crea la del mes en curso y la del siguiente si faltan, probado con `BEGIN … ROLLBACK`):
+```sql
+SELECT audit.create_monthly_partition();
+```
+Repetirlo cada mes hasta que los dueños de auditoría corrijan la función (pendiente para ellos).
+
 ## 0. Qué trae esta ronda (una línea por bug)
 
 | Bug | Qué cambia | Dónde |
@@ -107,3 +124,22 @@ docker logs academic-schedule-service-<amb>  2>&1 | grep "Configuración efectiv
 6. **Logs**: sin `ERROR` de arranque; el aviso «Interoperabilidad con Programación Académica: … origen …» aparece en el PTA.
 
 Si algo falla: sección 5 (apagar) y avisar a Tomás con el log del servicio.
+
+## 7. Camino de prueba de EFDS-2435 en QA (Javier): un periodo activado como extraordinario
+
+Sirve para probar el interruptor sin tocar el periodo principal. Probado contra un stack desechable (base creada solo con las migraciones del repo):
+
+1. Programación Académica → Periodos (o `POST /pta/api/v1/periodos-academicos`): crear un periodo **semestral** (p. ej. `2026-2`, fechas que no se crucen con otro). Pide el permiso `programacion-academica.periodos.gestionar`.
+2. `POST /pta/api/v1/periodos-academicos/:id/activar-extraordinario` `{ "motivo": "…≥10 caracteres…" }` (permiso «Periodos — Activar periodo extraordinario»). El periodo pasa a `en_curso` + `extraordinario`; **el principal no cambia**.
+3. Crear un PTA en ese periodo con un docente y probar: **encendido** → agregar una asignatura a mano da **409**; **apagado** → se agrega a mano; **encender** de nuevo → se aplica lo pendiente sin pisar lo manual.
+
+**Reglas que hay que conocer:**
+- El interruptor solo afecta a periodos con código `AAAA-1` o `AAAA-2` **desde el periodo de corte** (hoy `2026-1`). Un periodo **personalizado** (p. ej. `2026-INT`) **no** entra al régimen de Programación: siempre es docencia manual; no sirve para probar el interruptor.
+- **Usar un docente que no tenga ningún PTA activo.** Verificado: si el docente tiene un **borrador** en otro periodo, `POST /pta/api/v1/save` sin `id` **reescribe ese borrador** al periodo nuevo (defecto del PTA anterior a esta ronda); si ya tiene un PTA en ejecución (p. ej. aprobado), responde 400 «Ya tienes un Plan de Trabajo en ejecución». Esta ronda **no** pudo probar el caso del docente totalmente limpio (en la base desechable no había otro docente con rol DOCENTE sin PTA).
+- Al terminar: cerrar el periodo extraordinario y borrar el PTA de prueba (y sus filas relacionadas).
+
+## 8. Instalación de dependencias (lockfile) — estado revisado
+
+- Los `Dockerfile.frontend*` (dev, qa, pre, prod, app) usan `npm install --legacy-peer-deps`, **no `npm ci`**: el desfase del `package-lock.json` raíz **no rompe** los builds de QA. No se tocó el lockfile.
+- Los Dockerfile de los servicios (`backend/*/Dockerfile`) usan `npm ci` con el lockfile **de cada servicio**; esta ronda no cambió dependencias de ningún servicio (sin cambios en sus `package.json` ni `package-lock.json`).
+- **Pendiente para otros equipos:** `npm ci` en la raíz falla porque `package-lock.json` no está sincronizado con los `package.json` de los workspaces (faltan, entre otros, `@esap-mfe/chatbot`, `@esap-mfe/gestion-infraestructura`, `vitest` y `jsdom`; viene de commits de otros equipos en `micro-frontend`). Hoy solo lo notaría un CI que use `npm ci` en la raíz (no hay ninguno). No se corrió `npm audit fix`.
