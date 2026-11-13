@@ -1318,3 +1318,127 @@ Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado 
 - **Aulas de la Sede Central** (065): estaban amarradas al código `CET-0288`; en QA la Sede Central es `CET-0001` y ningún aula salía válida. La migración las re-vincula al CETAP llamado exactamente «Sede Central» de la territorial SC, solo si es único (si no, avisa y no adivina).
 - **Crear grupos:** sin buscador de CETAP ni selector general; la oferta se elige en cada grupo («Guardar grupo»). Si hay UNA sola oferta posible, los grupos nuevos quedan en ella. Botón «Asignar horario» por grupo. Un grupo eliminado ya no queda abierto («Grupo no encontrado»).
 - **Horario:** botón «Agregar sesión» y clic/arrastre en la rejilla abren un MODAL centrado (día, horas, modalidad de la sesión, aula); funciona con ratón y táctil (un toque abre el modal) y la rejilla se desplaza en horizontal en pantallas pequeñas.
+
+## 38. Bugs de QA (EFDS-2427 … 2435) — contratos para Codex
+
+> Rama `feature/pa/bugs-qa-claude`. Estos contratos se escriben ANTES de construir; Codex construye las pantallas contra ellos. Respuestas envueltas como siempre en `{ success, data }`. Errores: 400 validación, 403 permiso, 404 no existe, 409 regla de estado (con `message` legible y `code` estable).
+
+### 38.1 · EFDS-2434 — Candidatos con bloqueados y motivos
+
+`GET /programacion-academica/api/v1/asignaciones/candidatos?grupo=<uuid>&franjas=<uuid>,<uuid>` (sin cambios de ruta).
+
+```jsonc
+{
+  "grupo": "uuid", "horarioPorDefinir": false,
+  "franjas": [{ "idFranja": "uuid", "diaSemana": "MARTES", "horaInicio": "08:00", "horaFin": "10:00", "docenteActual": "Nombre" | null }],
+  "area": { "codigo": "AF-04", "nombre": "Finanzas Públicas", "nucleoAsignatura": "…" } | null,
+  "candidatos": [{                       // TODOS los docentes del área: aptos Y bloqueados
+    "documento": "…", "nombre": "…", "vinculacion": "Ocasional", "perfil": "…", "titulos": { … }, "nucleos": [ … ],
+    "origenArea": "rund" | "puente", "horasProgramadas": 96, "horasImpacto": 32, "tope": 304, "cruce": false,
+    "asignable": false,
+    "motivos": [{                        // vacío si asignable
+      "tipo": "CRUCE" | "TOPE" | "AREA" | "VINCULACION" | "SITUACION" | "ESCALAFON",   // NUEVO, estable para la pantalla
+      "regla": "RN-07",                  // código de negocio, como hoy
+      "mensaje": "El docente ya tiene una franja ocupada el martes de 08:00 a 10:00",
+      "detalle": { "diaSemana": "MARTES", "horaInicio": "08:00", "horaFin": "10:00" } | null   // NUEVO: solo CRUCE
+    }],
+    "avisos": ["…"]
+  }],
+  "resumen": { "total": 3, "asignables": 0, "bloqueados": 3 },   // NUEVO
+  "sugerido": { … } | null,
+  "aviso": "Los 3 docentes del área «Finanzas Públicas» tienen algún bloqueo: revise el motivo de cada uno." | null,  // NUEVO, informativo
+  "mensaje": "La asignatura no tiene área de formación…" | null   // SOLO cuando no hay lista posible (sin área / ningún docente del área)
+}
+```
+
+- **Cambio de semántica:** hoy «todos bloqueados» llega en `mensaje` y la pantalla oculta la lista (por eso Javier ve «Hay 3 docentes…» sin docentes). Desde ahora va en `aviso` y `candidatos` trae a todos. `mensaje` ≠ null ⇒ no hay lista que mostrar.
+- `detalle` de un CRUCE dice día y hora, nunca qué asignatura ni qué programa ocupa la franja (RN-07, confidencialidad).
+
+### 38.2 · EFDS-2434 — Asignación múltiple (varios docentes en un grupo, una operación)
+
+`POST /programacion-academica/api/v1/asignaciones/multiple`
+
+```jsonc
+// petición
+{ "idGrupo": "uuid", "asignaciones": [
+    { "documento": "79242932", "franjas": ["uuid-lunes", "uuid-martes"] },
+    { "documento": "12127386", "franjas": ["uuid-jueves"] } ] }
+// 200 si TODO pasa
+{ "asignado": true, "resultados": [{ "documento": "79242932", "franjas": [ … ], "avisos": [] }] }
+// 200 con asignado=false si ALGO falla: no se aplica NADA
+{ "asignado": false, "errores": [{ "documento": "12127386", "motivos": [ /* formato de 38.1 */ ] }] }
+```
+
+- Una franja no puede ir en dos pares (400). Las franjas deben ser del grupo (400).
+- Se valida TODO junto, incluido el cruce ENTRE los pares de la misma petición y el tope sumando lo que la petición le carga a cada docente. Una sola transacción: todo o nada.
+- `POST /asignaciones` de un solo docente sigue igual (compatibilidad).
+- El mismo docente en otro grupo se permite si no hay cruce ni pasa el tope (ya era así). Si se bloquea, el motivo lo dice (38.1).
+
+### 38.3 · EFDS-2432 — Editar y eliminar una sesión
+
+`PATCH /programacion-academica/api/v1/horarios/:idFranja`
+
+```jsonc
+// petición (solo los campos que cambian)
+{ "diaSemana": "JUEVES", "horaInicio": "08:00", "horaFin": "10:00", "tipoSesion": "presencial", "aulaCodigo": "108",
+  "confirmarDevolucion": false }
+// 200
+{ "franja": { … }, "horas": { "programadas": 62, "requeridas": 64, "semanas": 16, "excede": false },
+  "concertacionDevuelta": "uuid" | null }
+```
+
+`DELETE /programacion-academica/api/v1/horarios/:idFranja?confirmarDevolucion=true|false` → `{ "eliminado": true, "horas": { … }, "concertacionDevuelta": "uuid" | null }`
+
+Mismas validaciones que crear: forma (múltiplos de 5 min, fin > inicio), choque intra-grupo, choque del aula, aula del CETAP de la oferta, grupo virtual/a distancia sin aula, periodo no cerrado.
+
+**Reglas por estado (PROPUESTA, a confirmar por Tomás):**
+
+| Estado de la franja / concertación del docente | Editar / eliminar |
+|---|---|
+| `PROGRAMADO`, `DEVUELTA`, o `PUBLICADA` sin docente | Libre (auditado) |
+| `TOMADA` (un docente la tomó) | 409 `FRANJA_TOMADA` salvo `confirmarDevolucion=true`: se edita y la franja queda sin docente |
+| Franja en una concertación `ENVIADA`, `REVISADA` o `POR_ACEPTAR` | 409 `EN_CONCERTACION` salvo `confirmarDevolucion=true`: se edita y la concertación pasa a `DEVUELTA` con comentario automático |
+| `APROBADA` o concertación `ACEPTADA` (ya aplicada al PTA) | 409 `CONCERTACION_ACEPTADA`: no se edita; hay que reabrir |
+
+El 409 trae `{ code, message, concertacion: { id, docente, estado } | null }` para que la pantalla pida la confirmación.
+
+### 38.4 · EFDS-2430 — Varios días en una sola operación
+
+`POST /programacion-academica/api/v1/horarios/lote/validar` — no guarda nada.
+
+```jsonc
+// petición
+{ "idGrupo": "uuid", "dias": ["LUNES", "MIERCOLES", "VIERNES"], "horaInicio": "18:00", "horaFin": "20:00",
+  "tipoSesion": "presencial", "aulaCodigo": "108" }
+// 200
+{ "valido": false, "dias": [
+    { "diaSemana": "LUNES", "ok": true, "conflictos": [] },
+    { "diaSemana": "MIERCOLES", "ok": false, "conflictos": [{ "tipo": "INTRA_GRUPO" | "AULA" | "FORMA", "mensaje": "…" }] } ],
+  "horas": { "programadasDespues": 96, "requeridas": 64, "excede": true } }
+```
+
+`POST /programacion-academica/api/v1/horarios/lote` — misma petición. Si algún día tiene conflicto: 409 con el mismo cuerpo de `validar` y NO se crea ninguna. Si todo pasa: `{ "creadas": [ … ], "horas": { … } }`. Todo o nada.
+
+### 38.5 · EFDS-2429 — Motivo de la oferta CETAP
+
+`GET /programacion-academica/api/v1/grupos/ofertas-cetap/estado?asignatura=&periodo=` (existe, §34) gana un caso:
+
+```jsonc
+{ …campos de hoy…, "unicaSede": true,
+  "motivo": "Según la oferta cargada para 2027-1, «Administración Pública - Diurno» solo se dicta en Sede Central." }
+```
+
+`unicaSede = true` cuando el programa tiene exactamente una oferta activa en el periodo; la pantalla muestra el `motivo` bajo el selector. Si la consulta falla, la pantalla dice que no se pudo consultar (no un selector mudo).
+
+### 38.6 · EFDS-2427 — Crear periodos
+
+- `POST /pta/api/v1/periodos-academicos` exige el permiso **`programacion-academica.periodos.gestionar`** (o `programacion-academica.all`). Sin él: 403 «La creación de periodos se hace desde Programación Académica».
+- Se siembra en una migración y se da a `ADMIN_PROGRAMACION` y `SUPER_ADMIN`. **`GESTION_PROFESORAL` deja de poder crear** (es lo que pide el bug).
+- Programas Académicos (Julián Rojas) → Periodos queda en consulta, con un enlace a Programación Académica. Lo hace Codex; el cambio se documenta para Julián.
+
+### 38.7 · EFDS-2435 — Interoperabilidad con el PTA (pantalla del PTA: mía)
+
+- Estado en `academic_work_plan."ConfiguracionSistema"`, clave `interoperabilidad_programacion`, valor `{ "habilitada": bool, "desdePeriodo": "2026-1" }`. Una sola fuente: Programación Académica lee la misma fila.
+- `GET /pta/api/v1/configuracion/interoperabilidad` → `{ habilitada, desdePeriodo, origen: "base" | "variable_entorno" | "por_defecto", concertacionesEnCurso }`.
+- `PUT /pta/api/v1/configuracion/interoperabilidad` `{ habilitada, desdePeriodo, confirmacion: true }` — permiso `pta.backoffice.config_reglas`. Audita valor anterior y nuevo en el servicio de auditoría existente.
+- `GET /programacion-academica/api/v1/concertacion/configuracion` no cambia de forma (lee la misma fuente).
