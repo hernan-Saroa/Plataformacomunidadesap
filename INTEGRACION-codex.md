@@ -584,3 +584,52 @@ Sustituir TODO el bloque final `{detalle && detalle.idGrupo && (...)}` (el conte
 - Completar QA real por rol, CETAP, validación por día, topes, devolución/aprobadas, horas, auditoría y exportaciones 24 h antes de cerrar las subtareas.
 
 Esfuerzo adicional estimado: **15,5 h**, desglosado por subtarea en el reporte (no tiempo de reloj). No hay cambios propios de .gitignore, package.json, lockfile, backend, migraciones ni shell. Push solo a `feature/pa/bugs-qa-codex`.
+
+## verificación-final
+
+### Cierre documental — 13 de noviembre de 2026
+
+**Regla de esta ronda:** ningún cambio ni commit de código. Claude conserva la propiedad de todas las pantallas y del backend. Esta sección y la guía son documentación; no se corrigió ninguna aplicación ni se alteraron pruebas.
+
+**Guía para Javier:** `esap/programacion/VERIFICACION-QA-bugs.md`. Contiene las nueve subtareas EFDS-2427 a EFDS-2435, usuarios por perfil, pasos numerados, resultados esperados, casos que deben fallar, evidencias a conservar, limpieza y una comprobación de cinco minutos. Ya se publicó una primera versión en `51aef89de`, en `origin/feature/pa/bugs-qa-codex`.
+
+**Fuentes y decisiones prudentes:** se usó la exportación completa de los comentarios de Javier entregada por Tomás en el chat. No aparecen `REPORTES-JAVIER-QA.md` ni `INSTRUCCION-claude-bugs-QA-PA-v2-interoperabilidad.md` en las ramas publicadas consultadas ni en los insumos externos disponibles. No se leyó la carpeta de Claude. Para no detener la guía, EFDS-2435 sigue la instrucción final explícita de Tomás: interruptor en PTA → Configuración, PTA manual al apagarlo y concertación que puede seguir completándose. No se presenta el contrato antiguo §38.7 como si fuera la v2; la fuente exacta de esa v2 sigue sin poder contrastarse. Se incluyen cancelación, permisos y auditoría del reporte de Javier, restauración del estado inicial y protección de la docencia manual.
+
+No se inventan cuentas habilitadas en QA: la guía identifica cada usuario por su perfil y la cuenta de administrador documentada, sin publicar claves. Si falta un perfil, datos o selección de 2050-2, Javier marca el tramo No ejecutado. No se activa ni se elimina un periodo existente para fabricar una prueba de creación.
+
+### Control de publicación
+
+La verificación real está condicionada a la marca **PUBLICADO** en **§40 de `INTEGRACION-claude.md` de `origin/feature/pa/bugs-qa`**. Se ejecutaron varios `git fetch origin` y se leyó el documento desde esa referencia, sin sustituirla por el contenido local o por otra rama.
+
+Comprobaciones registradas, hora de Bogotá del 13 de noviembre: 12:32, 12:37, 12:40, 12:42 y 12:43:53. En todas, la referencia continuó en `78a1644cd56665539c9ad3ac5a3d204f3edcabf2`, el documento terminaba en §37 y §40 estaba ausente. El control final de esta ejecución se añade al final de esta sección.
+
+### Resultado con servidor real por subtarea
+
+| Subtarea | Resultado | Evidencia / comprobación pendiente |
+| --- | --- | --- |
+| EFDS-2427 | No ejecutado | No se habilitó el recorrido del stack: falta PUBLICADO en la sección requerida. Pendiente contrastar consulta en Programas y creación únicamente en PA. |
+| EFDS-2428 | No ejecutado | Misma condición. Pendientes ambos accesos al panel, resoluciones, cierre y borradores. |
+| EFDS-2429 | No ejecutado | Misma condición. Pendientes oferta real, diagnóstico de Sede Central y errores de consulta. |
+| EFDS-2430 | No ejecutado | Misma condición. Pendientes validación por día, creación, contador y limpieza con datos reales de 2050-2. |
+| EFDS-2431 | No ejecutado | Misma condición. Pendientes las horas de 24 h del stack real y su recorrido en ambos idiomas. |
+| EFDS-2432 | No ejecutado | Misma condición. Pendientes edición, eliminación, confirmaciones, reglas por estado, horas y auditoría reales. |
+| EFDS-2433 | No ejecutado | Misma condición. Pendientes los usuarios reales Docente, Revisor y Aprobador. |
+| EFDS-2434 | No ejecutado | Misma condición. Pendientes candidatos, bloqueos, reparto atómico y topes reales. |
+
+EFDS-2435: guía escrita; implementación y cierre de Claude. No se verificó contra servidor en esta ronda.
+
+**No ejecutado no significa Pasa ni No pasa.** Tampoco se ejecutó nuevamente el arnés de producción en esta ronda, porque forma parte de la etapa posterior a PUBLICADO. Los resultados y capturas simulados del 12 de noviembre no se reutilizan como prueba real de cierre del 13 de noviembre.
+
+No se abrió el stack ni se hicieron peticiones de verificación antes de la marca. No se hizo merge de `origin/micro-frontend` antes de esa habilitación. No se crearon registros: no hay grupos, sesiones, PTA ni periodos de esta ronda pendientes de borrar.
+
+### Defectos encontrados
+
+No hay defectos nuevos observados en el servidor: no se ejecutó el recorrido real. No sería válido concluir por ello que el sistema no tiene defectos. Las limitaciones de publicación y de fuentes anteriores son dependencias de verificación, no defectos de aplicación reproducidos; por tanto no se adjuntan capturas de una aplicación que no se abrió.
+
+### Esfuerzo
+
+Estimación por esfuerzo: **1,5 h**, guía y revisión 1,25 h; control de publicación y registro de pendientes 0,25 h. La espera no se cuenta como horas de desarrollo. Verificación real: 0 h ejecutadas.
+
+**Control final: 13 de noviembre de 2026, 12:46:22, hora de Bogotá.** Tras el último `git fetch origin`, `origin/feature/pa/bugs-qa` continúa en `78a1644cd56665539c9ad3ac5a3d204f3edcabf2`; §40 no existe y no apareció la marca PUBLICADO requerida. La guía quedó terminada y se cierra esta entrega documental con las ocho comprobaciones reales No ejecutadas. No se inicia ninguna prueba sobre un stack cuya habilitación no está publicada. Este registro corresponde al estado observado hasta esa hora; no afirma que la publicación no pueda ocurrir después.
+
+Los únicos archivos modificados en esta ronda son `esap/programacion/VERIFICACION-QA-bugs.md` e `INTEGRACION-codex.md`. Ningún commit de código, cambio de configuración ni verificación con datos simulados se presenta como cierre real de QA.

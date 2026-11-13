@@ -143,7 +143,7 @@ Los usuarios de programación y asignación son funciones distintas. Usa las cue
 9. En una sesión asignada, intenta editar o eliminar. Si está permitido devolverla, debe explicar el efecto y pedir confirmación antes de dejarla sin docente o devolver la concertación. Cancela primero y comprueba que no cambió; confirma únicamente sobre datos reservados para esta prueba.
 10. Con un usuario autorizado, consulta **Auditoría**. Debe identificarse quién hizo la modificación o eliminación, cuándo y cuáles fueron los valores anterior y nuevo.
 
-**Resultado esperado:** abrir el editor con los datos precargados y los botones **Guardar cambios**, **Eliminar sesión** y **Cancelar**; mostrar lápiz/papelera, validar traslapes, confirmar la eliminación, actualizar horas y registrar la acción en Auditoría. Las sesiones publicadas, asignadas o en concertación deben respetar las restricciones correspondientes.
+**Resultado esperado:** «Al dar clic sobre una sesión debe abrirse la ventana Editar sesión – Grupo N con los datos precargados» y los botones **Guardar cambios**, **Eliminar sesión** y **Cancelar**. «El contador de horas programadas vs. horas del plan debe actualizarse tras editar o eliminar». Debe mostrar lápiz/papelera, validar traslapes, confirmar la eliminación y registrar la acción en Auditoría. Las sesiones publicadas, asignadas o en concertación deben respetar las restricciones correspondientes.
 
 **Debe fallar:** abre una sesión **aprobada** o cuya docencia ya haya sido aceptada y aplicada al PTA. No debe permitir modificarla ni eliminarla mediante una confirmación corriente; debe informar que hay que reabrirla. No debe modificar datos del PTA para permitir el cambio.
 
@@ -181,7 +181,7 @@ Los usuarios de programación y asignación son funciones distintas. Usa las cue
 9. Si un docente tiene el aviso **sin situación administrativa / sin clasificar**, comprueba que el aviso se vea. Por sí solo no debe impedir la asignación cuando el docente figure como disponible y no tenga otros bloqueos.
 10. Si el reparto es rechazado, debe indicar el docente y el motivo, conservar la selección para corregir y no guardar solo una parte del reparto.
 
-**Resultado esperado:** permitir varios docentes en un mismo grupo distribuidos por franjas y el mismo docente en varios grupos/asignaturas cuando no haya cruces ni se superen topes. Mostrar el listado del área con disponible/bloqueado y motivo concreto. **Confirmar** debe habilitarse cuando exista al menos un docente válido con franjas seleccionadas.
+**Resultado esperado:** «Permitir asignar uno o varios docentes a un mismo grupo, distribuyendo las franjas entre ellos», y el mismo docente en varios grupos/asignaturas cuando no haya cruces ni se superen topes. «Mostrar el listado de docentes del área con su estado (disponible / bloqueado) y el motivo específico del bloqueo». **Confirmar** debe habilitarse cuando exista al menos un docente válido con franjas seleccionadas.
 
 **Debe fallar:** intenta asignar una franja que choque con otra del docente o supere su tope. Debe indicar la causa y no guardar el reparto. No debe permitir seleccionar una persona bloqueada ni asignar dos docentes a la misma franja. No es obligatorio mostrar la asignatura o programa que ocupa al docente para explicar el cruce: basta día y horas.
 
