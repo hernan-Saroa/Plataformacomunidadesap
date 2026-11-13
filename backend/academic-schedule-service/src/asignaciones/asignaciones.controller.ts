@@ -89,6 +89,17 @@ export class AsignacionesController {
     return { success: true, data };
   }
 
+  /**
+   * POST /asignaciones/multiple — varios docentes, cada uno con sus franjas, TODO O NADA (EFDS-2434).
+   * 200 `{ asignado: true, resultados }` o 200 `{ asignado: false, errores: [{ documento, motivos }] }` sin escribir nada.
+   */
+  @Post('multiple')
+  @EscrituraEn({ grupo: { body: 'idGrupo' } }, { exigeNivel: 'asignacion' })
+  async asignarMultiple(@Req() req: Request, @Body() body: { idGrupo: string; asignaciones: Array<{ documento: string; franjas: string[] }>; observaciones?: string | null }) {
+    const data = await this.asignaciones.asignarMultiple({ ...body, asignadoPor: idUserDe(req) }, tokenDe(req));
+    return { success: true, data };
+  }
+
   /** DELETE /asignaciones/grupo/:idGrupo — retira la asignación y libera sus franjas. */
   @Delete('grupo/:idGrupo')
   @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: 'asignacion' })

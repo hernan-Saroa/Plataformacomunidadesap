@@ -101,16 +101,17 @@ export async function docentesDelArea(q: Consultor, idArea: number): Promise<str
 }
 
 /** Motivo de bloqueo por área, o null si el docente es del área de la asignatura. */
-export function motivoDeArea(area: AreaFormacion | null, nucleos: NucleoDocente[]): { regla: string; mensaje: string } | null {
+export function motivoDeArea(area: AreaFormacion | null, nucleos: NucleoDocente[]): { regla: string; tipo: 'AREA'; mensaje: string } | null {
   if (!area) {
-    return { regla: 'AREA', mensaje: 'La asignatura no tiene área de formación: no se puede asignar docente hasta que la tenga.' };
+    return { regla: 'AREA', tipo: 'AREA' as const, mensaje: 'La asignatura no tiene área de formación: no se puede asignar docente hasta que la tenga.' };
   }
   if (!nucleos.length) {
-    return { regla: 'AREA', mensaje: 'El docente no tiene núcleo temático registrado: no se le puede asignar docencia.' };
+    return { regla: 'AREA', tipo: 'AREA' as const, mensaje: 'El docente no tiene núcleo temático registrado: no se le puede asignar docencia.' };
   }
   if (!nucleos.some((n) => n.idArea === area.idArea)) {
     return {
       regla: 'AREA',
+      tipo: 'AREA' as const,
       mensaje: `El docente no es del área «${area.nombre}» (sus áreas: ${[...new Set(nucleos.map((n) => n.nombre))].join(', ')}).`,
     };
   }

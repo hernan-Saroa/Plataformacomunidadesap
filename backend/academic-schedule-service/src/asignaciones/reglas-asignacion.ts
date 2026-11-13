@@ -20,9 +20,15 @@ import { superaElTope } from './tope.js';
 /** Categorías de escalafón habilitadas para maestrías (RN-12, Art. 77 par. 2). */
 export const ESCALAFON_MAESTRIA = ['asociado', 'titular'] as const;
 
+/** Tipo estable del motivo (EFDS-2434): la pantalla decide con él, no con el texto. */
+export type TipoMotivo = 'SITUACION' | 'ESCALAFON' | 'VINCULACION' | 'CRUCE' | 'TOPE' | 'AREA';
+
 export interface MotivoRechazo {
   regla: string;
   mensaje: string;
+  tipo?: TipoMotivo;
+  /** Solo CRUCE: día y hora de la franja ocupada (nunca qué asignatura ni qué programa, RN-07). */
+  detalle?: { diaSemana: string; horaInicio: string; horaFin: string } | null;
 }
 
 export interface DocenteParaAsignar {
@@ -180,6 +186,7 @@ export function evaluarAsignacion(
   if (!docente.situacionAsignable) {
     motivos.push({
       regla: 'situacion_administrativa',
+      tipo: 'SITUACION',
       mensaje: docente.situacionMotivo
         ?? 'La situación administrativa del docente no permite asignarle carga',
     });
@@ -188,6 +195,7 @@ export function evaluarAsignacion(
   if (!cumpleEscalafonParaMaestria(grupo.tipoPrograma, docente.escalafon)) {
     motivos.push({
       regla: 'RN-12',
+      tipo: 'ESCALAFON',
       mensaje: 'Para programar en Maestrías el docente debe ser Asociado o Titular '
         + `(escalafón actual: ${docente.escalafon || 'sin registrar'})`,
     });
@@ -195,7 +203,7 @@ export function evaluarAsignacion(
 
   const periodo = periodoDentroDeVinculacion(grupo, docente);
   if (!periodo.cumple) {
-    motivos.push({ regla: 'RN-10', mensaje: periodo.motivo! });
+    motivos.push({ regla: 'RN-10', tipo: 'VINCULACION', mensaje: periodo.motivo! });
   }
 
   const cruce = buscarCruceTransversal(grupo.franjas, franjasOcupadas, grupo.idGrupo, {
@@ -207,6 +215,8 @@ export function evaluarAsignacion(
     // es confidencialidad entre decanaturas, no un detalle de presentación.
     motivos.push({
       regla: 'RN-07',
+      tipo: 'CRUCE',
+      detalle: { diaSemana: String(cruce.diaSemana), horaInicio: String(cruce.horaInicio).slice(0, 5), horaFin: String(cruce.horaFin).slice(0, 5) },
       mensaje: `El docente ya tiene una franja ocupada el ${cruce.diaSemana.toLowerCase()} `
         + `de ${String(cruce.horaInicio).slice(0, 5)} a ${String(cruce.horaFin).slice(0, 5)}`,
     });
@@ -217,6 +227,7 @@ export function evaluarAsignacion(
   if (superaElTope(total, tope)) {
     motivos.push({
       regla: 'RN-04/RN-05',
+      tipo: 'TOPE',
       mensaje: `La asignación supera el tope del docente: ${total} h sobre un máximo de `
         + `${tope} h (ya tiene ${horasYaConsumidas} h asignadas)`,
     });

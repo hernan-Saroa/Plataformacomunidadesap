@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { validarDias, crearDias, editarSesion, borrarSesion, ErrorHorario, type ValidacionDias } from '../services/api/horarioQaApi';
+import { ModalConfirmacion } from './ModalConfirmacion';
+import { CampoHora24, hora24Valida } from './CampoHora24';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useBorradorGrupo } from './PanelGrupos';
 import { createPortal } from 'react-dom';
-import { CalendarDays, Clock, Loader2, MapPin, Monitor, Plus, Trash2, X } from 'lucide-react';
+import { CalendarDays, Clock, Loader2, MapPin, Monitor, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import type { CalendarioDocente } from '../services/api/vistaApi';
 
 import {
-  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo, actualizarOfertaCetapGrupo,
+  getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo, actualizarOfertaCetapGrupo,
   esSinAula, etiquetaModalidad,
   type Sesion, type TipoSesion, type Aula, type HorasGrupo, type Grupo,
 } from '../services/api/catalogoApi';
@@ -72,12 +76,16 @@ export function CalendarioHorario(props: Props | { soloLectura: true; calendario
 }
 
 function CalendarioConsulta({ calendario: c }: { calendario: CalendarioDocente }) {
+  const [expandido, setExpandido] = useState(true);
+  const contenidoId = useId();
   // Incluye horarios fuera de la ventana habitual y conserva visibles los solapamientos.
   const desde = Math.min(HORA_DESDE, ...c.franjas.map(f => Math.floor(aMinutos(f.horaInicio) / 60)));
   const hasta = Math.max(HORA_HASTA, ...c.franjas.map(f => Math.ceil(aMinutos(f.horaFin) / 60)));
   return <section aria-label="Calendario semanal docente" className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-    <h3 className="font-bold text-[#003DA5]">Calendario semanal · {c.docente.nombre ?? 'Docente'} · {c.periodo.codigo}</h3>
+    <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-bold text-[#003DA5]">Calendario semanal · {c.docente.nombre ?? 'Docente'} · {c.periodo.codigo}</h3>
+      <button type="button" aria-expanded={expandido} aria-controls={contenidoId} onClick={() => setExpandido(e => !e)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-[#003DA5]">{expandido ? '▲ Ocultar horario' : '▼ Ver horario'}</button></div>
     <p>{c.docente.vinculacion?.texto ?? 'Vinculación no disponible'} · Horas: {c.horas.total === null ? 'No disponibles' : c.horas.total} · Tope: {c.horas.tope ?? 'No aplica'}</p>
+    <div id={contenidoId} hidden={!expandido}>
     {c.horas.total !== null && c.horas.tope !== null && c.horas.total > c.horas.tope && <p className="text-red-700">Las horas superan el tope del docente.</p>}
     {!c.franjas.length && <p>No hay franjas en este periodo.</p>}
     <div className="overflow-x-auto"><div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, minmax(130px, 1fr))', minWidth: 966 }}>
@@ -105,6 +113,7 @@ function CalendarioConsulta({ calendario: c }: { calendario: CalendarioDocente }
       })}
     </div></div>
     <p className="text-xs text-slate-500">Solo lectura. Las franjas reservadas se muestran como ocupadas, sin detalles.</p>
+    </div>
   </section>;
 }
 
@@ -113,6 +122,8 @@ function CalendarioGrupoEditable({
 }: Props) {
   const virtual = esSinAula(modalidad);
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
+  const horaDesde = Math.min(HORA_DESDE, ...sesiones.map(s => Math.floor(aMinutos(s.horaInicio) / 60)));
+  const horaHasta = Math.max(HORA_HASTA, ...sesiones.map(s => Math.ceil(aMinutos(s.horaFin) / 60)));
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -120,6 +131,7 @@ function CalendarioGrupoEditable({
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [cicloCargado, setCicloCargado] = useState<string | null>(null);
+  const [cicloPersistido, setCicloPersistido] = useState('');
   const [guardandoCiclo, setGuardandoCiclo] = useState(false);
   const revisionGrupo = useRevisionProgramacion(`grupo:${idGrupo}`);
   const revisionHorario = useRevisionProgramacion('horarios');
@@ -137,6 +149,7 @@ function CalendarioGrupoEditable({
       if (!vigente) return;
       setFechaInicio(grupo.fechaInicio?.slice(0, 10) ?? '');
       setFechaFin(grupo.fechaFin?.slice(0, 10) ?? '');
+      setCicloPersistido(`${grupo.fechaInicio?.slice(0, 10) ?? ''}|${grupo.fechaFin?.slice(0, 10) ?? ''}`);
       setCicloCargado(idGrupo);
       setOfertaGrupo(grupo.idOfertaCetap);
     }).catch((e) => {
@@ -155,8 +168,23 @@ function CalendarioGrupoEditable({
 
   // Formulario que se abre al hacer clic en el calendario (o arrastrando).
   const [nueva, setNueva] = useState<null | {
-    diaSemana: string; horaInicio: string; horaFin: string; tipoSesion: TipoSesion; aulaCodigo: string;
+    idFranja?: string; dias?: string[]; diaSemana: string; horaInicio: string; horaFin: string; tipoSesion: TipoSesion; aulaCodigo: string;
   }>(null);
+  useBorradorGrupo(!!nueva || (cicloCargado === idGrupo && `${fechaInicio}|${fechaFin}` !== cicloPersistido), guardando || guardandoCiclo);
+  const [validacion, setValidacion] = useState<{ clave: string; resultado: ValidacionDias } | null>(null);
+  const [devolucion, setDevolucion] = useState<{ tipo: 'editar' | 'eliminar'; mensaje: string; efecto: string; sesion?: Sesion } | null>(null);
+  const efectoDevolver = (code?: string) => code === 'FRANJA_TOMADA' ? 'La sesión quedará sin docente. Será necesario volver a asignarla.' : 'La concertación pasará a Devuelta con un comentario automático. Será necesario revisar y completar de nuevo su aprobación.';
+  const [descartarSesion, setDescartarSesion] = useState(false);
+  const originalSesion = useRef('');
+  const cerrarSesion = () => {
+    if (guardando) return;
+    if (nueva && JSON.stringify(nueva) !== originalSesion.current) setDescartarSesion(true);
+    else setNueva(null);
+  };
+  const [sesionEliminar, setSesionEliminar] = useState<Sesion | null>(null);
+  const validacionActual = nueva && validacion?.clave === JSON.stringify(nueva) ? validacion.resultado : null;
+  const edicionBloqueada = !!nueva?.idFranja && sesiones.find(s => s.idFranja === nueva.idFranja)?.estado === 'APROBADA';
+  const abrirEdicion = (s: Sesion) => { setError(''); const datos = { idFranja: s.idFranja, diaSemana: s.diaSemana, horaInicio: hhmm(s.horaInicio), horaFin: hhmm(s.horaFin), tipoSesion: s.tipoSesion, aulaCodigo: s.aulaCodigo ?? '' }; originalSesion.current = JSON.stringify(datos); setNueva(datos); };
   // Lista CERRADA de salones (3.4): no se puede escribir uno que no exista.
   const [aulas, setAulas] = useState<Aula[]>([]);
   useEffect(() => {
@@ -168,6 +196,20 @@ function CalendarioGrupoEditable({
   }, [idGrupo, revisionAulas, revisionGrupo]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const abierta = !!nueva;
+  useEffect(() => {
+    if (!abierta) return;
+    const previo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panelRef.current?.focus();
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || document.querySelector('[role="alertdialog"]')) return;
+      const campos = [...(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])') ?? [])];
+      if (e.shiftKey && document.activeElement === campos[0]) { e.preventDefault(); campos.at(-1)?.focus(); }
+      else if (!e.shiftKey && (document.activeElement === campos.at(-1) || document.activeElement === panelRef.current)) { e.preventDefault(); campos[0]?.focus(); }
+    };
+    document.addEventListener('keydown', tecla);
+    return () => { document.removeEventListener('keydown', tecla); previo?.focus(); };
+  }, [abierta]);
 
   // §1.3 — Horas programadas vs requeridas por el catálogo, en vivo.
   const [resumenHoras, setResumenHoras] = useState<HorasGrupo | null>(null);
@@ -192,8 +234,8 @@ function CalendarioGrupoEditable({
    */
   const minutoEn = (clientY: number, caja: DOMRect) => {
     const desdeArriba = ((clientY - caja.top) / ALTO_HORA) * 60;
-    const total = HORA_DESDE * 60 + Math.round(desdeArriba / 15) * 15;
-    return Math.min(Math.max(total, HORA_DESDE * 60), HORA_HASTA * 60);
+    const total = horaDesde * 60 + Math.round(desdeArriba / 15) * 15;
+    return Math.min(Math.max(total, horaDesde * 60), horaHasta * 60);
   };
 
   const fmtHora = (m: number) =>
@@ -203,22 +245,32 @@ function CalendarioGrupoEditable({
   const abrirRango = (dia: string, desdeMin: number, hastaMin: number) => {
     const ini = Math.min(desdeMin, hastaMin);
     const fin = Math.max(desdeMin, hastaMin);
-    setNueva({
-      diaSemana: dia,
-      horaInicio: fmtHora(Math.min(ini, HORA_HASTA * 60 - 60)),
-      horaFin: fmtHora(Math.min(Math.max(fin, ini + 60), HORA_HASTA * 60)),
-      tipoSesion: virtual ? 'mediada_tecnologia' : 'presencial',
+    const datos = {
+      diaSemana: dia, dias: [dia],
+      horaInicio: fmtHora(Math.min(ini, horaHasta * 60 - 60)),
+      horaFin: fmtHora(Math.min(Math.max(fin, ini + 60), horaHasta * 60)),
+      tipoSesion: (virtual ? 'mediada_tecnologia' : 'presencial') as TipoSesion,
       aulaCodigo: '',
-    });
+    };
+    originalSesion.current = JSON.stringify(datos); setNueva(datos);
     setError('');
   };
 
-  const guardar = async () => {
-    if (!nueva) return;
+  const guardar = async (confirmarDevolucion = false) => {
+    if (!nueva || guardando || edicionBloqueada) return;
+    if (!hora24Valida(nueva.horaInicio) || !hora24Valida(nueva.horaFin) || nueva.horaFin <= nueva.horaInicio) { setError('Indica inicio y fin válidos en formato de 24 h; el fin debe ser posterior al inicio.'); return; }
     setGuardando(true);
     setError('');
     let ofertaGuardada = false;
     try {
+      const datos = { idGrupo, dias: nueva.dias ?? [nueva.diaSemana], horaInicio: nueva.horaInicio, horaFin: nueva.horaFin, tipoSesion: nueva.tipoSesion, aulaCodigo: nueva.tipoSesion === 'presencial' ? (nueva.aulaCodigo || null) : null };
+      if (!nueva.idFranja) {
+        if (!datos.dias.length) { setError('Selecciona al menos un día.'); return; }
+        if (!validacionActual?.valido) {
+          setValidacion({ clave: JSON.stringify(nueva), resultado: await validarDias(datos) });
+          return;
+        }
+      }
       const aulaElegida = nueva.tipoSesion === 'presencial' ? aulas.find((a) => a.codigo === nueva.aulaCodigo) : null;
       if (aulaElegida && !ofertaGrupo) {
         if (!aulaElegida.idOfertaCetap) throw new Error('No se pudo identificar la oferta CETAP de esta aula. Elige otra aula o asigna la oferta directamente.');
@@ -227,17 +279,21 @@ function CalendarioGrupoEditable({
         onOfertaActualizada?.(actualizado);
         ofertaGuardada = true;
       }
-      await crearSesion({
-        idGrupo,
-        diaSemana: nueva.diaSemana,
-        horaInicio: nueva.horaInicio,
-        horaFin: nueva.horaFin,
-        tipoSesion: nueva.tipoSesion,
-        // Sin aula si no es presencial: el espacio físico no aplica.
-        aulaCodigo: nueva.tipoSesion === 'presencial' ? (nueva.aulaCodigo || null) : null,
-      });
-      setNueva(null);
+      if (nueva.idFranja) {
+        const antes = JSON.parse(originalSesion.current);
+        const campos = { diaSemana: nueva.diaSemana, horaInicio: datos.horaInicio, horaFin: datos.horaFin, tipoSesion: datos.tipoSesion, aulaCodigo: datos.aulaCodigo };
+        const cambios = Object.fromEntries(Object.entries(campos).filter(([k,v]) => (antes[k] || null) !== (v || null))) as Partial<typeof campos>;
+        if (!Object.keys(cambios).length) { setNueva(null); return; }
+        const r = await editarSesion(nueva.idFranja, idGrupo, { ...cambios, confirmarDevolucion });
+        setResumenHoras(r.horas);
+      } else {
+        const r = await crearDias(datos);
+        setResumenHoras(r.horas);
+      }
+      setNueva(null); setDevolucion(null);
     } catch (e: any) {
+      if (e instanceof ErrorHorario && ['FRANJA_TOMADA', 'EN_CONCERTACION'].includes(e.code ?? '')) setDevolucion({ tipo: 'editar', mensaje: e.message, efecto: efectoDevolver(e.code) });
+      if (e instanceof ErrorHorario && Array.isArray(e.datos?.dias)) setValidacion({ clave: JSON.stringify(nueva), resultado: e.datos });
       // El cruce intra-grupo llega como mensaje del backend: se muestra tal cual
       // para que el programador sepa contra qué sesión choca.
       setError(`${e?.message || 'No se pudo crear la sesión.'}${ofertaGuardada ? ' La oferta CETAP sí quedó asignada al grupo.' : ''}`);
@@ -246,13 +302,19 @@ function CalendarioGrupoEditable({
     }
   };
 
-  const borrar = async (s: Sesion) => {
-    setError('');
+  const borrar = async (s: Sesion, confirmarDevolucion = false) => {
+    if (guardando) return;
+    if (s.estado === 'APROBADA') { setError('La sesión está aprobada. Debe reabrirse antes de modificarla o eliminarla.'); return; }
+    setError(''); setGuardando(true);
     try {
-      await eliminarSesion(s.idFranja);
+      const r = await borrarSesion(s.idFranja, idGrupo, confirmarDevolucion);
+      setResumenHoras(r.horas); setSesionEliminar(null); setDevolucion(null);
+      if (nueva?.idFranja === s.idFranja) setNueva(null);
     } catch (e: any) {
+      setSesionEliminar(null);
+      if (e instanceof ErrorHorario && ['FRANJA_TOMADA', 'EN_CONCERTACION'].includes(e.code ?? '')) setDevolucion({ tipo: 'eliminar', mensaje: e.message, efecto: efectoDevolver(e.code), sesion: s });
       setError(e?.message || 'No se pudo eliminar la sesión.');
-    }
+    } finally { setGuardando(false); }
   };
 
   const guardarPeriodo = async () => {
@@ -280,10 +342,10 @@ function CalendarioGrupoEditable({
   }, [sesiones]);
 
   const horas = useMemo(
-    () => Array.from({ length: HORA_HASTA - HORA_DESDE }, (_, i) => HORA_DESDE + i),
-    [],
+    () => Array.from({ length: horaHasta - horaDesde }, (_, i) => horaDesde + i),
+    [horaDesde, horaHasta],
   );
-  const altoTotal = (HORA_HASTA - HORA_DESDE) * ALTO_HORA;
+  const altoTotal = (horaHasta - horaDesde) * ALTO_HORA;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -410,7 +472,7 @@ function CalendarioGrupoEditable({
                     <div
                       className="pointer-events-none absolute left-1 right-1 rounded-md border-2 border-dashed border-[#003DA5] bg-blue-100/50"
                       style={{
-                        top: ((Math.min(arrastre.desde, arrastre.hasta) - HORA_DESDE * 60) / 60) * ALTO_HORA,
+                        top: ((Math.min(arrastre.desde, arrastre.hasta) - horaDesde * 60) / 60) * ALTO_HORA,
                         height: Math.max((Math.abs(arrastre.hasta - arrastre.desde) / 60) * ALTO_HORA, 8),
                       }}
                     >
@@ -425,13 +487,15 @@ function CalendarioGrupoEditable({
                   ))}
 
                   {porDia[d.valor].map((s) => {
-                    const ini = aMinutos(s.horaInicio) - HORA_DESDE * 60;
+                    const ini = aMinutos(s.horaInicio) - horaDesde * 60;
                     const dur = aMinutos(s.horaFin) - aMinutos(s.horaInicio);
                     const c = COLOR_TIPO[s.tipoSesion] || COLOR_TIPO.presencial;
                     return (
                       <div
                         key={s.idFranja}
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); abrirEdicion(s); }}
+                        role="button" tabIndex={0}
+                        onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirEdicion(s); } }}
                         onPointerDown={(e) => e.stopPropagation()}
                         onPointerUp={(e) => e.stopPropagation()}
                         title={`${hhmm(s.horaInicio)}–${hhmm(s.horaFin)} · ${s.tipoSesion === 'presencial' ? 'Presencial' : 'Mediada por tecnología'}${s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}`}
@@ -450,11 +514,13 @@ function CalendarioGrupoEditable({
                           {s.tipoSesion === 'presencial' ? 'Presencial' : 'Mediada por tecnología'}
                           {s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}
                         </p>
-                        <button
-                          onClick={() => borrar(s)}
+                        <button type="button" onClick={e => { e.stopPropagation(); abrirEdicion(s); }} aria-label={`Editar sesión ${hhmm(s.horaInicio)}–${hhmm(s.horaFin)}`} className="absolute top-0.5 right-6 rounded bg-white/90 p-0.5 text-blue-700"><Pencil className="h-3 w-3" /></button>
+                        <button type="button"
+                          disabled={s.estado === 'APROBADA'}
+                          onClick={(e) => { e.stopPropagation(); setSesionEliminar(s); }}
                           title="Eliminar sesión"
                           aria-label={`Eliminar sesión ${hhmm(s.horaInicio)}–${hhmm(s.horaFin)}`}
-                          className="absolute top-0.5 right-0.5 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 p-0.5 rounded bg-white/80 text-slate-400 hover:text-red-600 transition-opacity"
+                          className="absolute top-0.5 right-0.5 p-0.5 rounded bg-white/80 text-slate-400 hover:text-red-600 transition-opacity"
                         >
                           <Trash2 className="w-2.5 h-2.5" />
                         </button>
@@ -483,38 +549,33 @@ function CalendarioGrupoEditable({
           con el día y las horas ya puestos; aquí se confirman la modalidad de la sesión y el aula. */}
       {/* Portal al body: dentro del modal de grupos un ancestro con transform deformaba el position:fixed. */}
       {nueva && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.45)', padding: 16 }}
-          onMouseDown={(e) => { if (e.target === e.currentTarget && !guardando) setNueva(null); }}>
-          <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={`nueva-sesion-${idGrupo}`}
-            onKeyDown={(e) => { if (e.key === 'Escape' && !guardando) setNueva(null); }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.45)', padding: 16 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) cerrarSesion(); }}>
+          <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={`nueva-sesion-${idGrupo}`}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); cerrarSesion(); } }}
             style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', background: '#fff', borderRadius: 16, boxShadow: '0 25px 50px -12px rgba(0,0,0,.35)' }}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
               <h4 id={`nueva-sesion-${idGrupo}`} className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-[#003DA5]" /> Nueva sesión · Grupo {numeroGrupo}
+                <Clock className="w-4 h-4 text-[#003DA5]" /> {nueva.idFranja ? 'Editar sesión' : 'Nueva sesión'} – Grupo {numeroGrupo}
               </h4>
-              <button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setNueva(null)} className="p-1 rounded text-slate-400 hover:text-slate-700">
+              <button type="button" aria-label="Cerrar" disabled={guardando} onClick={cerrarSesion} className="p-1 rounded text-slate-400 hover:text-slate-700">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Día</span>
-                <select autoFocus value={nueva.diaSemana} onChange={(e) => setNueva({ ...nueva, diaSemana: e.target.value })}
-                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20">
-                  {DIAS.map((d) => <option key={d.valor} value={d.valor}>{d.largo}</option>)}
-                </select>
-              </label>
+            {edicionBloqueada && <p role="note" className="m-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">La sesión está aprobada. Debe reabrirse antes de modificarla o eliminarla.</p>}
+            <fieldset disabled={guardando || edicionBloqueada} className="min-w-0 px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {nueva.idFranja ? <label className="flex flex-col gap-1.5">Día<select value={nueva.diaSemana} onChange={e => setNueva({ ...nueva, diaSemana: e.target.value })}>{DIAS.map(d => <option key={d.valor} value={d.valor}>{d.largo}</option>)}</select></label> : <fieldset style={{ gridColumn: '1 / -1' }}><legend className="text-xs font-bold">Días</legend><div className="flex flex-wrap gap-2 mt-2">{DIAS.map((d,i) => <button key={d.valor} type="button" aria-label={d.largo} aria-pressed={(nueva.dias ?? []).includes(d.valor)} onClick={() => setNueva({ ...nueva, dias: (nueva.dias ?? []).includes(d.valor) ? nueva.dias?.filter(v => v !== d.valor) : [...(nueva.dias ?? []), d.valor] })} className={`rounded-lg border px-3 py-2 font-bold ${(nueva.dias ?? []).includes(d.valor) ? 'bg-blue-100 border-blue-500 text-blue-900' : ''}`}>{['L','M','X','J','V','S','D'][i]}</button>)}<button type="button" onClick={() => setNueva({ ...nueva, dias: DIAS.map(d => d.valor) })} className="rounded-lg border px-3 py-2">Todos</button></div></fieldset>}
               <label className="flex flex-col gap-1.5">
                 <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Inicio</span>
-                <input type="time" step={300} value={nueva.horaInicio}
-                  onChange={(e) => setNueva({ ...nueva, horaInicio: e.target.value })}
+                <CampoHora24 aria-label="Inicio" value={nueva.horaInicio}
+                  onChange={(horaInicio) => setNueva({ ...nueva, horaInicio })}
                   className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Fin</span>
-                <input type="time" step={300} value={nueva.horaFin}
-                  onChange={(e) => setNueva({ ...nueva, horaFin: e.target.value })}
+                <CampoHora24 aria-label="Fin" value={nueva.horaFin}
+                  onChange={(horaFin) => setNueva({ ...nueva, horaFin })}
                   className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
               </label>
 
@@ -556,21 +617,23 @@ function CalendarioGrupoEditable({
                 {nueva.tipoSesion === 'presencial' && aulas.length === 0 && !errorAulas && <span className="text-xs text-amber-800">No hay aulas registradas en el CETAP de la oferta de este grupo. Puedes dejar el aula sin asignar o cambiar la oferta del grupo.</span>}
                 {nueva.tipoSesion === 'presencial' && !ofertaGrupo && nueva.aulaCodigo && <span className="text-xs text-blue-800">Al guardar, la oferta CETAP de esta aula se asignará automáticamente al grupo.</span>}
               </label>
-            </div>
+            </fieldset>
 
+            {validacionActual && <div role="status" className="mx-5 mb-3 rounded-lg border p-3 text-sm"><p className="font-bold">Validación por día</p><ul>{validacionActual.dias.map(d => <li key={d.diaSemana}>{DIAS.find(v => v.valor === d.diaSemana)?.largo}: {d.ok ? 'Sin conflictos' : d.conflictos.map(c => c.mensaje).join('; ')}</li>)}</ul><p>Después de guardar: {validacionActual.horas.programadasDespues} h / {validacionActual.horas.requeridas} h del plan{validacionActual.horas.excede ? ' · Excede las horas del plan' : ''}</p></div>}
+            {nueva.idFranja && <button type="button" onClick={() => setSesionEliminar(sesiones.find(s => s.idFranja === nueva.idFranja) ?? null)} disabled={guardando || edicionBloqueada} className="mx-5 mb-3 rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700">Eliminar sesión</button>}
             {error && (
               <div role="alert" className="mx-5 mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm">{error}</div>
             )}
 
             <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-3">
-              <button type="button" onClick={() => setNueva(null)} disabled={guardando}
+              <button type="button" onClick={cerrarSesion} disabled={guardando}
                 className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 bg-white">
                 Cancelar
               </button>
-              <button type="button" onClick={guardar} disabled={guardando}
+              <button type="button" onClick={() => guardar()} disabled={guardando || edicionBloqueada}
                 className="px-4 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-all"
                 style={{ background: guardando ? '#9CA3AF' : '#003DA5' }}>
-                {guardando ? 'Guardando…' : 'Agregar sesión'}
+                {guardando ? 'Guardando…' : nueva.idFranja ? 'Guardar cambios' : validacionActual?.valido ? 'Agregar sesiones' : 'Validar días'}
               </button>
             </div>
             <p className="px-5 pb-4 text-[0.68rem] text-slate-400">La hora es libre, en múltiplos de 5 minutos. El tipo de sesión es independiente de la modalidad de la asignatura.</p>
@@ -578,6 +641,9 @@ function CalendarioGrupoEditable({
         </div>,
         document.body,
       )}
+      {sesionEliminar && <ModalConfirmacion titulo="Eliminar sesión" advertencia="Esta acción no se puede deshacer." ocupado={guardando} onCancelar={() => setSesionEliminar(null)} onConfirmar={() => borrar(sesionEliminar)}><p>¿Desea eliminar la sesión del {DIAS.find(d => d.valor === sesionEliminar.diaSemana)?.largo.toLowerCase()} {hhmm(sesionEliminar.horaInicio)}–{hhmm(sesionEliminar.horaFin)}?</p></ModalConfirmacion>}
+      {devolucion && <ModalConfirmacion titulo="Confirmar cambio de una sesión asignada" advertencia={devolucion.efecto} ocupado={guardando} onCancelar={() => setDevolucion(null)} onConfirmar={() => devolucion.tipo === 'editar' ? guardar(true) : borrar(devolucion.sesion!, true)}><p>{devolucion.mensaje}</p></ModalConfirmacion>}
+      {descartarSesion && <ModalConfirmacion titulo="¿Descartar los cambios de la sesión?" advertencia="Los datos de la sesión que no hayas guardado se perderán." onCancelar={() => setDescartarSesion(false)} onConfirmar={() => { setNueva(null); setDescartarSesion(false); }}><p>Puedes cancelar para continuar editando.</p></ModalConfirmacion>}
     </div>
   );
 }

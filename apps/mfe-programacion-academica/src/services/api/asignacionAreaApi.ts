@@ -7,17 +7,28 @@ export interface CandidatoArea {
   titulos: Record<'pregrado' | 'especializacion' | 'maestria' | 'doctorado' | 'posdoctorado', string | null>;
   nucleos: { area: string; origen: 'rund' | 'puente'; texto: string }[];
   origenArea: 'rund' | 'puente'; horasProgramadas: number | null; horasImpacto: number | null; tope: number | null;
-  cruce: boolean; motivos: { regla: string; mensaje: string }[]; asignable: boolean;
+  cruce: boolean; motivos: { regla: string; mensaje: string; tipo?: 'CRUCE' | 'TOPE' | 'AREA' | 'VINCULACION' | 'SITUACION' | 'ESCALAFON'; detalle?: { diaSemana: string; horaInicio: string; horaFin: string } | null }[]; asignable: boolean;
   /** Avisos que no bloquean, p. ej. «Sin situación administrativa registrada en el RUND». */
   avisos?: string[];
 }
 export interface CandidatosArea {
+  horarioPorDefinir?: boolean;
+  resumen?: { total: number; asignables: number; bloqueados: number };
+  aviso?: string | null;
   grupo: string;
   franjas: { idFranja: string; diaSemana: string; horaInicio: string; horaFin: string; docenteActual: string | null }[];
   area: { codigo: string; nombre: string; nucleoAsignatura: string | null } | null;
   candidatos: CandidatoArea[];
   sugerido: { documento: string; nombre: string; razones: string[] } | null;
   mensaje: string | null;
+}
+export async function asignarMultiple(idGrupo: string, asignaciones: { documento: string; franjas: string[] }[]) {
+  const res = await fetch(`${getApiGatewayBaseUrl()}${BASE}/multiple`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idGrupo, asignaciones }) });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.message || `No se pudo asignar (error ${res.status}).`);
+  const data = (body.data ?? body) as { asignado: boolean; resultados?: { documento: string; franjas: unknown[]; avisos: string[] }[]; errores?: { documento: string; motivos: CandidatoArea['motivos'] }[] };
+  if (data.asignado) invalidarProgramacion('programacion', 'horarios', 'portal-docente', 'concertacion', 'acumulado', `grupo:${idGrupo}`);
+  return data;
 }
 const BASE = '/programacion-academica/api/v1/asignaciones';
 export const getCandidatosArea = (grupo: string, franjas: string[]) => pedirJson<CandidatosArea>(`${BASE}/candidatos?grupo=${encodeURIComponent(grupo)}&franjas=${encodeURIComponent(franjas.join(','))}`, { method: 'GET' });

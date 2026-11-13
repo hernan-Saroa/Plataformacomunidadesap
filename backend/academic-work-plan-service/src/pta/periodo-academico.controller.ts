@@ -27,6 +27,9 @@ import { PtaPermissionsService } from './auth/pta-permissions.service';
 /** Permiso propio de activar un periodo extraordinario (migración 672, EFDS-2346). */
 export const PERMISO_ACTIVAR_EXTRAORDINARIO = 'pta.periodos.activar_extraordinario';
 
+/** Permiso de crear periodos (migración 080, EFDS-2427). `programacion-academica.all` también lo concede. */
+export const PERMISOS_CREAR_PERIODO = ['programacion-academica.periodos.gestionar', 'programacion-academica.all'];
+
 /** Código de un periodo personalizado: año, guion y 1 a 5 letras o dígitos (p. ej. 2027-INT). */
 const CODIGO_PERSONALIZADO = /^\d{4}-[A-Z0-9]{1,5}$/;
 
@@ -107,7 +110,12 @@ export class PeriodoAcademicoController {
 
   @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
   @Post()
-  async create(@Body() body: any) {
+  async create(@Body() body: any, @Req() req: any) {
+    // EFDS-2427: crear un periodo exige el permiso de Programación Académica, desde la pantalla que sea.
+    const idUser = String(req?.user?.userId ?? req?.user?.sub ?? '');
+    if (!(await this.permisos.userHasAnyPermission(idUser, PERMISOS_CREAR_PERIODO))) {
+      throw new ForbiddenException('La creación de periodos se hace desde Programación Académica y requiere el permiso «Programación — Crear y gestionar periodos académicos».');
+    }
     const { anio, semestre, fechaInicio, fechaFin } = body;
     // EFDS-2346: un periodo personalizado (p. ej. interperiodo) es un periodo más, con
     // las mismas reglas; lo distinguen su código y su nombre, no un semestre.

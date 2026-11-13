@@ -1490,7 +1490,7 @@ export class AsignaturasImportService {
       },
     };
 
-    const auditServiceUrl = process.env.AUDIT_SERVICE_URL || 'http://localhost:3011';
+    const auditServiceUrl = process.env.AUDIT_SERVICE_URL || 'http://audit-service:3011';
     try {
       await fetch(`${auditServiceUrl}/logs`, {
         method: 'POST',
