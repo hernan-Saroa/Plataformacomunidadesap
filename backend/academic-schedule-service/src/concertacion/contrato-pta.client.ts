@@ -45,14 +45,6 @@ export class ContratoPtaClient {
   private readonly base =
     process.env.ACADEMIC_WORK_PLAN_SERVICE_URL || 'http://academic-work-plan-service:3003';
 
-  /** ¿El PTA tiene encendido el mismo interruptor? Lanza si no responde. */
-  async ptaHabilitada(): Promise<boolean> {
-    const res = await fetch(`${this.base}/contrato-programacion/v1/docencia/configuracion`);
-    if (!res.ok) throw new Error(`El PTA respondió ${res.status} al consultar la configuración.`);
-    const c: any = await res.json();
-    return (c?.data ?? c)?.habilitada === true;
-  }
-
   async registrarDecision(decision: DecisionDocencia, token: string | null): Promise<any> {
     const res = await fetch(`${this.base}/contrato-programacion/v1/docencia/decisiones`, {
       method: 'POST',

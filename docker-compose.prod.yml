@@ -204,8 +204,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3003
-      # Integración PTA <-> Programación Académica: APAGADA en producción (Docencia Directa manual).
+      # Interoperabilidad PTA <-> Programación Académica (EFDS-2435). SOLO es el valor INICIAL: se siembra
+      # en la base la primera vez; después manda la base (PTA > Configuración). Sin definir = apagada (manual).
       PROG_CONCERTACION_HABILITADA: "false"
+      PROG_CONCERTACION_DESDE_PERIODO: ${PROG_CONCERTACION_DESDE_PERIODO:-2026-1}
+      PTA_MOCK_FIRMA_OTP: ${PTA_MOCK_FIRMA_OTP:-true}
+      AUDIT_SERVICE_URL: http://audit-service-prod:3011
 
       DB_HOST: db
       DB_PORT: 5432
@@ -598,6 +602,14 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3013
+      # Programación Académica: la concertación ya no depende de una variable (EFDS-2435). El interruptor
+      # vive en el PTA (base de datos). Estas variables se declaran explícitas; los valores son los de siempre.
+      PROG_CONCERTACION_DESDE_PERIODO: ${PROG_CONCERTACION_DESDE_PERIODO:-2026-1}
+      PROG_NUCLEO_PUENTE: ${PROG_NUCLEO_PUENTE:-suma}
+      PROG_SIN_DATO_ASIGNABLE: ${PROG_SIN_DATO_ASIGNABLE:-true}
+      PROG_PORTAL_TOMA_FRANJAS: ${PROG_PORTAL_TOMA_FRANJAS:-false}
+      PROG_MOCK_FIRMA_OTP: ${PROG_MOCK_FIRMA_OTP:-true}
+      ACADEMIC_WORK_PLAN_SERVICE_URL: http://academic-work-plan-service:3003
 
       DB_HOST: db
       DB_PORT: 5432

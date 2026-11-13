@@ -6,6 +6,8 @@ import { PtaService } from './pta.service';
 import { PtaPermissionsService } from './auth/pta-permissions.service';
 import { PtaAuthGuard, PtaRoleAccessGuard } from './auth/pta-auth.guard';
 import { PtaConfigurationGuard } from './auth/pta-configuration.guard';
+import { InteroperabilidadController } from './interoperabilidad.controller';
+import { InteroperabilidadService, PtaInteroperabilidadGuard } from './interoperabilidad.service';
 import { PtaRundSensitiveInterceptor } from './banco-docentes/pta-rund-sensitive.interceptor';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
@@ -84,8 +86,8 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
       RundSoporteCampoEntity,
     ]),
   ],
-  controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController],
-  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaRoleAccessGuard, PtaConfigurationGuard, PtaNotificationsService, PtaRundSensitiveInterceptor],
+  controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController, InteroperabilidadController],
+  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaRoleAccessGuard, PtaConfigurationGuard, InteroperabilidadService, PtaInteroperabilidadGuard, PtaNotificationsService, PtaRundSensitiveInterceptor],
   // PtaPermissionsService/PtaNotificationsService se reutilizan desde MacroDocenteModule
   // (permisos granulares pta.macro_docente.* y correo de acceso externo otorgado).
   exports: [PtaPermissionsService, PtaNotificationsService],

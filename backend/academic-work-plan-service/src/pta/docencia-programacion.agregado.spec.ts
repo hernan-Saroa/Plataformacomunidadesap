@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-import { aplicarDecision, aplicarPendientesAlCrear, reiniciarCacheProgramacion } from './docencia-programacion';
+import { aplicarDecision, aplicarPendientesAlCrear } from './docencia-programacion';
 
 /**
  * EFDS-2315 :: aplicar la docencia concertada, con el SQL REAL.
@@ -40,12 +40,8 @@ describe('EFDS-2315 :: aplicar la decisión al PTA (agregado real, en transacci�
   });
   afterAll(async () => { process.env = envAntes; if (client) await client.end().catch(() => {}); });
   beforeEach(() => {
-    reiniciarCacheProgramacion();
     process.env.PROG_CONCERTACION_HABILITADA = 'true';
-    // Programación Académica encendida con corte 2050-1 (lo único externo que se simula).
-    (global as any).fetch = jest.fn(async () => ({
-      ok: true, json: async () => ({ success: true, data: { habilitada: true, desdePeriodo: '2050-1' } }),
-    }));
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = '2050-1'; // corte de la prueba (sin fila en la base: manda la variable)
   });
 
   const q = { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) };
