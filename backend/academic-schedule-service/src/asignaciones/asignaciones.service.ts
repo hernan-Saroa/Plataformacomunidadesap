@@ -93,7 +93,11 @@ export interface ResultadoCandidatos {
   area: { codigo: string; nombre: string; nucleoAsignatura: string | null } | null;
   candidatos: Candidato[];
   sugerido: { documento: string; nombre: string; razones: string[] } | null;
-  /** Explica por qué no hay candidatos o no hay sugerido. Nulo si hay sugerido. */
+  /** EFDS-2434: conteo de la lista completa (aptos y bloqueados). */
+  resumen: { total: number; asignables: number; bloqueados: number };
+  /** Informativo: hay docentes pero todos bloqueados. NO oculta la lista (la pantalla la muestra con sus motivos). */
+  aviso: string | null;
+  /** SOLO cuando no hay lista posible (sin área o ningún docente del área). Con lista, va en `aviso`. */
   mensaje: string | null;
 }
 
@@ -462,6 +466,61 @@ export class AsignacionesService {
   }
 
   /**
+   * Asignación MÚLTIPLE (EFDS-2434): varios docentes, cada uno con sus franjas, en UNA operación
+   * TODO O NADA. Se valida todo junto (las mismas reglas del bloqueo duro, sobre las franjas de
+   * cada uno) y solo si nadie tiene motivos se escribe, en una sola transacción. Un 409 de la
+   * concertación (franja ya aprobada o en curso) también revierte todo.
+   */
+  async asignarMultiple(
+    dto: { idGrupo: string; asignaciones: Array<{ documento: string; franjas: string[] }>; asignadoPor?: string | null; observaciones?: string | null },
+    token?: string | null,
+  ): Promise<{ asignado: true; resultados: Array<{ documento: string; franjas: string[]; avisos: string[] }> }
+    | { asignado: false; errores: Array<{ documento: string; nombre: string | null; motivos: MotivoRechazo[] }> }> {
+    if (!dto?.idGrupo) throw new BadRequestException('Debe indicar el grupo.');
+    if (!Array.isArray(dto.asignaciones) || dto.asignaciones.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un docente con sus franjas.');
+    }
+    const pares = new Map<string, string[]>();
+    const usadas = new Set<string>();
+    for (const a of dto.asignaciones) {
+      const documento = String(a?.documento ?? '').trim();
+      const franjas = [...new Set((Array.isArray(a?.franjas) ? a.franjas : []).map((x) => String(x).trim()).filter(Boolean))];
+      if (!documento) throw new BadRequestException('Cada asignación debe indicar el documento del docente.');
+      if (!franjas.length) throw new BadRequestException(`El docente ${documento} no tiene franjas asignadas.`);
+      for (const f of franjas) {
+        if (usadas.has(f)) throw new BadRequestException('Una franja no puede asignarse a dos docentes en la misma operación.');
+        usadas.add(f);
+      }
+      pares.set(documento, [...(pares.get(documento) ?? []), ...franjas]);
+    }
+
+    const errores: Array<{ documento: string; nombre: string | null; motivos: MotivoRechazo[] }> = [];
+    const aplicar: Array<{ idDocente: string; documento: string; franjas: string[]; avisos: string[] }> = [];
+    for (const [documento, franjas] of pares) {
+      const docente = await this.cargarDocente(documento); // 404 si no existe: nada se escribió
+      const situacion = resolverSituacion(docente.categoriaRaw, docente.situacionRaw);
+      docente.situacionAsignable = situacion.asignable;
+      docente.situacionMotivo = situacion.motivo;
+      const grupo = await this.cargarGrupo(dto.idGrupo, 0, franjas); // 400 si alguna franja no es del grupo
+      if (!grupo.todas.length) {
+        throw new BadRequestException('El grupo no tiene franjas: defina su horario antes de asignar docentes.');
+      }
+      const { motivos } = await this.evaluar(docente, grupo, token ?? null);
+      if (motivos.length) errores.push({ documento, nombre: docente.nombre ?? null, motivos });
+      else aplicar.push({ idDocente: docente.idDocente, documento, franjas, avisos: situacion.aviso ? [situacion.aviso] : [] });
+    }
+    // Un solo bloqueo basta para no guardar NADA.
+    if (errores.length) return { asignado: false, errores };
+
+    await this.dataSource.transaction(async (m) => {
+      for (const a of aplicar) {
+        await this.asignarFranjas(m, { idGrupo: dto.idGrupo, documento: a.documento, asignadoPor: dto.asignadoPor ?? undefined, observaciones: dto.observaciones ?? null }, a.idDocente, a.franjas);
+      }
+    });
+    return { asignado: true, resultados: aplicar.map((a) => ({ documento: a.documento, franjas: a.franjas, avisos: a.avisos })) };
+  }
+
+  /**
    * Asignación de ALGUNAS franjas del grupo (EFDS-2341): un docente por franja. Se
    * escribe en la franja (registro único) y `asignacion_docente`, que es «el docente
    * del grupo», queda solo si todas las franjas tienen el mismo docente; si el grupo
@@ -540,6 +599,8 @@ export class AsignacionesService {
       area: area ? { codigo: area.codigo, nombre: area.nombre, nucleoAsignatura: area.nucleoAsignatura } : null,
       candidatos: [],
       sugerido: null,
+      resumen: { total: 0, asignables: 0, bloqueados: 0 },
+      aviso: null,
       mensaje: null,
     };
     if (!area) {
@@ -582,8 +643,13 @@ export class AsignacionesService {
     const porCedula = (a: Candidato, b: Candidato) => a.documento.localeCompare(b.documento, 'es', { numeric: true });
     candidatos.sort((a, b) => Number(b.asignable) - Number(a.asignable) || a.horasProgramadas - b.horasProgramadas || porCedula(a, b));
     const aptos = candidatos.filter((c) => c.asignable);
+    const resumen = { total: candidatos.length, asignables: aptos.length, bloqueados: candidatos.length - aptos.length };
     if (!aptos.length) {
-      return { ...base, candidatos, mensaje: `Hay ${candidatos.length} docente(s) del área «${area.nombre}», pero todos tienen algún bloqueo: revise los motivos.` };
+      // EFDS-2434: la lista se entrega completa; el texto es un AVISO, no un `mensaje` que oculte los docentes.
+      return {
+        ...base, candidatos, resumen,
+        aviso: `Los ${candidatos.length} docente(s) del área «${area.nombre}» tienen algún bloqueo: revise el motivo de cada uno.`,
+      };
     }
 
     const elegido = aptos[0];
@@ -600,7 +666,7 @@ export class AsignacionesService {
       'No tiene bloqueos de situación administrativa, vinculación, escalafón ni tope (EFDS-1372).',
     ];
     if (empatados > 0) razones.push(`Empata en horas con ${empatados} docente(s) apto(s); se desempata por cédula.`);
-    return { ...base, candidatos, sugerido: { documento: elegido.documento, nombre: elegido.nombre, razones } };
+    return { ...base, candidatos, resumen, sugerido: { documento: elegido.documento, nombre: elegido.nombre, razones } };
   }
 
   /**
