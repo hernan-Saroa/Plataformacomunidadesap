@@ -60,7 +60,7 @@ describe('Periodo académico :: fechas civiles, con el servicio en UTC−5', () 
         (pta as any).ptaRepo = { manager: qr.manager };
         const c = new PeriodoAcademicoController(
           qr.manager.getRepository(PeriodoAcademicoEntity), pta,
-          { resolveForUser: async () => ({ isSuperUser: false, permissions: new Set() }) } as any);
+          { resolveForUser: async () => ({ isSuperUser: false, permissions: new Set() }), userHasAnyPermission: async () => true } as any);
         await fn(qr, c);
       } finally {
         await qr.rollbackTransaction();

@@ -22,7 +22,7 @@ import { EtapasConcertacion, RegistroFirmas } from './EtapasConcertacion';
  */
 type Accion = { item: Item; tipo: 'revisar'; revision: string } | { item: Item; tipo: 'aprobar' };
 
-export function ConcertacionBandeja({ idPeriodo, firmaSimulada }: { idPeriodo?: string; firmaSimulada: boolean }) {
+export function ConcertacionBandeja({ idPeriodo, firmaSimulada, interoperabilidadPtaApagada = false }: { idPeriodo?: string; firmaSimulada: boolean; interoperabilidadPtaApagada?: boolean }) {
   const revision = useRevisionProgramacion('concertacion');
   const [items, setItems] = useState<Item[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -62,6 +62,11 @@ export function ConcertacionBandeja({ idPeriodo, firmaSimulada }: { idPeriodo?: 
         <h3 className="font-bold text-slate-800">Concertación de la docencia</h3>
         {firmaSimulada && <span className="text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">Firma simulada (pruebas)</span>}
       </div>
+      {interoperabilidadPtaApagada && (
+        <p role="status" className="text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-600 px-3 py-2">
+          La integración con el PTA está desactivada. Las aprobaciones quedan pendientes de aplicarse al PTA.
+        </p>
+      )}
       <p className="text-xs text-slate-500">
         Orden del flujo: el programador envía → el área académica revisa y firma → la jefatura aprueba y firma →
         el docente acepta y firma. Cualquiera de los dos puede devolverla al programador con un comentario.

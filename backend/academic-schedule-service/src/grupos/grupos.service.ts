@@ -222,7 +222,7 @@ export class GruposService {
     if (ref.modelo !== 'plataforma') {
       return {
         periodoModelo: 'legado', periodoCodigo: null, programa: null, ofertasDelPeriodo: 0, ofertasDelPrograma: 0,
-        cetapsCatalogo: 0, sinTerritorial: 0,
+        cetapsCatalogo: 0, sinTerritorial: 0, unicaSede: false,
         motivo: 'El periodo seleccionado es del modelo anterior (legado) y no tiene ofertas por CETAP. Seleccione un periodo de la plataforma.',
       };
     }

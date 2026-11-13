@@ -104,6 +104,31 @@ export class PtaPermissionsService {
   }
 
 
+  /**
+   * ¿La cuenta tiene alguno de estos permisos (de cualquier módulo), o es superusuario? Consulta las
+   * asignaciones vigentes. Falla cerrado: ante un error de la base, no.
+   */
+  async userHasAnyPermission(userId: string, codes: string[]): Promise<boolean> {
+    if (!userId) return false;
+    try {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT 1
+           FROM auth."user" u
+           JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
+           JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+           LEFT JOIN auth.role_permissions rp ON rp.id_rol = r.id AND COALESCE(rp.is_active, true) = true
+           LEFT JOIN auth.permission p ON p.id_permission = rp.id_permission AND COALESCE(p.is_active, true) = true
+          WHERE u.id_user::text = $1 AND COALESCE(u.is_active, true) = true
+            AND (r.code = ANY($3::text[]) OR p.code = ANY($2::text[]))
+          LIMIT 1`,
+        [userId, codes, SUPER_ADMIN_ROLE_CODES]);
+      return rows.length > 0;
+    } catch (error: any) {
+      this.logger.error(`No se pudo verificar el permiso: ${error?.message}`);
+      return false;
+    }
+  }
+
   private buildContext(isSuperUser: boolean, permissions: Set<string>): PtaAuthContext {
     const approvesAll = isSuperUser || permissions.has(PTA_APPROVE_ALL);
     const allowedComponents = approvesAll

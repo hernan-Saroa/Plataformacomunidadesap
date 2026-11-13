@@ -59,6 +59,7 @@ import {
 } from '../../pta/shared/configuredHours';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 import { getDocenciaAprobada, getRegimenDocencia, type RegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
+import { getInteroperabilidadHabilitada } from '../../../services/api/interoperabilidadApi';
 import { DocenciaConcertada } from './DocenciaConcertada';
 import {
   catalogProgramId,
@@ -2087,6 +2088,13 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       .catch(() => { if (vigente) setConsultaRegimen({ clave: claveRegimen, valor: 'error' }); });
     return () => { vigente = false; };
   }, [claveRegimen, currentPtaId, periodo]);
+  // EFDS-2435: ¿la integración con Programación Académica está apagada? (solo para el mensaje de la Docencia Directa)
+  const [interopApagada, setInteropApagada] = useState(false);
+  useEffect(() => {
+    let vigente = true;
+    getInteroperabilidadHabilitada().then((h) => { if (vigente) setInteropApagada(h === false); }).catch(() => {});
+    return () => { vigente = false; };
+  }, []);
   // En modo admin, preserva el docente_id real del PTA (no el del admin logueado)
   const [docenteIdFromPta, setDocenteIdFromPta] = useState<string>('');
   // Ficha completa usada por el panel dinámico de identificación. Se conserva
@@ -4991,7 +4999,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       res = await savePTA(payload);
     } catch (err: any) {
       if (regimenDocencia !== 'actual' && (err?.status ?? err?.response?.status ?? err?.statusCode) === 503) {
-        toast.error('El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde.');
+        toast.error('El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde. Un administrador puede registrar la docencia manualmente desactivando la integración.');
       } else {
         toast.error('Error de conexión al guardar. Intenta de nuevo.');
       }
@@ -5070,7 +5078,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       }
     } else {
       toast.error(regimenDocencia !== 'actual' && res.status === 503
-        ? 'El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde.'
+        ? 'El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde. Un administrador puede registrar la docencia manualmente desactivando la integración.'
         : res.message || 'Error al guardar el PTA');
       return finishSaving(false);
     }
@@ -6224,6 +6232,11 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
                 {regimenDocencia === 'error' && (
                   <p role="status" className="mx-4 mb-3 text-xs text-slate-500">
                     No se pudo confirmar el régimen de Docencia. Si aparece un error al guardar, inténtalo más tarde.
+                  </p>
+                )}
+                {interopApagada && (
+                  <p role="status" className="mx-4 md:mx-6 mb-3 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    La Docencia Directa se registra manualmente en este PTA. La integración con Programación Académica está desactivada por el administrador.
                   </p>
                 )}
                 <SectionHeader title="Docencia Directa" subtitle={`${hDocencia}h programadas (máx 10 asignaturas)`}
