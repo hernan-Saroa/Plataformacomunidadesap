@@ -36,14 +36,15 @@ describe('EFDS-2346 :: periodo personalizado y extraordinario (agregado real, en
   }, 30000);
   afterAll(async () => { if (ds?.isInitialized) await ds.destroy(); });
 
-  const controlador = (qr: QueryRunner, permisos: string[] = []) => {
+  // `puedeCrear`: ¿la cuenta tiene el permiso de crear periodos (EFDS-2427)? Por defecto sí; el 403 se prueba aparte.
+  const controlador = (qr: QueryRunner, permisos: string[] = [], puedeCrear = true) => {
     const pta = Object.create(PtaService.prototype) as PtaService;
     (pta as any).logger = { log: () => {}, warn: () => {} };
     (pta as any).ptaRepo = { manager: qr.manager };
     return new PeriodoAcademicoController(
       qr.manager.getRepository(PeriodoAcademicoEntity),
       pta,
-      { resolveForUser: async () => ({ isSuperUser: false, permissions: new Set(permisos) }) } as any,
+      { resolveForUser: async () => ({ isSuperUser: false, permissions: new Set(permisos) }), userHasAnyPermission: async () => puedeCrear } as any,
     );
   };
   const req = { user: { userId: '00000000-0000-4000-8000-000000002346' } };
@@ -70,6 +71,16 @@ describe('EFDS-2346 :: periodo personalizado y extraordinario (agregado real, en
   const estados = async (qr: QueryRunner) => Object.fromEntries((await qr.query(
     `SELECT codigo, estado || CASE WHEN extraordinario THEN '+extra' ELSE '' END AS e
        FROM academic_work_plan.periodo_academico WHERE codigo IN ('2049-2', '2049-INT', '2050-1')`)).map((r: any) => [r.codigo, r.e]));
+
+  caso('EFDS-2427: crear un periodo sin el permiso de Programación Académica da 403 (y nada se escribe), desde la pantalla que sea', async (qr) => {
+    const c = controlador(qr, [], false);
+    await expect(c.create({ anio: 2050, semestre: 1, fechaInicio: '2050-02-01', fechaFin: '2050-06-15' }, req)).rejects.toThrow(/Programación Académica/);
+    await expect(c.create({ anio: 2050, semestre: 1, fechaInicio: '2050-02-01', fechaFin: '2050-06-15' }, req)).rejects.toMatchObject({ status: 403 });
+    expect((await estados(qr))['2050-1']).toBeUndefined();
+    // Con el permiso, sí.
+    const ok = await controlador(qr).create({ anio: 2050, semestre: 1, fechaInicio: '2050-02-01', fechaFin: '2050-06-15' }, req);
+    expect(ok.codigo).toBe('2050-1');
+  });
 
   caso('el personalizado es un periodo más: código y nombre propios, sin semestre', async (qr) => {
     const c = controlador(qr);
