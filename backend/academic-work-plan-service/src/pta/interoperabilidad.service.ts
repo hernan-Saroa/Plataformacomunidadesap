@@ -100,10 +100,10 @@ export class InteroperabilidadService implements OnModuleInit {
       cambiadoPorCorreo: actor.email,
     };
     const antesDe = { habilitada: actual.habilitada, desdePeriodo: actual.desdePeriodo };
-    // Un solo UPSERT: atómico, y dos cambios simultáneos quedan en el orden en que la base los reciba.
+    // Asegura la fila (si faltara) y la actualiza. Sin ON CONFLICT: ver sembrarInteroperabilidad.
+    await sembrarInteroperabilidad(this.dataSource);
     await this.dataSource.query(
-      `INSERT INTO academic_work_plan."ConfiguracionSistema" (clave, valor, "updatedAt") VALUES ($1, $2::jsonb, NOW())
-       ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, "updatedAt" = NOW()`,
+      `UPDATE academic_work_plan.\"ConfiguracionSistema\" SET valor = $2::jsonb, "updatedAt" = NOW() WHERE clave = $1`,
       [CLAVE_INTEROPERABILIDAD, JSON.stringify(nuevoValor)]);
     await this.auditar(actor, antesDe, { habilitada: nuevoValor.habilitada, desdePeriodo: corte }, motivo);
 

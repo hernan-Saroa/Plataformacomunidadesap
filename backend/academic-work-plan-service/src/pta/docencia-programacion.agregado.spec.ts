@@ -95,7 +95,7 @@ describe('EFDS-2315 :: aplicar la decisión al PTA (agregado real, en transacci�
 
   for (const tipo of ['uuid', 'text'] as const) {
     caso('PTA en borrador: se aplica, con la Docencia aprobada por la concertación', tipo, async () => {
-      await crearPta('BORRADOR', [{ asignatura_id: '9', asignatura_nombre: 'Manual' }]);
+      await crearPta('BORRADOR');
       expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
       expect(await fila()).toEqual({ estado_aplicacion: 'aplicada', id_pta: ID_PTA, aplicada: true });
       expect(await aprobaciones()).toEqual([{ componente: 'academica_pregrado', estado: 'aprobado', scope: 'programacion', scope_id: ID_CONCERTACION }]);
@@ -104,6 +104,14 @@ describe('EFDS-2315 :: aplicar la decisión al PTA (agregado real, en transacci�
       // Idempotente: aplicar de nuevo no duplica la aprobación.
       expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
       expect(await aprobaciones()).toHaveLength(1);
+    });
+
+    caso('EFDS-2435 · PTA en borrador con docencia MANUAL: no se pisa, queda pendiente por conflicto', tipo, async () => {
+      await crearPta('BORRADOR', [{ asignatura_id: '9', asignatura_nombre: 'Manual' }]);
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('pendiente_conflicto_docencia_manual');
+      const ds = (await client!.query(`SELECT "datosEstructurados" AS ds FROM academic_work_plan."PlanTrabajoAcademico" WHERE id = $1`, [ID_PTA])).rows[0].ds;
+      expect(ds.asignaturas).toEqual([{ asignatura_id: '9', asignatura_nombre: 'Manual' }]);
+      expect(await aprobaciones()).toEqual([]);
     });
 
     caso('PTA firmado: no se toca, queda pendiente', tipo, async () => {

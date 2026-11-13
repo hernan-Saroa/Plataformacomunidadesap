@@ -96,8 +96,10 @@ describe('063 :: grupo virtual, horario que define el docente (agregado real)', 
       ids.ocupado = await grupo(otra.idAsignatura, 1, 'presencial');
       await q(`INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado, id_docente)
                VALUES ($1, 'LUNES', '08:00', '10:00', 'presencial', 'TOMADA', $2)`, [ids.ocupado, ids.A]);
-      process.env.PROG_CONCERTACION_HABILITADA = 'true';
-      process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-1';
+      // Corte de la prueba en la fila compartida con el PTA (dentro de la transacción: se deshace).
+      await q(`DELETE FROM academic_work_plan."ConfiguracionSistema" WHERE clave = 'interoperabilidad_programacion'`);
+      await q(`INSERT INTO academic_work_plan."ConfiguracionSistema" (clave, valor, "updatedAt")
+               VALUES ('interoperabilidad_programacion', '{"habilitada":true,"desdePeriodo":"2049-1"}'::jsonb, NOW())`);
       hayBase = true;
     } catch (e) {
       const conectado = !!(client as any)?._connected;

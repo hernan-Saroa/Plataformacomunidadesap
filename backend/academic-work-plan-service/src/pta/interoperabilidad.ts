@@ -91,10 +91,24 @@ export async function sembrarInteroperabilidad(q: Queryable): Promise<{ config: 
     motivo: 'Valor inicial sembrado al arrancar desde PROG_CONCERTACION_HABILITADA', cambiadoPor: null,
     cambiadoEn: new Date().toISOString(), origenInicial: inicial.origen,
   };
-  const r: any[] = await q.query(
-    `INSERT INTO academic_work_plan."ConfiguracionSistema" (clave, valor, "updatedAt")
-     VALUES ($1, $2::jsonb, NOW()) ON CONFLICT (clave) DO NOTHING RETURNING clave`,
-    [CLAVE_INTEROPERABILIDAD, JSON.stringify(valor)]);
+  // Sin ON CONFLICT: algunos ambientes restaurados no tienen la llave primaria (la migración 691 la repone).
+  // Con ella, la réplica que llega segunda choca (23505) y se ignora: nadie pisa lo ya guardado.
+  let r: any[] = [];
+  try {
+    r = await q.query(
+      `INSERT INTO academic_work_plan.\"ConfiguracionSistema\" (clave, valor, "updatedAt")
+       SELECT $1, $2::jsonb, NOW() WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.\"ConfiguracionSistema\" WHERE clave = $1) RETURNING clave`,
+      [CLAVE_INTEROPERABILIDAD, JSON.stringify(valor)]);
+  } catch (e: any) {
+    if (e?.code !== '23505' && e?.driverError?.code !== '23505') throw e;
+  }
+  if (r.length > 0) {
+    // Dos réplicas arrancando a la vez en una base sin la llave única (ver 691) pueden dejar la fila doble:
+    // se conserva una sola (la más antigua físicamente), la misma para todas.
+    await q.query(
+      `DELETE FROM academic_work_plan."ConfiguracionSistema" WHERE clave = $1
+          AND ctid <> (SELECT MIN(ctid) FROM academic_work_plan."ConfiguracionSistema" WHERE clave = $1)`, [CLAVE_INTEROPERABILIDAD]);
+  }
   const config = await leerInteroperabilidad(q);
   const sembrada = r.length > 0;
   return { config, sembrada, difiereDeVariable: !sembrada && inicial.origen !== 'por_defecto' && inicial.habilitada !== config.habilitada };
