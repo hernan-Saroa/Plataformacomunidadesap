@@ -204,6 +204,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3003
+      # Integración PTA <-> Programación Académica: APAGADA en producción (Docencia Directa manual).
+      PROG_CONCERTACION_HABILITADA: "false"
 
       DB_HOST: db
       DB_PORT: 5432
