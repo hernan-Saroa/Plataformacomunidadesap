@@ -171,6 +171,7 @@ export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): P
 
 /** Por qué el selector de oferta CETAP está vacío o incompleto (periodo sin carga, programa no ofertado…). */
 export interface EstadoOfertasCetap {
+  unicaSede?: boolean;
   periodoModelo: 'plataforma' | 'legado';
   periodoCodigo: string | null;
   programa: string | null;
