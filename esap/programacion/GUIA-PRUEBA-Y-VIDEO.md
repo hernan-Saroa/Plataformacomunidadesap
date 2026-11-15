@@ -151,3 +151,16 @@ Seguir `C:\Users\Tomas\.claude\CLAUDE.md` (flujo de video con el MCP de Playwrig
 - [ ] Deshacer lo creado (stack desechable: `reset-2027.sql`; QA: solo lo autorizado, con la lista anotada).
 - [ ] Anotar en `INTEGRACION-claude.md` qué se verificó en QA y qué solo en el stack desechable (decirlo sin rodeos).
 - [ ] Entregar el video y, aparte, la lista de lo que falló o se vio raro.
+
+---
+
+## 6. Primera pasada hecha (15 de nov de 2026) — qué se aprendió
+
+**Resultado:** `C:\Users\Tomas\Claude\demo-pa\video-programacion-academica-nuevas-funciones.mp4` (≈12 min, 1920×1080, 6 capítulos). Clips crudos por capítulo y `armar.sh` (los une quitando tramos muertos) en la misma carpeta.
+
+- **QA no tiene nada de esto desplegado** (comprobado de solo lectura el 15 nov): `GET /pta/api/v1/configuracion/interoperabilidad` y `GET …/carga-programacion/referencia` dan 404, y `…/concertacion/configuracion` sigue con la forma anterior. Todo se grabó en el **stack desechable**. QA no se tocó.
+- **Duración:** salió ≈12 min, no 6–8. El ritmo lo marca el tiempo de lectura de cada rótulo (≈55 ms por carácter). Para un corte de 6–8 min: rótulos más cortos, o dejar fuera los capítulos 3 (editar/eliminar) y 6.
+- **Se grabó por capítulos** (un clip por capítulo): un fallo no obliga a repetir todo. Los ayudantes de rótulos van dentro de la página (`window.dv`) y **se pierden cuando la página se recarga** (p. ej. al pulsar «Ir a Programación Académica»): reinstalarlos.
+- **Capítulo 6:** la cuenta de Gestión Profesoral del stack no ve Programación Académica ni Programas Académicos, así que el «403» se muestra con una **llamada real a la API** desde esa sesión, con la respuesta en pantalla (no hay botón que pulsar).
+- **Datos de la demo:** 2027-2 se crea y se copia desde 2026-1 en el capítulo 1; el 2 carga `ASIG-00003` grupo 5 y `ASIG-00005` grupo 1; el 3 usa `ASIG-00005` (sin docentes en su área: no sirve para el 4); el 4 usa `ASIG-00003` grupo 1 (sale un docente bloqueado por sabático y otro por cruce). Para repetir: `reset-2027.sql` y `preparar-2027-2.mjs` (scratchpad de la sesión).
+- **Trampas de la pantalla:** «Cancelar» con datos escritos pide confirmar el descarte; el botón de la papelera de una sesión está dentro del bloque de la sesión (hay que buscarlo con nombre exacto «Eliminar sesión HH:MM–HH:MM»); `Lunes` viene marcado por defecto al agregar sesión.
