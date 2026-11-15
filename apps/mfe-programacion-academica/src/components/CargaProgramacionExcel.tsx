@@ -116,7 +116,7 @@ export function CargaProgramacionExcel({ idPeriodo, codigoPeriodo, onCerrar }: P
             {cargado ? 'Programación cargada.' : r.valido ? 'El archivo es válido: revise el resumen y cargue.' : `El archivo tiene ${r.errores.length} error(es): corríjalos y vuelva a subirlo. No se escribió nada.`}
           </p>
           <p>
-            {r.resumen.filas} fila(s) · {r.resumen.gruposNuevos} grupo(s) nuevo(s) · {r.resumen.gruposExistentes} existente(s) ·{' '}
+            {!cargado && !r.valido ? 'Lo que sí pasó la validación (no se escribió): ' : ''}{r.resumen.filas} fila(s) · {r.resumen.gruposNuevos} grupo(s) nuevo(s) · {r.resumen.gruposExistentes} existente(s) ·{' '}
             {r.resumen.sesiones} sesión(es) · {r.resumen.asignaciones} docente(s) asignado(s)
           </p>
           {r.errores.length > 0 && (
