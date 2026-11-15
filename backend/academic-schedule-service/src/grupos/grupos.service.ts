@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
@@ -26,6 +26,11 @@ export interface CrearGrupoDto {
   idOfertaCetap?: string | number | null;
   /** Presencial (por defecto) o virtual: horario opcional, lo define el docente (063). */
   modalidad?: ModalidadGrupo;
+  /**
+   * Número explícito del grupo (carga por plantilla y copia de otro periodo). Solo con
+   * cantidad 1; si ya existe en (asignatura, periodo, oferta) se rechaza: no se renumera.
+   */
+  numeroGrupo?: number;
 }
 
 function validarModalidad(m: unknown): ModalidadGrupo {
@@ -107,9 +112,16 @@ export class GruposService {
     });
     const numeros = existentes.map((g) => g.numeroGrupo);
 
+    if (dto.numeroGrupo !== undefined && dto.numeroGrupo !== null) {
+      const n = Number(dto.numeroGrupo);
+      if (cantidad !== 1) throw new BadRequestException('Un número de grupo explícito solo se usa al crear un grupo.');
+      if (!Number.isInteger(n) || n < 1 || n > 999) throw new BadRequestException('El número de grupo debe ser un entero entre 1 y 999.');
+      if (numeros.includes(n)) throw new ConflictException(`El grupo ${n} ya existe para esta asignatura en el periodo.`);
+    }
+
     const creados: GrupoEntity[] = [];
     for (let i = 0; i < cantidad; i += 1) {
-      const numero = siguienteNumeroGrupo(numeros);
+      const numero = dto.numeroGrupo != null ? Number(dto.numeroGrupo) : siguienteNumeroGrupo(numeros);
       numeros.push(numero);
       creados.push(
         this.grupoRepo.create({

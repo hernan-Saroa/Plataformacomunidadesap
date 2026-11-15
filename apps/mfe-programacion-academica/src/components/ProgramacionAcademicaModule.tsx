@@ -39,6 +39,7 @@ import { ArbolProgramacion } from './ArbolProgramacion';
 import { DisponibilidadDocente } from './DisponibilidadDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
+import { CargaProgramacionExcel } from './CargaProgramacionExcel';
 import { getMisPermisos, type MisPermisos } from '../services/api/vistaApi';
 import { ConcertacionBandeja } from './ConcertacionBandeja';
 import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
@@ -126,6 +127,7 @@ export function ProgramacionAcademicaModule({
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
   const [jornada, setJornada] = useState('TODAS');
+  const [verCargaExcel, setVerCargaExcel] = useState(false);
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -455,6 +457,10 @@ export function ProgramacionAcademicaModule({
               <span className="text-emerald-700">{estadoPub.aprobada} aprobadas</span>
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setVerCargaExcel((v) => !v)} aria-expanded={verCargaExcel}
+                className="px-3 py-2 rounded-lg border border-[#003DA5] text-[#003DA5] text-xs font-bold hover:bg-blue-50 active:scale-95 transition-all">
+                {verCargaExcel ? 'Ocultar carga desde Excel' : 'Cargar desde Excel'}
+              </button>
               {estadoPub.publicada === 0 && estadoPub.tomada === 0 && estadoPub.aprobada === 0 ? (
                 <button type="button" disabled={pubOcupado || estadoPub.total === 0} onClick={publicar}
                   className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
@@ -475,6 +481,9 @@ export function ProgramacionAcademicaModule({
             <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">{avisoPub}</div>
           )}
         </div>
+      )}
+      {seccion === 'horarios' && verCargaExcel && periodoActual && periodoProgramable && !!misPermisos?.programar.length && (
+        <CargaProgramacionExcel key={periodoActual.idPeriodo} idPeriodo={periodoActual.idPeriodo} codigoPeriodo={periodoActual.codigo} onCerrar={() => setVerCargaExcel(false)} />
       )}
 
       {seccion === 'catalogo' && misPermisos?.programar.length ? <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} /> : null}
