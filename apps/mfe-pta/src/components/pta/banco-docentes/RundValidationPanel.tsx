@@ -31,6 +31,7 @@ import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 import { RUND_CARPETA_ORDEN, rundCarpeta } from '../../../utils/rundCarpetas';
 import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_ARCHIVO_MB, rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
 import { auditCambiosOf, formatAuditValue } from './rundAuditCambios';
+import { formatFechaPrueba } from '../../../utils/rundPeriodoPrueba';
 import { esSoporteDeTitulo, NIVEL_TITULO_POR_SOPORTE } from '../../../utils/rundSoportesTabla';
 
 // ============================================================================
@@ -850,6 +851,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             {Number(entry.metadata?.evidenciasVigentes) > 1 && entry.metadata?.evidencia && <div>Evidencia {entry.metadata.evidencia} de {entry.metadata.evidenciasVigentes}{entry.metadata.evidenciaAdicional ? ' · evidencia adicional' : ''}</div>}
             {entry.accion === 'ELIMINAR_DOCUMENTO' && entry.metadata?.evidenciasVigentes !== undefined && <div>Evidencias vigentes del punto: {entry.metadata.evidenciasVigentes}</div>}
             {Array.isArray(entry.metadata?.orden) && <div>Orden de análisis: {entry.metadata.orden.map((item: any) => `${item.posicion}. ${item.nombreArchivo || 'Documento'}`).join(' · ')}</div>}
+            {entry.accion === 'DECISION_COMITE_PRUEBA' && <div data-testid="rund-audit-decision-prueba" style={{ marginTop: 2, overflowWrap: 'anywhere' }}>
+              <div><strong>Resultado:</strong> {entry.metadata?.resultadoEtiqueta || entry.metadata?.resultado}{entry.metadata?.correccion ? ' (corrección)' : ''}</div>
+              <div><strong>Fecha del comité:</strong> {formatFechaPrueba(entry.metadata?.fechaComite)}</div>
+              <div><strong>Soporte:</strong> {entry.metadata?.soporteNombre || entry.soporteId || entry.soporte_id || '—'}</div>
+              {entry.metadata?.motivo && <div><strong>Motivo:</strong> {entry.metadata.motivo}</div>}
+              {entry.metadata?.observacion && <div><strong>Observación:</strong> {entry.metadata.observacion}</div>}
+            </div>}
             {entry.metadata?.nombreArchivo && <div>{entry.metadata.nombreArchivo}</div>}
             {entry.metadata?.version && <div>Versión {entry.metadata.version}</div>}
             {entry.metadata?.versionNueva && <div>Versión {entry.metadata.versionAnterior} → {entry.metadata.versionNueva}</div>}

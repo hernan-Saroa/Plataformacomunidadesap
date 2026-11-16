@@ -205,6 +205,7 @@ export class BancoDocentesController {
     @Query('nucleoTematico') nucleoTematico?: string,
     @Query('convocatoria') convocatoria?: string,
     @Query('clase') clase?: string,
+    @Query('periodoPrueba') periodoPrueba?: string,
   ) {
     const result = await this.service.list({
       territorial,
@@ -219,6 +220,7 @@ export class BancoDocentesController {
       nucleoTematico,
       convocatoria,
       clase,
+      periodoPrueba,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -249,6 +251,7 @@ export class BancoDocentesController {
     @Query('nucleoTematico') nucleoTematico?: string,
     @Query('convocatoria') convocatoria?: string,
     @Query('clase') clase?: string,
+    @Query('periodoPrueba') periodoPrueba?: string,
   ) {
     return {
       success: true,
@@ -264,8 +267,17 @@ export class BancoDocentesController {
         nucleoTematico,
         convocatoria,
         clase,
+        periodoPrueba,
       }),
     };
+  }
+
+  /** HU 2424 — Alerta: docentes con el año de prueba cumplido y sin decisión del Comité Docente. */
+  @Get('periodo-prueba/alertas')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async alertasPeriodoPrueba() {
+    return { success: true, data: await this.service.getAlertasPeriodoPrueba() };
   }
 
   /** Carpetas del expediente que aplican a cada tipo de vinculación. Solo con el permiso de configuración. */
@@ -962,6 +974,16 @@ export class BancoDocentesController {
     const actor = this.requestActor(req);
     const actorId = actor.actorId;
     const result = await this.service.cambiarEstado(id, { ...body, actorId, ip: actor.ip });
+    return { success: true, data: result };
+  }
+
+  /** HU 2424 — Decisión del Comité Docente sobre el periodo de prueba (solo GGP autorizado, RN-08). */
+  @Post(':id/periodo-prueba/decision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async decisionPeriodoPrueba(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const result = await this.service.registrarDecisionPeriodoPrueba(id, { ...(body || {}), actorId: actor.actorId, ip: actor.ip });
     return { success: true, data: result };
   }
 

@@ -4,16 +4,20 @@ import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
   X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight, Trash2,
   GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info, UserPlus, MailPlus,
-  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History, Settings
+  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History, Settings, Gavel, AlertTriangle
 } from 'lucide-react';
 import {
-  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes
+  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes,
+  getAlertasPeriodoPrueba
 } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesExport, downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import { recopilarTodasLasPaginas } from '../../../utils/recopilarPaginas';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { BancoDocenteEstadoModal } from './BancoDocenteEstadoModal';
+import { BancoDocenteDecisionPruebaModal } from './BancoDocenteDecisionPruebaModal';
+import { PeriodoPruebaCelda } from './PeriodoPruebaCelda';
+import { diasRestantesTexto, formatFechaPrueba } from '../../../utils/rundPeriodoPrueba';
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -163,6 +167,9 @@ export function BancoDocentesPTA() {
   const [filterTerritorial, setFilterTerritorial] = useState('');
   const [filterDedicacion, setFilterDedicacion] = useState('');
   const [filterClase, setFilterClase] = useState('');
+  // HU 2424: '' = todos · EN_PRUEBA · PENDIENTE (año cumplido sin decisión del comité)
+  // La alerta del GGP abre el listado ya filtrado (?rundPeriodoPrueba=PENDIENTE).
+  const [filterPrueba, setFilterPrueba] = useState(() => (new URLSearchParams(window.location.search).get('rundPeriodoPrueba') === 'PENDIENTE' ? 'PENDIENTE' : ''));
   const [filterVinculacion, setFilterVinculacion] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [territorialFilterOptions, setTerritorialFilterOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -177,7 +184,11 @@ export function BancoDocentesPTA() {
   });
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
+  const [decisionPrueba, setDecisionPrueba] = useState<any>(null);
+  const [alertasPrueba, setAlertasPrueba] = useState<{ total: number; items: Array<{ docente_id: string; nombre_completo: string; cumplimiento: string | null; dias_vencido: number | null }> } | null>(null);
   const canDelete = hasPermission('banco-docentes.rund.carga') || hasPermission('banco-docentes.rund.manage');
+  // HU 2424 (CA-08): solo quien gestiona el RUND (GGP autorizado) ve la decisión del comité; el servidor lo vuelve a exigir.
+  const canDecidirPrueba = !readOnly && hasPermission('banco-docentes.rund.manage');
   const canExport = hasPermission('banco-docentes.rund.export');
   const [exporting, setExporting] = useState(false);
   const [markedIds, setMarkedIds] = useState<Set<string>>(() => new Set());
@@ -186,7 +197,7 @@ export function BancoDocentesPTA() {
   // In all-results mode, markedIds contains the explicitly excluded rows.
   const markedCount = allFiltered ? Math.max(0, total - markedIds.size) : markedIds.size;
   const clearMarked = () => { setMarkedIds(new Set()); setAllFiltered(false); };
-  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
+  useEffect(() => { clearMarked(); }, [search, filterTerritorial, filterDedicacion, filterClase, filterPrueba, filterVinculacion, filterEstado, filterPeriodo, canDelete]);
   const markRow = (id: string) => {
     setMarkedIds(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
@@ -202,6 +213,18 @@ export function BancoDocentesPTA() {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
   };
+
+  // HU 2424 (CA-03): alerta al GGP con los docentes cuyo año de prueba ya se cumplió y no tienen decisión del comité.
+  const cargarAlertasPrueba = useCallback(async () => {
+    if (!canDecidirPrueba) { setAlertasPrueba(null); return; }
+    try {
+      const res = await getAlertasPeriodoPrueba();
+      setAlertasPrueba(res.success && res.data ? res.data : null);
+    } catch {
+      setAlertasPrueba(null);
+    }
+  }, [canDecidirPrueba]);
+  useEffect(() => { void cargarAlertasPrueba(); }, [cargarAlertasPrueba]);
 
   useEffect(() => {
     import('../../../../../shell/src/services/api').then(({ apiClient }) => {
@@ -296,6 +319,7 @@ export function BancoDocentesPTA() {
     setFilterTerritorial(filters.territorial ?? statsFilterTerritorial);
     setFilterDedicacion(filters.dedicacion ?? statsFilterDedicacion);
     setFilterVinculacion('');
+    setFilterPrueba('');
     setFilterEstado(filters.estado ?? statsFilterEstado);
     if (statsConvocatoria) showToast('El listado no se filtra por convocatoria; consúltala en Trazabilidad.');
     setSearch('');
@@ -308,8 +332,8 @@ export function BancoDocentesPTA() {
     setLoading(true);
     try {
       const [res, listStatsRes] = await Promise.all([
-        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
-        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, periodoPrueba: filterPrueba || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, periodoPrueba: filterPrueba || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
       ]);
       if (requestId !== listadoRequest.current) return;
       if (res.success && res.data) {
@@ -332,14 +356,14 @@ export function BancoDocentesPTA() {
     } finally {
       if (requestId === listadoRequest.current) setLoading(false);
     }
-  }, [filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado, search, page, filterPeriodo]);
+  }, [filterTerritorial, filterDedicacion, filterClase, filterPrueba, filterVinculacion, filterEstado, search, page, filterPeriodo]);
 
-  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado, filterPeriodo]);
+  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterClase, filterPrueba, filterVinculacion, filterEstado, filterPeriodo]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => { loadData(1); setPage(1); }, 400);
     return () => clearTimeout(searchTimeout.current);
-  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterClase, filterVinculacion, filterEstado]);
+  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterClase, filterPrueba, filterVinculacion, filterEstado]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     loadData(page);
@@ -366,7 +390,7 @@ export function BancoDocentesPTA() {
     setExporting(true);
     try {
       const items = await recopilarTodasLasPaginas<any>(async (pagina) => {
-        const res = await getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: pagina, limit: 50, periodoCarga: filterPeriodo || undefined });
+        const res = await getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, clase: filterClase || undefined, periodoPrueba: filterPrueba || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: pagina, limit: 50, periodoCarga: filterPeriodo || undefined });
         if (!res.success || !res.data) return null;
         const datos = res.data as { items?: any[]; data?: any[]; pages?: number };
         return { items: datos.items || datos.data || [], pages: datos.pages || 1 };
@@ -623,6 +647,22 @@ export function BancoDocentesPTA() {
       {/* ── Tab: Listado ─────────────────────────────────────────────────── */}
       {tab === 'listado' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px 24px' }}>
+          {alertasPrueba && alertasPrueba.total > 0 && (
+            <div role="alert" data-testid="alerta-periodo-prueba" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 16px', borderRadius: 10, border: '1px solid #FCD34D', background: '#FFFBEB', color: '#92400E' }}>
+              <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', lineHeight: 1.5 }}>
+                <strong>{alertasPrueba.total === 1 ? '1 docente cumplió el año de periodo de prueba' : `${alertasPrueba.total} docentes cumplieron el año de periodo de prueba`} y está pendiente de decisión del Comité Docente.</strong>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {alertasPrueba.items.slice(0, 5).map((item) => (
+                    <li key={item.docente_id}>{item.nombre_completo} · cumplió el {formatFechaPrueba(item.cumplimiento)} ({diasRestantesTexto(item.dias_vencido ? -item.dias_vencido : 0)})</li>
+                  ))}
+                </ul>
+                {alertasPrueba.total > 5 && <div>y {alertasPrueba.total - 5} más…</div>}
+              </div>
+              <button type="button" onClick={() => { setFilterPrueba('PENDIENTE'); setPage(1); }} style={{ flexShrink: 0, border: '1px solid #F59E0B', background: '#fff', color: '#92400E', borderRadius: 8, padding: '6px 12px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>Ver pendientes</button>
+            </div>
+          )}
+
           {/* Stats cards */}
           {listStats && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12 }}>
@@ -674,12 +714,17 @@ export function BancoDocentesPTA() {
                 <option value="">Todas las vinculaciones</option>
               {VINCULACION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
+            <select className="w-full lg:w-[190px]" value={filterPrueba} onChange={(e) => setFilterPrueba(e.target.value)} aria-label="Filtrar docentes por periodo de prueba" style={{ flex: '0 1 190px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
+              <option value="">Periodo de prueba: todos</option>
+              <option value="EN_PRUEBA">En periodo de prueba</option>
+              <option value="PENDIENTE">Pendientes de decisión del comité</option>
+            </select>
             <select className="w-full lg:w-[130px]" value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} aria-label="Filtrar docentes por estado" style={{ flex: '0 1 130px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
               <option value="">Todos los estados</option>
               {ESTADO_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            {(filterTerritorial || filterDedicacion || filterClase || filterVinculacion || filterEstado || search) && (
-              <button className="sm:col-span-2 lg:col-span-1 lg:w-auto justify-center" onClick={() => { setSearch(''); setFilterTerritorial(''); setFilterDedicacion(''); setFilterClase(''); setFilterVinculacion(''); setFilterEstado(''); setPage(1); }} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fff1f2', cursor: 'pointer', fontSize: '0.74rem', color: '#dc2626', whiteSpace: 'nowrap' }}>
+            {(filterTerritorial || filterDedicacion || filterClase || filterPrueba || filterVinculacion || filterEstado || search) && (
+              <button className="sm:col-span-2 lg:col-span-1 lg:w-auto justify-center" onClick={() => { setSearch(''); setFilterTerritorial(''); setFilterDedicacion(''); setFilterClase(''); setFilterPrueba(''); setFilterVinculacion(''); setFilterEstado(''); setPage(1); }} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fff1f2', cursor: 'pointer', fontSize: '0.74rem', color: '#dc2626', whiteSpace: 'nowrap' }}>
                 <X size={12} /> Limpiar
               </button>
             )}
@@ -725,7 +770,7 @@ export function BancoDocentesPTA() {
                 <button type="button" onClick={clearMarked}>Limpiar selección</button>
                 <button type="button" className="rund-delete-action" disabled={loading || !markedCount} onClick={() => setDeleteTarget(allFiltered ? {
                   todosFiltrados: true, excluirIds: [...markedIds], filters: { search, territorial: filterTerritorial, dedicacion: filterDedicacion,
-                    vinculacion: filterVinculacion, estado: filterEstado, periodoCarga: filterPeriodo },
+                    vinculacion: filterVinculacion, estado: filterEstado, periodoCarga: filterPeriodo, periodoPrueba: filterPrueba },
                 } : { ids: [...markedIds] })}><Trash2 size={15} />Eliminar seleccionados ({markedCount})</button>
               </>}
             </div>}
@@ -878,6 +923,7 @@ export function BancoDocentesPTA() {
                         {/* ── Celda CATEGORÍA ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle', fontSize: '13px', color: '#374151' }}>
                           <div>{d.vinculacion || '—'}</div>
+                          <PeriodoPruebaCelda info={d.periodo_prueba} />
                           {d.categoria && <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>Categoría: {d.categoria}</div>}
                         </td>
 
@@ -948,6 +994,17 @@ export function BancoDocentesPTA() {
                             {canDelete && <button type="button" title="Eliminar de RUND" aria-label={`Eliminar de RUND a ${d.nombre_completo}`}
                               onClick={() => setDeleteTarget({ ids: [d.docente_id || d.id] })}
                               style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={14} /></button>}
+                            {/* HU 2424: decisión del Comité Docente (solo GGP autorizado) */}
+                            {canDecidirPrueba && (d.periodo_prueba?.en_periodo_prueba || d.periodo_prueba?.decision) && (
+                              <button
+                                onClick={() => setDecisionPrueba(d)}
+                                title={d.periodo_prueba?.decision ? 'Corregir decisión del comité' : 'Registrar decisión del comité'}
+                                aria-label={`${d.periodo_prueba?.decision ? 'Corregir' : 'Registrar'} decisión del comité de ${d.nombre_completo}`}
+                                style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #BFDBFE', background: d.periodo_prueba?.pendiente_decision ? '#DBEAFE' : '#EFF6FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <Gavel size={14} color="#1D4ED8" />
+                              </button>
+                            )}
                             {/* Botón Toggle Estado */}
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
@@ -1521,6 +1578,19 @@ export function BancoDocentesPTA() {
           periodoSeleccionado={filterPeriodo || undefined}
           onClose={() => setEditDocente(null)}
           onSaved={() => { setEditDocente(null); loadData(); showToast('Docente guardado correctamente'); }}
+        />
+      )}
+
+      {decisionPrueba !== null && (
+        <BancoDocenteDecisionPruebaModal
+          docente={decisionPrueba}
+          onClose={() => setDecisionPrueba(null)}
+          onSaved={(resultado) => {
+            setDecisionPrueba(null);
+            loadData();
+            void cargarAlertasPrueba();
+            showToast(resultado === 'SUPERA' ? 'Decisión registrada: el docente pasó a Carrera 2' : 'Decisión registrada: el docente quedó inactivo');
+          }}
         />
       )}
 
