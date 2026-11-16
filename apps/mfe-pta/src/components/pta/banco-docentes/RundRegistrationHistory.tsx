@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { RundConvocatoriaField } from '../../../../../shared/RundConvocatoriaField';
 import { Archive, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, FileSpreadsheet, History, Info, RefreshCw, Search, User, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { downloadBancoDocentesBulkSupport, getRundConvocatorias, getRundRegistrationHistory, getRundRegistrationHistoryDetail,
+import { downloadRundBulkErrorReport } from '../../../utils/rundBulkErrorReport';
+import { downloadBancoDocentesBulkSupport, getBancoDocentesBulkErrors, getRundConvocatorias, getRundRegistrationHistory, getRundRegistrationHistoryDetail,
   type RundRegistrationDetail, type RundRegistrationEvent, type RundRegistrationHistoryPage } from '../../../services/api/ptaApi';
 import { rundActorName } from '../../../utils/rundActorName';
 import './RundRegistrationHistory.css';
@@ -80,7 +81,8 @@ function RegistrationDetail({ event }: { event: RundRegistrationEvent }) {
 function RegistrationCard({ event, canDownload }: { event: RundRegistrationEvent; canDownload: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const bulk = event.tipo === 'MASIVO';
+  const [downloadingErrors, setDownloadingErrors] = useState(false);
+  const bulk =event.tipo === 'MASIVO';
   const recovery = event.origen === 'RECUPERACION_INFORMATIVA';
   const recoveryActor = event.responsableRecuperacion === 'Sistema' ? 'Proceso automático' : rundActorName(event.responsableRecuperacion);
   const counters: [keyof RundRegistrationEvent['resumen'], string][] = recovery ? (event.resumen?.recuperados != null ? [['recuperados', 'Perfiles con información recuperada']] : [['total', 'Registros de esta recuperación']])
@@ -95,6 +97,16 @@ function RegistrationCard({ event, canDownload }: { event: RundRegistrationEvent
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { toast.error('No fue posible descargar el archivo original.'); }
     finally { setDownloading(false); }
+  };
+  const downloadErrors = async () => {
+    if (!canDownload || downloadingErrors) return;
+    setDownloadingErrors(true);
+    try {
+      const { errores, disponible } = await getBancoDocentesBulkErrors(event.id);
+      if (!disponible) toast.info('Esta carga es anterior al registro del detalle de errores. Consulte las filas "No cargadas" en «Ver personas».');
+      else if (!downloadRundBulkErrorReport(errores, event.titulo)) toast.info('Esta carga no tiene filas rechazadas.');
+    } catch { toast.error('No fue posible descargar el reporte de errores.'); }
+    finally { setDownloadingErrors(false); }
   };
   return <article className={`rund-trace__card${recovery ? ' rund-trace__card--recovery' : !bulk ? ' rund-trace__card--individual' : ''}`}>
     <div className="rund-trace__card-top"><span className={`rund-trace__icon ${recovery ? 'rund-trace__icon--archive' : !bulk ? 'rund-trace__icon--person' : ''}`}>{recovery ? <Archive size={22} /> : bulk ? <FileSpreadsheet size={22} /> : <UserPlus size={22} />}</span>
@@ -114,6 +126,7 @@ function RegistrationCard({ event, canDownload }: { event: RundRegistrationEvent
     </div>}
     <div className="rund-trace__card-actions"><span>{recovery ? 'Archivo de respaldo y datos recuperados' : bulk ? 'Archivo fuente y resultados por persona' : 'Registro realizado desde Crear Docente'}</span><div>
       {bulk && canDownload && <button type="button" onClick={download} disabled={downloading}><Download size={14} />{downloading ? 'Descargando…' : 'Archivo original'}</button>}
+      {bulk && canDownload && Number(event.resumen?.errores) > 0 && <button type="button" onClick={downloadErrors} disabled={downloadingErrors}><Download size={14} />{downloadingErrors ? 'Descargando…' : 'Reporte de errores'}</button>}
       <button type="button" className="rund-trace__expand" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Ocultar detalle' : bulk ? 'Ver personas' : 'Ver registro'}<ChevronDown size={15} style={{ transform: expanded ? 'rotate(180deg)' : undefined }} /></button>
     </div></div>
     {expanded && <RegistrationDetail event={event} />}

@@ -2322,6 +2322,14 @@ export async function downloadBancoDocentesBulkSupport(cargaId: string): Promise
   return apiClient.getBlob(`${BD_BASE}/bulk/${encodeURIComponent(cargaId)}/soporte`);
 }
 
+/** HU 1355 — filas rechazadas de una carga masiva ya guardada (para el reporte descargable del historial). */
+export async function getBancoDocentesBulkErrors(cargaId: string): Promise<{ errores: any[]; disponible: boolean }> {
+  const raw = await apiClient.get<any>(`${BD_BASE}/bulk/${encodeURIComponent(cargaId)}/errores`, undefined, { cache: 'no-store', retries: 0, skipErrorToast: true });
+  const response = normalizeResult<any>(raw, null);
+  if (!response.success || !response.data || !Array.isArray(response.data.errorDetails)) throw new Error('No fue posible consultar el reporte de errores.');
+  return { errores: response.data.errorDetails, disponible: response.data.disponible !== false };
+}
+
 export async function exportBancoDocentes(): Promise<Blob> {
   const baseUrl = (apiClient as any).baseURL || '';
   const res = await fetch(`${baseUrl}${BD_BASE}/export`, {

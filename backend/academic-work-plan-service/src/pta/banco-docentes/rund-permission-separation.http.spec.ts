@@ -28,6 +28,7 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     RUND_INCORPORADOR: [P.INCORPORADOR],
     RUND_CONSULTA: [P.CONSULTA],
     CARGADOR_REVISOR: [P.CARGADOR, P.REVISOR],
+    IMPORTADOR_SIN_SENSIBLE: [P.VIEW, P.IMPORT],
   };
   // Filas que el guard y el controlador insertan en la bitácora RundAccesoDatosLog (parámetros del INSERT).
   const accessLog: any[][] = [];
@@ -52,6 +53,8 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     guardarIncorporacion: jest.fn().mockResolvedValue({ changed: true }),
     previewRegistroDeletion: jest.fn().mockResolvedValue({ total: 1, ids: [id], fingerprint: 'a'.repeat(64), registros: [] }),
     eliminarRegistros: jest.fn().mockResolvedValue({ eliminados: 1 }),
+    getBulkErrors: jest.fn().mockResolvedValue([{ fila: 3, documentoIdentidad: '1234567890', nombre: 'Docente de Prueba',
+      columna: 'DOCUMENTO_IDENTIDAD', datoErrado: '1234567890', valorEsperado: 'Solo dígitos', mensaje: 'La cédula solo puede contener números.' }]),
     bulkUpsert: jest.fn().mockResolvedValue({ total: 1, created: 1, updated: 0, unchanged: 0, errors: 0, results: [], errorDetails: [], soporteCargaMasivaId: id }),
   };
   const ocr = {
@@ -161,6 +164,40 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     const detail = await request(app.getHttpServer()).get(`/pta/banco-docentes/trazabilidad/MASIVO/${id}`).expect(200);
     expect(detail.body.data.registros[0].documento_identidad).toBe('******7890');
     await request(app.getHttpServer()).get(`/pta/banco-docentes/bulk/${id}/soporte`).expect(403);
+  });
+
+  describe('HU 1355: reporte de errores de una carga masiva', () => {
+    it.each(['/banco-docentes', '/pta/banco-docentes'])('con permiso de importar entrega el log y deja constancia del acceso (%s)', async base => {
+      role = 'SUPER_ADMIN';
+      const result = await request(app.getHttpServer()).get(`${base}/bulk/${id}/errores`).expect(200);
+      expect(service.getBulkErrors).toHaveBeenCalledWith(id);
+      expect(result.body.data.disponible).toBe(true);
+      expect(result.body.data.errorDetails[0]).toEqual(expect.objectContaining({ fila: 3, documentoIdentidad: '1234567890', columna: 'DOCUMENTO_IDENTIDAD' }));
+      expect(service.logSensitiveResourceAccess).toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'REPORTE_ERRORES_CARGA_RUND', resourceId: id, actorId: 'ACTOR_AUTENTICADO' }));
+    });
+
+    it('un perfil con importar pero sin datos sensibles recibe el log con la cédula enmascarada', async () => {
+      role = 'IMPORTADOR_SIN_SENSIBLE';
+      const result = await request(app.getHttpServer()).get(`/pta/banco-docentes/bulk/${id}/errores`).expect(200);
+      const error = result.body.data.errorDetails[0];
+      expect(error.documentoIdentidad).toBe('******7890');
+      expect(error.datoErrado).toBe('******7890');
+      expect(JSON.stringify(result.body)).not.toContain('1234567890');
+    });
+
+    it.each(['RUND_APROBADOR', 'RUND_INCORPORADOR', 'CONSULTOR', 'RUND_CONSULTA', 'SIN_PERMISOS'])('%s no puede pedir el reporte', async profile => {
+      role = profile;
+      await request(app.getHttpServer()).get(`/pta/banco-docentes/bulk/${id}/errores`).expect(403);
+      expect(service.getBulkErrors).not.toHaveBeenCalled();
+    });
+
+    it('una carga anterior sin detalle responde disponible:false y una lista vacía', async () => {
+      role = 'SUPER_ADMIN';
+      service.getBulkErrors.mockResolvedValueOnce(null as any);
+      const result = await request(app.getHttpServer()).get(`/pta/banco-docentes/bulk/${id}/errores`).expect(200);
+      expect(result.body.data).toEqual(expect.objectContaining({ disponible: false, errorDetails: [] }));
+      expect(service.logSensitiveResourceAccess).not.toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'REPORTE_ERRORES_CARGA_RUND' }));
+    });
   });
 
   it('sin permiso RUND no consulta la nueva trazabilidad por ninguno de sus alias', async () => {

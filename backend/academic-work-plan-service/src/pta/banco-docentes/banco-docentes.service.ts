@@ -630,9 +630,9 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
     const val = (payload as any)[f.key];
     if (val === undefined || val === null || String(val).trim() === '') {
       throw new BadRequestException({
-        message: `Campo obligatorio vacÃ­o: ${f.name}`,
+        message: `Campo obligatorio vacío: ${f.name}`,
         columna: f.name,
-        datoErrado: '(vacÃ­o)',
+        datoErrado: '(vacío)',
         valorEsperado: 'Dato requerido'
       });
     }
@@ -641,6 +641,27 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
   // El archivo oficial puede traer correos personales en CORREO_INSTITUCIONAL.
   // Se conservan como dato de contacto y quedan marcados en observaciones RUND;
   // no bloquean la carga masiva.
+}
+
+/**
+ * HU 1355: la cédula es la llave de la carga masiva, así que una cédula con formato
+ * inválido rechaza SOLO esa fila (el resto del archivo sigue). Los puntos ya se
+ * quitaron al normalizar ("1.020.304" → "1020304"); aquí solo se valida lo que queda.
+ */
+export function validateBulkDocumentFormat(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
+  const documentNumber = String(payload.documentNumber || '').trim();
+  const documentType = String(payload.documentType || '').toUpperCase();
+  const fail = (message: string, valorEsperado: string) => {
+    throw new BadRequestException({ message, columna: 'DOCUMENTO_IDENTIDAD', datoErrado: documentNumber, valorEsperado });
+  };
+  if (documentNumber.length < 5 || documentNumber.length > 20) {
+    fail('La cédula debe tener entre 5 y 20 caracteres.', 'Entre 5 y 20 caracteres');
+  }
+  if (documentType === 'PA') {
+    if (!/^[A-Z0-9]+$/i.test(documentNumber)) fail('El pasaporte solo puede contener letras y números.', 'Letras y números, sin espacios ni símbolos');
+  } else if (!/^\d+$/.test(documentNumber)) {
+    fail('La cédula solo puede contener números.', 'Solo dígitos (los puntos se ignoran)');
+  }
 }
 
 /**
@@ -1756,6 +1777,7 @@ export class BancoDocentesService implements OnModuleInit {
       validatePayloadAutogestion(payload);
     } else {
       validatePayload(payload);
+      if (options.bulkImport) validateBulkDocumentFormat(payload);
       if (rawPayload?.canal_origen === 'MODAL') {
         validateManualBancoDocentePayload(payload, rawPayload);
       }
@@ -2565,6 +2587,20 @@ export class BancoDocentesService implements OnModuleInit {
 
   async getRegistrationHistoryDetail(tipo: string, id: string, query: any) {
     return new RundRegistrationHistory(this.dataSource).detail(tipo, id, query);
+  }
+
+  /** Filas rechazadas de una carga (HU 1355). `null` = carga anterior que no guardó el detalle. */
+  async getBulkErrors(cargaId: string): Promise<any[] | null> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cargaId)) {
+      throw new BadRequestException('El identificador de la carga masiva no es valido.');
+    }
+    const rows = await this.dataSource.query(
+      `SELECT resumen->'trazabilidad'->'errores' AS errores
+       FROM academic_work_plan."RundCargaMasiva" WHERE id = $1::uuid LIMIT 1`,
+      [cargaId],
+    );
+    if (!rows[0]) throw new NotFoundException('No se encontró la carga masiva.');
+    return Array.isArray(rows[0].errores) ? rows[0].errores : null;
   }
 
   async getBulkSupport(cargaId: string): Promise<{ fileName: string; mimeType: string; content: Buffer }> {

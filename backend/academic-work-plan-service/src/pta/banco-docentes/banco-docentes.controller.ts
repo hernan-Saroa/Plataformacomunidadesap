@@ -612,6 +612,20 @@ export class BancoDocentesController {
     } };
   }
 
+  /** HU 1355 — filas rechazadas de una carga, para el reporte de errores descargable desde el historial. */
+  @Get('bulk/:cargaId/errores')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  async bulkErrors(@Param('cargaId') cargaId: string, @Req() req?: any) {
+    const errores = await this.service.getBulkErrors(cargaId);
+    const actor = this.requestActor(req);
+    if (errores?.length) await this.service.logSensitiveResourceAccess({ ...actor,
+      endpoint: 'REPORTE_ERRORES_CARGA_RUND', resourceId: cargaId, fields: ['DOCUMENTO_IDENTIDAD'],
+    });
+    const protectedData = protectRundBulkResponse({ errorDetails: errores || [] }, actor.fullAccess);
+    return { success: true, data: { ...protectedData, disponible: errores !== null } };
+  }
+
   @Get('bulk/:cargaId/soporte')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
