@@ -14,7 +14,7 @@ vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: {
   get: vi.fn().mockResolvedValue([{ codigo: '2026-2', estado: 'en_curso' }]),
 } }));
 let grantedPermissions: string[] | null = null;
-vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: (permission: string) => grantedPermissions === null || grantedPermissions.includes(permission) }) }));
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: (permission: string) => grantedPermissions === null || grantedPermissions.includes(permission), session: { permisos: grantedPermissions ?? [] } }) }));
 vi.mock('../../../utils/bancoDocentesExcel', () => ({ downloadBancoDocentesTemplate: vi.fn(), downloadBancoDocentesExport: vi.fn() }));
 vi.mock('./BancoDocenteDetalleInline', () => ({ BancoDocenteDetalleInline: () => <tr><td>Detalle abierto</td></tr> }));
 vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null }));
@@ -185,4 +185,27 @@ it('RUND-002: con el permiso de configuración se abre la pestaña Configuració
   render(<BancoDocentesPTA />);
   fireEvent.click(screen.getByRole('button', { name: 'Configuración' }));
   expect(await screen.findByText('Configuración de carpetas abierta')).toBeTruthy();
+});
+
+it('HU 2426: el perfil Consulta RUND busca y lista, pero no ve trazabilidad, cargue masivo, exportación ni acciones de cambio', async () => {
+  // Lo que entrega AuthContext al expandir el perfil de consulta.
+  grantedPermissions = ['banco-docentes.rund.consulta', 'banco-docentes.rund.view', 'banco-docentes.rund.sensitive.view'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [
+    { id: 'docente-1', nombre_completo: 'DOCENTE VISIBLE', completitud: null },
+  ], total: 1, pages: 1 } } as any);
+  render(<BancoDocentesPTA />);
+  expect(await screen.findByText('DOCENTE VISIBLE')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Listado de Docentes' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Estadísticas' })).toBeTruthy();
+  for (const oculto of ['Trazabilidad', 'Carga Masiva', 'Invitaciones', 'Configuración'])
+    expect(screen.queryByRole('button', { name: oculto })).toBeNull();
+  expect(screen.queryByText(/Crear Docente/)).toBeNull();
+  expect(screen.queryByRole('button', { name: /Exportar/ })).toBeNull();
+});
+
+it('HU 2426: quien tiene view y otro perfil operativo sigue viendo la trazabilidad', async () => {
+  grantedPermissions = ['banco-docentes.rund.consulta', 'banco-docentes.rund.view', 'banco-docentes.rund.carga'];
+  vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [], total: 0, pages: 0 } } as any);
+  render(<BancoDocentesPTA />);
+  expect(await screen.findByRole('button', { name: 'Trazabilidad' })).toBeTruthy();
 });

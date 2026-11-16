@@ -26,9 +26,17 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     RUND_CARGADOR: [P.CARGADOR],
     RUND_APROBADOR: [P.REVISOR],
     RUND_INCORPORADOR: [P.INCORPORADOR],
+    RUND_CONSULTA: [P.CONSULTA],
     CARGADOR_REVISOR: [P.CARGADOR, P.REVISOR],
   };
+  // Filas que el guard y el controlador insertan en la bitácora RundAccesoDatosLog (parámetros del INSERT).
+  const accessLog: any[][] = [];
+  // Roles vigentes en auth.user_roles; null = los mismos del token; 'error' = la consulta falla.
+  let liveRoles: string[] | 'error' | null = null;
+  const liveRoleQueries: any[][] = [];
   const service = {
+    getPerfilCabezote: jest.fn().mockResolvedValue({ docente_id: '11111111-1111-4111-8111-111111111111', persona_id: 'persona-1' }),
+    getById: jest.fn().mockResolvedValue({ docente_id: '11111111-1111-4111-8111-111111111111', persona_id: 'persona-1' }),
     list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, pages: 1 }),
     aprobarBloque: jest.fn().mockResolvedValue({ estado: 'Aprobado' }),
     devolverBloque: jest.fn().mockResolvedValue({ estado: 'Devuelto' }),
@@ -63,6 +71,7 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     protectMetadata: jest.fn(value => value),
     content: jest.fn().mockResolvedValue({ fileName: 'ficticio.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 fixture') }),
     assertIncorporationDocument: jest.fn().mockResolvedValue(undefined),
+    list: jest.fn().mockResolvedValue([]),
   };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -72,8 +81,15 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
         { provide: RundExtraccionService, useValue: ocr },
         { provide: RundDocumentosService, useValue: documents },
         { provide: DocumentTypeValidatorService, useValue: {} },
-        { provide: DataSource, useValue: { query: jest.fn(async (_sql: string, [roles]: string[][]) =>
-          [...new Set(roles.flatMap(code => granted[code] || []))].map(code => ({ code }))) } },
+        { provide: DataSource, useValue: { query: jest.fn(async (sql: string, params: any[]) => {
+          if (sql.includes('RundAccesoDatosLog')) { accessLog.push(params); return []; }
+          if (sql.includes('auth.user_roles')) {
+            liveRoleQueries.push(params);
+            if (liveRoles === 'error') throw new Error('BD no disponible');
+            return (liveRoles ?? [role, ...additionalRoles]).map(code => ({ code }));
+          }
+          return [...new Set((params[0] as string[]).flatMap(code => granted[code] || []))].map(code => ({ code }));
+        }) } },
       ],
     }).overrideGuard(RundPtaJwtGuard).useValue({ canActivate: () => true }).compile();
     app = module.createNestApplication();
@@ -85,7 +101,7 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     await app.init();
   });
   afterAll(async () => app.close());
-  beforeEach(() => { jest.clearAllMocks(); role = 'CARGADOR'; additionalRoles = []; subjectOnly = false; });
+  beforeEach(() => { jest.clearAllMocks(); accessLog.length = 0; liveRoleQueries.length = 0; liveRoles = null; role = 'CARGADOR'; additionalRoles = []; subjectOnly = false; });
   it('recibe nombres multipart con tildes y ñ y conserva los bytes originales', async () => {
     const name = "Formación – José Muñoz (O'Ñeill).pdf";
     const buffer = Buffer.from('%PDF-1.7\narchivo de prueba');
@@ -390,4 +406,148 @@ describe('Separación de preparación y aprobación RUND por HTTP', () => {
     expect(documents.create).not.toHaveBeenCalled();
     expect(service.aprobarBloque).not.toHaveBeenCalled();
   });
+
+  describe('perfil Consulta RUND (HU 2426): solo lectura', () => {
+    const base = '/pta/banco-docentes';
+    const intentos = () => accessLog.filter(row => String(row[3]).startsWith('INTENTO_NO_PERMITIDO_SOLO_LECTURA'));
+
+    it('CA-02/CA-03/CA-06: consulta el banco, la ficha y visualiza el soporte', async () => {
+      role = 'RUND_CONSULTA';
+      await request(app.getHttpServer()).get(`${base}?periodoCarga=2026-2&search=ana`).expect(200);
+      expect(service.list).toHaveBeenCalledWith(expect.objectContaining({ search: 'ana', periodoCarga: '2026-2' }));
+      await request(app.getHttpServer()).get(`${base}/${id}`).expect(200);
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos`).expect(200);
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos/${id}/contenido`).expect(200);
+      expect(documents.content).toHaveBeenCalledWith(id, id, expect.objectContaining({ fullAccess: true }));
+    });
+
+    it('CA-08/RN-06: cada consulta de la ficha queda registrada con usuario y docente', async () => {
+      role = 'RUND_CONSULTA';
+      await request(app.getHttpServer()).get(`${base}/${id}/cabezote`).expect(200);
+      expect(service.logSensitiveResourceAccess).toHaveBeenCalledWith(expect.objectContaining({
+        endpoint: 'CONSULTA_FICHA_RUND_SOLO_LECTURA', actorId: 'ACTOR_AUTENTICADO', docenteIds: [id], result: 'COMPLETO',
+      }));
+    });
+
+    it('un perfil que no es de solo lectura no genera el registro de consulta de ficha', async () => {
+      role = 'RUND_CARGADOR';
+      await request(app.getHttpServer()).get(`${base}/${id}/cabezote`).expect(200);
+      expect(service.logSensitiveResourceAccess).not.toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'CONSULTA_FICHA_RUND_SOLO_LECTURA' }));
+    });
+
+    it.each([
+      ['PUT', ''], ['PATCH', '/contacto'], ['PUT', '/estado'], ['DELETE', ''],
+      ['POST', '/bloques/VINCULACION/aprobar'], ['POST', '/bloques/VINCULACION/devolver'],
+      ['POST', '/titulos-formacion/editar'], ['POST', '/documentos'], ['DELETE', `/documentos/${id}`],
+      ['POST', `/documentos/${id}/reemplazo`], ['POST', '/validacion-documental/batch'],
+      ['POST', '/incorporacion'], ['POST', '/expediente'],
+    ])('CA-07/RN-04: rechaza %s %s por fuera de la interfaz y deja constancia del intento', async (method, suffix) => {
+      role = 'RUND_CONSULTA';
+      const agent = request(app.getHttpServer()) as any;
+      await agent[String(method).toLowerCase()](`${base}/${id}${suffix}`).send({}).expect(403);
+      expect(service.updateDocente).not.toHaveBeenCalled();
+      expect(service.aprobarBloque).not.toHaveBeenCalled();
+      expect(service.devolverBloque).not.toHaveBeenCalled();
+      expect(documents.create).not.toHaveBeenCalled();
+      expect(documents.remove).not.toHaveBeenCalled();
+      expect(intentos()).toHaveLength(1);
+      expect(intentos()[0][1]).toBe('ACTOR_AUTENTICADO');
+      expect(intentos()[0][4]).toBe(id);
+      expect(intentos()[0][7]).toBe('DENEGADO');
+    });
+
+    it.each([['POST', ''], ['POST', '/bulk'], ['POST', '/invitaciones'], ['GET', '/bulk/historial'], ['GET', '/invitaciones'], ['GET', '/carpetas/configuracion'],
+      ['POST', '/eliminacion/previsualizar'], ['POST', '/eliminacion/confirmar'],
+    ])('RN-04: rechaza %s %s (crear, cargue masivo, invitaciones, configuración, eliminación)', async (method, suffix) => {
+      role = 'RUND_CONSULTA';
+      const agent = request(app.getHttpServer()) as any;
+      await agent[String(method).toLowerCase()](`${base}${suffix}`).send({}).expect(403);
+      expect(service.upsertDocente).not.toHaveBeenCalled();
+      expect(service.bulkUpsert).not.toHaveBeenCalled();
+      expect(service.eliminarRegistros).not.toHaveBeenCalled();
+      expect(intentos()).toHaveLength(1);
+    });
+
+    it('no ve la trazabilidad de registros, ni su detalle, ni la auditoría de la ficha', async () => {
+      role = 'RUND_CONSULTA';
+      await request(app.getHttpServer()).get(`${base}/trazabilidad?periodoCarga=2026-2`).expect(403);
+      await request(app.getHttpServer()).get(`${base}/trazabilidad/MASIVO/${id}`).expect(403);
+      await request(app.getHttpServer()).get(`${base}/${id}/auditoria`).expect(403);
+      expect(service.getRegistrationHistory).not.toHaveBeenCalled();
+      expect(service.getRegistrationHistoryDetail).not.toHaveBeenCalled();
+    });
+
+    it('no descarga soportes ni ve el historial de documentos, y ambos intentos se registran', async () => {
+      role = 'RUND_CONSULTA';
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos/${id}/contenido?download=true`).expect(403);
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos?historial=true`).expect(403);
+      expect(documents.content).not.toHaveBeenCalled();
+      expect(documents.list).not.toHaveBeenCalled();
+      const denegados = service.logSensitiveResourceAccess.mock.calls.map(([entry]) => entry)
+        .filter(entry => String(entry.endpoint).startsWith('INTENTO_NO_PERMITIDO_SOLO_LECTURA'));
+      expect(denegados).toHaveLength(2);
+      expect(denegados[0]).toEqual(expect.objectContaining({ endpoint: expect.stringContaining('download=true'), result: 'DENEGADO', actorId: 'ACTOR_AUTENTICADO', docenteIds: [id] }));
+      expect(denegados[1]).toEqual(expect.objectContaining({ endpoint: expect.stringContaining('historial=true'), result: 'DENEGADO' }));
+    });
+
+    it('no usa el OCR de extracción', async () => {
+      role = 'RUND_CONSULTA';
+      await request(app.getHttpServer()).get(`${base}/${id}/extracciones`).expect(403);
+      expect(ocr.list).not.toHaveBeenCalled();
+    });
+
+    it('si además recibe un perfil operativo deja de ser solo lectura', async () => {
+      role = 'RUND_CONSULTA'; additionalRoles = ['RUND_APROBADOR'];
+      await request(app.getHttpServer()).get(`${base}/trazabilidad`).expect(200);
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos/${id}/contenido?download=true`).expect(200);
+      expect(intentos()).toHaveLength(0);
+    });
+
+    it('regresión: un rol personalizado que solo tiene view conserva su acceso previo (trazabilidad y descarga)', async () => {
+      role = 'CONSULTOR';
+      await request(app.getHttpServer()).get(`${base}/trazabilidad`).expect(200);
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos/${id}/contenido?download=true`).expect(200);
+      expect(intentos()).toHaveLength(0);
+    });
+
+
+    it('CA-09/RN-07: al retirar el rol pierde el acceso en la siguiente acción aunque su token siga vigente', async () => {
+      role = 'RUND_CONSULTA';
+      await request(app.getHttpServer()).get(`${base}?periodoCarga=2026-2`).expect(200);
+      expect(liveRoleQueries.at(-1)).toEqual(['ACTOR_AUTENTICADO']);
+      liveRoles = [];
+      await request(app.getHttpServer()).get(`${base}?periodoCarga=2026-2`).expect(403);
+      await request(app.getHttpServer()).get(`${base}/${id}/cabezote`).expect(403);
+      await request(app.getHttpServer()).get(`${base}/${id}/documentos/${id}/contenido`).expect(403);
+      expect(documents.content).not.toHaveBeenCalled();
+    });
+
+    it('si le retiran el perfil pero conserva un rol sin permisos RUND, tampoco entra', async () => {
+      role = 'RUND_CONSULTA'; additionalRoles = ['SIN_PERMISOS'];
+      liveRoles = ['SIN_PERMISOS'];
+      await request(app.getHttpServer()).get(base).expect(403);
+    });
+
+    it('si falla la revalidación de roles no concede acceso (fail-closed)', async () => {
+      role = 'RUND_CONSULTA';
+      liveRoles = 'error';
+      await request(app.getHttpServer()).get(base).expect(403);
+      expect(service.list).not.toHaveBeenCalled();
+    });
+
+    it('la revalidación solo se hace para el perfil de consulta: los demás perfiles no consultan user_roles', async () => {
+      for (const assigned of ['RUND_CARGADOR', 'RUND_APROBADOR', 'CONSULTOR', 'GESTION_PROFESORAL']) {
+        role = assigned;
+        await request(app.getHttpServer()).get(base).expect(200);
+      }
+      expect(liveRoleQueries).toHaveLength(0);
+    });
+
+    it('el superusuario nunca queda limitado', async () => {
+      role = 'SUPER_ADMIN'; additionalRoles = ['RUND_CONSULTA'];
+      await request(app.getHttpServer()).get(`${base}/trazabilidad`).expect(200);
+      expect(intentos()).toHaveLength(0);
+    });
+  });
+
 });

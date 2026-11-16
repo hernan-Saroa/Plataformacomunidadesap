@@ -21,7 +21,7 @@ import { canUploadRundField, groupRundEvidenceOptions, hasRundData, RUND_STANDAL
 import { rundActorName } from '../../../utils/rundActorName';
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
-import { hasRundPermission, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
+import { hasRundPermission, isRundReadOnly, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
 import { RundIncorporationPanel } from './RundIncorporationPanel';
 import { RundPhotoPanel } from './RundPhotoPanel';
 import type { RundSupportGroup } from './RundSupportList';
@@ -399,6 +399,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     return () => observer?.disconnect();
   }, [selectedRundBloque, tarjetaRund?.docenteId, rundBloques.length]);
 
+  // «Consulta RUND»: sin historial de fotos (trazabilidad); la foto publicada se ve en el encabezado de la ficha.
+  const readOnlyRund = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
   const canManageDocuments = useMemo(() => {
     return hasRundPermission(auth, 'banco-docentes.rund.documents.manage') || hasRundPermission(auth, 'banco-docentes.rund.manage');
   }, [auth]);
@@ -1125,7 +1127,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                     fields={tarjetaRund.bloques?.VINCULACION?.campos || []}
                     onSaved={async () => { await fetchRundData(); onUpdated?.(); }} />}
 
-                  {b.bloque === 'IDENTIDAD' && <RundPhotoPanel docenteId={docenteId}
+                  {b.bloque === 'IDENTIDAD' && !readOnlyRund && <RundPhotoPanel docenteId={docenteId}
                     name={docente?.nombre_completo || ''} canUpload={hasRundPermission(auth, PHOTO_MANAGE)}
                     canValidate={hasRundPermission(auth, PHOTO_VALIDATE)} onChanged={onUpdated} />}
 

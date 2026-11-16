@@ -8,6 +8,7 @@ import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 import { RUND_MAX_EVIDENCES_PER_TYPE } from '../../../utils/rundEvidenceRules';
 import { RundSupportList, type RundSupportReview } from './RundSupportList';
 import { RundSoportesCodificacion } from './RundSoportesCodificacion';
+import { AuthProvider } from '../../../contexts/AuthContext';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -886,5 +887,30 @@ describe('Varias evidencias por punto de control', () => {
     fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
     expect(screen.getByText(new RegExp(`Este punto ya tiene ${RUND_MAX_EVIDENCES_PER_TYPE} evidencias vigentes\\. Reemplaza o elimina una`))).toBeTruthy();
     expect((screen.getByLabelText('Cargar PDF') as HTMLInputElement).disabled).toBe(true);
+  });
+});
+
+describe('HU 2426 — perfil Consulta RUND en la biblioteca de documentos', () => {
+  const montar = (permisos: string[]) => render(
+    <AuthProvider userEmail="consulta@esap.edu.co" permisos={permisos}>
+      <RundDocumentManager {...props} canManage={false} />
+    </AuthProvider>);
+
+  it('CA-06: visualiza los soportes pero no ofrece Descargar, Historial ni acciones de cambio', async () => {
+    montar(['banco-docentes.rund.consulta']);
+    await loaded();
+    expect(screen.getAllByTitle('Visualizar').length).toBeGreaterThan(0);
+    expect(screen.queryAllByTitle('Descargar')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Historial/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Agregar documento/ })).toBeNull();
+    expect(screen.queryAllByTitle('Eliminar')).toHaveLength(0);
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining('historial=true'));
+  });
+
+  it('regresión: un perfil operativo con la misma vista conserva Descargar e Historial', async () => {
+    montar(['banco-docentes.rund.revision']);
+    await loaded();
+    expect(screen.getAllByTitle('Descargar').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Historial/ })).toBeTruthy();
   });
 });

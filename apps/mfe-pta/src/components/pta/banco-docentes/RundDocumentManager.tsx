@@ -20,6 +20,8 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import './RundDocumentManager.css';
 import { apiClient } from '../../../../../shell/src/services/api';
 import type { RundEvidenceOption } from '../../../utils/rundEvidenceData';
+import { useAuth } from '../../../contexts/AuthContext';
+import { isRundReadOnly } from '../../../../../shared/rund-permissions';
 import { rundActorName } from '../../../utils/rundActorName';
 import { RUND_BLOCK_LABELS, rundDocumentBlock } from '../../../utils/rundDocumentScope';
 import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_EVIDENCES_PER_TYPE, rundDocumentDecision, rundEvidenceGroup } from '../../../utils/rundEvidenceRules';
@@ -98,6 +100,9 @@ const evidenceCategory = (block: string, type: string) => {
 };
 
 export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel, supportReview, renderSupportTable }: Props) {
+  const auth = useAuth();
+  // «Consulta RUND» visualiza en el visor, pero no descarga ni ve el historial de versiones (el servidor también lo rechaza).
+  const readOnly = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
   const [categories, setCategories] = useState<Category[]>([]);
   const [documents, setDocuments] = useState<RundProfileDocument[]>([]);
   const [category, setCategory] = useState('');
@@ -263,7 +268,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
           onClick={() => supportReview!.onReview(evidence, group, 'Rechazado')}>Devolver soporte</button>
       </>}
       {document && <>
-      {document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={actionsDisabled}><Download size={14} /></IconButton>}
+      {!readOnly && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={actionsDisabled}><Download size={14} /></IconButton>}
       {document.totalVersiones > 1 && <span title={`${document.totalVersiones} versiones`} style={{ ...iconButtonStyle, cursor: 'default', color: '#7C3AED' }}><FileClock size={14} /></span>}
       </>}
     </>;
@@ -436,9 +441,9 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
 
   const toolbarActions = <div className="rund-documents__toolbar-actions">
     {(search || effectiveFilter !== 'TODAS') && <button type="button" onClick={() => { setSearch(''); setFilterCategory('TODAS'); }} style={secondaryButton(false)}>Limpiar filtros</button>}
-    <button type="button" onClick={() => setHistory(value => !value)} aria-pressed={history} style={secondaryButton(history)}>
+    {!readOnly && <button type="button" onClick={() => setHistory(value => !value)} aria-pressed={history} style={secondaryButton(history)}>
       <History size={14} /> {history ? 'Ver vigentes' : 'Historial'}
-    </button>
+    </button>}
     <button type="button" onClick={load} disabled={loading} style={secondaryButton(false)} title="Actualizar documentos">
       <RefreshCw size={14} /> Actualizar
     </button>
@@ -592,7 +597,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
               const document = supportDocument(evidence);
               if (!document) return null;
               return <>
-                {document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={actionsDisabled}><Download size={14} /></IconButton>}
+                {!readOnly && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={actionsDisabled}><Download size={14} /></IconButton>}
                 {canManageDocument(document) && !document.soporteGestion && <IconButton title="Eliminar" danger disabled={actionsDisabled}
                   onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
                     deleteTrigger.current = event.currentTarget;
@@ -645,7 +650,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
               <div className="rund-documents__document-actions">
                 {document.contenidoRestringido && <span style={{ fontSize: 11, color: '#64748B' }}>Original restringido</span>}
                 {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Visualizar" onClick={() => onView(document.contenidoUrl!, document.nombreArchivo, document.categoriaNombre)}><Eye size={14} /></IconButton>}
-                {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
+                {document.estado !== 'ELIMINADO' && !readOnly && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
                 {canManageDocument(document) && !document.soporteGestion && document.estado === 'ACTIVO' && canReplaceEvidence(document.tipoSoporte) && (
                   <label title={`Reemplazar (PDF, máximo ${fileSize(Number(categories.find(item => item.codigo === document.categoria)?.tamano_maximo_bytes || RUND_MAX_ARCHIVO_BYTES))})`} style={iconButtonStyle}>
                     <Replace size={14} />

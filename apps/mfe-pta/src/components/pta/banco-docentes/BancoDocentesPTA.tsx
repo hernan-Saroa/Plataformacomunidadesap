@@ -19,7 +19,7 @@ import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
 import { RundExtractionNotificationDetail } from './RundExtractionNotificationDetail';
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
-import { hasRundPermission } from '../../../../../shared/rund-permissions';
+import { hasRundPermission, isRundReadOnly } from '../../../../../shared/rund-permissions';
 import { RundRegistrationHistory } from './RundRegistrationHistory';
 import { RundConfiguracionCarpetas } from './RundConfiguracionCarpetas';
 import { RUND_CONFIGURE_PERMISSION } from '../../../utils/rundCarpetasConfig';
@@ -138,6 +138,8 @@ type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones' | 'traza
 export function BancoDocentesPTA() {
   const auth = useAuth();
   
+  // Perfil «Consulta RUND»: ve el banco, la ficha y los soportes, pero no la trazabilidad ni las acciones de cambio.
+  const readOnly = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
   const hasPermission = (perm: string) => hasRundPermission({ isSuperUser: auth.isSuperUser,
     hasAnyPermission: codes => codes.some(code => auth.hasPermission(code)),
   }, perm);
@@ -605,7 +607,7 @@ export function BancoDocentesPTA() {
               <MailPlus size={14} /> Invitaciones
             </button>
           )}
-          {(hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
+          {!readOnly && (hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
             <button style={TAB_STYLES(tab === 'trazabilidad')} onClick={() => setTab('trazabilidad')}>
               <History size={14} /> Trazabilidad
             </button>
@@ -1494,7 +1496,7 @@ export function BancoDocentesPTA() {
       )}
 
       {/* ── Tab: Invitaciones ─────────────────────────────────────────────── */}
-      {tab === 'trazabilidad' && (hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
+      {tab === 'trazabilidad' && !readOnly && (hasPermission('banco-docentes.rund.view') || hasPermission('banco-docentes.rund.manage')) && (
         <RundRegistrationHistory key={filterPeriodo || 'todos'} periodoCarga={filterPeriodo || undefined}
           canDownloadOriginal={hasPermission('banco-docentes.rund.import') || hasPermission('banco-docentes.rund.manage')} />
       )}
