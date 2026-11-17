@@ -230,3 +230,4 @@
   .rund-documents__list--review { max-height: none; overflow: visible; scrollbar-gutter: auto; }
   .rund-documents__list--review + .rund-documents__scroll-hint { display: none; }
 }
+.rund-documents__optional-hint { font-style: normal; font-weight: 500; font-size: 12px; color: #64748b; }

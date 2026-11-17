@@ -270,7 +270,7 @@ describe('Biblioteca compacta de documentos RUND', () => {
     expect(row('Categoria.pdf').queryByTitle(/Reemplazar/)).toBeNull();
     expect(row('Categoria.pdf').queryByTitle('Eliminar')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
-    expect(screen.queryByRole('button', { name: 'Anexo general', exact: true })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Anexo general (según aplique)', exact: true })).toBeNull();
     expect(screen.queryByText('Categoría', { selector: 'option' })).toBeNull();
   });
   it.each(Object.entries(RUND_BLOCK_LABELS))('muestra únicamente archivos de %s y los recupera al regresar a la pestaña', async (block, label) => {
@@ -406,7 +406,7 @@ describe('Biblioteca compacta de documentos RUND', () => {
     expect(screen.getByText('Contacto no requiere documentos soporte')).toBeTruthy();
     expect(screen.queryByLabelText('Información que acredita')).toBeNull();
     expect(screen.queryByLabelText('Cargar PDF')).toBeNull();
-    fireEvent.click(screen.getByRole('button',{name:'Anexo general',exact:true}));
+    fireEvent.click(screen.getByRole('button',{name:'Anexo general (según aplique)',exact:true}));
     fireEvent.click(screen.getByText('Clasificación opcional'));
     fireEvent.change(screen.getByLabelText('Categoría documental'),{target:{value:'TITULOS'}});
     fireEvent.change(screen.getByLabelText('Cargar PDF'),{target:{files:[new File(['%PDF-1.7'],'anexo.pdf',{type:'application/pdf'})]}});
@@ -636,11 +636,21 @@ describe('Biblioteca compacta de documentos RUND', () => {
     await waitFor(() => expect(props.onChanged).toHaveBeenCalled());
   });
 
+  it('marca el anexo general como opcional («según aplique») y mantiene el soporte como modo inicial (1356)', async () => {
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" />);
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
+    const anexo = screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true });
+    expect(anexo.textContent).toContain('(según aplique)');
+    expect(anexo.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /^Soporte de/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it.each(['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'])('permite el anexo sencillo desde %s sin vincularlo a un punto de control', async block => {
     render(<RundDocumentManager {...props} activeBlock={block} />);
     await loaded();
     fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     const classification = screen.getByText('Clasificación opcional').closest('details')!;
     expect(classification.open).toBe(false);
     expect((within(classification).getByLabelText('Categoría documental') as HTMLSelectElement).value).toBe('OTROS');
@@ -660,15 +670,15 @@ describe('Biblioteca compacta de documentos RUND', () => {
     const view = render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" evidenceOptions={options} />);
     await screen.findByText('Identificación.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     fireEvent.click(screen.getByText('Clasificación opcional'));
     fireEvent.change(screen.getByLabelText('Categoría documental'), { target: { value: 'TITULOS' } });
     fireEvent.change(screen.getByLabelText('Descripción del documento'), { target: { value: 'Descripción anterior' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     expect((screen.getByLabelText('Descripción del documento') as HTMLInputElement).value).toBe('Descripción anterior');
     view.rerender(<RundDocumentManager {...props} activeBlock="FORMACION" evidenceOptions={options} />);
     expect((screen.getByLabelText('Descripción del documento') as HTMLInputElement).value).toBe('');
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     expect((screen.getByLabelText('Descripción del documento') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Categoría documental') as HTMLSelectElement).value).toBe('OTROS');
     expect(screen.getByText('Clasificación opcional').closest('details')!.open).toBe(false);

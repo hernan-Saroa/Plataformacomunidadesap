@@ -509,7 +509,7 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
               <Link2 size={15}/><span>Soporte{activeBlockLabel ? ` de ${activeBlockLabel}` : ' de un dato'}</span>
             </button>
             {!allowedSupportTypes && <button type="button" aria-pressed={uploadMode === 'attachment'} onClick={() => changeUploadMode('attachment')}>
-              <Paperclip size={15}/><span>Anexo general</span>
+              <Paperclip size={15}/><span>Anexo general <em className="rund-documents__optional-hint">(según aplique)</em></span>
             </button>}
           </div>
           {uploadMode === 'support' ? scopedOptions.length ? <div className="rund-documents__purpose">
