@@ -20,6 +20,7 @@ import { PeriodosModule } from './periodos/periodos.module.js';
 import { DocenciaModule } from './docencia/docencia.module.js';
 import { ConcertacionModule } from './concertacion/concertacion.module.js';
 import { VistaModule } from './vista/vista.module.js';
+import { CargaProgramacionModule } from './carga-programacion/carga-programacion.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { AccesoModule } from './acceso/acceso.module.js';
@@ -66,6 +67,7 @@ import { EscrituraGuard } from './acceso/escritura.guard.js';
     PeriodosModule,
     ConcertacionModule,
     VistaModule,
+    CargaProgramacionModule,
   ],
   controllers: [AppController],
   providers: [

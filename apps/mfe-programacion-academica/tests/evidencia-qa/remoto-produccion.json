@@ -1,0 +1,18 @@
+{
+  "resultado": "PASS",
+  "modo": "MFE real construido con su vite.config.ts y servido con vite preview; API simulada",
+  "idioma": "en-US",
+  "zona": "UTC",
+  "resolucion": "1366x768",
+  "rutasDeAssets": [
+    "/remotes/mfe-programacion-academica/assets/index-vPJ54lZc.js",
+    "/remotes/mfe-programacion-academica/assets/__federation_fn_import-CwDmss1V.js",
+    "/remotes/mfe-programacion-academica/assets/EtapasConcertacion-PKjZTDUI.js",
+    "/remotes/mfe-programacion-academica/assets/_commonjsHelpers-BxaCtzuB.js",
+    "/remotes/mfe-programacion-academica/assets/index-BNi2ru_A.js",
+    "/remotes/mfe-programacion-academica/assets/__federation_expose_Module-CTQMxeCV.js",
+    "/remotes/mfe-programacion-academica/assets/index-DrdRCZeL.js",
+    "/remotes/mfe-programacion-academica/assets/__federation_shared_react-y0yIEJ4e.js",
+    "/remotes/mfe-programacion-academica/assets/__federation_shared_react-dom-Cr6Ok4rC.js"
+  ]
+}

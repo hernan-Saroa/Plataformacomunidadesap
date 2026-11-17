@@ -5,7 +5,9 @@ import { RUND_REQUIRED_BLOCKS } from './rund-evidence-workflow';
 
 /**
  * Carpetas que se pueden configurar por tipo de vinculación, en el orden del archivo de codificación.
- * Las obligatorias para activar el perfil no se pueden desactivar: esa regla es de otro alcance.
+ * Las obligatorias no se pueden desactivar para ningún tipo de vinculación: las que exige la activación del perfil y,
+ * además, las cuatro primeras del expediente (00 a 03). Esto solo fija qué carpetas siempre aplican; qué exige la
+ * activación del perfil (`RUND_REQUIRED_BLOCKS`) es otra regla y no cambia.
  */
 export const RUND_CARPETAS_CONFIGURABLES = [
   'IDENTIDAD', 'FORMACION', 'EXPERIENCIA_DOCENTE', 'EXPERIENCIA_LABORAL', 'ACADEMICO', 'PRODUCTIVIDAD_ACADEMICA',
@@ -21,7 +23,11 @@ const NOMBRES_TIPO: Record<string, string> = {
   ESPECIAL: 'Especial', VISITANTE: 'Visitante', CATEDRA: 'Hora cátedra',
 };
 
-export const esCarpetaObligatoria = (bloque: string) => (RUND_REQUIRED_BLOCKS as string[]).includes(bloque);
+/** Las cuatro primeras carpetas del expediente (00 Datos básicos a 03 Experiencia laboral) aplican siempre. */
+export const RUND_CARPETAS_SIEMPRE_ACTIVAS: readonly string[] = RUND_CARPETAS_CONFIGURABLES.slice(0, 4);
+
+export const esCarpetaObligatoria = (bloque: string) =>
+  (RUND_REQUIRED_BLOCKS as string[]).includes(bloque) || RUND_CARPETAS_SIEMPRE_ACTIVAS.includes(bloque);
 
 /** Misma normalización que usa el Banco de Docentes para el tipo de vinculación (mayúsculas, sin tildes, con guion bajo). */
 export function claveTipoVinculacion(value: unknown): string {
@@ -50,7 +56,8 @@ export class RundCarpetasConfigService {
       `SELECT bloque FROM academic_work_plan."RundCarpetaConfiguracion" WHERE tipo_vinculacion = $1 AND activo = FALSE`,
       [claveTipoVinculacion(tipoVinculacion)],
     );
-    return new Set((Array.isArray(rows) ? rows : []).map((row: any) => String(row.bloque)));
+    // Una carpeta obligatoria siempre aplica, aunque una configuración anterior la haya dejado inactiva.
+    return new Set((Array.isArray(rows) ? rows : []).map((row: any) => String(row.bloque)).filter(bloque => !esCarpetaObligatoria(bloque)));
   }
 
   async matriz() {
@@ -62,7 +69,10 @@ export class RundCarpetasConfigService {
     for (const row of usados || []) if (String(row.tipo || '').trim()) claves.add(claveTipoVinculacion(row.tipo));
     for (const row of configuradas || []) claves.add(String(row.tipo_vinculacion));
     const inactivas: Record<string, string[]> = {};
-    for (const row of configuradas || []) (inactivas[row.tipo_vinculacion] ||= []).push(row.bloque);
+    for (const row of configuradas || []) {
+      if (esCarpetaObligatoria(String(row.bloque))) continue;
+      (inactivas[row.tipo_vinculacion] ||= []).push(row.bloque);
+    }
     return {
       tipos: [...claves].map(codigo => ({ codigo, nombre: nombreTipoVinculacion(codigo) })),
       carpetas: RUND_CARPETAS_CONFIGURABLES.map(bloque => ({ bloque, obligatoria: esCarpetaObligatoria(bloque) })),
@@ -76,7 +86,7 @@ export class RundCarpetasConfigService {
     if (!(RUND_CARPETAS_CONFIGURABLES as readonly string[]).includes(bloque)) throw new BadRequestException('La carpeta indicada no existe.');
     if (typeof activo !== 'boolean') throw new BadRequestException('Indique si la carpeta queda activa o inactiva.');
     if (!activo && esCarpetaObligatoria(bloque)) {
-      throw new BadRequestException('Esta carpeta es obligatoria para activar el perfil y no se puede desactivar.');
+      throw new BadRequestException('Esta carpeta es obligatoria y no se puede desactivar.');
     }
     await this.dataSource.query(
       `INSERT INTO academic_work_plan."RundCarpetaConfiguracion" (tipo_vinculacion, bloque, activo, actualizado_por)

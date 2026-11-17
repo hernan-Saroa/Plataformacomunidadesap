@@ -19,6 +19,7 @@ import { RundPtaConsultaService } from './rund-pta-consulta.service';
 import { RundExtraccionService } from './rund-extraccion.service';
 import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
+import { RundPeriodoPruebaAlertasService } from './rund-periodo-prueba-alertas.service';
 import { RundNucleosController } from './rund-nucleos.controller';
 import { RundNucleosService } from './rund-nucleos.service';
 import { RundCarpetasConfigService } from './rund-carpetas-config';
@@ -41,6 +42,7 @@ import { RundPhotosController } from './rund-photos.controller';
     RundPtaJwtGuard,
     RundExtraccionService,
     RundExtraccionNotificationsService,
+    RundPeriodoPruebaAlertasService,
     RundNucleosService,
     RundCarpetasConfigService,
   ],

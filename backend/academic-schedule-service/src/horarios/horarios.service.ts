@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -69,6 +69,8 @@ export interface PeriodoGrupoDto {
 
 @Injectable()
 export class HorariosService {
+  private readonly logger = new Logger(HorariosService.name);
+
   constructor(
     @InjectRepository(FranjaHorariaEntity)
     private readonly franjaRepo: Repository<FranjaHorariaEntity>,
@@ -180,7 +182,7 @@ export class HorariosService {
    * El cruce entre grupos distintos se permite a propósito — es competencia del
    * bloqueo transversal de franjas (RN-07, EFDS-1374, fase 3).
    */
-  async crearSesion(dto: CrearSesionDto): Promise<FranjaHorariaEntity> {
+  private async validarSesion(dto: CrearSesionDto, idFranjaExcluir?: string): Promise<CrearSesionDto> {
     this.validarForma(dto);
 
     const grupo = await this.grupoRepo.findOne({ where: { idGrupo: dto.idGrupo } });
@@ -193,7 +195,7 @@ export class HorariosService {
       dto = { ...dto, tipoSesion: 'mediada_tecnologia', aulaCodigo: null, sedeCodigo: null };
     }
 
-    const existentes = await this.listarPorGrupo(dto.idGrupo);
+    const existentes = (await this.listarPorGrupo(dto.idGrupo)).filter((f) => f.idFranja !== idFranjaExcluir);
     const choque = buscarSolapeIntraGrupo(dto, existentes);
     if (choque) {
       throw new BadRequestException(
@@ -210,7 +212,7 @@ export class HorariosService {
     await exigirAulaDeLaOferta(this.franjaRepo.manager, dto.idGrupo, dto.aulaCodigo, dto.tipoSesion);
     if (dto.aulaCodigo) {
       const choqueAula = await this.buscarChoqueAula(
-        dto.idGrupo, dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,
+        dto.idGrupo, dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin, idFranjaExcluir,
       );
       if (choqueAula) {
         throw new BadRequestException(
@@ -219,6 +221,12 @@ export class HorariosService {
         );
       }
     }
+
+    return dto;
+  }
+
+  async crearSesion(dto: CrearSesionDto): Promise<FranjaHorariaEntity> {
+    dto = await this.validarSesion(dto);
 
     return this.franjaRepo.save(this.franjaRepo.create({
       idGrupo: dto.idGrupo,
@@ -260,11 +268,230 @@ export class HorariosService {
     return choque ? { horaInicio: choque.horaInicio, horaFin: choque.horaFin } : null;
   }
 
-  async eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {
+  // ── EFDS-2432 · editar y eliminar una sesión, con reglas por estado ─────────────────────────────
+
+  /**
+   * ¿Qué tiene encima la franja? Estado de la propia franja y concertación que la incluye.
+   * Reglas (§38.3, aprobadas por Tomás):
+   *   · PROGRAMADO / DEVUELTA / PUBLICADA sin docente ........... libre
+   *   · TOMADA (un docente la tiene) ............................ 409 FRANJA_TOMADA salvo confirmarDevolucion
+   *   · en concertación ENVIADA / REVISADA / POR_ACEPTAR ........ 409 EN_CONCERTACION salvo confirmarDevolucion
+   *   · APROBADA o concertación ACEPTADA / APROBADA ............. 409 CONCERTACION_ACEPTADA (no se fuerza)
+   */
+  private async evaluarEstadoFranja(m: Pick<Repository<any>['manager'], 'query'>, f: FranjaHorariaEntity): Promise<{
+    bloqueo: null | { code: 'CONCERTACION_ACEPTADA' | 'EN_CONCERTACION' | 'FRANJA_TOMADA'; message: string; confirmable: boolean };
+    concertacion: null | { id: string; docente: string | null; estado: string };
+    idDocente: string | null;
+  }> {
+    const idDocente: string | null = (await m.query(`SELECT id_docente::text AS id FROM "academic-schedule".franja_horaria WHERE id_franja = $1`, [f.idFranja]))[0]?.id ?? null;
+    const conc: Array<{ id: string; estado: string; docente: string | null }> = await m.query(
+      `SELECT c.id_concertacion::text AS id, c.estado, p.nom_largo AS docente
+         FROM "academic-schedule".concertacion_docencia c
+         LEFT JOIN auth.personas p ON p.id_person = c.id_docente
+        WHERE c.franjas @> $1::jsonb AND c.estado IN ('ENVIADA', 'REVISADA', 'POR_ACEPTAR', 'ACEPTADA', 'APROBADA')
+        ORDER BY c.updated_at DESC LIMIT 1`,
+      [JSON.stringify([{ idFranja: f.idFranja }])]);
+    const c = conc[0] ?? null;
+    const concertacion = c ? { id: c.id, docente: c.docente ?? null, estado: c.estado } : null;
+    if (f.estado === 'APROBADA' || (c && ['ACEPTADA', 'APROBADA'].includes(c.estado))) {
+      return { idDocente, concertacion, bloqueo: { code: 'CONCERTACION_ACEPTADA', confirmable: false,
+        message: 'La sesión ya está aprobada en una concertación aceptada (aplicada al PTA): no se modifica. Reabra la concertación antes de cambiarla.' } };
+    }
+    if (c) {
+      return { idDocente, concertacion, bloqueo: { code: 'EN_CONCERTACION', confirmable: true,
+        message: `La sesión está en una concertación ${c.estado}${c.docente ? ` de ${c.docente}` : ''}. Si continúa, la concertación se devuelve al programador.` } };
+    }
+    if (f.estado === 'TOMADA' && idDocente) {
+      return { idDocente, concertacion: null, bloqueo: { code: 'FRANJA_TOMADA', confirmable: true,
+        message: 'Un docente tiene esta sesión. Si continúa, la sesión queda sin docente y hay que asignarla de nuevo.' } };
+    }
+    return { idDocente, concertacion: null, bloqueo: null };
+  }
+
+  /**
+   * Aplica los efectos de «confirmar la devolución» dentro de la transacción: la concertación pasa a DEVUELTA
+   * (con comentario automático e historial) o la franja queda sin docente. Devuelve el id de la concertación.
+   */
+  private async aplicarDevolucion(
+    m: Pick<Repository<any>['manager'], 'query'>, f: FranjaHorariaEntity,
+    ev: Awaited<ReturnType<HorariosService['evaluarEstadoFranja']>>, motivo: string, idUser: string | null,
+  ): Promise<string | null> {
+    let devuelta: string | null = null;
+    if (ev.concertacion && ev.bloqueo?.code === 'EN_CONCERTACION') {
+      const antes = ev.concertacion.estado;
+      await m.query(
+        `UPDATE "academic-schedule".concertacion_docencia SET estado = 'DEVUELTA', comentario = $2, updated_at = NOW() WHERE id_concertacion = $1`,
+        [ev.concertacion.id, motivo]);
+      if (idUser) {
+        await m.query(
+          `INSERT INTO "academic-schedule".concertacion_historial (id_concertacion, accion, estado_anterior, estado_nuevo, id_user, comentario)
+           VALUES ($1, 'DEVOLVER', $2, 'DEVUELTA', $3, $4)`, [ev.concertacion.id, antes, idUser, motivo]);
+      }
+      devuelta = ev.concertacion.id;
+    }
+    if (ev.idDocente && f.idGrupo) {
+      // Esta sesión queda sin docente; el grupo deja de tener «un docente» (asignacion_docente) porque ya no es de uno solo.
+      await m.query(`UPDATE "academic-schedule".franja_horaria SET id_docente = NULL, estado = 'PROGRAMADO', updated_at = NOW() WHERE id_franja = $1`, [f.idFranja]);
+      await m.query(`DELETE FROM "academic-schedule".asignacion_docente WHERE id_grupo = $1`, [f.idGrupo]);
+    }
+    return devuelta;
+  }
+
+  private async horasDe(idGrupo: string | null) { return idGrupo ? this.horasGrupo(idGrupo) : null; }
+
+  /** PATCH — cambia día, horas, tipo o aula de UNA sesión, con las mismas validaciones que crear. */
+  async actualizarSesion(
+    idFranja: string,
+    cambios: Partial<Pick<CrearSesionDto, 'diaSemana' | 'horaInicio' | 'horaFin' | 'tipoSesion' | 'aulaCodigo'>> & { confirmarDevolucion?: boolean },
+    actor: { idUser: string | null } = { idUser: null },
+  ) {
     const franja = await this.franjaRepo.findOne({ where: { idFranja } });
     if (!franja) throw new NotFoundException('Sesión no encontrada.');
-    await this.franjaRepo.remove(franja);
-    return { eliminado: true };
+    if (!franja.idGrupo) throw new BadRequestException('La sesión no pertenece a un grupo.');
+    const anterior = { diaSemana: franja.diaSemana, horaInicio: String(franja.horaInicio).slice(0, 5), horaFin: String(franja.horaFin).slice(0, 5), tipoSesion: franja.tipoSesion, aulaCodigo: franja.aulaCodigo };
+    const pedido: CrearSesionDto = {
+      idGrupo: franja.idGrupo,
+      diaSemana: (cambios.diaSemana ?? franja.diaSemana) as DiaSemana,
+      horaInicio: String(cambios.horaInicio ?? franja.horaInicio).slice(0, 5),
+      horaFin: String(cambios.horaFin ?? franja.horaFin).slice(0, 5),
+      tipoSesion: (cambios.tipoSesion ?? franja.tipoSesion) as TipoSesion,
+      aulaCodigo: cambios.aulaCodigo === undefined ? franja.aulaCodigo : (cambios.aulaCodigo || null),
+      sedeCodigo: franja.sedeCodigo ?? null,
+    };
+    // Pasar a mediada por tecnología quita el aula (el aula solo aplica a presencial).
+    if (pedido.tipoSesion === 'mediada_tecnologia') pedido.aulaCodigo = null;
+    const dto = await this.validarSesion(pedido, idFranja);
+
+    const ev = await this.evaluarEstadoFranja(this.franjaRepo.manager, franja);
+    if (ev.bloqueo && (!ev.bloqueo.confirmable || cambios.confirmarDevolucion !== true)) {
+      throw new ConflictException({ statusCode: 409, code: ev.bloqueo.code, message: ev.bloqueo.message, concertacion: ev.concertacion });
+    }
+    let concertacionDevuelta: string | null = null;
+    const guardada = await this.franjaRepo.manager.transaction(async (m) => {
+      if (ev.bloqueo) {
+        concertacionDevuelta = await this.aplicarDevolucion(m, franja, ev,
+          `La programación cambió: se modificó una sesión (${anterior.diaSemana.toLowerCase()} ${anterior.horaInicio}-${anterior.horaFin}). Revise y reenvíe.`, actor.idUser);
+      }
+      await m.query(
+        `UPDATE "academic-schedule".franja_horaria
+            SET dia_semana = $2, hora_inicio = $3, hora_fin = $4, tipo_sesion = $5, aula_codigo = $6, jornada = $7, updated_at = NOW()
+          WHERE id_franja = $1`,
+        [idFranja, dto.diaSemana, dto.horaInicio, dto.horaFin, dto.tipoSesion ?? 'presencial', dto.aulaCodigo ?? null,
+          jornadaSugerida(dto.diaSemana, dto.horaInicio)]);
+      return (await m.query(`SELECT * FROM "academic-schedule".franja_horaria WHERE id_franja = $1`, [idFranja]))[0];
+    });
+    await this.auditar('actualizar_sesion', idFranja, actor.idUser, anterior,
+      { diaSemana: dto.diaSemana, horaInicio: dto.horaInicio, horaFin: dto.horaFin, tipoSesion: dto.tipoSesion, aulaCodigo: dto.aulaCodigo ?? null, concertacionDevuelta, confirmoDevolucion: !!ev.bloqueo });
+    return { franja: guardada, horas: await this.horasDe(franja.idGrupo), concertacionDevuelta };
+  }
+
+  /** DELETE — elimina UNA sesión con las mismas reglas por estado que editar. */
+  async eliminarSesion(idFranja: string, opciones: { confirmarDevolucion?: boolean } = {}, actor: { idUser: string | null } = { idUser: null }) {
+    const franja = await this.franjaRepo.findOne({ where: { idFranja } });
+    if (!franja) throw new NotFoundException('Sesión no encontrada.');
+    const anterior = { diaSemana: franja.diaSemana, horaInicio: String(franja.horaInicio).slice(0, 5), horaFin: String(franja.horaFin).slice(0, 5), tipoSesion: franja.tipoSesion, aulaCodigo: franja.aulaCodigo };
+    const ev = await this.evaluarEstadoFranja(this.franjaRepo.manager, franja);
+    if (ev.bloqueo && (!ev.bloqueo.confirmable || opciones.confirmarDevolucion !== true)) {
+      throw new ConflictException({ statusCode: 409, code: ev.bloqueo.code, message: ev.bloqueo.message, concertacion: ev.concertacion });
+    }
+    let concertacionDevuelta: string | null = null;
+    await this.franjaRepo.manager.transaction(async (m) => {
+      if (ev.bloqueo) {
+        concertacionDevuelta = await this.aplicarDevolucion(m, franja, ev,
+          `La programación cambió: se eliminó una sesión (${anterior.diaSemana.toLowerCase()} ${anterior.horaInicio}-${anterior.horaFin}). Revise y reenvíe.`, actor.idUser);
+      }
+      await m.query(`DELETE FROM "academic-schedule".franja_horaria WHERE id_franja = $1`, [idFranja]);
+    });
+    await this.auditar('eliminar_sesion', idFranja, actor.idUser, anterior, { eliminada: true, concertacionDevuelta, confirmoDevolucion: !!ev.bloqueo });
+    return { eliminado: true as const, horas: await this.horasDe(franja.idGrupo), concertacionDevuelta };
+  }
+
+  // ── EFDS-2430 · varios días en una sola operación ──────────────────────────────────────────────
+
+  /** Valida cada día por separado y dice cuáles chocan. No escribe nada. */
+  async validarLote(dto: { idGrupo: string; dias: DiaSemana[]; horaInicio: string; horaFin: string; tipoSesion?: TipoSesion; aulaCodigo?: string | null; sedeCodigo?: string | null }) {
+    const dias = this.diasDelLote(dto);
+    const resultado: Array<{ diaSemana: string; ok: boolean; conflictos: Array<{ tipo: 'INTRA_GRUPO' | 'AULA' | 'FORMA'; mensaje: string }> }> = [];
+    for (const dia of dias) {
+      try {
+        await this.validarSesion({ ...dto, diaSemana: dia });
+        resultado.push({ diaSemana: dia, ok: true, conflictos: [] });
+      } catch (e: any) {
+        // Un grupo que no existe o una regla del grupo (virtual con aula) no es «conflicto de un día»: aplica a todos.
+        if (e instanceof NotFoundException) throw e;
+        const mensaje = String(e?.response?.message ?? e?.message ?? 'No se puede crear la sesión.');
+        const tipo = /se cruza con otra del mismo grupo/.test(mensaje) ? 'INTRA_GRUPO' : /ya está ocupada|ocupada/.test(mensaje) ? 'AULA' : 'FORMA';
+        resultado.push({ diaSemana: dia, ok: false, conflictos: [{ tipo, mensaje }] });
+      }
+    }
+    const nuevas = resultado.filter((r) => r.ok).length;
+    const horas = await this.horasProgramadasDespues(dto.idGrupo, nuevas ? dias.filter((d) => resultado.find((r) => r.diaSemana === d)?.ok) : [], dto.horaInicio, dto.horaFin);
+    return { valido: resultado.every((r) => r.ok), dias: resultado, horas };
+  }
+
+  /** Crea una sesión por cada día. TODO O NADA: si algún día tiene conflicto, no se crea ninguna (409 con el detalle). */
+  async crearLote(dto: Parameters<HorariosService['validarLote']>[0], actor: { idUser: string | null } = { idUser: null }) {
+    const previa = await this.validarLote(dto);
+    if (!previa.valido) {
+      throw new ConflictException({ statusCode: 409, code: 'LOTE_CON_CONFLICTOS', message: 'Algún día tiene conflicto: no se creó ninguna sesión.', ...previa });
+    }
+    const dias = this.diasDelLote(dto);
+    const creadas = await this.franjaRepo.manager.transaction(async (m) => {
+      const filas: FranjaHorariaEntity[] = [];
+      for (const dia of dias) {
+        const v = await this.validarSesion({ ...dto, diaSemana: dia });
+        filas.push((await m.query(
+          `INSERT INTO "academic-schedule".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, jornada, sede_codigo, aula_codigo, estado)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PROGRAMADO') RETURNING *`,
+          [v.idGrupo, v.diaSemana, v.horaInicio, v.horaFin, v.tipoSesion ?? 'presencial', v.jornada ?? jornadaSugerida(v.diaSemana, v.horaInicio),
+            v.sedeCodigo ?? null, v.aulaCodigo ?? null]))[0]);
+      }
+      return filas;
+    });
+    await this.auditar('crear_sesiones_lote', dto.idGrupo, actor.idUser, null, { dias, horaInicio: dto.horaInicio, horaFin: dto.horaFin, tipoSesion: dto.tipoSesion ?? 'presencial', aulaCodigo: dto.aulaCodigo ?? null });
+    return { creadas, horas: await this.horasGrupo(dto.idGrupo) };
+  }
+
+  private diasDelLote(dto: { idGrupo: string; dias: DiaSemana[] }): DiaSemana[] {
+    if (!dto?.idGrupo) throw new BadRequestException('Debe indicar el grupo.');
+    const dias = [...new Set(Array.isArray(dto.dias) ? dto.dias : [])];
+    if (!dias.length) throw new BadRequestException('Indique al menos un día.');
+    const malos = dias.filter((d) => !DIAS_SEMANA.includes(d));
+    if (malos.length) throw new BadRequestException(`Días inválidos: ${malos.join(', ')}. Use: ${DIAS_SEMANA.join(', ')}.`);
+    return dias;
+  }
+
+  /** Horas del grupo si se agregaran sesiones en esos días (programadas hoy + las nuevas). */
+  private async horasProgramadasDespues(idGrupo: string, dias: string[], horaInicio: string, horaFin: string) {
+    const grupo = await this.grupoRepo.findOne({ where: { idGrupo } });
+    if (!grupo) throw new NotFoundException('El grupo no existe.');
+    const req = await this.franjaRepo.query(`SELECT horas_clase FROM academic_work_plan.asignatura WHERE id = $1`, [(grupo as any).idAsignatura]);
+    const requeridas = req.length && req[0].horas_clase != null ? Number(req[0].horas_clase) : null;
+    const franjas = await this.franjaRepo.find({ where: { idGrupo } });
+    const lista = [...franjas.map((f) => ({ horaInicio: String(f.horaInicio), horaFin: String(f.horaFin) })),
+      ...dias.map(() => ({ horaInicio, horaFin }))];
+    const h = horasDelGrupo((grupo as any).fechaInicio, (grupo as any).fechaFin, lista, requeridas);
+    return { programadasDespues: h.programadas, requeridas: h.requeridas, excede: h.excede };
+  }
+
+  /** Auditoría en el audit-service (POST /logs) con valor anterior y nuevo; si no responde, queda en el log y el cambio ya se hizo. */
+  private async auditar(accion: string, idEntidad: string, idUser: string | null, anterior: unknown, nuevo: unknown): Promise<void> {
+    const base = process.env.AUDIT_SERVICE_URL || 'http://audit-service:3011';
+    const ruta = '/programacion-academica/api/v1/horarios';
+    try {
+      const res = await fetch(`${base}/logs`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: accion.startsWith('eliminar') ? 'DELETE' : accion.startsWith('crear') ? 'POST' : 'PATCH', url: ruta, path: ruta,
+          module: 'academic-schedule', submodule: 'horarios', action: accion, statusCode: 200, responseTimeMs: 0,
+          entityName: 'franja_horaria', entityId: idEntidad, previousData: anterior ?? undefined,
+          newData: { ...(nuevo as object), usuario: idUser },
+        }),
+      });
+      if (!res.ok) throw new Error(`audit-service respondió ${res.status}`);
+    } catch (e: any) {
+      this.logger.error(`No se pudo registrar la auditoría de ${accion}: ${e?.message ?? e}`);
+    }
   }
 
   /**

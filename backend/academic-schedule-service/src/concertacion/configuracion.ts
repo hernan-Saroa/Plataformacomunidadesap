@@ -1,48 +1,63 @@
 /**
- * Configuración de la concertación — EFDS-2315.
+ * Configuración de la concertación — EFDS-2315 / EFDS-2435.
  *
- * ⚠️ UN SOLO INTERRUPTOR PARA LOS DOS LADOS: PROG_CONCERTACION_HABILITADA.
- * La misma variable se pone en Programación Académica y en el PTA, y el régimen
- * nuevo solo rige si los DOS la tienen encendida: cada servicio lo verifica en
- * el otro por el contrato antes de actuar (ver `ConcertacionService` y, en el
- * PTA, `DocenciaProgramacionService`). Así:
- *   · ambos apagados          → todo como hoy (el PTA aprueba la Docencia);
- *   · solo el PTA encendido   → el PTA sigue aprobando; aquí no se concierta;
- *   · solo PA encendido       → aquí se rechaza concertar (el PTA aprueba);
- *   · ambos encendidos        → se concierta aquí y el PTA deja de aprobarla.
- * Nunca doble aprobación. "Ninguna" solo si el otro servicio no responde, y
- * entonces con un error explícito.
+ * ⚠️ DOS FLUJOS QUE CONVIVEN, SIEMPRE:
+ *   · AQUÍ (Programación Académica) la concertación funciona completa todo el tiempo, SIN interruptor:
+ *     asignar, revisar, aprobar, aceptar o reportar novedad. Ya no depende de PROG_CONCERTACION_HABILITADA.
+ *   · EL PTA tiene el interruptor «Interoperabilidad con Programación Académica», guardado en la base
+ *     (academic_work_plan."ConfiguracionSistema", clave 'interoperabilidad_programacion'). Encendido: la
+ *     docencia aceptada llega al PTA. Apagado: el PTA se llena a mano y la decisión aceptada queda
+ *     pendiente (aplicacion_pta = 'pendiente_interoperabilidad_apagada') hasta que se encienda.
  *
- * ⚠️ CORTE POR PERIODO: PROG_CONCERTACION_DESDE_PERIODO (p. ej. '2027-1'). Solo
- * se concierta en periodos de plataforma con código >= al corte; el PTA lee el
- * corte de aquí, una sola fuente. Encendida sin corte = apagada (no se adivina).
+ * ⚠️ CORTE POR PERIODO: vive en la MISMA fila de la base (campo desdePeriodo). Sin fila (ambiente
+ * sin migrar) se usa PROG_CONCERTACION_DESDE_PERIODO y, sin ella, CORTE_POR_DEFECTO.
  *
  * ⚠️ FIRMA SIMULADA (decisión de Tomás, por ahora para pruebas): con
  * PROG_MOCK_FIRMA_OTP distinto de 'false' cualquier código de 6 dígitos pasa,
  * igual que en el PTA, pero la firma SÍ se registra en el servidor.
  */
+export const CLAVE_INTEROPERABILIDAD = 'interoperabilidad_programacion';
+
+/** La concertación está disponible siempre (ya no hay interruptor de este lado). */
 export function concertacionHabilitada(): boolean {
-  // ENCENDIDA POR DEFECTO (nov-2026, pedido de Tomás): la concertación es el ÚNICO camino
-  // para concertar la docencia en todos los ambientes. Solo `false` la apaga.
-  return String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim().toLowerCase() !== 'false'
-    && desdePeriodo() !== null;
+  return true;
 }
 
-/** Corte cuando el ambiente no define PROG_CONCERTACION_DESDE_PERIODO. */
+/** Corte cuando no hay fila en la base ni PROG_CONCERTACION_DESDE_PERIODO. */
 export const CORTE_POR_DEFECTO = '2026-1';
 
-/** Código del periodo de corte (año-semestre). null = sin corte válido. */
-export function desdePeriodo(): string | null {
+interface Consultable { query(sql: string, params?: any[]): Promise<any> }
+
+/** Corte inicial de la variable de entorno (solo si no hay fila en la base). */
+export function desdePeriodo(): string {
   const v = String(process.env.PROG_CONCERTACION_DESDE_PERIODO ?? '').trim();
-  if (!v) return CORTE_POR_DEFECTO; // sin variable: corte por defecto; mal escrita: null (apagada)
-  return /^\d{4}-[12]$/.test(v) ? v : null;
+  return /^\d{4}-[12]$/.test(v) ? v : CORTE_POR_DEFECTO;
+}
+
+/** Fila de configuración compartida con el PTA (una sola fuente). null si no existe o no se puede leer. */
+export async function leerInteroperabilidadPta(q: Consultable): Promise<{ habilitada: boolean; desdePeriodo: string } | null> {
+  try {
+    const f: any[] = await q.query(
+      `SELECT valor FROM academic_work_plan."ConfiguracionSistema" WHERE clave = $1`, [CLAVE_INTEROPERABILIDAD]);
+    const v = f[0]?.valor;
+    if (!v) return null;
+    return {
+      habilitada: v.habilitada === true,
+      desdePeriodo: typeof v.desdePeriodo === 'string' && /^\d{4}-[12]$/.test(v.desdePeriodo) ? v.desdePeriodo : desdePeriodo(),
+    };
+  } catch { return null; }
+}
+
+/** Periodo de corte vigente: la base manda; sin fila, la variable o el valor por defecto. */
+export async function corteVigente(q: Consultable): Promise<string> {
+  return (await leerInteroperabilidadPta(q))?.desdePeriodo ?? desdePeriodo();
 }
 
 /** ¿El periodo (código de plataforma) cae en el corte? Legado o sin código: no. */
-export function periodoEnCorte(codigo: string | null | undefined): boolean {
-  const desde = desdePeriodo();
+export async function periodoEnCorte(q: Consultable, codigo: string | null | undefined): Promise<boolean> {
+  const desde = await corteVigente(q);
   const c = String(codigo ?? '').trim();
-  return desde !== null && /^\d{4}-[12]$/.test(c) && c >= desde;
+  return /^\d{4}-[12]$/.test(c) && c >= desde;
 }
 
 export function firmaSimulada(): boolean {
