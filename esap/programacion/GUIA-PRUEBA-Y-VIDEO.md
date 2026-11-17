@@ -164,3 +164,14 @@ Seguir `C:\Users\Tomas\.claude\CLAUDE.md` (flujo de video con el MCP de Playwrig
 - **Capítulo 6:** la cuenta de Gestión Profesoral del stack no ve Programación Académica ni Programas Académicos, así que el «403» se muestra con una **llamada real a la API** desde esa sesión, con la respuesta en pantalla (no hay botón que pulsar).
 - **Datos de la demo:** 2027-2 se crea y se copia desde 2026-1 en el capítulo 1; el 2 carga `ASIG-00003` grupo 5 y `ASIG-00005` grupo 1; el 3 usa `ASIG-00005` (sin docentes en su área: no sirve para el 4); el 4 usa `ASIG-00003` grupo 1 (sale un docente bloqueado por sabático y otro por cruce). Para repetir: `reset-2027.sql` y `preparar-2027-2.mjs` (scratchpad de la sesión).
 - **Trampas de la pantalla:** «Cancelar» con datos escritos pide confirmar el descarte; el botón de la papelera de una sesión está dentro del bloque de la sesión (hay que buscarlo con nombre exacto «Eliminar sesión HH:MM–HH:MM»); `Lunes` viene marcado por defecto al agregar sesión.
+
+## 7. Segunda pasada (16 de nov de 2026): flujo completo por rol
+
+**Resultado:** `C:\Users\Tomas\Claude\demo-pa\video-programacion-academica-flujo-completo.mp4` (14:30, 7 capítulos). Reemplaza al de la primera pasada.
+
+- **Una cuenta por rol** (no el superusuario): `qa.rol.admin`, `qa.rol.programador`, `qa.rol.asignador`, `qa.rol.revisor`, `qa.rol.aprobador`, `qa.rol.jefatura` (se crean con `cuentas-rol.sql`, solo en la base desechable) y `qa.e2e.docente2`. El superusuario solo aparece en el interruptor del PTA.
+- Capítulos: 1 periodo y reutilizar (admin) · 2 Excel (admin) · 3 grupo **a distancia**, selector de CETAP sin buscador, varios días, editar/eliminar, aviso de tope de horas (programador) · 4 asignar y enviar a revisión (asignador) · 5 revisión, aprobación y aceptación con firma (revisor, aprobador, docente en su portal) · 6 interruptor (botón «Confirmar» visible) · 7 permiso de periodos.
+- **Guiones en archivo:** `C:\Users\Tomas\Claude\demo-pa\guion2\` (`pasos/*.js` = cuerpo de cada paso; `node gen.cjs` genera `out/`). El navegador del MCP solo lee archivos bajo `C:\Users\Tomas\Claude`. Se carga `out/_preludio.js` una vez (deja los ayudantes en `page.__h`) y cada paso se ejecuta con `browser_run_code_unsafe { filename }`. `lN.js` = preparar e iniciar sesión (sin grabar); `cN.js` = lo que se graba.
+- `armar-v2.sh` une los clips, quita los finales erróneos y baja la velocidad 25 % (los rótulos quedaban cortos de tiempo de lectura).
+- Pruebas por API de esta pasada: `e2e-roles.mjs` (48 comprobaciones por rol) en el scratchpad de la sesión.
+- Trampas nuevas: los selectores del catálogo no tienen etiqueta accesible (ubicarlos por posición); «Editar sesión HH:MM–HH:MM» necesita `exact: true` (el bloque de la sesión comparte el nombre); un grupo de 3 sesiones semanales durante todo el periodo excede el tope de horas del plan (se muestra y se corrige acortando el ciclo).
