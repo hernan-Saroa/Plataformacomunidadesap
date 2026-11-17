@@ -1501,3 +1501,26 @@ El 409 trae `{ code, message, concertacion: { id, docente, estado } | null }` pa
 **Hallazgos de entorno (no de código).**
 - vitest de los MFE desde Git Bash con la ruta `c:\` (minúscula): carga dos copias de sí mismo y todas las pruebas fallan con `reading 'on'`. Correr desde PowerShell.
 - `VITE_API_URL=/services` en Git Bash se convierte en `C:/Program Files/Git/services` (conversión de rutas de MSYS): **los builds de frontend se hacen desde PowerShell** (o con `MSYS_NO_PATHCONV=1`). El build local del 13 de nov estaba afectado (no se publicó; los Dockerfile construyen dentro de Linux y no tienen el problema).
+
+### 41.1 Verificación por rol, arreglos visuales y diagnóstico de QA (16 de nov de 2026)
+
+**Qué ve y qué puede cada rol** (base creada solo con migraciones; cuentas sin superusuario; 48 comprobaciones por API + recorrido en navegador):
+
+| Rol | Menú de Programación Académica | Puede | Se le niega (403) |
+|---|---|---|---|
+| ADMIN_PROGRAMACION | Todo | Crear periodos, reutilizar, programar, asignar | — |
+| PROGRAMADOR_PREGRADO / _POSGRADO | Todo | Grupos, horarios, plantilla sin docentes (su nivel) | Asignar docentes, crear periodos, reutilizar, revisar |
+| PROGRAMADOR_DOCENTE_PREGRADO / _POSGRADO | Programación General, Disponibilidad Docente, Concertación | Asignar docentes y **enviar a revisión** | Crear grupos, editar horario, periodos |
+| REVISOR_DOCENCIA_PREGRADO / _POSGRADO | Solo «Concertación de la docencia» | Revisar y firmar | Aprobar, programar, enviar |
+| APROBADOR_DOCENCIA, JEFATURA_TERRITORIAL | Solo «Concertación de la docencia» | Aprobar y firmar | Revisar, programar |
+| DOCENTE | Portal → «Mi Programación Académica» | Aceptar y firmar o reportar novedad | Backoffice |
+
+- La antigua «Aprobación territorial» **no existe** en el código actual: quien revisa o aprueba ve «Concertación de la docencia». Lo que se vio en QA era el despliegue anterior.
+- El aviso «La concertación de la docencia está apagada en este ambiente» tampoco existe ya: la concertación está siempre disponible y solo el interruptor del PTA decide si lo aceptado llega al PTA.
+
+**Arreglos de esta fecha** (commit `517f7f6b3`): calendario del grupo (el bloque de una hora salía cortado y estrecho: las clases `text-[0.62rem]`, `top-0.5`, `right-0.5` y `right-1` no existen en la hoja de estilos del shell → estilos en línea); menú en el orden del flujo; botones «Confirmar» y «Guardar periodo de corte…» del interruptor (salían invisibles: `bg-slate-900` no existe en el CSS del MFE del PTA). **Regla:** el MFE de Programación no tiene hoja propia (usa la del shell) y el del PTA tiene la suya; una clase de Tailwind que nadie más use puede no existir. Comprobar en el navegador contra `document.styleSheets`, no contra los archivos.
+
+**Diagnóstico de QA, solo lectura (16 nov).** QA sigue con el despliegue anterior (404 en `/pta/api/v1/configuracion/interoperabilidad` y en `/carga-programacion/referencia`). Con ese despliegue, `GET /asignaciones/candidatos` responde así en los grupos reales de 2026-1:
+- `ASIG-00001` (Desarrollo y Gestión Territorial): 28 candidatos. Funciona.
+- `ASIG-00003` (Finanzas Públicas): 3 docentes del área, **los tres bloqueados por RN-10**: su vinculación en el RUND de QA terminó el 2025-12-17 y el grupo termina el 2026-11-30. Es dato del RUND de QA (vinculaciones de 2025), no un defecto.
+- `ASIG-00409` (Especialización en Proyectos de Desarrollo, Cartagena): área «Programa: Proyectos de Desarrollo (Especialización)», **ningún docente** con núcleo en esa área. El puente docente–área (`db/data/programacion-academica/puente_docente_area.csv`) solo trae planes de **pregrado** (AP, APT, EP); para posgrado falta que la ESAP diga qué docentes dictan cada programa.
