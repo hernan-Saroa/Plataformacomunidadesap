@@ -3,7 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { PtaPermissionsService } from '../../pta/auth/pta-permissions.service';
-import { aplicarDecision, entradaPta, habilitadaLocal, regimenDocencia } from '../../pta/docencia-programacion';
+import { aplicarDecision, ESTADO_APAGADA, entradaPta, habilitadaLocal, regimenDocencia } from '../../pta/docencia-programacion';
 
 export interface AsignaturaConcertadaDto {
   idGrupo: string; asignaturaId: string; codigo: string; nombre: string; programaId: string;
@@ -107,11 +107,11 @@ export class DocenciaDecisionesService {
   }
 
   /** El interruptor de este lado (lo consulta Programación Académica). */
-  configuracion() {
-    return { habilitada: habilitadaLocal() };
+  async configuracion() {
+    return { habilitada: await habilitadaLocal() };
   }
 
-  async registrar(userId: string, d: DecisionDocenciaDto): Promise<{ registrada: true; aplicada: boolean; estadoAplicacion: string | null }> {
+  async registrar(userId: string, d: DecisionDocenciaDto): Promise<{ registrada: true; aplicada: boolean; estadoAplicacion: string | null; motivo?: string }> {
     this.validar(d);
     await this.exigirQuienRegistra(String(userId ?? ''), d);
     const guardar = (q: { query(sql: string, p?: any[]): Promise<any> }) => q.query(
@@ -128,9 +128,18 @@ export class DocenciaDecisionesService {
     // EFDS-2315: con la concertación encendida, la decisión se APLICA al PTA del
     // docente (Docencia aprobada y cargada como de programación). Un PTA firmado
     // no se toca: queda pendiente y se reporta. Apagada: solo se registra.
-    if (!habilitadaLocal()) {
-      await guardar(this.dataSource);
-      return { registrada: true, aplicada: false, estadoAplicacion: null };
+    if (!(await habilitadaLocal())) {
+      // EFDS-2435: integración apagada. La decisión SE REGISTRA y queda pendiente de aplicarse
+      // al PTA cuando se encienda; no es un error ni hay que reintentar.
+      await this.dataSource.transaction(async (m) => {
+        await guardar(m);
+        await m.query(
+          `UPDATE academic_work_plan.docencia_concertada
+              SET estado_aplicacion = $2, detalle_aplicacion = $3, actualizada_en = NOW()
+            WHERE id_concertacion = $1`,
+          [d.idConcertacion, ESTADO_APAGADA, 'La interoperabilidad con Programación Académica está apagada: se aplica al encenderla.']);
+      });
+      return { registrada: true, aplicada: false, estadoAplicacion: ESTADO_APAGADA, motivo: 'interoperabilidad_apagada' };
     }
     // Registrar y aplicar en UNA transacción: si aplicar falla, no queda una
     // decisión registrada a medias; Programación Académica reintenta (idempotente).

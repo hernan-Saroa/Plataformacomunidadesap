@@ -21,7 +21,7 @@ import { canUploadRundField, groupRundEvidenceOptions, hasRundData, RUND_STANDAL
 import { rundActorName } from '../../../utils/rundActorName';
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
-import { hasRundPermission, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
+import { hasRundPermission, isRundReadOnly, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
 import { RundIncorporationPanel } from './RundIncorporationPanel';
 import { RundPhotoPanel } from './RundPhotoPanel';
 import type { RundSupportGroup } from './RundSupportList';
@@ -31,6 +31,7 @@ import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 import { RUND_CARPETA_ORDEN, rundCarpeta } from '../../../utils/rundCarpetas';
 import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_ARCHIVO_MB, rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
 import { auditCambiosOf, formatAuditValue } from './rundAuditCambios';
+import { formatFechaPrueba } from '../../../utils/rundPeriodoPrueba';
 import { esSoporteDeTitulo, NIVEL_TITULO_POR_SOPORTE } from '../../../utils/rundSoportesTabla';
 
 // ============================================================================
@@ -399,6 +400,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     return () => observer?.disconnect();
   }, [selectedRundBloque, tarjetaRund?.docenteId, rundBloques.length]);
 
+  // «Consulta RUND»: sin historial de fotos (trazabilidad); la foto publicada se ve en el encabezado de la ficha.
+  const readOnlyRund = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
   const canManageDocuments = useMemo(() => {
     return hasRundPermission(auth, 'banco-docentes.rund.documents.manage') || hasRundPermission(auth, 'banco-docentes.rund.manage');
   }, [auth]);
@@ -848,6 +851,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             {Number(entry.metadata?.evidenciasVigentes) > 1 && entry.metadata?.evidencia && <div>Evidencia {entry.metadata.evidencia} de {entry.metadata.evidenciasVigentes}{entry.metadata.evidenciaAdicional ? ' · evidencia adicional' : ''}</div>}
             {entry.accion === 'ELIMINAR_DOCUMENTO' && entry.metadata?.evidenciasVigentes !== undefined && <div>Evidencias vigentes del punto: {entry.metadata.evidenciasVigentes}</div>}
             {Array.isArray(entry.metadata?.orden) && <div>Orden de análisis: {entry.metadata.orden.map((item: any) => `${item.posicion}. ${item.nombreArchivo || 'Documento'}`).join(' · ')}</div>}
+            {entry.accion === 'DECISION_COMITE_PRUEBA' && <div data-testid="rund-audit-decision-prueba" style={{ marginTop: 2, overflowWrap: 'anywhere' }}>
+              <div><strong>Resultado:</strong> {entry.metadata?.resultadoEtiqueta || entry.metadata?.resultado}{entry.metadata?.correccion ? ' (corrección)' : ''}</div>
+              <div><strong>Fecha del comité:</strong> {formatFechaPrueba(entry.metadata?.fechaComite)}</div>
+              <div><strong>Soporte:</strong> {entry.metadata?.soporteNombre || entry.soporteId || entry.soporte_id || '—'}</div>
+              {entry.metadata?.motivo && <div><strong>Motivo:</strong> {entry.metadata.motivo}</div>}
+              {entry.metadata?.observacion && <div><strong>Observación:</strong> {entry.metadata.observacion}</div>}
+            </div>}
             {entry.metadata?.nombreArchivo && <div>{entry.metadata.nombreArchivo}</div>}
             {entry.metadata?.version && <div>Versión {entry.metadata.version}</div>}
             {entry.metadata?.versionNueva && <div>Versión {entry.metadata.versionAnterior} → {entry.metadata.versionNueva}</div>}
@@ -1125,7 +1135,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                     fields={tarjetaRund.bloques?.VINCULACION?.campos || []}
                     onSaved={async () => { await fetchRundData(); onUpdated?.(); }} />}
 
-                  {b.bloque === 'IDENTIDAD' && <RundPhotoPanel docenteId={docenteId}
+                  {b.bloque === 'IDENTIDAD' && !readOnlyRund && <RundPhotoPanel docenteId={docenteId}
                     name={docente?.nombre_completo || ''} canUpload={hasRundPermission(auth, PHOTO_MANAGE)}
                     canValidate={hasRundPermission(auth, PHOTO_VALIDATE)} onChanged={onUpdated} />}
 

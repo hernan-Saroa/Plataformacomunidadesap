@@ -51,8 +51,8 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
   const entregas: any[] = [];
   const envAntes = process.env.PROG_CONCERTACION_HABILITADA;
   const desdeAntes = process.env.PROG_CONCERTACION_DESDE_PERIODO;
-  /** Interruptor del PTA simulado: true, false o 'caido'. */
-  let ptaEstado: boolean | 'caido' = true;
+  /** Lo que el PTA (simulado) responde al registrar: con la integración apagada, la decisión queda pendiente. */
+  let ptaResponde = 'aplicada';
 
   beforeAll(async () => {
     try { client = new Client(conexion); await client.connect(); hayBase = true; } catch { hayBase = false; }
@@ -72,19 +72,27 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
   // Ciclo del grupo 2049-02-03 a 2049-05-30: 16 lunes + 17 jueves = 33 sesiones × 2 h = 66 h.
   const contrato: any = { calcularImpacto: async () => ({ horasImpacto: 96, factorVinculacion: 1 }) };
   const servicio = () => new ConcertacionService(ds(), new DocenciaService(ds(), contrato), {
-    registrarDecision: async (d: any) => { entregas.push(d); return { estadoAplicacion: 'aplicada' }; },
-    ptaHabilitada: async () => { if (ptaEstado === 'caido') throw new Error('PTA sin respuesta'); return ptaEstado; },
+    registrarDecision: async (d: any) => { entregas.push(d); return { estadoAplicacion: ptaResponde }; },
   } as any, new TerritorialService(ds()), new PermisosPtaService(ds()));
   const asignaciones = () => new AsignacionesService(ds(), contrato, new DocenciaService(ds(), contrato));
 
-  const caso = (nombre: string, fn: (f: Fixture) => Promise<void>, encendida = true) =>
+  /** `interop`: estado del interruptor del PTA (fila compartida en la base). La concertación aquí funciona siempre. */
+  /** Fila de configuración compartida con el PTA (dentro de la transacción de la prueba: se deshace). */
+  const configurar = async (habilitada: boolean, desdePeriodoFila: string) => {
+    const valor = JSON.stringify({ habilitada, desdePeriodo: desdePeriodoFila });
+    await client!.query(`DELETE FROM academic_work_plan."ConfiguracionSistema" WHERE clave = 'interoperabilidad_programacion'`);
+    await client!.query(
+      `INSERT INTO academic_work_plan."ConfiguracionSistema" (clave, valor, "updatedAt") VALUES ('interoperabilidad_programacion', $1::jsonb, NOW())`, [valor]);
+  };
+
+  const caso = (nombre: string, fn: (f: Fixture) => Promise<void>, interop = true) =>
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
-      process.env.PROG_CONCERTACION_HABILITADA = encendida ? 'true' : 'false';
-      process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-1';
-      ptaEstado = true;
+      delete process.env.PROG_CONCERTACION_HABILITADA; // ya no se usa en Programación Académica
+      ptaResponde = interop ? 'aplicada' : 'pendiente_interoperabilidad_apagada';
       entregas.length = 0;
       await client.query('BEGIN');
+      await configurar(interop, '2049-1');
       try {
         const q = async (sql: string, p: any[] = []) => (await client!.query(sql, p)).rows;
         const u = unico();
@@ -369,34 +377,33 @@ describe('EFDS-2374 :: concertación en el orden nuevo (agregado real, en transa
     await expect(svc.enviar(f.programador, f.docente.documento, f.periodo, null)).rejects.toThrow(/ciclo/);
   });
 
-  caso('interruptor único: con el PTA apagado o caído, aquí no se concierta', async (f) => {
+  caso('EFDS-2435: con la interoperabilidad APAGADA la concertación funciona igual y lo aceptado queda pendiente de aplicarse al PTA', async (f) => {
     const svc = servicio();
-    ptaEstado = false;
-    expect(await svc.configuracion()).toMatchObject({ habilitada: false });
-    await expect(svc.enviar(f.programador, f.docente.documento, f.periodo, null)).rejects.toThrow(/apagada/);
-    ptaEstado = 'caido';
-    (svc as any).ptaCache = null;
-    await expect(svc.enviar(f.programador, f.docente.documento, f.periodo, null)).rejects.toThrow(/No se pudo verificar/);
-  });
+    expect(await svc.configuracion()).toMatchObject({ habilitada: true, interoperabilidadPta: { habilitada: false } });
+    const [c] = await svc.enviar(f.programador, f.docente.documento, f.periodo, null);
+    await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, OTP);
+    await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, OTP);
+    const final = await svc.aceptar(c.idConcertacion, { idPerson: f.docente.idPerson, idUser: f.docente.idUser }, OTP, null);
+    expect(final.estado).toBe('ACEPTADA');
+    expect(final.aplicacionPta).toBe('pendiente_interoperabilidad_apagada');
+    expect(await estados(f.franjas)).toEqual(['APROBADA', 'APROBADA']);
+  }, false);
 
-  caso('corte por periodo: un periodo anterior al corte no se concierta (lo aprueba el PTA)', async (f) => {
-    process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-2';
+  caso('EFDS-2435: con la interoperabilidad ENCENDIDA, lo aceptado se aplica', async (f) => {
+    expect(await servicio().configuracion()).toMatchObject({ habilitada: true, interoperabilidadPta: { habilitada: true } });
+  }, true);
+
+  caso('corte por periodo (de la base): un periodo anterior al corte no se concierta (lo aprueba el PTA)', async (f) => {
+    await configurar(true, '2049-2');
     await expect(servicio().enviar(f.programador, f.docente.documento, f.periodo, null)).rejects.toThrow(/aplica desde el periodo 2049-2/);
   });
 
-  caso('apagada por configuración: toda escritura se rechaza y la asignación sigue como antes', async (f) => {
-    const svc = servicio();
-    expect((await svc.configuracion()).habilitada).toBe(false);
-    await expect(svc.enviar(f.programador, f.docente.documento, f.periodo, null)).rejects.toThrow(/apagada/);
-    expect((await asignaciones().asignar({ idGrupo: f.grupo, documento: f.otroDocente.documento, franjas: [f.franjas[1]] })).asignado).toBe(true);
-  }, false);
-
-  it('encendida por defecto: sin variables, Programación Académica la da por encendida con el corte por defecto', () => {
-    delete process.env.PROG_CONCERTACION_HABILITADA;
-    delete process.env.PROG_CONCERTACION_DESDE_PERIODO;
+  it('EFDS-2435: la concertación no tiene interruptor en Programación Académica; sin fila el corte es el de la variable o 2026-1', () => {
+    process.env.PROG_CONCERTACION_HABILITADA = 'false'; // aunque alguien la deje puesta: ya no se usa
     expect(concertacionHabilitada()).toBe(true);
+    delete process.env.PROG_CONCERTACION_DESDE_PERIODO;
     expect(desdePeriodo()).toBe('2026-1');
-    process.env.PROG_CONCERTACION_HABILITADA = 'false';
-    expect(concertacionHabilitada()).toBe(false);
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = '2027-2';
+    expect(desdePeriodo()).toBe('2027-2');
   });
 });

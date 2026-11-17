@@ -31,6 +31,7 @@ import {
   type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
+import { PanelGrupos } from './PanelGrupos';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { useEstadoPublicacion } from './useEstadoPublicacion';
@@ -38,6 +39,7 @@ import { ArbolProgramacion } from './ArbolProgramacion';
 import { DisponibilidadDocente } from './DisponibilidadDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
+import { CargaProgramacionExcel } from './CargaProgramacionExcel';
 import { getMisPermisos, type MisPermisos } from '../services/api/vistaApi';
 import { ConcertacionBandeja } from './ConcertacionBandeja';
 import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
@@ -125,6 +127,7 @@ export function ProgramacionAcademicaModule({
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
   const [jornada, setJornada] = useState('TODAS');
+  const [verCargaExcel, setVerCargaExcel] = useState(false);
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -271,6 +274,15 @@ export function ProgramacionAcademicaModule({
       title: 'GESTIÓN PRINCIPAL',
       items: [
         ...(soloRevision ? [] : ([
+        // Orden del flujo: periodo → catálogo → programación → aulas → docentes → cruces → concertación.
+        {
+          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
+          id: 'ofertas',
+          label: 'Periodos',
+          subtitle: 'Crear, activar, publicar y cerrar',
+          icon: <Layers3 className="w-5 h-5" />,
+          color: '#003DA5',
+        },
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -300,14 +312,6 @@ export function ProgramacionAcademicaModule({
           subtitle: 'Carga horaria y asignaciones',
           icon: <Users className="w-5 h-5" />,
           color: '#7C3AED',
-        },
-        {
-          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
-          id: 'ofertas',
-          label: 'Periodos',
-          subtitle: 'Crear, activar, publicar y cerrar',
-          icon: <Layers3 className="w-5 h-5" />,
-          color: '#003DA5',
         },
         {
           id: 'alertas',
@@ -454,6 +458,10 @@ export function ProgramacionAcademicaModule({
               <span className="text-emerald-700">{estadoPub.aprobada} aprobadas</span>
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setVerCargaExcel((v) => !v)} aria-expanded={verCargaExcel}
+                className="px-3 py-2 rounded-lg border border-[#003DA5] text-[#003DA5] text-xs font-bold hover:bg-blue-50 active:scale-95 transition-all">
+                {verCargaExcel ? 'Ocultar carga desde Excel' : 'Cargar desde Excel'}
+              </button>
               {estadoPub.publicada === 0 && estadoPub.tomada === 0 && estadoPub.aprobada === 0 ? (
                 <button type="button" disabled={pubOcupado || estadoPub.total === 0} onClick={publicar}
                   className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
@@ -474,6 +482,9 @@ export function ProgramacionAcademicaModule({
             <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">{avisoPub}</div>
           )}
         </div>
+      )}
+      {seccion === 'horarios' && verCargaExcel && periodoActual && periodoProgramable && !!misPermisos?.programar.length && (
+        <CargaProgramacionExcel key={periodoActual.idPeriodo} idPeriodo={periodoActual.idPeriodo} codigoPeriodo={periodoActual.codigo} onCerrar={() => setVerCargaExcel(false)} />
       )}
 
       {seccion === 'catalogo' && misPermisos?.programar.length ? <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} /> : null}
@@ -508,13 +519,14 @@ export function ProgramacionAcademicaModule({
       />}
 
       {seccion === 'concertacion' && concertacion?.habilitada && (
-        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
+        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada}
+          interoperabilidadPtaApagada={concertacion.interoperabilidadPta?.habilitada === false} />
       )}
       {seccion === 'concertacion' && concertacion && !concertacion.habilitada && (
         <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
           <p className="font-bold">La concertación de la docencia está apagada en este ambiente.</p>
           {concertacion.motivo && <p>{concertacion.motivo}</p>}
-          <p>Está encendida por defecto: solo se apaga si el ambiente define <code>PROG_CONCERTACION_HABILITADA=false</code> en Programación Académica o en el PTA, o un <code>PROG_CONCERTACION_DESDE_PERIODO</code> mal escrito. Quite esa variable y recree los servicios.</p>
+          <p>La concertación no tiene interruptor en Programación Académica: si ve este aviso, el servicio respondió que no está disponible. Revise el servicio y vuelva a intentar.</p>
         </div>
       )}
       {seccion === 'concertacion' && !concertacion && (
@@ -604,33 +616,19 @@ export function ProgramacionAcademicaModule({
           onClick. Abre el calendario del grupo, que es donde ya se edita el
           horario y se retiran sesiones. */}
       {detalle && detalle.idGrupo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 sm:p-8"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Detalle del grupo de ${detalle.asignatura}`}
-          onClick={() => setDetalle(null)}
+        <PanelGrupos
+          titulo={`Horario del grupo ${Number(detalle.grupo) || 1} · ${detalle.asignatura || detalle.programa || 'Grupo'}`}
+          onCerrar={() => setDetalle(null)}
         >
-          {/* §3.1 — Centrado (items-center) y con alto máximo: el contenido alto
-              del calendario hace scroll DENTRO de la tarjeta, no empuja el modal. */}
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setDetalle(null)}
-              aria-label="Cerrar"
-              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <CalendarioHorario
-              idGrupo={detalle.idGrupo}
-              numeroGrupo={Number(detalle.grupo) || 1}
-              nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
-              fechaInicioGrupo={detalle.fechaInicioGrupo}
-              fechaFinGrupo={detalle.fechaFinGrupo}
-            />
-          </div>
-        </div>
+          <CalendarioHorario
+            key={detalle.idGrupo}
+            idGrupo={detalle.idGrupo}
+            numeroGrupo={Number(detalle.grupo) || 1}
+            nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
+            fechaInicioGrupo={detalle.fechaInicioGrupo}
+            fechaFinGrupo={detalle.fechaFinGrupo}
+          />
+        </PanelGrupos>
       )}
 
     </ModuleLayout>

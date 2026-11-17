@@ -2099,6 +2099,8 @@ export async function getBancoDocentes(filters?: {
   convocatoria?: string;
   /** Planta o Cátedra. */
   clase?: string;
+  /** HU 2424: EN_PRUEBA (vinculación Periodo de prueba) o PENDIENTE (año cumplido sin decisión del comité). */
+  periodoPrueba?: string;
 }) {
   try {
     // El backend devuelve { success, items:[...], total, pages } sin wrapper "data"
@@ -2113,7 +2115,7 @@ export async function getBancoDocentes(filters?: {
   }
 }
 
-export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; convocatoria?: string; clase?: string }) {
+export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; convocatoria?: string; clase?: string; periodoPrueba?: string }) {
   try {
     const params = new URLSearchParams();
     if (filters?.territorial) params.set('territorial', filters.territorial);
@@ -2123,6 +2125,7 @@ export async function getBancoDocenteStats(filters?: { territorial?: string; ded
     if (filters?.periodoCarga) params.set('periodoCarga', filters.periodoCarga);
     if (filters?.convocatoria) params.set('convocatoria', filters.convocatoria);
     if (filters?.clase) params.set('clase', filters.clase);
+    if (filters?.periodoPrueba) params.set('periodoPrueba', filters.periodoPrueba);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const raw = await apiClient.get<any>(`${BD_BASE}/stats${qs}`, undefined, { cache: 'no-store' });
     return normalizeResult<any>(raw, null);
@@ -2220,6 +2223,103 @@ export async function toggleBancoDocenteEstado(id: string, body: {
   }
 }
 
+/** HU 2424 — Decisión del Comité Docente sobre el periodo de prueba (solo GGP autorizado). */
+export async function registrarDecisionPeriodoPrueba(id: string, body: {
+  resultado: 'SUPERA' | 'NO_SUPERA';
+  fechaComite: string;
+  soporteId: string;
+  motivo?: string;
+  observacion?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/periodo-prueba/decision`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la decisión del comité.') };
+  }
+}
+
+/** HU 2349 — Decisión del Comité Docente para la incorporación (Validado – Cumple → Apto para incorporación / Activo). */
+export async function registrarDecisionComiteIncorporacion(id: string, body: {
+  resultado: 'FAVORABLE' | 'NO_FAVORABLE';
+  fechaComite: string;
+  soporteId: string;
+  motivo?: string;
+  observacion?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/ciclo/decision-comite`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la decisión del comité.') };
+  }
+}
+
+/** HU 2349 — Recategorización: solicitud, revisión de soportes y decisión del comité. */
+export async function listarRecategorizacionesDocente(id: string, periodoCarga?: string) {
+  try {
+    const query = periodoCarga ? `?periodoCarga=${encodeURIComponent(periodoCarga)}` : '';
+    const raw = await apiClient.get<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones${query}`, undefined, { cache: 'no-store' });
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    return { success: false, data: [], message: getApiErrorMessage(error, 'No fue posible consultar las recategorizaciones.') };
+  }
+}
+
+export async function iniciarRecategorizacionDocente(id: string, body: {
+  justificacion: string;
+  propuesta: { escalafon: string; puntajeSalarial?: number | null };
+  soporteIds: string[];
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible iniciar la recategorización.') };
+  }
+}
+
+export async function revisarRecategorizacionDocente(id: string, recategorizacionId: string, body: {
+  resultado: 'CUMPLE' | 'NO_CUMPLE';
+  observacion?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones/${encodeURIComponent(recategorizacionId)}/revision`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la revisión de los soportes.') };
+  }
+}
+
+export async function decidirRecategorizacionDocente(id: string, recategorizacionId: string, body: {
+  resultado: 'APROBADA' | 'RECHAZADA';
+  fechaComite: string;
+  soporteId: string;
+  motivo?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones/${encodeURIComponent(recategorizacionId)}/decision`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la decisión del comité.') };
+  }
+}
+
+/** HU 2424 — Docentes con el año de prueba cumplido y sin decisión del comité (alerta del GGP). */
+export async function getAlertasPeriodoPrueba() {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/periodo-prueba/alertas`, undefined, { cache: 'no-store' });
+    return normalizeResult<{ total: number; items: Array<{ docente_id: string; nombre_completo: string; periodo_carga: string | null; inicio: string | null; cumplimiento: string | null; dias_vencido: number | null }> }>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible consultar las alertas de periodo de prueba.') };
+  }
+}
+
 export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitErrors = false, periodoCarga?: string, convocatoria?: string) {
   try {
     const formData = new FormData();
@@ -2290,6 +2390,14 @@ export async function getRundRegistrationHistoryDetail(tipo: string, id: string,
 
 export async function downloadBancoDocentesBulkSupport(cargaId: string): Promise<Blob> {
   return apiClient.getBlob(`${BD_BASE}/bulk/${encodeURIComponent(cargaId)}/soporte`);
+}
+
+/** HU 1355 — filas rechazadas de una carga masiva ya guardada (para el reporte descargable del historial). */
+export async function getBancoDocentesBulkErrors(cargaId: string): Promise<{ errores: any[]; disponible: boolean }> {
+  const raw = await apiClient.get<any>(`${BD_BASE}/bulk/${encodeURIComponent(cargaId)}/errores`, undefined, { cache: 'no-store', retries: 0, skipErrorToast: true });
+  const response = normalizeResult<any>(raw, null);
+  if (!response.success || !response.data || !Array.isArray(response.data.errorDetails)) throw new Error('No fue posible consultar el reporte de errores.');
+  return { errores: response.data.errorDetails, disponible: response.data.disponible !== false };
 }
 
 export async function exportBancoDocentes(): Promise<Blob> {

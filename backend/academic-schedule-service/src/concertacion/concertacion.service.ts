@@ -3,7 +3,9 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
@@ -16,9 +18,9 @@ import {
   PTA_APPROVE_ALL,
   PTA_REVIEW_ALL,
   REVISIONES_REQUERIDAS,
-  concertacionHabilitada,
-  desdePeriodo,
+  corteVigente,
   firmaSimulada,
+  leerInteroperabilidadPta,
   periodoEnCorte,
 } from './configuracion.js';
 import { ContratoPtaClient } from './contrato-pta.client.js';
@@ -26,6 +28,9 @@ import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma
 import { decide, normalizarSeccional, PermisosPtaService, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
 import { SQL_MODALIDADES_SIN_AULA } from '../grupos/grupo.entity.js';
+import { modoDelPuente } from '../asignaciones/area-docente.js';
+import { sinDatoAsignable } from '../asignaciones/situacion-docente.js';
+import { tomaDeFranjasHabilitada } from '../portal-docente/flujo-docente.js';
 
 /** APROBADA: solo filas del orden anterior. Diagrama: INTEGRACION-claude.md §23.1. */
 export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'POR_ACEPTAR' | 'ACEPTADA' | 'NOVEDAD' | 'DEVUELTA' | 'APROBADA';
@@ -70,7 +75,9 @@ interface FilaConcertacion {
  * ⚠️ Apagada por defecto (configuracion.ts): toda escritura se rechaza.
  */
 @Injectable()
-export class ConcertacionService {
+export class ConcertacionService implements OnModuleInit {
+  private readonly logger = new Logger(ConcertacionService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly docencia: DocenciaService,
@@ -79,57 +86,35 @@ export class ConcertacionService {
     private readonly permisosPta: PermisosPtaService,
   ) {}
 
-  /** Caché corta del interruptor del PTA: no se consulta en cada petición. */
-  private ptaCache: { valor: boolean; en: number } | null = null;
-
-  /**
-   * ¿Está encendida en los DOS lados? Solo si aquí lo está se consulta al PTA.
-   * Lanza si el PTA no responde: el llamador decide (fallar cerrado).
-   */
-  private async habilitadaEnAmbos(): Promise<boolean> {
-    if (!concertacionHabilitada()) return false;
-    const ahora = Date.now();
-    if (this.ptaCache && ahora - this.ptaCache.en < 30_000) return this.ptaCache.valor;
-    const valor = await this.contratoPta.ptaHabilitada();
-    this.ptaCache = { valor, en: ahora };
-    return valor;
+  /** Escribe la configuración efectiva al arrancar (sin secretos): qué manda y de dónde salió. */
+  async onModuleInit(): Promise<void> {
+    try {
+      const interop = await leerInteroperabilidadPta(this.dataSource);
+      this.logger.log(
+        `Configuración efectiva: concertación SIEMPRE disponible; corte ${await corteVigente(this.dataSource)} (${interop ? 'base de datos' : 'variable/por defecto'}); ` +
+        `interoperabilidad con el PTA ${interop ? (interop.habilitada ? 'ENCENDIDA' : 'APAGADA') : 'sin configurar (la siembra el PTA al arrancar)'} (base); ` +
+        `PROG_NUCLEO_PUENTE=${modoDelPuente()}; PROG_SIN_DATO_ASIGNABLE=${sinDatoAsignable()}; ` +
+        `PROG_PORTAL_TOMA_FRANJAS=${tomaDeFranjasHabilitada()}; PROG_MOCK_FIRMA_OTP(firma simulada)=${firmaSimulada()}`);
+    } catch (e: any) {
+      this.logger.warn(`No se pudo leer la configuración efectiva al arrancar: ${e?.message ?? e}`);
+    }
+    if (String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim() !== '') {
+      this.logger.warn('PROG_CONCERTACION_HABILITADA ya no se usa en Programación Académica: el interruptor vive en el PTA (base de datos).');
+    }
   }
 
-  /** Configuración EFECTIVA: encendida solo si lo está en los dos servicios. */
+  /** Configuración efectiva: la concertación está siempre disponible; el interruptor es del PTA (base). */
   async configuracion() {
-    let habilitada = false;
-    let motivo: string | null = null;
-    if (!concertacionHabilitada()) {
-      motivo = 'Apagada en Programación Académica.';
-    } else {
-      try {
-        habilitada = await this.habilitadaEnAmbos();
-        if (!habilitada) motivo = 'Encendida aquí pero apagada en el PTA: el PTA sigue aprobando la Docencia.';
-      } catch (e: any) {
-        motivo = `No se pudo verificar el PTA: ${e?.message ?? e}`;
-      }
-    }
+    const interop = await leerInteroperabilidadPta(this.dataSource);
     return {
-      habilitada,
-      motivo,
-      desdePeriodo: desdePeriodo(),
+      habilitada: true,
+      motivo: null as string | null,
+      desdePeriodo: await corteVigente(this.dataSource),
+      // Informativo: si está apagada, lo aceptado queda pendiente de aplicarse al PTA.
+      interoperabilidadPta: { habilitada: interop?.habilitada ?? false, origen: interop ? 'base' : 'sin_configurar' },
       firmaSimulada: firmaSimulada(),
       revisionesRequeridas: REVISIONES_REQUERIDAS.map((r) => r.tipo),
     };
-  }
-
-  /** Toda escritura exige el régimen nuevo encendido en ambos lados. */
-  private async exigirHabilitada(): Promise<void> {
-    let ok = false;
-    try { ok = await this.habilitadaEnAmbos(); }
-    catch (e: any) {
-      throw new ConflictException(`No se pudo verificar que el PTA tenga la concertación encendida: ${e?.message ?? e}`);
-    }
-    if (!ok) {
-      throw new ConflictException(
-        'La concertación de la docencia está apagada: el PTA todavía aprueba la Docencia.',
-      );
-    }
   }
 
   /** Código del periodo (plataforma); null si es legado o no existe. */
@@ -197,7 +182,6 @@ export class ConcertacionService {
     periodoRef: string,
     token: string | null,
   ) {
-    await this.exigirHabilitada();
     const filasDocente = await this.dataSource.query(
       `SELECT p.id_person::text AS "idPerson", d."tipoVinculacion" AS vinculacion
          FROM auth.personas p
@@ -210,9 +194,9 @@ export class ConcertacionService {
     // Solo en el corte: en un periodo anterior (o legado) la Docencia la sigue
     // aprobando el PTA, y concertarla aquí sería doble aprobación.
     const codigoPeriodo = await this.codigoPeriodo(periodoRef);
-    if (!periodoEnCorte(codigoPeriodo)) {
+    if (!(await periodoEnCorte(this.dataSource, codigoPeriodo))) {
       throw new ConflictException(
-        `La concertación aplica desde el periodo ${desdePeriodo()}. En ${codigoPeriodo ?? 'este periodo'} la Docencia la aprueba el PTA.`);
+        `La concertación aplica desde el periodo ${await corteVigente(this.dataSource)}. En ${codigoPeriodo ?? 'este periodo'} la Docencia la aprueba el PTA.`);
     }
 
     // Grupo virtual asignado sin horario (063): el docente aún no lo define en «Mi programación».
@@ -445,7 +429,6 @@ export class ConcertacionService {
   }
 
   async revisar(id: string, tipo: string, idUser: string, permisos: readonly PermisoPta[], codigo: unknown) {
-    await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
@@ -472,7 +455,6 @@ export class ConcertacionService {
   }
 
   async devolver(id: string, idUser: string, permisos: readonly PermisoPta[], comentario: unknown) {
-    await this.exigirHabilitada();
     const texto = String(comentario ?? '').trim();
     if (!texto) throw new BadRequestException('Para devolver debe explicar el motivo.');
     await this.dataSource.transaction(async (m) => {
@@ -491,7 +473,6 @@ export class ConcertacionService {
   }
 
   async aprobar(id: string, idUser: string, permisos: readonly PermisoPta[], codigo: unknown) {
-    await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
@@ -536,7 +517,6 @@ export class ConcertacionService {
    * y la decisión, con las firmas del aprobador y del docente, va al PTA.
    */
   async aceptar(id: string, docente: { idPerson: string; idUser: string }, codigo: unknown, token: string | null) {
-    await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargarDelDocente(m, id, docente.idPerson);
@@ -557,7 +537,6 @@ export class ConcertacionService {
    * nada de la programación: vuelve al programador, que decide y reenvía.
    */
   async reportarNovedad(id: string, docente: { idPerson: string; idUser: string }, tipo: unknown, justificacion: unknown) {
-    await this.exigirHabilitada();
     const t = String(tipo ?? '').trim().toLowerCase();
     if (!(TIPOS_NOVEDAD as readonly string[]).includes(t)) {
       throw new BadRequestException(`El tipo de novedad debe ser uno de: ${TIPOS_NOVEDAD.join(', ')}.`);
