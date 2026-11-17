@@ -77,7 +77,24 @@ export function bulkRegistrationTrace(rows: any[], results?: any[], errors: any[
     if (row.resultado === 'NO_CARGADO') counters.errores++;
     if (row.resultado === 'NO_PROCESADO') counters.omitidos++;
   }
-  return { version: 1, periodos: Object.keys(resumenPorPeriodo).map(key => key || null), registros, resumenPorPeriodo };
+  // HU 1355: detalle de las filas rechazadas para el reporte descargable. Va aparte de `registros`
+  // porque estos campos (dato errado, motivo) pueden contener la cédula y el detalle de personas
+  // se muestra a roles de solo lectura; el endpoint del reporte sí aplica el enmascaramiento RBAC.
+  const errores = errors.slice(0, 5000).map(error => {
+    const snapshot = registrationSnapshot(error.data || {});
+    return {
+      fila: Number(error.fila || error.row) || null,
+      documentoIdentidad: clean(error.documentoIdentidad) || snapshot.documento_identidad,
+      nombre: clean(error.nombre) || snapshot.nombre,
+      periodoCarga: clean(error.periodoCarga) || snapshot.periodo,
+      tipo: clean(error.tipo),
+      columna: clean(error.columna),
+      datoErrado: clean(error.datoErrado),
+      valorEsperado: clean(error.valorEsperado),
+      mensaje: clean(error.mensaje || error.message) || 'El registro no superó la validación de la carga.',
+    };
+  });
+  return { version: 1, periodos: Object.keys(resumenPorPeriodo).map(key => key || null), registros, resumenPorPeriodo, ...(results ? { errores } : {}) };
 }
 
 function boundedNumber(value: unknown, fallback: number, max: number) {

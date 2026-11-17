@@ -1,4 +1,5 @@
 import {  Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
+import type { DecisionPeriodoPrueba } from '../banco-docentes/rund-periodo-prueba';
 
 @Entity({ schema: 'academic_work_plan', name: 'Docente' })
 export class DocenteEntity {
@@ -90,6 +91,10 @@ export class DocenteEntity {
   /** RUND-003: títulos adicionales por nivel ("Información adicional"); los de arriba son la "Información precargada". */
   @Column({ name: 'titulosAdicionales', type: 'jsonb', nullable: true })
   titulosAdicionales: Partial<Record<'pregrado' | 'especializacion' | 'maestria' | 'doctorado' | 'posDoctorado', string[]>> | null;
+
+  /** HU 2424: decisión vigente del Comité Docente sobre el periodo de prueba (el historial está en RundAprobacionLog). */
+  @Column({ name: 'decisionPeriodoPrueba', type: 'jsonb', nullable: true })
+  decisionPeriodoPrueba: DecisionPeriodoPrueba | null;
 
   @Column({ type: 'text', nullable: true })
   investigacion: string | null;

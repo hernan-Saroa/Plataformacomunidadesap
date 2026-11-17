@@ -30,6 +30,11 @@ import { capturarDatosCarga, fechaCivilPersistencia, stableJson } from './rund-c
 import { leerTitulosAdicionales, resolverTitulosAdicionales, titulosAdicionalesGuardados, type NivelTitulo } from './rund-titulos-adicionales';
 import { decidirTituloSoporte, NIVEL_POR_SOPORTE_TITULO, quitarTitulo, renombrarTitulo, type CambioTitulo } from './rund-titulo-soporte';
 import { claseDesdeHoras, normalizarClaseDocente, resolverClaseDocente } from './rund-clase-docente';
+import {
+  PERIODO_PRUEBA_ACCION_AUDITORIA, PERIODO_PRUEBA_CODIGO, PERIODO_PRUEBA_TIPO_SOPORTE, RESULTADOS_COMITE,
+  diasRestantesPrueba, esVinculacionPrueba, fechaCumplimientoPrueba, hoyColombia, pendienteDecisionComite, soloFecha,
+  validarDecisionComite, type DecisionPeriodoPrueba,
+} from './rund-periodo-prueba';
 import { hasRundData as hasRundDataValue } from './rund-evidence-data';
 import { deducirTitulosAdicionales } from './rund-perfil-titulos';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
@@ -322,6 +327,25 @@ export function categorizarSituacion(texto: string | null): string {
   return 'Otra';
 }
 
+/**
+ * HU 2424 — Datos del periodo de prueba del docente (CA-01, CA-02, CA-03).
+ * null si el docente no está ni estuvo en periodo de prueba (sin decisión registrada).
+ */
+export function periodoPruebaInfo(vinculacionCodigo: unknown, estado: unknown, inicio: unknown, decision: unknown) {
+  const enPrueba = esVinculacionPrueba(vinculacionCodigo);
+  if (!enPrueba && !decision) return null;
+  const inicioFecha = soloFecha(inicio);
+  const cumplimiento = fechaCumplimientoPrueba(inicioFecha);
+  return {
+    en_periodo_prueba: enPrueba,
+    inicio: inicioFecha,
+    cumplimiento,
+    dias_restantes: diasRestantesPrueba(cumplimiento),
+    pendiente_decision: pendienteDecisionComite({ vinculacionCodigo, estado, inicio: inicioFecha, decision }),
+    decision: decision ?? null,
+  };
+}
+
 // â”€â”€â”€ territorial resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function normalizeEstadoDocente(value: any, fallback = 'ACTIVO'): string {
@@ -606,9 +630,9 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
     const val = (payload as any)[f.key];
     if (val === undefined || val === null || String(val).trim() === '') {
       throw new BadRequestException({
-        message: `Campo obligatorio vacÃ­o: ${f.name}`,
+        message: `Campo obligatorio vacío: ${f.name}`,
         columna: f.name,
-        datoErrado: '(vacÃ­o)',
+        datoErrado: '(vacío)',
         valorEsperado: 'Dato requerido'
       });
     }
@@ -617,6 +641,27 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
   // El archivo oficial puede traer correos personales en CORREO_INSTITUCIONAL.
   // Se conservan como dato de contacto y quedan marcados en observaciones RUND;
   // no bloquean la carga masiva.
+}
+
+/**
+ * HU 1355: la cédula es la llave de la carga masiva, así que una cédula con formato
+ * inválido rechaza SOLO esa fila (el resto del archivo sigue). Los puntos ya se
+ * quitaron al normalizar ("1.020.304" → "1020304"); aquí solo se valida lo que queda.
+ */
+export function validateBulkDocumentFormat(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
+  const documentNumber = String(payload.documentNumber || '').trim();
+  const documentType = String(payload.documentType || '').toUpperCase();
+  const fail = (message: string, valorEsperado: string) => {
+    throw new BadRequestException({ message, columna: 'DOCUMENTO_IDENTIDAD', datoErrado: documentNumber, valorEsperado });
+  };
+  if (documentNumber.length < 5 || documentNumber.length > 20) {
+    fail('La cédula debe tener entre 5 y 20 caracteres.', 'Entre 5 y 20 caracteres');
+  }
+  if (documentType === 'PA') {
+    if (!/^[A-Z0-9]+$/i.test(documentNumber)) fail('El pasaporte solo puede contener letras y números.', 'Letras y números, sin espacios ni símbolos');
+  } else if (!/^\d+$/.test(documentNumber)) {
+    fail('La cédula solo puede contener números.', 'Solo dígitos (los puntos se ignoran)');
+  }
 }
 
 /**
@@ -854,6 +899,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     rango_edad: rangoEdad,
     horas_programables: docente.horasAsignables ?? 0,
     clase_docente: resolverClaseDocente(docente.claseDocente, docente.horasAsignables),
+    periodo_prueba: periodoPruebaInfo(docente.tipoVinculacion, docente.estado, docente.fechaInicioVinculacion, docente.decisionPeriodoPrueba),
     estado: docente.estado,
     email: usuario?.email ?? null,
     activo: usuario?.activo ?? true,
@@ -941,6 +987,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     rango_edad: rangoEdad,
     horas_programables: row.horas_programables ?? 0,
     clase_docente: resolverClaseDocente(row.clase_docente, row.horas_programables),
+    periodo_prueba: periodoPruebaInfo(row.vinculacion_codigo, row.estado_efectivo || row.estado, row.inicio_vinculacion, row.decision_periodo_prueba),
     estado: row.estado_efectivo || row.estado || (row.activo ? 'ACTIVO' : 'INACTIVO'),
     email,
     activo: row.activo_efectivo ?? row.activo,
@@ -997,6 +1044,7 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB,
           ADD COLUMN IF NOT EXISTS "claseDocente" TEXT,
           ADD COLUMN IF NOT EXISTS "titulosAdicionales" JSONB,
+          ADD COLUMN IF NOT EXISTS "decisionPeriodoPrueba" JSONB,
           ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
@@ -1210,6 +1258,7 @@ export class BancoDocentesService implements OnModuleInit {
           d."situacionCategoria" AS situacion_categoria,
           d."fechaInicioVinculacion" AS inicio_vinculacion,
           d."fechaFinVinculacion" AS fin_vinculacion,
+          d."decisionPeriodoPrueba" AS decision_periodo_prueba,
           d."puntajeSalarial" AS puntaje_salarial,
           d."edadReferencia" AS edad_referencia,
           d."rangoEdad" AS rango_edad,
@@ -1252,7 +1301,7 @@ export class BancoDocentesService implements OnModuleInit {
     `;
   }
 
-  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string }, params: any[]) {
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string; periodoPrueba?: string }, params: any[]) {
     const conditions: string[] = [];
 
     if (filters.territorial === 'SIN_TERRITORIAL') {
@@ -1286,6 +1335,17 @@ export class BancoDocentesService implements OnModuleInit {
     if (claseFiltro) {
       params.push(claseFiltro);
       conditions.push(`clase_docente = $${params.length}`);
+    }
+
+    // HU 2424: «EN_PRUEBA» = vinculación Periodo de prueba; «PENDIENTE» = año cumplido, activo y sin decisión del comité.
+    const pruebaFiltro = String(filters.periodoPrueba || '').trim().toUpperCase();
+    if (pruebaFiltro === 'EN_PRUEBA' || pruebaFiltro === 'PENDIENTE') {
+      params.push(PERIODO_PRUEBA_CODIGO);
+      conditions.push(`vinculacion_codigo = $${params.length}`);
+      if (pruebaFiltro === 'PENDIENTE') {
+        conditions.push(`estado_efectivo = 'ACTIVO' AND decision_periodo_prueba IS NULL AND inicio_vinculacion IS NOT NULL
+          AND (inicio_vinculacion::date + interval '1 year')::date <= (now() AT TIME ZONE 'America/Bogota')::date`);
+      }
     }
 
     if (filters.estado) {
@@ -1354,7 +1414,7 @@ export class BancoDocentesService implements OnModuleInit {
     return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
-  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string; page?: number; limit?: number }) {
+  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string; periodoPrueba?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
@@ -1422,7 +1482,7 @@ export class BancoDocentesService implements OnModuleInit {
 
   async previewRegistroDeletion(body: any) {
     const params: any[] = [];
-    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga', 'convocatoria'];
+    const allowed = ['territorial', 'dedicacion', 'vinculacion', 'estado', 'search', 'periodoCarga', 'convocatoria', 'periodoPrueba'];
     const filters: any = {};
     if (body?.ids !== undefined) {
       params.push(deletionIds(body.ids));
@@ -1717,6 +1777,7 @@ export class BancoDocentesService implements OnModuleInit {
       validatePayloadAutogestion(payload);
     } else {
       validatePayload(payload);
+      if (options.bulkImport) validateBulkDocumentFormat(payload);
       if (rawPayload?.canal_origen === 'MODAL') {
         validateManualBancoDocentePayload(payload, rawPayload);
       }
@@ -2528,6 +2589,20 @@ export class BancoDocentesService implements OnModuleInit {
     return new RundRegistrationHistory(this.dataSource).detail(tipo, id, query);
   }
 
+  /** Filas rechazadas de una carga (HU 1355). `null` = carga anterior que no guardó el detalle. */
+  async getBulkErrors(cargaId: string): Promise<any[] | null> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cargaId)) {
+      throw new BadRequestException('El identificador de la carga masiva no es valido.');
+    }
+    const rows = await this.dataSource.query(
+      `SELECT resumen->'trazabilidad'->'errores' AS errores
+       FROM academic_work_plan."RundCargaMasiva" WHERE id = $1::uuid LIMIT 1`,
+      [cargaId],
+    );
+    if (!rows[0]) throw new NotFoundException('No se encontró la carga masiva.');
+    return Array.isArray(rows[0].errores) ? rows[0].errores : null;
+  }
+
   async getBulkSupport(cargaId: string): Promise<{ fileName: string; mimeType: string; content: Buffer }> {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cargaId)) {
       throw new BadRequestException('El identificador de la carga masiva no es valido.');
@@ -2638,6 +2713,188 @@ export class BancoDocentesService implements OnModuleInit {
     return execute({ query: this.dataSource.query.bind(this.dataSource) });
   }
 
+  /**
+   * HU 2424 — Docentes con el año de prueba cumplido, activos y sin decisión del Comité Docente (RN-03, CA-03).
+   * Usa el mismo filtro que el listado («PENDIENTE») para que la alerta y la tabla nunca difieran.
+   */
+  async getAlertasPeriodoPrueba() {
+    const params: any[] = [];
+    const where = this.buildAuthDocentesFilters({ periodoPrueba: 'PENDIENTE' }, params);
+    const rows = await this.dataSource.query(
+      `${this.authDocentesBaseSql()}
+       SELECT docente_id, nombre_completo, periodo_carga, inicio_vinculacion, vinculacion_codigo, estado_efectivo, decision_periodo_prueba
+       FROM auth_docentes ${where}
+       ORDER BY inicio_vinculacion ASC, nombre_completo ASC`,
+      params,
+    );
+    const items = rows.map((row: any) => {
+      const info = periodoPruebaInfo(row.vinculacion_codigo, row.estado_efectivo, row.inicio_vinculacion, row.decision_periodo_prueba);
+      return {
+        docente_id: row.docente_id,
+        nombre_completo: row.nombre_completo,
+        periodo_carga: row.periodo_carga ?? null,
+        inicio: info?.inicio ?? null,
+        cumplimiento: info?.cumplimiento ?? null,
+        dias_vencido: info?.dias_restantes === null || info?.dias_restantes === undefined ? null : Math.max(0, -info.dias_restantes),
+      };
+    });
+    return { total: items.length, items };
+  }
+
+  /**
+   * HU 2424 — Registra la decisión del Comité Docente sobre el periodo de prueba.
+   * Supera → vinculación Carrera 2 y sigue activo; No supera → estado Inactivo (RN-06, RN-07).
+   * Una decisión ya registrada se puede corregir: se vuelve a aplicar desde los valores que el docente tenía antes (RN-08).
+   */
+  async registrarDecisionPeriodoPrueba(id: string, body: any) {
+    const entrada = validarDecisionComite(body);
+    const requestedPeriod = body?.periodoCarga || body?.periodo_carga || null;
+    const docenteId = await this.resolveDocenteId(id, requestedPeriod);
+    if (!(await this.docenteRepo.findOne({ where: { id: docenteId }, select: ['id'] }))) {
+      throw new NotFoundException(`Docente ${id} no encontrado`);
+    }
+
+    const execute = async (manager: any) => {
+      const docente = await manager.findOne(DocenteEntity, { where: { id: docenteId }, lock: { mode: 'pessimistic_write' } });
+      if (!docente) throw new NotFoundException(`Docente ${id} no encontrado`);
+      if (docente.eliminadoRund) throw new NotFoundException('Este registro fue eliminado de RUND.');
+      if (requestedPeriod && String(requestedPeriod) !== String(docente.periodoCarga || '')) {
+        throw new BadRequestException('La decisión del comité solo puede aplicarse al perfil del periodo seleccionado.');
+      }
+
+      const previa: DecisionPeriodoPrueba | null = docente.decisionPeriodoPrueba || null;
+      // Reenvío idéntico (doble clic o reintento): ya está registrado, no se duplica ni la decisión ni el historial.
+      if (previa && previa.resultado === entrada.resultado && previa.fechaComite === entrada.fechaComite
+        && previa.soporteId === entrada.soporteId && (previa.motivo ?? null) === entrada.motivo
+        && (previa.observacion ?? null) === entrada.observacion) {
+        return {
+          id: docente.id, resultado: previa.resultado, vinculacion_codigo: docente.tipoVinculacion,
+          vinculacion: getTipoVinculacionLabel(docente.tipoVinculacion, docente.vinculacionDisplay) || docente.tipoVinculacion,
+          estado: docente.estado, periodo_prueba: periodoPruebaInfo(docente.tipoVinculacion, docente.estado, docente.fechaInicioVinculacion, previa),
+        };
+      }
+      const [fila] = await manager.query(
+        `SELECT to_char("fechaInicioVinculacion", 'YYYY-MM-DD') AS inicio FROM academic_work_plan."Docente" WHERE id = $1`,
+        [docente.id],
+      );
+      const inicio: string | null = fila?.inicio ?? null;
+      const estadoActual = String(docente.estado || 'ACTIVO').toUpperCase() === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO';
+
+      if (!previa) {
+        if (!esVinculacionPrueba(docente.tipoVinculacion)) {
+          throw new BadRequestException('La decisión del comité solo aplica a docentes con vinculación «Periodo de prueba».');
+        }
+        if (estadoActual !== 'ACTIVO') {
+          throw new BadRequestException('El perfil está inactivo: actívelo con su soporte antes de registrar la decisión del comité.');
+        }
+        const cumplimiento = fechaCumplimientoPrueba(inicio);
+        if (!cumplimiento) {
+          throw new BadRequestException('El docente no tiene fecha de inicio del periodo de prueba; complétela en el perfil antes de registrar la decisión.');
+        }
+        const dias = diasRestantesPrueba(cumplimiento) as number;
+        if (dias > 0) {
+          throw new BadRequestException(`El periodo de prueba aún no se cumple: vence el ${cumplimiento} (faltan ${dias} día${dias === 1 ? '' : 's'}).`);
+        }
+      }
+
+      const soporteRows = await manager.query(
+        `SELECT id, nombre_archivo FROM academic_work_plan."RundSoporteCampo"
+         WHERE id::text = $1 AND docente_id = $2
+           AND tipo_soporte = $3
+           AND documento_carpeta_id IS NOT NULL
+           AND COALESCE(estado, '') <> 'Rechazado'
+         LIMIT 1`,
+        [entrada.soporteId, docente.id, PERIODO_PRUEBA_TIPO_SOPORTE],
+      );
+      if (!soporteRows[0]) {
+        throw new BadRequestException('El soporte de la decisión del comité no existe o no pertenece al perfil docente.');
+      }
+
+      // Punto de partida: lo que tenía el docente antes de cualquier decisión.
+      const base = previa
+        ? { codigo: previa.vinculacionAnterior.codigo, etiqueta: previa.vinculacionAnterior.etiqueta, regimen: previa.vinculacionAnterior.regimenNormativo, estado: previa.estadoAnterior }
+        : { codigo: docente.tipoVinculacion, etiqueta: docente.vinculacionDisplay, regimen: docente.regimenNormativo, estado: estadoActual };
+      const supera = entrada.resultado === 'SUPERA';
+      const nuevo = supera
+        ? { codigo: 'CARRERA2', etiqueta: 'Carrera2', regimen: 'Acuerdo 003/2018', estado: 'ACTIVO' }
+        : { codigo: base.codigo, etiqueta: base.etiqueta, regimen: base.regimen, estado: 'INACTIVO' };
+
+      const etiquetaDe = (codigo: string, etiqueta: string | null) => getTipoVinculacionLabel(codigo, etiqueta) || codigo;
+      const vinculacionAntes = etiquetaDe(docente.tipoVinculacion, docente.vinculacionDisplay);
+      const vinculacionDespues = etiquetaDe(nuevo.codigo, nuevo.etiqueta);
+      const cambios: Record<string, { anterior: unknown; nuevo: unknown }> = {
+        VINCULACION: { anterior: vinculacionAntes, nuevo: vinculacionDespues },
+        ESTADO_DOCENTE: { anterior: estadoActual, nuevo: nuevo.estado },
+      };
+      if ((docente.regimenNormativo || null) !== (nuevo.regimen || null)) {
+        cambios.REGIMEN_NORMATIVO = { anterior: docente.regimenNormativo ?? null, nuevo: nuevo.regimen ?? null };
+      }
+
+      const actorId = body?.actorId || 'SISTEMA';
+      const decision: DecisionPeriodoPrueba = {
+        resultado: entrada.resultado,
+        resultadoEtiqueta: RESULTADOS_COMITE[entrada.resultado],
+        fechaComite: entrada.fechaComite,
+        motivo: entrada.motivo,
+        observacion: entrada.observacion,
+        soporteId: entrada.soporteId,
+        soporteNombre: soporteRows[0].nombre_archivo ?? null,
+        registradoPor: actorId,
+        registradoEn: new Date().toISOString(),
+        vinculacionAnterior: previa
+          ? previa.vinculacionAnterior
+          : { codigo: String(docente.tipoVinculacion), etiqueta: docente.vinculacionDisplay ?? null, regimenNormativo: docente.regimenNormativo ?? null },
+        estadoAnterior: base.estado,
+      };
+
+      docente.tipoVinculacion = nuevo.codigo;
+      docente.vinculacionDisplay = nuevo.etiqueta;
+      docente.regimenNormativo = nuevo.regimen;
+      docente.estado = nuevo.estado;
+      docente.decisionPeriodoPrueba = decision;
+      await manager.save(DocenteEntity, docente);
+
+      await this.writeAuditWithManager(manager, {
+        docenteId: docente.id,
+        bloque: 'VINCULACION',
+        accion: PERIODO_PRUEBA_ACCION_AUDITORIA,
+        actorId,
+        canalOrigen: 'MODAL',
+        campoAfectado: Object.keys(cambios).join(', '),
+        datoPrevio: `${vinculacionAntes} / ${estadoActual}`,
+        datoNuevo: `${vinculacionDespues} / ${nuevo.estado}`,
+        observacion: entrada.motivo || entrada.observacion || undefined,
+        soporteId: entrada.soporteId,
+        ip: body?.ip,
+        metadata: {
+          resultado: entrada.resultado,
+          resultadoEtiqueta: decision.resultadoEtiqueta,
+          fechaComite: entrada.fechaComite,
+          motivo: entrada.motivo,
+          observacion: entrada.observacion,
+          soporteNombre: decision.soporteNombre,
+          correccion: Boolean(previa),
+          periodoCarga: docente.periodoCarga || null,
+          cambios,
+        },
+      });
+
+      return {
+        id: docente.id,
+        resultado: entrada.resultado,
+        vinculacion_codigo: nuevo.codigo,
+        vinculacion: vinculacionDespues,
+        estado: nuevo.estado,
+        periodo_prueba: periodoPruebaInfo(nuevo.codigo, nuevo.estado, inicio, decision),
+      };
+    };
+
+    if (typeof (this.dataSource as any).transaction === 'function') {
+      return this.dataSource.transaction(execute);
+    }
+    return execute({ query: this.dataSource.query.bind(this.dataSource), findOne: (_e: unknown, o: any) => this.docenteRepo.findOne(o), save: (_e: unknown, d: any) => this.docenteRepo.save(d) });
+  }
+
   async guardarIncorporacion(id: string, body: any, actorId: string, ip?: string) {
     return new RundIncorporacion(this.dataSource).save(await this.resolveDocenteId(id), body, actorId, ip);
   }
@@ -2746,7 +3003,7 @@ export class BancoDocentesService implements OnModuleInit {
     return suggestionIds.length ? this.dataSource.transaction(execute) : execute();
   }
 
-  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string }) {
+  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; convocatoria?: string; clase?: string; periodoPrueba?: string }) {
     const baseSql = this.authDocentesBaseSql();
     const params: any[] = [];
     const whereClause = filters ? this.buildAuthDocentesFilters(filters, params) : '';

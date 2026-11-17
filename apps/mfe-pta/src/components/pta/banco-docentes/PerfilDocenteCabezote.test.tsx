@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
+import { AuthProvider } from '../../../contexts/AuthContext';
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn().mockResolvedValue({ id: null, url: null }) } }));
 
 // Sin `globals: true` en vitest.config.ts, @testing-library/react no desmonta
@@ -137,5 +138,38 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     const { container } = render(<PerfilDocenteCabezote docente={null} />);
 
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('HU 2426 — distintivo «Solo lectura» del perfil Consulta RUND', () => {
+  const conPermisos = (permisos: string[], isSuperUser = false) => render(
+    <AuthProvider userEmail="consulta@esap.edu.co" permisos={permisos} isSuperUser={isSuperUser}>
+      <PerfilDocenteCabezote docente={PERFIL_GGP} />
+    </AuthProvider>);
+
+  it('RN-05/CA-04: lo muestra al usuario de consulta', () => {
+    conPermisos(['banco-docentes.rund.consulta']);
+    expect(screen.getByTestId('rund-solo-lectura').textContent).toContain('Solo lectura');
+    expect(screen.getByText('MARIA LOPEZ RUIZ')).toBeTruthy();
+  });
+
+  it.each([
+    ['un perfil operativo', ['banco-docentes.rund.carga']],
+    ['consulta más edición', ['banco-docentes.rund.consulta', 'banco-docentes.rund.edit']],
+    ['un rol antiguo con solo view', ['banco-docentes.rund.view']],
+    ['sin permisos RUND', []],
+  ])('no lo muestra con %s', (_nombre, permisos) => {
+    conPermisos(permisos as string[]);
+    expect(screen.queryByTestId('rund-solo-lectura')).toBeNull();
+  });
+
+  it('no lo muestra al superusuario aunque tenga el perfil', () => {
+    conPermisos(['banco-docentes.rund.consulta'], true);
+    expect(screen.queryByTestId('rund-solo-lectura')).toBeNull();
+  });
+
+  it('sin proveedor de sesión (vista del propio docente) no lo muestra', () => {
+    render(<PerfilDocenteCabezote docente={PERFIL_GGP} />);
+    expect(screen.queryByTestId('rund-solo-lectura')).toBeNull();
   });
 });
