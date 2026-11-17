@@ -274,6 +274,15 @@ export function ProgramacionAcademicaModule({
       title: 'GESTIÓN PRINCIPAL',
       items: [
         ...(soloRevision ? [] : ([
+        // Orden del flujo: periodo → catálogo → programación → aulas → docentes → cruces → concertación.
+        {
+          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
+          id: 'ofertas',
+          label: 'Periodos',
+          subtitle: 'Crear, activar, publicar y cerrar',
+          icon: <Layers3 className="w-5 h-5" />,
+          color: '#003DA5',
+        },
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -303,14 +312,6 @@ export function ProgramacionAcademicaModule({
           subtitle: 'Carga horaria y asignaciones',
           icon: <Users className="w-5 h-5" />,
           color: '#7C3AED',
-        },
-        {
-          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
-          id: 'ofertas',
-          label: 'Periodos',
-          subtitle: 'Crear, activar, publicar y cerrar',
-          icon: <Layers3 className="w-5 h-5" />,
-          color: '#003DA5',
         },
         {
           id: 'alertas',

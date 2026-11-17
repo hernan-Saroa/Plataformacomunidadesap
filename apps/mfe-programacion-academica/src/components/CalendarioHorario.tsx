@@ -1,7 +1,7 @@
 import { validarDias, crearDias, editarSesion, borrarSesion, ErrorHorario, type ValidacionDias } from '../services/api/horarioQaApi';
 import { ModalConfirmacion } from './ModalConfirmacion';
 import { CampoHora24, hora24Valida } from './CampoHora24';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useBorradorGrupo } from './PanelGrupos';
 import { createPortal } from 'react-dom';
 import { CalendarDays, Clock, Loader2, MapPin, Monitor, Plus, Pencil, Trash2, X } from 'lucide-react';
@@ -499,30 +499,44 @@ function CalendarioGrupoEditable({
                         onPointerDown={(e) => e.stopPropagation()}
                         onPointerUp={(e) => e.stopPropagation()}
                         title={`${hhmm(s.horaInicio)}–${hhmm(s.horaFin)} · ${s.tipoSesion === 'presencial' ? 'Presencial' : 'Mediada por tecnología'}${s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}`}
-                        className="absolute left-1 right-1 rounded-md px-1.5 py-1 overflow-hidden group"
+                        className="rounded-md overflow-hidden group"
                         style={{
                           top: (ini / 60) * ALTO_HORA,
                           height: Math.max((dur / 60) * ALTO_HORA - 2, 18),
                           background: c.fondo,
                           borderLeft: `3px solid ${c.borde}`,
+                          padding: '2px 5px', position: 'absolute', left: 4, right: 4,
                         }}
                       >
-                        <p className="text-[0.62rem] font-black leading-tight" style={{ color: c.texto }}>
-                          {hhmm(s.horaInicio)}–{hhmm(s.horaFin)}
-                        </p>
-                        <p className="text-[0.58rem] font-medium leading-tight truncate" style={{ color: c.texto }}>
-                          {s.tipoSesion === 'presencial' ? 'Presencial' : 'Mediada por tecnología'}
-                          {s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}
-                        </p>
-                        <button type="button" onClick={e => { e.stopPropagation(); abrirEdicion(s); }} aria-label={`Editar sesión ${hhmm(s.horaInicio)}–${hhmm(s.horaFin)}`} className="absolute top-0.5 right-6 rounded bg-white/90 p-0.5 text-blue-700"><Pencil className="h-3 w-3" /></button>
+                        {/* Tamaños y posiciones EN LÍNEA: las clases arbitrarias (text-[0.62rem], top-0.5…) no están en la
+                            hoja de estilos del shell y el bloque de una hora salía con el texto cortado y los iconos sueltos.
+                            Una sesión corta (< 90 min) cabe en una sola línea; el detalle completo va en el `title`. */}
+                        {(() => {
+                          const tipo = s.tipoSesion === 'presencial' ? 'Presencial' : 'Mediada por tecnología';
+                          const corta = dur < 90;
+                          const linea: CSSProperties = { color: c.texto, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0, paddingRight: 36 };
+                          return <>
+                            <p style={{ ...linea, fontSize: '0.7rem', fontWeight: 800 }}>
+                              {hhmm(s.horaInicio)}–{hhmm(s.horaFin)}{corta && s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}
+                            </p>
+                            {(!corta || dur >= 50) && (
+                              <p style={{ ...linea, fontSize: '0.62rem', fontWeight: 500, paddingRight: corta ? 36 : 0 }}>
+                                {tipo}{!corta && s.aulaCodigo ? ` · ${s.aulaCodigo}` : ''}
+                              </p>
+                            )}
+                          </>;
+                        })()}
+                        <button type="button" onClick={e => { e.stopPropagation(); abrirEdicion(s); }} aria-label={`Editar sesión ${hhmm(s.horaInicio)}–${hhmm(s.horaFin)}`}
+                          className="rounded text-blue-700" style={{ position: 'absolute', top: 2, right: 19, padding: 2, lineHeight: 0, background: 'rgba(255,255,255,.92)' }}><Pencil style={{ width: 11, height: 11 }} /></button>
                         <button type="button"
                           disabled={s.estado === 'APROBADA'}
                           onClick={(e) => { e.stopPropagation(); setSesionEliminar(s); }}
                           title="Eliminar sesión"
                           aria-label={`Eliminar sesión ${hhmm(s.horaInicio)}–${hhmm(s.horaFin)}`}
-                          className="absolute top-0.5 right-0.5 p-0.5 rounded bg-white/80 text-slate-400 hover:text-red-600 transition-opacity"
+                          className="rounded text-slate-500"
+                          style={{ position: 'absolute', top: 2, right: 2, padding: 2, lineHeight: 0, background: 'rgba(255,255,255,.92)' }}
                         >
-                          <Trash2 className="w-2.5 h-2.5" />
+                          <Trash2 style={{ width: 11, height: 11 }} />
                         </button>
                       </div>
                     );

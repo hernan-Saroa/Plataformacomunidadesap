@@ -63,7 +63,7 @@ export function ReutilizarPeriodo({ destino, periodos, origenInicial, alcanceIni
   const r = hecho ?? revision;
   const nombreOrigen = candidatos.find((p) => p.idPeriodo === origen)?.codigo ?? '';
   return (
-    <section aria-labelledby={`reutilizar-${destino.idPeriodo}`} className="mt-2 border border-blue-200 bg-blue-50/40 rounded-lg p-3 space-y-3">
+    <section aria-labelledby={`reutilizar-${destino.idPeriodo}`} className="mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <h4 id={`reutilizar-${destino.idPeriodo}`} className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
           <Copy className="w-3.5 h-3.5 text-[#003DA5]" /> Reutilizar datos en {destino.codigo}

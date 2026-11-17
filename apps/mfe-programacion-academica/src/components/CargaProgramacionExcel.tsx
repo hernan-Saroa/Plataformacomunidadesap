@@ -126,7 +126,7 @@ export function CargaProgramacionExcel({ idPeriodo, codigoPeriodo, onCerrar }: P
                 <thead><tr><th className="pr-3 py-1">Fila</th><th className="py-1">Error</th></tr></thead>
                 <tbody>
                   {r.errores.map((e, i) => (
-                    <tr key={i} className="border-t border-amber-200 align-top"><td className="pr-3 py-1 font-bold">{e.fila ?? '—'}</td><td className="py-1">{e.mensaje}</td></tr>
+                    <tr key={i} className="border-t border-amber-200" style={{ verticalAlign: 'top' }}><td className="pr-3 py-1 font-bold">{e.fila ?? '—'}</td><td className="py-1">{e.mensaje}</td></tr>
                   ))}
                 </tbody>
               </table>
