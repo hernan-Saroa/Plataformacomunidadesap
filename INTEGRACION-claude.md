@@ -1524,3 +1524,7 @@ El 409 trae `{ code, message, concertacion: { id, docente, estado } | null }` pa
 - `ASIG-00001` (Desarrollo y Gestión Territorial): 28 candidatos. Funciona.
 - `ASIG-00003` (Finanzas Públicas): 3 docentes del área, **los tres bloqueados por RN-10**: su vinculación en el RUND de QA terminó el 2025-12-17 y el grupo termina el 2026-11-30. Es dato del RUND de QA (vinculaciones de 2025), no un defecto.
 - `ASIG-00409` (Especialización en Proyectos de Desarrollo, Cartagena): área «Programa: Proyectos de Desarrollo (Especialización)», **ningún docente** con núcleo en esa área. El puente docente–área (`db/data/programacion-academica/puente_docente_area.csv`) solo trae planes de **pregrado** (AP, APT, EP); para posgrado falta que la ESAP diga qué docentes dictan cada programa.
+
+### PUBLICADO (segunda entrega)
+
+**PUBLICADO el 16 de noviembre de 2026 en `micro-frontend`: merge `5aaaf1f02`** (`merge --no-ff` de `feature/pa/plantilla-y-reutilizar`, con lo último de `micro-frontend` ya integrado; sin rebase ni force). Trae la plantilla de Excel, reutilizar periodo, los arreglos visuales y §41/§41.1. Pendiente de Henrry: DEPLOY-bugs-qa.md completo (PASO 0 y §9). **QA no está desplegado todavía con nada de esto.**
