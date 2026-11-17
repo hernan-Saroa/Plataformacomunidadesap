@@ -1,9 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RundRegistrationHistory, formatRegistrationDate } from './RundRegistrationHistory';
-import { getRundConvocatorias, getRundRegistrationHistory, getRundRegistrationHistoryDetail } from '../../../services/api/ptaApi';
+import { getBancoDocentesBulkErrors, getRundConvocatorias, getRundRegistrationHistory, getRundRegistrationHistoryDetail } from '../../../services/api/ptaApi';
+import { downloadRundBulkErrorReport } from '../../../utils/rundBulkErrorReport';
 
-vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]), getRundRegistrationHistory: vi.fn(), getRundRegistrationHistoryDetail: vi.fn(), downloadBancoDocentesBulkSupport: vi.fn() }));
+vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]), getRundRegistrationHistory: vi.fn(), getRundRegistrationHistoryDetail: vi.fn(), downloadBancoDocentesBulkSupport: vi.fn(), getBancoDocentesBulkErrors: vi.fn() }));
+vi.mock('../../../utils/rundBulkErrorReport', () => ({ downloadRundBulkErrorReport: vi.fn().mockReturnValue(true) }));
 const event = { id: 'batch', tipo: 'MASIVO' as const, periodo: '2026-2', titulo: '100-docentes.xlsx', responsable: 'Gestora de Prueba',
   fecha: '2026-10-22T14:00:00Z', fechaFin: '2026-10-22T14:10:00Z', estado: 'COMPLETADA',
   resumen: { total: 100, creados: 100, actualizados: 0, sinCambios: 0, errores: 0 }, detalleCompleto: true };
@@ -84,6 +86,55 @@ describe('Pestaña de trazabilidad RUND', () => {
 
   it('muestra las horas en Colombia aunque el navegador use otra zona', () => {
     expect(formatRegistrationDate('2026-10-22T14:00:00Z')).toMatch(/9:00:00/);
+  });
+});
+
+describe('Reporte de errores desde el historial (HU 1355)', () => {
+  const withErrors = { ...event, resumen: { ...event.resumen, creados: 98, errores: 2 } };
+  const log = [{ fila: 3, columna: 'DOCUMENTO_IDENTIDAD', datoErrado: '12', mensaje: 'La cédula debe tener entre 5 y 20 caracteres.' }];
+
+  it('una carga con filas rechazadas ofrece el reporte y descarga el log guardado', async () => {
+    vi.mocked(getRundRegistrationHistory).mockResolvedValue({ ...page, data: [withErrors] });
+    vi.mocked(getBancoDocentesBulkErrors).mockResolvedValue({ errores: log, disponible: true });
+    render(<RundRegistrationHistory canDownloadOriginal />);
+    await screen.findByText('100-docentes.xlsx');
+    fireEvent.click(screen.getByRole('button', { name: 'Reporte de errores' }));
+    await waitFor(() => expect(downloadRundBulkErrorReport).toHaveBeenCalledWith(log, '100-docentes.xlsx'));
+    expect(getBancoDocentesBulkErrors).toHaveBeenCalledWith('batch');
+  });
+
+  it('una carga sin errores no muestra el botón', async () => {
+    render(<RundRegistrationHistory canDownloadOriginal />);
+    await screen.findByText('100-docentes.xlsx');
+    expect(screen.queryByRole('button', { name: 'Reporte de errores' })).toBeNull();
+  });
+
+  it('los lectores sin permiso de importar no ven el botón aunque haya errores', async () => {
+    vi.mocked(getRundRegistrationHistory).mockResolvedValue({ ...page, data: [withErrors] });
+    render(<RundRegistrationHistory />);
+    await screen.findByText('100-docentes.xlsx');
+    expect(screen.queryByRole('button', { name: 'Reporte de errores' })).toBeNull();
+  });
+
+  it('una carga anterior sin detalle guardado no genera archivo y avisa', async () => {
+    vi.mocked(getRundRegistrationHistory).mockResolvedValue({ ...page, data: [withErrors] });
+    vi.mocked(getBancoDocentesBulkErrors).mockResolvedValue({ errores: [], disponible: false });
+    render(<RundRegistrationHistory canDownloadOriginal />);
+    await screen.findByText('100-docentes.xlsx');
+    fireEvent.click(screen.getByRole('button', { name: 'Reporte de errores' }));
+    await waitFor(() => expect(getBancoDocentesBulkErrors).toHaveBeenCalled());
+    expect(downloadRundBulkErrorReport).not.toHaveBeenCalled();
+  });
+
+  it('si el servicio falla el botón se recupera y se puede reintentar', async () => {
+    vi.mocked(getRundRegistrationHistory).mockResolvedValue({ ...page, data: [withErrors] });
+    vi.mocked(getBancoDocentesBulkErrors).mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce({ errores: log, disponible: true });
+    render(<RundRegistrationHistory canDownloadOriginal />);
+    await screen.findByText('100-docentes.xlsx');
+    fireEvent.click(screen.getByRole('button', { name: 'Reporte de errores' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Reporte de errores' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Reporte de errores' }));
+    await waitFor(() => expect(downloadRundBulkErrorReport).toHaveBeenCalledTimes(1));
   });
 });
 

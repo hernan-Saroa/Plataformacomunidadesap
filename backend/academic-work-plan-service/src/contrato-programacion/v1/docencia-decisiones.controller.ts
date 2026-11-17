@@ -22,8 +22,8 @@ export class DocenciaDecisionesController {
    */
   @Public()
   @Get('configuracion')
-  configuracion() {
-    return { success: true, data: this.decisiones.configuracion() };
+  async configuracion() {
+    return { success: true, data: await this.decisiones.configuracion() };
   }
 
   /**

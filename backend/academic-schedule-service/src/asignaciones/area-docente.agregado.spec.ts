@@ -332,4 +332,75 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     expect(r.filter((x: any) => ['especializacion', 'maestria', 'doctorado'].includes(x.tipo))).toEqual([]);
     expect(r.filter((x: any) => x.nucleo && !/^nuevo plan de estudios/i.test(x.nucleo))).toEqual([]);
   });
+
+  // ── EFDS-2434: lista completa con bloqueados y asignación múltiple todo-o-nada ─────────────────────
+  caso('EFDS-2434: cada bloqueado trae motivo tipado (CRUCE con día y hora, sin revelar asignatura) y el resumen cuenta aptos y bloqueados', async () => {
+    const r = await servicio().candidatos(ids.grupo, undefined, null);
+    expect(r.resumen).toEqual({ total: 4, asignables: 3, bloqueados: 1 });
+    expect(r.aviso).toBeNull();
+    const d = r.candidatos.find((x) => x.documento === doc.D)!;
+    expect(d.motivos).toEqual([expect.objectContaining({ regla: 'RN-07', tipo: 'CRUCE', detalle: { diaSemana: 'LUNES', horaInicio: '08:00', horaFin: '10:00' } })]);
+    expect(JSON.stringify(d.motivos)).not.toMatch(/asignatura|programa/i);
+  });
+
+  caso('EFDS-2434: si TODOS los docentes del área están bloqueados, la lista llega completa con un aviso (no un mensaje que la oculte)', async () => {
+    // Año sabático para A, B, D y E: todos quedan bloqueados por situación administrativa.
+    await client!.query(`UPDATE ${AW}."Docente" SET "situacionCategoria" = 'Año sabático' WHERE "personaId" = ANY($1::uuid[])`, [[ids.A, ids.B, ids.D, ids.E]]);
+    const r = await servicio().candidatos(ids.grupo, undefined, null);
+    expect(r.candidatos).toHaveLength(4);
+    expect(r.resumen).toEqual({ total: 4, asignables: 0, bloqueados: 4 });
+    expect(r.mensaje).toBeNull();
+    expect(r.aviso).toContain('Los 4 docente(s) del área');
+    expect(r.sugerido).toBeNull();
+    for (const x of r.candidatos) expect(x.motivos.map((m) => m.tipo)).toContain('SITUACION');
+  });
+
+  caso('EFDS-2434: la lista incluye a TODOS los del área, aptos y bloqueados; sin área o sin docentes sí va en mensaje', async () => {
+    const sinArea = await servicio().candidatos(ids.grupoSinArea, undefined, null);
+    expect(sinArea.candidatos).toEqual([]);
+    expect(sinArea.mensaje).toMatch(/no tiene área de formación/);
+    expect(sinArea.aviso).toBeNull();
+  });
+
+  caso('EFDS-2434: asignación múltiple, TODO O NADA — un docente bloqueado impide asignar a los demás', async () => {
+    // A (apto) el miércoles y D (cruce el lunes) el lunes: D se rechaza → no se escribe nada, tampoco A.
+    const r = await servicio().asignarMultiple({ idGrupo: ids.grupo, asignaciones: [
+      { documento: doc.A, franjas: [ids.miercoles] }, { documento: doc.D, franjas: [ids.lunes] }] }, null);
+    expect(r.asignado).toBe(false);
+    if (r.asignado) throw new Error('inesperado');
+    expect(r.errores).toHaveLength(1);
+    expect(r.errores[0].documento).toBe(doc.D);
+    expect(r.errores[0].motivos.map((m) => m.tipo)).toEqual(['CRUCE']);
+    expect((await docentesDe(ids.grupo)).map((x) => x.id)).toEqual([null, null]);
+    expect(await asignacionDe(ids.grupo)).toEqual([]);
+  });
+
+  caso('EFDS-2434: reparte las franjas de un grupo entre dos docentes en una sola operación', async () => {
+    const r = await servicio().asignarMultiple({ idGrupo: ids.grupo, asignaciones: [
+      { documento: doc.A, franjas: [ids.lunes] }, { documento: doc.B, franjas: [ids.miercoles] }] }, null);
+    expect(r.asignado).toBe(true);
+    const filas = await docentesDe(ids.grupo);
+    expect(filas).toEqual([{ dia_semana: 'LUNES', id: ids.A }, { dia_semana: 'MIERCOLES', id: ids.B }]);
+    // Grupo repartido: no hay un «docente del grupo».
+    expect(await asignacionDe(ids.grupo)).toEqual([]);
+    // Y el mismo docente en otro grupo sin cruce ni tope sigue siendo posible (A, martes).
+    const otro = await servicio().asignarMultiple({ idGrupo: ids.grupoSinArea, asignaciones: [{ documento: doc.A, franjas: [] }] }, null).catch((e) => e);
+    expect(otro).toBeInstanceOf(Error); // validación de entrada: franjas vacías → 400
+  });
+
+  caso('EFDS-2434: un solo docente con todas las franjas queda como asignación completa del grupo', async () => {
+    const r = await servicio().asignarMultiple({ idGrupo: ids.grupo, asignaciones: [{ documento: doc.A, franjas: [ids.lunes, ids.miercoles] }] }, null);
+    expect(r.asignado).toBe(true);
+    expect((await asignacionDe(ids.grupo)).map((x) => x.id)).toEqual([ids.A]);
+  });
+
+  caso('EFDS-2434: una franja en dos docentes, o ajena al grupo, o sin franjas: 400 y nada se escribe', async () => {
+    const s = servicio();
+    await expect(s.asignarMultiple({ idGrupo: ids.grupo, asignaciones: [
+      { documento: doc.A, franjas: [ids.lunes] }, { documento: doc.B, franjas: [ids.lunes] }] }, null)).rejects.toThrow(/dos docentes/);
+    await expect(s.asignarMultiple({ idGrupo: ids.grupo, asignaciones: [{ documento: doc.A, franjas: ['00000000-0000-4000-8000-000000000001'] }] }, null)).rejects.toThrow(/no es de este grupo/);
+    await expect(s.asignarMultiple({ idGrupo: ids.grupo, asignaciones: [] }, null)).rejects.toThrow(/al menos un docente/);
+    await expect(s.asignarMultiple({ idGrupo: ids.grupo, asignaciones: [{ documento: doc.A, franjas: [] }] }, null)).rejects.toThrow(/no tiene franjas/);
+    expect((await docentesDe(ids.grupo)).map((x) => x.id)).toEqual([null, null]);
+  });
 });

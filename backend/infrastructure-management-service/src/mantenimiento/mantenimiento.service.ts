@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, Optional, Inject, forwardRef, Logger, GoneException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, OnModuleDestroy, Optional, Inject, forwardRef, Logger, GoneException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
@@ -28,6 +28,24 @@ function userIdUuidOrNull(userId: unknown): string | null {
 
 const PLAZO_CONFORMIDAD_HORAS_DEFAULT = 72;
 const REAPERTURA_NUEVO_SLA_HORAS = 24;
+
+export interface ConformidadConfigData {
+  plazoValor: number;
+  plazoUnidad: 'DIAS_HABILES' | 'DIAS_CALENDARIO' | 'HORAS' | 'MINUTOS';
+  cierreAutomaticoActivo: boolean;
+  estadoDestino: 'CERRADA_SIN_RESPUESTA' | 'CERRADA_SIN_ATENCION';
+  intervaloVerificacionSegundos?: number;
+}
+
+export const DEFAULT_CONFORMIDAD_CONFIG: ConformidadConfigData = {
+  plazoValor: 5,
+  plazoUnidad: 'DIAS_HABILES',
+  cierreAutomaticoActivo: true,
+  estadoDestino: 'CERRADA_SIN_RESPUESTA',
+  intervaloVerificacionSegundos: 60,
+};
+
+const COD_PARAM_CONFORMIDAD_CONFIG = 'PARAM_CONFORMIDAD_CIERRE_AUTOMATICO';
 
 // ===== EFDS-1738 RF-INF-009 Calificación del Servicio Recibido =====
 // OQ-1 default: true (OPCIONAL). Si mañana se aprueba OBLIGATORIA, cambiar a false.
@@ -303,8 +321,10 @@ const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
 };
 
 @Injectable()
-export class MantenimientoService implements OnModuleInit {
+export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   private readonly notifLogger = new Logger(`${MantenimientoService.name}.notificaciones`);
+  private timerCierreAutomatico?: NodeJS.Timeout;
+
   constructor(
     @InjectRepository(SolicitudMantenimiento)
     private readonly mantenimientoRepo: Repository<SolicitudMantenimiento>,
@@ -336,6 +356,26 @@ export class MantenimientoService implements OnModuleInit {
       await this.asegurarSeedTiemposPorCategoria();
       await this.cargarParametroCache();
     } catch {}
+    this.iniciarWorkerCierreAutomatico();
+  }
+
+  onModuleDestroy(): void {
+    if (this.timerCierreAutomatico) {
+      clearInterval(this.timerCierreAutomatico);
+      this.timerCierreAutomatico = undefined;
+    }
+  }
+
+  private iniciarWorkerCierreAutomatico(): void {
+    const INTERVALO_MS = 60 * 1000;
+    this.timerCierreAutomatico = setInterval(async () => {
+      try {
+        await this.ejecutarCierresSinRespuestaVencidos(null, false);
+      } catch (err: any) {
+        this.notifLogger.warn(`[CierreAutomaticoWorker] Fallo en barrido periódico: ${err?.message ?? err}`);
+      }
+    }, INTERVALO_MS);
+    this.notifLogger.log('[CierreAutomaticoWorker] Worker de cierre automático de conformidad inicializado (intervalo: 60s).');
   }
 
   private normalizarNombreTecnico(value: unknown): string {
@@ -1957,6 +1997,184 @@ export class MantenimientoService implements OnModuleInit {
     }
     await this.catalogoRepo.save(row);
     return merged;
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 / RF-INF-008: Configuración de Conformidad y Cierre Automático
+  // ---------------------------------------------------------------------------
+  async getConformidadConfig(): Promise<ConformidadConfigData> {
+    const row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_CONFORMIDAD_CONFIG },
+    });
+    if (!row || !row.metadata || typeof row.metadata !== 'object') {
+      return { ...DEFAULT_CONFORMIDAD_CONFIG };
+    }
+    const meta = row.metadata as any;
+    return {
+      ...DEFAULT_CONFORMIDAD_CONFIG,
+      ...meta,
+      plazoValor: Math.max(1, Number(meta.plazoValor ?? DEFAULT_CONFORMIDAD_CONFIG.plazoValor)),
+      plazoUnidad: meta.plazoUnidad ?? DEFAULT_CONFORMIDAD_CONFIG.plazoUnidad,
+      cierreAutomaticoActivo:
+        meta.cierreAutomaticoActivo !== undefined
+          ? Boolean(meta.cierreAutomaticoActivo)
+          : DEFAULT_CONFORMIDAD_CONFIG.cierreAutomaticoActivo,
+      estadoDestino: meta.estadoDestino ?? DEFAULT_CONFORMIDAD_CONFIG.estadoDestino,
+      intervaloVerificacionSegundos: Math.max(
+        10,
+        Number(meta.intervaloVerificacionSegundos ?? DEFAULT_CONFORMIDAD_CONFIG.intervaloVerificacionSegundos ?? 60),
+      ),
+    };
+  }
+
+  async updateConformidadConfig(
+    data: Partial<ConformidadConfigData>,
+    user?: AuthUser,
+  ): Promise<ConformidadConfigData> {
+    let row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_CONFORMIDAD_CONFIG },
+    });
+    const current = await this.getConformidadConfig();
+    const merged: ConformidadConfigData = {
+      ...current,
+      ...data,
+      plazoValor: data.plazoValor !== undefined ? Math.max(1, Number(data.plazoValor)) : current.plazoValor,
+      plazoUnidad: data.plazoUnidad ?? current.plazoUnidad,
+      cierreAutomaticoActivo:
+        data.cierreAutomaticoActivo !== undefined
+          ? Boolean(data.cierreAutomaticoActivo)
+          : current.cierreAutomaticoActivo,
+      estadoDestino: data.estadoDestino ?? current.estadoDestino,
+      intervaloVerificacionSegundos:
+        data.intervaloVerificacionSegundos !== undefined
+          ? Math.max(10, Number(data.intervaloVerificacionSegundos))
+          : current.intervaloVerificacionSegundos || 60,
+    };
+
+    if (!row) {
+      row = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: COD_PARAM_CONFORMIDAD_CONFIG,
+        nombre: 'Configuración de Plazo y Cierre Automático de Conformidad (EFDS-1737 / RF-INF-008)',
+        descripcion:
+          'Parámetros institucionales del plazo de confirmación del solicitante (días hábiles / horas / minutos para pruebas en vivo) y automatización del cierre tras vencimiento.',
+        orden: 60,
+        isActivo: true,
+        metadata: merged,
+      });
+    } else {
+      row.metadata = merged;
+      row.isActivo = true;
+    }
+    await this.catalogoRepo.save(row);
+    this.notifLogger.log(
+      `[ConformidadConfig] Parámetros actualizados por ${user?.username || 'admin'}: ${JSON.stringify(merged)}`,
+    );
+    return merged;
+  }
+
+  async calcularFechaLimiteConformidad(fechaInicio: Date): Promise<Date> {
+    const config = await this.getConformidadConfig();
+    const unidad = config.plazoUnidad || 'DIAS_HABILES';
+    const valor = Math.max(1, Number(config.plazoValor || 5));
+
+    if (unidad === 'MINUTOS') {
+      return new Date(fechaInicio.getTime() + valor * 60 * 1000);
+    }
+    if (unidad === 'HORAS') {
+      return new Date(fechaInicio.getTime() + valor * 3600 * 1000);
+    }
+    if (unidad === 'DIAS_CALENDARIO') {
+      return new Date(fechaInicio.getTime() + valor * 24 * 3600 * 1000);
+    }
+
+    // Default: DIAS_HABILES (Lunes a Viernes, saltando fines de semana)
+    let diasAgregados = 0;
+    const cur = new Date(fechaInicio.getTime());
+    while (diasAgregados < valor) {
+      cur.setDate(cur.getDate() + 1);
+      const diaSemana = cur.getDay(); // 0 = Domingo, 6 = Sábado
+      if (diaSemana !== 0 && diaSemana !== 6) {
+        diasAgregados++;
+      }
+    }
+    return cur;
+  }
+
+  async listarSolicitudesPendientesConformidad(): Promise<any[]> {
+    const rows = await this.mantenimientoRepo.find({
+      where: { estado: 'COMPLETADA' },
+      order: { fechaCierreTecnico: 'DESC' },
+    });
+    const ahora = new Date();
+
+    return Promise.all(
+      rows.map(async (s) => {
+        let limite = s.fechaLimiteConformidad ? new Date(s.fechaLimiteConformidad) : null;
+        if (!limite && s.fechaCierreTecnico) {
+          limite = await this.calcularFechaLimiteConformidad(new Date(s.fechaCierreTecnico));
+        }
+        const limiteMs = limite ? limite.getTime() : null;
+        const ahoraMs = ahora.getTime();
+        const vencida = limiteMs !== null ? ahoraMs >= limiteMs : false;
+        const diffMs = limiteMs !== null ? limiteMs - ahoraMs : null;
+
+        let tiempoRestanteTexto = 'Sin fecha límite';
+        let segundosRestantes = 0;
+        let minutosRestantes = 0;
+        let horasRestantes = 0;
+        let diasRestantes = 0;
+
+        if (diffMs !== null) {
+          const totalSeg = Math.floor(Math.abs(diffMs) / 1000);
+          segundosRestantes = totalSeg % 60;
+          minutosRestantes = Math.floor((totalSeg % 3600) / 60);
+          horasRestantes = Math.floor((totalSeg % 86400) / 3600);
+          diasRestantes = Math.floor(totalSeg / 86400);
+
+          if (vencida) {
+            if (diasRestantes > 0) {
+              tiempoRestanteTexto = `Vencida hace ${diasRestantes} d y ${horasRestantes} h`;
+            } else if (horasRestantes > 0) {
+              tiempoRestanteTexto = `Vencida hace ${horasRestantes} h y ${minutosRestantes} min`;
+            } else if (minutosRestantes > 0) {
+              tiempoRestanteTexto = `Vencida hace ${minutosRestantes} min y ${segundosRestantes} s`;
+            } else {
+              tiempoRestanteTexto = `Vencida hace ${segundosRestantes} s`;
+            }
+          } else {
+            if (diasRestantes > 0) {
+              tiempoRestanteTexto = `${diasRestantes} d y ${horasRestantes} h restantes`;
+            } else if (horasRestantes > 0) {
+              tiempoRestanteTexto = `${horasRestantes} h y ${minutosRestantes} min restantes`;
+            } else if (minutosRestantes > 0) {
+              tiempoRestanteTexto = `${minutosRestantes} min y ${segundosRestantes} s restantes`;
+            } else {
+              tiempoRestanteTexto = `${segundosRestantes} s restantes`;
+            }
+          }
+        }
+
+        return {
+          idSolicitud: s.idSolicitud,
+          consecutivo: s.consecutivo,
+          solicitanteNombre: s.solicitanteNombre,
+          solicitanteEmail: s.solicitanteEmail,
+          descripcion: s.descripcion,
+          prioridad: s.prioridad,
+          responsableCierreDisplay: s.responsableCierreDisplay,
+          fechaCierreTecnico: s.fechaCierreTecnico,
+          fechaLimiteConformidad: limite,
+          vencida,
+          segundosRestantes,
+          minutosRestantes,
+          horasRestantes,
+          diasRestantes,
+          tiempoRestanteMs: diffMs,
+          tiempoRestanteTexto,
+        };
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -3854,7 +4072,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     solicitud.requiereSeguimiento = !!dto.requiereSeguimiento;
     solicitud.fechaEjecucion = solicitud.fechaEjecucion ?? ahora.toISOString().slice(0, 10);
 
-    solicitud.fechaLimiteConformidad = new Date(ahora.getTime() + PLAZO_CONFORMIDAD_HORAS_DEFAULT * 3600 * 1000);
+    solicitud.fechaLimiteConformidad = await this.calcularFechaLimiteConformidad(ahora);
     solicitud.conteoReaperturasConformidad = 0;
     solicitud.resultadoConformidad = undefined;
     solicitud.fechaConformidad = undefined;
@@ -4152,42 +4370,71 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
   }
 
   async ejecutarCierresSinRespuestaVencidos(
-    user: AuthUser | null | undefined,
-  ): Promise<{ actualizadas: number; ids: string[] }> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    user?: AuthUser | null,
+    forceBatch = false,
+  ): Promise<{ actualizadas: number; ids: string[]; consecutivos: string[]; configUsada: ConformidadConfigData }> {
+    if (user) {
+      const vr = this.validarRolesAsignador(user);
+      if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    }
+    const config = await this.getConformidadConfig();
+    if (!config.cierreAutomaticoActivo && !forceBatch) {
+      return { actualizadas: 0, ids: [], consecutivos: [], configUsada: config };
+    }
+
     const ahora = new Date();
     const repo = this.mantenimientoRepo;
     const rows = await repo.find({
-      where: {
-        estado: 'COMPLETADA',
-        fechaLimiteConformidad: Not(IsNull()) as any,
-      } as any,
+      where: { estado: 'COMPLETADA' },
     });
-    const filtradas = rows.filter(
-      (s) => s.fechaLimiteConformidad && new Date(s.fechaLimiteConformidad as any).getTime() <= ahora.getTime(),
-    );
+
     const ids: string[] = [];
-    for (const s of filtradas) {
-      s.estado = 'CERRADA_SIN_ATENCION';
+    const consecutivos: string[] = [];
+
+    for (const s of rows) {
+      let limite = s.fechaLimiteConformidad ? new Date(s.fechaLimiteConformidad) : null;
+      if (!limite && s.fechaCierreTecnico) {
+        limite = await this.calcularFechaLimiteConformidad(new Date(s.fechaCierreTecnico));
+      }
+      if (!limite || ahora.getTime() < limite.getTime()) {
+        continue;
+      }
+
+      const estadoFinal = config.estadoDestino || 'CERRADA_SIN_RESPUESTA';
+      s.estado = estadoFinal;
       s.fechaConformidad = ahora;
       s.resultadoConformidad = 'SIN_RESPUESTA';
       s.usuarioConformidadId = user?.userId || undefined;
-      s.responsableConformidadDisplay = user?.username || 'Cierre automático sin respuesta';
+      s.responsableConformidadDisplay = user?.username
+        ? `Cierre automático batch ejecutado por ${user.username}`
+        : 'Cierre automático institucional (Sin respuesta)';
+
       ids.push(s.idSolicitud);
+      consecutivos.push(s.consecutivo || s.idSolicitud.slice(0, 8));
+
+      const sysUser: AuthUser = user || {
+        userId: '00000000-0000-0000-0000-000000000000',
+        username: 'SISTEMA_CIERRE_AUTOMATICO',
+        name: 'Sistema Automático UMI',
+        email: 'gestion.infraestructura@esap.edu.co',
+        roles: ['SUPER_ADMIN'],
+      };
+
       try {
         this.pushAsignacion(s, {
           accion: 'CONFORMIDAD_SIN_RESPUESTA',
           tecnicoCodigo: null,
           tecnicoNombreDisplay: null,
-          motivo: 'Plazo de conformidad vencido sin respuesta del área solicitante. Cierre automático.',
-          observaciones: null,
-          user: user || (s as any).__fakeUser,
+          motivo: `Plazo de conformidad vencido (${config.plazoValor} ${config.plazoUnidad}) sin respuesta del área solicitante. Cierre automático formal a ${estadoFinal}.`,
+          observaciones: 'Transición ejecutada por motor de conformidad automática (EFDS-1737 / RF-INF-008).',
+          user: sysUser,
         });
-      } catch {
-        // pushAsignacion requiere user definido; si pasó validarRolesAsignador user no es null
+      } catch (err: any) {
+        this.notifLogger.warn(`[pushAsignacion] error registrando asignacion cierre automatico: ${err?.message}`);
       }
+
       await repo.save(s);
+      this.notifLogger.log(`[CierreAutomatico] Solicitud #${s.consecutivo} (${s.idSolicitud}) pasada a ${estadoFinal}.`);
 
       // [NOTIFICACION EFDS-1737] Cierre automático sin respuesta: notificación al solicitante.
       void (async () => {
@@ -4197,7 +4444,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
           await this.notificarAlSolicitante(cerrada, {
             tipo: 'UMI_CONFORMIDAD_SIN_RESPUESTA_SOLICITANTE',
             titulo: 'Solicitud cerrada automáticamente (sin respuesta)',
-            mensaje: `La solicitud #${cerrada.consecutivo ?? cerrada.idSolicitud.slice(0, 8)} alcanzó el límite de ${PLAZO_CONFORMIDAD_HORAS_DEFAULT}h sin respuesta del área y fue cerrada automáticamente.`,
+            mensaje: `La solicitud #${cerrada.consecutivo ?? cerrada.idSolicitud.slice(0, 8)} alcanzó el límite de ${config.plazoValor} ${config.plazoUnidad.toLowerCase().replace('_', ' ')} sin respuesta del área y fue cerrada automáticamente.`,
             icono: 'Clock',
             color: '#475569',
             prioridad: 'Media',
@@ -4210,7 +4457,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         }
       })();
     }
-    return { actualizadas: ids.length, ids };
+    return { actualizadas: ids.length, ids, consecutivos, configUsada: config };
   }
 
   // ---------------------------------------------------------------------------
@@ -6172,10 +6419,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
   async vincularTramiteContractual(
     idSolicitud: string,
     body: {
-      procesoContractual: string;
+      procesoContractual?: string;
       radicadoOrfeo?: string;
       presupuestoEstimadoCop?: number;
       observaciones?: string;
+      anexoNombre?: string;
+      anexoUrl?: string;
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
@@ -6183,14 +6432,13 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     const solicitud = await this.findById(idSolicitud);
-    const proceso = String(body.procesoContractual || '').trim();
-    if (!proceso) {
-      throw new BadRequestException('El código o identificador del proceso contractual es obligatorio.');
-    }
+    const proceso = String(body.procesoContractual || '').trim() || 'Gestión / Avance Contractual';
 
     const radicado = body.radicadoOrfeo ? String(body.radicadoOrfeo).trim() : null;
     const presupuesto = body.presupuestoEstimadoCop != null ? Number(body.presupuestoEstimadoCop) : null;
     const obs = body.observaciones ? String(body.observaciones).trim() : null;
+    const anexoNombre = (body as any)?.anexoNombre ? String((body as any).anexoNombre).trim() : null;
+    const anexoUrl = (body as any)?.anexoUrl ? String((body as any).anexoUrl).trim() : null;
 
     if (presupuesto != null && !isNaN(presupuesto) && presupuesto > 0) {
       solicitud.costoEstimado = presupuesto;
@@ -6201,13 +6449,15 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       radicadoOrfeo: radicado,
       presupuestoEstimadoCop: presupuesto,
       observaciones: obs,
+      anexoNombre,
+      anexoUrl,
       registradoPor: (user as any)?.email ?? 'Coordinación GIM',
       fechaRegistro: new Date().toISOString(),
     };
 
     this.pushAsignacion(solicitud, {
       accion: 'VINCULACION_TRAMITE_CONTRACTUAL' as any,
-      motivo: `Trámite Contractual vinculado: ${proceso}${radicado ? ` · Radicado Orfeo: ${radicado}` : ''}`,
+      motivo: `Registro contractual: ${proceso}${radicado ? ` · Radicado: ${radicado}` : ''}`,
       observaciones: JSON.stringify(payloadAudit),
       clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
       requiereContratacion: true,

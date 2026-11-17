@@ -16,6 +16,7 @@ import { ConfigService } from '../../config/config.service';
 import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
 import { NotificationClientService } from '../../../common/notification-client.service';
 import { HumanResourcesClientService } from '../../../common/human-resources-client.service';
+import { KlicService } from '../../klic/klic.service';
 import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
 
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
@@ -51,6 +52,7 @@ describe('TravelExpensesService', () => {
       configService?: any;
       notificationClient?: any;
       humanResourcesClient?: any;
+      klicService?: any;
     } = {},
   ) => {
     const {
@@ -76,6 +78,10 @@ describe('TravelExpensesService', () => {
       },
       humanResourcesClient = {
         consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      },
+      klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([]),
+        getContratosPaginados: jest.fn().mockResolvedValue({ data: [], total: 0 }),
       },
       notificationClient = {
         archiveNotificacionesPorSolicitud: jest
@@ -136,6 +142,10 @@ describe('TravelExpensesService', () => {
         {
           provide: HumanResourcesClientService,
           useValue: humanResourcesClient,
+        },
+        {
+          provide: KlicService,
+          useValue: klicService,
         },
       ],
     }).compile();
@@ -245,7 +255,7 @@ describe('TravelExpensesService', () => {
       });
     });
 
-    it('debe actualizar los datos del comisionado en comisionados si ya está registrado pero cambian datos en Nómina', async () => {
+    it('debe actualizar los datos del comisionado en comisionados si ya está registrado pero su contrato está vencido y se renueva en Nómina', async () => {
       const comisionadoExistente = {
         ...mockComisionado,
         id: 'com-existente-1',
@@ -258,6 +268,7 @@ describe('TravelExpensesService', () => {
         telefonoContacto: '3000000000',
         origenDatos: 'ESAP',
         idDependencia: 1,
+        fechaFinContrato: '2020-01-01', // Vencido -> debe consultar fuentes externas
       };
 
       const comisionadoRepo = {
@@ -281,6 +292,7 @@ describe('TravelExpensesService', () => {
           organization_department: 'SUBDIRECCION DE ALTO GOBIERNO',
           email: 'carlos.alberto@esap.edu.co',
           phone: '3159998877',
+          contract_end_date: '2027-12-31',
         }),
       };
 
@@ -300,26 +312,22 @@ describe('TravelExpensesService', () => {
         expect.objectContaining({
           id: 'com-existente-1',
           numeroDocumento: '80123456',
-          primerNombre: 'CARLOS',
-          segundoNombre: 'ALBERTO',
-          primerApellido: 'GOMEZ',
-          segundoApellido: 'RESTREPO',
-          email: 'carlos.alberto@esap.edu.co',
-          telefonoContacto: '3159998877',
+          fechaFinContrato: '2027-12-31',
           origenDatos: 'HUMANO',
           idDependencia: 25,
         }),
       );
-      expect(result.email).toBe('carlos.alberto@esap.edu.co');
+      expect(result.fechaFinContrato).toBe('2027-12-31');
       expect(result.idDependencia).toBe(25);
     });
 
-    it('debe buscar en tabla local comisionados como fallback cuando la API Nómina produce error', async () => {
+    it('debe retornar directamente de la tabla local sin consultar fuentes externas si el comisionado está vigente', async () => {
       const comisionadoLocal = {
         ...mockComisionado,
         id: 'com-local-002',
         numeroDocumento: '80123456',
         primerNombre: 'CARLOS',
+        fechaFinContrato: '2028-12-31', // Vigente
       };
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(comisionadoLocal),
@@ -341,20 +349,23 @@ describe('TravelExpensesService', () => {
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
       const result = await svc.consultarComisionado('80123456');
 
-      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
       expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
         where: { numeroDocumento: '80123456' },
       });
-      expect(result).toEqual(comisionadoLocal);
+      expect(result).toMatchObject({
+        numeroDocumento: '80123456',
+        id: 'com-local-002',
+      });
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
-      expect(dataSource.query).not.toHaveBeenCalled();
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).not.toHaveBeenCalled();
     });
 
-    it('debe buscar en tabla local comisionados como fallback cuando la API Nómina no trae datos (retorna null)', async () => {
+    it('debe priorizar la tabla local de comisionados sin consultar la API Nómina si el comisionado existe y está vigente', async () => {
       const comisionadoLocal = {
         ...mockComisionado,
         id: 'com-local-003',
         numeroDocumento: '70123456',
+        fechaFinContrato: '2028-12-31',
       };
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(comisionadoLocal),
@@ -374,11 +385,14 @@ describe('TravelExpensesService', () => {
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
       const result = await svc.consultarComisionado('70123456');
 
-      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('70123456');
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).not.toHaveBeenCalled();
       expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
         where: { numeroDocumento: '70123456' },
       });
-      expect(result).toEqual(comisionadoLocal);
+      expect(result).toMatchObject({
+        id: 'com-local-003',
+        numeroDocumento: '70123456',
+      });
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
     });
 
@@ -565,7 +579,7 @@ describe('TravelExpensesService', () => {
       );
     });
 
-    it('debe rechazar con BadRequestException si el comisionado pertenece a otra dependencia que la solicitada', async () => {
+    it('debe alertar sin bloquear si el comisionado pertenece a otra dependencia que la solicitada', async () => {
       const comisionadoOtraDep = {
         ...mockComisionado,
         id: 'com-dep-2',
@@ -582,9 +596,9 @@ describe('TravelExpensesService', () => {
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       // Enlace de dependencia 1 consulta comisionado de dependencia 2
-      await expect(
-        svc.consultarComisionado('10203040', 1),
-      ).rejects.toThrow(/está asignado a otra dependencia/);
+      const res = await svc.consultarComisionado('10203040', 1);
+      expect(res.idDependencia).toBe(2);
+      expect(res.alertaDependencia).toContain('está registrado con dependencia 2');
     });
 
     it('debe permitir consultar comisionado cuando coincide con la dependencia solicitada', async () => {
@@ -628,6 +642,344 @@ describe('TravelExpensesService', () => {
         expect.objectContaining({ idDependencia: 3 }),
       );
       expect(res.idDependencia).toBe(3);
+    });
+
+    it('debe encontrar y registrar comisionado desde Klic cuando no existe en local ni en auth.personas ni en Isolución', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn().mockImplementation(async (x) => ({
+          ...x,
+          id: 'com-klic-001',
+          creadoEn: new Date(),
+          actualizadoEn: new Date(),
+        })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.personas')) return [];
+          if (sql.includes('auth.dependencias')) return [{ id_dependencia: 5 }];
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+      const klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([
+          {
+            numeroContrato: 'BOG-118-2026',
+            numeroIdentificacion: '1118562823',
+            nombre: 'JUAN DAVID MORALES ALFONSO',
+            fechaInicial: '2026-01-16T05:00:00.000Z',
+            fechaFinal: '2030-12-15T05:00:00.000Z',
+            cdp: '25426',
+            rp: '30926',
+            valorContrato: 3000000,
+            area: 'OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION',
+            afectacion: 'INVERSION',
+            cuentaBancaria: '1234567890',
+          },
+        ]),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+        klicService,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('1118562823');
+
+      expect(klicService.getContratosByIdentificacion).toHaveBeenCalledWith('1118562823');
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          numeroDocumento: '1118562823',
+          primerNombre: 'JUAN',
+          segundoNombre: 'DAVID',
+          primerApellido: 'MORALES',
+          segundoApellido: 'ALFONSO',
+          tipoComisionado: 'CONTRATISTA',
+          origenDatos: 'KLIC',
+          cuentasBancarias: expect.arrayContaining([
+            expect.objectContaining({ numeroCuenta: '1234567890' }),
+          ]),
+        }),
+      );
+      expect(res.numeroDocumento).toBe('1118562823');
+    });
+
+    it('debe lanzar BadRequestException si el contrato de Klic está vencido', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+      const klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([
+          {
+            numeroContrato: 'BOG-118-2020',
+            numeroIdentificacion: '1118562823',
+            nombre: 'JUAN DAVID MORALES ALFONSO',
+            fechaInicial: '2020-01-16T05:00:00.000Z',
+            fechaFinal: '2020-12-15T05:00:00.000Z', // Vencido
+            cdp: '25426',
+            rp: '30926',
+            valorContrato: 3000000,
+            area: 'OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION',
+            afectacion: 'INVERSION',
+            cuentaBancaria: '1234567890',
+          },
+        ]),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+        klicService,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.consultarComisionado('1118562823')).rejects.toThrow(
+        /figura en Klic pero su contrato está vencido/i,
+      );
+    });
+
+    it('debe enriquecer cuenta bancaria desde Klic cuando la persona existe en auth.personas', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn().mockImplementation(async (x) => ({
+          ...x,
+          id: 'com-pers-klic',
+          creadoEn: new Date(),
+          actualizadoEn: new Date(),
+        })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.personas')) {
+            return [
+              {
+                id_person: 'p-001',
+                num_identificacion: '1118562823',
+                nom_tercero: 'JUAN DAVID',
+                pri_apellido: 'MORALES',
+                seg_apellido: 'ALFONSO',
+                dir_email: 'juan.morales@esap.edu.co',
+                tel_celular: '3110001122',
+                id_dependencia: 5,
+              },
+            ];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+      const klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([
+          {
+            numeroContrato: 'BOG-118-2026',
+            numeroIdentificacion: '1118562823',
+            nombre: 'JUAN DAVID MORALES ALFONSO',
+            fechaInicial: '2026-01-16T05:00:00.000Z',
+            fechaFinal: '2030-12-15T05:00:00.000Z',
+            cuentaBancaria: '9876543210',
+          },
+        ]),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+        klicService,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('1118562823');
+
+      expect(klicService.getContratosByIdentificacion).toHaveBeenCalledWith('1118562823');
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          numeroDocumento: '1118562823',
+          origenDatos: 'ESAP',
+          cuentasBancarias: expect.arrayContaining([
+            expect.objectContaining({ numeroCuenta: '9876543210' }),
+          ]),
+        }),
+      );
+      expect(res.numeroDocumento).toBe('1118562823');
+    });
+
+    it('debe alertar sin bloquear si el comisionado de Klic pertenece a otra dependencia que la del enlace', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn((x) => ({ ...x, id: 'com-klic-acad' })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.personas')) return [];
+          if (sql.includes('auth.dependencias')) return [{ id_dependencia: 20 }];
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+      const klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([
+          {
+            numeroContrato: 'BOG-118-2026',
+            numeroIdentificacion: '1118562823',
+            nombre: 'JUAN DAVID MORALES ALFONSO',
+            fechaInicial: '2026-01-16T05:00:00.000Z',
+            fechaFinal: '2030-12-15T05:00:00.000Z',
+            area: 'SUBDIRECCION ACADEMICA',
+            cuentaBancaria: '1234567890',
+          },
+        ]),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+        klicService,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      // El enlace es de la dependencia 10, pero Klic pertenece a la 20 -> No bloquea, retorna con alerta
+      const res = await svc.consultarComisionado('1118562823', 10);
+      expect(res.numeroDocumento).toBe('1118562823');
+      expect(res.alertaDependencia).toBeDefined();
+    });
+
+    it('no debe bloquear sino generar alerta cuando el enlace de Planeacion reciba datos de un contratista Klic con área OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn((x) => ({ ...x, id: 'com-klic-planeacion' })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string, params?: any[]) => {
+          if (sql.includes('auth.personas')) return [];
+          if (sql.includes('WHERE id_dependencia = $1')) {
+            return [{ id_dependencia: 1, nom_dependencia: 'Subdirección de Planificación' }];
+          }
+          if (sql.includes('auth.dependencias')) {
+            return [
+              { id_dependencia: 1, nom_dependencia: 'Subdirección de Planificación' },
+              { id_dependencia: 2, nom_dependencia: 'Subdirección Académica' },
+              { id_dependencia: 15, nom_dependencia: 'Oficina de Tecnologías de la Información y las Comunicaciones' },
+            ];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+      const klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([
+          {
+            numeroContrato: 'BOG-1222-2024',
+            numeroIdentificacion: '1118562823',
+            nombre: 'JUAN DAVID MORALES ALFONSO',
+            fechaInicial: '2024-09-16T05:00:00.000Z',
+            fechaFinal: '2030-12-31T05:00:00.000Z',
+            area: 'OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION',
+            cuentaBancaria: '1234567890',
+          },
+        ]),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+        klicService,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      // El enlace de Planeación (id_dependencia = 1) recibe contratista de OTIC con alerta no bloqueante
+      const res = await svc.consultarComisionado('1118562823', 1);
+      expect(res.numeroDocumento).toBe('1118562823');
+      expect(res.alertaDependencia).toContain('OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION');
+    });
+
+    it('debe permitir que el enlace de OTIC reciba datos de contratista Klic con área OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION mediante nombre parseado', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn((x) => ({ ...x, id: 'com-klic-otic-1' })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string, params?: any[]) => {
+          if (sql.includes('auth.personas')) return [];
+          if (sql.includes('WHERE id_dependencia = $1')) {
+            return [{ id_dependencia: 15, nom_dependencia: 'Oficina de Tecnologías de la Información y las Comunicaciones' }];
+          }
+          if (sql.includes('UPPER(TRIM(nom_dependencia))')) {
+            return []; // No coincide exactamente en SQL, requerirá búsqueda por nombre parseado
+          }
+          if (sql.includes('auth.dependencias')) {
+            return [
+              { id_dependencia: 1, nom_dependencia: 'Subdirección de Planificación' },
+              { id_dependencia: 15, nom_dependencia: 'Oficina de Tecnologías de la Información y las Comunicaciones' },
+            ];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+      const klicService = {
+        getContratosByIdentificacion: jest.fn().mockResolvedValue([
+          {
+            numeroContrato: 'BOG-1222-2024',
+            numeroIdentificacion: '1118562823',
+            nombre: 'JUAN DAVID MORALES ALFONSO',
+            fechaInicial: '2024-09-16T05:00:00.000Z',
+            fechaFinal: '2030-12-31T05:00:00.000Z',
+            area: 'OFICINA DE LAS TECNOLOGIAS DE LA INFORMACION',
+            cuentaBancaria: '1234567890',
+          },
+        ]),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+        klicService,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      // El enlace de OTIC (id_dependencia = 15) sí puede consultar y registrar a este contratista
+      const result = await svc.consultarComisionado('1118562823', 15);
+      expect(result).toBeDefined();
+      expect(result.numeroDocumento).toBe('1118562823');
+      expect(result.idDependencia).toBe(15);
     });
   });
 

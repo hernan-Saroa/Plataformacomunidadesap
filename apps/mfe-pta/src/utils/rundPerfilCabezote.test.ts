@@ -37,7 +37,7 @@ function valorDe(perfil: any, clave: CabezoteCampoClave): string {
 }
 
 describe('REQ-RUND-F002 — modelo de vista del cabezote', () => {
-  it('expone los seis campos de vinculacion en orden, siempre de solo lectura', () => {
+  it('expone los siete campos de vinculacion en orden (la clase en la tercera fila), siempre de solo lectura', () => {
     const cabezote = buildCabezotePerfilDocente(PERFIL_GGP);
 
     expect(cabezote.campos.map((campo) => campo.clave)).toEqual([
@@ -47,6 +47,7 @@ describe('REQ-RUND-F002 — modelo de vista del cabezote', () => {
       'ESTADO_VINCULACION',
       'PUNTAJE_SALARIAL',
       'ULTIMA_EVALUACION',
+      'CLASE_DOCENTE',
     ]);
     expect(cabezote.soloLectura).toBe(true);
     expect(cabezote.nombreCompleto).toBe('MARIA LOPEZ RUIZ');
@@ -171,7 +172,7 @@ describe('REQ-RUND-F002 — modelo de vista del cabezote', () => {
     const cabezote = buildCabezotePerfilDocente(null);
     expect(cabezote.nombreCompleto).toBe('Docente sin nombre registrado');
     expect(cabezote.iniciales).toBe('D');
-    expect(cabezote.campos).toHaveLength(6);
+    expect(cabezote.campos).toHaveLength(7);
   });
 
   it('distingue una territorial pendiente de validar de una no registrada', () => {
@@ -180,3 +181,28 @@ describe('REQ-RUND-F002 — modelo de vista del cabezote', () => {
     expect(valorDe({ ...perfil, territorial_pendiente_validacion: false }, 'TERRITORIAL')).toBe(CABEZOTE_SIN_DATO);
   });
 });
+
+describe('Clase de docente en el cabezote: Planta o Cátedra', () => {
+  const clase = (perfil: any) => buildCabezotePerfilDocente(perfil).campos.find((c) => c.clave === 'CLASE_DOCENTE')!;
+
+  it('muestra la clase que envía el servidor', () => {
+    expect(clase({ clase_docente: 'PLANTA' })).toMatchObject({ etiqueta: 'Clase de docente', valor: 'Planta', ausente: false });
+    expect(clase({ clase_docente: 'CATEDRA' }).valor).toBe('Cátedra');
+    expect(clase({ claseDocente: 'Cátedra' }).valor).toBe('Cátedra');
+  });
+
+  it('si el servidor no la trae, la deduce de las horas PTA: mayores que 0 es planta', () => {
+    expect(clase({ horas_programables: 800 }).valor).toBe('Planta');
+    expect(clase({ horas_programables: 0 }).valor).toBe('Cátedra');
+  });
+
+  it('con una clase guardada, las horas no la cambian', () => {
+    expect(clase({ clase_docente: 'CATEDRA', horas_programables: 800 }).valor).toBe('Cátedra');
+  });
+
+  it('sin clase ni horas se atenúa como dato no registrado y nunca inventa un valor', () => {
+    expect(clase({})).toMatchObject({ valor: 'No registrado', ausente: true });
+    expect(clase({ clase_docente: 'OCASIONAL' }).ausente).toBe(true);
+  });
+});
+

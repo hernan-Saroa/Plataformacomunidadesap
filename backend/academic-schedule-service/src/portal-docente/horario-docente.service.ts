@@ -10,6 +10,7 @@ import { sqlPeriodoNoCerrado } from '../periodos/periodo-ref.js';
 import { superaElTope, topeDeDocencia } from '../asignaciones/tope.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { ESTADOS_EN_CURSO } from '../concertacion/concertacion.service.js';
+import { esSinAula, SQL_MODALIDADES_SIN_AULA } from '../grupos/grupo.entity.js';
 
 /**
  * Horario de los grupos VIRTUALES que define el docente — migración 063.
@@ -35,6 +36,7 @@ export interface FranjaDefinible {
 export interface GrupoVirtualDocente {
   idGrupo: string;
   numeroGrupo: number;
+  modalidad?: string;
   codigoAsignatura: string;
   asignatura: string;
   programa: string;
@@ -68,7 +70,7 @@ export class HorarioDocenteService {
   /** Grupos virtuales asignados al docente en periodos vigentes, con su horario y horas. */
   async grupos(idPerson: string): Promise<GrupoVirtualDocente[]> {
     const grupos: any[] = await this.dataSource.query(
-      `SELECT g.id_grupo::text AS "idGrupo", g.numero_grupo AS "numeroGrupo",
+      `SELECT g.id_grupo::text AS "idGrupo", g.numero_grupo AS "numeroGrupo", g.modalidad,
               a.codigo AS "codigoAsignatura", a.nombre AS asignatura, a.horas_clase AS "horasRequeridas",
               pr.nombre AS programa, lower(pr.tipo) AS nivel,
               COALESCE(g.id_periodo_academico::text, g.id_periodo::text) AS "idPeriodo",
@@ -81,7 +83,7 @@ export class HorarioDocenteService {
          JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
          LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
-        WHERE ad.id_docente = $1 AND g.modalidad = 'virtual' AND ${sqlPeriodoNoCerrado()}
+        WHERE ad.id_docente = $1 AND g.modalidad IN (${SQL_MODALIDADES_SIN_AULA}) AND ${sqlPeriodoNoCerrado()}
         ORDER BY a.nombre, g.numero_grupo`,
       [idPerson],
     );
@@ -192,7 +194,7 @@ export class HorarioDocenteService {
     if (!filas.length) throw new NotFoundException('El grupo no existe.');
     const g = filas[0];
     if (g.id_docente !== idPerson) throw new ForbiddenException('Este grupo no está asignado a usted.');
-    if (g.modalidad !== 'virtual') {
+    if (!esSinAula(g.modalidad)) {
       throw new ConflictException('El horario de un grupo presencial lo define el programador, no el docente.');
     }
     return g as { codigoAsignatura: string; horasRequeridas: number | string | null };

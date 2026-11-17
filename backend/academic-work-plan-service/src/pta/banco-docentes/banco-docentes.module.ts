@@ -19,8 +19,10 @@ import { RundPtaConsultaService } from './rund-pta-consulta.service';
 import { RundExtraccionService } from './rund-extraccion.service';
 import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
+import { RundPeriodoPruebaAlertasService } from './rund-periodo-prueba-alertas.service';
 import { RundNucleosController } from './rund-nucleos.controller';
 import { RundNucleosService } from './rund-nucleos.service';
+import { RundCarpetasConfigService } from './rund-carpetas-config';
 import { RundPhotosService } from './rund-photos.service';
 import { RundPhotosController } from './rund-photos.controller';
 
@@ -40,8 +42,10 @@ import { RundPhotosController } from './rund-photos.controller';
     RundPtaJwtGuard,
     RundExtraccionService,
     RundExtraccionNotificationsService,
+    RundPeriodoPruebaAlertasService,
     RundNucleosService,
+    RundCarpetasConfigService,
   ],
-  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundNucleosService],
+  exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService, RundNucleosService, RundCarpetasConfigService],
 })
 export class BancoDocentesModule {}
