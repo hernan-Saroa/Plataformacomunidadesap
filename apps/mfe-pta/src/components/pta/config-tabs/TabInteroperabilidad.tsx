@@ -108,8 +108,10 @@ export function TabInteroperabilidad() {
             <span className="text-[0.7rem] text-slate-500">Desde este periodo la Docencia llega de Programación Académica (con el interruptor encendido).</span>
           </label>
           <div className="flex items-end">
+            {/* Color en línea: `bg-slate-900` no está en la hoja de estilos de este MFE y el botón salía invisible. */}
             <button type="button" disabled={!cambioDeCorte || !corteValido} onClick={() => abrir(encendida)}
-              className="px-4 py-2 rounded-xl text-sm font-bold bg-slate-900 text-white disabled:opacity-40">
+              style={{ backgroundColor: '#003DA5', color: '#fff', opacity: !cambioDeCorte || !corteValido ? 0.45 : 1 }}
+              className="px-4 py-2 rounded-xl text-sm font-bold">
               Guardar periodo de corte…
             </button>
           </div>
@@ -165,7 +167,8 @@ export function TabInteroperabilidad() {
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
               <button type="button" disabled={enviando} onClick={() => setConfirmar(null)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
               <button type="button" disabled={enviando || motivo.trim().length < 10 || !corteValido} onClick={() => void aplicar()}
-                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-40">
+                style={{ backgroundColor: '#003DA5', color: '#fff', opacity: enviando || motivo.trim().length < 10 || !corteValido ? 0.45 : 1 }}
+                className="px-5 py-2 rounded-xl text-sm font-bold">
                 {enviando ? 'Guardando…' : 'Confirmar'}
               </button>
             </div>

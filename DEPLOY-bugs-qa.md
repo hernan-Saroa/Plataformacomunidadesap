@@ -143,3 +143,13 @@ Sirve para probar el interruptor sin tocar el periodo principal. Probado contra 
 - Los `Dockerfile.frontend*` (dev, qa, pre, prod, app) usan `npm install --legacy-peer-deps`, **no `npm ci`**: el desfase del `package-lock.json` raíz **no rompe** los builds de QA. No se tocó el lockfile.
 - Los Dockerfile de los servicios (`backend/*/Dockerfile`) usan `npm ci` con el lockfile **de cada servicio**; esta ronda no cambió dependencias de ningún servicio (sin cambios en sus `package.json` ni `package-lock.json`).
 - **Pendiente para otros equipos:** `npm ci` en la raíz falla porque `package-lock.json` no está sincronizado con los `package.json` de los workspaces (faltan, entre otros, `@esap-mfe/chatbot`, `@esap-mfe/gestion-infraestructura`, `vitest` y `jsdom`; viene de commits de otros equipos en `micro-frontend`). Hoy solo lo notaría un CI que use `npm ci` en la raíz (no hay ninguno). No se corrió `npm audit fix`.
+
+## 9. Segunda entrega (16 de nov): plantilla de Excel, reutilizar periodo y arreglos visuales
+
+- **Sin migraciones, sin variables nuevas, sin permisos nuevos.** Reconstruir `academic-schedule-service` y los MFE `mfe-programacion-academica` y `mfe-pta` (y limpiar la caché de `remoteEntry`).
+- Verificación (2 minutos): Programación Académica → el menú empieza por **Periodos**; Programación General → botón **«Cargar desde Excel»**; Periodos → **«Reutilizar datos de otro periodo»**; PTA → Configuración → Interoperabilidad → al pulsar «Apagar…» el botón **«Confirmar» se ve** (azul).
+- **Datos que QA necesita para que la asignación de docentes funcione** (no es código):
+  1. **RUND con vinculaciones vigentes.** Hoy en QA los docentes ocasionales tienen fin de vinculación 2025-12-17: cualquier grupo que termine después los bloquea («El grupo termina … después del fin de vinculación»). Hay que recargar el RUND del periodo o probar con docentes de planta.
+  2. **Puente docente–área cargado** (sección 3). Cubre pregrado.
+  3. **Posgrado:** las asignaturas de especialización/maestría tienen área «Programa: …» y ningún docente la tiene. Falta el insumo de la ESAP (qué docentes dictan cada programa de posgrado) para cargarlo al puente.
+- Roles de prueba (ver INTEGRACION-claude.md §41.1): programar = `PROGRAMADOR_PREGRADO/POSGRADO`; asignar y enviar a revisión = `PROGRAMADOR_DOCENTE_*`; revisar = `REVISOR_DOCENCIA_*`; aprobar = `APROBADOR_DOCENCIA` o `JEFATURA_TERRITORIAL`; todo = `ADMIN_PROGRAMACION`.

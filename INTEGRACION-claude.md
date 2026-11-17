@@ -1475,3 +1475,52 @@ El 409 trae `{ code, message, concertacion: { id, docente, estado } | null }` pa
 ### PUBLICADO
 
 **PUBLICADO el 13 de noviembre de 2026 en `micro-frontend`: merge `37ebc3c21`** (`6c2e935a7..37ebc3c21`, `merge --no-ff` de `feature/pa/bugs-qa`; sin rebase ni force). Compuertas 1–6 pasadas (ver el reporte final). Pendiente de Henrry: DEPLOY-bugs-qa.md, empezando por el PASO 0 (partición de auditoría).
+
+## 41. Plantilla de Excel de la programación y reutilizar un periodo anterior (rama `feature/pa/plantilla-y-reutilizar`)
+
+**Qué hay.** Dos funciones nuevas en Programación Académica, sin migraciones ni variables nuevas, y con los permisos que ya existen.
+
+**A. Carga de grupos, horarios y docentes por plantilla de Excel.**
+- Modelo: la hoja «PROGRAMACIÓN» del Excel con que la ESAP arma hoy la programación (`PROGRAMACIÓN ACADEMICA 2026_1.xlsx`): **una fila por sesión**; las filas con la misma asignatura, oferta y número de grupo son un grupo. Columnas con **códigos del sistema** (`CODIGO_ASIGNATURA`, `CETAP`, `DOCUMENTO_DOCENTE`), no nombres: el Excel actual identifica la asignatura por plan + nombre, que no es único (ver la conciliación del catálogo de la ronda 3B). **No se importa el Excel viejo tal cual**: emparejarlo por nombre sería adivinar.
+- La pantalla genera la plantilla (`exceljs`, carga diferida) con hojas de referencia (ASIGNATURAS que la persona puede programar, CETAP con oferta en el periodo, LEEME) y lee el archivo; **el servidor valida todo**: `GET /carga-programacion/referencia?periodo=`, `POST /carga-programacion/validar {idPeriodo, filas}` (recorre la carga completa y **revierte**), `POST /carga-programacion` (**todo o nada**: 409 `CARGA_CON_ERRORES` con el reporte por fila si hay un solo error).
+- Pasa por los **mismos servicios** que la pantalla (crear grupo, crear sesión, asignación múltiple), dentro de **una transacción** (`carga-programacion/transaccion.ts`: servicios ligados al EntityManager + SAVEPOINT por paso). Lo que el archivo usa dos veces (aula, docente a la misma hora, dos sesiones del mismo grupo) choca igual que si ya estuviera en la base.
+- Permisos: programar el nivel de cada asignatura; si la fila trae docente, además asignar en ese nivel (RN-08). Escritura anclada al periodo (periodo cerrado → 409).
+- Decisiones: (1) un grupo **existente** recibe sesiones y docentes, pero sus datos (modalidad, cupo, CETAP, fechas) no se cambian: se avisa. (2) Grupo **nuevo sin fechas** → toma las del periodo y se avisa (sin ciclo, la vinculación del docente no se puede verificar y la asignación se rechazaría). (3) Docentes del grupo en **una** asignación múltiple (todo o nada del grupo, EFDS-2434). (4) Máximo 3.000 filas. (5) Auditoría `cargar_programacion_plantilla`.
+- Pantalla: Programación → barra del periodo → **«Cargar desde Excel»** (3 pasos: descargar plantilla, subir y validar, cargar).
+
+**B. Reutilizar los datos de un periodo anterior.**
+- `POST /periodos/:id/reutilizar/validar` y `POST /periodos/:id/reutilizar` `{ idPeriodoOrigen, alcance }`, alcance `catalogo` | `catalogo_grupos` | `catalogo_grupos_docentes`. Permiso `programacion-academica.periodos.gestionar` (o `.all`).
+- `catalogo`: copia `oferta_cetap_programa` (activas) y `periodo_cetap` que falten en el destino (sin `ON CONFLICT`: la llave única puede faltar en ambientes restaurados).
+- `+ grupos`: mismo número, oferta, modalidad, cupo, CETAP (la oferta **del periodo nuevo**) y sesiones (día, hora, tipo, aula). Fechas corridas **semanas completas** (se conserva el día de la semana) y recortadas al periodo nuevo. Sesiones nacen `PROGRAMADO`; nada de la concertación se copia. Si el CETAP no tiene oferta en el periodo nuevo, el grupo va sin CETAP y sin aula (aviso).
+- `+ docentes`: el mismo docente por sesión, por la **asignación múltiple de siempre** (área, vinculación, situación, tope, cruces). Si un docente ya no cumple, ese grupo queda **sin docente** y el reporte dice por qué: no se fuerza nada.
+- **Todo o nada** para catálogo, grupos y sesiones; las asignaciones de docentes son por grupo (un bloqueo no detiene la copia, se reporta). Lo que ya existe en el destino no se toca: se puede repetir. Solo los niveles que la persona programa (y asigna, para docentes). Auditoría `reutilizar_periodo`.
+- Pantalla: Periodos → tarjeta del periodo → **«Reutilizar datos de otro periodo»**; y en **Crear periodo**, «Reutilizar datos de (opcional)» + «Qué reutilizar»: al crear, se abre la copia **ya revisada** para confirmar.
+
+**Verificación.** PA: 318 pruebas (9 nuevas de normalización). MFE PA: 83 (12 nuevas: plantilla ida y vuelta, los dos paneles). Extremo a extremo contra base nueva en contenedores detrás del gateway: 36/36 (los tres alcances, idempotencia, plantilla con errores por fila, todo o nada, cruces dentro del archivo, permisos 403, auditoría). Script: `e2e-carga.mjs` (scratchpad de la sesión; crea el periodo 2027-1: **solo en una base desechable**).
+
+**Hallazgos de entorno (no de código).**
+- vitest de los MFE desde Git Bash con la ruta `c:\` (minúscula): carga dos copias de sí mismo y todas las pruebas fallan con `reading 'on'`. Correr desde PowerShell.
+- `VITE_API_URL=/services` en Git Bash se convierte en `C:/Program Files/Git/services` (conversión de rutas de MSYS): **los builds de frontend se hacen desde PowerShell** (o con `MSYS_NO_PATHCONV=1`). El build local del 13 de nov estaba afectado (no se publicó; los Dockerfile construyen dentro de Linux y no tienen el problema).
+
+### 41.1 Verificación por rol, arreglos visuales y diagnóstico de QA (16 de nov de 2026)
+
+**Qué ve y qué puede cada rol** (base creada solo con migraciones; cuentas sin superusuario; 48 comprobaciones por API + recorrido en navegador):
+
+| Rol | Menú de Programación Académica | Puede | Se le niega (403) |
+|---|---|---|---|
+| ADMIN_PROGRAMACION | Todo | Crear periodos, reutilizar, programar, asignar | — |
+| PROGRAMADOR_PREGRADO / _POSGRADO | Todo | Grupos, horarios, plantilla sin docentes (su nivel) | Asignar docentes, crear periodos, reutilizar, revisar |
+| PROGRAMADOR_DOCENTE_PREGRADO / _POSGRADO | Programación General, Disponibilidad Docente, Concertación | Asignar docentes y **enviar a revisión** | Crear grupos, editar horario, periodos |
+| REVISOR_DOCENCIA_PREGRADO / _POSGRADO | Solo «Concertación de la docencia» | Revisar y firmar | Aprobar, programar, enviar |
+| APROBADOR_DOCENCIA, JEFATURA_TERRITORIAL | Solo «Concertación de la docencia» | Aprobar y firmar | Revisar, programar |
+| DOCENTE | Portal → «Mi Programación Académica» | Aceptar y firmar o reportar novedad | Backoffice |
+
+- La antigua «Aprobación territorial» **no existe** en el código actual: quien revisa o aprueba ve «Concertación de la docencia». Lo que se vio en QA era el despliegue anterior.
+- El aviso «La concertación de la docencia está apagada en este ambiente» tampoco existe ya: la concertación está siempre disponible y solo el interruptor del PTA decide si lo aceptado llega al PTA.
+
+**Arreglos de esta fecha** (commit `517f7f6b3`): calendario del grupo (el bloque de una hora salía cortado y estrecho: las clases `text-[0.62rem]`, `top-0.5`, `right-0.5` y `right-1` no existen en la hoja de estilos del shell → estilos en línea); menú en el orden del flujo; botones «Confirmar» y «Guardar periodo de corte…» del interruptor (salían invisibles: `bg-slate-900` no existe en el CSS del MFE del PTA). **Regla:** el MFE de Programación no tiene hoja propia (usa la del shell) y el del PTA tiene la suya; una clase de Tailwind que nadie más use puede no existir. Comprobar en el navegador contra `document.styleSheets`, no contra los archivos.
+
+**Diagnóstico de QA, solo lectura (16 nov).** QA sigue con el despliegue anterior (404 en `/pta/api/v1/configuracion/interoperabilidad` y en `/carga-programacion/referencia`). Con ese despliegue, `GET /asignaciones/candidatos` responde así en los grupos reales de 2026-1:
+- `ASIG-00001` (Desarrollo y Gestión Territorial): 28 candidatos. Funciona.
+- `ASIG-00003` (Finanzas Públicas): 3 docentes del área, **los tres bloqueados por RN-10**: su vinculación en el RUND de QA terminó el 2025-12-17 y el grupo termina el 2026-11-30. Es dato del RUND de QA (vinculaciones de 2025), no un defecto.
+- `ASIG-00409` (Especialización en Proyectos de Desarrollo, Cartagena): área «Programa: Proyectos de Desarrollo (Especialización)», **ningún docente** con núcleo en esa área. El puente docente–área (`db/data/programacion-academica/puente_docente_area.csv`) solo trae planes de **pregrado** (AP, APT, EP); para posgrado falta que la ESAP diga qué docentes dictan cada programa.
