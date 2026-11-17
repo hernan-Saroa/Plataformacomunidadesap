@@ -2240,6 +2240,76 @@ export async function registrarDecisionPeriodoPrueba(id: string, body: {
   }
 }
 
+/** HU 2349 — Decisión del Comité Docente para la incorporación (Validado – Cumple → Apto para incorporación / Activo). */
+export async function registrarDecisionComiteIncorporacion(id: string, body: {
+  resultado: 'FAVORABLE' | 'NO_FAVORABLE';
+  fechaComite: string;
+  soporteId: string;
+  motivo?: string;
+  observacion?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/ciclo/decision-comite`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la decisión del comité.') };
+  }
+}
+
+/** HU 2349 — Recategorización: solicitud, revisión de soportes y decisión del comité. */
+export async function listarRecategorizacionesDocente(id: string, periodoCarga?: string) {
+  try {
+    const query = periodoCarga ? `?periodoCarga=${encodeURIComponent(periodoCarga)}` : '';
+    const raw = await apiClient.get<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones${query}`, undefined, { cache: 'no-store' });
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    return { success: false, data: [], message: getApiErrorMessage(error, 'No fue posible consultar las recategorizaciones.') };
+  }
+}
+
+export async function iniciarRecategorizacionDocente(id: string, body: {
+  justificacion: string;
+  propuesta: { escalafon: string; puntajeSalarial?: number | null };
+  soporteIds: string[];
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible iniciar la recategorización.') };
+  }
+}
+
+export async function revisarRecategorizacionDocente(id: string, recategorizacionId: string, body: {
+  resultado: 'CUMPLE' | 'NO_CUMPLE';
+  observacion?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones/${encodeURIComponent(recategorizacionId)}/revision`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la revisión de los soportes.') };
+  }
+}
+
+export async function decidirRecategorizacionDocente(id: string, recategorizacionId: string, body: {
+  resultado: 'APROBADA' | 'RECHAZADA';
+  fechaComite: string;
+  soporteId: string;
+  motivo?: string;
+  periodoCarga?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${encodeURIComponent(id)}/recategorizaciones/${encodeURIComponent(recategorizacionId)}/decision`, body, { retries: 0 });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible registrar la decisión del comité.') };
+  }
+}
+
 /** HU 2424 — Docentes con el año de prueba cumplido y sin decisión del comité (alerta del GGP). */
 export async function getAlertasPeriodoPrueba() {
   try {

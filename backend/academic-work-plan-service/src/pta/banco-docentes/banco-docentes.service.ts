@@ -35,6 +35,8 @@ import {
   diasRestantesPrueba, esVinculacionPrueba, fechaCumplimientoPrueba, hoyColombia, pendienteDecisionComite, soloFecha,
   validarDecisionComite, type DecisionPeriodoPrueba,
 } from './rund-periodo-prueba';
+import { cicloDocenteInfo } from './rund-ciclo-docente';
+import { RundCicloDocente } from './rund-ciclo-docente.workflow';
 import { hasRundData as hasRundDataValue } from './rund-evidence-data';
 import { deducirTitulosAdicionales } from './rund-perfil-titulos';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
@@ -910,6 +912,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     idRund: docente.idRund ?? null,
     // BR-047 â€” Approval state
     estadoAprobacion: docente.estadoAprobacion ?? 'PENDIENTE_APROBACION',
+    ciclo: cicloDocenteInfo({ estado: docente.estado, estadoAprobacion: docente.estadoAprobacion, decision: docente.decisionComiteIncorporacion }),
     completitud: docente.completitud ?? {},
     // Â§6 â€” Canal de origen
     canal_origen: docente.canalOrigen ?? 'MASIVO',
@@ -999,6 +1002,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     id_rund: row.id_rund || row.idRund || null,
     idRund: row.id_rund || row.idRund || null,
     estadoAprobacion: row.estado_aprobacion || 'PENDIENTE_APROBACION',
+    ciclo: cicloDocenteInfo({ estado: row.estado_efectivo || row.estado || (row.activo ? 'ACTIVO' : 'INACTIVO'), estadoAprobacion: row.estado_aprobacion, decision: row.decision_comite_incorporacion }),
     completitud: row.completitud || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1045,7 +1049,29 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "claseDocente" TEXT,
           ADD COLUMN IF NOT EXISTS "titulosAdicionales" JSONB,
           ADD COLUMN IF NOT EXISTS "decisionPeriodoPrueba" JSONB,
+          ADD COLUMN IF NOT EXISTS "decisionComiteIncorporacion" JSONB,
           ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
+      `);
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS academic_work_plan."RundRecategorizacion" (
+          id UUID PRIMARY KEY,
+          docente_id TEXT NOT NULL,
+          estado TEXT NOT NULL,
+          justificacion TEXT NOT NULL,
+          propuesta JSONB NOT NULL DEFAULT '{}'::jsonb,
+          soporte_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+          revision JSONB,
+          decision_comite JSONB,
+          aplicado JSONB,
+          creado_por TEXT NOT NULL,
+          "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+          "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_rund_recategorizacion_abierta
+        ON academic_work_plan."RundRecategorizacion" (docente_id)
+        WHERE estado IN ('EN_REVISION', 'EN_COMITE')
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
       await this.dataSource.query(`
@@ -1259,6 +1285,7 @@ export class BancoDocentesService implements OnModuleInit {
           d."fechaInicioVinculacion" AS inicio_vinculacion,
           d."fechaFinVinculacion" AS fin_vinculacion,
           d."decisionPeriodoPrueba" AS decision_periodo_prueba,
+          d."decisionComiteIncorporacion" AS decision_comite_incorporacion,
           d."puntajeSalarial" AS puntaje_salarial,
           d."edadReferencia" AS edad_referencia,
           d."rangoEdad" AS rango_edad,
@@ -2893,6 +2920,31 @@ export class BancoDocentesService implements OnModuleInit {
       return this.dataSource.transaction(execute);
     }
     return execute({ query: this.dataSource.query.bind(this.dataSource), findOne: (_e: unknown, o: any) => this.docenteRepo.findOne(o), save: (_e: unknown, d: any) => this.docenteRepo.save(d) });
+  }
+
+  /** HU 2349 — Decisión del Comité Docente para la incorporación: Validado – Cumple → Apto para incorporación / Activo. */
+  async registrarDecisionIncorporacion(id: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).registrarDecisionIncorporacion(docenteId, body, { actorId, ip });
+  }
+
+  async listarRecategorizaciones(id: string, periodoCarga?: string) {
+    return new RundCicloDocente(this.dataSource).listarRecategorizaciones(await this.resolveDocenteId(id, periodoCarga));
+  }
+
+  async iniciarRecategorizacion(id: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).iniciarRecategorizacion(docenteId, body, { actorId, ip });
+  }
+
+  async revisarRecategorizacion(id: string, recategorizacionId: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).revisarRecategorizacion(docenteId, recategorizacionId, body, { actorId, ip });
+  }
+
+  async decidirRecategorizacion(id: string, recategorizacionId: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).decidirRecategorizacion(docenteId, recategorizacionId, body, { actorId, ip });
   }
 
   async guardarIncorporacion(id: string, body: any, actorId: string, ip?: string) {
