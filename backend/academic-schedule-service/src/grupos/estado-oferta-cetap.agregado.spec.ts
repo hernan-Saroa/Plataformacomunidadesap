@@ -62,14 +62,27 @@ describe('estado de la oferta CETAP de una asignatura en un periodo (agregado re
     expect(e.motivo).toMatch(/tiene 1 ofertas cargadas, pero ninguna del programa/);
   });
 
-  caso('con oferta del programa hay qué elegir: el motivo, si lo hay, es solo por territorial sin vincular', async () => {
+  caso('EFDS-2429: con UNA sola oferta del programa, unicaSede=true y el motivo dice dónde se dicta (no es un fallo)', async () => {
     const periodo = await crearPeriodo(client, { codigo: '2097-3', anio: 2097, semestre: 1 });
     const asig = await crearAsignatura(client);
     await crearOferta(client, { idPrograma: asig.idPrograma, idPeriodo: periodo.idPeriodo, codigoCetap });
     const e = await estadoOfertasCetap(q, asig.idAsignatura, periodo.idPeriodo);
-    expect(e).toMatchObject({ ofertasDelPeriodo: 1, ofertasDelPrograma: 1 });
-    if (e.motivo) expect(e.motivo).toMatch(/no tienen territorial vinculada/);
-    expect(e.sinTerritorial === 0 ? e.motivo : 'x').toBeNull();
+    expect(e).toMatchObject({ ofertasDelPeriodo: 1, ofertasDelPrograma: 1, unicaSede: true });
+    // Con territorial vinculada: motivo informativo de la sede única. Sin ella, manda el aviso de territorial.
+    expect(e.motivo).toMatch(e.sinTerritorial === 0 ? /solo se dicta en /i : /no tienen territorial vinculada/);
+    expect(e.motivo).toContain('2097-3');
+  });
+
+  caso('EFDS-2429: con varias ofertas del programa NO es sede única y no hay motivo (hay qué elegir)', async () => {
+    const periodo = await crearPeriodo(client, { codigo: '2097-3', anio: 2097, semestre: 1 });
+    const asig = await crearAsignatura(client);
+    const otros = (await q.query(`SELECT codigo FROM academic_work_plan.cetap WHERE codigo <> $1 ORDER BY codigo LIMIT 1`, [codigoCetap]));
+    if (!otros.length) { console.warn('  (no hay un segundo CETAP en la base: omitido)'); return; }
+    await crearOferta(client, { idPrograma: asig.idPrograma, idPeriodo: periodo.idPeriodo, codigoCetap });
+    await crearOferta(client, { idPrograma: asig.idPrograma, idPeriodo: periodo.idPeriodo, codigoCetap: otros[0].codigo });
+    const e = await estadoOfertasCetap(q, asig.idAsignatura, periodo.idPeriodo);
+    expect(e).toMatchObject({ ofertasDelPrograma: 2, unicaSede: false });
+    if (e.sinTerritorial === 0) expect(e.motivo).toBeNull();
   });
 
   caso('un periodo legado no tiene ofertas por CETAP: lo dice el servicio', async () => {

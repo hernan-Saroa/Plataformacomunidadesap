@@ -1,4 +1,4 @@
-import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 
 import {
   aplicarDecision,
@@ -7,7 +7,7 @@ import {
   protegerAsignaturas,
   regimenDocencia,
   regimenDocenciaSeguro,
-  reiniciarCacheProgramacion,
+  ESTADO_APAGADA,
 } from './docencia-programacion';
 import { PtaService } from './pta.service';
 
@@ -19,18 +19,13 @@ import { PtaService } from './pta.service';
  */
 describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
   const envAntes = { ...process.env };
+  /** Espía en el lugar de Programación Académica: con la integración apagada NO debe recibir ninguna petición. */
   let fetchMock: jest.Mock;
-  /** Lo que responde Programación Académica: config o 'caido'. */
-  let pa: { habilitada: boolean; desdePeriodo: string | null } | 'caido';
 
   beforeEach(() => {
-    reiniciarCacheProgramacion();
     process.env.PROG_CONCERTACION_HABILITADA = 'false';
-    pa = { habilitada: true, desdePeriodo: '2050-1' };
-    fetchMock = jest.fn(async () => {
-      if (pa === 'caido') throw new Error('ECONNREFUSED');
-      return { ok: true, json: async () => ({ success: true, data: pa }) } as any;
-    });
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = '2050-1';
+    fetchMock = jest.fn(async () => { throw new Error('ECONNREFUSED'); });
     (global as any).fetch = fetchMock;
   });
   afterAll(() => { process.env = envAntes; });
@@ -59,7 +54,7 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
 
     it('registrar una decisión apagado no la aplica', async () => {
       const q = { query: jest.fn(async (sql: string) => (sql.includes('SELECT * FROM') ? [{ id_concertacion: 'c1' }] : [])) };
-      expect(await aplicarDecision(q, 'c1')).toBe('no_aplica_apagada');
+      expect(await aplicarDecision(q, 'c1')).toBe(ESTADO_APAGADA);
       expect(q.query.mock.calls.some(([sql]) => /PtaComponentApproval|"PlanTrabajoAcademico" SET/.test(sql))).toBe(false);
     });
   });
@@ -107,30 +102,15 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
       expect(protegerAsignaturas('programacion', existente, [])).toEqual([concertada]);
     });
 
-    it('Programación Académica no responde: falla cerrado con error explícito, y no se auto-aprueba la Docencia', async () => {
-      pa = 'caido';
-      await expect(regimenDocencia(borrador)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    it('Programación Académica fuera de servicio no afecta al PTA: el régimen sale de la base, sin peticiones', async () => {
+      expect(await regimenDocencia(borrador)).toBe('programacion');
       expect(await regimenDocenciaSeguro(borrador)).toBe('programacion');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
-  });
 
-  describe('ningún caso con doble aprobación ni sin aprobación', () => {
-    // El régimen nuevo exige los DOS lados. Programación Académica, por su parte,
-    // rechaza concertar si el PTA no está encendido (ConcertacionService). Así,
-    // para cada combinación exactamente UNO aprueba la Docencia.
-    const casos: Array<[string, boolean, boolean]> = [
-      ['ambos apagados', false, false],
-      ['solo el PTA encendido', true, false],
-      ['solo PA encendido', false, true],
-      ['ambos encendidos', true, true],
-    ];
-    it.each(casos)('%s', async (_n, ptaOn, paOn) => {
-      if (ptaOn) encender(); else process.env.PROG_CONCERTACION_HABILITADA = 'false';
-      pa = { habilitada: paOn && ptaOn, desdePeriodo: '2050-1' }; // PA solo se declara encendida si el PTA también
-      const regimen = await regimenDocencia(borrador);
-      const apruebaElPta = regimen === 'actual';
-      const apruebaLaConcertacion = paOn && ptaOn; // PA verifica al PTA antes de concertar
-      expect(Number(apruebaElPta) + Number(apruebaLaConcertacion)).toBe(1);
+    it('un PTA con docencia cargada a mano (sin docencia de programación) NO entra al régimen nuevo: no se pisa', async () => {
+      const manual = { ...borrador, datosEstructurados: { asignaturas: [{ asignatura_id: '9', asignatura_nombre: 'Manual', total_horas: 40 }] } };
+      expect(await regimenDocencia(manual)).toBe('actual');
     });
   });
 
@@ -155,14 +135,20 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
     };
 
     it('PTA en borrador: carga la docencia como de programación y aprueba el componente', async () => {
-      const q = db({ id: 'p1', estado: 'BORRADOR', periodo: '2050-1', ds: { asignaturas: [{ asignatura_id: '9' }] } });
+      const q = db({ id: 'p1', estado: 'BORRADOR', periodo: '2050-1', ds: { asignaturas: [] } });
       expect(await aplicarDecision(q, 'c1')).toBe('aplicada');
       const update = q.llamadas.find((l) => l.sql.includes('"PlanTrabajoAcademico" SET'))!;
       const ds = JSON.parse(update.params[1]);
-      expect(ds.asignaturas).toHaveLength(1); // la manual previa se quita
+      expect(ds.asignaturas).toHaveLength(1);
       expect(ds.asignaturas[0]).toMatchObject({ origen: 'programacion', editable: false, asignatura_id: '1', programa_id: '1', total_horas: 96, territorial_id: '' });
       const aprobacion = q.llamadas.find((l) => l.sql.includes('INSERT INTO academic_work_plan."PtaComponentApproval"'))!;
       expect(aprobacion.params).toEqual(['p1', 'academica_pregrado', expect.any(String), 'programacion', 'c1']);
+    });
+
+    it('EFDS-2435 · PTA en borrador CON docencia manual: NO se pisa; queda pendiente por conflicto', async () => {
+      const q = db({ id: 'p1', estado: 'BORRADOR', periodo: '2050-1', ds: { asignaturas: [{ asignatura_id: '9', asignatura_nombre: 'Manual' }] } });
+      expect(await aplicarDecision(q, 'c1')).toBe('pendiente_conflicto_docencia_manual');
+      expect(q.llamadas.some((l) => /"PlanTrabajoAcademico" SET|PtaComponentApproval/.test(l.sql))).toBe(false);
     });
 
     it('PTA firmado: NO se modifica; queda pendiente y se reporta', async () => {

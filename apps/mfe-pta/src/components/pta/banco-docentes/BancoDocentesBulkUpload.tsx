@@ -13,6 +13,7 @@ import { bulkUploadBancoDocentes, getRundConvocatorias } from '../../../services
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import * as XLSX from 'xlsx';
 import { decodeRundCsv } from '../../../utils/rundCsv';
+import { downloadRundBulkErrorReport } from '../../../utils/rundBulkErrorReport';
 
 interface BancoDocentesBulkUploadProps {
   onBack: () => void;
@@ -813,6 +814,15 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                       <AlertTriangle className="w-3 h-3 text-amber-500" />
                       {result.errores.length} error(es) de calidad
                     </span>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { if (!downloadRundBulkErrorReport(result.errores, file?.name)) toast.info('No hay errores para reportar.'); }}
+                      className="px-3 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                    >
+                      <Download className="w-3 h-3" />
+                      Descargar reporte de errores
+                    </button>
                     {result.errores.some((e: any) => e.fila) && workbookRef.current && (
                       <button
                         onClick={() => setShowCorrectionPanel(!showCorrectionPanel)}
@@ -824,6 +834,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                         {showCorrectionPanel ? 'Ver errores' : 'Corregir inline'}
                       </button>
                     )}
+                    </div>
                   </div>
 
                   {!showCorrectionPanel && (

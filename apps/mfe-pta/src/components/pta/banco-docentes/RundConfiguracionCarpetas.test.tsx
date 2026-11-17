@@ -36,6 +36,29 @@ describe('Pestaña Configuración de carpetas', () => {
     expect(screen.getAllByText('Obligatoria').length).toBe(1);
   });
 
+  it('las cuatro primeras carpetas (00 a 03) son obligatorias y bloqueadas para todos los tipos de vinculación', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      tipos: [{ codigo: 'CATEDRA', nombre: 'Hora cátedra' }, { codigo: 'CARRERA2', nombre: 'Carrera 2' }],
+      carpetas: [
+        { bloque: 'IDENTIDAD', obligatoria: true }, { bloque: 'FORMACION', obligatoria: true },
+        { bloque: 'EXPERIENCIA_DOCENTE', obligatoria: true }, { bloque: 'EXPERIENCIA_LABORAL', obligatoria: true },
+        { bloque: 'PRODUCTIVIDAD_ACADEMICA', obligatoria: false },
+      ],
+      inactivas: {},
+    } as any);
+    render(<RundConfiguracionCarpetas />);
+    await screen.findByText('Configuración de carpetas');
+    expect(screen.getAllByText('Obligatoria')).toHaveLength(4);
+    for (const carpeta of ['00 Datos básicos', '01 Títulos de formación', '02 Experiencia docente', '03 Experiencia laboral']) {
+      for (const tipo of ['Hora cátedra', 'Carrera 2']) {
+        const interruptor = screen.getByRole('switch', { name: new RegExp(`${carpeta} · ${tipo}`) }) as HTMLInputElement;
+        expect(interruptor.disabled).toBe(true);
+        expect(interruptor.checked).toBe(true);
+      }
+    }
+    expect((screen.getByRole('switch', { name: /05 Productividad académica · Hora cátedra/ }) as HTMLInputElement).disabled).toBe(false);
+  });
+
   it('desactivar una carpeta para un tipo guarda el cambio y lo refleja', async () => {
     render(<RundConfiguracionCarpetas />);
     const interruptor = await screen.findByRole('switch', { name: /05 Productividad académica · Hora cátedra/ }) as HTMLInputElement;

@@ -26,7 +26,8 @@ export type CabezoteCampoClave =
   | 'TERRITORIAL'
   | 'ESTADO_VINCULACION'
   | 'PUNTAJE_SALARIAL'
-  | 'ULTIMA_EVALUACION';
+  | 'ULTIMA_EVALUACION'
+  | 'CLASE_DOCENTE';
 
 export interface CabezoteCampoVista {
   clave: CabezoteCampoClave;
@@ -75,6 +76,7 @@ export const CABEZOTE_ETIQUETAS: Record<CabezoteCampoClave, string> = {
   ESTADO_VINCULACION: 'Estado de vinculación',
   PUNTAJE_SALARIAL: 'Puntaje salarial',
   ULTIMA_EVALUACION: 'Última evaluación',
+  CLASE_DOCENTE: 'Clase de docente',
 };
 
 export const CABEZOTE_CONTACTO_ETIQUETAS: Record<CabezoteContactoClave, string> = {
@@ -133,6 +135,16 @@ function primerTexto(source: Record<string, any>, keys: string[]): string | null
     if (value !== null) return value;
   }
   return null;
+}
+
+/** Planta o Cátedra: la clase que envía el servidor o, si falta, la que resulta de las horas PTA (> 0 = planta). */
+export function etiquetaClaseDocente(clase: unknown, horas?: unknown): string | null {
+  const guardada = String(clase ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  if (guardada === 'PLANTA') return 'Planta';
+  if (guardada === 'CATEDRA') return 'Cátedra';
+  if (horas === null || horas === undefined || String(horas).trim() === '') return null;
+  const numero = Number(String(horas).replace(',', '.'));
+  return Number.isFinite(numero) ? (numero > 0 ? 'Planta' : 'Cátedra') : null;
 }
 
 function formatearPuntaje(value: unknown): string | null {
@@ -268,6 +280,7 @@ export function buildCabezotePerfilDocente(
         nota: CABEZOTE_ORIGEN_EVALUACION[origenEvaluacion],
         textoAusente: 'Sin evaluación registrada',
       }),
+      campo('CLASE_DOCENTE', etiquetaClaseDocente(perfil.clase_docente ?? perfil.claseDocente, perfil.horas_programables ?? perfil.horasAsignables ?? perfil.horas_pta)),
     ],
   };
 }

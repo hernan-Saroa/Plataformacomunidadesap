@@ -28,6 +28,8 @@ import {
   type CabezoteContactoVista,
 } from '../../../utils/rundPerfilCabezote';
 import { validarContactoCabezote } from '../../../utils/rundContactoCabezote';
+import { useAuth } from '../../../contexts/AuthContext';
+import { isRundReadOnly } from '../../../../../shared/rund-permissions';
 
 export interface EdicionContactoCabezote {
   /** Solo los roles con permiso de modificación ven el botón de edición. */
@@ -52,6 +54,7 @@ const ACENTOS: Record<CabezoteCampoClave, string> = {
   ESTADO_VINCULACION: '#0891B2',
   PUNTAJE_SALARIAL: '#B45309',
   ULTIMA_EVALUACION: '#DB2777',
+  CLASE_DOCENTE: '#0F766E',
 };
 
 function CampoCabezote({ campo, activo }: { campo: CabezoteCampoVista; activo: boolean }) {
@@ -401,6 +404,9 @@ function TarjetaContacto({ dato, edicion }: { dato: CabezoteContactoVista; edici
 
 export function PerfilDocenteCabezote({ docente, compacto = false, edicionContacto }: Props) {
   const cabezote = useMemo(() => buildCabezotePerfilDocente(docente), [docente]);
+  const auth = useAuth();
+  // RN-05: el perfil «Consulta RUND» ve la ficha marcada como solo lectura.
+  const soloLectura = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
   if (!docente) return null;
 
   const { estado } = cabezote;
@@ -508,6 +514,27 @@ export function PerfilDocenteCabezote({ docente, compacto = false, edicionContac
               : <XCircle size={13} color="#6B7280" aria-hidden="true" />}
             {estado.etiqueta}
           </span>
+          {soloLectura && (
+            <span
+              data-testid="rund-solo-lectura"
+              title="Tu perfil Consulta RUND permite ver la información y los soportes, pero no modificarlos."
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 11px',
+                borderRadius: 9999,
+                fontSize: 12,
+                fontWeight: 700,
+                background: '#FEF3C7',
+                color: '#92400E',
+                border: '1px solid #F59E0B',
+              }}
+            >
+              <Lock size={13} aria-hidden="true" />
+              Solo lectura
+            </span>
+          )}
           <span
             title="Los datos de vinculación del cabezote son informativos; solo los datos de contacto se pueden editar."
             style={{

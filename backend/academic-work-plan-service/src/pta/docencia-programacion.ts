@@ -1,4 +1,7 @@
-import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
+import { habilitadaLocal, leerInteroperabilidad } from './interoperabilidad';
+
+export { habilitadaLocal };
 
 /**
  * Docencia concertada en Programación Académica — EFDS-2315 (lado del PTA).
@@ -24,39 +27,11 @@ import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 export const DOCENCIA_KEYS: ReadonlySet<string> = new Set(['academica_pregrado', 'academica_posgrado', 'academica_territorial']);
 export const ORIGEN_PROGRAMACION = 'programacion';
 export const SCOPE_PROGRAMACION = 'programacion';
+/** Estado de una decisión aceptada mientras la integración está apagada (EFDS-2435). */
+export const ESTADO_APAGADA = 'pendiente_interoperabilidad_apagada';
+export const ESTADO_CONFLICTO_MANUAL = 'pendiente_conflicto_docencia_manual';
 
 export type Regimen = 'actual' | 'programacion';
-
-interface ConfigProgramacion { habilitada: boolean; desdePeriodo: string | null }
-
-export function habilitadaLocal(): boolean {
-  // Encendida por defecto en todos los ambientes (nov-2026); solo 'false' la apaga.
-  return String(process.env.PROG_CONCERTACION_HABILITADA ?? '').trim().toLowerCase() !== 'false';
-}
-
-let cache: { valor: ConfigProgramacion; en: number } | null = null;
-
-/** Solo para pruebas: olvida la configuración leída de Programación Académica. */
-export function reiniciarCacheProgramacion(): void { cache = null; }
-
-/** Configuración de Programación Académica (interruptor efectivo y corte). Lanza si no responde. */
-export async function configuracionProgramacion(): Promise<ConfigProgramacion> {
-  const ahora = Date.now();
-  if (cache && ahora - cache.en < 30_000) return cache.valor;
-  const base = process.env.ACADEMIC_SCHEDULE_SERVICE_URL || 'http://academic-schedule-service:3013';
-  let res: Response;
-  try {
-    res = await fetch(`${base}/concertacion/configuracion`);
-  } catch (e: any) {
-    throw new ServiceUnavailableException(`No se pudo consultar la concertación en Programación Académica: ${e?.message ?? e}`);
-  }
-  if (!res.ok) throw new ServiceUnavailableException(`Programación Académica respondió ${res.status} al consultar la concertación.`);
-  const c: any = await res.json();
-  const d = c?.data ?? c;
-  const valor = { habilitada: d?.habilitada === true, desdePeriodo: typeof d?.desdePeriodo === 'string' ? d.desdePeriodo : null };
-  cache = { valor, en: ahora };
-  return valor;
-}
 
 export function periodoEnCorte(periodo: unknown, desde: string | null): boolean {
   const p = String(periodo ?? '').trim();
@@ -71,12 +46,23 @@ export function tieneDocenciaDeProgramacion(ds: any): boolean {
   return asignaturasDe(ds).some((a) => a?.origen === ORIGEN_PROGRAMACION);
 }
 
-/** Régimen de la Docencia de un PTA. Apagado aquí: 'actual', sin consultar a nadie. */
+/** ¿Tiene asignaturas cargadas a mano (no concertadas)? */
+export function tieneDocenciaManual(ds: any): boolean {
+  return asignaturasDe(ds).some((a) => a?.origen !== ORIGEN_PROGRAMACION && (a?.asignatura_id || a?.asignatura_nombre));
+}
+
+/**
+ * Régimen de la Docencia de un PTA. Apagada la integración (base): 'actual' SIN consultar
+ * a nadie. Encendida: 'programacion' desde el periodo de corte (también de la base).
+ * Un PTA que YA tiene docencia manual y ninguna de programación se queda en 'actual':
+ * al encender la integración no se pisa lo que el docente cargó a mano.
+ */
 export async function regimenDocencia(pta: { periodo?: unknown; estado?: unknown; datosEstructurados?: any } | null): Promise<Regimen> {
-  if (!habilitadaLocal() || !pta) return 'actual';
-  const cfg = await configuracionProgramacion();
+  if (!pta) return 'actual';
+  const cfg = await leerInteroperabilidad();
   if (!cfg.habilitada || !periodoEnCorte(pta.periodo, cfg.desdePeriodo)) return 'actual';
   if (tieneDocenciaDeProgramacion(pta.datosEstructurados)) return 'programacion';
+  if (tieneDocenciaManual(pta.datosEstructurados)) return 'actual';
   // Sin docencia de programación: solo un PTA aún en borrador entra al régimen
   // nuevo. Uno ya enviado o firmado cuando se encendió sigue con el flujo actual.
   return String(pta.estado ?? 'BORRADOR').trim().toUpperCase() === 'BORRADOR' ? 'programacion' : 'actual';
@@ -201,7 +187,9 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
     return estado;
   };
 
-  if (!habilitadaLocal()) return marcar('no_aplica_apagada', 'La concertación está apagada en el PTA.', null);
+  if (!(await habilitadaLocal())) {
+    return marcar(ESTADO_APAGADA, 'La interoperabilidad con Programación Académica está apagada: se aplica al encenderla.', null);
+  }
 
   const ptas: any[] = await q.query(
     `SELECT p.id::text AS id, p.estado, p.periodo, p."datosEstructurados" AS ds
@@ -216,6 +204,13 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
   const estado = String(vigente.estado ?? '').toUpperCase().replace(/\s+/g, '_');
   if (ESTADOS_CERRADOS.has(estado)) {
     return marcar('pendiente_pta_firmado', `El PTA está ${vigente.estado}: no se modifica automáticamente.`, vigente.id);
+  }
+  // EFDS-2435: docencia cargada a mano (p. ej. mientras la integración estuvo apagada) NO se pisa:
+  // la decisión queda pendiente por conflicto hasta que alguien la resuelva.
+  if (ESTADOS_EDITABLES.test(estado) && tieneDocenciaManual(vigente.ds) && !tieneDocenciaDeProgramacion(vigente.ds)
+      && periodoEnCorte(vigente.periodo, (await leerInteroperabilidad()).desdePeriodo)) {
+    return marcar(ESTADO_CONFLICTO_MANUAL,
+      'El PTA tiene docencia cargada a mano: no se pisa. Revísela y reaplique la decisión.', vigente.id);
   }
   if (await regimenDocencia({ periodo: vigente.periodo, estado: vigente.estado, datosEstructurados: vigente.ds }) !== 'programacion') {
     return marcar('pendiente_pta_flujo_anterior', 'El PTA ya se había enviado antes del corte: aprueba su Docencia en el flujo actual.', vigente.id);
