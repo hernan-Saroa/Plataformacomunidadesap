@@ -55,6 +55,12 @@ export function dataReviewContext(block: string, profile: any, supports: any[], 
     const admitted = relevant.filter(s => s.estado === 'Aprobado' && (s.documento_perfil_id ? s.estado_documento === 'ACTIVO' : !!s.documento_carpeta_id)
       && (!s.fecha_vencimiento || new Date(s.fecha_vencimiento).getTime() >= Date.now()));
     const values = Object.fromEntries(def.keys.map(key => [key, profile?.[key] ?? null]));
+    // Los títulos adicionales de un nivel también son parte del dato: si cambian, la validación se reabre.
+    // Solo se agregan cuando existen, para no invalidar decisiones de docentes sin títulos adicionales.
+    const adicionales = Object.fromEntries(def.keys
+      .map(key => [key, profile?.titulosAdicionales?.[key]] as const)
+      .filter(([, lista]) => Array.isArray(lista) && lista.length > 0));
+    if (Object.keys(adicionales).length) (values as Record<string, unknown>).titulosAdicionales = adicionales;
     // A start date is needed to review a period; an end date alone is insufficient.
     const hasValue = def.id === 'DOCUMENTO_IDENTIDAD' ? hasRundData(profile?.num_identificacion)
       : def.id === 'FECHAS_VINCULACION' ? hasRundData(profile?.fechaInicioVinculacion) : def.keys.some(key => hasRundData(profile?.[key]));

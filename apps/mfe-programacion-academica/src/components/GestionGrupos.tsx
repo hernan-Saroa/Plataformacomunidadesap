@@ -7,19 +7,22 @@ import {
   type EstadoOfertasCetap, type Grupo, type ModalidadGrupo, type OfertaCetapGrupo,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
+import { useBorradorGrupo, useHayBorradoresGrupo } from './PanelGrupos';
+import { ModalConfirmacion } from './ModalConfirmacion';
 
 function nombreOferta(oferta: OfertaCetapGrupo): string {
   const territorial = oferta.territorial.nombre || oferta.territorial.codigo || 'Territorial sin identificar';
   return `${territorial} · ${oferta.cetap.nombre} (${oferta.cetap.codigo})`;
 }
 
-function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled }: {
+function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled, nota }: {
   id: string;
   label: string;
   ofertas: OfertaCetapGrupo[];
   valor: string;
   onChange: (idOferta: string) => void;
   disabled?: boolean;
+  nota?: string;
 }) {
   // Solo el selector (sin buscador), pedido de Tomás nov-2026.
   const visibles = ofertas;
@@ -44,6 +47,7 @@ function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled }: 
           </option>
         ))}
       </select>
+      {nota && <p role="status" className="text-xs text-blue-900">{nota}</p>}
       {seleccionada && !seleccionada.territorial.idSeccional && (
         <span className="text-xs text-amber-700">Este CETAP no tiene territorial vinculada; el grupo no podrá concertarse.</span>
       )}
@@ -85,14 +89,25 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const [errorOfertas, setErrorOfertas] = useState('');
   // Por qué no hay (o faltan) CETAP que elegir: periodo sin carga, programa no ofertado, sin territorial.
   const [estadoOfertas, setEstadoOfertas] = useState<EstadoOfertasCetap | null>(null);
+  const [errorDiagnostico, setErrorDiagnostico] = useState('');
   const [ofertaEditada, setOfertaEditada] = useState<Record<string, string>>({});
   const [guardandoOferta, setGuardandoOferta] = useState<string | null>(null);
   // EFDS-1371: el horario cuelga del GRUPO, asi que se abre desde el grupo elegido.
   const [grupoSel, setGrupoSel] = useState<Grupo | null>(null);
+  const [creacionGuardada, setCreacionGuardada] = useState('1|presencial');
+  const [cambioHorario, setCambioHorario] = useState<{ siguiente: Grupo | null } | null>(null);
+  const hayBorradores = useHayBorradoresGrupo();
+  const cambiarHorario = (g: Grupo) => {
+    const siguiente = grupoSel?.idGrupo === g.idGrupo ? null : g;
+    if (grupoSel && hayBorradores()) setCambioHorario({ siguiente });
+    else if (siguiente) abrirHorario(siguiente);
+    else setGrupoSel(null);
+  };
+  useBorradorGrupo(`${cantidad}|${modalidad}` !== creacionGuardada || Object.entries(ofertaEditada).some(([id, valor]) => valor !== (grupos.find(g => g.idGrupo === id)?.idOfertaCetap ?? '')), creando || !!guardandoOferta);
   const horarioRef = useRef<HTMLDivElement | null>(null);
   const abrirHorario = (g: Grupo) => {
     setGrupoSel(g);
-    setTimeout(() => horarioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    setTimeout(() => horarioRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 60);
   };
 
   const recargar = () => {
@@ -121,9 +136,10 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       .catch((e) => { if (vigente) setErrorOfertas(e?.message || 'No se pudieron cargar las ofertas CETAP.'); })
       .finally(() => { if (vigente) setCargandoOfertas(false); });
     setEstadoOfertas(null);
+    setErrorDiagnostico('');
     getEstadoOfertasCetap(idAsignatura, idPeriodo)
       .then((e) => { if (vigente) setEstadoOfertas(e); })
-      .catch(() => { /* el diagnóstico es un apoyo: si falla, queda el mensaje general */ });
+      .catch(() => { if (vigente) setErrorDiagnostico('No se pudo consultar el alcance de la oferta CETAP para este periodo.'); });
     return () => { vigente = false; };
   }, [idAsignatura, idPeriodo]);
 
@@ -134,6 +150,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       // La oferta se elige en CADA grupo. Solo si hay UNA posible se le pone de una vez (unívoca).
       const unica = !cargandoOfertas && !errorOfertas && ofertas.length === 1 ? ofertas[0].idOfertaCetap : null;
       await crearGrupos(idAsignatura, cantidad, idPeriodo, unica, modalidad);
+      setCreacionGuardada(`${cantidad}|${modalidad}`);
       recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudieron crear los grupos.');
@@ -241,7 +258,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
 
       {cargandoOfertas && <p className="px-4 py-2 text-xs text-slate-500">Consultando ofertas CETAP…</p>}
       {errorOfertas && <p role="alert" className="px-4 py-2 text-xs text-amber-800">No se pudieron cargar las ofertas CETAP. Puedes crear grupos sin oferta y asignarla después. {errorOfertas}</p>}
-      {!cargandoOfertas && !errorOfertas && ofertas.length > 0 && estadoOfertas?.motivo && (
+      {!cargandoOfertas && !errorOfertas && ofertas.length > 0 && estadoOfertas?.motivo && !estadoOfertas.unicaSede && (
         <p role="note" className="px-4 py-2 text-xs text-amber-800">{estadoOfertas.motivo}</p>
       )}
       {!cargandoOfertas && !errorOfertas && ofertas.length === 0 && (
@@ -271,7 +288,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
           {grupos.map((g) => (
             <div
               key={g.idGrupo}
-              onClick={() => (grupoSel?.idGrupo === g.idGrupo ? setGrupoSel(null) : abrirHorario(g))}
+              onClick={() => cambiarHorario(g)}
               className={`p-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer transition-colors ${
                 grupoSel?.idGrupo === g.idGrupo ? "bg-blue-50/70" : "hover:bg-slate-50"
               }`}
@@ -315,6 +332,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                   <div className="w-full sm:w-96">
                     <SelectorOfertaCetap
                       id={`oferta-${g.idGrupo}`} label={`Oferta CETAP del grupo ${g.numeroGrupo}`}
+                      nota={errorDiagnostico || (estadoOfertas?.unicaSede ? estadoOfertas.motivo ?? undefined : undefined)}
                       ofertas={ofertas} valor={ofertaEditada[g.idGrupo] ?? g.idOfertaCetap ?? ''}
                       onChange={(id) => setOfertaEditada((actual) => ({ ...actual, [g.idGrupo]: id }))}
                       disabled={cargandoOfertas || !!errorOfertas || guardandoOferta === g.idGrupo}
@@ -322,7 +340,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                   </div>
                   <button
                     type="button"
-                    onClick={() => (grupoSel?.idGrupo === g.idGrupo ? setGrupoSel(null) : abrirHorario(g))}
+                    onClick={() => cambiarHorario(g)}
                     className={`flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold ${grupoSel?.idGrupo === g.idGrupo ? 'border-[#003DA5] bg-blue-50 text-[#003DA5]' : 'border-slate-200 bg-white text-slate-700 hover:border-[#003DA5]'}`}
                   >
                     <CalendarDays className="w-3.5 h-3.5" />
@@ -348,6 +366,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       {grupoSel && (
         <div ref={horarioRef} className="p-4 border-t border-slate-200 bg-slate-50/40">
           <CalendarioHorario
+            key={grupoSel.idGrupo}
             idGrupo={grupoSel.idGrupo}
             onOfertaActualizada={(actualizado) => { setGrupoSel(actualizado); setGrupos((actuales) => actuales.map((g) => g.idGrupo === actualizado.idGrupo ? actualizado : g)); }}
             numeroGrupo={grupoSel.numeroGrupo}
@@ -358,6 +377,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
           />
         </div>
       )}
+      {cambioHorario && <ModalConfirmacion titulo="¿Descartar cambios del horario?" advertencia="Los cambios sin guardar del horario se perderán." onCancelar={() => setCambioHorario(null)} onConfirmar={() => { setGrupoSel(cambioHorario.siguiente); setCambioHorario(null); }}><p>El horario tiene información pendiente. Los datos ya guardados se conservan.</p></ModalConfirmacion>}
     </div>
   );
 }

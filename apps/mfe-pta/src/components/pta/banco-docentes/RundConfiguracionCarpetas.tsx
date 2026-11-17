@@ -10,7 +10,7 @@ const URL = '/pta/api/v1/pta/banco-docentes/carpetas/configuracion';
 /**
  * Configuración de carpetas: qué carpetas del expediente aplican a cada tipo de vinculación.
  * Una carpeta desactivada deja de mostrarse en la Validación Integral de los docentes de ese tipo.
- * Las obligatorias para activar el perfil no se pueden desactivar.
+ * Las obligatorias (las cuatro primeras y las que exige la activación del perfil) no se pueden desactivar.
  */
 export function RundConfiguracionCarpetas() {
   const [matriz, setMatriz] = useState<RundConfigMatriz | null>(null);
@@ -79,14 +79,14 @@ export function RundConfiguracionCarpetas() {
                 <th scope="row">
                   <span className="rund-config__codigo">{carpeta.codigo}</span>
                   <span>{carpeta.nombre}</span>
-                  {carpeta.obligatoria && <small title="Obligatoria para activar el perfil: no se puede desactivar"><Lock size={11} aria-hidden="true" /> Obligatoria</small>}
+                  {carpeta.obligatoria && <small title="Obligatoria: no se puede desactivar"><Lock size={11} aria-hidden="true" /> Obligatoria</small>}
                 </th>
                 {matriz.tipos.map(tipo => {
                   const activa = carpetaActiva(matriz, tipo.codigo, carpeta.bloque);
                   const etiqueta = `${carpeta.codigo} ${carpeta.nombre} · ${tipo.nombre}`;
                   return (
                     <td key={tipo.codigo}>
-                      <label className="rund-config__interruptor" title={carpeta.obligatoria ? 'Obligatoria para activar el perfil' : activa ? 'Aplica. Pulsa para desactivar' : 'No aplica. Pulsa para activar'}>
+                      <label className="rund-config__interruptor" title={carpeta.obligatoria ? 'Obligatoria: no se puede desactivar' : activa ? 'Aplica. Pulsa para desactivar' : 'No aplica. Pulsa para activar'}>
                         <input type="checkbox" role="switch" aria-label={etiqueta} checked={activa}
                           disabled={carpeta.obligatoria || !!guardando}
                           onChange={event => cambiar(tipo.codigo, carpeta.bloque, event.target.checked)} />

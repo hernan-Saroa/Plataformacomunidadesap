@@ -12,6 +12,8 @@ export type RundSupportGroup = {
   canUpload: boolean;
   canManage: boolean;
   dataSummary?: string;
+  /** Solo los diplomas de nivel: títulos registrados (precargado primero, luego los adicionales). */
+  titulos?: string[];
 };
 
 export type RundSupportReview = {

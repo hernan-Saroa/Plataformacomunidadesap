@@ -1,3 +1,4 @@
+import { CampoHora24, hora24Valida } from './CampoHora24';
 import { useEffect, useState } from 'react';
 import { Loader2, Monitor, Plus, Trash2 } from 'lucide-react';
 
@@ -53,6 +54,7 @@ function GrupoVirtual({ g }: { g: GrupoVirtualDocente }) {
 
   const agregar = async () => {
     if (ocupado) return;
+    if (!hora24Valida(nueva.horaInicio) || !hora24Valida(nueva.horaFin) || nueva.horaFin <= nueva.horaInicio) { setError('Indica inicio y fin válidos en formato de 24 h; el fin debe ser posterior al inicio.'); return; }
     setOcupado(true); setError('');
     try { await definirFranjaVirtual(g.idGrupo, nueva); }
     catch (e: any) { setError(e?.message || 'No se pudo agregar la sesión.'); }
@@ -105,11 +107,11 @@ function GrupoVirtual({ g }: { g: GrupoVirtualDocente }) {
             </select>
           </label>
           <label className="flex flex-col text-[11px] font-bold text-slate-500 uppercase">Inicio
-            <input type="time" step={300} value={nueva.horaInicio} onChange={(e) => setNueva({ ...nueva, horaInicio: e.target.value })}
+            <CampoHora24 aria-label="Inicio" value={nueva.horaInicio} onChange={(horaInicio) => setNueva({ ...nueva, horaInicio })}
               className="border rounded-lg px-2 py-1.5 text-sm font-normal text-slate-700" />
           </label>
           <label className="flex flex-col text-[11px] font-bold text-slate-500 uppercase">Fin
-            <input type="time" step={300} value={nueva.horaFin} onChange={(e) => setNueva({ ...nueva, horaFin: e.target.value })}
+            <CampoHora24 aria-label="Fin" value={nueva.horaFin} onChange={(horaFin) => setNueva({ ...nueva, horaFin })}
               className="border rounded-lg px-2 py-1.5 text-sm font-normal text-slate-700" />
           </label>
           <button type="button" onClick={agregar}

@@ -1,0 +1,127 @@
+{
+  "modo": "production build + vite preview, APIs interceptadas; no es despliegue remoto de QA",
+  "resultados": [
+    {
+      "idioma": "es-CO",
+      "zona": "America/Bogota",
+      "width": 1920,
+      "height": 1080,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "America/Bogota",
+      "width": 1366,
+      "height": 768,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "America/Bogota",
+      "width": 1280,
+      "height": 720,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "America/Bogota",
+      "width": 390,
+      "height": 844,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "UTC",
+      "width": 1920,
+      "height": 1080,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "UTC",
+      "width": 1366,
+      "height": 768,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "UTC",
+      "width": 1280,
+      "height": 720,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "zona": "UTC",
+      "width": 390,
+      "height": 844,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "es-CO",
+      "casos": "calendario de tres perfiles, lista bloqueados, reparto atómico/rechazo, periodos solo consulta",
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "America/Bogota",
+      "width": 1920,
+      "height": 1080,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "America/Bogota",
+      "width": 1366,
+      "height": 768,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "America/Bogota",
+      "width": 1280,
+      "height": 720,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "America/Bogota",
+      "width": 390,
+      "height": 844,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "UTC",
+      "width": 1920,
+      "height": 1080,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "UTC",
+      "width": 1366,
+      "height": 768,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "UTC",
+      "width": 1280,
+      "height": 720,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "zona": "UTC",
+      "width": 390,
+      "height": 844,
+      "resultado": "PASS"
+    },
+    {
+      "idioma": "en-US",
+      "casos": "calendario de tres perfiles, lista bloqueados, reparto atómico/rechazo, periodos solo consulta",
+      "resultado": "PASS"
+    }
+  ]
+}

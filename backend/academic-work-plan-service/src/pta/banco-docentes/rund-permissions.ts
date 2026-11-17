@@ -22,5 +22,13 @@ export const RUND_PERMISSIONS = {
   CONFIGURE: 'banco-docentes.rund.configure',
 } as const;
 
+export const RUND_READ_ONLY_ACCESS_KEY = 'rundReadOnlyAccess';
+
+/**
+ * Marca los handlers de lectura que el perfil «Consulta RUND» puede usar.
+ * Fail-closed: un usuario de solo lectura no entra a ningún handler sin esta marca.
+ */
+export const RundReadOnlyAccess = () => SetMetadata(RUND_READ_ONLY_ACCESS_KEY, true);
+
 export const RequireRundPermissions = (...permissions: string[]) =>
   SetMetadata(RUND_PERMISSIONS_KEY, permissions);

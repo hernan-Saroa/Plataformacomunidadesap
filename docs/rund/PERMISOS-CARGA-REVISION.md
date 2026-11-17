@@ -47,3 +47,19 @@ Verificación aislada: `node scripts/verify-rund-permission-separation.cjs` y `n
 - La comprobación final pasó 131 pruebas dirigidas de carga, OCR, revisión y sesión. Confirma que cambiar de Super Admin a revisor retira las facultades anteriores, y que retirar permisos de la misma persona también actualiza las acciones disponibles. Al abrir otro expediente desde una notificación, los datos anteriores se ocultan mientras se comprueba el nuevo acceso y permanecen ocultos si se deniega.
 
 Para la prueba manual, usar una sesión nueva por perfil: cargador, revisor, incorporador, carga más revisión y SUPER_ADMIN. Comprobar las acciones permitidas y también la ausencia de las acciones restantes. Si se modifica un permiso del mismo rol, esperar hasta 60 segundos y renovar la sesión antes de volver a probar.
+
+## Perfil «Consulta RUND» (solo lectura) — HU 2426
+
+Cuarto perfil para áreas externas autorizadas por el GGP (p. ej. Programación Académica). Permiso `banco-docentes.rund.consulta`, que se expande a `view` + `sensitive.view` (esta última solo para abrir los PDF en el visor). La migración `db/migrations/692_rund_perfil_consulta_solo_lectura.sql` crea el permiso y el rol `RUND_CONSULTA` («Consulta RUND») como rol **personalizado**: se edita, desactiva o elimina desde Roles y Permisos como cualquier rol creado por un administrador. No asigna a nadie; el administrador lo asigna con autorización del GGP.
+
+| Acción | Operativo GGP | Consulta RUND |
+|---|---|---|
+| Buscar/filtrar, ver ficha y carpetas, visualizar soportes en el visor | Sí | Sí |
+| Descargar soportes, ver historial de documentos, trazabilidad, auditoría | Sí | No |
+| Editar (incluido contacto), cargar/reemplazar/eliminar soportes, validar/aprobar/devolver, decisiones del Comité, cargue masivo, exportar | Sí | No |
+
+- **Servidor (RN-04, fail-closed):** `BancoDocentesRolesGuard` considera de solo lectura a quien tiene el perfil y ningún otro permiso RUND que no sea de lectura (`isRundReadOnly`). Esos usuarios solo entran a los handlers marcados con `@RundReadOnlyAccess()`; todo lo demás (también una ruta nueva que se agregue sin marcar) responde 403 y deja un registro `INTENTO_NO_PERMITIDO_SOLO_LECTURA …` con resultado `DENEGADO` en `RundAccesoDatosLog`. `download=true` e `historial=true` se rechazan dentro del handler con el mismo registro. Si además tiene otro perfil operativo (p. ej. revisión) deja de ser solo lectura; el superusuario nunca lo es.
+- **Consulta registrada (RN-06):** cada apertura de ficha (`GET :id/cabezote`) de un usuario de solo lectura inserta `CONSULTA_FICHA_RUND_SOLO_LECTURA` con actor, docente y fecha/hora (`createdAt`) en `RundAccesoDatosLog` (inmutable).
+- **Retiro inmediato (RN-07/CA-09):** el JWT dura 1 h y trae los roles incrustados. Para quien el token marca con este perfil, el guard revalida en cada petición los roles vigentes en `auth.user_roles` (usuario y rol activos) y falla cerrado si la consulta falla. Los demás perfiles conservan el comportamiento anterior (retirar permisos de un rol sigue tardando hasta 60 s por la caché; quitar un rol a un usuario sigue requiriendo renovar la sesión). Asignar el rol a alguien con sesión abierta requiere que vuelva a iniciar sesión.
+- **Interfaz (RN-03/RN-05):** `isRundReadOnly` (`apps/shared/rund-permissions.ts`, espejo del servidor) oculta —no deshabilita— Trazabilidad, Descargar, Historial y el panel de fotos; el resto de acciones ya dependía de permisos que este perfil no recibe. La ficha muestra el distintivo «Solo lectura».
+- **Límite conocido:** la exportación del banco se arma en el navegador con las mismas filas del listado, por lo que el servidor no puede distinguirla de una lectura; para este perfil el botón está oculto, pero la restricción es de interfaz.

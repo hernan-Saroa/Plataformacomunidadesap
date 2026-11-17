@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { RUND_CARPETAS_CONFIGURABLES, RundCarpetasConfigService, claveTipoVinculacion, esCarpetaObligatoria } from './rund-carpetas-config';
+import { RUND_CARPETAS_CONFIGURABLES, RUND_CARPETAS_SIEMPRE_ACTIVAS, RundCarpetasConfigService, claveTipoVinculacion, esCarpetaObligatoria } from './rund-carpetas-config';
 import { RUND_REQUIRED_BLOCKS, EVIDENCE_TYPES } from './rund-evidence-workflow';
 import { RUND_PERMISSIONS } from './rund-permissions';
 
@@ -33,6 +33,24 @@ describe('Configuración de carpetas RUND por tipo de vinculación', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it('las cuatro primeras carpetas (00 a 03) son obligatorias para todos los tipos de vinculación y no se pueden desactivar', async () => {
+    expect([...RUND_CARPETAS_SIEMPRE_ACTIVAS]).toEqual(['IDENTIDAD', 'FORMACION', 'EXPERIENCIA_DOCENTE', 'EXPERIENCIA_LABORAL']);
+    for (const tipo of ['CARRERA1', 'CARRERA2', 'PERIODO_DE_PRUEBA', 'OCASIONAL', 'ESPECIAL', 'VISITANTE', 'CATEDRA']) {
+      for (const bloque of RUND_CARPETAS_SIEMPRE_ACTIVAS) {
+        const query = jest.fn();
+        expect(esCarpetaObligatoria(bloque)).toBe(true);
+        await expect(servicio(query).definir(tipo, bloque, false)).rejects.toThrow('obligatoria y no se puede desactivar');
+        expect(query).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it('las demás carpetas opcionales siguen pudiéndose desactivar', () => {
+    for (const bloque of ['PRODUCTIVIDAD_ACADEMICA', 'SEGUNDA_LENGUA', 'FORMACION_NO_FORMAL', 'ESTUDIO_HOJA_VIDA', 'DOCUMENTOS_NO_VALIDOS']) {
+      expect(esCarpetaObligatoria(bloque)).toBe(false);
+    }
+  });
+
   it('desactiva una carpeta opcional para un tipo y la guarda con quien la cambió', async () => {
     const query = jest.fn().mockResolvedValue([]);
     const resultado = await servicio(query).definir('Cátedra', 'PRODUCTIVIDAD_ACADEMICA', false, 'actor-1');
@@ -58,6 +76,11 @@ describe('Configuración de carpetas RUND por tipo de vinculación', () => {
     expect((await servicio(query).carpetasInactivas('Ocasional')).size).toBe(0);
   });
 
+  it('una configuración anterior que dejó inactiva una carpeta obligatoria (02 o 03) se ignora: la carpeta sigue aplicando', async () => {
+    const query = jest.fn().mockResolvedValue([{ bloque: 'EXPERIENCIA_DOCENTE' }, { bloque: 'EXPERIENCIA_LABORAL' }, { bloque: 'PRODUCTIVIDAD_ACADEMICA' }]);
+    expect([...await servicio(query).carpetasInactivas('Ocasional')]).toEqual(['PRODUCTIVIDAD_ACADEMICA']);
+  });
+
   it('las carpetas inactivas se consultan por el tipo normalizado', async () => {
     const query = jest.fn().mockResolvedValue([{ bloque: 'PRODUCTIVIDAD_ACADEMICA' }]);
     const inactivas = await servicio(query).carpetasInactivas('Hora Cátedra');
@@ -74,6 +97,17 @@ describe('Configuración de carpetas RUND por tipo de vinculación', () => {
     expect(codigos).toEqual(expect.arrayContaining(['CARRERA1', 'CARRERA2', 'CATEDRA', 'OCASIONAL', 'PERIODO_DE_PRUEBA', 'ADMINISTRATIVO']));
     expect(new Set(codigos).size).toBe(codigos.length);
     expect(matriz.inactivas).toEqual({ CATEDRA: ['PRODUCTIVIDAD_ACADEMICA'] });
-    expect(matriz.carpetas.filter(carpeta => carpeta.obligatoria).map(carpeta => carpeta.bloque).sort()).toEqual([...RUND_REQUIRED_BLOCKS].sort());
+    expect(matriz.carpetas.filter(carpeta => carpeta.obligatoria).map(carpeta => carpeta.bloque).sort())
+      .toEqual([...new Set([...RUND_REQUIRED_BLOCKS, ...RUND_CARPETAS_SIEMPRE_ACTIVAS])].sort());
+  });
+
+  it('la matriz no reporta como inactivas las carpetas obligatorias que una configuración anterior hubiera desactivado', async () => {
+    const query = jest.fn()
+      .mockResolvedValueOnce([
+        { tipo_vinculacion: 'VISITANTE', bloque: 'EXPERIENCIA_DOCENTE' },
+        { tipo_vinculacion: 'VISITANTE', bloque: 'SEGUNDA_LENGUA' },
+      ])
+      .mockResolvedValueOnce([]);
+    expect((await servicio(query).matriz()).inactivas).toEqual({ VISITANTE: ['SEGUNDA_LENGUA'] });
   });
 });

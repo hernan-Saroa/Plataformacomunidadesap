@@ -28,3 +28,20 @@
 .rund-soportes__agregar td { padding: 6px 14px 10px; background: #fcfdff; }
 .rund-soportes__agregar button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #1d4ed8; font-size: 12px; font-weight: 800; cursor: pointer; padding: 4px 2px; }
 .rund-soportes__agregar button:hover:not(:disabled) { text-decoration: underline; }
+.rund-soportes-modal { position: fixed; inset: 0; z-index: 10002; display: grid; place-items: center; padding: 16px; background: rgba(15, 23, 42, .55); }
+.rund-soportes-modal__caja { width: 100%; max-width: 480px; max-height: 90dvh; overflow-y: auto; background: #fff; border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 20px 50px rgba(15, 23, 42, .3); }
+.rund-soportes-modal__caja h3 { margin: 0; font-size: 16px; font-weight: 800; color: #0f172a; }
+.rund-soportes-modal__caja p { margin: 0 0 6px; font-size: 12.5px; color: #64748b; }
+.rund-soportes-modal__caja label { margin-top: 6px; font-size: 12px; font-weight: 700; color: #334155; }
+.rund-soportes-modal__caja input { padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit; }
+.rund-soportes-modal__caja input:focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
+.rund-soportes-modal__error { color: #b91c1c !important; font-weight: 700; }
+.rund-soportes-modal__caja footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.rund-soportes-modal__caja footer button { padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #334155; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+.rund-soportes-modal__caja footer .rund-soportes-modal__confirmar { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+.rund-soportes-modal__caja footer button:disabled { opacity: .55; cursor: not-allowed; }
+.rund-soportes--incrustada { margin: 0; border: 0; border-radius: 10px; border: 1px solid #e2e8f0; }
+.rund-soportes__acciones { white-space: normal; }
+.rund-soportes__acciones > * { margin: 2px 4px 2px 0; vertical-align: middle; }
+.rund-soportes__accion--validar { border-color: #6ee7b7; color: #047857; }
+.rund-soportes__accion--devolver { border-color: #fca5a5; color: #b91c1c; }
