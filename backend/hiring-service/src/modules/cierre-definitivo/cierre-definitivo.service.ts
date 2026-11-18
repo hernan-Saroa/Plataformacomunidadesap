@@ -254,6 +254,7 @@ export class CierreDefinitivoService {
       nombre: string | null;
       numero_poliza: string;
       vigencia_hasta: string;
+      ampara_tras_el_contrato: boolean | null;
     }> = await em
       .getRepository(Amparo)
       .createQueryBuilder('a')
@@ -263,6 +264,7 @@ export class CierreDefinitivoService {
       .addSelect('t.nombre', 'nombre')
       .addSelect('g.numero_poliza', 'numero_poliza')
       .addSelect('a.vigencia_hasta', 'vigencia_hasta')
+      .addSelect('t.ampara_tras_el_contrato', 'ampara_tras_el_contrato')
       .where('g.contrato_id = :contratoId', { contratoId })
       .andWhere("g.estado = 'APROBADA'")
       .getRawMany();
@@ -272,6 +274,7 @@ export class CierreDefinitivoService {
       nombre: f.nombre ?? f.tipo,
       numeroPoliza: f.numero_poliza,
       vigenciaHasta: this.aYMD(f.vigencia_hasta),
+      amparaTrasElContrato: !!f.ampara_tras_el_contrato,
     }));
 
     return amparosParaCerrar(amparos, this.hoy());

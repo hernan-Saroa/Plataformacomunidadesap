@@ -25,7 +25,7 @@ import {
   SoporteDelRevisor,
   VersionSustituida,
 } from '../../types';
-import { DocumentoVisible, VisorDocumento } from './VisorDocumento';
+import { DocumentoVisible, VisorDocumento, sePuedeVer } from './VisorDocumento';
 import { useSoloLectura } from './SoloLectura';
 
 interface Props {
@@ -535,6 +535,7 @@ function FilaDocumento({
 
         {cargado?.descargaUrl && (
           <>
+            {sePuedeVer(cargado.mimeType, cargado.nombre) && (
             <button
               type="button"
               onClick={() =>
@@ -552,6 +553,7 @@ function FilaDocumento({
             >
               <Eye className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
+            )}
             <a
               href={contratacionService.urlDescarga(cargado.descargaUrl)}
               target="_blank"
@@ -652,6 +654,7 @@ function FilaAdicional({
 
       {documento.descargaUrl && (
         <>
+          {sePuedeVer(documento.mimeType, documento.nombre) && (
           <button
             type="button"
             onClick={() =>
@@ -667,6 +670,7 @@ function FilaAdicional({
           >
             <Eye className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
+          )}
           <a
             href={contratacionService.urlDescarga(documento.descargaUrl)}
             target="_blank"
@@ -715,6 +719,7 @@ function AccionesArchivo({
   if (!descargaUrl) return null;
   return (
     <>
+      {sePuedeVer(mimeType, nombre) && (
       <button
         type="button"
         onClick={() => onVer({ nombre, descargaUrl, detalle, mimeType: mimeType ?? null })}
@@ -723,6 +728,7 @@ function AccionesArchivo({
       >
         <Eye className="w-3.5 h-3.5" aria-hidden="true" />
       </button>
+      )}
       <a
         href={contratacionService.urlDescarga(descargaUrl)}
         target="_blank"

@@ -52,6 +52,13 @@ export class CargarGarantiaDto {
   @MaxLength(80)
   numeroPoliza: string;
 
+  /** Qué clase de garantía es; sale del catálogo de Configuración (145). */
+  @ApiProperty({ description: 'Código del tipo de póliza' })
+  @IsString()
+  @IsNotEmpty({ message: 'Elige el tipo de póliza' })
+  @MaxLength(60)
+  tipoPoliza: string;
+
   /**
    * Los amparos llegan como texto JSON dentro del multipart, porque la petición
    * lleva también la póliza y `FormData` no transporta arreglos de objetos.

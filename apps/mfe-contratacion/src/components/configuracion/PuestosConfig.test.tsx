@@ -7,7 +7,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { LaHaceActividad } from './LaHaceActividad';
 import { PuestosConfig } from './PuestosConfig';
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 const ABOGADO = {
   id: 'p-abogado',
@@ -28,6 +28,9 @@ describe('PuestosConfig', () => {
     vi.restoreAllMocks();
     vi.spyOn(contratacionService, 'puestos').mockResolvedValue([ABOGADO] as never);
     vi.spyOn(contratacionService, 'diagnosticoDePuestos').mockResolvedValue([] as never);
+    vi.spyOn(contratacionService, 'alcanceRoles').mockResolvedValue([
+      { id: 'r-abogado', codigo: 'ABOGADO', nombre: 'Abogado Estructurador', descripcion: null, acciones: [], transversales: [], alcances: [] },
+    ] as never);
   });
 
   it('enseña cada puesto con lo que hace', async () => {
@@ -56,8 +59,46 @@ describe('PuestosConfig', () => {
     await usuario.click(screen.getByRole('button', { name: 'Guardar' }));
 
     await waitFor(() =>
-      expect(crear).toHaveBeenCalledWith({ nombre: 'Segundo abogado', descripcion: null, obligatorio: false }),
+      expect(crear).toHaveBeenCalledWith({ nombre: 'Segundo abogado', descripcion: null, obligatorio: false, rolId: null }),
     );
+  });
+
+  it('guarda el rol que ocupa el puesto', async () => {
+    const usuario = userEvent.setup();
+    const actualizar = vi.spyOn(contratacionService, 'actualizarPuesto').mockResolvedValue({} as never);
+    render(<PuestosConfig />);
+
+    await usuario.click(await screen.findByRole('button', { name: 'Editar Abogado' }));
+    await screen.findByRole('option', { name: 'Abogado Estructurador' });
+    await usuario.selectOptions(screen.getByLabelText('Rol del puesto'), 'r-abogado');
+    await usuario.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(actualizar).toHaveBeenCalledWith('p-abogado', expect.objectContaining({ rolId: 'r-abogado' })));
+  });
+
+  it('dice qué le falta al rol y lo completa al confirmar', async () => {
+    const usuario = userEvent.setup();
+    vi.spyOn(contratacionService, 'puestos').mockResolvedValue([
+      {
+        ...ABOGADO,
+        rolId: 'r-abogado',
+        rol: { id: 'r-abogado', nombre: 'Abogado Estructurador' },
+        permisosDelRol: {
+          faltan: [{ accion: 'aprobar', numeral: '3.7', nombreActividad: 'Comité' }],
+          sinPermisoGeneral: [],
+        },
+      },
+    ] as never);
+    const completar = vi
+      .spyOn(contratacionService, 'completarPermisosDePuesto')
+      .mockResolvedValue({ rol: 'Abogado Estructurador', agregados: ['aprobar la 3.7'], pendientes: [] } as never);
+    render(<PuestosConfig />);
+
+    expect(await screen.findByText(/le falta aprobar la 3\.7/)).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', { name: /Completar permisos/ }));
+    await usuario.click(await screen.findByRole('button', { name: 'Completar' }));
+
+    await waitFor(() => expect(completar).toHaveBeenCalledWith('p-abogado'));
   });
 });
 

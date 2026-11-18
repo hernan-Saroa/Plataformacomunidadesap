@@ -186,6 +186,8 @@ export interface EstadoRespaldo {
   motivo: string | null;
   /** Si quien mira puede cargar el CDP (4.2). Lo resuelve el backend con los roles del token. */
   puedeCargar: boolean;
+  /** Si lo cargado se puede corregir: la 4.2 se retiró de aprobación o la devolvieron (BUG-001). */
+  puedeCorregir?: boolean;
 }
 
 /**
@@ -872,58 +874,37 @@ export interface Adenda {
   evidencia: ArchivoApertura | null;
 }
 
-/** Una fila del cronograma predeterminado de una modalidad (140). */
-export interface FilaPredeterminada {
-  id?: string;
-  /** Las del flujo; una propia va sin numeral, con nombre y etapa. */
-  numeral: string | null;
-  nombre: string | null;
-  etapa: number | null;
-  /** Días contados desde el día cero; nulo si solo importa el fin. */
-  diaInicio: number | null;
-  diaFin: number;
-  tipoDias: 'HABILES' | 'CALENDARIO';
-  diasAntes: number | null;
-  avisarA: DestinoCronograma[];
-  canal: CanalCronograma;
-  correos: string[];
-  nota: string | null;
+/** Una actividad propia que sale por defecto en el cronograma (140). */
+export interface PropiaPredeterminada {
+  nombre: string;
+  etapa: number;
 }
 
-/** El cronograma predeterminado de una modalidad, tal como se configura (140). */
+/** Qué etapas y actividades salen por defecto en el cronograma de una modalidad (140, sin plazos desde la 144). */
 export interface CronogramaPredeterminado {
   modalidad: string;
   nombre: string;
-  actividades: { numeral: string; nombre: string; etapa: number; configuracion: FilaPredeterminada | null }[];
-  propias: FilaPredeterminada[];
+  etapas: number[];
+  actividades: { numeral: string; nombre: string; etapa: number; incluida: boolean }[];
+  propias: PropiaPredeterminada[];
   actualizadoPor: string | null;
 }
 
-/** Cuántas actividades tiene configuradas cada modalidad (140). */
+/** Cuántas etapas y actividades salen en cada modalidad (144). */
 export interface ResumenPredeterminado {
   modalidad: string;
   nombre: string;
+  etapas: number;
   actividades: number;
-  actualizadoAt: string | null;
 }
 
-/** Las fechas que propone el predeterminado para un proceso, con un día cero (140). */
-export interface PropuestaCronograma {
+/** Lo que sale por defecto en el cronograma de un proceso, según su modalidad (144). */
+export interface PredeterminadoDelProceso {
   modalidad: string | null;
   modalidadNombre: string | null;
-  diaCero: string;
-  actividades: {
-    numeral: string | null;
-    nombre: string;
-    etapa: number;
-    fechaInicio: string | null;
-    fechaFin: string;
-    diasAntes: number | null;
-    avisarA: DestinoCronograma[];
-    canal: CanalCronograma;
-    correos: string[];
-    nota: string | null;
-  }[];
+  etapas: number[];
+  numerales: string[];
+  propias: PropiaPredeterminada[];
 }
 
 /** Una fecha del cronograma que mueve una adenda de cronograma (139). */
@@ -2329,6 +2310,13 @@ export type EstadoGarantia = 'CARGADA' | 'APROBADA' | 'RECHAZADA';
 export interface TipoAmparoCatalogo {
   codigo: string;
   nombre: string;
+  /** Tipos de póliza en los que se ofrece; vacío = en todos (145). */
+  tiposPoliza: string[];
+}
+
+export interface TipoPolizaCatalogo {
+  codigo: string;
+  nombre: string;
 }
 
 export interface AmparoDeGarantia {
@@ -2342,6 +2330,9 @@ export interface GarantiaDelContrato {
   id: string;
   aseguradora: string;
   numeroPoliza: string;
+  /** Qué clase de garantía es (145); nula en las registradas antes. */
+  tipoPoliza?: string | null;
+  tipoPolizaNombre?: string | null;
   estado: EstadoGarantia;
   cargadaPor: string | null;
   revisadaPor: string | null;
@@ -2366,6 +2357,7 @@ export interface EstadoLegalizacion {
   motivoNoSuscrito: string | null;
   contratista?: { nombre: string; tipo: TipoPersonaContratista };
   requiereArl: boolean;
+  tiposPoliza: TipoPolizaCatalogo[];
   tiposAmparo: TipoAmparoCatalogo[];
   garantias: GarantiaDelContrato[];
   arl: AfiliacionArlRegistro | null;
@@ -2381,6 +2373,7 @@ export interface EstadoLegalizacion {
 export interface DatosGarantia {
   aseguradora: string;
   numeroPoliza: string;
+  tipoPoliza: string;
   amparos: AmparoDeGarantia[];
   /** Cuándo se aprobó en SECOP II: con ella la póliza entra aprobada. */
   fechaAprobacionSecop: string;
@@ -2430,6 +2423,36 @@ export interface GuardarTipologia {
   exigeGarantias?: boolean;
   activo?: boolean;
   orden?: number;
+}
+
+/** Tipo de póliza configurable (145). */
+export interface TipoPolizaConfigurable {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  orden: number;
+}
+
+/** Tipo de amparo (cobertura) configurable (145). */
+export interface TipoAmparoConfigurable extends TipoPolizaConfigurable {
+  /** Tipos de póliza en los que se ofrece; vacío = en todos. */
+  tiposPoliza: string[];
+  /** Sigue amparando tras liquidar el contrato: el cierre definitivo lo espera. */
+  amparaTrasElContrato: boolean;
+}
+
+export interface GuardarTipoPoliza {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  activo?: boolean;
+  orden?: number;
+}
+
+export interface GuardarTipoAmparo extends GuardarTipoPoliza {
+  tiposPoliza?: string[];
+  amparaTrasElContrato?: boolean;
 }
 
 // ---------------------- etapa 8 · supervision del contrato (8.2) -----------
@@ -3920,6 +3943,15 @@ export interface RolConAlcance {
   acciones: AccionAlcance[];
   transversales: string[];
   alcances: AlcanceVista[];
+  /** Las cuentas activas que tienen el rol hoy. Opcional: un backend viejo no lo manda. */
+  personas?: PersonaDelRol[];
+}
+
+/** Una cuenta activa con un rol. */
+export interface PersonaDelRol {
+  id: string;
+  nombre: string;
+  correo: string | null;
 }
 
 // ------------------------------------------ los plazos de las alertas (EFDS-1183)
@@ -4450,6 +4482,26 @@ export interface Puesto {
   activo: boolean;
   /** Lo que hace o aprueba, de la configuración de cada actividad. */
   usos: UsoDePuesto[];
+  /** El rol que suele ocuparlo (143). De referencia: no filtra candidatos. */
+  rolId?: string | null;
+  rol?: { id: string; nombre: string } | null;
+  /** Lo que le falta a ese rol para hacer lo que el puesto hace. */
+  permisosDelRol?: PermisosDelRolDelPuesto | null;
+}
+
+/** Lo que el rol de un puesto no tiene de lo que el puesto pide (143). */
+export interface PermisosDelRolDelPuesto {
+  /** Permisos por etapa que se completan desde el puesto. */
+  faltan: { accion: Exclude<AccionAlcance, 'ver'>; numeral: string; nombreActividad: string }[];
+  /** Acciones sin el permiso general de la plataforma: eso se da en la administración de roles. */
+  sinPermisoGeneral: Exclude<AccionAlcance, 'ver'>[];
+}
+
+/** Lo que hizo «Completar permisos». */
+export interface PermisosCompletados {
+  rol: string | null;
+  agregados: string[];
+  pendientes: string[];
 }
 
 export interface UsoDePuesto {

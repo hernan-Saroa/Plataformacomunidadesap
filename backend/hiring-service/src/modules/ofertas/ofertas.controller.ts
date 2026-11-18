@@ -18,6 +18,8 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { OfertasService } from './ofertas.service';
+import { CargasService } from '../cargas/cargas.service';
+import { revisarZip } from '../cargas/zip';
 import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
@@ -43,7 +45,10 @@ import {
 @ApiTags('Etapa 6 · Cierre del proceso y recepción de ofertas')
 @Controller('procesos/:id/ofertas')
 export class OfertasController {
-  constructor(private readonly service: OfertasService) {}
+  constructor(
+    private readonly service: OfertasService,
+    private readonly cargas: CargasService,
+  ) {}
 
   @Get()
   @Puede('ver', '6.1')
@@ -97,17 +102,28 @@ export class OfertasController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
+    const acceso = getHiringAccess(req);
+
+    // El soporte subido por partes (BUG-004): ya está unido, con su hash y el
+    // .zip revisado. Si el registro falla, la carga sigue ahí para reintentar
+    // sin volver a subirla; se borra solo cuando la oferta quedó guardada.
+    if (!file && dto.cargaId) {
+      const carga = await this.cargas.tomar(procesoId, '6.1', dto.cargaId, acceso);
+      const resultado = await this.service.registrar(procesoId, dto, carga.archivo, carga.hash, acceso);
+      await this.cargas.consumir(dto.cargaId);
+      return resultado;
+    }
+
     if (!file) throw new BadRequestException('Adjunta el soporte de la oferta recibida');
 
     const ruta = join(STORAGE_PATH, file.filename);
     try {
-      return await this.service.registrar(
-        procesoId,
-        dto,
-        file,
-        await sha256Archivo(ruta),
-        getHiringAccess(req),
-      );
+      // El .zip que llega entero pasa por la misma revisión que el que llega por partes.
+      if (file.originalname?.toLowerCase().endsWith('.zip') || MIME_ZIP.includes(file.mimetype)) {
+        const revision = await revisarZip(ruta);
+        if (revision.problema) throw new BadRequestException(revision.problema);
+      }
+      return await this.service.registrar(procesoId, dto, file, await sha256Archivo(ruta), acceso);
     } catch (error) {
       await unlink(ruta).catch(() => undefined);
       throw error;

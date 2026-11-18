@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
-import { Accion } from '../../auth/alcance';
+import { Accion, PERMISO_DE_ACCION, etapaDe } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { accionQueHace } from '../../auth/la-hace';
@@ -50,6 +50,25 @@ export interface Candidato {
 
 const ACCION_NOMBRE: Record<string, string> = { editar: 'editar', aprobar: 'aprobar', decidir: 'decidir' };
 
+/** Un permiso por etapa que pide el puesto y su rol no tiene (143). */
+export interface PermisoQueFalta {
+  accion: Exclude<Accion, 'ver'>;
+  numeral: string;
+  nombreActividad: string;
+}
+
+/** Cómo está el rol del puesto frente a lo que el puesto hace (143). */
+export interface PermisosDelRol {
+  /** Lo que se puede completar desde aquí: alcances de Permisos por etapa. */
+  faltan: PermisoQueFalta[];
+  /**
+   * Las acciones que el rol no tiene en la administración de roles de la
+   * plataforma. Eso no es del módulo: se da allá, y mientras tanto los
+   * alcances de esa acción no valen.
+   */
+  sinPermisoGeneral: Exclude<Accion, 'ver'>[];
+}
+
 /**
  * Los puestos del proceso (migración 109).
  *
@@ -79,15 +98,27 @@ export class PuestosService {
       order: { orden: 'ASC', nombre: 'ASC' },
     });
     const usos = await this.usos();
-    return puestos.map((p) => ({
-      ...p,
-      usos: usos.filter((u) => u.puestoId === p.id),
-    }));
+    const roles = await this.nombresDeRoles(puestos.map((p) => p.rolId).filter((r): r is string => !!r));
+    const lista = [];
+    for (const p of puestos) {
+      const suyos = usos.filter((u) => u.puestoId === p.id);
+      lista.push({
+        ...p,
+        usos: suyos,
+        rol: p.rolId ? { id: p.rolId, nombre: roles.get(p.rolId) ?? 'Rol inactivo' } : null,
+        permisosDelRol: p.rolId && roles.has(p.rolId) ? await this.permisosDelRol(p.rolId, suyos) : null,
+      });
+    }
+    return lista;
   }
 
-  async crear(dto: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number }, acceso: HiringAccess) {
+  async crear(
+    dto: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number; rolId?: string | null },
+    acceso: HiringAccess,
+  ) {
     const nombre = this.nombreValido(dto.nombre);
     await this.exigirNombreLibre(nombre);
+    const rolId = dto.rolId ? await this.exigirRol(dto.rolId) : null;
     const repo = this.dataSource.getRepository(PuestoProceso);
     return repo.save(
       repo.create({
@@ -95,6 +126,7 @@ export class PuestosService {
         descripcion: dto.descripcion?.trim() || null,
         obligatorio: !!dto.obligatorio,
         orden: dto.orden ?? 100,
+        rolId,
         activo: true,
         createdBy: acceso.userName,
         updatedBy: acceso.userName,
@@ -104,7 +136,7 @@ export class PuestosService {
 
   async actualizar(
     id: string,
-    dto: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number },
+    dto: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number; rolId?: string | null },
     acceso: HiringAccess,
   ) {
     const repo = this.dataSource.getRepository(PuestoProceso);
@@ -118,8 +150,52 @@ export class PuestosService {
     if (dto.descripcion !== undefined) puesto.descripcion = dto.descripcion?.trim() || null;
     if (dto.obligatorio !== undefined) puesto.obligatorio = dto.obligatorio;
     if (dto.orden !== undefined) puesto.orden = dto.orden;
+    if (dto.rolId !== undefined) puesto.rolId = dto.rolId ? await this.exigirRol(dto.rolId) : null;
     puesto.updatedBy = acceso.userName;
     return repo.save(puesto);
+  }
+
+  /**
+   * Le da al rol del puesto los permisos por etapa que le faltan para hacer lo
+   * que el puesto hace (143).
+   *
+   * Solo agrega, punto por punto: nunca quita ni ensancha a la etapa, para no
+   * dar más de lo que el puesto pide. Lo que dependa del permiso general de la
+   * plataforma (`contratacion.aprobar`, etc.) no se toca —no es del módulo—: se
+   * devuelve en `pendientes` para que se dé en la administración de roles.
+   */
+  async completarPermisos(id: string, acceso: HiringAccess) {
+    const puesto = await this.exigirPuesto(id);
+    if (!puesto.rolId) {
+      throw new BadRequestException(`El puesto ${puesto.nombre} no tiene rol: elige uno antes de completar sus permisos`);
+    }
+    const rolId = await this.exigirRol(puesto.rolId);
+    const suyos = (await this.usos()).filter((u) => u.puestoId === id);
+    const { faltan, sinPermisoGeneral } = await this.permisosDelRol(rolId, suyos);
+    const sePueden = faltan.filter((f) => !sinPermisoGeneral.includes(f.accion));
+
+    if (sePueden.length) {
+      await this.dataSource.transaction(async (em) => {
+        for (const f of sePueden) {
+          await em.query(
+            `INSERT INTO hiring.alcances_permiso (rol_id, accion, etapa, numeral, tramite, confirmado, created_by)
+             SELECT $1::uuid, $2, NULL, $3, NULL, true, $4
+              WHERE NOT EXISTS (
+                SELECT 1 FROM hiring.alcances_permiso
+                 WHERE rol_id = $1::uuid AND accion = $2 AND numeral = $3 AND activo AND tramite IS NULL)`,
+            [rolId, f.accion, f.numeral, acceso.userName],
+          );
+        }
+      });
+      // Sin esto el cambio tardaría hasta un minuto en verse en este servidor.
+      this.alcance.limpiarCache();
+    }
+
+    return {
+      rol: (await this.nombresDeRoles([rolId])).get(rolId) ?? null,
+      agregados: sePueden.map((f) => `${ACCION_NOMBRE[f.accion]} la ${f.numeral}`),
+      pendientes: sinPermisoGeneral.map((a) => ACCION_NOMBRE[a]),
+    };
   }
 
   /**
@@ -247,7 +323,9 @@ export class PuestosService {
         problemas.push({
           puestoId: p.id,
           numeral: null,
-          mensaje: `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez permiso para ${this.permisosQuePide(suyos)}. Dáselo a un mismo rol en Permisos por etapa o quita alguna de esas actividades del puesto`,
+          mensaje: p.rolId
+            ? `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez permiso para ${this.permisosQuePide(suyos)}. Usa «Completar permisos» en el puesto o quita alguna de esas actividades`
+            : `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez permiso para ${this.permisosQuePide(suyos)}. Elige el rol del puesto y usa «Completar permisos», o dáselo a un mismo rol en Permisos por etapa`,
         });
       }
     }
@@ -521,6 +599,61 @@ export class PuestosService {
       if (!pueden.includes(usuarioId)) faltan.push(`${ACCION_NOMBRE[u.accion]} la ${u.numeral}`);
     }
     return [...new Set(faltan)];
+  }
+
+  /**
+   * Lo que el rol no tiene de lo que piden esos usos. Lo cubre un alcance del
+   * punto, de su etapa o de todo el módulo, igual que en `cuentasQuePueden`.
+   */
+  async permisosDelRol(rolId: string, usos: UsoDePuesto[]): Promise<PermisosDelRol> {
+    const pedidos = [...new Map(usos.map((u) => [`${u.accion}|${u.numeral}`, u])).values()];
+    if (!pedidos.length) return { faltan: [], sinPermisoGeneral: [] };
+    const alcances: { accion: string; etapa: number | null; numeral: string | null; tramite: string | null }[] =
+      await this.dataSource.query(
+        `SELECT accion, etapa, numeral, tramite FROM hiring.alcances_permiso WHERE rol_id::text = $1 AND activo`,
+        [rolId],
+      );
+    const generales: { code: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT p.code
+         FROM auth.role_permissions rp
+         JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
+        WHERE rp.id_rol::text = $1 AND rp.is_active = true`,
+      [rolId],
+    );
+    const tiene = (accion: string, numeral: string) =>
+      alcances.some(
+        (a) =>
+          a.accion === accion &&
+          (a.numeral === numeral ||
+            (a.etapa !== null && Number(a.etapa) === etapaDe(numeral)) ||
+            (a.etapa === null && a.numeral === null && a.tramite === null)),
+      );
+    const faltan = pedidos
+      .filter((u) => !tiene(u.accion, u.numeral))
+      .map((u) => ({ accion: u.accion, numeral: u.numeral, nombreActividad: u.nombreActividad }))
+      .sort((a, b) => a.numeral.localeCompare(b.numeral, 'es', { numeric: true }));
+    const sinPermisoGeneral = [...new Set(pedidos.map((u) => u.accion))].filter(
+      (a) => !generales.some((g) => g.code === PERMISO_DE_ACCION[a]),
+    );
+    return { faltan, sinPermisoGeneral };
+  }
+
+  private async nombresDeRoles(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const filas: { id: string; nombre: string }[] = await this.dataSource.query(
+      `SELECT id::text AS id, name AS nombre FROM auth.role WHERE id::text = ANY($1::text[]) AND is_active = true`,
+      [[...new Set(ids)]],
+    );
+    return new Map(filas.map((f) => [f.id, f.nombre]));
+  }
+
+  private async exigirRol(rolId: string): Promise<string> {
+    const [rol] = await this.dataSource.query(
+      `SELECT id::text AS id FROM auth.role WHERE id::text = $1 AND is_active = true`,
+      [rolId],
+    );
+    if (!rol) throw new NotFoundException('Ese rol no existe o está inactivo');
+    return rol.id;
   }
 
   private permisosQuePide(usos: UsoDePuesto[]): string {

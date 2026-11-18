@@ -59,4 +59,34 @@ export class TipoAmparo {
 
   @Column({ type: 'int', default: 100 })
   orden: number;
+
+  /** En qué tipos de póliza se ofrece (145). Vacío = en todos. */
+  @Column({ name: 'tipos_poliza', type: 'varchar', length: 60, array: true, default: () => "'{}'" })
+  tiposPoliza: string[];
+
+  /**
+   * Si sigue amparando después de liquidado el contrato (145): estabilidad y
+   * calidad. El cierre definitivo espera a que venzan los que lo tienen.
+   */
+  @Column({ name: 'ampara_tras_el_contrato', default: false })
+  amparaTrasElContrato: boolean;
+}
+
+/** Clases de garantía que puede constituir el contratista en la 8.4 (145). */
+@Entity('tipos_poliza', { schema: 'hiring' })
+export class TipoPoliza {
+  @PrimaryColumn({ length: 60 })
+  codigo: string;
+
+  @Column({ length: 200 })
+  nombre: string;
+
+  @Column({ type: 'text', nullable: true })
+  descripcion: string | null;
+
+  @Column({ default: true })
+  activo: boolean;
+
+  @Column({ type: 'int', default: 100 })
+  orden: number;
 }

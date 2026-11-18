@@ -92,8 +92,8 @@ import {
   CambioCronogramaAdenda,
   CronogramaPorEtapas,
   CronogramaPredeterminado,
-  FilaPredeterminada,
-  PropuestaCronograma,
+  PredeterminadoDelProceso,
+  PropiaPredeterminada,
   ResumenPredeterminado,
   EstadisticasGestion,
   FiltrosEstadisticas,
@@ -130,6 +130,10 @@ import {
   Dependencia,
   EtapaConActividades,
   TipologiaConfigurable,
+  TipoPolizaConfigurable,
+  TipoAmparoConfigurable,
+  GuardarTipoPoliza,
+  GuardarTipoAmparo,
   GuardarTipologia,
   Modalidad,
   GuardarRegla,
@@ -173,6 +177,7 @@ import {
   ProblemaFlujo,
   VersionFlujo,
   LaHaceConfig,
+  PermisosCompletados,
   ProblemaDePuestos,
   Puesto,
   PuestosDelProceso,
@@ -271,6 +276,60 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
   }
 
   throw new Error(mensaje ?? 'No se pudo completar la acción: revisa los datos e inténtalo de nuevo');
+}
+
+/** Un error de una parte que vale la pena reintentar: la red, el servidor o una parte cortada. */
+export class ParteFallidaError extends Error {
+  constructor(
+    mensaje: string,
+    readonly reintentable: boolean,
+  ) {
+    super(mensaje);
+    this.name = 'ParteFallidaError';
+  }
+}
+
+/**
+ * Una parte de una carga, por `XMLHttpRequest` y no por `fetch` (BUG-004).
+ *
+ * `fetch` no avisa cuánto lleva enviado, y la barra de carga necesita moverse
+ * dentro de cada parte de 5 MB, no a saltos de una parte entera.
+ */
+export function subirParte(
+  ruta: string,
+  parte: Blob,
+  onEnviado: (bytes: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${ruta}`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => onEnviado(e.loaded);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let mensaje: string | null = null;
+      try {
+        mensaje = textoDelError(JSON.parse(xhr.responseText)?.message);
+      } catch {
+        /* sin cuerpo JSON */
+      }
+      if (xhr.status === 401) return reject(new ParteFallidaError('Tu sesión expiró. Vuelve a iniciar sesión.', false));
+      const reintentable =
+        xhr.status >= 500 || xhr.status === 408 || xhr.status === 429 || /incompleta/i.test(mensaje ?? '');
+      reject(new ParteFallidaError(mensaje ?? `La parte no se pudo subir (error ${xhr.status})`, reintentable));
+    };
+    xhr.onerror = () => reject(new ParteFallidaError('Se perdió la conexión mientras subía el archivo', true));
+    xhr.ontimeout = () => reject(new ParteFallidaError('El servidor tardó demasiado en recibir el archivo', true));
+    xhr.onabort = () => reject(new DOMException('Carga cancelada', 'AbortError'));
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
+    // Una parte de 5 MB que no termina en dos minutos está colgada: se corta y se reintenta.
+    xhr.timeout = 120_000;
+
+    const cuerpo = new FormData();
+    cuerpo.append('parte', parte, 'parte');
+    xhr.send(cuerpo);
+  });
 }
 
 /**
@@ -397,6 +456,28 @@ export const contratacionService = {
     cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'POST', body: cuerpo });
+  },
+
+  /** Corrige el CDP de la 4.2 retirada o devuelta y la vuelve a enviar (BUG-001). El certificado es opcional. */
+  corregirCdp: (
+    procesoId: string,
+    datos: {
+      rubro: string;
+      numero: string;
+      valor: number;
+      fechaExpedicion: string;
+      firma?: EvidenciaFirmaOtp;
+    },
+    archivo: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (archivo) cuerpo.append('file', archivo);
+    cuerpo.append('rubro', datos.rubro);
+    cuerpo.append('numero', datos.numero);
+    cuerpo.append('valor', String(datos.valor));
+    cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'PUT', body: cuerpo });
   },
 
   // ---------------------------------- el CDP desde el estudio previo (100) --
@@ -542,10 +623,12 @@ export const contratacionService = {
       fechaRadicacion: string;
       valorOfertado?: number;
     },
-    soporte: File,
+    /** El archivo, o el id de la carga por partes que ya lo subió (BUG-004). */
+    soporte: File | { cargaId: string },
   ) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', soporte);
+    if (soporte instanceof File) cuerpo.append('file', soporte);
+    else cuerpo.append('cargaId', soporte.cargaId);
     cuerpo.append('nombre', datos.nombre);
     cuerpo.append('identificacion', datos.identificacion);
     cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
@@ -558,6 +641,31 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  // ------------------------------------------ cargas por partes (BUG-004) --
+
+  iniciarCarga: (procesoId: string, numeral: string, archivo: File) =>
+    pedir<{ id: string; partes: number; tamanoParte: number }>(
+      `/procesos/${procesoId}/actividades/${numeral}/cargas`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ nombre: archivo.name, tipo: archivo.type, tamano: archivo.size }),
+      },
+    ),
+
+  rutaDeParte: (procesoId: string, numeral: string, cargaId: string, n: number) =>
+    `/procesos/${procesoId}/actividades/${numeral}/cargas/${cargaId}/partes/${n}`,
+
+  completarCarga: (procesoId: string, numeral: string, cargaId: string) =>
+    pedir<{ id: string; nombre: string; tamano: number; archivos: number | null }>(
+      `/procesos/${procesoId}/actividades/${numeral}/cargas/${cargaId}/completar`,
+      { method: 'POST' },
+    ),
+
+  cancelarCarga: (procesoId: string, numeral: string, cargaId: string) =>
+    pedir<{ cancelada: boolean }>(`/procesos/${procesoId}/actividades/${numeral}/cargas/${cargaId}`, {
+      method: 'DELETE',
+    }),
 
   /** Retira una oferta registrada por error; solo antes del cierre. */
   retirarOferente: (procesoId: string, oferenteId: string) =>
@@ -711,6 +819,7 @@ export const contratacionService = {
     cuerpo.append('evidencia', evidencia);
     cuerpo.append('aseguradora', datos.aseguradora);
     cuerpo.append('numeroPoliza', datos.numeroPoliza);
+    cuerpo.append('tipoPoliza', datos.tipoPoliza);
     cuerpo.append('amparos', JSON.stringify(datos.amparos));
     cuerpo.append('fechaAprobacionSecop', datos.fechaAprobacionSecop);
 
@@ -1922,11 +2031,20 @@ export const contratacionService = {
     datos: { respuesta: string; modificoPliego?: boolean },
     firma?: EvidenciaFirmaOtp,
     ruta: RutaObservaciones = 'observaciones',
-  ) =>
-    pedir<EstadoObservaciones>(
+    archivos: File[] = [],
+  ) => {
+    // Multipart: la respuesta a un solo interesado también lleva archivos.
+    const cuerpo = new FormData();
+    archivos.forEach((a) => cuerpo.append('files', a));
+    cuerpo.append('respuesta', datos.respuesta);
+    if (datos.modificoPliego !== undefined) cuerpo.append('modificoPliego', String(datos.modificoPliego));
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
+
+    return pedir<EstadoObservaciones>(
       `/procesos/${procesoId}/${ruta}/${observacionId}/responder`,
-      { method: 'POST', body: JSON.stringify({ ...datos, firma }) },
-    ),
+      { method: 'POST', body: cuerpo },
+    );
+  },
 
   /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
   cerrarSinObservaciones: (
@@ -2302,6 +2420,42 @@ export const contratacionService = {
   /** La retira de circulación; los contratos que la usaron la conservan. */
   retirarTipologia: (codigo: string) =>
     pedir<TipologiaConfigurable>(`/configuracion/tipologias/${codigo}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
+
+  // ------------- configuración · tipos de póliza y de amparo (8.4, 145) -----
+
+  /** Los tipos de póliza, incluidos los retirados. */
+  tiposPoliza: () => pedir<TipoPolizaConfigurable[]>('/configuracion/tipos-poliza'),
+
+  /** Crea un tipo de póliza o ajusta el que ya existe con ese código. */
+  guardarTipoPoliza: (datos: GuardarTipoPoliza) =>
+    pedir<TipoPolizaConfigurable>('/configuracion/tipos-poliza', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Lo deja de ofrecer; las garantías que lo usaron lo conservan. */
+  retirarTipoPoliza: (codigo: string) =>
+    pedir<TipoPolizaConfigurable>(`/configuracion/tipos-poliza/${encodeURIComponent(codigo)}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
+
+  /** Los tipos de amparo (coberturas), incluidos los retirados. */
+  tiposAmparo: () => pedir<TipoAmparoConfigurable[]>('/configuracion/tipos-amparo'),
+
+  /** Crea un tipo de amparo o ajusta el que ya existe con ese código. */
+  guardarTipoAmparo: (datos: GuardarTipoAmparo) =>
+    pedir<TipoAmparoConfigurable>('/configuracion/tipos-amparo', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Lo deja de ofrecer; los amparos ya registrados lo conservan. */
+  retirarTipoAmparo: (codigo: string) =>
+    pedir<TipoAmparoConfigurable>(`/configuracion/tipos-amparo/${encodeURIComponent(codigo)}/retirar`, {
       method: 'PUT',
       body: JSON.stringify({}),
     }),
@@ -3077,27 +3231,28 @@ export const contratacionService = {
       }),
     }),
 
-  /** Cuántas actividades tiene el cronograma predeterminado de cada modalidad (140). */
+  /** Cuántas etapas y actividades salen en el cronograma predeterminado de cada modalidad (144). */
   resumenCronogramaPredeterminado: () =>
     pedir<ResumenPredeterminado[]>('/configuracion/cronograma-predeterminado'),
 
-  /** El cronograma predeterminado de una modalidad (140). */
+  /** Qué etapas y actividades salen por defecto en el cronograma de una modalidad (140). */
   cronogramaPredeterminado: (modalidad: string) =>
     pedir<CronogramaPredeterminado>(`/configuracion/cronograma-predeterminado/${modalidad}`),
 
-  /** Reemplaza el cronograma predeterminado de la modalidad entero (140). */
-  guardarCronogramaPredeterminado: (modalidad: string, filas: Omit<FilaPredeterminada, 'id'>[]) =>
+  /** Reemplaza el cronograma predeterminado de la modalidad entero (144). */
+  guardarCronogramaPredeterminado: (
+    modalidad: string,
+    datos: { etapas: number[]; numerales: string[]; propias: PropiaPredeterminada[] },
+  ) =>
     pedir<CronogramaPredeterminado>(`/configuracion/cronograma-predeterminado/${modalidad}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filas }),
+      body: JSON.stringify(datos),
     }),
 
-  /** Las fechas que propone el predeterminado de la modalidad del proceso; no guarda nada (140). */
-  propuestaCronograma: (procesoId: string, diaCero: string) =>
-    pedir<PropuestaCronograma>(
-      `/procesos/${procesoId}/cronograma/predeterminado?desde=${encodeURIComponent(diaCero)}`,
-    ),
+  /** Lo que sale por defecto en el cronograma del proceso, según su modalidad (144). */
+  predeterminadoDelProceso: (procesoId: string) =>
+    pedir<PredeterminadoDelProceso>(`/procesos/${procesoId}/cronograma/predeterminado`),
 
   /** Marca o desmarca cumplida una actividad propia del cronograma (139). */
   marcarCumplidaCronograma: (procesoId: string, actividadId: string, cumplida: boolean) =>
@@ -3299,13 +3454,23 @@ export const contratacionService = {
   /** Lo que la configuración deja sin salida: puestos que nadie puede ocupar, actividades huérfanas. */
   diagnosticoDePuestos: () => pedir<ProblemaDePuestos[]>('/configuracion/puestos/diagnostico'),
 
-  crearPuesto: (datos: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number }) =>
+  crearPuesto: (datos: {
+    nombre: string;
+    descripcion?: string | null;
+    obligatorio?: boolean;
+    orden?: number;
+    rolId?: string | null;
+  }) =>
     pedir<Puesto>('/configuracion/puestos', { method: 'POST', body: JSON.stringify(datos) }),
 
   actualizarPuesto: (
     id: string,
-    datos: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number },
+    datos: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number; rolId?: string | null },
   ) => pedir<Puesto>(`/configuracion/puestos/${id}`, { method: 'PUT', body: JSON.stringify(datos) }),
+
+  /** Le da al rol del puesto los permisos por etapa que le faltan (143). */
+  completarPermisosDePuesto: (id: string) =>
+    pedir<PermisosCompletados>(`/configuracion/puestos/${id}/completar-permisos`, { method: 'POST' }),
 
   /** No se deja mientras alguna actividad lo use. */
   archivarPuesto: (id: string) => pedir<{ archivado: boolean }>(`/configuracion/puestos/${id}`, { method: 'DELETE' }),

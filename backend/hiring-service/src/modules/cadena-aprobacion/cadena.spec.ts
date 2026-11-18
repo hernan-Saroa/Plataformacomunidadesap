@@ -141,7 +141,7 @@ describe('cadena de aprobación', () => {
     });
 
     it('quien aprobó el escalón 1 no aprueba el 2 de la misma ronda', () => {
-      expect(motivo({ previas: [aprobo(1)] })).toMatch(/otro escalón/);
+      expect(motivo({ previas: [aprobo(1)] })).toMatch(/escalón anterior/);
     });
 
     it('salvo que la cadena lo permita', () => {

@@ -638,7 +638,41 @@ export class DocumentosActividadService {
         archivo: documento.archivoNombreOriginal ?? documento.nombre,
       });
 
-      await em.getRepository(Documento).remove(documento);
+      // El soporte del CDP queda apuntado desde hiring.cdp: retirarlo daba un
+      // error 500 por la llave foránea (BUG-001 de QA, 14/11). Con la 4.2 en
+      // manos de quien la envió se suelta el vínculo y el CDP queda «sin
+      // soporte», que la 4.2 ya sabe ofrecer cargar; en revisión o aprobada,
+      // es la evidencia de lo que se decidió y no se quita.
+      const [cargue] = await em.query(
+        `SELECT pa.estado
+           FROM hiring.cdp c
+           JOIN hiring.proceso_actividades pa ON pa.proceso_id = c.proceso_id AND pa.numeral = '4.2'
+          WHERE c.documento_id = $1`,
+        [documento.id],
+      );
+      if (cargue && (cargue.estado === 'EN_REVISION' || cargue.estado === 'APROBADO')) {
+        throw new ConflictException(
+          cargue.estado === 'APROBADO'
+            ? 'Es el soporte del CDP ya aprobado: no se retira del expediente'
+            : 'Es el soporte del CDP y la 4.2 está en revisión: retírala de aprobación para cambiarlo',
+        );
+      }
+      await em.query(
+        'UPDATE hiring.cdp SET documento_id = NULL, updated_at = now() WHERE documento_id = $1',
+        [documento.id],
+      );
+
+      try {
+        await em.getRepository(Documento).remove(documento);
+      } catch (err: any) {
+        // Otro registro que lo cite: se dice en vez de devolver un 500.
+        if (err?.code === '23503') {
+          throw new ConflictException(
+            'Este documento está citado por otro registro del proceso y no se puede retirar',
+          );
+        }
+        throw err;
+      }
 
       return { retirado: true };
     });
