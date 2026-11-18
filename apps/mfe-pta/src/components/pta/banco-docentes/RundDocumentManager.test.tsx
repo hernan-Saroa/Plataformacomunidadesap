@@ -924,3 +924,69 @@ describe('HU 2426 — perfil Consulta RUND en la biblioteca de documentos', () =
     expect(screen.getByRole('button', { name: /Historial/ })).toBeTruthy();
   });
 });
+
+describe('Carga masiva desde «Documentos de <carpeta>»', () => {
+  const campo = { campo: 'Experiencia docente', documento: 'Experiencia docente', tipoSoporte: 'experiencia_docente' };
+  const revision = (): RundSupportReview => ({
+    groups: [{ field: campo, fields: [campo], uploadField: campo, evidences: [], canManage: true, canUpload: true }],
+    canValidate: false, disabled: false, busy: null, onView: vi.fn(), onReview: vi.fn(), onUpload: vi.fn(),
+  });
+  const montar = (extra: Record<string, unknown> = {}) => render(
+    <RundDocumentManager {...props} activeBlock="EXPERIENCIA_DOCENTE" supportReview={revision()} onSubirMasivo={vi.fn().mockResolvedValue(null)} {...extra} />,
+  );
+
+  it('muestra «Carga masiva» al lado de «Agregar documento»', async () => {
+    montar();
+    await loaded();
+    const masiva = screen.getByRole('button', { name: /Carga masiva/ });
+    const agregar = screen.getByRole('button', { name: /Agregar documento/ });
+    expect(masiva.parentElement).toBe(agregar.parentElement);
+    expect(masiva.compareDocumentPosition(agregar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('no se ofrece en Transversal (no es una carpeta de la codificación) ni en el historial', async () => {
+    const transversal = montar({ activeBlock: 'TRANSVERSAL' });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+    transversal.unmount();
+    montar();
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: /Historial/ }));
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+  });
+
+  it('no se ofrece sin permiso de gestión, en modo consulta del flujo de incorporación ni sin carga masiva configurada', async () => {
+    const sinPermiso = montar({ canManage: false });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+    sinPermiso.unmount();
+    const incorporacion = montar({ allowedSupportTypes: ['contrato'] });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+    incorporacion.unmount();
+    montar({ onSubirMasivo: undefined });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+  });
+
+  it('al terminar el lote recarga los documentos, avisa al panel y emite el evento de sincronización', async () => {
+    const onSubirMasivo = vi.fn().mockResolvedValue(null);
+    const evento = vi.fn();
+    window.addEventListener('rund:soporte-uploaded', evento);
+    const onChanged = vi.fn();
+    montar({ onSubirMasivo, onChanged });
+    await loaded();
+    const llamadasAntes = vi.mocked(apiClient.get).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /Carga masiva/ }));
+    const entrada = screen.getByLabelText(/Documentos \(PDF/);
+    fireEvent.change(entrada, { target: { files: [new File(['%PDF'], '2002_1_ESAP.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: /Cargar 1 archivo/ }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(onSubirMasivo).toHaveBeenCalledTimes(1);
+    expect(onSubirMasivo.mock.calls[0][2].descripcion).toContain('Año 2002 · Folio 1');
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(llamadasAntes);
+    expect(evento).toHaveBeenCalledTimes(1);
+    window.removeEventListener('rund:soporte-uploaded', evento);
+  });
+});

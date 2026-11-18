@@ -1,4 +1,4 @@
-import { clasificarTitulosDePerfil, deducirTitulosAdicionales, mismoTitulo, separarTitulosDePerfil } from './rund-perfil-titulos';
+import { clasificarTitulosDePerfil, deducirTitulosAdicionales, mismoTitulo, separarTitulosDeCelda, separarTitulosDePerfil } from './rund-perfil-titulos';
 
 // Celdas reales de PERFIL_ACADEMICO de la plantilla de cargue (CargaDocentes_RUND_2025-1).
 const PERFILES = {
@@ -90,5 +90,66 @@ describe('RUND-003 · títulos deducidos de PERFIL_ACADEMICO', () => {
       expect(segunda.adicionales).toEqual(primera.adicionales);
       expect(segunda.deducidos).toBe(0);
     });
+  });
+});
+
+// Columnas TITULO_<NIVEL> reales de la plantilla: una misma celda puede traer varios títulos del nivel.
+describe('RUND — varios títulos en la misma columna TITULO_<NIVEL>', () => {
+  it('separa los títulos de pregrado por coma y conserva el orden (el primero es el precargado)', () => {
+    expect(separarTitulosDeCelda('Administrador Público, Abogado', 'pregrado')).toEqual(['Administrador Público', 'Abogado']);
+  });
+
+  it('no parte una coma que no inicia otro título del nivel', () => {
+    expect(separarTitulosDeCelda('Magíster en Psicoanálisis, Subjetividad y Cultura', 'maestria'))
+      .toEqual(['Magíster en Psicoanálisis, Subjetividad y Cultura']);
+  });
+
+  it('separa títulos de posgrado pegados sin coma (doble espacio)', () => {
+    expect(separarTitulosDeCelda('Especialista en Contratación Especialista en Derecho Administrativo Especialista en Derecho Procesal', 'especializacion'))
+      .toEqual(['Especialista en Contratación', 'Especialista en Derecho Administrativo', 'Especialista en Derecho Procesal']);
+  });
+
+  it('no parte "Candidato a Magíster" ni "grado de Doctor"', () => {
+    expect(separarTitulosDeCelda('Magíster en Derecho Público, Candidato a Magíster en Derecho Privado', 'maestria'))
+      .toEqual(['Magíster en Derecho Público', 'Candidato a Magíster en Derecho Privado']);
+    expect(separarTitulosDeCelda('En proceso obtener el grado de Doctor en Educación', 'doctorado'))
+      .toEqual(['En proceso obtener el grado de Doctor en Educación']);
+  });
+
+  it('una celda vacía no genera títulos', () => {
+    expect(separarTitulosDeCelda('  ', 'maestria')).toEqual([]);
+    expect(separarTitulosDeCelda(null, 'maestria')).toEqual([]);
+  });
+
+  it('el primero queda como precargado y el resto como adicionales, sin duplicar el precargado', () => {
+    const perfil = 'Administrador Público, Abogado, Especialista en Pedagogía de los Derechos Humanos, Magíster en Derecho Administrativo.';
+    const d = deducirTitulosAdicionales(perfil, {
+      pregrado: 'Administrador Público, Abogado', especializacion: 'Especialista en Pedagogía de los Derechos Humanos', maestria: 'Magíster en Derecho Administrativo',
+    });
+    expect(d.principales).toEqual({ pregrado: 'Administrador Público', especializacion: 'Especialista en Pedagogía de los Derechos Humanos', maestria: 'Magíster en Derecho Administrativo' });
+    expect(d.adicionales).toEqual({ pregrado: ['Abogado'] });
+    expect(d.sinClasificar).toEqual([]);
+  });
+
+  it('un título de la columna que el perfil no clasifica ya no queda «sin clasificar»', () => {
+    const d = deducirTitulosAdicionales('Geólogo, Magister en Medioambiente y Desarrollo', { pregrado: 'Geólogo', maestria: 'Magister en Medioambiente y Desarrollo' });
+    expect(d.sinClasificar).toEqual([]);
+    expect(d.adicionales).toEqual({});
+  });
+
+  it('reprocesar un registro viejo (precargado con toda la celda y adicionales duplicados) lo deja sin repetir', () => {
+    const d = deducirTitulosAdicionales('Administrador Público, Abogado', { pregrado: 'Administrador Público, Abogado' },
+      { pregrado: ['Administrador Público', 'Abogado'] });
+    expect(d.principales.pregrado).toBe('Administrador Público');
+    expect(d.adicionales).toEqual({ pregrado: ['Abogado'] });
+  });
+
+  it('es idempotente con la celda múltiple', () => {
+    const celdas = { pregrado: 'Economista, Administrador Publico', maestria: 'Magister en Administración Pública, Magister en Economía' };
+    const primera = deducirTitulosAdicionales('Economista, Administrador Publico, Magister en Administración Pública Magister en Economía', celdas);
+    const segunda = deducirTitulosAdicionales('Economista, Administrador Publico, Magister en Administración Pública Magister en Economía', celdas, primera.adicionales);
+    expect(primera.adicionales).toEqual({ pregrado: ['Administrador Publico'], maestria: ['Magister en Economía'] });
+    expect(segunda.adicionales).toEqual(primera.adicionales);
+    expect(segunda.deducidos).toBe(0);
   });
 });

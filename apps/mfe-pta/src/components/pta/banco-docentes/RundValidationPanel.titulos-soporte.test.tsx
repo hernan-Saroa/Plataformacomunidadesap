@@ -114,8 +114,13 @@ describe('Soportes de títulos en la ficha RUND: tabla y formulario del título'
     const URL_TITULOS = '/pta/api/v1/pta/banco-docentes/docente-1/titulos-formacion';
     const archivo = (id: string, documento: string | null) => ({ id, tipo_soporte: 'diploma_pregrado', documento_perfil_id: documento, documento_carpeta_id: `/${id}`, nombre_archivo: `${id}.pdf`, estado: 'Pendiente', estado_documento: 'ACTIVO' });
     let confirmar: { mockReturnValue: (valor: boolean) => unknown; mockRestore: () => void };
+    // La confirmación es un diálogo de la página: el confirm del navegador (que muestra la URL) no se usa.
+    const confirmarEnDialogo = async (boton: RegExp = /^Eliminar título$/) => {
+      const dialogo = await screen.findByRole('alertdialog');
+      fireEvent.click(within(dialogo).getByRole('button', { name: boton }));
+    };
     beforeEach(() => { confirmar = vi.spyOn(window, 'confirm').mockReturnValue(true); });
-    afterEach(() => confirmar.mockRestore());
+    afterEach(() => { expect(confirmar).not.toHaveBeenCalled(); confirmar.mockRestore(); });
 
     it('Editar envía el título anterior y el nuevo al servidor y recarga la ficha', async () => {
       const tabla = within(await abrirFormacion());
@@ -143,7 +148,11 @@ describe('Soportes de títulos en la ficha RUND: tabla y formulario del título'
       soportes = [archivo('a', 'd1'), archivo('b', 'd2')];
       const tabla = within(await abrirFormacion());
       fireEvent.click(tabla.getByRole('button', { name: /Eliminar título Pregrado adicional 1\.1\.2/ }));
-      expect(confirmar).toHaveBeenCalledWith(expect.stringContaining('Contador Público'));
+      const dialogo = await screen.findByRole('alertdialog');
+      expect(within(dialogo).getByText('Contador Público')).toBeTruthy();
+      expect(within(dialogo).getByText('b.pdf')).toBeTruthy();
+      expect(apiClient.delete).not.toHaveBeenCalled();
+      await confirmarEnDialogo();
       await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(`${URL_TITULOS}/eliminar`, { tipoSoporte: 'diploma_pregrado', titulo: 'Contador Público' }));
       expect(apiClient.delete).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/docente-1/documentos/d2');
       expect(vi.mocked(apiClient.delete).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(apiClient.post).mock.invocationCallOrder[0]);
@@ -153,14 +162,16 @@ describe('Soportes de títulos en la ficha RUND: tabla y formulario del título'
     it('Eliminar un título sin archivo solo quita el título', async () => {
       const tabla = within(await abrirFormacion());
       fireEvent.click(tabla.getByRole('button', { name: /Eliminar título Pregrado adicional 1\.1\.3/ }));
+      await confirmarEnDialogo();
       await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(`${URL_TITULOS}/eliminar`, { tipoSoporte: 'diploma_pregrado', titulo: 'Economista' }));
       expect(apiClient.delete).not.toHaveBeenCalled();
     });
 
     it('si el usuario cancela la confirmación no se borra nada', async () => {
-      confirmar.mockReturnValue(false);
       const tabla = within(await abrirFormacion());
       fireEvent.click(tabla.getByRole('button', { name: /Eliminar título Pregrado 1\.1\.1/ }));
+      await confirmarEnDialogo(/^Cancelar$/);
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
       expect(apiClient.post).not.toHaveBeenCalled();
       expect(apiClient.delete).not.toHaveBeenCalled();
     });
@@ -179,6 +190,7 @@ describe('Soportes de títulos en la ficha RUND: tabla y formulario del título'
       vi.mocked(apiClient.delete).mockRejectedValueOnce(new Error('No se pudo eliminar el archivo.'));
       const tabla = within(await abrirFormacion());
       fireEvent.click(tabla.getByRole('button', { name: /Eliminar título Pregrado 1\.1\.1/ }));
+      await confirmarEnDialogo();
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('No se pudo eliminar el archivo.'));
       expect(apiClient.post).not.toHaveBeenCalled();
     });
