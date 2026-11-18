@@ -3,7 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto, ConfirmarEmergenciaDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -374,8 +374,13 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       } catch (err: any) {
         this.notifLogger.warn(`[CierreAutomaticoWorker] Fallo en barrido periódico: ${err?.message ?? err}`);
       }
+      try {
+        await this.evaluarAlertas70ANS();
+      } catch (err: any) {
+        this.notifLogger.warn(`[Alerta70Worker] Fallo en barrido de alertas 70% ANS: ${err?.message ?? err}`);
+      }
     }, INTERVALO_MS);
-    this.notifLogger.log('[CierreAutomaticoWorker] Worker de cierre automático de conformidad inicializado (intervalo: 60s).');
+    this.notifLogger.log('[CierreAutomaticoWorker] Worker de cierre automático de conformidad y evaluación 70% ANS inicializado (intervalo: 60s).');
   }
 
   private normalizarNombreTecnico(value: unknown): string {
@@ -986,6 +991,16 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         clasificacionMantenimiento: 'MENOR',
         requiereContratacion: false,
       }),
+      alerta70Emitida: false,
+      fechaAlerta70: null,
+      esEmergenciaCritica: Boolean(
+        dto.esEmergenciaCritica ||
+        String(dto.prioridad || '').toUpperCase() === 'EMERGENCIA',
+      ),
+      emergenciaConfirmada: false,
+      emergenciaConfirmadaPor: null,
+      fechaConfirmacionEmergencia: null,
+      notasConfirmacionEmergencia: null,
     };
 
     const saved = await this.mantenimientoRepo.save(solicitudData as any);
@@ -1050,6 +1065,14 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
 </div>`,
     });
+
+    if (saved.esEmergenciaCritica) {
+      try {
+        await this.notificarEmergenciaCritica(saved);
+      } catch (errCritica: any) {
+        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+      }
+    }
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
@@ -3069,7 +3092,7 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     let valoracion = await this.valoracionRepo.findOne({
       where: {
         idSolicitudMantenimiento: solicitud.idSolicitud,
-        estadoAlFinalizar: undefined as any,
+        fechaFinValoracion: IsNull(),
       },
       order: { createdAt: 'DESC' },
     });
@@ -3079,15 +3102,15 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
         idTecnicoValorador: user?.userId ?? undefined,
         tecnicoCodigo: per.tecnicoCodigo ?? undefined,
         tecnicoNombre: per.tecnicoNombre || (user?.username || 'Usuario sin nombre'),
-        diagnostico: 'Visita técnica en curso…',
-        alcanceIdentificado: 'Pendiente diligenciar durante la visita.',
+        diagnostico: undefined,
+        alcanceIdentificado: undefined,
         tiempoEstimadoHoras: 1,
         nivelRiesgo: 'BAJO',
         requiereApagadoElectrico: false,
         evidencias: [],
-        estadoAlFinalizar: 'EN_PROGRESO',
+        estadoAlFinalizar: undefined,
         fechaInicioValoracion: solicitud.fechaInicioValoracion ?? ahora,
-        fechaFinValoracion: ahora,
+        fechaFinValoracion: undefined,
       });
       valoracion = await this.valoracionRepo.save(valoracion as any);
     }
@@ -6547,5 +6570,232 @@ ${insumos ? `<p><strong>Insumos / Servicios requeridos:</strong> ${insumos}</p>`
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
+  }
+
+  // =========================================================================
+  // RF-INF-014: Alarmas y Notificaciones Multicanal (Umbral 70% ANS y Emergencias)
+  // =========================================================================
+
+  async evaluarAlertas70ANS(): Promise<{ evaluadas: number; alertasEmitidas: number; ids: string[] }> {
+    const ahora = new Date();
+    const estadosCerrados = [
+      'COMPLETADA',
+      'RESUELTO',
+      'CERRADA',
+      'CERRADA_SIN_RESPUESTA',
+      'CERRADA_POR_USUARIO',
+      'CERRADA_SIN_ATENCION',
+      'ANULADA',
+      'CANCELADA',
+    ];
+
+    const solicitudes = await this.mantenimientoRepo.createQueryBuilder('solicitud')
+      .leftJoinAndSelect('solicitud.sede', 'sede')
+      .where('solicitud.estado NOT IN (:...estadosCerrados)', { estadosCerrados })
+      .andWhere('solicitud.alerta70Emitida = false')
+      .andWhere('solicitud.fechaLimiteAtencion IS NOT NULL')
+      .andWhere('solicitud.fechaLimiteAtencion > :ahora', { ahora })
+      .getMany();
+
+    const idsEmitidos: string[] = [];
+    let alertasEmitidas = 0;
+
+    for (const sol of solicitudes) {
+      const fechaInicio = sol.fechaRadicacion;
+      const fechaLimite = sol.fechaLimiteAtencion;
+      if (!fechaInicio || !fechaLimite) continue;
+
+      const inicioMs = new Date(fechaInicio).getTime();
+      const limiteMs = new Date(fechaLimite).getTime();
+      const ahoraMs = ahora.getTime();
+
+      const totalSlaMs = limiteMs - inicioMs;
+      if (totalSlaMs <= 0) continue;
+
+      const transcurridoMs = ahoraMs - inicioMs;
+      const porcentaje = Math.round((transcurridoMs / totalSlaMs) * 100);
+
+      // Si ha consumido >= 70% del tiempo total del SLA y aún no ha vencido (< 100%)
+      if (porcentaje >= 70 && ahoraMs < limiteMs) {
+        sol.alerta70Emitida = true;
+        sol.fechaAlerta70 = ahora;
+
+        this.pushAsignacion(sol, {
+          accion: 'ALERTA_PREVENTIVA_70_ANS' as any,
+          motivo: `Se alcanzó el ${porcentaje}% del tiempo límite de atención SLA establecido.`,
+          observaciones: `Alerta automática preventiva de vencimiento próximo de SLA (RF-INF-014). Porcentaje consumido: ${porcentaje}%. Fecha límite: ${new Date(fechaLimite).toISOString()}`,
+          clasificacionMantenimiento: sol.clasificacionMantenimiento,
+          requiereContratacion: sol.requiereContratacion,
+          user: { userId: '00000000-0000-0000-0000-000000000000', email: 'sistema@esap.edu.co', roles: ['SISTEMA'] } as any,
+        });
+
+        await this.mantenimientoRepo.save(sol);
+        idsEmitidos.push(sol.idSolicitud);
+        alertasEmitidas++;
+
+        try {
+          await this.notificarAlerta70ANS(sol, porcentaje);
+        } catch (notifErr: any) {
+          this.notifLogger.warn(`[Alerta70] Error al emitir notificación para #${sol.consecutivo}: ${notifErr?.message || notifErr}`);
+        }
+      }
+    }
+
+    return { evaluadas: solicitudes.length, alertasEmitidas, ids: idsEmitidos };
+  }
+
+  private async notificarAlerta70ANS(solicitud: SolicitudMantenimiento, porcentaje: number): Promise<void> {
+    const url = this.solicitudAccionUrl(solicitud);
+    const rad = solicitud.consecutivo || solicitud.idSolicitud.slice(0, 8);
+
+    await this.notificarEncargadosUMI(solicitud, {
+      tipo: 'UMI_ALERTA_70_ANS',
+      titulo: `Alerta Preventiva 70% ANS - Solicitud #${rad}`,
+      mensaje: `La solicitud #${rad} ha consumido el ${porcentaje}% de su ventana de atención ANS (${solicitud.prioridad}). Requiere seguimiento para evitar vencimiento.`,
+      icono: 'Clock',
+      color: '#d97706',
+      prioridad: 'Alta',
+      textoAccion: 'Revisar Solicitud',
+      emailSubject: `[ALERTA 70% ANS] Solicitud #${rad} próxima a vencer SLA (${porcentaje}%)`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#b45309;margin:0 0 8px">Alerta Preventiva de Tiempo de Atención (70% ANS)</h3>
+<p>La solicitud de mantenimiento <strong>#${rad}</strong> ha consumido el <strong>${porcentaje}%</strong> del tiempo acordado en su ANS.</p>
+<p><strong>Sede / Ubicación:</strong> ${solicitud.sede?.nombre || solicitud.ubicacionAdicionalTexto || 'N/A'} - ${solicitud.ubicacionDetalle || ''}</p>
+<p><strong>Prioridad:</strong> ${solicitud.prioridad} | <strong>Estado:</strong> ${solicitud.estado}</p>
+<p><strong>Técnico Asignado:</strong> ${solicitud.responsableAsignado || 'No asignado'}</p>
+<p><strong>Descripción:</strong> ${solicitud.descripcion}</p>
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver Solicitud en Plataforma</a></p>
+</div>`,
+    });
+
+    if (solicitud.idTecnicoAsignado) {
+      await this.notificarTecnicoAsignado(solicitud, {
+        tipo: 'UMI_ALERTA_70_ANS_TECNICO',
+        titulo: `Atención: Solicitud #${rad} al 70% de ANS`,
+        mensaje: `Has consumido el ${porcentaje}% del tiempo límite para atender la solicitud #${rad}. Por favor agiliza la intervención o el cierre técnico.`,
+        icono: 'Clock',
+        color: '#d97706',
+        prioridad: 'Alta',
+        textoAccion: 'Gestionar Solicitud',
+        emailSubject: `[UMI] Solicitud #${rad} ha consumido el ${porcentaje}% del ANS`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#b45309;margin:0 0 8px">Alerta Preventiva de ANS (70%)</h3>
+<p>Estimado técnico, la solicitud <strong>#${rad}</strong> asignada a usted ha alcanzado el <strong>${porcentaje}%</strong> de su tiempo límite de atención.</p>
+<p><strong>Ubicación:</strong> ${solicitud.ubicacionDetalle || solicitud.sede?.nombre || ''}</p>
+<p><strong>Descripción:</strong> ${solicitud.descripcion}</p>
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Continuar Atención</a></p>
+</div>`,
+      });
+    }
+  }
+
+  private async notificarEmergenciaCritica(solicitud: SolicitudMantenimiento): Promise<void> {
+    const url = this.solicitudAccionUrl(solicitud);
+    const rad = solicitud.consecutivo || solicitud.idSolicitud.slice(0, 8);
+
+    await this.notificarEncargadosUMI(solicitud, {
+      tipo: 'UMI_EMERGENCIA_CRITICA',
+      titulo: `EMERGENCIA CRÍTICA REPORTADA - #${rad}`,
+      mensaje: `Se ha registrado una solicitud con prioridad URGENTE / EMERGENCIA CRÍTICA en ${solicitud.sede?.nombre || 'la institución'}. Requiere confirmación inmediata del Coordinador GIM.`,
+      icono: 'AlertTriangle',
+      color: '#dc2626',
+      prioridad: 'Crítica',
+      textoAccion: 'Confirmar y Atender Emergencia',
+      emailSubject: `[EMERGENCIA CRÍTICA UMI] Solicitud #${rad} requiere atención inmediata`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<div style="background:#fee2e2;border-left:4px solid #dc2626;padding:12px;margin-bottom:12px">
+  <h3 style="color:#991b1b;margin:0 0 4px">EMERGENCIA CRÍTICA DECLARADA (RF-INF-014)</h3>
+  <p style="color:#7f1d1d;margin:0">Se ha radicado un caso catalogado como de máxima prioridad operativa o estructural.</p>
+</div>
+<p><strong>Consecutivo:</strong> #${rad}</p>
+<p><strong>Sede / Espacio:</strong> ${solicitud.sede?.nombre || ''} - ${solicitud.ubicacionDetalle || ''}</p>
+<p><strong>Descripción de la novedad:</strong> ${solicitud.descripcion}</p>
+<p><strong>Solicitante:</strong> ${solicitud.solicitanteNombre || 'N/A'} (${solicitud.solicitanteEmail || ''})</p>
+<p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold">Confirmar Emergencia en Plataforma</a></p>
+</div>`,
+    });
+  }
+
+  async confirmarEmergenciaCritica(
+    idSolicitud: string,
+    dto: ConfirmarEmergenciaDto,
+    user?: AuthUser | null,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    if (!solicitud.esEmergenciaCritica) {
+      throw new BadRequestException('Esta solicitud no está clasificada como emergencia crítica.');
+    }
+    if (solicitud.emergenciaConfirmada) {
+      throw new BadRequestException('La emergencia crítica ya ha sido confirmada previamente.');
+    }
+
+    const ahora = new Date();
+    const nombreUsuario = user?.name || user?.username || user?.email || 'Coordinador GIM';
+
+    solicitud.emergenciaConfirmada = true;
+    solicitud.emergenciaConfirmadaPor = nombreUsuario;
+    solicitud.fechaConfirmacionEmergencia = ahora;
+    solicitud.notasConfirmacionEmergencia = dto?.notas || null;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'CONFIRMACION_EMERGENCIA_CRITICA' as any,
+      motivo: `Emergencia crítica confirmada formalmente por ${nombreUsuario}.`,
+      observaciones: dto?.notas ? `Notas de confirmación: ${dto.notas}` : 'Confirmación formal de atención prioritaria inmediata (RF-INF-014).',
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: solicitud.requiereContratacion,
+      user: (user || { userId: '00000000-0000-0000-0000-000000000000', email: 'coordinador@esap.edu.co', roles: ['COORDINADOR_INFRAESTRUCTURA'] }) as any,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    try {
+      const url = this.solicitudAccionUrl(saved);
+      const rad = saved.consecutivo || saved.idSolicitud.slice(0, 8);
+      await this.notificarAlSolicitante(saved, {
+        tipo: 'EMERGENCIA_CONFIRMADA_SOLICITANTE',
+        titulo: `Emergencia #${rad} confirmada por Coordinación`,
+        mensaje: `La Coordinación de Infraestructura ha confirmado y priorizado tu solicitud de emergencia #${rad}.`,
+        icono: 'CheckCircle',
+        color: '#dc2626',
+        prioridad: 'Crítica',
+        textoAccion: 'Ver Solicitud',
+        emailSubject: `[UMI] Emergencia #${rad} confirmada - Protocolo activado`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#dc2626;margin:0 0 8px">Emergencia Confirmada por Coordinación GIM</h3>
+<p>Tu reporte de emergencia <strong>#${rad}</strong> ha sido confirmado formalmente por <strong>${nombreUsuario}</strong>.</p>
+<p>Se ha desplegado el protocolo de atención inmediata para la novedad reportada.</p>
+${dto.notas ? `<p><strong>Instrucciones / Observaciones:</strong> ${dto.notas}</p>` : ''}
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none">Ver Estado del Caso</a></p>
+</div>`,
+      });
+    } catch (e: any) {
+      this.notifLogger.warn(`Error enviando notificación de confirmación de emergencia: ${e?.message || e}`);
+    }
+
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
+    return enriquecida || saved;
+  }
+
+  async obtenerEmergenciasPendientes(): Promise<SolicitudMantenimiento[]> {
+    const estadosCerrados = [
+      'COMPLETADA',
+      'RESUELTO',
+      'CERRADA',
+      'CERRADA_SIN_RESPUESTA',
+      'CERRADA_POR_USUARIO',
+      'CERRADA_SIN_ATENCION',
+      'ANULADA',
+      'CANCELADA',
+    ];
+
+    const solicitudes = await this.mantenimientoRepo.createQueryBuilder('solicitud')
+      .leftJoinAndSelect('solicitud.sede', 'sede')
+      .where('solicitud.esEmergenciaCritica = true')
+      .andWhere('solicitud.emergenciaConfirmada = false')
+      .andWhere('solicitud.estado NOT IN (:...estadosCerrados)', { estadosCerrados })
+      .orderBy('solicitud.fechaRadicacion', 'DESC')
+      .getMany();
+
+    return this.enriquecerSolicitudesConTerritoriales(solicitudes);
   }
 }

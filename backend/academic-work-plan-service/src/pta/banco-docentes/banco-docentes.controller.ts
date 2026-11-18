@@ -1001,6 +1001,47 @@ export class BancoDocentesController {
     return { success: true, data: result };
   }
 
+  /** HU 2349 — Decisión del Comité Docente para la incorporación (solo GGP autorizado). */
+  @Post(':id/ciclo/decision-comite')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async decisionComiteIncorporacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.registrarDecisionIncorporacion(id, body || {}, actor.actorId, actor.ip) };
+  }
+
+  /** HU 2349 — Recategorizaciones del docente (la vigente y su historial). */
+  @Get(':id/recategorizaciones')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async listarRecategorizaciones(@Param('id') id: string, @Query('periodoCarga') periodoCarga?: string) {
+    return { success: true, data: await this.service.listarRecategorizaciones(id, periodoCarga) };
+  }
+
+  @Post(':id/recategorizaciones')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async iniciarRecategorizacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.iniciarRecategorizacion(id, body || {}, actor.actorId, actor.ip) };
+  }
+
+  @Post(':id/recategorizaciones/:recategorizacionId/revision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async revisarRecategorizacion(@Param('id') id: string, @Param('recategorizacionId') recategorizacionId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.revisarRecategorizacion(id, recategorizacionId, body || {}, actor.actorId, actor.ip) };
+  }
+
+  @Post(':id/recategorizaciones/:recategorizacionId/decision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async decidirRecategorizacion(@Param('id') id: string, @Param('recategorizacionId') recategorizacionId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.decidirRecategorizacion(id, recategorizacionId, body || {}, actor.actorId, actor.ip) };
+  }
+
   @Delete(':id')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
