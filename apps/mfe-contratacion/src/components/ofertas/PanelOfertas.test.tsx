@@ -213,6 +213,22 @@ describe('PanelOfertas · el soporte de la oferta', () => {
     expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/máximo son 200 MB/));
     expect(screen.queryByText('oferta.pdf')).toBeNull();
   });
+
+  it('comprueba el NIT y su dígito de verificación mientras se escribe (BUG-003)', async () => {
+    await abrirRegistro();
+    const nit = screen.getByLabelText(/NIT con dígito de verificación/) as HTMLInputElement;
+
+    // No deja escribir más de 11 caracteres.
+    expect(nit.maxLength).toBe(11);
+
+    await userEvent.type(nit, '800197268-5');
+    expect(screen.getByRole('alert')).toHaveTextContent(/debería ser 4/);
+    expect(screen.getByRole('button', { name: /Registrar oferta/ })).toBeDisabled();
+
+    await userEvent.clear(nit);
+    await userEvent.type(nit, '800197268-4');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
 
 /**

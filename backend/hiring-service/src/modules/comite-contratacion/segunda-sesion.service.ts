@@ -278,7 +278,7 @@ export class SegundaSesionService implements OnModuleInit {
           'Escribe a qué queda condicionada la aprobación; si no tiene condiciones, regístrala como aprobada',
         );
       }
-      if (exigeObservaciones(dto.decision, false) && !observaciones) {
+      if (exigeObservaciones(dto.decision) && !observaciones) {
         throw new BadRequestException(
           dto.decision === 'RECHAZADO'
             ? 'Escribe por qué el comité rechaza el proceso'
@@ -303,7 +303,7 @@ export class SegundaSesionService implements OnModuleInit {
           fecha: dto.fecha,
           decision: dto.decision,
           condiciones: dto.decision === 'APROBADO_CON_CONDICIONES' ? condiciones : null,
-          observaciones: exigeObservaciones(dto.decision, false) ? observaciones : null,
+          observaciones: exigeObservaciones(dto.decision) ? observaciones : null,
           actaDocumentoId: acta?.id ?? null,
           registradoPor: acceso.userName,
           registradoPorId: acceso.userId ?? null,

@@ -414,6 +414,9 @@ export class CdpService {
       cdp,
       /** Existe el certificado: la partida quedó apartada para el proceso. */
       expedido,
+      /** Se puede corregir lo cargado: la 4.2 se retiró de aprobación o la devolvieron (BUG-001). */
+      puedeCorregir:
+        permisos.puedeCargar && !!cdp && (await this.sePuedeCorregir(manager, procesoId, cdp)),
       // Se reporta aparte de `expedido` a propósito: la apertura la habilita el
       // certificado, no su PDF. Que falte el adjunto deja abierta la actividad
       // 4.4, pero no frena el proceso.
@@ -536,6 +539,92 @@ export class CdpService {
           nombre: soporte.archivo.originalname,
         });
       }
+
+      return { ...this.conAdvertencia(guardado, proceso), documento };
+    });
+  }
+
+  /**
+   * Si lo cargado en la 4.2 se puede corregir (BUG-001 de QA, 14/11).
+   *
+   * Al retirar la 4.2 de aprobación —o si la devuelven— el CDP seguía cargado
+   * sin forma de tocarlo: «Devolver el envío» no servía para corregir nada.
+   * Se corrige solo lo que se cargó en la 4.2 (lo del estudio previo se corrige
+   * allá) y mientras la actividad esté en manos de quien la envió: ni en
+   * revisión ni aprobada.
+   */
+  private async sePuedeCorregir(em: EntityManager, procesoId: string, cdp: Cdp): Promise<boolean> {
+    if (cdp.estado !== 'EXPEDIDO' || cdp.origen !== 'ETAPA_4') return false;
+    const cargue = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral: NUMERAL_CARGUE_CDP } });
+    return !!cargue && (cargue.estado === 'BORRADOR' || cargue.estado === 'DEVUELTO');
+  }
+
+  /**
+   * Corrige el CDP cargado en la 4.2 y lo vuelve a enviar (BUG-001).
+   *
+   * Los datos se reemplazan y, si llega un certificado nuevo, pasa a ser el
+   * soporte; el anterior queda en el expediente, de donde se puede retirar.
+   * La traza guarda lo que había antes, para que la corrección no borre lo que
+   * se envió la primera vez. Corregir es volver a enviar: la actividad pasa por
+   * el mismo cierre que al cargar, con su revisión y su firma si las pide.
+   */
+  async corregir(
+    procesoId: string,
+    dto: CargarCdpDto,
+    soporte: { archivo: ArchivoCargado; hash: string } | null,
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId);
+      if (!(await this.sePuedeCorregir(em, procesoId, cdp))) {
+        throw new ConflictException(
+          cdp.origen === 'REGISTRADO_EN_ETAPA_3'
+            ? 'Este CDP se cargó desde el estudio previo: se corrige allá'
+            : 'El CDP solo se corrige con la 4.2 retirada de aprobación o devuelta',
+        );
+      }
+
+      const antes = {
+        numero: cdp.numero,
+        valor: cdp.valor,
+        rubro: cdp.rubro,
+        fechaExpedicion: cdp.fechaExpedicion,
+        documento: cdp.documentoId,
+      };
+
+      const documento = soporte
+        ? await this.guardarSoporte(em, procesoId, soporte.archivo, soporte.hash, acceso)
+        : null;
+
+      cdp.numero = dto.numero.trim();
+      cdp.valor = dto.valor;
+      cdp.rubro = dto.rubro.trim();
+      cdp.fechaExpedicion = dto.fechaExpedicion;
+      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
+      cdp.expedidoPor = acceso.userName;
+      if (documento) cdp.documentoId = documento.id;
+      cdp.updatedAt = new Date();
+      const guardado = await em.save(cdp);
+
+      await this.cerrarActividad(
+        em,
+        procesoId,
+        NUMERAL_CARGUE_CDP,
+        proceso.modalidad ?? null,
+        acceso,
+        dto.firma,
+      );
+      await this.traza(em, procesoId, guardado.id, 'RECTIFICAR', acceso, {
+        antes,
+        numero: guardado.numero,
+        valor: guardado.valor,
+        rubro: guardado.rubro,
+        fechaExpedicion: guardado.fechaExpedicion,
+        documento: documento?.id ?? null,
+      });
 
       return { ...this.conAdvertencia(guardado, proceso), documento };
     });
