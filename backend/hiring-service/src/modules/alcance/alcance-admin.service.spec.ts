@@ -210,3 +210,34 @@ describe('AlcanceAdminService · responsables', () => {
     await expect(service.responsables()).resolves.toEqual([]);
   });
 });
+
+describe('AlcanceAdminService · roles', () => {
+  it('trae quién tiene cada rol, y un rol sin cuentas sale con la lista vacía', async () => {
+    const dataSource = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes('FROM auth.role r')) {
+          return [
+            { id: 'r-1', codigo: 'ABOGADO_ESTRUCTURADOR', nombre: 'Abogado', descripcion: null, permisos: ['contratacion.ver'] },
+            { id: 'r-2', codigo: 'ENTE_DE_CONTROL', nombre: 'Consulta', descripcion: null, permisos: ['contratacion.ver'] },
+          ];
+        }
+        if (sql.includes('FROM auth.user_roles ur')) {
+          return [{ rol_id: 'r-1', id: 'u-1', nombre: 'Andrés Rojas', correo: 'andres@esap.edu.co' }];
+        }
+        return [];
+      }),
+    };
+    const service = new AlcanceAdminService(dataSource as never, {} as never, {} as never);
+
+    const roles = await service.roles();
+
+    expect(roles.find((r) => r.id === 'r-1')!.personas).toEqual([
+      { id: 'u-1', nombre: 'Andrés Rojas', correo: 'andres@esap.edu.co' },
+    ]);
+    expect(roles.find((r) => r.id === 'r-2')!.personas).toEqual([]);
+    // Solo cuentas y asignaciones activas.
+    const sql = dataSource.query.mock.calls.map(([s]) => String(s)).find((s) => s.includes('FROM auth.user_roles ur'))!;
+    expect(sql).toMatch(/ur\.is_active = true/);
+    expect(sql).toMatch(/u\.is_active = true/);
+  });
+});
