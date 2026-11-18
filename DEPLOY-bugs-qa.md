@@ -153,3 +153,19 @@ Sirve para probar el interruptor sin tocar el periodo principal. Probado contra 
   2. **Puente docente–área cargado** (sección 3). Cubre pregrado.
   3. **Posgrado:** las asignaturas de especialización/maestría tienen área «Programa: …» y ningún docente la tiene. Falta el insumo de la ESAP (qué docentes dictan cada programa de posgrado) para cargarlo al puente.
 - Roles de prueba (ver INTEGRACION-claude.md §41.1): programar = `PROGRAMADOR_PREGRADO/POSGRADO`; asignar y enviar a revisión = `PROGRAMADOR_DOCENTE_*`; revisar = `REVISOR_DOCENCIA_*`; aprobar = `APROBADOR_DOCENCIA` o `JEFATURA_TERRITORIAL`; todo = `ADMIN_PROGRAMACION`.
+
+## 10. Tercera entrega (18 de nov): asignar un docente en varios grupos, eliminar periodos y quitar los datos semilla
+
+- **Migración nueva:** `backend/academic-schedule-service/db/migrations/081_retirar_datos_semilla.sql` (con `./deploy.<amb>.sh db-migrate`). **Borra datos**, a propósito y en todos los ambientes:
+  - los periodos VIEJOS de Programación (`2026-1`, `2026-2`, `2026-V1`, `2026-V2`, `2026-INT` de la tabla `periodo_programacion`) y todo lo que cuelga de ellos (grupos, sesiones, asignaciones, recesos, concertaciones, equivalencias);
+  - el grupo DEMO de la muestra;
+  - la programación histórica extraída del Excel 2026-1 (575 filas: los «cruces del histórico» de Validación de Cruces).
+  - **No toca** los periodos de la plataforma (2025-2, 2026-1, 2027-1…) ni lo programado en ellos, ni el catálogo, aulas, CETAP, festivos, roles o docentes.
+  - Deja en el log cuántas filas quitó de cada cosa (`NOTICE: 081: …`). Es idempotente.
+  - ⚠️ Si en QA alguien programó grupos dentro de los periodos viejos (los que salen como «Periodos anteriores al modelo único»), también se borran: es lo pedido.
+- **Reconstruir:** `academic-work-plan-service` (eliminar periodos), `academic-schedule-service` (solo trae la migración) y el MFE `mfe-programacion-academica`.
+- **Verificación (2 minutos):**
+  1. Programación Académica → Periodos: no aparece la sección «Periodos anteriores al modelo único» ni 2026-INT en el selector.
+  2. Validación de Cruces: el histórico sale en 0.
+  3. Cada periodo que no está en curso tiene el botón **«Eliminar»**: muestra qué se borraría y pide confirmar. El periodo en curso y uno con PTA de docentes no se eliminan (el sistema dice por qué).
+  4. Asignar a un docente que ya tiene un grupo, en otro grupo de su misma área: se asigna.
