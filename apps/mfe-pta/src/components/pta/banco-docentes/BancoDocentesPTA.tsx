@@ -4,7 +4,7 @@ import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
   X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight, Trash2,
   GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info, UserPlus, MailPlus,
-  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History, Settings, Gavel, AlertTriangle
+  Filter, ExternalLink, BookOpen, ArrowRight, RotateCcw, ChevronDown, History, Settings, Gavel, AlertTriangle, Medal
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, getRundConvocatorias, bulkUploadBancoDocentes,
@@ -16,7 +16,10 @@ import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { BancoDocenteEstadoModal } from './BancoDocenteEstadoModal';
 import { BancoDocenteDecisionPruebaModal } from './BancoDocenteDecisionPruebaModal';
+import { BancoDocenteComiteIncorporacionModal } from './BancoDocenteComiteIncorporacionModal';
+import { BancoDocenteRecategorizacionModal } from './BancoDocenteRecategorizacionModal';
 import { PeriodoPruebaCelda } from './PeriodoPruebaCelda';
+import { cicloDeDocente, ETAPA_COLORES } from '../../../utils/rundCicloDocente';
 import { diasRestantesTexto, formatFechaPrueba } from '../../../utils/rundPeriodoPrueba';
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
@@ -185,6 +188,8 @@ export function BancoDocentesPTA() {
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
   const [decisionPrueba, setDecisionPrueba] = useState<any>(null);
+  const [comiteDocente, setComiteDocente] = useState<any>(null);
+  const [recategorizarDocente, setRecategorizarDocente] = useState<any>(null);
   const [alertasPrueba, setAlertasPrueba] = useState<{ total: number; items: Array<{ docente_id: string; nombre_completo: string; cumplimiento: string | null; dias_vencido: number | null }> } | null>(null);
   const canDelete = hasPermission('banco-docentes.rund.carga') || hasPermission('banco-docentes.rund.manage');
   // HU 2424 (CA-08): solo quien gestiona el RUND (GGP autorizado) ve la decisión del comité; el servidor lo vuelve a exigir.
@@ -948,6 +953,16 @@ export function BancoDocentesPTA() {
                               </span>
                             );
                           })()}
+                          {/* HU 2349: etapa del ciclo (Cargado → Validado → Apto/Activo) */}
+                          {(() => {
+                            const ciclo = cicloDeDocente(d);
+                            const color = ETAPA_COLORES[ciclo.etapa];
+                            return (
+                              <div data-testid="docente-etapa-ciclo" style={{ marginTop: 5, display: 'inline-block', padding: '2px 8px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: color.bg, color: color.fg, border: `1px solid ${color.border}` }}>
+                                {ciclo.etapaEtiqueta}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* ── Celda HORAS ── */}
@@ -1003,6 +1018,28 @@ export function BancoDocentesPTA() {
                                 style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #BFDBFE', background: d.periodo_prueba?.pendiente_decision ? '#DBEAFE' : '#EFF6FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
                                 <Gavel size={14} color="#1D4ED8" />
+                              </button>
+                            )}
+                            {/* HU 2349: decisión del comité para la incorporación (Validado – Cumple) */}
+                            {canDecidirPrueba && cicloDeDocente(d).puedeRegistrarComite && (
+                              <button
+                                onClick={() => setComiteDocente(d)}
+                                title="Registrar decisión del comité para la incorporación"
+                                aria-label={`Registrar decisión del comité para la incorporación de ${d.nombre_completo}`}
+                                style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #BFDBFE', background: '#DBEAFE', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <Gavel size={14} color="#1D4ED8" />
+                              </button>
+                            )}
+                            {/* HU 2349: recategorización de un docente activo */}
+                            {canDecidirPrueba && getDocenteEstadoKey(d) === 'ACTIVO' && (
+                              <button
+                                onClick={() => setRecategorizarDocente(d)}
+                                title="Recategorización"
+                                aria-label={`Recategorización de ${d.nombre_completo}`}
+                                style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #DDD6FE', background: '#F5F3FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <Medal size={14} color="#6D28D9" />
                               </button>
                             )}
                             {/* Botón Toggle Estado */}
@@ -1591,6 +1628,26 @@ export function BancoDocentesPTA() {
             void cargarAlertasPrueba();
             showToast(resultado === 'SUPERA' ? 'Decisión registrada: el docente pasó a Carrera 2' : 'Decisión registrada: el docente quedó inactivo');
           }}
+        />
+      )}
+
+      {comiteDocente !== null && (
+        <BancoDocenteComiteIncorporacionModal
+          docente={comiteDocente}
+          onClose={() => setComiteDocente(null)}
+          onSaved={(resultado) => {
+            setComiteDocente(null);
+            loadData();
+            showToast(resultado === 'FAVORABLE' ? 'Decisión registrada: el docente quedó Apto para incorporación / Activo' : 'Decisión no favorable registrada');
+          }}
+        />
+      )}
+
+      {recategorizarDocente !== null && (
+        <BancoDocenteRecategorizacionModal
+          docente={recategorizarDocente}
+          onClose={() => setRecategorizarDocente(null)}
+          onChanged={(mensaje) => { loadData(); showToast(mensaje); }}
         />
       )}
 
