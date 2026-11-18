@@ -23,6 +23,10 @@ export class Garantia {
   @Column({ name: 'numero_poliza', length: 80 })
   numeroPoliza: string;
 
+  /** Qué clase de garantía es (145). Nula en las registradas antes. */
+  @Column({ name: 'tipo_poliza', type: 'varchar', length: 60, nullable: true })
+  tipoPoliza: string | null;
+
   /** La póliza como documento; aprobar sin verla no tendría sentido. */
   @Column({ name: 'documento_id' })
   documentoId: string;

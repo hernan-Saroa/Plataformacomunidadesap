@@ -344,6 +344,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-171-${CORRIDA}-${n}`,
         amparos: [
           {

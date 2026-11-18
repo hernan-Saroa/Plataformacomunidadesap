@@ -351,6 +351,7 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-172-${CORRIDA}-${n}`,
         amparos: [
           {
