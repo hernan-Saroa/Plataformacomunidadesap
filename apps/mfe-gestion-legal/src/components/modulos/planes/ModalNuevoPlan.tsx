@@ -17,7 +17,8 @@ interface ModalNuevoPlanProps {
 }
 
 export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps) {
-    const { entesControl } = useConfiguracionesSIGL();
+    const { getEntesControlPMActivos } = useConfiguracionesSIGL();
+    const entesControl = getEntesControlPMActivos();
     const [loading, setLoading] = useState(false);
 
     // Data Sources
@@ -121,7 +122,7 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
                                         <SelectValue placeholder="Seleccionar ente..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {entesControl.filter(e => e.activo).map(ente => (
+                                        {entesControl.map(ente => (
                                             <SelectItem key={ente.id} value={ente.id}>
                                                 {ente.nombre}
                                             </SelectItem>
