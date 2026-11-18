@@ -5,7 +5,7 @@ import {
   Package, PackageX, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download, FileSpreadsheet,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
-  User, ThumbsDown, Star, UploadCloud, Database, Info, X, ShoppingCart,
+  User, ThumbsDown, Star, UploadCloud, Database, Info, ShoppingCart, CheckCircle2,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -209,6 +209,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [filtroContratacion, setFiltroContratacion] = useState<string>('TODAS');
   const [busquedaTexto, setBusquedaTexto] = useState<string>('');
   const [paginaActual, setPaginaActual] = useState<number>(1);
+
+  // RF-INF-014: Solicitudes de emergencia crítica pendientes de confirmación
+  const emergenciasPendientes = useMemo(() => {
+    const estadosCerrados = ['COMPLETADA', 'RESUELTO', 'CERRADA', 'CERRADA_SIN_RESPUESTA', 'CERRADA_POR_USUARIO', 'CERRADA_SIN_ATENCION', 'ANULADA', 'CANCELADA'];
+    return (mantenimientos || []).filter(
+      (m) => m.esEmergenciaCritica && !m.emergenciaConfirmada && !estadosCerrados.includes(String(m.estado || '').toUpperCase())
+    );
+  }, [mantenimientos]);
 
   useEffect(() => {
     let cancelado = false;
@@ -649,6 +657,39 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         </div>
       ) : (
         <div className="p-6 space-y-4">
+        {/* RF-INF-014: Banner Circuito de Emergencias Críticas */}
+        {emergenciasPendientes.length > 0 && (
+          <div className="rounded-2xl border-2 border-red-300 bg-red-50/95 p-4 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-red-950 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-red-600 text-white shrink-0 shadow-xs">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-black text-sm uppercase tracking-wide text-red-900">
+                    Circuito de Emergencias Críticas Activo
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-200 text-red-900 border border-red-300">
+                    RF-INF-014
+                  </span>
+                </div>
+                <p className="text-xs text-red-800 mt-1">
+                  Hay <strong>{emergenciasPendientes.length}</strong> solicitud(es) con reporte de emergencia pendientes de acuse y confirmación formal por Coordinación GIM.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end md:self-center">
+              <button
+                type="button"
+                onClick={() => setFiltroPrioridad('URGENTE')}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 shadow-xs transition"
+              >
+                Filtrar Emergencias ({emergenciasPendientes.length})
+              </button>
+            </div>
+          </div>
+        )}
+
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
@@ -838,18 +879,41 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                           </span>
                         )}
                     </span>
-                    {esVencida && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-sm ring-2 ring-rose-200">
-                        <AlertTriangle className="w-3 h-3 text-white" />
-                        Vencida
-                      </span>
-                    )}
                     <span
                       className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${clasePrioridad(m.prioridad || 'MEDIA')}`}
                     >
                       <AlertTriangle className="w-3 h-3" />
                       Prioridad {m.prioridad || 'MEDIA'}
                     </span>
+                    {/* RF-INF-014: Badges de Emergencia Crítica y Alerta 70% ANS */}
+                    {m.esEmergenciaCritica && (
+                      m.emergenciaConfirmada ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300"
+                          title={`Emergencia confirmada por ${m.emergenciaConfirmadaPor || 'Coordinación'}`}
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Emergencia Confirmada
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-xs animate-pulse"
+                          title="Emergencia crítica pendiente de confirmación formal por Coordinación GIM (RF-INF-014)"
+                        >
+                          <AlertTriangle className="w-3 h-3 text-white" />
+                          Emergencia Crítica
+                        </span>
+                      )
+                    )}
+                    {m.alerta70Emitida && !esVencida && sla.clase !== 'vencido' && !estadoFinalizado && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-500 text-white shadow-xs"
+                        title="Alerta preventiva: Solicitud en umbral del 70% ANS - Requiere intervención antes de vencer (RF-INF-014)"
+                      >
+                        <Clock className="w-3 h-3 text-white" />
+                        Alerta 70% ANS
+                      </span>
+                    )}
                     <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       {m.tipoMantenimiento}
                     </span>
@@ -872,24 +936,11 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                         Atención {m.tipoAtencion}
                       </span>
                     )}
-                    {(() => {
-                      const b = badgeAreaResp(m.areaResponsableActual);
-                      return (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${b.clase}`}>
-                          {b.label}
-                        </span>
-                      );
-                    })()}
-                    {Number.isInteger(m.idCategoria) && (() => {
-                      const cat = mapIdCategoria.get(m.idCategoria as number);
-                      if (!cat) return null;
-                      const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-                      return (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
-                          {cat.nombre}
-                        </span>
-                      );
-                    })()}
+                    {(m.areaResponsableActual || '').toUpperCase() === 'TI' && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-100 text-sky-800 border-sky-200">
+                        Resp: TI
+                      </span>
+                    )}
                     {numEvidencias > 0 && (
                       <button
                         type="button"
