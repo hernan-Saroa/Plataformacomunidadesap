@@ -21,6 +21,8 @@ import {
   Tag,
   Globe,
   ShieldCheck,
+  Upload,
+  Paperclip,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -117,6 +119,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [nombreFuncionarioBienAsignado, setNombreFuncionarioBienAsignado] = useState<string>('');
   const [placaInventarioBien, setPlacaInventarioBien] = useState<string>('');
   const [soporteBienAsignadoUrl, setSoporteBienAsignadoUrl] = useState<string>('');
+  const [archivoSoporteBien, setArchivoSoporteBien] = useState<File | null>(null);
 
   const [archivos, setArchivos] = useState<ArchivoPendiente[]>([]);
   const [arrastrando, setArrastrando] = useState<boolean>(false);
@@ -551,6 +554,24 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
           ...archivos.flatMap((a) => (a.evidencia?.idEvidencia ? [a.evidencia.idEvidencia] : [])),
         ]),
       ).filter((x): x is string => !!x);
+
+      let soporteUrlFinal = soporteBienAsignadoUrl.trim();
+      if (esBienAsignadoFuncionario && archivoSoporteBien) {
+        try {
+          const evSoporte = await infraestructuraService.uploadEvidencia(archivoSoporteBien, {
+            notas: 'soporte_bien_asignado',
+          });
+          if (evSoporte) {
+            if (evSoporte.idEvidencia) {
+              uploadedEvidenciaIds.push(evSoporte.idEvidencia);
+            }
+            soporteUrlFinal = evSoporte.urlPresigned || evSoporte.urlPublica || soporteUrlFinal;
+          }
+        } catch (errUploadSoporte) {
+          console.warn('Error al subir soporte de bien asignado:', errUploadSoporte);
+        }
+      }
+
       const payload: CreateMantenimientoPayload = {
         ...(ambitoUbicacion === 'CENTRAL'
           ? { idSede }
@@ -575,7 +596,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         esBienAsignadoFuncionario,
         nombreFuncionarioBienAsignado: esBienAsignadoFuncionario ? nombreFuncionarioBienAsignado.trim() : undefined,
         placaInventarioBien: esBienAsignadoFuncionario ? placaInventarioBien.trim() : undefined,
-        soporteBienAsignadoUrl: esBienAsignadoFuncionario && soporteBienAsignadoUrl.trim() ? soporteBienAsignadoUrl.trim() : undefined,
+        soporteBienAsignadoUrl: esBienAsignadoFuncionario && soporteUrlFinal ? soporteUrlFinal : undefined,
       };
       const resultado = await infraestructuraService.createMantenimiento(payload);
       archivos.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
@@ -1313,7 +1334,10 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       <UserCheck className="w-5 h-5" />
                     </div>
                     <div>
-                      <label htmlFor="toggle-bien-funcionario" className="text-sm font-semibold text-slate-800 cursor-pointer select-none">
+                      <label
+                        onClick={() => setEsBienAsignadoFuncionario((prev) => !prev)}
+                        className="text-sm font-semibold text-slate-800 cursor-pointer select-none"
+                      >
                         ¿El mantenimiento se realiza sobre un bien asignado a un funcionario?
                       </label>
                       <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
@@ -1321,16 +1345,28 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       </p>
                     </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                    <input
-                      id="toggle-bien-funcionario"
-                      type="checkbox"
-                      checked={esBienAsignadoFuncionario}
-                      onChange={(e) => setEsBienAsignadoFuncionario(e.target.checked)}
-                      className="sr-only peer"
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={esBienAsignadoFuncionario}
+                    onClick={() => setEsBienAsignadoFuncionario((prev) => !prev)}
+                    style={{
+                      backgroundColor: esBienAsignadoFuncionario ? '#ea580c' : '#cbd5e1',
+                      borderColor: esBienAsignadoFuncionario ? '#c2410c' : '#94a3b8',
+                    }}
+                    className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500/40 mt-1 shadow-inner ${
+                      esBienAsignadoFuncionario ? 'bg-orange-600 border-orange-700' : 'bg-slate-300 border-slate-400'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        transform: esBienAsignadoFuncionario ? 'translateX(22px)' : 'translateX(2px)',
+                        transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+                      }}
+                      className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md ring-0"
                     />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
-                  </label>
+                  </button>
                 </div>
 
                 {esBienAsignadoFuncionario && (
@@ -1375,21 +1411,71 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       {errorCampo('placaInventarioBien')}
                     </div>
 
-                    <div className="md:col-span-2">
-                      <label className={labelClase}>
-                        <span className="inline-flex items-center gap-1.5">
-                          <Link2 className="w-3.5 h-3.5 text-slate-400" />
-                          Enlace / Soporte de entrega o asignación
-                        </span>
-                        <span className="text-slate-400 font-normal ml-2">(opcional)</span>
-                      </label>
-                      <input
-                        type="url"
-                        value={soporteBienAsignadoUrl}
-                        onChange={(e) => setSoporteBienAsignadoUrl(e.target.value)}
-                        placeholder="https://drive.google.com/... o enlace a acta de entrega"
-                        className={inputClase('soporteBienAsignadoUrl')}
-                      />
+                    <div className="md:col-span-2 space-y-3">
+                      <div>
+                        <label className={labelClase}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Link2 className="w-3.5 h-3.5 text-slate-400" />
+                            Enlace / Soporte de entrega o asignación
+                          </span>
+                          <span className="text-slate-400 font-normal ml-2">(opcional si adjunta archivo abajo)</span>
+                        </label>
+                        <input
+                          type="url"
+                          value={soporteBienAsignadoUrl}
+                          onChange={(e) => setSoporteBienAsignadoUrl(e.target.value)}
+                          placeholder="https://drive.google.com/... o enlace a acta de entrega"
+                          className={inputClase('soporteBienAsignadoUrl')}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className={labelClase}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-slate-400" />
+                            Anexo / Soporte Documental del Bien (PDF o Imagen)
+                          </span>
+                          <span className="text-slate-400 font-normal ml-2">(opcional)</span>
+                        </label>
+
+                        {archivoSoporteBien ? (
+                          <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50/80 border border-amber-200">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Paperclip className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span className="text-xs font-semibold text-amber-900 truncate">
+                                {archivoSoporteBien.name}
+                              </span>
+                              <span className="text-[10px] text-amber-600 shrink-0">
+                                ({(archivoSoporteBien.size / 1024).toFixed(1)} KB)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setArchivoSoporteBien(null)}
+                              className="p-1 rounded-lg hover:bg-amber-100 text-amber-700 transition-colors"
+                              title="Quitar archivo"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-amber-400 bg-slate-50/50 hover:bg-amber-50/30 cursor-pointer transition-all">
+                            <Upload className="w-4 h-4 text-slate-500" />
+                            <span className="text-xs font-medium text-slate-600">
+                              Adjuntar PDF, oficio, acta de entrega o constancia (PNG/JPG)
+                            </span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.png,.jpg,.jpeg"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) setArchivoSoporteBien(file);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
