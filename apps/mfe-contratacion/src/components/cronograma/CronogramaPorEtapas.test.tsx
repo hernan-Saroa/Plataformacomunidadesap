@@ -29,10 +29,16 @@ const cronograma = (cambios: Record<number, Record<string, unknown>> = {}) => ({
   etapas: [5, 6, 7, 8, 9, 10].map((n) => etapa(n, cambios[n])),
 });
 
-/** Cronograma por etapas macro de la 5.2 (135): opcional, con alertas. */
+const conPredeterminadas = (etapas: number[]) =>
+  vi
+    .spyOn(contratacionService, 'predeterminadoDelProceso')
+    .mockResolvedValue({ modalidad: 'X', modalidadNombre: 'X', etapas, numerales: [], propias: [] } as never);
+
+/** Cronograma por etapas macro de la 5.2 (135): opcional, con alertas; desde la 144, solo lo predeterminado. */
 describe('CronogramaPorEtapas', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    conPredeterminadas([]);
   });
 
   it('se presenta como opcional y sin etapas programadas no pide nada', async () => {
@@ -57,9 +63,24 @@ describe('CronogramaPorEtapas', () => {
     expect(await screen.findByText('Cumplida')).toBeInTheDocument();
     expect(screen.getByText('Vencida hace 2 días')).toBeInTheDocument();
     expect(screen.getByText('Faltan 4 días')).toBeInTheDocument();
+    expect(screen.queryByText(/Nombre 9/)).not.toBeInTheDocument();
+  });
+
+  it('al editar solo salen las predeterminadas; las demás se agregan del desplegable', async () => {
+    conPredeterminadas([6]);
+    vi.spyOn(contratacionService, 'cronograma').mockResolvedValue(cronograma() as never);
+    render(<CronogramaPorEtapas procesoId="p-1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Programar las etapas/ }));
+    expect(screen.getByLabelText('Fin de la etapa 6')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fin de la etapa 8')).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Agregar una etapa al cronograma'), '8');
+    expect(screen.getByLabelText('Fin de la etapa 8')).toBeInTheDocument();
   });
 
   it('no deja guardar un inicio sin fin', async () => {
+    conPredeterminadas([6]);
     vi.spyOn(contratacionService, 'cronograma').mockResolvedValue(cronograma() as never);
     render(<CronogramaPorEtapas procesoId="p-1" />);
 
@@ -70,15 +91,19 @@ describe('CronogramaPorEtapas', () => {
     expect(screen.getByRole('button', { name: /Guardar el cronograma/ })).toBeDisabled();
   });
 
-  it('guarda todas las etapas, con nulo en las que no se programan', async () => {
-    vi.spyOn(contratacionService, 'cronograma').mockResolvedValue(cronograma() as never);
+  it('guarda todas las etapas, con nulo en las que no se programan o se quitan', async () => {
+    conPredeterminadas([6, 7]);
+    vi.spyOn(contratacionService, 'cronograma').mockResolvedValue(
+      cronograma({ 7: { fechaFin: '2026-12-15', estado: 'VIGENTE', diasRestantes: 40 } }) as never,
+    );
     const guardar = vi
       .spyOn(contratacionService, 'guardarCronograma')
       .mockResolvedValue(cronograma({ 6: { fechaFin: '2026-11-30', estado: 'VIGENTE', diasRestantes: 32 } }) as never);
     render(<CronogramaPorEtapas procesoId="p-1" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Programar las etapas/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Editar el cronograma/ }));
     await userEvent.type(screen.getByLabelText('Fin de la etapa 6'), '2026-11-30');
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar la etapa 7 del cronograma' }));
     await userEvent.click(screen.getByRole('button', { name: /Guardar el cronograma/ }));
 
     const enviadas = guardar.mock.calls[0][1];

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -34,12 +34,12 @@ export class CronogramaController {
   @Get('predeterminado')
   @Puede('ver', '5.2')
   @ApiOperation({
-    summary: 'Propuesta del cronograma predeterminado de la modalidad del proceso',
+    summary: 'Qué etapas y actividades salen por defecto en el cronograma del proceso',
     description:
-      'Con el día cero dado, las fechas que salen del cronograma predeterminado de la modalidad (140). No guarda nada: la 5.2 las carga en el formulario para revisarlas.',
+      'Según la modalidad del proceso (140, sin plazos desde la 144). Sin fechas: la 5.2 lo usa para mostrar de entrada solo eso.',
   })
-  propuesta(@Param('id', ParseUUIDPipe) procesoId: string, @Query('desde') desde: string) {
-    return this.predeterminado.propuesta(procesoId, desde);
+  predeterminadoDelProceso(@Param('id', ParseUUIDPipe) procesoId: string) {
+    return this.predeterminado.delProceso(procesoId);
   }
 
   @Put()
