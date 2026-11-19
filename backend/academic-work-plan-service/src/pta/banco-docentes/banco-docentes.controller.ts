@@ -19,9 +19,11 @@ import { RundNucleosService } from './rund-nucleos.service';
 import { isTechnicalRundSupport } from './rund-expediente';
 import { rundDocumentalEnabled } from './rund-documental-feature';
 import { evidenceGroup, validateEvidenceType } from './rund-evidence-workflow';
+import { RUND_MAX_ARCHIVO_BYTES } from './rund-limites';
 import { standaloneSupportCategory } from './rund-evidence-data';
-import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
-import { RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
+import { RundCarpetasConfigService } from './rund-carpetas-config';
+import { RequireRundPermissions, RundReadOnlyAccess, RUND_PERMISSIONS } from './rund-permissions';
+import { isRundReadOnly, RUND_INCORPORATION_SUPPORTS } from './rund-permission-policy';
 import {
   canViewRundSensitiveData,
   findRundSensitiveFields,
@@ -33,7 +35,7 @@ import {
 
 const RUND_DOCUMENT_UPLOAD_OPTIONS = {
   storage: memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  limits: { fileSize: RUND_MAX_ARCHIVO_BYTES, files: 1 },
 };
 
 const RUND_BULK_UPLOAD_OPTIONS = {
@@ -51,7 +53,13 @@ export class BancoDocentesController {
     private readonly docTypeValidator: DocumentTypeValidatorService,
     @Optional() private readonly documentosService?: RundDocumentosService,
     @Optional() private readonly nucleosService?: RundNucleosService,
+    @Optional() private readonly carpetasConfigService?: RundCarpetasConfigService,
   ) { }
+
+  private get carpetasConfig(): RundCarpetasConfigService {
+    if (!this.carpetasConfigService) throw new Error('El servicio de configuración de carpetas RUND no está disponible.');
+    return this.carpetasConfigService;
+  }
 
   private get documentos(): RundDocumentosService {
     if (!this.documentosService) throw new Error('El servicio documental RUND no está disponible.');
@@ -99,6 +107,22 @@ export class BancoDocentesController {
       // Consultar/administrar RUND no autoriza a revelar datos sensibles.
       fullAccess: canViewRundSensitiveData(req?.user, req?.rundPermissions),
     };
+  }
+
+  private isReadOnlyRequest(req: any): boolean {
+    return !getRequestRoleCodes(req?.user).includes('SUPER_ADMIN') && isRundReadOnly(req?.rundPermissions);
+  }
+
+  /** CA-07: rechaza y deja constancia cuando el perfil de solo lectura intenta una acción no permitida. */
+  private async rejectReadOnly(req: any, accion: string, docenteId: string, message: string): Promise<never> {
+    const actor = this.requestActor(req);
+    try {
+      await this.service.logSensitiveResourceAccess({ ...actor, endpoint: `INTENTO_NO_PERMITIDO_SOLO_LECTURA ${accion}`,
+        resourceId: docenteId, docenteIds: [docenteId], fields: ['OPERACION_NO_PERMITIDA'], result: 'DENEGADO' });
+    } catch (error) {
+      this.logger.warn(`No se pudo registrar el intento no permitido de solo lectura: ${(error as Error).message}`);
+    }
+    throw new ForbiddenException(message);
   }
 
   private async protectSensitiveResponse<T>(payload: T, req: any, endpoint: string): Promise<T> {
@@ -164,6 +188,7 @@ export class BancoDocentesController {
   @Get()
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async list(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
@@ -179,6 +204,8 @@ export class BancoDocentesController {
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
     @Query('convocatoria') convocatoria?: string,
+    @Query('clase') clase?: string,
+    @Query('periodoPrueba') periodoPrueba?: string,
   ) {
     const result = await this.service.list({
       territorial,
@@ -192,6 +219,8 @@ export class BancoDocentesController {
       nivelFormacion,
       nucleoTematico,
       convocatoria,
+      clase,
+      periodoPrueba,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -209,6 +238,7 @@ export class BancoDocentesController {
   @Get('stats')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async stats(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
@@ -220,6 +250,8 @@ export class BancoDocentesController {
     @Query('nivelFormacion') nivelFormacion?: string,
     @Query('nucleoTematico') nucleoTematico?: string,
     @Query('convocatoria') convocatoria?: string,
+    @Query('clase') clase?: string,
+    @Query('periodoPrueba') periodoPrueba?: string,
   ) {
     return {
       success: true,
@@ -234,8 +266,34 @@ export class BancoDocentesController {
         nivelFormacion,
         nucleoTematico,
         convocatoria,
+        clase,
+        periodoPrueba,
       }),
     };
+  }
+
+  /** HU 2424 — Alerta: docentes con el año de prueba cumplido y sin decisión del Comité Docente. */
+  @Get('periodo-prueba/alertas')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async alertasPeriodoPrueba() {
+    return { success: true, data: await this.service.getAlertasPeriodoPrueba() };
+  }
+
+  /** Carpetas del expediente que aplican a cada tipo de vinculación. Solo con el permiso de configuración. */
+  @Get('carpetas/configuracion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.CONFIGURE)
+  async carpetasConfiguracion() {
+    return { success: true, data: await this.carpetasConfig.matriz() };
+  }
+
+  @Put('carpetas/configuracion')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.CONFIGURE)
+  async definirCarpetaConfiguracion(@Body() body: { tipoVinculacion: string; bloque: string; activo: boolean }, @Req() req: any) {
+    const data = await this.carpetasConfig.definir(body?.tipoVinculacion, body?.bloque, body?.activo, this.requestActor(req).actorId);
+    return { success: true, data };
   }
 
   @Get('invitaciones')
@@ -308,6 +366,7 @@ export class BancoDocentesController {
   @Get('by-persona/:personaId/tarjeta-rund')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getTarjetaRUNDByPersona(
     @Param('personaId') personaId: string,
     @Query('periodoCarga') periodoCarga?: string,
@@ -506,6 +565,7 @@ export class BancoDocentesController {
 
   @Get('convocatorias')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async convocatorias(@Query('periodoCarga') periodoCarga: string) {
     return { success: true, data: await this.service.getConvocatorias(periodoCarga) };
   }
@@ -550,6 +610,20 @@ export class BancoDocentesController {
     return { success: true, data: { ...protectRundSensitiveData(result, actor.fullAccess), accesoCompleto: actor.fullAccess,
       event: { ...result.event, titulo: !actor.fullAccess && result.event.tipo === 'MASIVO' ? 'Archivo de carga RUND' : result.event.titulo },
     } };
+  }
+
+  /** HU 1355 — filas rechazadas de una carga, para el reporte de errores descargable desde el historial. */
+  @Get('bulk/:cargaId/errores')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  async bulkErrors(@Param('cargaId') cargaId: string, @Req() req?: any) {
+    const errores = await this.service.getBulkErrors(cargaId);
+    const actor = this.requestActor(req);
+    if (errores?.length) await this.service.logSensitiveResourceAccess({ ...actor,
+      endpoint: 'REPORTE_ERRORES_CARGA_RUND', resourceId: cargaId, fields: ['DOCUMENTO_IDENTIDAD'],
+    });
+    const protectedData = protectRundBulkResponse({ errorDetails: errores || [] }, actor.fullAccess);
+    return { success: true, data: { ...protectedData, disponible: errores !== null } };
   }
 
   @Get('bulk/:cargaId/soporte')
@@ -652,6 +726,7 @@ export class BancoDocentesController {
   @Get('documentos/categorias')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getDocumentCategories() {
     return { success: true, data: await this.documentos.listCategories() };
   }
@@ -689,6 +764,7 @@ export class BancoDocentesController {
   @Get(':id/documentos')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getProfileDocuments(
     @Param('id') id: string,
     @Query('categoria') categoria?: string,
@@ -696,6 +772,9 @@ export class BancoDocentesController {
     @Req() req?: any,
   ) {
     await this.assertOwnProfileForDocente(id, undefined, req);
+    if (historial === 'true' && this.isReadOnlyRequest(req)) {
+      await this.rejectReadOnly(req, 'GET documentos?historial=true', id, 'El perfil Consulta RUND no puede ver el historial de documentos.');
+    }
     const data = await this.documentos.list(id, categoria, historial === 'true');
     const actor = this.requestActor(req);
     await this.service.logSensitiveResourceAccess({ ...actor, endpoint: 'LISTAR_ARCHIVOS_PERFIL',
@@ -747,6 +826,7 @@ export class BancoDocentesController {
   @Get(':id/documentos/:documentId/contenido')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getProfileDocumentContent(
     @Param('id') id: string,
     @Param('documentId') documentId: string,
@@ -755,6 +835,9 @@ export class BancoDocentesController {
     @Req() req?: any,
   ) {
     await this.assertOwnProfileForDocente(id, undefined, req);
+    if (download === 'true' && this.isReadOnlyRequest(req)) {
+      await this.rejectReadOnly(req, 'GET documentos/contenido?download=true', id, 'El perfil Consulta RUND puede visualizar los soportes, pero no descargarlos.');
+    }
     const content = await this.documentos.content(id, documentId, this.requestActor(req));
     response.setHeader('Content-Type', content.mimeType);
     response.setHeader('Content-Length', content.buffer.length);
@@ -803,6 +886,7 @@ export class BancoDocentesController {
   @Get(':id')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getById(
     @Param('id') id: string,
     @Query('periodoCarga') periodoCarga: string | undefined,
@@ -862,6 +946,26 @@ export class BancoDocentesController {
   }
 
   /** RUND-013 — Edición de un dato de contacto desde el cabezote (sin soporte; queda auditada). */
+  /** Cambia el nombre de un título de formación desde la tabla de soportes (precargado o adicional). */
+  @Post(':id/titulos-formacion/editar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  async editarTituloFormacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const data = await this.service.editarTituloFormacion(id, { tipoSoporte: body?.tipoSoporte, titulo: body?.titulo, nuevoTitulo: body?.nuevoTitulo, actorId: actor.actorId, ip: actor.ip });
+    return { success: true, data };
+  }
+
+  /** Quita un título de la lista del nivel. El archivo que lo respalda se retira por el flujo documental. */
+  @Post(':id/titulos-formacion/eliminar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.MANAGE)
+  async eliminarTituloFormacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const data = await this.service.eliminarTituloFormacion(id, { tipoSoporte: body?.tipoSoporte, titulo: body?.titulo, actorId: actor.actorId, ip: actor.ip });
+    return { success: true, data };
+  }
+
   @Patch(':id/contacto')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.MANAGE)
@@ -885,6 +989,57 @@ export class BancoDocentesController {
     const actorId = actor.actorId;
     const result = await this.service.cambiarEstado(id, { ...body, actorId, ip: actor.ip });
     return { success: true, data: result };
+  }
+
+  /** HU 2424 — Decisión del Comité Docente sobre el periodo de prueba (solo GGP autorizado, RN-08). */
+  @Post(':id/periodo-prueba/decision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async decisionPeriodoPrueba(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    const result = await this.service.registrarDecisionPeriodoPrueba(id, { ...(body || {}), actorId: actor.actorId, ip: actor.ip });
+    return { success: true, data: result };
+  }
+
+  /** HU 2349 — Decisión del Comité Docente para la incorporación (solo GGP autorizado). */
+  @Post(':id/ciclo/decision-comite')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async decisionComiteIncorporacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.registrarDecisionIncorporacion(id, body || {}, actor.actorId, actor.ip) };
+  }
+
+  /** HU 2349 — Recategorizaciones del docente (la vigente y su historial). */
+  @Get(':id/recategorizaciones')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async listarRecategorizaciones(@Param('id') id: string, @Query('periodoCarga') periodoCarga?: string) {
+    return { success: true, data: await this.service.listarRecategorizaciones(id, periodoCarga) };
+  }
+
+  @Post(':id/recategorizaciones')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async iniciarRecategorizacion(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.iniciarRecategorizacion(id, body || {}, actor.actorId, actor.ip) };
+  }
+
+  @Post(':id/recategorizaciones/:recategorizacionId/revision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async revisarRecategorizacion(@Param('id') id: string, @Param('recategorizacionId') recategorizacionId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.revisarRecategorizacion(id, recategorizacionId, body || {}, actor.actorId, actor.ip) };
+  }
+
+  @Post(':id/recategorizaciones/:recategorizacionId/decision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
+  async decidirRecategorizacion(@Param('id') id: string, @Param('recategorizacionId') recategorizacionId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    return { success: true, data: await this.service.decidirRecategorizacion(id, recategorizacionId, body || {}, actor.actorId, actor.ip) };
   }
 
   @Delete(':id')
@@ -916,6 +1071,7 @@ export class BancoDocentesController {
   @Get(':id/bloques')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getBloques(@Param('id') id: string, @Req() req: any) {
     await this.assertOwnProfileForDocente(id, undefined, req);
     const result = await this.service.getBloques(id,this.requestActor(req).fullAccess);
@@ -973,7 +1129,7 @@ export class BancoDocentesController {
 
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: RUND_MAX_ARCHIVO_BYTES, files: 1 } }))
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.DOCUMENTS_MANAGE, RUND_PERMISSIONS.INCORPORADOR, RUND_PERMISSIONS.MANAGE)
   async vincularSoporte(
@@ -1016,6 +1172,10 @@ export class BancoDocentesController {
     // modo=agregar adds another evidence to the checkpoint; documentoId replaces that exact evidence.
     // Without either, existing callers keep replacing the most recent current file.
     // soporteHistoricoId replaces a legacy evidence that only has a folder file (no document version).
+    // Cargar un diploma sin título previo: el título que escribe el usuario se registra antes de crear el soporte.
+    if (!technical && typeof body.titulo === 'string' && body.titulo.trim()) {
+      await this.service.registrarTituloDesdeSoporte(id, { tipoSoporte: body.tipoSoporte, titulo: body.titulo, actorId: actor.actorId, ip: actor.ip });
+    }
     const adding = !technical && body.modo === 'agregar';
     const legacySupportId = !technical && !adding && typeof body.soporteHistoricoId === 'string' ? body.soporteHistoricoId : undefined;
     // CC, CE and passport share the identity checkpoint, so an exact evidence is matched within its group.
@@ -1071,6 +1231,7 @@ export class BancoDocentesController {
   @Get(':id/activacion')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async verificarActivacion(@Param('id') id: string, @Req() req: any) {
     await this.assertOwnProfileForDocente(id, undefined, req);
     const result = await this.service.verificarActivacion(id);
@@ -1086,6 +1247,7 @@ export class BancoDocentesController {
   @Get(':id/cabezote')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getPerfilCabezote(
     @Param('id') id: string,
     @Query('periodoCarga') periodoCarga: string | undefined,
@@ -1093,6 +1255,11 @@ export class BancoDocentesController {
   ) {
     const cabezote = await this.service.getPerfilCabezote(id, periodoCarga);
     await this.assertOwnProfileByPersona(cabezote.persona_id, periodoCarga, req);
+    if (this.isReadOnlyRequest(req)) {
+      // RN-06: usuario, fecha/hora (createdAt) y docente consultado. No se calla el fallo: sin registro no hay consulta.
+      await this.service.logSensitiveResourceAccess({ ...this.requestActor(req), endpoint: 'CONSULTA_FICHA_RUND_SOLO_LECTURA',
+        resourceId: id, docenteIds: [String(cabezote.docente_id || id)], fields: ['FICHA_DOCENTE'], result: 'COMPLETO' });
+    }
     return { success: true, data: await this.protectSensitiveResponse(cabezote, req, 'CABEZOTE_PERFIL_RUND') };
   }
 
@@ -1100,6 +1267,7 @@ export class BancoDocentesController {
   @Get(':id/tarjeta-rund')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  @RundReadOnlyAccess()
   async getTarjetaRUND(@Param('id') id: string, @Req() req: any) {
     try {
       const result = await this.service.getTarjetaRUND(id);

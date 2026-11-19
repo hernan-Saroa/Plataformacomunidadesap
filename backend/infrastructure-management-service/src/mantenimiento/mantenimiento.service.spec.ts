@@ -2274,7 +2274,7 @@ describe('[EFDS-1736] Cierre técnico (cerrarTecnicamente)', () => {
     expect(saved.asignaciones?.[0]?.accion).toBe('CIERRE_TECNICO');
   });
 
-  it('cerrarTecnicamente fechaLimiteConformidad = ~72h después de fechaCierreTecnico', async () => {
+  it('cerrarTecnicamente fechaLimiteConformidad calculada dinamicamente segun parametro (5 dias habiles por defecto)', async () => {
     const sol = { idSolicitud: 'SOL-CIERRE-5', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
     const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
     const antes = new Date();
@@ -2284,9 +2284,9 @@ describe('[EFDS-1736] Cierre técnico (cerrarTecnicamente)', () => {
       costoFinalEfectivoCop: 0,
     }, userTecnico);
     const despues = new Date();
-    const diff72h = new Date(new Date(r.fechaCierreTecnico).getTime() + 72 * 3600 * 1000).getTime();
+    const limiteEsperado = await servicio.calcularFechaLimiteConformidad(new Date(r.fechaCierreTecnico));
     const limite = new Date(r.fechaLimiteConformidad).getTime();
-    expect(limite).toBe(diff72h);
+    expect(limite).toBe(limiteEsperado.getTime());
     expect(new Date(r.fechaCierreTecnico).getTime()).toBeGreaterThanOrEqual(antes.getTime());
     expect(new Date(r.fechaCierreTecnico).getTime()).toBeLessThanOrEqual(despues.getTime());
   });
@@ -2566,7 +2566,7 @@ describe('[EFDS-1737] Conformidad Área Solicitante (confirmar/rechazar/batch)',
     await expect(servicio.ejecutarCierresSinRespuestaVencidos(userSolicitante)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('ejecutarCierresSinRespuestaVencidos OK SUPER_ADMIN filtra vencidas y marca CERRADA_SIN_ATENCION resultado SIN_RESPUESTA', async () => {
+  it('ejecutarCierresSinRespuestaVencidos OK SUPER_ADMIN filtra vencidas y marca CERRADA_SIN_RESPUESTA resultado SIN_RESPUESTA', async () => {
     const vencida1 = cerradaTecnico({ idSolicitud: 'V-1', fechaLimiteConformidad: new Date(Date.now() - 24 * 3600 * 1000), asignaciones: [] });
     const vencida2 = cerradaTecnico({ idSolicitud: 'V-2', fechaLimiteConformidad: new Date(Date.now() - 10 * 60 * 1000), asignaciones: [] });
     const noVencida = cerradaTecnico({ idSolicitud: 'V-3', fechaLimiteConformidad: new Date(Date.now() + 10 * 24 * 3600 * 1000), asignaciones: [] });
@@ -2588,7 +2588,7 @@ describe('[EFDS-1737] Conformidad Área Solicitante (confirmar/rechazar/batch)',
     expect(save).toHaveBeenCalledTimes(2);
     const salvados = save.mock.calls.map((c) => c[0]);
     for (const s2 of salvados) {
-      expect(s2.estado).toBe('CERRADA_SIN_ATENCION');
+      expect(s2.estado).toBe('CERRADA_SIN_RESPUESTA');
       expect(s2.resultadoConformidad).toBe('SIN_RESPUESTA');
       expect(s2.fechaConformidad).toBeDefined();
     }

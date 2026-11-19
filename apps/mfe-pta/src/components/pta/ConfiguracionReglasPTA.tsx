@@ -20,6 +20,7 @@ import {
   BarChart3,
   Eye,
   X,
+  Link2,
 } from "lucide-react";
 import { getConfiguracionPTAGlobal, getConfiguracionPTAAdministracion, updateConfiguracionPTAGlobal } from "../../services/api/ptaApi";
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,6 +30,10 @@ import { TabExtension } from "./config-tabs/TabExtension";
 import { TabDocencia } from './config-tabs/TabDocencia';
 import { TabComplementarias } from "./config-tabs/TabComplementarias";
 import { TabGenerales } from "./config-tabs/TabGenerales";
+import { TabInteroperabilidad } from './config-tabs/TabInteroperabilidad';
+
+/** Permiso del interruptor de interoperabilidad con Programación Académica (migración 690, EFDS-2435). */
+const PTA_INTEROPERABILIDAD_PERMISSION = 'pta.backoffice.interoperabilidad';
 
 // Ítem dentro de una actividad de extensión (etapa)
 export interface ExtItem {
@@ -1289,6 +1294,7 @@ function ConfiguracionReglasPTAEditor({ onClose }: { onClose?: () => void }) {
   const [guardado, setGuardado] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState("generales");
+  const authEditor = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [showRollbackModal, setShowRollbackModal] = useState(false);
@@ -1324,6 +1330,13 @@ function ConfiguracionReglasPTAEditor({ onClose }: { onClose?: () => void }) {
       icon: Calculator,
       desc: "Apoyo interno (Tabla 14)",
     },
+    // EFDS-2435: solo quien tiene el permiso propio; el servidor también lo exige.
+    ...(authEditor.hasPermission(PTA_INTEROPERABILIDAD_PERMISSION) ? [{
+      id: "interoperabilidad",
+      label: "Interoperabilidad",
+      icon: Link2,
+      desc: "Docencia Directa: Programación Académica o manual",
+    }] : []),
   ];
 
   useEffect(() => {
@@ -1799,6 +1812,7 @@ function ConfiguracionReglasPTAEditor({ onClose }: { onClose?: () => void }) {
           {activeTab === "investigacion" && <TabInvestigacion draft={draft} handleChange={handleChange} />}
           {activeTab === "extension" && <TabExtension draft={draft} handleChange={handleChange} />}
           {activeTab === "complementarias" && <TabComplementarias draft={draft} handleChange={handleChange} />}
+          {activeTab === "interoperabilidad" && authEditor.hasPermission(PTA_INTEROPERABILIDAD_PERMISSION) && <TabInteroperabilidad />}
 
         </div>
       </div>

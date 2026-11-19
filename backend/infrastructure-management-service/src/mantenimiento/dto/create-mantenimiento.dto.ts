@@ -109,6 +109,11 @@ export class CreateMantenimientoDto {
   @IsOptional()
   prioridad?: string;
 
+  @ApiPropertyOptional({ example: false, description: 'RF-INF-014: Indica si la solicitud se cataloga como emergencia crítica con riesgo estructural o humano' })
+  @IsBoolean()
+  @IsOptional()
+  esEmergenciaCritica?: boolean;
+
   // ===== EFDS-1735..1739 Fase 3: Bien Asignado a Funcionario =====
   @ApiPropertyOptional({ example: false, description: 'Indica si el mantenimiento afecta un bien asignado a un funcionario específico.' })
   @IsOptional()
@@ -502,25 +507,35 @@ export class RegistrarVoBoDto {
 }
 
 export class VincularTramiteContractualDto {
-  @ApiProperty({ example: 'ESAP-SAMC-014-2026', description: 'Número o identificador del proceso contractual / SECOP II.' })
-  @IsNotEmpty({ message: 'El número de proceso contractual es obligatorio.' })
+  @ApiPropertyOptional({ example: 'ESAP-SAMC-014-2026', description: 'Número o identificador del proceso o trámite contractual.' })
+  @IsOptional()
   @IsString()
-  procesoContractual: string;
+  procesoContractual?: string;
 
-  @ApiPropertyOptional({ example: '2026-ER-009845', description: 'Radicado Orfeo de remisión a Contratación.' })
+  @ApiPropertyOptional({ example: '2026-ER-009845', description: 'Radicado Orfeo de remisión o documento oficial.' })
   @IsOptional()
   @IsString()
   radicadoOrfeo?: string;
 
-  @ApiPropertyOptional({ example: 45000000, description: 'Presupuesto oficial estimado en COP.' })
+  @ApiPropertyOptional({ example: 45000000, description: 'Presupuesto o costo estimado en COP.' })
   @IsOptional()
   @IsNumber()
   presupuestoEstimadoCop?: number;
 
-  @ApiPropertyOptional({ example: 'Estudios previos y diagnóstico avalados por Coordinación GIM.', description: 'Observaciones de la gestión contractual.' })
+  @ApiPropertyOptional({ example: 'Estudios previos y diagnóstico avalados por Coordinación GIM.', description: 'Observaciones o notas de la gestión contractual.' })
   @IsOptional()
   @IsString()
   observaciones?: string;
+
+  @ApiPropertyOptional({ example: 'anexo_contrato.pdf', description: 'Nombre del anexo o soporte documental.' })
+  @IsOptional()
+  @IsString()
+  anexoNombre?: string;
+
+  @ApiPropertyOptional({ example: 'https://...', description: 'URL del anexo o soporte documental.' })
+  @IsOptional()
+  @IsString()
+  anexoUrl?: string;
 }
 
 
@@ -534,4 +549,14 @@ export class MarcarRequiereContratacionDto {
   @IsOptional()
   @IsString()
   insumosRequeridos?: string;
+}
+
+export class ConfirmarEmergenciaDto {
+  @ApiPropertyOptional({
+    example: 'Se activó cuadrilla inmediata de mitigación y se aisló el área.',
+    description: 'Notas u observaciones del acuse de recibo de la emergencia por parte del Coordinador GIM.',
+  })
+  @IsOptional()
+  @IsString()
+  notas?: string;
 }

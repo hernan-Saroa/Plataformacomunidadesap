@@ -212,6 +212,7 @@ const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
   'COMPLETADA',
   'CERRADA',
   'CERRADA_SIN_ATENCION',
+  'CERRADA_SIN_RESPUESTA',
   'RECHAZADA',
 ];
 
@@ -228,9 +229,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [evidenciasEndpoint, setEvidenciasEndpoint] = useState<SolicitudEvidencia[]>([]);
   const [remisiones, setRemisiones] = useState<Array<Record<string, any>>>([]);
   const [cargando, setCargando] = useState(false);
+  const [ahoraMs, setAhoraMs] = useState<number>(Date.now());
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
   const [catalogoCSLocal, setCatalogoCSLocal] = useState<CatalogoItem[]>([]);
+  const catalogoCSRef = useRef(catalogoCS);
+  catalogoCSRef.current = catalogoCS;
 
   const [mostrarRemitir, setMostrarRemitir] = useState<boolean>(false);
   const [remitirMotivo, setRemitirMotivo] = useState<string>('');
@@ -301,12 +305,13 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
 
   
 
-  // Fase 3: Visto Bueno (VoBo)
+  // Fase 3: Visto Bueno (VoBo) y Trazabilidad Contractual
   const [mostrarModalTramiteContractual, setMostrarModalTramiteContractual] = useState<boolean>(false);
   const [procesoContractualInput, setProcesoContractualInput] = useState<string>('');
   const [radicadoOrfeoInput, setRadicadoOrfeoInput] = useState<string>('');
   const [presupuestoContratoInput, setPresupuestoContratoInput] = useState<string>('');
   const [observacionesContratoInput, setObservacionesContratoInput] = useState<string>('');
+  const [archivoAnexoContrato, setArchivoAnexoContrato] = useState<File | null>(null);
   const [enviandoTramiteContractual, setEnviandoTramiteContractual] = useState<boolean>(false);
   const [errorTramiteContractual, setErrorTramiteContractual] = useState<string>('');
   const [voboConfigModal, setVoboConfigModal] = useState<{ modalidadVoBo?: 'UN_ACTOR' | 'DOS_ACTORES' } | null>(null);
@@ -423,6 +428,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [mostrarDetalleValoracion, setMostrarDetalleValoracion] = useState<boolean>(false);
   const [idValoracionAbierta, setIdValoracionAbierta] = useState<string | null>(null);
   const [idValoracionSeleccionada, setIdValoracionSeleccionada] = useState<string | null>(null);
+  const [forzarEditableValoracion, setForzarEditableValoracion] = useState<boolean>(false);
 
   const [ejecutandoInicioDirecto, setEjecutandoInicioDirecto] = useState<boolean>(false);
 
@@ -458,6 +464,35 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     setForzarEdicionReaperturaCierre(false);
     await recargarDetalle();
     await onCambioExitoso?.();
+  };
+
+  // ---------------------------------------------------------------------------
+  // RF-INF-014: Circuito de Emergencias Críticas
+  // ---------------------------------------------------------------------------
+  const [modalConfirmarEmergenciaAbierto, setModalConfirmarEmergenciaAbierto] = useState<boolean>(false);
+  const [notasEmergencia, setNotasEmergencia] = useState<string>('');
+  const [guardandoEmergencia, setGuardandoEmergencia] = useState<boolean>(false);
+  const [errorConfirmarEmergencia, setErrorConfirmarEmergencia] = useState<string>('');
+
+  const handleConfirmarEmergencia = async () => {
+    if (!idSolicitud) return;
+    setGuardandoEmergencia(true);
+    setErrorConfirmarEmergencia('');
+    try {
+      const resp = await infraestructuraService.confirmarEmergenciaCritica(idSolicitud, {
+        notas: notasEmergencia.trim() || undefined,
+      });
+      if (resp) setDetalle(resp);
+      setModalConfirmarEmergenciaAbierto(false);
+      setNotasEmergencia('');
+      setToastModal({ tipo: 'ok', texto: 'Emergencia crítica confirmada formalmente.' });
+      await recargarDetalle();
+      await onCambioExitoso?.();
+    } catch (err: any) {
+      setErrorConfirmarEmergencia(err?.message || 'Error al confirmar la emergencia.');
+    } finally {
+      setGuardandoEmergencia(false);
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -542,7 +577,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           infraestructuraService.getRemisiones(idSolicitud || ''),
           infraestructuraService.listarValoracionesPorSolicitud(idSolicitud),
         ];
-        if (!catalogoCS || catalogoCS.length === 0) {
+        const csActual = catalogoCSRef.current;
+        if (!csActual || csActual.length === 0) {
           tareas.push(infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'));
         }
         if (tecnicosCatalogo.length === 0) {
@@ -560,7 +596,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         const pri = results[idx++];
         const rems = results[idx++];
         const vals = results[idx++];
-        if (!catalogoCS || catalogoCS.length === 0) {
+        if (!csActual || csActual.length === 0) {
           csFallback = results[idx++];
         }
         if (tecnicosCatalogo.length === 0) {
@@ -597,7 +633,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     };
     cargar();
     return () => { cancelado = true; };
-  }, [open, idSolicitud, catalogoCS]);
+  }, [open, idSolicitud]);
 
   const mapEstado = useMemo(() => {
     const m = new Map<string, CatalogoItem>();
@@ -799,14 +835,93 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   }, [toastModal]);
 
   const recargarDetalle = async () => {
-    if (!idSolicitud) return;
+    if (!idSolicitud) return null;
     try {
       const d = await infraestructuraService.getMantenimientoById(idSolicitud);
       setDetalle(d);
+      return d;
     } catch {
       // ignore; keep stale
+      return null;
     }
   };
+
+  // EFDS-1737 / RF-INF-008: Ticker de 1s para refresco de cuenta regresiva en vivo
+  useEffect(() => {
+    if (!open || detalle?.estado !== 'COMPLETADA' || !detalle?.fechaLimiteConformidad) return;
+    setAhoraMs(Date.now());
+    const ticker = setInterval(() => {
+      setAhoraMs(Date.now());
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [open, detalle?.estado, detalle?.fechaLimiteConformidad]);
+
+  const countdownConformidad = useMemo(() => {
+    if (!detalle?.fechaLimiteConformidad) return null;
+    const d = new Date(detalle.fechaLimiteConformidad);
+    if (isNaN(d.getTime())) return null;
+    const ms = d.getTime() - ahoraMs;
+    const totalSeg = Math.floor(ms / 1000);
+    const dias = Math.floor(totalSeg / 86400);
+    const horas = Math.floor((totalSeg % 86400) / 3600);
+    const minutos = Math.floor((totalSeg % 3600) / 60);
+    const segundos = totalSeg % 60;
+    const vencido = totalSeg <= 0;
+
+    if (vencido) {
+      const av = Math.abs(totalSeg);
+      const dv = Math.floor(av / 86400);
+      const hv = Math.floor((av % 86400) / 3600);
+      const mv = Math.floor((av % 3600) / 60);
+      const sv = av % 60;
+      const txt =
+        dv > 0
+          ? `Vencido hace ${dv}d ${hv}h`
+          : hv > 0
+          ? `Vencido hace ${hv}h ${mv}m`
+          : mv > 0
+          ? `Vencido hace ${mv}m ${sv}s`
+          : `Vencido hace ${sv}s`;
+      return { vencido: true, dias: 0, horas: 0, minutos: 0, segundos: 0, texto: txt };
+    }
+
+    if (dias > 0) return { vencido: false, dias, horas, minutos, segundos, texto: `Vence en ${dias}d ${horas}h` };
+    if (horas > 0) return { vencido: false, dias, horas, minutos, segundos, texto: `Vence en ${horas}h ${minutos}m` };
+    if (minutos > 0) return { vencido: false, dias, horas, minutos, segundos, texto: `Vence en ${minutos}m ${segundos}s` };
+    return { vencido: false, dias: 0, horas: 0, minutos: 0, segundos: totalSeg, texto: `Vence en ${totalSeg}s` };
+  }, [detalle?.fechaLimiteConformidad, ahoraMs]);
+
+  // EFDS-1737 / RF-INF-008: Sincronización inmediata y suave al vencer el plazo
+  // Si la solicitud está en COMPLETADA y el tiempo expira, consultar silenciosamente al backend cada 2.5s
+  // y notificar al componente padre una sola vez cuando el estado en el backend cambie efectivamente a CERRADA_SIN_RESPUESTA.
+  useEffect(() => {
+    if (!open || !idSolicitud || detalle?.estado !== 'COMPLETADA') return;
+    if (!countdownConformidad?.vencido) return;
+
+    let cancelado = false;
+    let yaNotificado = false;
+
+    const chequearSincronizacion = async () => {
+      try {
+        const d = await infraestructuraService.getMantenimientoById(idSolicitud);
+        if (cancelado || !d) return;
+        setDetalle(d);
+        if (d.estado !== 'COMPLETADA' && !yaNotificado) {
+          yaNotificado = true;
+          await onCambioExitoso?.();
+        }
+      } catch {
+        // Silencioso; reintentará en el siguiente intervalo
+      }
+    };
+
+    chequearSincronizacion();
+    const poll = setInterval(chequearSincronizacion, 2500);
+    return () => {
+      cancelado = true;
+      clearInterval(poll);
+    };
+  }, [open, idSolicitud, detalle?.estado, countdownConformidad?.vencido]);
 
   const recargarDetalleYEvidencias = async () => {
     if (!idSolicitud) return;
@@ -1002,41 +1117,67 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   };
 
 
-  const ultimoTramiteContractual = useMemo(() => {
+  const historicoTramitesContractuales = useMemo(() => {
     const asigs = Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones : [];
-    const entry = asigs.slice().reverse().find((a: any) => a.accion === 'VINCULACION_TRAMITE_CONTRACTUAL');
-    if (!entry) return null;
-    const parsed = parseJsonSeguro(entry.observaciones);
-    return {
-      ...entry,
-      parsed: parsed || {},
-    };
+    return asigs
+      .filter((a: any) => a.accion === 'VINCULACION_TRAMITE_CONTRACTUAL')
+      .map((entry: any) => ({
+        ...entry,
+        parsed: parseJsonSeguro(entry.observaciones) || {},
+      }))
+      .reverse();
   }, [detalle]);
+
+  const ultimoTramiteContractual = useMemo(() => {
+    return historicoTramitesContractuales[0] || null;
+  }, [historicoTramitesContractuales]);
 
   const handleGuardarTramiteContractual = async () => {
     if (!idSolicitud) return;
-    const proc = procesoContractualInput.trim();
-    if (!proc) {
-      setErrorTramiteContractual('El número de proceso contractual o SECOP II es obligatorio.');
-      return;
-    }
     setEnviandoTramiteContractual(true);
     setErrorTramiteContractual('');
     try {
+      let anexoUrl: string | undefined;
+      let anexoNombre: string | undefined;
+
+      if (archivoAnexoContrato) {
+        try {
+          const ev = await infraestructuraService.uploadEvidencia(archivoAnexoContrato, {
+            idSolicitud,
+            notas: 'anexo_contractual',
+          });
+          anexoUrl = ev.urlPresigned || ev.urlPublica;
+          anexoNombre = ev.nombreOriginal || archivoAnexoContrato.name;
+        } catch {
+          setErrorTramiteContractual('No se pudo subir el archivo de anexo. Revisa el tamaño o formato.');
+          setEnviandoTramiteContractual(false);
+          return;
+        }
+      }
+
+      const proc = procesoContractualInput.trim();
       const presNum = presupuestoContratoInput.trim() ? Number(presupuestoContratoInput.replace(/[^0-9]/g, '')) : undefined;
       await infraestructuraService.vincularTramiteContractual(idSolicitud, {
-        procesoContractual: proc,
+        procesoContractual: proc || undefined,
         radicadoOrfeo: radicadoOrfeoInput.trim() || undefined,
         presupuestoEstimadoCop: presNum && presNum > 0 ? presNum : undefined,
         observaciones: observacionesContratoInput.trim() || undefined,
+        anexoNombre,
+        anexoUrl,
       });
+
       setMostrarModalTramiteContractual(false);
-      setToastModal({ tipo: 'ok', texto: 'Trámite contractual vinculado exitosamente a la solicitud.' });
+      setArchivoAnexoContrato(null);
+      setProcesoContractualInput('');
+      setRadicadoOrfeoInput('');
+      setPresupuestoContratoInput('');
+      setObservacionesContratoInput('');
+      setToastModal({ tipo: 'ok', texto: 'Registro agregado exitosamente a la traza contractual.' });
       if (onCambioExitoso) await onCambioExitoso();
       const actualizado = await infraestructuraService.getMantenimientoById(idSolicitud);
       setDetalle(actualizado);
     } catch (err: any) {
-      setErrorTramiteContractual(err?.message || 'Error al guardar el trámite contractual.');
+      setErrorTramiteContractual(err?.message || 'Error al guardar el registro contractual.');
     } finally {
       setEnviandoTramiteContractual(false);
     }
@@ -1252,6 +1393,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     try {
       const actualizado = await infraestructuraService.iniciarEjecucionDirecta(idSolicitud);
       setDetalle(actualizado);
+      if (onCambioExitoso) await onCambioExitoso();
       setToastModal({ tipo: 'ok', texto: 'Solicitud pasó a En ejecución (sin valoración previa).' });
     } catch (err: any) {
       setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar ejecución directa.' });
@@ -1260,13 +1402,48 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     }
   };
 
+  const [iniciandoValoracion, setIniciandoValoracion] = useState(false);
+
+  const handleIniciarValoracionEnCampo = async () => {
+    if (!detalle || !idSolicitud) return;
+    setIniciandoValoracion(true);
+    setToastModal(null);
+    try {
+      const res = await infraestructuraService.iniciarValoracion(idSolicitud, {});
+      if (res?.solicitud) {
+        setDetalle(res.solicitud);
+      }
+      if (res?.valoracion?.idValoracion) {
+        setIdValoracionAbierta(res.valoracion.idValoracion);
+        setIdValoracionSeleccionada(res.valoracion.idValoracion);
+      }
+      if (idSolicitud) {
+        const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
+        setValoraciones(lista);
+      }
+      if (onCambioExitoso) await onCambioExitoso();
+      setToastModal({
+        tipo: 'ok',
+        texto: 'Solicitud pasó a En campo - Valoración técnica. Diagnóstico en curso.',
+      });
+      setForzarEditableValoracion(true);
+      setMostrarDetalleValoracion(true);
+    } catch (err: any) {
+      setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar valoración en campo.' });
+    } finally {
+      setIniciandoValoracion(false);
+    }
+  };
+
   const handleAbrirValoracionExistente = (v: SolicitudValoracion) => {
+    setForzarEditableValoracion(false);
     setIdValoracionSeleccionada(v.idValoracion);
     setMostrarDetalleValoracion(true);
   };
 
   const handleValoracionSaved = async (r: { solicitud: SolicitudMantenimiento; valoracion: SolicitudValoracion }) => {
     setDetalle(r.solicitud);
+    setForzarEditableValoracion(false);
     if (idSolicitud) {
       const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
       setValoraciones(lista);
@@ -1357,6 +1534,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return true;
   }, [detalle?.estado, detalle?.motivoRechazo, detalle?.asignaciones]);
 
+  const esCerradaSinRespuesta = useMemo(() => {
+    return String(detalle?.estado || '').toUpperCase() === 'CERRADA_SIN_RESPUESTA';
+  }, [detalle?.estado]);
+
   const trazaCierreInsumos = useMemo(() => {
     if (!esCerradaPorFaltaInsumos) return null;
     const asigs = Array.isArray(detalle?.asignaciones) ? detalle!.asignaciones : [];
@@ -1402,14 +1583,14 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     tienePerm('infraestructura.solicitud.edit')
   ) && (puedeAprobarAsignarUMI);
 
-  // Iniciar Ejecución Directa / Registrar Valoración Previa (ASIGNADA):
+  // Iniciar Ejecución Directa / Registrar Valoración Previa (ASIGNADA / EN_CAMPO_VALORACION):
   // SOLO PARA TÉCNICOS (cierre_tecnico o execute_assigned). NUNCA P2 Analista Asignador
   // (él asigna, nunca valora ni ejecuta en campo - ERS L70)
   // NUNCA SOLICITANTE P1.
   const puedeIniciarEjecOValoracion =
     detalle &&
     !esAreaTI &&
-    (estadoActual === 'ASIGNADA') &&
+    ['ASIGNADA', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
     (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'));
 
   const esMantenimientoMayor = Boolean(
@@ -1638,7 +1819,7 @@ const puedeCerrarTecnicamente = Boolean(
   const puedeEditarValoracion = Boolean(
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    (estadoActual === 'ASIGNADA' || estadoActual === 'EN_CAMPO_VALORACION') &&
+    ['ASIGNADA', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
     (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'))
   );
 
@@ -1696,29 +1877,8 @@ const puedeCerrarTecnicamente = Boolean(
   const puedeConfirmarConformidad =
     detalle &&
     estadoActual === 'COMPLETADA' &&
+    !countdownConformidad?.vencido &&
     usuarioEsSolicitanteOAsignador;
-
-  const countdownConformidad = useMemo(() => {
-    if (!detalle?.fechaLimiteConformidad) return null;
-    const d = new Date(detalle.fechaLimiteConformidad);
-    if (isNaN(d.getTime())) return null;
-    const ms = d.getTime() - Date.now();
-    const totalSeg = Math.floor(ms / 1000);
-    const dias = Math.floor(totalSeg / 86400);
-    const horas = Math.floor((totalSeg % 86400) / 3600);
-    const minutos = Math.floor((totalSeg % 3600) / 60);
-    const vencido = totalSeg < 0;
-    if (vencido) {
-      const av = Math.abs(totalSeg);
-      const dv = Math.floor(av / 86400);
-      const hv = Math.floor((av % 86400) / 3600);
-      const txt = dv > 0 ? `Vencido hace ${dv}d ${hv}h` : hv > 0 ? `Vencido hace ${hv}h` : `Vencido hace ${Math.floor(av / 60)}m`;
-      return { vencido: true, dias: 0, horas: 0, minutos: 0, texto: txt };
-    }
-    if (dias > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${dias}d ${horas}h` };
-    if (horas > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${horas}h ${minutos}m` };
-    return { vencido: false, dias, horas, minutos, texto: `Vence en ${Math.max(0, minutos)}m` };
-  }, [detalle?.fechaLimiteConformidad]);
 
   const mostrarBannerPendienteConformidad =
     detalle &&
@@ -1888,15 +2048,23 @@ const puedeCerrarTecnicamente = Boolean(
                       className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shadow-sm ${
                         esCerradaPorFaltaInsumos
                           ? 'bg-rose-100 text-rose-900 border-rose-300'
+                          : esCerradaSinRespuesta
+                          ? 'bg-slate-100 text-slate-700 border-slate-300'
                           : claseEstado(detalle.estado)
                       }`}
                     >
                       {esCerradaPorFaltaInsumos ? (
                         <PackageX className="w-3 h-3 text-rose-700" />
+                      ) : esCerradaSinRespuesta ? (
+                        <Clock className="w-3 h-3 text-slate-600" />
                       ) : (
                         iconoEstado(detalle.estado, 13)
                       )}
-                      {esCerradaPorFaltaInsumos ? 'CERRADA POR FALTA DE INSUMOS' : (detalle.estado || 'RECIBIDA')}
+                      {esCerradaPorFaltaInsumos
+                        ? 'CERRADA POR FALTA DE INSUMOS'
+                        : esCerradaSinRespuesta
+                        ? 'CERRADA – SIN RESPUESTA'
+                        : (detalle.estado || 'RECIBIDA')}
                     </span>
                   )}
                   {detalle && (
@@ -1961,13 +2129,13 @@ const puedeCerrarTecnicamente = Boolean(
                       En espera de insumos
                     </span>
                   )}
-                  {detalle?.clasificacionMantenimiento && (
+                  {(clasificacionMantenimiento || detalle?.clasificacionMantenimiento) && (
                     <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${
-                      detalle.clasificacionMantenimiento === 'MAYOR'
+                      clasificacionMantenimiento === 'MAYOR'
                         ? 'bg-purple-100 text-purple-800 border-purple-200'
                         : 'bg-teal-100 text-teal-800 border-teal-200'
                     }`}>
-                      Mantenimiento {detalle.clasificacionMantenimiento === 'MAYOR' ? 'Mayor' : 'Menor'}
+                      Mantenimiento {clasificacionMantenimiento === 'MAYOR' ? 'Mayor' : 'Menor'}
                     </span>
                   )}
                   {detalle?.requiereContratacion && (
@@ -2055,7 +2223,7 @@ const puedeCerrarTecnicamente = Boolean(
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-black text-purple-900 tracking-tight text-sm">
-                              Subflujo Mantenimiento Mayor / Trámite Precontractual (EFDS-2353 · RF-INF-012)
+                              Subflujo Mantenimiento Mayor / Trámite Precontractual 
                             </h4>
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-black uppercase tracking-wider border border-purple-300">
                               Obras / Contratación
@@ -2065,6 +2233,52 @@ const puedeCerrarTecnicamente = Boolean(
                             Esta solicitud supera la capacidad operativa de la cuadrilla UMI y requiere contratación externa. El responsable asignado debe registrar el <strong>Diagnóstico Técnico</strong> correspondiente. Posteriormente, la Coordinación GIM emite el <strong>Visto Bueno (VoBo)</strong> formal para dar curso al proceso contractual de la ESAP.
                           </p>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RF-INF-014: Circuito de Emergencias Críticas */}
+                  {detalle.esEmergenciaCritica && (
+                    <div className={`rounded-2xl border p-4 shadow-sm animate-in fade-in ${detalle.emergenciaConfirmada ? 'border-emerald-300 bg-emerald-50/70 text-emerald-950' : 'border-red-400 bg-red-50 text-red-950'}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center shadow-xs ${detalle.emergenciaConfirmada ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+                            <AlertTriangle className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${detalle.emergenciaConfirmada ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-600 text-white border-red-700 animate-pulse'}`}>
+                                {detalle.emergenciaConfirmada ? 'Emergencia Crítica Confirmada' : 'Emergencia Crítica Pendiente de Acuse'}
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-500">RF-INF-014</span>
+                            </div>
+                            <p className="text-xs mt-1.5 leading-relaxed text-slate-700">
+                              {detalle.emergenciaConfirmada ? (
+                                <>
+                                  Confirmada por <strong>{detalle.emergenciaConfirmadaPor || 'Coordinación GIM'}</strong>
+                                  {detalle.fechaConfirmacionEmergencia ? ` el ${formatearFecha(detalle.fechaConfirmacionEmergencia)}` : ''}.
+                            </>
+                              ) : (
+                                'Esta solicitud está clasificada como emergencia estructural u operativa prioritaria y requiere acuse y confirmación formal por parte de la Coordinación GIM.'
+                              )}
+                            </p>
+                            {detalle.notasConfirmacionEmergencia && (
+                              <p className="text-xs text-slate-800 italic mt-1.5 bg-white/80 p-2.5 rounded-xl border border-slate-200">
+                                "{detalle.notasConfirmacionEmergencia}"
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {!detalle.emergenciaConfirmada && (
+                          <button
+                            type="button"
+                            onClick={() => setModalConfirmarEmergenciaAbierto(true)}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm flex items-center gap-1.5 transition shrink-0"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Confirmar Emergencia
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2216,15 +2430,21 @@ const puedeCerrarTecnicamente = Boolean(
                           <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider mb-0.5">Soporte / Acta de Entrega</span>
                           {detalle.soporteBienAsignadoUrl ? (
                             <a
-                              href={detalle.soporteBienAsignadoUrl}
+                              href={
+                                detalle.soporteBienAsignadoUrl.startsWith('http') || detalle.soporteBienAsignadoUrl.startsWith('blob:')
+                                  ? detalle.soporteBienAsignadoUrl
+                                  : `${(typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '') : 'http://localhost:4000')}${detalle.soporteBienAsignadoUrl.startsWith('/') ? '' : '/'}${detalle.soporteBienAsignadoUrl}`
+                              }
                               target="_blank"
                               rel="noreferrer noopener"
-                              className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline text-xs"
+                              className="inline-flex items-center gap-1.5 text-amber-700 font-bold hover:underline text-xs"
                             >
-                              <ExternalLink className="w-3.5 h-3.5" /> Ver soporte de asignación
+                              <Paperclip className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span className="truncate">Ver constancia / soporte</span>
+                              <ExternalLink className="w-3 h-3 text-amber-500 shrink-0" />
                             </a>
                           ) : (
-                            <span className="text-slate-400 text-xs">Sin enlace registrado</span>
+                            <span className="text-slate-400 text-xs">Sin soporte registrado</span>
                           )}
                         </div>
                       </div>
@@ -2267,6 +2487,19 @@ const puedeCerrarTecnicamente = Boolean(
                                     <strong className={sla.clase === 'vencido' ? 'text-rose-700' : sla.clase === 'alerta' ? 'text-amber-700' : 'text-emerald-700'}>
                                       {sla.horasRestantes.toFixed(1)} h
                                     </strong>
+                                  </div>
+                                )}
+                                {detalle.alerta70Emitida && sla.clase !== 'vencido' && !['CERRADA', 'COMPLETADA', 'CERRADA_SIN_ATENCION', 'CERRADA_SIN_RESPUESTA'].includes(String(detalle.estado || '').toUpperCase()) && (
+                                  <div className="mt-2.5 rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 flex items-start gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <span className="font-bold">Alarma Preventiva 70% ANS:</span> Se superó el umbral del 70% del tiempo de atención asignado.
+                                      {detalle.fechaAlerta70 && (
+                                        <span className="block text-[11px] text-amber-700 mt-0.5 font-mono">
+                                          Notificación emitida: {formatearFecha(detalle.fechaAlerta70)}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -2323,12 +2556,12 @@ const puedeCerrarTecnicamente = Boolean(
                                   <>
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     Calculando…
-                                  </>
+                              </>
                                 ) : (
                                   <>
                                     <Wand2 className="w-3.5 h-3.5" />
                                     Sugerir técnico
-                                  </>
+                              </>
                                 )}
                               </button>
                             </div>
@@ -2451,7 +2684,7 @@ const puedeCerrarTecnicamente = Boolean(
                                 <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-[11px] text-purple-900 flex items-start gap-2">
                                   <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
                                   <div className="leading-snug">
-                                    <span className="font-bold">Subflujo Mantenimiento Mayor (EFDS-2353 / RF-INF-012):</span> Redirección al Coordinador GIM (Iván) o al Grupo Técnico liderado por Camilo Barrios para realizar diagnóstico técnico y medición de demanda precontractual.
+                                    <span className="font-bold">Subflujo Mantenimiento Mayor :</span> Redirección al Coordinador GIM (Iván) o al Grupo Técnico liderado por Camilo Barrios para realizar diagnóstico técnico y medición de demanda precontractual.
                                   </div>
                                 </div>
                               ) : (
@@ -2971,10 +3204,10 @@ const puedeCerrarTecnicamente = Boolean(
                   )}
 
                   
-                  {/* ===== Fase 4: Gestión de Trámite Contractual (EFDS-2353) ===== */}
+                  {/* ===== Trazabilidad y Registro de Gestión ===== */}
                   {esMantenimientoMayor && (detalle.voboAprobado === true || Boolean(ultimoTramiteContractual)) && (
                     <div
-                      className="rounded-2xl border-2 border-purple-200 bg-gradient-to-r from-purple-50/70 via-white to-purple-50/30 p-4 space-y-3 shadow-sm mt-5"
+                      className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50/70 via-white to-purple-50/30 p-4 space-y-3 shadow-sm mt-5"
                       style={{ marginTop: '1.25rem' }}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2985,49 +3218,34 @@ const puedeCerrarTecnicamente = Boolean(
                           >
                             <FileText className="w-5 h-5 text-white" />
                           </div>
-                          <div className="space-y-1">
+                          <div className="space-y-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-black uppercase tracking-wider text-purple-950">
-                                Gestión Contractual · Obra Mayor (EFDS-2353)
+                                Traza de Gestión y Seguimiento
                               </span>
-                              {ultimoTramiteContractual ? (
-                                <span className="px-2.5 py-0.5 text-[10px] font-black rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                  En Trámite SECOP II
+                              {historicoTramitesContractuales.length > 0 ? (
+                                <span className="px-2.5 py-0.5 text-[10px] font-black rounded-full bg-purple-100 text-purple-800 border border-purple-300">
+                                  {historicoTramitesContractuales.length} registro(s) en traza
                                 </span>
                               ) : (
-                                <span className="px-2.5 py-0.5 text-[10px] font-black rounded-full bg-purple-100 text-purple-800 border border-purple-300">
-                                  Avalado para Contratación
+                                <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                  Sin registros aún
                                 </span>
                               )}
                             </div>
                             <p className="text-xs text-slate-600">
-                              {ultimoTramiteContractual
-                                ? `Proceso: ${ultimoTramiteContractual.parsed?.procesoContractual || ultimoTramiteContractual.motivo}`
-                                : 'Diagnóstico técnico y VoBo aprobados. Listo para radicar proceso ante el Grupo de Contratación de la ESAP.'}
+                              Histórico de avances, novedades, notas y soportes documentales de la atención.
                             </p>
-                            {ultimoTramiteContractual?.parsed && (
-                              <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-slate-700 font-medium">
-                                {ultimoTramiteContractual.parsed.radicadoOrfeo && (
-                                  <span className="bg-white border border-purple-200 px-2 py-0.5 rounded-md">
-                                    Radicado Orfeo: <strong>{ultimoTramiteContractual.parsed.radicadoOrfeo}</strong>
-                                  </span>
-                                )}
-                                {ultimoTramiteContractual.parsed.presupuestoEstimadoCop && (
-                                  <span className="bg-white border border-purple-200 px-2 py-0.5 rounded-md">
-                                    Presupuesto: <strong>${Number(ultimoTramiteContractual.parsed.presupuestoEstimadoCop).toLocaleString('es-CO')} COP</strong>
-                                  </span>
-                                )}
-                              </div>
-                            )}
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => {
-                            setProcesoContractualInput(ultimoTramiteContractual?.parsed?.procesoContractual || '');
-                            setRadicadoOrfeoInput(ultimoTramiteContractual?.parsed?.radicadoOrfeo || '');
-                            setPresupuestoContratoInput(ultimoTramiteContractual?.parsed?.presupuestoEstimadoCop ? String(ultimoTramiteContractual.parsed.presupuestoEstimadoCop) : '');
-                            setObservacionesContratoInput(ultimoTramiteContractual?.parsed?.observaciones || '');
+                            setProcesoContractualInput('');
+                            setRadicadoOrfeoInput('');
+                            setPresupuestoContratoInput('');
+                            setObservacionesContratoInput('');
+                            setArchivoAnexoContrato(null);
                             setErrorTramiteContractual('');
                             setMostrarModalTramiteContractual(true);
                           }}
@@ -3035,9 +3253,83 @@ const puedeCerrarTecnicamente = Boolean(
                           className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-bold shadow-sm shadow-purple-500/20 hover:opacity-95 transition-all shrink-0"
                         >
                           <FileText className="w-3.5 h-3.5 text-white" />
-                          {ultimoTramiteContractual ? 'Actualizar Proceso Contractual' : 'Vincular Trámite Contractual'}
+                          + Agregar Avance a la Traza
                         </button>
                       </div>
+
+                      {/* Listado histórico de la traza */}
+                      {historicoTramitesContractuales.length > 0 ? (
+                        <div className="space-y-2.5 pt-2 border-t border-purple-100">
+                          {historicoTramitesContractuales.map((t: any, idx: number) => {
+                            const p = t.parsed || {};
+                            return (
+                              <div
+                                key={t.id || idx}
+                                className="rounded-xl border border-purple-100 bg-white p-3.5 space-y-2 shadow-xs"
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-[11px] pb-1.5 border-b border-purple-50">
+                                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                    <span className="w-2 h-2 rounded-full bg-purple-600 shrink-0" />
+                                    <span>{formatearFecha(t.fecha)}</span>
+                                    <span className="text-slate-300">·</span>
+                                    <span className="text-slate-600 font-medium">
+                                      {p.registradoPor || t.usuario_email || 'Coordinación'}
+                                    </span>
+                                  </div>
+                                  {p.procesoContractual && (
+                                    <span className="px-2 py-0.5 rounded-md font-mono font-bold bg-purple-50 text-purple-800 border border-purple-200 self-start sm:self-auto">
+                                      {p.procesoContractual}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                  {p.radicadoOrfeo && (
+                                    <div className="text-slate-600">
+                                      <span className="font-bold text-slate-500 text-[10px] uppercase">Radicado:</span>{' '}
+                                      <span className="font-semibold text-slate-800">{p.radicadoOrfeo}</span>
+                                    </div>
+                                  )}
+                                  {p.presupuestoEstimadoCop && (
+                                    <div className="text-slate-600">
+                                      <span className="font-bold text-slate-500 text-[10px] uppercase">Valor estimado:</span>{' '}
+                                      <span className="font-semibold text-slate-800">
+                                        ${Number(p.presupuestoEstimadoCop).toLocaleString('es-CO')} COP
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {p.observaciones && (
+                                  <p className="text-xs text-slate-700 bg-slate-50/80 rounded-lg p-2 border border-slate-100 leading-relaxed">
+                                    {p.observaciones}
+                                  </p>
+                                )}
+
+                                {p.anexoUrl && (
+                                  <div className="pt-0.5">
+                                    <a
+                                      href={p.anexoUrl}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 text-xs font-bold border border-purple-200 transition-colors"
+                                    >
+                                      <Paperclip className="w-3.5 h-3.5 text-purple-600" />
+                                      <span>Ver anexo: {p.anexoNombre || 'Documento adjunto'}</span>
+                                      <ExternalLink className="w-3 h-3 text-purple-400" />
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-purple-200 bg-white/60 p-4 text-center text-xs text-slate-500">
+                          <FileText className="w-6 h-6 mx-auto mb-1 text-purple-300" />
+                          No se han registrado trámites o soportes aún. Puedes agregar notas, radicados o documentos de soporte conforme avance la gestión.
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -3076,7 +3368,7 @@ const puedeCerrarTecnicamente = Boolean(
                       </div>
                     </div>
                   )}
-                </>
+            </>
               )}
             </div>
 
@@ -3129,7 +3421,7 @@ const puedeCerrarTecnicamente = Boolean(
                             Rechazar remisión
                           </button>
                         )}
-                      </>
+                  </>
                     );
                   }
                   return (
@@ -3173,7 +3465,7 @@ const puedeCerrarTecnicamente = Boolean(
                           Redistribuir
                         </button>
                       )}
-                    </>
+                </>
                   );
                 })()}
 
@@ -3196,7 +3488,8 @@ const puedeCerrarTecnicamente = Boolean(
                 )}
                 {puedeIniciarEjecOValoracion && (
                   <>
-                    {!esMantenimientoMayor && (
+                    {/* Iniciar Ejecución Directa: Solo si está en ASIGNADA y el alcance es evidente sin inspección */}
+                    {estadoActual === 'ASIGNADA' && !esMantenimientoMayor && (
                       <button
                         type="button"
                         onClick={handleIniciarEjecucionDirecta}
@@ -3213,48 +3506,83 @@ const puedeCerrarTecnicamente = Boolean(
                           <>
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             Iniciando...
-                          </>
+                      </>
                         ) : (
                           <>
                             <PlayIcon className="w-3.5 h-3.5" />
                             Iniciar Ejecución Directa
-                          </>
+                      </>
                         )}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIdValoracionSeleccionada(idValoracionAbierta);
-                        setMostrarDetalleValoracion(true);
-                      }}
-                      disabled={bloqueado}
-                      title={
-                        esMantenimientoMayor
-                          ? "Registro de diagnóstico técnico especializado y evaluación de demanda para trámite precontractual (EFDS-2353)."
-                          : "Registro de valoración previa en campo: diagnóstico, alcance, tiempos, materiales y evidencia. Si insumos no disponibles → EN_ESPERA_DE_INSUMOS."
-                      }
-                      style={
-                        esMantenimientoMayor
-                          ? { backgroundColor: '#7e22ce', borderColor: '#6b21a8', color: '#ffffff' }
-                          : undefined
-                      }
-                      className={[
-                        'inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-md border',
-                        esMantenimientoMayor
-                          ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700 ring-2 ring-purple-300/60'
-                          : idValoracionAbierta
-                          ? 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed border-indigo-700'
-                          : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
-                      ].join(' ')}
-                    >
-                      <ClipboarCheckIcon className="w-4 h-4 text-white shrink-0" />
-                      <span className="text-white font-bold tracking-wide">
-                        {esMantenimientoMayor
-                          ? (idValoracionAbierta ? 'Continuar Diagnóstico Técnico Mayor' : 'Registrar Diagnóstico Técnico (Mayor)')
-                          : (idValoracionAbierta ? 'Continuar Valoración' : 'Registrar Valoración Previa')}
-                      </span>
-                    </button>
+
+                    {/* Botón de Valoración:
+                        Si estadoActual === 'ASIGNADA' -> "Iniciar Valoración en Campo" (pasa a EN_CAMPO_VALORACION).
+                        Si estadoActual === 'EN_CAMPO_VALORACION' -> "Registrar Diagnóstico e Insumos" (abre el formulario). */}
+                    {estadoActual === 'ASIGNADA' ? (
+                      <button
+                        type="button"
+                        onClick={handleIniciarValoracionEnCampo}
+                        disabled={bloqueado || iniciandoValoracion}
+                        title="El técnico acude a inspeccionar el daño en sitio. La solicitud pasa formalmente a estado EN_CAMPO_VALORACION."
+                        style={
+                          esMantenimientoMayor
+                            ? { backgroundColor: '#7e22ce', borderColor: '#6b21a8', color: '#ffffff' }
+                            : undefined
+                        }
+                        className={[
+                          'inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-md border',
+                          esMantenimientoMayor
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700 ring-2 ring-purple-300/60'
+                            : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
+                        ].join(' ')}
+                      >
+                        {iniciandoValoracion ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>Iniciando valoración...</span>
+                      </>
+                        ) : (
+                          <>
+                            <ClipboarCheckIcon className="w-4 h-4 text-white shrink-0" />
+                            <span className="text-white font-bold tracking-wide">
+                              {esMantenimientoMayor
+                                ? 'Iniciar Diagnóstico Técnico (Mayor)'
+                                : 'Iniciar Valoración en Campo'}
+                            </span>
+                      </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdValoracionSeleccionada(idValoracionAbierta);
+                          setForzarEditableValoracion(true);
+                          setMostrarDetalleValoracion(true);
+                        }}
+                        disabled={bloqueado}
+                        title="Registrar diagnóstico técnico, alcance, tiempos y requerimiento de materiales/insumos."
+                        style={
+                          esMantenimientoMayor
+                            ? { backgroundColor: '#7e22ce', borderColor: '#6b21a8', color: '#ffffff' }
+                            : { backgroundColor: '#2563eb', borderColor: '#1d4ed8', color: '#ffffff' }
+                        }
+                        className={[
+                          'inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-md border',
+                          esMantenimientoMayor
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700 ring-2 ring-purple-300/60'
+                            : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
+                        ].join(' ')}
+                      >
+                        <ClipboarCheckIcon className="w-4 h-4 text-white shrink-0" />
+                        <span className="text-white font-bold tracking-wide">
+                          {esMantenimientoMayor
+                            ? 'Completar Diagnóstico Técnico (Mayor)'
+                            : 'Registrar Diagnóstico e Insumos'}
+                        </span>
+                      </button>
+                    )}
 
 
 
@@ -3284,7 +3612,7 @@ const puedeCerrarTecnicamente = Boolean(
                         CS_002 Eléctricas · sólo Técnico Especializado
                       </span>
                     )}
-                  </>
+              </>
                 )}
                 {puedeRegistrarRecepcionInsumosTecnico && (
                   ultimaRecepcionInsumosTecnico ? (
@@ -3413,16 +3741,35 @@ const puedeCerrarTecnicamente = Boolean(
                       <ThumbsDown className="w-3.5 h-3.5" />
                       Devolver por observaciones
                     </button>
-                  </>
+                    {countdownConformidad && !countdownConformidad.vencido && (
+                      <div
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap bg-amber-50 text-amber-800 ring-amber-200"
+                        title="Plazo restante para emitir tu respuesta de conformidad antes del cierre automático"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                        Plazo para responder: {countdownConformidad.texto}
+                      </div>
+                    )}
+              </>
+                )}
+                {/* Banner cuando venció el plazo en la vista del solicitante pero aún está en COMPLETADA cerrándose */}
+                {estadoActual === 'COMPLETADA' && usuarioEsSolicitanteOAsignador && countdownConformidad?.vencido && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap bg-rose-50 text-rose-800 ring-rose-200">
+                    <Clock className="w-3.5 h-3.5 text-rose-600 animate-spin" />
+                    Plazo de conformidad vencido ({countdownConformidad.texto}) · Sincronizando cierre automático...
+                  </div>
                 )}
                 {mostrarBannerPendienteConformidad && countdownConformidad && (
-                  <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${countdownConformidad.vencido
-                    ? 'bg-rose-50 text-rose-800 ring-rose-200'
-                    : countdownConformidad.dias === 0 && countdownConformidad.horas <= 24
-                      ? 'bg-amber-50 text-amber-800 ring-amber-200'
-                      : 'bg-sky-50 text-sky-800 ring-sky-200'}`}>
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${
+                    countdownConformidad.vencido
+                      ? 'bg-rose-50 text-rose-800 ring-rose-200'
+                      : countdownConformidad.dias === 0 && countdownConformidad.horas <= 24
+                        ? 'bg-amber-50 text-amber-800 ring-amber-200'
+                        : 'bg-sky-50 text-sky-800 ring-sky-200'}`}>
                     <Clock className="w-3.5 h-3.5" />
-                    Pendiente conformidad usuario solicitante · {countdownConformidad.texto}
+                    {countdownConformidad.vencido
+                      ? `Plazo de conformidad vencido (${countdownConformidad.texto}) · Cierre automático en proceso`
+                      : `Pendiente conformidad usuario solicitante · ${countdownConformidad.texto}`}
                   </div>
                 )}
                 {resumenConformidadBadge && (
@@ -3614,12 +3961,12 @@ const puedeCerrarTecnicamente = Boolean(
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Remitiendo...
-                        </>
+                    </>
                       ) : (
                         <>
                           <Send className="w-4 h-4" />
                           Confirmar remisión
-                        </>
+                    </>
                       )}
                     </button>
                   </div>
@@ -4603,7 +4950,7 @@ const puedeCerrarTecnicamente = Boolean(
                             Quedará grabado de forma inmutable en el historial de asignaciones de la solicitud (registro único).
                           </p>
                         </div>
-                      </>
+                  </>
                     )}
                   </div>
 
@@ -4645,15 +4992,15 @@ const puedeCerrarTecnicamente = Boolean(
                             <>
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
                               Guardando...
-                            </>
+                        </>
                           ) : (
                             <>
                               <PackageCheck className="w-3.5 h-3.5" />
                               Guardar Verificación
-                            </>
+                        </>
                           )}
                         </button>
-                      </>
+                  </>
                     )}
                   </div>
                 </div>
@@ -4834,11 +5181,11 @@ const puedeCerrarTecnicamente = Boolean(
                       {ejecutandoVoBo ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
-                        </>
+                    </>
                       ) : (
                         <>
                           <BadgeCheck className="w-3.5 h-3.5" /> {voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}
-                        </>
+                    </>
                       )}
                     </button>
                   </div>
@@ -4884,10 +5231,10 @@ const puedeCerrarTecnicamente = Boolean(
                 </div>
                 <div>
                   <h3 className="font-black text-sm tracking-tight text-white">
-                    Vincular Trámite Contractual (EFDS-2353)
+                    Registrar en la Traza de Gestión
                   </h3>
                   <p className="text-[11px] text-purple-100">
-                    Solicitud #{detalle?.consecutivo} · Mantenimiento Mayor
+                    Solicitud #{detalle?.consecutivo} · Bitácora de seguimiento
                   </p>
                 </div>
               </div>
@@ -4906,34 +5253,22 @@ const puedeCerrarTecnicamente = Boolean(
                   <span>{errorTramiteContractual}</span>
                 </div>
               )}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                  Código de Proceso Contractual / SECOP II *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej. ESAP-SAMC-014-2026 o LP-001-2026"
-                  value={procesoContractualInput}
-                  onChange={(e) => setProcesoContractualInput(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold text-slate-900"
-                />
-              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                    Radicado Orfeo de Remisión
+                    Asunto o Concepto (Opcional)
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej. 2026-ER-009845"
-                    value={radicadoOrfeoInput}
-                    onChange={(e) => setRadicadoOrfeoInput(e.target.value)}
+                    placeholder="Ej. Cotización, gestión externa, novedad..."
+                    value={procesoContractualInput}
+                    onChange={(e) => setProcesoContractualInput(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                    Presupuesto Oficial (COP)
+                    Valor o Costo Estimado COP (Opcional)
                   </label>
                   <input
                     type="number"
@@ -4946,15 +5281,57 @@ const puedeCerrarTecnicamente = Boolean(
               </div>
               <div className="space-y-1">
                 <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                  Observaciones / Alcance Derivado a Compras
+                  Notas / Detalle de la Gestión
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Notas sobre el proceso de contratación, estudios previos o contratista..."
+                  placeholder="Describe la novedad, avance, acuerdos o gestión realizada..."
                   value={observacionesContratoInput}
                   onChange={(e) => setObservacionesContratoInput(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800"
                 />
+              </div>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  Anexo / Soporte Documental (Opcional)
+                </label>
+                {archivoAnexoContrato ? (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl border border-purple-200 bg-purple-50/50">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Paperclip className="w-4 h-4 text-purple-600 shrink-0" />
+                      <span className="text-xs font-semibold text-purple-900 truncate">
+                        {archivoAnexoContrato.name}
+                      </span>
+                      <span className="text-[10px] text-purple-500 shrink-0">
+                        ({formatearTamano(archivoAnexoContrato.size)})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setArchivoAnexoContrato(null)}
+                      className="p-1 rounded-lg hover:bg-purple-100 text-purple-700 transition-colors"
+                      title="Quitar archivo"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-purple-400 bg-slate-50/50 hover:bg-purple-50/30 cursor-pointer transition-all">
+                    <Upload className="w-4 h-4 text-slate-500" />
+                    <span className="text-xs font-medium text-slate-600">
+                      Adjuntar PDF, oficio, cotización o soporte
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setArchivoAnexoContrato(file);
+                      }}
+                    />
+                  </label>
+                )}
               </div>
             </div>
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 rounded-b-2xl">
@@ -4973,7 +5350,7 @@ const puedeCerrarTecnicamente = Boolean(
                 className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-white font-bold text-xs shadow-md shadow-purple-500/20 hover:opacity-95 transition-all disabled:opacity-60"
               >
                 {enviandoTramiteContractual ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-                Guardar Trámite Contractual
+                Guardar en la Traza
               </button>
             </div>
           </div>
@@ -4988,20 +5365,23 @@ const puedeCerrarTecnicamente = Boolean(
           onClose={() => {
             setMostrarDetalleValoracion(false);
             setIdValoracionSeleccionada(null);
+            setForzarEditableValoracion(false);
           }}
           idSolicitud={idSolicitud || ''}
           idValoracion={idValoracionSeleccionada || idValoracionAbierta || undefined}
           idCategoria={Number.isInteger(detalle.idCategoria) ? (detalle.idCategoria as number) : null}
           readOnly={
-            !puedeEditarValoracion ||
-            (idValoracionSeleccionada
-              ? !valoraciones.find(
-                  (x) =>
-                    x.idValoracion === idValoracionSeleccionada &&
-                    !x.estadoAlFinalizar &&
-                    !x.fechaFinValoracion
-                )
-              : false)
+            forzarEditableValoracion
+              ? false
+              : (!puedeEditarValoracion ||
+                 (idValoracionSeleccionada && idValoracionSeleccionada !== idValoracionAbierta
+                   ? !valoraciones.find(
+                       (x) =>
+                         x.idValoracion === idValoracionSeleccionada &&
+                         !x.estadoAlFinalizar &&
+                         !x.fechaFinValoracion
+                     )
+                   : false))
           }
           onSaved={handleValoracionSaved}
         />
@@ -5185,12 +5565,12 @@ const puedeCerrarTecnicamente = Boolean(
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                     <span style={{ color: '#ffffff' }}>Cerrando solicitud...</span>
-                  </>
+              </>
                 ) : (
                   <>
                     <PackageX className="w-3.5 h-3.5 text-white" />
                     <span style={{ color: '#ffffff' }}>Confirmar Cierre por Falta de Insumos (EFDS-1735)</span>
-                  </>
+              </>
                 )}
               </button>
             </div>
@@ -5309,11 +5689,80 @@ const puedeCerrarTecnicamente = Boolean(
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                     <span style={{ color: '#ffffff' }}>Registrando...</span>
-                  </>
+              </>
                 ) : (
                   <>
                     <ShoppingCart className="w-3.5 h-3.5 text-white" style={{ color: '#ffffff' }} />
                     <span style={{ color: '#ffffff' }}>Confirmar y Notificar a Coordinación</span>
+              </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RF-INF-014: Modal para Confirmar Emergencia Crítica */}
+      {modalConfirmarEmergenciaAbierto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="px-6 py-4 bg-red-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-white" />
+                <h3 className="text-sm font-black uppercase tracking-wide">Confirmar Emergencia Crítica</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalConfirmarEmergenciaAbierto(false)}
+                className="text-white/80 hover:text-white rounded-lg p-1 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Al confirmar la emergencia para la solicitud <strong>#{detalle.consecutivo}</strong>, se registrará el acuse de recibo de Coordinación GIM y se activará el circuito prioritario de mitigación y notificación multicanal.
+              </p>
+              {errorConfirmarEmergencia && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                  {errorConfirmarEmergencia}
+                </div>
+              )}
+              <label className="block">
+                <span className="block text-xs font-bold text-slate-700 mb-1">Notas de Atención / Medidas Inmediatas (Opcional):</span>
+                <textarea
+                  value={notasEmergencia}
+                  onChange={(e) => setNotasEmergencia(e.target.value)}
+                  placeholder="Ej: Cuadrilla de fontanería asignada de urgencia. Válvula principal aislada."
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-500 resize-none"
+                />
+              </label>
+            </div>
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setModalConfirmarEmergenciaAbierto(false)}
+                disabled={guardandoEmergencia}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={guardandoEmergencia}
+                onClick={handleConfirmarEmergencia}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-all disabled:opacity-50"
+              >
+                {guardandoEmergencia ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Confirmando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Emergencia</span>
                   </>
                 )}
               </button>
@@ -5322,6 +5771,6 @@ const puedeCerrarTecnicamente = Boolean(
         </div>
       )}
 
-    </>
+</>
   );
 };

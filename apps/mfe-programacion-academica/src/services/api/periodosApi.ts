@@ -101,6 +101,21 @@ export async function crearPeriodoPlataforma(datos: {
   return creado;
 }
 
+/** Qué se borraría al eliminar el periodo y si se puede (nunca el en curso ni uno con PTA). */
+export interface ImpactoEliminacion {
+  id: string; codigo: string; estado: string;
+  ptas: number; ofertas: number; cetaps: number; grupos: number; sesiones: number; concertaciones: number; programas: number;
+  eliminable: boolean; motivo: string | null;
+}
+
+export const getImpactoEliminacion = (idPeriodo: string) =>
+  peticion<ImpactoEliminacion>(`${PTA}/${encodeURIComponent(idPeriodo)}/impacto-eliminacion`);
+
+export async function eliminarPeriodoPlataforma(idPeriodo: string): Promise<void> {
+  await peticion(`${PTA}/${encodeURIComponent(idPeriodo)}`, { method: 'DELETE' });
+  invalidarProgramacion('periodos', 'programacion', 'catalogo');
+}
+
 export const getImpactoActivacion = (idPeriodo: string) =>
   peticion<ImpactoActivacion>(`${PTA}/${encodeURIComponent(idPeriodo)}/impacto-activacion`);
 

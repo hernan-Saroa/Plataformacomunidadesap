@@ -59,6 +59,16 @@ describe('BancoDocentesService - carga masiva trazable REQ-RUND-F001', () => {
     })]);
   });
 
+  it('RUND-003: resume cuántos títulos se dedujeron de PERFIL_ACADEMICO y cuántos quedaron sin clasificar', async () => {
+    const { service } = buildService();
+    jest.spyOn(service, 'upsertDocente')
+      .mockResolvedValueOnce({ action: 'update', docenteId: 'a', titulosDeducidos: 2, titulosSinClasificar: ['Posgrado en Cultura de la Paz'] } as any)
+      .mockResolvedValueOnce({ action: 'update', docenteId: 'b', titulosDeducidos: 1, titulosSinClasificar: [] } as any);
+    const result = await service.bulkUpsert([{ DOCUMENTO_IDENTIDAD: '1020304050' }, { DOCUMENTO_IDENTIDAD: '1020304051' }], { periodoCarga: '2026-2', dryRun: true });
+    expect(result.titulosDeducidos).toBe(3);
+    expect(result.titulosSinClasificar).toBe(1);
+  });
+
   it('bloquea cédulas repetidas dentro del mismo archivo', async () => {
     const { service } = buildService();
     const upsertSpy = jest.spyOn(service, 'upsertDocente');

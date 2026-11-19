@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { CheckCircle, Eye, FilePlus2, FileText, Replace, ShieldAlert } from 'lucide-react';
 import { rundActorName } from '../../../utils/rundActorName';
-import { RUND_MAX_EVIDENCES_PER_TYPE, rundDocumentDecision, rundEvidenceDecision, type RundEvidenceField } from '../../../utils/rundEvidenceRules';
+import { RUND_MAX_ARCHIVO_MB, RUND_MAX_EVIDENCES_PER_TYPE, rundDocumentDecision, rundEvidenceDecision, type RundEvidenceField } from '../../../utils/rundEvidenceRules';
 import './RundCheckpointEvidence.css';
 
 type Props = {
@@ -93,7 +93,7 @@ export function RundCheckpointEvidence({ field, evidences, showTools, showHeadin
             </button>}
             {showTools && canManage && <RundPdfPicker className="rund-checkpoint-evidence__button rund-checkpoint-evidence__icon-button"
               label={`Archivo para reemplazar ${several ? `la evidencia ${number}` : 'el documento'}`}
-              title={`Reemplazar ${several ? `evidencia ${number}` : 'documento'} (PDF, máximo 10 MB). Se conserva la versión anterior.`}
+              title={`Reemplazar ${several ? `evidencia ${number}` : 'documento'} (PDF, máximo ${RUND_MAX_ARCHIVO_MB} MB). Se conserva la versión anterior.`}
               disabled={disabled || replacing} onFile={file => onReplace(evidence, file)}>
               <Replace size={13} aria-hidden="true" />
               <span className="rund-checkpoint-evidence__sr">Reemplazar {several ? `evidencia ${number}` : 'documento'}</span>

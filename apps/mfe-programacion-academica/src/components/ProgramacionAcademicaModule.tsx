@@ -26,11 +26,12 @@ import {
 } from 'lucide-react';
 
 import {
-  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura,
+  getTodasLasSesiones, getAulas, getCrucesHistoricos,
   publicarProgramacion, retirarProgramacion,
   type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
+import { PanelGrupos } from './PanelGrupos';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { useEstadoPublicacion } from './useEstadoPublicacion';
@@ -38,7 +39,7 @@ import { ArbolProgramacion } from './ArbolProgramacion';
 import { DisponibilidadDocente } from './DisponibilidadDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
-import { AprobacionJefatura } from './AprobacionJefatura';
+import { CargaProgramacionExcel } from './CargaProgramacionExcel';
 import { getMisPermisos, type MisPermisos } from '../services/api/vistaApi';
 import { ConcertacionBandeja } from './ConcertacionBandeja';
 import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
@@ -72,7 +73,7 @@ interface FranjaHoraria {
   periodoCodigo: string | null;
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion' | 'concertacion';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'concertacion';
 
 /** Los cinco estados del ciclo de la franja, con su etiqueta y color (§1.2). */
 const BADGE_ESTADO: Record<string, { etiqueta: string; clase: string }> = {
@@ -126,6 +127,7 @@ export function ProgramacionAcademicaModule({
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
   const [jornada, setJornada] = useState('TODAS');
+  const [verCargaExcel, setVerCargaExcel] = useState(false);
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -135,27 +137,20 @@ export function ProgramacionAcademicaModule({
   const [detalle, setDetalle] = useState<FranjaHoraria | null>(null);
   // 3.9 — Cruces del histórico. Se cargan aparte del panel: son otra fuente.
   const [historico, setHistorico] = useState<ValidacionHistorico | null>(null);
-  // EFDS-1939 — el item de aprobación solo aparece si el usuario ES jefatura. Se
-  // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
-  const [esJefatura, setEsJefatura] = useState(false);
-  // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
-  // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
+  // EFDS-2315 — La concertación es el ÚNICO camino para concertar la docencia (nov-2026): la
+  // antigua «Aprobación territorial» ya no se muestra. El submódulo aparece SIEMPRE —también al
+  // superusuario sin nada que concertar—; quién decide qué lo filtra el backend con los permisos del PTA.
   const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
+  const [errorConcertacion, setErrorConcertacion] = useState('');
   // EFDS-2342 — quién asigna docentes y no programa (PROGRAMADOR_DOCENTE_<NIVEL>) solo ve la
   // programación y la asignación: el resto le respondería 403. El servidor decide; esto solo ordena el menú.
   const [misPermisos, setMisPermisos] = useState<MisPermisos | null>(null);
   useEffect(() => { getMisPermisos().then(setMisPermisos).catch(() => setMisPermisos(null)); }, []);
-  useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
-  // Con la concertación encendida el endpoint de jefatura responde 409 a propósito: no se consulta. Se espera la
-  // configuración; si falla, no se consulta un régimen desconocido.
   useEffect(() => {
-    let vigente = true;
-    setEsJefatura(false);
-    if (concertacion && !concertacion.habilitada) {
-      getPendientesJefatura().then(() => { if (vigente) setEsJefatura(true); }).catch(() => {});
-    }
-    return () => { vigente = false; };
-  }, [concertacion]);
+    getConfiguracionConcertacion()
+      .then((c) => { setConcertacion(c); setErrorConcertacion(''); })
+      .catch((e) => { setConcertacion(null); setErrorConcertacion(e?.message || 'No se pudo consultar la concertación.'); });
+  }, []);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
   // periodo seleccionado en la cabecera; se persiste entre recargas.
@@ -196,8 +191,8 @@ export function ProgramacionAcademicaModule({
   const [soloRevision, setSoloRevision] = useState(false);
   useEffect(() => {
     if (!soloRevision) return;
-    setSeccion((s) => (s === 'concertacion' || s === 'aprobacion') ? s : (concertacion?.habilitada ? 'concertacion' : 'aprobacion'));
-  }, [soloRevision, concertacion]);
+    setSeccion('concertacion');
+  }, [soloRevision]);
 
   const elegirPeriodo = (id: string) => {
     setPeriodoSel(id);
@@ -279,6 +274,15 @@ export function ProgramacionAcademicaModule({
       title: 'GESTIÓN PRINCIPAL',
       items: [
         ...(soloRevision ? [] : ([
+        // Orden del flujo: periodo → catálogo → programación → aulas → docentes → cruces → concertación.
+        {
+          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
+          id: 'ofertas',
+          label: 'Periodos',
+          subtitle: 'Crear, activar, publicar y cerrar',
+          icon: <Layers3 className="w-5 h-5" />,
+          color: '#003DA5',
+        },
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -310,14 +314,6 @@ export function ProgramacionAcademicaModule({
           color: '#7C3AED',
         },
         {
-          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
-          id: 'ofertas',
-          label: 'Periodos',
-          subtitle: 'Crear, activar, publicar y cerrar',
-          icon: <Layers3 className="w-5 h-5" />,
-          color: '#003DA5',
-        },
-        {
           id: 'alertas',
           label: 'Validación de Cruces',
           subtitle: 'Alertas y traslapes de horario',
@@ -326,21 +322,16 @@ export function ProgramacionAcademicaModule({
           badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
         ] as MenuGroup['items']).filter((i) => !!misPermisos && (i.id === 'horarios' ? misPermisos.ver.length > 0 : i.id === 'docentes' ? misPermisos.disponibilidad : misPermisos.programar.length > 0))),
-        // EFDS-1939 — solo para jefaturas territoriales.
-        ...(esJefatura ? [{
-          id: 'aprobacion',
-          label: 'Aprobación territorial',
-          subtitle: 'Aprobar o devolver franjas de tus docentes',
-          icon: iconoAprobacion,
-          color: '#059669',
-        }] : []),
-        ...(concertacion?.habilitada ? [{
+        // SIEMPRE visible (también al superusuario sin nada que concertar), aun si la configuración
+        // no responde: entonces el panel dice por qué. La bandeja filtra por permisos en el servidor.
+        // La antigua «Aprobación territorial» (EFDS-1939) ya no se muestra: la concertación la reemplaza.
+        ...[{
           id: 'concertacion',
           label: 'Concertación de la docencia',
-          subtitle: 'Revisar y aprobar la docencia de los docentes',
+          subtitle: !concertacion || concertacion.habilitada ? 'Revisar y aprobar la docencia de los docentes' : 'Apagada en este ambiente',
           icon: iconoAprobacion,
           color: '#003DA5',
-        }] : []),
+        }],
       ],
     },
   ];
@@ -467,6 +458,10 @@ export function ProgramacionAcademicaModule({
               <span className="text-emerald-700">{estadoPub.aprobada} aprobadas</span>
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setVerCargaExcel((v) => !v)} aria-expanded={verCargaExcel}
+                className="px-3 py-2 rounded-lg border border-[#003DA5] text-[#003DA5] text-xs font-bold hover:bg-blue-50 active:scale-95 transition-all">
+                {verCargaExcel ? 'Ocultar carga desde Excel' : 'Cargar desde Excel'}
+              </button>
               {estadoPub.publicada === 0 && estadoPub.tomada === 0 && estadoPub.aprobada === 0 ? (
                 <button type="button" disabled={pubOcupado || estadoPub.total === 0} onClick={publicar}
                   className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
@@ -487,6 +482,9 @@ export function ProgramacionAcademicaModule({
             <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">{avisoPub}</div>
           )}
         </div>
+      )}
+      {seccion === 'horarios' && verCargaExcel && periodoActual && periodoProgramable && !!misPermisos?.programar.length && (
+        <CargaProgramacionExcel key={periodoActual.idPeriodo} idPeriodo={periodoActual.idPeriodo} codigoPeriodo={periodoActual.codigo} onCerrar={() => setVerCargaExcel(false)} />
       )}
 
       {seccion === 'catalogo' && misPermisos?.programar.length ? <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} /> : null}
@@ -520,9 +518,22 @@ export function ProgramacionAcademicaModule({
         abrirProgramasAcademicos={abrirProgramasAcademicos}
       />}
 
-      {seccion === 'aprobacion' && <AprobacionJefatura />}
       {seccion === 'concertacion' && concertacion?.habilitada && (
-        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
+        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada}
+          interoperabilidadPtaApagada={concertacion.interoperabilidadPta?.habilitada === false} />
+      )}
+      {seccion === 'concertacion' && concertacion && !concertacion.habilitada && (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
+          <p className="font-bold">La concertación de la docencia está apagada en este ambiente.</p>
+          {concertacion.motivo && <p>{concertacion.motivo}</p>}
+          <p>La concertación no tiene interruptor en Programación Académica: si ve este aviso, el servicio respondió que no está disponible. Revise el servicio y vuelva a intentar.</p>
+        </div>
+      )}
+      {seccion === 'concertacion' && !concertacion && (
+        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-bold">No se pudo consultar la concertación.</p>
+          <p>{errorConcertacion || 'Consultando…'}</p>
+        </div>
       )}
 
       {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
@@ -605,33 +616,19 @@ export function ProgramacionAcademicaModule({
           onClick. Abre el calendario del grupo, que es donde ya se edita el
           horario y se retiran sesiones. */}
       {detalle && detalle.idGrupo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 sm:p-8"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Detalle del grupo de ${detalle.asignatura}`}
-          onClick={() => setDetalle(null)}
+        <PanelGrupos
+          titulo={`Horario del grupo ${Number(detalle.grupo) || 1} · ${detalle.asignatura || detalle.programa || 'Grupo'}`}
+          onCerrar={() => setDetalle(null)}
         >
-          {/* §3.1 — Centrado (items-center) y con alto máximo: el contenido alto
-              del calendario hace scroll DENTRO de la tarjeta, no empuja el modal. */}
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setDetalle(null)}
-              aria-label="Cerrar"
-              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <CalendarioHorario
-              idGrupo={detalle.idGrupo}
-              numeroGrupo={Number(detalle.grupo) || 1}
-              nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
-              fechaInicioGrupo={detalle.fechaInicioGrupo}
-              fechaFinGrupo={detalle.fechaFinGrupo}
-            />
-          </div>
-        </div>
+          <CalendarioHorario
+            key={detalle.idGrupo}
+            idGrupo={detalle.idGrupo}
+            numeroGrupo={Number(detalle.grupo) || 1}
+            nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
+            fechaInicioGrupo={detalle.fechaInicioGrupo}
+            fechaFinGrupo={detalle.fechaFinGrupo}
+          />
+        </PanelGrupos>
       )}
 
     </ModuleLayout>

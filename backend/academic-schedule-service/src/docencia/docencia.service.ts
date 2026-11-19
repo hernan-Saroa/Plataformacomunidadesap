@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { ContratoClient, type CalculoHoras } from '../asignaciones/contrato-client.js';
 import { repartoPorDias, type FranjaReparto, type ReglaReparto } from './reparto.js';
 import { sqlPeriodoNoCerrado } from '../periodos/periodo-ref.js';
+import { SQL_MODALIDADES_SIN_AULA } from '../grupos/grupo.entity.js';
 
 /** Docencia de un docente en un grupo, derivada de las franjas. */
 export interface DocenciaGrupo {
@@ -121,7 +122,7 @@ export class DocenciaService {
          JOIN academic_work_plan.asignatura a      ON a.id = g.id_asignatura
          LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
-        WHERE ad.id_docente = $1 AND g.modalidad = 'virtual'
+        WHERE ad.id_docente = $1 AND g.modalidad IN (${SQL_MODALIDADES_SIN_AULA})
           AND NOT EXISTS (SELECT 1 FROM "academic-schedule".franja_horaria f WHERE f.id_grupo = g.id_grupo)
           AND ($2::uuid IS NULL OR g.id_grupo <> $2::uuid)
           AND ${sqlPeriodoNoCerrado()}`,

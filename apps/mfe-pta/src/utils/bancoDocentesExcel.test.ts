@@ -4,12 +4,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
-import { BANCO_DOCENTES_HEADERS, parseBancoDocentesFile } from './bancoDocentesExcel';
+import { BANCO_DOCENTES_HEADERS, buildTitulosFormacionRows, parseBancoDocentesFile } from './bancoDocentesExcel';
 import {
   BANCO_DOCENTES_COLUMNS,
   BANCO_DOCENTES_SHEET_NAME,
   BANCO_DOCENTES_TEMPLATE_ROWS,
   buildBancoDocentesWorkbook,
+  TITULOS_FORMACION_SHEET_NAME,
   currentBancoDocentesPeriodo,
 } from './bancoDocentesWorkbook';
 
@@ -245,5 +246,30 @@ describeConReferencia('parser de previsualización con el Excel de referencia co
   it('XLSX lee la misma hoja única del archivo', () => {
     const wb = XLSX.read(readFileSync(REFERENCIA), { type: 'buffer' });
     expect(wb.SheetNames).toEqual([BANCO_DOCENTES_SHEET_NAME]);
+  });
+});
+
+describe('RUND-003 · hoja de títulos de formación del reporte', () => {
+  const usuarios = [{ banco_docente: {
+    documento_identidad: '90000012', nombre_completo: 'PEDRO NEL PAÍS', pregrado: 'Economista', maestria: 'Magíster en Gobierno',
+    titulos_adicionales: { pregrado: ['Abogado'] },
+  } }, { banco_docente: { documento_identidad: '90000013', nombre_completo: 'SIN ADICIONALES', pregrado: 'Contador' } }];
+
+  it('incluye todos los títulos registrados y marca el precargado y los adicionales', () => {
+    const filas = buildTitulosFormacionRows(usuarios);
+    expect(filas.filter(f => f.documento === '90000012').map(f => [f.nivel, f.titulo, f.origen])).toEqual([
+      ['Pregrado', 'Economista', 'Información precargada'],
+      ['Pregrado', 'Abogado', 'Información adicional'],
+      ['Maestría', 'Magíster en Gobierno', 'Información precargada'],
+    ]);
+    expect(filas.filter(f => f.documento === '90000013')).toHaveLength(1);
+  });
+
+  it('agrega la hoja al archivo solo cuando hay títulos y deja intacta la hoja oficial', async () => {
+    const con = await buildBancoDocentesWorkbook({ rows: [{ DOCUMENTO_IDENTIDAD: '90000012' }], titulosFormacion: buildTitulosFormacionRows(usuarios) });
+    expect(con.worksheets.map(w => w.name)).toEqual([BANCO_DOCENTES_SHEET_NAME, TITULOS_FORMACION_SHEET_NAME]);
+    expect(con.getWorksheet(TITULOS_FORMACION_SHEET_NAME)!.getCell('D3').value).toBe('Abogado');
+    const sin = await buildBancoDocentesWorkbook({ rows: [{ DOCUMENTO_IDENTIDAD: '90000012' }], titulosFormacion: [] });
+    expect(sin.worksheets.map(w => w.name)).toEqual([BANCO_DOCENTES_SHEET_NAME]);
   });
 });

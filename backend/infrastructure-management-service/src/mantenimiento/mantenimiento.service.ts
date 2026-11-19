@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, Optional, Inject, forwardRef, Logger, GoneException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, OnModuleDestroy, Optional, Inject, forwardRef, Logger, GoneException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto, ConfirmarEmergenciaDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -28,6 +28,24 @@ function userIdUuidOrNull(userId: unknown): string | null {
 
 const PLAZO_CONFORMIDAD_HORAS_DEFAULT = 72;
 const REAPERTURA_NUEVO_SLA_HORAS = 24;
+
+export interface ConformidadConfigData {
+  plazoValor: number;
+  plazoUnidad: 'DIAS_HABILES' | 'DIAS_CALENDARIO' | 'HORAS' | 'MINUTOS';
+  cierreAutomaticoActivo: boolean;
+  estadoDestino: 'CERRADA_SIN_RESPUESTA' | 'CERRADA_SIN_ATENCION';
+  intervaloVerificacionSegundos?: number;
+}
+
+export const DEFAULT_CONFORMIDAD_CONFIG: ConformidadConfigData = {
+  plazoValor: 5,
+  plazoUnidad: 'DIAS_HABILES',
+  cierreAutomaticoActivo: true,
+  estadoDestino: 'CERRADA_SIN_RESPUESTA',
+  intervaloVerificacionSegundos: 60,
+};
+
+const COD_PARAM_CONFORMIDAD_CONFIG = 'PARAM_CONFORMIDAD_CIERRE_AUTOMATICO';
 
 // ===== EFDS-1738 RF-INF-009 Calificación del Servicio Recibido =====
 // OQ-1 default: true (OPCIONAL). Si mañana se aprueba OBLIGATORIA, cambiar a false.
@@ -303,8 +321,10 @@ const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
 };
 
 @Injectable()
-export class MantenimientoService implements OnModuleInit {
+export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   private readonly notifLogger = new Logger(`${MantenimientoService.name}.notificaciones`);
+  private timerCierreAutomatico?: NodeJS.Timeout;
+
   constructor(
     @InjectRepository(SolicitudMantenimiento)
     private readonly mantenimientoRepo: Repository<SolicitudMantenimiento>,
@@ -336,6 +356,31 @@ export class MantenimientoService implements OnModuleInit {
       await this.asegurarSeedTiemposPorCategoria();
       await this.cargarParametroCache();
     } catch {}
+    this.iniciarWorkerCierreAutomatico();
+  }
+
+  onModuleDestroy(): void {
+    if (this.timerCierreAutomatico) {
+      clearInterval(this.timerCierreAutomatico);
+      this.timerCierreAutomatico = undefined;
+    }
+  }
+
+  private iniciarWorkerCierreAutomatico(): void {
+    const INTERVALO_MS = 60 * 1000;
+    this.timerCierreAutomatico = setInterval(async () => {
+      try {
+        await this.ejecutarCierresSinRespuestaVencidos(null, false);
+      } catch (err: any) {
+        this.notifLogger.warn(`[CierreAutomaticoWorker] Fallo en barrido periódico: ${err?.message ?? err}`);
+      }
+      try {
+        await this.evaluarAlertas70ANS();
+      } catch (err: any) {
+        this.notifLogger.warn(`[Alerta70Worker] Fallo en barrido de alertas 70% ANS: ${err?.message ?? err}`);
+      }
+    }, INTERVALO_MS);
+    this.notifLogger.log('[CierreAutomaticoWorker] Worker de cierre automático de conformidad y evaluación 70% ANS inicializado (intervalo: 60s).');
   }
 
   private normalizarNombreTecnico(value: unknown): string {
@@ -946,6 +991,16 @@ export class MantenimientoService implements OnModuleInit {
         clasificacionMantenimiento: 'MENOR',
         requiereContratacion: false,
       }),
+      alerta70Emitida: false,
+      fechaAlerta70: null,
+      esEmergenciaCritica: Boolean(
+        dto.esEmergenciaCritica ||
+        String(dto.prioridad || '').toUpperCase() === 'EMERGENCIA',
+      ),
+      emergenciaConfirmada: false,
+      emergenciaConfirmadaPor: null,
+      fechaConfirmacionEmergencia: null,
+      notasConfirmacionEmergencia: null,
     };
 
     const saved = await this.mantenimientoRepo.save(solicitudData as any);
@@ -1010,6 +1065,14 @@ export class MantenimientoService implements OnModuleInit {
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
 </div>`,
     });
+
+    if (saved.esEmergenciaCritica) {
+      try {
+        await this.notificarEmergenciaCritica(saved);
+      } catch (errCritica: any) {
+        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+      }
+    }
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
@@ -1960,6 +2023,184 @@ export class MantenimientoService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------------------
+  // EFDS-1737 / RF-INF-008: Configuración de Conformidad y Cierre Automático
+  // ---------------------------------------------------------------------------
+  async getConformidadConfig(): Promise<ConformidadConfigData> {
+    const row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_CONFORMIDAD_CONFIG },
+    });
+    if (!row || !row.metadata || typeof row.metadata !== 'object') {
+      return { ...DEFAULT_CONFORMIDAD_CONFIG };
+    }
+    const meta = row.metadata as any;
+    return {
+      ...DEFAULT_CONFORMIDAD_CONFIG,
+      ...meta,
+      plazoValor: Math.max(1, Number(meta.plazoValor ?? DEFAULT_CONFORMIDAD_CONFIG.plazoValor)),
+      plazoUnidad: meta.plazoUnidad ?? DEFAULT_CONFORMIDAD_CONFIG.plazoUnidad,
+      cierreAutomaticoActivo:
+        meta.cierreAutomaticoActivo !== undefined
+          ? Boolean(meta.cierreAutomaticoActivo)
+          : DEFAULT_CONFORMIDAD_CONFIG.cierreAutomaticoActivo,
+      estadoDestino: meta.estadoDestino ?? DEFAULT_CONFORMIDAD_CONFIG.estadoDestino,
+      intervaloVerificacionSegundos: Math.max(
+        10,
+        Number(meta.intervaloVerificacionSegundos ?? DEFAULT_CONFORMIDAD_CONFIG.intervaloVerificacionSegundos ?? 60),
+      ),
+    };
+  }
+
+  async updateConformidadConfig(
+    data: Partial<ConformidadConfigData>,
+    user?: AuthUser,
+  ): Promise<ConformidadConfigData> {
+    let row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_PARAM_CONFORMIDAD_CONFIG },
+    });
+    const current = await this.getConformidadConfig();
+    const merged: ConformidadConfigData = {
+      ...current,
+      ...data,
+      plazoValor: data.plazoValor !== undefined ? Math.max(1, Number(data.plazoValor)) : current.plazoValor,
+      plazoUnidad: data.plazoUnidad ?? current.plazoUnidad,
+      cierreAutomaticoActivo:
+        data.cierreAutomaticoActivo !== undefined
+          ? Boolean(data.cierreAutomaticoActivo)
+          : current.cierreAutomaticoActivo,
+      estadoDestino: data.estadoDestino ?? current.estadoDestino,
+      intervaloVerificacionSegundos:
+        data.intervaloVerificacionSegundos !== undefined
+          ? Math.max(10, Number(data.intervaloVerificacionSegundos))
+          : current.intervaloVerificacionSegundos || 60,
+    };
+
+    if (!row) {
+      row = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: COD_PARAM_CONFORMIDAD_CONFIG,
+        nombre: 'Configuración de Plazo y Cierre Automático de Conformidad (EFDS-1737 / RF-INF-008)',
+        descripcion:
+          'Parámetros institucionales del plazo de confirmación del solicitante (días hábiles / horas / minutos para pruebas en vivo) y automatización del cierre tras vencimiento.',
+        orden: 60,
+        isActivo: true,
+        metadata: merged,
+      });
+    } else {
+      row.metadata = merged;
+      row.isActivo = true;
+    }
+    await this.catalogoRepo.save(row);
+    this.notifLogger.log(
+      `[ConformidadConfig] Parámetros actualizados por ${user?.username || 'admin'}: ${JSON.stringify(merged)}`,
+    );
+    return merged;
+  }
+
+  async calcularFechaLimiteConformidad(fechaInicio: Date): Promise<Date> {
+    const config = await this.getConformidadConfig();
+    const unidad = config.plazoUnidad || 'DIAS_HABILES';
+    const valor = Math.max(1, Number(config.plazoValor || 5));
+
+    if (unidad === 'MINUTOS') {
+      return new Date(fechaInicio.getTime() + valor * 60 * 1000);
+    }
+    if (unidad === 'HORAS') {
+      return new Date(fechaInicio.getTime() + valor * 3600 * 1000);
+    }
+    if (unidad === 'DIAS_CALENDARIO') {
+      return new Date(fechaInicio.getTime() + valor * 24 * 3600 * 1000);
+    }
+
+    // Default: DIAS_HABILES (Lunes a Viernes, saltando fines de semana)
+    let diasAgregados = 0;
+    const cur = new Date(fechaInicio.getTime());
+    while (diasAgregados < valor) {
+      cur.setDate(cur.getDate() + 1);
+      const diaSemana = cur.getDay(); // 0 = Domingo, 6 = Sábado
+      if (diaSemana !== 0 && diaSemana !== 6) {
+        diasAgregados++;
+      }
+    }
+    return cur;
+  }
+
+  async listarSolicitudesPendientesConformidad(): Promise<any[]> {
+    const rows = await this.mantenimientoRepo.find({
+      where: { estado: 'COMPLETADA' },
+      order: { fechaCierreTecnico: 'DESC' },
+    });
+    const ahora = new Date();
+
+    return Promise.all(
+      rows.map(async (s) => {
+        let limite = s.fechaLimiteConformidad ? new Date(s.fechaLimiteConformidad) : null;
+        if (!limite && s.fechaCierreTecnico) {
+          limite = await this.calcularFechaLimiteConformidad(new Date(s.fechaCierreTecnico));
+        }
+        const limiteMs = limite ? limite.getTime() : null;
+        const ahoraMs = ahora.getTime();
+        const vencida = limiteMs !== null ? ahoraMs >= limiteMs : false;
+        const diffMs = limiteMs !== null ? limiteMs - ahoraMs : null;
+
+        let tiempoRestanteTexto = 'Sin fecha límite';
+        let segundosRestantes = 0;
+        let minutosRestantes = 0;
+        let horasRestantes = 0;
+        let diasRestantes = 0;
+
+        if (diffMs !== null) {
+          const totalSeg = Math.floor(Math.abs(diffMs) / 1000);
+          segundosRestantes = totalSeg % 60;
+          minutosRestantes = Math.floor((totalSeg % 3600) / 60);
+          horasRestantes = Math.floor((totalSeg % 86400) / 3600);
+          diasRestantes = Math.floor(totalSeg / 86400);
+
+          if (vencida) {
+            if (diasRestantes > 0) {
+              tiempoRestanteTexto = `Vencida hace ${diasRestantes} d y ${horasRestantes} h`;
+            } else if (horasRestantes > 0) {
+              tiempoRestanteTexto = `Vencida hace ${horasRestantes} h y ${minutosRestantes} min`;
+            } else if (minutosRestantes > 0) {
+              tiempoRestanteTexto = `Vencida hace ${minutosRestantes} min y ${segundosRestantes} s`;
+            } else {
+              tiempoRestanteTexto = `Vencida hace ${segundosRestantes} s`;
+            }
+          } else {
+            if (diasRestantes > 0) {
+              tiempoRestanteTexto = `${diasRestantes} d y ${horasRestantes} h restantes`;
+            } else if (horasRestantes > 0) {
+              tiempoRestanteTexto = `${horasRestantes} h y ${minutosRestantes} min restantes`;
+            } else if (minutosRestantes > 0) {
+              tiempoRestanteTexto = `${minutosRestantes} min y ${segundosRestantes} s restantes`;
+            } else {
+              tiempoRestanteTexto = `${segundosRestantes} s restantes`;
+            }
+          }
+        }
+
+        return {
+          idSolicitud: s.idSolicitud,
+          consecutivo: s.consecutivo,
+          solicitanteNombre: s.solicitanteNombre,
+          solicitanteEmail: s.solicitanteEmail,
+          descripcion: s.descripcion,
+          prioridad: s.prioridad,
+          responsableCierreDisplay: s.responsableCierreDisplay,
+          fechaCierreTecnico: s.fechaCierreTecnico,
+          fechaLimiteConformidad: limite,
+          vencida,
+          segundosRestantes,
+          minutosRestantes,
+          horasRestantes,
+          diasRestantes,
+          tiempoRestanteMs: diffMs,
+          tiempoRestanteTexto,
+        };
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // EFDS-1733: Motor sugerir asignación
   //   AC-01 Eléctricas (48) => regla ESPECIALIZACION obligatoria
   //   AC-02 Resto 7 categorías => EQUIDAD_DISPONIBILIDAD_CARGA_MENOR
@@ -2851,7 +3092,7 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     let valoracion = await this.valoracionRepo.findOne({
       where: {
         idSolicitudMantenimiento: solicitud.idSolicitud,
-        estadoAlFinalizar: undefined as any,
+        fechaFinValoracion: IsNull(),
       },
       order: { createdAt: 'DESC' },
     });
@@ -2861,15 +3102,15 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
         idTecnicoValorador: user?.userId ?? undefined,
         tecnicoCodigo: per.tecnicoCodigo ?? undefined,
         tecnicoNombre: per.tecnicoNombre || (user?.username || 'Usuario sin nombre'),
-        diagnostico: 'Visita técnica en curso…',
-        alcanceIdentificado: 'Pendiente diligenciar durante la visita.',
+        diagnostico: undefined,
+        alcanceIdentificado: undefined,
         tiempoEstimadoHoras: 1,
         nivelRiesgo: 'BAJO',
         requiereApagadoElectrico: false,
         evidencias: [],
-        estadoAlFinalizar: 'EN_PROGRESO',
+        estadoAlFinalizar: undefined,
         fechaInicioValoracion: solicitud.fechaInicioValoracion ?? ahora,
-        fechaFinValoracion: ahora,
+        fechaFinValoracion: undefined,
       });
       valoracion = await this.valoracionRepo.save(valoracion as any);
     }
@@ -3854,7 +4095,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     solicitud.requiereSeguimiento = !!dto.requiereSeguimiento;
     solicitud.fechaEjecucion = solicitud.fechaEjecucion ?? ahora.toISOString().slice(0, 10);
 
-    solicitud.fechaLimiteConformidad = new Date(ahora.getTime() + PLAZO_CONFORMIDAD_HORAS_DEFAULT * 3600 * 1000);
+    solicitud.fechaLimiteConformidad = await this.calcularFechaLimiteConformidad(ahora);
     solicitud.conteoReaperturasConformidad = 0;
     solicitud.resultadoConformidad = undefined;
     solicitud.fechaConformidad = undefined;
@@ -4152,42 +4393,71 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
   }
 
   async ejecutarCierresSinRespuestaVencidos(
-    user: AuthUser | null | undefined,
-  ): Promise<{ actualizadas: number; ids: string[] }> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    user?: AuthUser | null,
+    forceBatch = false,
+  ): Promise<{ actualizadas: number; ids: string[]; consecutivos: string[]; configUsada: ConformidadConfigData }> {
+    if (user) {
+      const vr = this.validarRolesAsignador(user);
+      if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    }
+    const config = await this.getConformidadConfig();
+    if (!config.cierreAutomaticoActivo && !forceBatch) {
+      return { actualizadas: 0, ids: [], consecutivos: [], configUsada: config };
+    }
+
     const ahora = new Date();
     const repo = this.mantenimientoRepo;
     const rows = await repo.find({
-      where: {
-        estado: 'COMPLETADA',
-        fechaLimiteConformidad: Not(IsNull()) as any,
-      } as any,
+      where: { estado: 'COMPLETADA' },
     });
-    const filtradas = rows.filter(
-      (s) => s.fechaLimiteConformidad && new Date(s.fechaLimiteConformidad as any).getTime() <= ahora.getTime(),
-    );
+
     const ids: string[] = [];
-    for (const s of filtradas) {
-      s.estado = 'CERRADA_SIN_ATENCION';
+    const consecutivos: string[] = [];
+
+    for (const s of rows) {
+      let limite = s.fechaLimiteConformidad ? new Date(s.fechaLimiteConformidad) : null;
+      if (!limite && s.fechaCierreTecnico) {
+        limite = await this.calcularFechaLimiteConformidad(new Date(s.fechaCierreTecnico));
+      }
+      if (!limite || ahora.getTime() < limite.getTime()) {
+        continue;
+      }
+
+      const estadoFinal = config.estadoDestino || 'CERRADA_SIN_RESPUESTA';
+      s.estado = estadoFinal;
       s.fechaConformidad = ahora;
       s.resultadoConformidad = 'SIN_RESPUESTA';
       s.usuarioConformidadId = user?.userId || undefined;
-      s.responsableConformidadDisplay = user?.username || 'Cierre automático sin respuesta';
+      s.responsableConformidadDisplay = user?.username
+        ? `Cierre automático batch ejecutado por ${user.username}`
+        : 'Cierre automático institucional (Sin respuesta)';
+
       ids.push(s.idSolicitud);
+      consecutivos.push(s.consecutivo || s.idSolicitud.slice(0, 8));
+
+      const sysUser: AuthUser = user || {
+        userId: '00000000-0000-0000-0000-000000000000',
+        username: 'SISTEMA_CIERRE_AUTOMATICO',
+        name: 'Sistema Automático UMI',
+        email: 'gestion.infraestructura@esap.edu.co',
+        roles: ['SUPER_ADMIN'],
+      };
+
       try {
         this.pushAsignacion(s, {
           accion: 'CONFORMIDAD_SIN_RESPUESTA',
           tecnicoCodigo: null,
           tecnicoNombreDisplay: null,
-          motivo: 'Plazo de conformidad vencido sin respuesta del área solicitante. Cierre automático.',
-          observaciones: null,
-          user: user || (s as any).__fakeUser,
+          motivo: `Plazo de conformidad vencido (${config.plazoValor} ${config.plazoUnidad}) sin respuesta del área solicitante. Cierre automático formal a ${estadoFinal}.`,
+          observaciones: 'Transición ejecutada por motor de conformidad automática (EFDS-1737 / RF-INF-008).',
+          user: sysUser,
         });
-      } catch {
-        // pushAsignacion requiere user definido; si pasó validarRolesAsignador user no es null
+      } catch (err: any) {
+        this.notifLogger.warn(`[pushAsignacion] error registrando asignacion cierre automatico: ${err?.message}`);
       }
+
       await repo.save(s);
+      this.notifLogger.log(`[CierreAutomatico] Solicitud #${s.consecutivo} (${s.idSolicitud}) pasada a ${estadoFinal}.`);
 
       // [NOTIFICACION EFDS-1737] Cierre automático sin respuesta: notificación al solicitante.
       void (async () => {
@@ -4197,7 +4467,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
           await this.notificarAlSolicitante(cerrada, {
             tipo: 'UMI_CONFORMIDAD_SIN_RESPUESTA_SOLICITANTE',
             titulo: 'Solicitud cerrada automáticamente (sin respuesta)',
-            mensaje: `La solicitud #${cerrada.consecutivo ?? cerrada.idSolicitud.slice(0, 8)} alcanzó el límite de ${PLAZO_CONFORMIDAD_HORAS_DEFAULT}h sin respuesta del área y fue cerrada automáticamente.`,
+            mensaje: `La solicitud #${cerrada.consecutivo ?? cerrada.idSolicitud.slice(0, 8)} alcanzó el límite de ${config.plazoValor} ${config.plazoUnidad.toLowerCase().replace('_', ' ')} sin respuesta del área y fue cerrada automáticamente.`,
             icono: 'Clock',
             color: '#475569',
             prioridad: 'Media',
@@ -4210,7 +4480,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         }
       })();
     }
-    return { actualizadas: ids.length, ids };
+    return { actualizadas: ids.length, ids, consecutivos, configUsada: config };
   }
 
   // ---------------------------------------------------------------------------
@@ -6172,10 +6442,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
   async vincularTramiteContractual(
     idSolicitud: string,
     body: {
-      procesoContractual: string;
+      procesoContractual?: string;
       radicadoOrfeo?: string;
       presupuestoEstimadoCop?: number;
       observaciones?: string;
+      anexoNombre?: string;
+      anexoUrl?: string;
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
@@ -6183,14 +6455,13 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     const solicitud = await this.findById(idSolicitud);
-    const proceso = String(body.procesoContractual || '').trim();
-    if (!proceso) {
-      throw new BadRequestException('El código o identificador del proceso contractual es obligatorio.');
-    }
+    const proceso = String(body.procesoContractual || '').trim() || 'Gestión / Avance Contractual';
 
     const radicado = body.radicadoOrfeo ? String(body.radicadoOrfeo).trim() : null;
     const presupuesto = body.presupuestoEstimadoCop != null ? Number(body.presupuestoEstimadoCop) : null;
     const obs = body.observaciones ? String(body.observaciones).trim() : null;
+    const anexoNombre = (body as any)?.anexoNombre ? String((body as any).anexoNombre).trim() : null;
+    const anexoUrl = (body as any)?.anexoUrl ? String((body as any).anexoUrl).trim() : null;
 
     if (presupuesto != null && !isNaN(presupuesto) && presupuesto > 0) {
       solicitud.costoEstimado = presupuesto;
@@ -6201,13 +6472,15 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       radicadoOrfeo: radicado,
       presupuestoEstimadoCop: presupuesto,
       observaciones: obs,
+      anexoNombre,
+      anexoUrl,
       registradoPor: (user as any)?.email ?? 'Coordinación GIM',
       fechaRegistro: new Date().toISOString(),
     };
 
     this.pushAsignacion(solicitud, {
       accion: 'VINCULACION_TRAMITE_CONTRACTUAL' as any,
-      motivo: `Trámite Contractual vinculado: ${proceso}${radicado ? ` · Radicado Orfeo: ${radicado}` : ''}`,
+      motivo: `Registro contractual: ${proceso}${radicado ? ` · Radicado: ${radicado}` : ''}`,
       observaciones: JSON.stringify(payloadAudit),
       clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
       requiereContratacion: true,
@@ -6297,5 +6570,232 @@ ${insumos ? `<p><strong>Insumos / Servicios requeridos:</strong> ${insumos}</p>`
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
+  }
+
+  // =========================================================================
+  // RF-INF-014: Alarmas y Notificaciones Multicanal (Umbral 70% ANS y Emergencias)
+  // =========================================================================
+
+  async evaluarAlertas70ANS(): Promise<{ evaluadas: number; alertasEmitidas: number; ids: string[] }> {
+    const ahora = new Date();
+    const estadosCerrados = [
+      'COMPLETADA',
+      'RESUELTO',
+      'CERRADA',
+      'CERRADA_SIN_RESPUESTA',
+      'CERRADA_POR_USUARIO',
+      'CERRADA_SIN_ATENCION',
+      'ANULADA',
+      'CANCELADA',
+    ];
+
+    const solicitudes = await this.mantenimientoRepo.createQueryBuilder('solicitud')
+      .leftJoinAndSelect('solicitud.sede', 'sede')
+      .where('solicitud.estado NOT IN (:...estadosCerrados)', { estadosCerrados })
+      .andWhere('solicitud.alerta70Emitida = false')
+      .andWhere('solicitud.fechaLimiteAtencion IS NOT NULL')
+      .andWhere('solicitud.fechaLimiteAtencion > :ahora', { ahora })
+      .getMany();
+
+    const idsEmitidos: string[] = [];
+    let alertasEmitidas = 0;
+
+    for (const sol of solicitudes) {
+      const fechaInicio = sol.fechaRadicacion;
+      const fechaLimite = sol.fechaLimiteAtencion;
+      if (!fechaInicio || !fechaLimite) continue;
+
+      const inicioMs = new Date(fechaInicio).getTime();
+      const limiteMs = new Date(fechaLimite).getTime();
+      const ahoraMs = ahora.getTime();
+
+      const totalSlaMs = limiteMs - inicioMs;
+      if (totalSlaMs <= 0) continue;
+
+      const transcurridoMs = ahoraMs - inicioMs;
+      const porcentaje = Math.round((transcurridoMs / totalSlaMs) * 100);
+
+      // Si ha consumido >= 70% del tiempo total del SLA y aún no ha vencido (< 100%)
+      if (porcentaje >= 70 && ahoraMs < limiteMs) {
+        sol.alerta70Emitida = true;
+        sol.fechaAlerta70 = ahora;
+
+        this.pushAsignacion(sol, {
+          accion: 'ALERTA_PREVENTIVA_70_ANS' as any,
+          motivo: `Se alcanzó el ${porcentaje}% del tiempo límite de atención SLA establecido.`,
+          observaciones: `Alerta automática preventiva de vencimiento próximo de SLA (RF-INF-014). Porcentaje consumido: ${porcentaje}%. Fecha límite: ${new Date(fechaLimite).toISOString()}`,
+          clasificacionMantenimiento: sol.clasificacionMantenimiento,
+          requiereContratacion: sol.requiereContratacion,
+          user: { userId: '00000000-0000-0000-0000-000000000000', email: 'sistema@esap.edu.co', roles: ['SISTEMA'] } as any,
+        });
+
+        await this.mantenimientoRepo.save(sol);
+        idsEmitidos.push(sol.idSolicitud);
+        alertasEmitidas++;
+
+        try {
+          await this.notificarAlerta70ANS(sol, porcentaje);
+        } catch (notifErr: any) {
+          this.notifLogger.warn(`[Alerta70] Error al emitir notificación para #${sol.consecutivo}: ${notifErr?.message || notifErr}`);
+        }
+      }
+    }
+
+    return { evaluadas: solicitudes.length, alertasEmitidas, ids: idsEmitidos };
+  }
+
+  private async notificarAlerta70ANS(solicitud: SolicitudMantenimiento, porcentaje: number): Promise<void> {
+    const url = this.solicitudAccionUrl(solicitud);
+    const rad = solicitud.consecutivo || solicitud.idSolicitud.slice(0, 8);
+
+    await this.notificarEncargadosUMI(solicitud, {
+      tipo: 'UMI_ALERTA_70_ANS',
+      titulo: `Alerta Preventiva 70% ANS - Solicitud #${rad}`,
+      mensaje: `La solicitud #${rad} ha consumido el ${porcentaje}% de su ventana de atención ANS (${solicitud.prioridad}). Requiere seguimiento para evitar vencimiento.`,
+      icono: 'Clock',
+      color: '#d97706',
+      prioridad: 'Alta',
+      textoAccion: 'Revisar Solicitud',
+      emailSubject: `[ALERTA 70% ANS] Solicitud #${rad} próxima a vencer SLA (${porcentaje}%)`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#b45309;margin:0 0 8px">Alerta Preventiva de Tiempo de Atención (70% ANS)</h3>
+<p>La solicitud de mantenimiento <strong>#${rad}</strong> ha consumido el <strong>${porcentaje}%</strong> del tiempo acordado en su ANS.</p>
+<p><strong>Sede / Ubicación:</strong> ${solicitud.sede?.nombre || solicitud.ubicacionAdicionalTexto || 'N/A'} - ${solicitud.ubicacionDetalle || ''}</p>
+<p><strong>Prioridad:</strong> ${solicitud.prioridad} | <strong>Estado:</strong> ${solicitud.estado}</p>
+<p><strong>Técnico Asignado:</strong> ${solicitud.responsableAsignado || 'No asignado'}</p>
+<p><strong>Descripción:</strong> ${solicitud.descripcion}</p>
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver Solicitud en Plataforma</a></p>
+</div>`,
+    });
+
+    if (solicitud.idTecnicoAsignado) {
+      await this.notificarTecnicoAsignado(solicitud, {
+        tipo: 'UMI_ALERTA_70_ANS_TECNICO',
+        titulo: `Atención: Solicitud #${rad} al 70% de ANS`,
+        mensaje: `Has consumido el ${porcentaje}% del tiempo límite para atender la solicitud #${rad}. Por favor agiliza la intervención o el cierre técnico.`,
+        icono: 'Clock',
+        color: '#d97706',
+        prioridad: 'Alta',
+        textoAccion: 'Gestionar Solicitud',
+        emailSubject: `[UMI] Solicitud #${rad} ha consumido el ${porcentaje}% del ANS`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#b45309;margin:0 0 8px">Alerta Preventiva de ANS (70%)</h3>
+<p>Estimado técnico, la solicitud <strong>#${rad}</strong> asignada a usted ha alcanzado el <strong>${porcentaje}%</strong> de su tiempo límite de atención.</p>
+<p><strong>Ubicación:</strong> ${solicitud.ubicacionDetalle || solicitud.sede?.nombre || ''}</p>
+<p><strong>Descripción:</strong> ${solicitud.descripcion}</p>
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Continuar Atención</a></p>
+</div>`,
+      });
+    }
+  }
+
+  private async notificarEmergenciaCritica(solicitud: SolicitudMantenimiento): Promise<void> {
+    const url = this.solicitudAccionUrl(solicitud);
+    const rad = solicitud.consecutivo || solicitud.idSolicitud.slice(0, 8);
+
+    await this.notificarEncargadosUMI(solicitud, {
+      tipo: 'UMI_EMERGENCIA_CRITICA',
+      titulo: `EMERGENCIA CRÍTICA REPORTADA - #${rad}`,
+      mensaje: `Se ha registrado una solicitud con prioridad URGENTE / EMERGENCIA CRÍTICA en ${solicitud.sede?.nombre || 'la institución'}. Requiere confirmación inmediata del Coordinador GIM.`,
+      icono: 'AlertTriangle',
+      color: '#dc2626',
+      prioridad: 'Crítica',
+      textoAccion: 'Confirmar y Atender Emergencia',
+      emailSubject: `[EMERGENCIA CRÍTICA UMI] Solicitud #${rad} requiere atención inmediata`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<div style="background:#fee2e2;border-left:4px solid #dc2626;padding:12px;margin-bottom:12px">
+  <h3 style="color:#991b1b;margin:0 0 4px">EMERGENCIA CRÍTICA DECLARADA (RF-INF-014)</h3>
+  <p style="color:#7f1d1d;margin:0">Se ha radicado un caso catalogado como de máxima prioridad operativa o estructural.</p>
+</div>
+<p><strong>Consecutivo:</strong> #${rad}</p>
+<p><strong>Sede / Espacio:</strong> ${solicitud.sede?.nombre || ''} - ${solicitud.ubicacionDetalle || ''}</p>
+<p><strong>Descripción de la novedad:</strong> ${solicitud.descripcion}</p>
+<p><strong>Solicitante:</strong> ${solicitud.solicitanteNombre || 'N/A'} (${solicitud.solicitanteEmail || ''})</p>
+<p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold">Confirmar Emergencia en Plataforma</a></p>
+</div>`,
+    });
+  }
+
+  async confirmarEmergenciaCritica(
+    idSolicitud: string,
+    dto: ConfirmarEmergenciaDto,
+    user?: AuthUser | null,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    if (!solicitud.esEmergenciaCritica) {
+      throw new BadRequestException('Esta solicitud no está clasificada como emergencia crítica.');
+    }
+    if (solicitud.emergenciaConfirmada) {
+      throw new BadRequestException('La emergencia crítica ya ha sido confirmada previamente.');
+    }
+
+    const ahora = new Date();
+    const nombreUsuario = user?.name || user?.username || user?.email || 'Coordinador GIM';
+
+    solicitud.emergenciaConfirmada = true;
+    solicitud.emergenciaConfirmadaPor = nombreUsuario;
+    solicitud.fechaConfirmacionEmergencia = ahora;
+    solicitud.notasConfirmacionEmergencia = dto?.notas || null;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'CONFIRMACION_EMERGENCIA_CRITICA' as any,
+      motivo: `Emergencia crítica confirmada formalmente por ${nombreUsuario}.`,
+      observaciones: dto?.notas ? `Notas de confirmación: ${dto.notas}` : 'Confirmación formal de atención prioritaria inmediata (RF-INF-014).',
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: solicitud.requiereContratacion,
+      user: (user || { userId: '00000000-0000-0000-0000-000000000000', email: 'coordinador@esap.edu.co', roles: ['COORDINADOR_INFRAESTRUCTURA'] }) as any,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    try {
+      const url = this.solicitudAccionUrl(saved);
+      const rad = saved.consecutivo || saved.idSolicitud.slice(0, 8);
+      await this.notificarAlSolicitante(saved, {
+        tipo: 'EMERGENCIA_CONFIRMADA_SOLICITANTE',
+        titulo: `Emergencia #${rad} confirmada por Coordinación`,
+        mensaje: `La Coordinación de Infraestructura ha confirmado y priorizado tu solicitud de emergencia #${rad}.`,
+        icono: 'CheckCircle',
+        color: '#dc2626',
+        prioridad: 'Crítica',
+        textoAccion: 'Ver Solicitud',
+        emailSubject: `[UMI] Emergencia #${rad} confirmada - Protocolo activado`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#dc2626;margin:0 0 8px">Emergencia Confirmada por Coordinación GIM</h3>
+<p>Tu reporte de emergencia <strong>#${rad}</strong> ha sido confirmado formalmente por <strong>${nombreUsuario}</strong>.</p>
+<p>Se ha desplegado el protocolo de atención inmediata para la novedad reportada.</p>
+${dto.notas ? `<p><strong>Instrucciones / Observaciones:</strong> ${dto.notas}</p>` : ''}
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none">Ver Estado del Caso</a></p>
+</div>`,
+      });
+    } catch (e: any) {
+      this.notifLogger.warn(`Error enviando notificación de confirmación de emergencia: ${e?.message || e}`);
+    }
+
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
+    return enriquecida || saved;
+  }
+
+  async obtenerEmergenciasPendientes(): Promise<SolicitudMantenimiento[]> {
+    const estadosCerrados = [
+      'COMPLETADA',
+      'RESUELTO',
+      'CERRADA',
+      'CERRADA_SIN_RESPUESTA',
+      'CERRADA_POR_USUARIO',
+      'CERRADA_SIN_ATENCION',
+      'ANULADA',
+      'CANCELADA',
+    ];
+
+    const solicitudes = await this.mantenimientoRepo.createQueryBuilder('solicitud')
+      .leftJoinAndSelect('solicitud.sede', 'sede')
+      .where('solicitud.esEmergenciaCritica = true')
+      .andWhere('solicitud.emergenciaConfirmada = false')
+      .andWhere('solicitud.estado NOT IN (:...estadosCerrados)', { estadosCerrados })
+      .orderBy('solicitud.fechaRadicacion', 'DESC')
+      .getMany();
+
+    return this.enriquecerSolicitudesConTerritoriales(solicitudes);
   }
 }

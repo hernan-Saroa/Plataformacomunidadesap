@@ -107,7 +107,7 @@ describe('NuevaSolicitudModal — Restricción de Comisionados por Dependencia p
     vi.mocked(viaticosService.listarComisionados).mockResolvedValue(mockComisionadosDep1);
   });
 
-  it('un enlace de dependencia 1 que consulta un comisionado de otra dependencia (dep 2) recibe mensaje de bloqueo', async () => {
+  it('un enlace de dependencia 1 que consulta un comisionado de otra dependencia (dep 2) recibe advertencia de dependencia no bloqueante', async () => {
     // Configurar usuario Enlace de dependencia 1 (no admin)
     vi.mocked(authService.hasPermission).mockReturnValue(false);
     vi.mocked(authService.getCurrentUserSync).mockReturnValue({
@@ -153,14 +153,14 @@ describe('NuevaSolicitudModal — Restricción de Comisionados por Dependencia p
     const btnConsultar = screen.getByRole('button', { name: /consultar/i });
     fireEvent.click(btnConsultar);
 
-    // Debe mostrarse el error indicando que pertenece a otra dependencia
+    // Debe mostrarse la advertencia de dependencia no bloqueante
     await waitFor(() => {
       expect(screen.getByText(/pertenece a otra dependencia/i)).toBeDefined();
     });
 
-    // No debe aparecer la tarjeta verde de comisionado cargado
-    expect(screen.queryByText(/Verificado/i)).toBeNull();
-    expect(screen.queryByText(/Usuario Comisionado Activo/i)).toBeNull();
+    // Sí se permite el cargue mostrando los datos del comisionado con la advertencia
+    expect(screen.getAllByText(/Ana López/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Advertencia de Dependencia/i)).toBeDefined();
   });
 
   it('un enlace de dependencia 1 consulta un comisionado de su propia dependencia (dep 1) y carga exitosamente', async () => {
