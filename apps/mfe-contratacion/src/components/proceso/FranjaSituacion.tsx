@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Clock, Hourglass } from 'lucide-react';
+import { ArrowRight, Clock, Hourglass, RotateCcw } from 'lucide-react';
 
 import { Situacion } from './situacionDelProceso';
 import { ChipPlazo } from './ChipPlazo';
@@ -19,6 +19,12 @@ interface Props {
   onRevisar?: (numeral: string) => void;
   /** Los plazos que aprietan en este proceso, el más urgente primero. */
   plazos?: PlazoDeActividad[];
+  /**
+   * Lo que pidieron corregir, si la actividad volvió con observaciones. Sin
+   * esto la franja decía «la devolvieron con observaciones» y había que ir al
+   * historial a leerlas.
+   */
+  devolucion?: { observaciones: string; por: string; fecha: string } | null;
 }
 
 /** «hoy», «ayer», «hace 5 días». */
@@ -38,7 +44,14 @@ function haceCuanto(iso: string): string {
  * mismo en una línea —qué pasa, a quién le toca, por qué espera y desde
  * cuándo no se mueve— y lleva a la actividad con un clic.
  */
-export function FranjaSituacion({ situacion, abierta = null, onIr, onRevisar, plazos = [] }: Props) {
+export function FranjaSituacion({
+  situacion,
+  abierta = null,
+  onIr,
+  onRevisar,
+  plazos = [],
+  devolucion = null,
+}: Props) {
   const rasgos = RASGOS_DEL_MOMENTO[situacion.momento];
   const { Icono } = rasgos;
   const aRevisar = situacion.teToca && situacion.momento === 'revision' && !!onRevisar;
@@ -79,6 +92,20 @@ export function FranjaSituacion({ situacion, abierta = null, onIr, onRevisar, pl
             <Hourglass className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
             {situacion.espera}
           </p>
+        ) : null}
+
+        {devolucion ? (
+          <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 flex items-start gap-1.5">
+            <RotateCcw className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-700" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-[13px] text-amber-900 m-0 leading-snug whitespace-pre-line break-words">
+                {devolucion.observaciones}
+              </p>
+              <p className="text-xs text-amber-700 m-0 mt-0.5">
+                {devolucion.por} · {fechaDelMomento(devolucion.fecha)}
+              </p>
+            </div>
+          </div>
         ) : null}
 
         {plazos.length ? (
