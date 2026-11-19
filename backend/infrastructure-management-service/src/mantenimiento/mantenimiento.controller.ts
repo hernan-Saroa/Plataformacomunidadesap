@@ -48,6 +48,8 @@ import {
   VincularTramiteContractualDto,
   MarcarRequiereContratacionDto,
   ConfirmarEmergenciaDto,
+  AsignarTecnicoPayload,
+  RegistrarVoBoCierreDtDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
@@ -161,6 +163,8 @@ export class MantenimientoController {
   @ApiQuery({ name: 'prioridad', required: false })
   @ApiQuery({ name: 'idCategoria', required: false, description: 'Filtrar por categoria servicio EFDS-1732 (idCatalogo CATEGORIA_SERVICIO, 47..54 = CS_001..CS_008)' })
   @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
+  @ApiQuery({ name: 'idDireccionTerritorial', required: false, description: 'Filtro por Dirección Territorial (para usuarios con visibilidad central).' })
+  @ApiQuery({ name: 'idCetap', required: false, description: 'Filtro por CETAP municipal (para usuarios con visibilidad central).' })
   @ApiResponse({ status: 401, description: 'JWT o headers x-user-id/x-user-roles faltantes' })
   @ApiResponse({ status: 403, description: 'Permisos insuficientes' })
   findAll(
@@ -168,11 +172,24 @@ export class MantenimientoController {
     @Query('prioridad') prioridad?: string,
     @Query('incluirTI') incluirTI?: string,
     @Query('idCategoria') idCategoria?: string,
+    @Query('idDireccionTerritorial') idDireccionTerritorial?: string,
+    @Query('idCetap') idCetap?: string,
     @Req() req?: any,
   ) {
     const incluir = String(incluirTI || '').toLowerCase() === 'true';
     const idCatParsed = (idCategoria && idCategoria.trim() !== '' && Number.isInteger(+idCategoria)) ? Number(idCategoria) : undefined;
-    return this.mantenimientoService.findAll(estado, prioridad, incluir, idCatParsed, req?.user || null);
+    const filtrosTerritoriales = {
+      idDireccionTerritorial: (idDireccionTerritorial && idDireccionTerritorial.trim() !== '' && !isNaN(+idDireccionTerritorial)) ? Number(idDireccionTerritorial) : undefined,
+      idCetap: (idCetap && idCetap.trim() !== '' && !isNaN(+idCetap)) ? Number(idCetap) : undefined,
+    };
+    return this.mantenimientoService.findAll(estado, prioridad, incluir, idCatParsed, req?.user || null, filtrosTerritoriales);
+  }
+
+  @Get('auth/ambito-territorial')
+  @ApiOperation({ summary: 'Obtener el ámbito territorial y permisos regionales del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Ámbito territorial resuelto del usuario' })
+  getAmbitoTerritorial(@Req() req: any) {
+    return this.mantenimientoService.resolverAmbitoTerritorial(req?.user || null);
   }
 
   @Get('mis-solicitudes')
@@ -541,24 +558,32 @@ export class MantenimientoController {
   @Post(':idSolicitud/aprobar-asignar')
   @ApiOperation({
     summary:
-      'EFDS-1734 RF-INF-005 AC-01: Aprobar una solicitud. Si areaResponsableActual = TI: confirma recepción remisión a Oficina TI (tecnicoCodigo OPCIONAL). Si UMI: asigna técnico obligatorio y pasa estado ASIGNADA. Limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+      'EFDS-1734 RF-INF-005 AC-01: Aprobar una solicitud. Asigna técnico o modalidad de ejecutor territorial y pasa estado ASIGNADA.',
   })
   @ApiResponse({ status: 200, description: 'Solicitud aprobada. Histórico auditoría actualizado.' })
   @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente o faltante en flujo UMI físico.' })
-  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente.' })
   aprobarYAsignar(
     @Param('idSolicitud') idSolicitud: string,
-    @Body()
-    body: {
-      tecnicoCodigo?: string | null;
-      idTecnicoAsignado?: string | null;
-      observaciones?: string | null;
-      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
-      requiereContratacion?: boolean;
-    },
+    @Body() body: AsignarTecnicoPayload,
     @Req() req: any,
   ) {
     return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/vobo-cierre-dt')
+  @ApiOperation({
+    summary:
+      'RF-INF-013 / RF-INF-005: Registrar Visto Bueno (VoBo) de cierre técnico por parte de la Dirección Territorial.',
+  })
+  @ApiResponse({ status: 200, description: 'VoBo DT registrado exitosamente.' })
+  @ApiResponse({ status: 403, description: 'No autorizado para emitir VoBo sobre esta Dirección Territorial.' })
+  registrarVoBoCierreDt(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: RegistrarVoBoCierreDtDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarVoBoCierreDt(idSolicitud, body, req?.user);
   }
 
   @Post(':idSolicitud/vobo-revision')
