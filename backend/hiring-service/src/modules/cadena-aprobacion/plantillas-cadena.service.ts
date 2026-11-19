@@ -117,17 +117,38 @@ export class PlantillasCadenaService {
   }
 
   /**
-   * Cambia la plantilla. Las rondas en curso no se enteran: trabajan sobre la
-   * copia que se guardó al enviarlas.
+   * Cambia la plantilla. Las rondas en curso siguen con la copia de quién
+   * decide cada escalón que se guardó al enviarlas, pero sí reciben **qué
+   * puede hacer** cada escalón que aún no decidió (BUG-006 de QA, 17/11): si
+   * la Dirección le da «Devolver» al abogado revisor, lo espera en la revisión
+   * que tiene abierta, no en el próximo envío.
    */
   async actualizar(id: string, dto: GuardarCadenaDto, acceso: HiringAccess) {
-    const repo = this.dataSource.getRepository(CadenaAprobacion);
-    const plantilla = await repo.findOne({ where: { id, activa: true } });
-    if (!plantilla) throw new NotFoundException('La cadena no existe o ya se archivó');
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(CadenaAprobacion);
+      const plantilla = await repo.findOne({ where: { id, activa: true } });
+      if (!plantilla) throw new NotFoundException('La cadena no existe o ya se archivó');
 
-    Object.assign(plantilla, this.validar(dto), { updatedBy: acceso.userName });
-    await repo.save(plantilla);
-    return { id };
+      Object.assign(plantilla, this.validar(dto), { updatedBy: acceso.userName });
+      await repo.save(plantilla);
+
+      // Por orden: el escalón N de la ronda es el N de la plantilla. Los que
+      // ya decidieron no cambian, y si la plantilla perdió escalones los que
+      // sobran se quedan con lo que tenían.
+      await em.query(
+        `UPDATE hiring.aprobacion_escalones e
+            SET acciones = ARRAY(SELECT jsonb_array_elements_text(c.escalones -> (e.orden - 1) -> 'acciones'))
+           FROM hiring.aprobaciones r, hiring.cadenas_aprobacion c
+          WHERE e.aprobacion_id = r.id
+            AND r.cadena_id = c.id
+            AND c.id = $1
+            AND r.estado = 'EN_CURSO'
+            AND e.estado IN ('PENDIENTE', 'BLOQUEADO')
+            AND e.orden <= jsonb_array_length(c.escalones)`,
+        [id],
+      );
+      return { id };
+    });
   }
 
   /**
