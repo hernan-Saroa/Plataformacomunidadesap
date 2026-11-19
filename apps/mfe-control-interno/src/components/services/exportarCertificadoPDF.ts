@@ -183,7 +183,8 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
   y += 7;
   doc.setFontSize(12);
   doc.setTextColor(...C.naranja);
-  doc.text(`PLAN ANUAL DE AUDITORÍA — VIGENCIA ${plan.vigencia || new Date().getFullYear()}`, pw / 2, y, { align: 'center' });
+  // La firma aprueba el Plan y el Programa Anual de la misma vigencia (EFDS-2321)
+  doc.text(`PLAN ANUAL Y PROGRAMA ANUAL DE AUDITORÍA — VIGENCIA ${plan.vigencia || new Date().getFullYear()}`, pw / 2, y, { align: 'center' });
 
   // Línea divisoria elegante
   y += 5;
@@ -199,7 +200,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
   doc.setTextColor(...C.gris);
   doc.setFontSize(9.5);
   doc.setFont('helvetica', 'normal');
-  const body = `Por medio del presente documento, se certifica la aprobación formal y activación del Plan Anual de Auditoría Interna para la vigencia ${plan.vigencia || new Date().getFullYear()}. Este plan ha completado satisfactoriamente el proceso de revisión y aprobación por el Comité PAI, registrándose las firmas electrónicas con verificación OTP (One-Time Password) conforme a la Ley 527 de 1999 y el Decreto 2364 de 2012.`;
+  const body = `Por medio del presente documento, se certifica la aprobación formal y activación del Plan Anual de Auditoría Interna y del Programa Anual de Auditoría asociado para la vigencia ${plan.vigencia || new Date().getFullYear()}. Ambos completaron satisfactoriamente el proceso de revisión y aprobación por el Comité PAI: la firma electrónica de los aprobadores comprende el Plan Anual y el Programa Anual de esa vigencia, y quedó registrada con verificación OTP (One-Time Password) conforme a la Ley 527 de 1999 y el Decreto 2364 de 2012.`;
   const lines = doc.splitTextToSize(body, cw);
   doc.text(lines, margen, y);
   y += lines.length * 4.5 + 6;

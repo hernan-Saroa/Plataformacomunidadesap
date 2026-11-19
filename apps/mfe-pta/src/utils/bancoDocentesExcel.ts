@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { sanitizeText } from './textSanitizer';
+import { ETIQUETA_INFORMACION_ADICIONAL, ETIQUETA_INFORMACION_PRECARGADA, NIVELES_TITULO, titulosAdicionalesDe } from './titulosFormacion';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../shared/territoriales-cetaps-esap';
 import {
   BANCO_DOCENTES_COLUMNS,
@@ -8,6 +9,7 @@ import {
   currentBancoDocentesPeriodo,
   saveBlobAs,
   type BancoDocentesCellValue,
+  type BancoDocentesTituloRow,
 } from './bancoDocentesWorkbook';
 
 export const BANCO_DOCENTES_HEADERS: readonly string[] = BANCO_DOCENTES_COLUMNS.map((column) => column.header);
@@ -90,6 +92,12 @@ const HEADER_ALIASES = {
   maestria: ['maestria', 'maestriadoctorado', 'titulomaestria'],
   doctorado: ['doctorado', 'titulodoctorado'],
   posDoctorado: ['posdoctorado', 'tituloposdoctorado'],
+  // RUND-003: varios títulos del mismo nivel en una celda, separados por «;», «|» o salto de línea.
+  titulosAdicionalesPregrado: ['titulosadicionalespregrado'],
+  titulosAdicionalesEspecializacion: ['titulosadicionalesespecializacion'],
+  titulosAdicionalesMaestria: ['titulosadicionalesmaestria'],
+  titulosAdicionalesDoctorado: ['titulosadicionalesdoctorado'],
+  titulosAdicionalesPosDoctorado: ['titulosadicionalesposdoctorado'],
   investigacion: ['investigacion2025', 'investigacion', 'investigacionactiva'],
   origenVinculacion: ['origendevinculacion', 'origenvinculacion'],
   actoAdministrativoVinculacion: ['actoadministrativodevinculacion', 'actoadministrativovinculacion', 'actoadministrativo'],
@@ -539,6 +547,25 @@ function buildFullName(user: any, bancoDocente: any): string {
   );
 }
 
+/**
+ * RUND-003: una fila por título registrado (precargado y adicionales) para la hoja de formación del reporte.
+ * La hoja oficial conserva sus columnas y solo trae el título precargado.
+ */
+export function buildTitulosFormacionRows(users: any[]): BancoDocentesTituloRow[] {
+  return users.flatMap((user, index) => {
+    const bancoDocente = user?.banco_docente || user?.docente?.banco_docente || user || {};
+    const documento = normalizeDocumentNumber(bancoDocente?.documento_identidad || user?.identificacion || user?.documento || user?.document) || '';
+    const nombre = buildFullName(user, bancoDocente);
+    return NIVELES_TITULO.flatMap(({ clave, etiqueta }) => {
+      const precargado = toCleanString(bancoDocente?.[clave === 'posDoctorado' ? 'posdoctorado' : clave]);
+      return [
+        ...(precargado ? [{ documento, nombre, nivel: etiqueta, titulo: precargado, origen: ETIQUETA_INFORMACION_PRECARGADA }] : []),
+        ...titulosAdicionalesDe(bancoDocente?.titulos_adicionales, clave).map(titulo => ({ documento, nombre, nivel: etiqueta, titulo, origen: ETIQUETA_INFORMACION_ADICIONAL })),
+      ].map(row => ({ ...row, orden: index }));
+    });
+  }).map(({ orden: _orden, ...row }) => row);
+}
+
 function buildExportRow(user: any, index: number) {
   const bancoDocente = user?.banco_docente || user?.docente?.banco_docente || {};
 
@@ -736,6 +763,6 @@ export async function downloadBancoDocentesExport(users: any[], fileName?: strin
   });
   const stamp = new Date();
   const safeFileName = fileName || `BANCO_DOCENTES_ESAP_${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, '0')}-${String(stamp.getDate()).padStart(2, '0')}.xlsx`;
-  const workbook = await buildBancoDocentesWorkbook({ rows, periodo, emptyRows: 1 });
+  const workbook = await buildBancoDocentesWorkbook({ rows, periodo, emptyRows: 1, titulosFormacion: buildTitulosFormacionRows(orderedUsers) });
   saveBlobAs(await bancoDocentesWorkbookToBlob(workbook), safeFileName);
 }

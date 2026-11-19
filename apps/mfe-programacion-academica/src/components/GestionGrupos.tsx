@@ -1,46 +1,38 @@
-import { useEffect, useState } from 'react';
-import { Layers3, Loader2, Plus, Trash2, User, Users } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CalendarDays, Layers3, Loader2, Plus, Trash2, User, Users } from 'lucide-react';
 
 import {
-  actualizarOfertaCetapGrupo, crearGrupos, eliminarGrupo, getGrupos, getOfertasCetapGrupo,
-  type Grupo, type ModalidadGrupo, type OfertaCetapGrupo,
+  actualizarOfertaCetapGrupo, crearGrupos, eliminarGrupo, getEstadoOfertasCetap, getGrupos, getOfertasCetapGrupo,
+  esSinAula, etiquetaModalidad,
+  type EstadoOfertasCetap, type Grupo, type ModalidadGrupo, type OfertaCetapGrupo,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
+import { useBorradorGrupo, useHayBorradoresGrupo } from './PanelGrupos';
+import { ModalConfirmacion } from './ModalConfirmacion';
 
 function nombreOferta(oferta: OfertaCetapGrupo): string {
   const territorial = oferta.territorial.nombre || oferta.territorial.codigo || 'Territorial sin identificar';
   return `${territorial} · ${oferta.cetap.nombre} (${oferta.cetap.codigo})`;
 }
 
-function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled }: {
+function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled, nota }: {
   id: string;
   label: string;
   ofertas: OfertaCetapGrupo[];
   valor: string;
   onChange: (idOferta: string) => void;
   disabled?: boolean;
+  nota?: string;
 }) {
-  const [busqueda, setBusqueda] = useState('');
-  const filtro = busqueda.trim().toLocaleLowerCase('es');
-  const visibles = ofertas.filter((oferta) =>
-    !filtro || nombreOferta(oferta).toLocaleLowerCase('es').includes(filtro),
-  );
+  // Solo el selector (sin buscador), pedido de Tomás nov-2026.
+  const visibles = ofertas;
   const seleccionada = ofertas.find((oferta) => oferta.idOfertaCetap === valor);
-  if (seleccionada && !visibles.some((oferta) => oferta.idOfertaCetap === valor)) visibles.unshift(seleccionada);
 
   return (
     <div className="flex flex-col gap-1.5 min-w-0">
-      <label htmlFor={`${id}-buscar`} className="text-xs font-bold text-slate-500 uppercase tracking-wider">Buscar {label.toLocaleLowerCase('es')}</label>
-      <input
-        id={`${id}-buscar`}
-        type="search"
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        disabled={disabled || ofertas.length === 0}
-        placeholder="Buscar territorial o CETAP"
-        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100"
-      />
+      <label htmlFor={id} className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</label>
       <select
+        id={id}
         aria-label={label}
         value={valor}
         onChange={(e) => onChange(e.target.value)}
@@ -55,7 +47,7 @@ function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled }: 
           </option>
         ))}
       </select>
-      {filtro && <span className="text-xs text-slate-500">{visibles.length} de {ofertas.length} ofertas coinciden.</span>}
+      {nota && <p role="status" className="text-xs text-blue-900">{nota}</p>}
       {seleccionada && !seleccionada.territorial.idSeccional && (
         <span className="text-xs text-amber-700">Este CETAP no tiene territorial vinculada; el grupo no podrá concertarse.</span>
       )}
@@ -95,17 +87,38 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const [ofertas, setOfertas] = useState<OfertaCetapGrupo[]>([]);
   const [cargandoOfertas, setCargandoOfertas] = useState(true);
   const [errorOfertas, setErrorOfertas] = useState('');
-  const [ofertaNueva, setOfertaNueva] = useState('');
+  // Por qué no hay (o faltan) CETAP que elegir: periodo sin carga, programa no ofertado, sin territorial.
+  const [estadoOfertas, setEstadoOfertas] = useState<EstadoOfertasCetap | null>(null);
+  const [errorDiagnostico, setErrorDiagnostico] = useState('');
   const [ofertaEditada, setOfertaEditada] = useState<Record<string, string>>({});
   const [guardandoOferta, setGuardandoOferta] = useState<string | null>(null);
   // EFDS-1371: el horario cuelga del GRUPO, asi que se abre desde el grupo elegido.
   const [grupoSel, setGrupoSel] = useState<Grupo | null>(null);
+  const [creacionGuardada, setCreacionGuardada] = useState('1|presencial');
+  const [cambioHorario, setCambioHorario] = useState<{ siguiente: Grupo | null } | null>(null);
+  const hayBorradores = useHayBorradoresGrupo();
+  const cambiarHorario = (g: Grupo) => {
+    const siguiente = grupoSel?.idGrupo === g.idGrupo ? null : g;
+    if (grupoSel && hayBorradores()) setCambioHorario({ siguiente });
+    else if (siguiente) abrirHorario(siguiente);
+    else setGrupoSel(null);
+  };
+  useBorradorGrupo(`${cantidad}|${modalidad}` !== creacionGuardada || Object.entries(ofertaEditada).some(([id, valor]) => valor !== (grupos.find(g => g.idGrupo === id)?.idOfertaCetap ?? '')), creando || !!guardandoOferta);
+  const horarioRef = useRef<HTMLDivElement | null>(null);
+  const abrirHorario = (g: Grupo) => {
+    setGrupoSel(g);
+    setTimeout(() => horarioRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 60);
+  };
 
   const recargar = () => {
     setCargando(true);
     setError('');
     getGrupos(idAsignatura, idPeriodo)
-      .then(setGrupos)
+      .then((lista) => {
+        setGrupos(lista);
+        // Un grupo eliminado (o de otro periodo) no puede quedar abierto: daba «Grupo no encontrado».
+        setGrupoSel((sel) => (sel ? lista.find((g) => g.idGrupo === sel.idGrupo) ?? null : null));
+      })
       .catch((e) => setError(e?.message || 'No se pudieron cargar los grupos.'))
       .finally(() => setCargando(false));
   };
@@ -117,12 +130,16 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
     setCargandoOfertas(true);
     setErrorOfertas('');
     setOfertas([]);
-    setOfertaNueva('');
     setOfertaEditada({});
     getOfertasCetapGrupo(idAsignatura, idPeriodo)
       .then((data) => { if (vigente) setOfertas(data); })
       .catch((e) => { if (vigente) setErrorOfertas(e?.message || 'No se pudieron cargar las ofertas CETAP.'); })
       .finally(() => { if (vigente) setCargandoOfertas(false); });
+    setEstadoOfertas(null);
+    setErrorDiagnostico('');
+    getEstadoOfertasCetap(idAsignatura, idPeriodo)
+      .then((e) => { if (vigente) setEstadoOfertas(e); })
+      .catch(() => { if (vigente) setErrorDiagnostico('No se pudo consultar el alcance de la oferta CETAP para este periodo.'); });
     return () => { vigente = false; };
   }, [idAsignatura, idPeriodo]);
 
@@ -130,7 +147,10 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
     setCreando(true);
     setError('');
     try {
-      await crearGrupos(idAsignatura, cantidad, idPeriodo, cargandoOfertas || errorOfertas ? null : ofertaNueva || null, modalidad);
+      // La oferta se elige en CADA grupo. Solo si hay UNA posible se le pone de una vez (unívoca).
+      const unica = !cargandoOfertas && !errorOfertas && ofertas.length === 1 ? ofertas[0].idOfertaCetap : null;
+      await crearGrupos(idAsignatura, cantidad, idPeriodo, unica, modalidad);
+      setCreacionGuardada(`${cantidad}|${modalidad}`);
       recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudieron crear los grupos.');
@@ -142,6 +162,8 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const onEliminar = async (g: Grupo) => {
     setError('');
     try {
+      // Se cierra su horario ANTES de borrar: si no, el calendario relee un grupo que ya no existe (404).
+      if (grupoSel?.idGrupo === g.idGrupo) setGrupoSel(null);
       await eliminarGrupo(g.idGrupo);
       recargar();
     } catch (e: any) {
@@ -208,15 +230,9 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
           >
             <option value="presencial">Presencial</option>
             <option value="virtual">Virtual (mediado por tecnologías)</option>
+            <option value="distancia">A distancia</option>
           </select>
         </label>
-        <div className="w-full sm:w-80">
-          <SelectorOfertaCetap
-            id="oferta-grupo-nuevo" label="Oferta CETAP para grupos nuevos"
-            ofertas={ofertas} valor={ofertaNueva} onChange={setOfertaNueva}
-            disabled={cargandoOfertas || !!errorOfertas}
-          />
-        </div>
         <button
           onClick={onCrear}
           disabled={creando}
@@ -229,9 +245,12 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
         <p className="text-xs text-slate-400 font-medium ml-auto">
           La numeración es automática y no reutiliza números liberados.
         </p>
-        {modalidad === 'virtual' && (
+        <p className="w-full text-xs text-slate-500">
+          La oferta CETAP (dónde se dicta) se elige en cada grupo, después de crearlo.
+        </p>
+        {esSinAula(modalidad) && (
           <p role="note" className="w-full text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-            Grupo virtual: no lleva aula y el horario es opcional. Puede asignarle docente sin horario; el docente lo define
+            Grupo {modalidad === 'distancia' ? 'a distancia' : 'virtual'}: no lleva aula y el horario es opcional. Puede asignarle docente sin horario; el docente lo define
             después en «Mi programación», con la validación de cruces, horas del grupo y tope.
           </p>
         )}
@@ -239,9 +258,13 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
 
       {cargandoOfertas && <p className="px-4 py-2 text-xs text-slate-500">Consultando ofertas CETAP…</p>}
       {errorOfertas && <p role="alert" className="px-4 py-2 text-xs text-amber-800">No se pudieron cargar las ofertas CETAP. Puedes crear grupos sin oferta y asignarla después. {errorOfertas}</p>}
+      {!cargandoOfertas && !errorOfertas && ofertas.length > 0 && estadoOfertas?.motivo && !estadoOfertas.unicaSede && (
+        <p role="note" className="px-4 py-2 text-xs text-amber-800">{estadoOfertas.motivo}</p>
+      )}
       {!cargandoOfertas && !errorOfertas && ofertas.length === 0 && (
         <div className="px-4 py-3 text-xs text-slate-600">
           <p>No hay ofertas CETAP activas para esta asignatura y periodo. La oferta se crea al cargar el Excel del periodo; sin ella, los grupos pueden crearse, pero no concertarse.</p>
+          {estadoOfertas?.motivo && <p role="note" className="mt-2 font-semibold text-amber-800">{estadoOfertas.motivo}</p>}
           {irACarga && <button type="button" onClick={irACarga} className="mt-2 font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
         </div>
       )}
@@ -265,7 +288,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
           {grupos.map((g) => (
             <div
               key={g.idGrupo}
-              onClick={() => setGrupoSel(grupoSel?.idGrupo === g.idGrupo ? null : g)}
+              onClick={() => cambiarHorario(g)}
               className={`p-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer transition-colors ${
                 grupoSel?.idGrupo === g.idGrupo ? "bg-blue-50/70" : "hover:bg-slate-50"
               }`}
@@ -277,8 +300,8 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-800">
                     Grupo {g.numeroGrupo}
-                    {g.modalidad === 'virtual' && (
-                      <span className="ml-2 px-2 py-0.5 rounded-full text-[0.62rem] font-bold bg-violet-50 text-violet-700 border border-violet-200">Virtual</span>
+                    {esSinAula(g.modalidad) && (
+                      <span className="ml-2 px-2 py-0.5 rounded-full text-[0.62rem] font-bold bg-violet-50 text-violet-700 border border-violet-200">{etiquetaModalidad(g.modalidad)}</span>
                     )}
                   </p>
                   <p className="text-xs text-slate-400 font-medium flex items-center gap-3">
@@ -309,6 +332,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                   <div className="w-full sm:w-96">
                     <SelectorOfertaCetap
                       id={`oferta-${g.idGrupo}`} label={`Oferta CETAP del grupo ${g.numeroGrupo}`}
+                      nota={errorDiagnostico || (estadoOfertas?.unicaSede ? estadoOfertas.motivo ?? undefined : undefined)}
                       ofertas={ofertas} valor={ofertaEditada[g.idGrupo] ?? g.idOfertaCetap ?? ''}
                       onChange={(id) => setOfertaEditada((actual) => ({ ...actual, [g.idGrupo]: id }))}
                       disabled={cargandoOfertas || !!errorOfertas || guardandoOferta === g.idGrupo}
@@ -316,12 +340,20 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                   </div>
                   <button
                     type="button"
+                    onClick={() => cambiarHorario(g)}
+                    className={`flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold ${grupoSel?.idGrupo === g.idGrupo ? 'border-[#003DA5] bg-blue-50 text-[#003DA5]' : 'border-slate-200 bg-white text-slate-700 hover:border-[#003DA5]'}`}
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    {grupoSel?.idGrupo === g.idGrupo ? 'Cerrar horario' : 'Asignar horario'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onGuardarOferta(g)}
                     disabled={cargandoOfertas || !!errorOfertas || !!guardandoOferta || (ofertaEditada[g.idGrupo] ?? g.idOfertaCetap ?? '') === (g.idOfertaCetap ?? '')}
                     className="flex items-center gap-1 rounded-lg bg-[#003DA5] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                   >
                     {guardandoOferta === g.idGrupo && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    Guardar ubicación
+                    Guardar grupo
                   </button>
                 </div>
               </div>
@@ -332,8 +364,9 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
 
       {/* EFDS-1371: el horario cuelga del GRUPO. Se abre al elegir uno. */}
       {grupoSel && (
-        <div className="p-4 border-t border-slate-200 bg-slate-50/40">
+        <div ref={horarioRef} className="p-4 border-t border-slate-200 bg-slate-50/40">
           <CalendarioHorario
+            key={grupoSel.idGrupo}
             idGrupo={grupoSel.idGrupo}
             onOfertaActualizada={(actualizado) => { setGrupoSel(actualizado); setGrupos((actuales) => actuales.map((g) => g.idGrupo === actualizado.idGrupo ? actualizado : g)); }}
             numeroGrupo={grupoSel.numeroGrupo}
@@ -344,6 +377,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
           />
         </div>
       )}
+      {cambioHorario && <ModalConfirmacion titulo="¿Descartar cambios del horario?" advertencia="Los cambios sin guardar del horario se perderán." onCancelar={() => setCambioHorario(null)} onConfirmar={() => { setGrupoSel(cambioHorario.siguiente); setCambioHorario(null); }}><p>El horario tiene información pendiente. Los datos ya guardados se conservan.</p></ModalConfirmacion>}
     </div>
   );
 }

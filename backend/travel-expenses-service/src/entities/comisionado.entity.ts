@@ -139,6 +139,12 @@ export class ComisionadoEntity {
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
 
+  /**
+   * Mensaje de advertencia informativa (no bloqueante) cuando la dependencia del comisionado
+   * o su área en fuentes externas difiere de la del enlace que radica la solicitud.
+   */
+  alertaDependencia?: string | null;
+
   // ============================================================
   // Campos virtuales (no son columnas de BD).
   // Se alimentan y sincronizan exclusivamente con la lista 'cargos' (JSONB),
@@ -267,6 +273,7 @@ export interface CuentaBancariaComisionado {
   nombreArchivoCertificado?: string | null;
   fechaRegistro?: string;
   esPrincipal?: boolean;
+  origen?: string;
 }
 
 export interface CargoComisionado {

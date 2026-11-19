@@ -1,4 +1,6 @@
 import {  Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
+import type { DecisionPeriodoPrueba } from '../banco-docentes/rund-periodo-prueba';
+import type { DecisionComiteIncorporacion } from '../banco-docentes/rund-ciclo-docente';
 
 @Entity({ schema: 'academic_work_plan', name: 'Docente' })
 export class DocenteEntity {
@@ -37,6 +39,10 @@ export class DocenteEntity {
 
   @Column({ name: 'horasAsignables', type: 'int', default: 0 })
   horasAsignables: number;
+
+  /** Planta o Cátedra: planta si las horas PTA de la carga son mayores que 0. Null en registros anteriores. */
+  @Column({ name: 'claseDocente', type: 'text', nullable: true })
+  claseDocente: 'PLANTA' | 'CATEDRA' | null;
 
   @Column({ name: 'sedeId', type: 'text', nullable: true })
   sedeId: string | null;
@@ -82,6 +88,18 @@ export class DocenteEntity {
 
   @Column({ name: 'posDoctorado', type: 'text', nullable: true })
   posDoctorado: string | null;
+
+  /** RUND-003: títulos adicionales por nivel ("Información adicional"); los de arriba son la "Información precargada". */
+  @Column({ name: 'titulosAdicionales', type: 'jsonb', nullable: true })
+  titulosAdicionales: Partial<Record<'pregrado' | 'especializacion' | 'maestria' | 'doctorado' | 'posDoctorado', string[]>> | null;
+
+  /** HU 2424: decisión vigente del Comité Docente sobre el periodo de prueba (el historial está en RundAprobacionLog). */
+  @Column({ name: 'decisionPeriodoPrueba', type: 'jsonb', nullable: true })
+  decisionPeriodoPrueba: DecisionPeriodoPrueba | null;
+
+  /** HU 2349: decisión vigente del Comité Docente para la incorporación (el historial está en RundAprobacionLog). */
+  @Column({ name: 'decisionComiteIncorporacion', type: 'jsonb', nullable: true })
+  decisionComiteIncorporacion: DecisionComiteIncorporacion | null;
 
   @Column({ type: 'text', nullable: true })
   investigacion: string | null;

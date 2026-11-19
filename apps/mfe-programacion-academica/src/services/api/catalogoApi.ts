@@ -111,7 +111,10 @@ export interface Grupo {
   modalidad?: ModalidadGrupo;
 }
 
-export type ModalidadGrupo = 'presencial' | 'virtual';
+export type ModalidadGrupo = 'presencial' | 'virtual' | 'distancia';
+/** Virtual y a distancia (065) funcionan igual: sin aula, horario opcional que define el docente. */
+export const esSinAula = (m: string | null | undefined) => m === 'virtual' || m === 'distancia';
+export const etiquetaModalidad = (m: string | null | undefined) => m === 'distancia' ? 'A distancia' : m === 'virtual' ? 'Virtual' : 'Presencial';
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
 
@@ -162,6 +165,26 @@ export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Gru
 export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): Promise<OfertaCetapGrupo[]> {
   return pedirJson<OfertaCetapGrupo[]>(
     `${BASE_GRUPOS}/ofertas-cetap?asignatura=${encodeURIComponent(idAsignatura)}&periodo=${encodeURIComponent(idPeriodo)}`,
+    { method: 'GET' },
+  );
+}
+
+/** Por qué el selector de oferta CETAP está vacío o incompleto (periodo sin carga, programa no ofertado…). */
+export interface EstadoOfertasCetap {
+  unicaSede?: boolean;
+  periodoModelo: 'plataforma' | 'legado';
+  periodoCodigo: string | null;
+  programa: string | null;
+  ofertasDelPeriodo: number;
+  ofertasDelPrograma: number;
+  cetapsCatalogo: number;
+  sinTerritorial: number;
+  motivo: string | null;
+}
+
+export function getEstadoOfertasCetap(idAsignatura: string, idPeriodo: string): Promise<EstadoOfertasCetap> {
+  return pedirJson<EstadoOfertasCetap>(
+    `${BASE_GRUPOS}/ofertas-cetap/estado?asignatura=${encodeURIComponent(idAsignatura)}&periodo=${encodeURIComponent(idPeriodo)}`,
     { method: 'GET' },
   );
 }

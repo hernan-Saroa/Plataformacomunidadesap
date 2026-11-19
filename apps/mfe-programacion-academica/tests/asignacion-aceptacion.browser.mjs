@@ -31,7 +31,7 @@ try {
     else if (route === 'asignaciones/candidatos') {
       const seleccionadas = u.searchParams.get('franjas').split(',');
       data = { grupo: grupo.idGrupo, franjas: grupo.franjas.filter(f => seleccionadas.includes(f.idFranja)).map(({ idFranja, diaSemana, horaInicio, horaFin }) => ({ idFranja, diaSemana, horaInicio, horaFin, docenteActual: null })), area: { codigo: 'AF-01', nombre: 'Estado y Poder', nucleoAsignatura: 'Estado y poder' }, candidatos: vacio ? [] : [{ ...candidato, horasImpacto: seleccionadas.length * 32 }, { ...candidato, documento: '456', nombre: 'Docente con cruce', vinculacion: 'Cátedra', origenArea: 'puente', nucleos: [{ area: 'Estado y Poder', origen: 'puente', texto: 'Estado y Poder' }], cruce: true, asignable: false, motivos: [{ regla: 'RN-07', mensaje: 'Tiene cruce en la franja seleccionada.' }] }], sugerido: vacio ? null : { documento: '123', nombre: candidato.nombre, razones: ['Es del área Estado y Poder.', 'Tiene la menor carga entre los aptos.'] }, mensaje: vacio ? 'Ningún docente tiene núcleo temático en el área «Estado y Poder».' : null };
-    } else if (route === 'asignaciones' && r.method() === 'POST') data = asignarOk ? { asignado: true, avisos: candidato.avisos } : { asignado: false, motivos: [{ regla: 'AREA', mensaje: 'El docente ya no pertenece al área.' }] };
+    } else if (route === 'asignaciones/multiple' && r.method() === 'POST') data = asignarOk ? { asignado: true, resultados: [{ documento: '123', franjas: [], avisos: candidato.avisos }] } : { asignado: false, errores: [{ documento: '123', motivos: [{ tipo: 'AREA', regla: 'AREA', mensaje: 'El docente ya no pertenece al área.', detalle: null }] }] };
     else { status = 403; data = { message: 'Sin permiso' }; }
     r.respond({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }, body: JSON.stringify(status >= 400 ? data : { success: true, data }) });
   });
@@ -73,7 +73,7 @@ try {
   asignarOk = true;
   await page.evaluate(() => [...document.querySelectorAll('[role=alertdialog] button')].find(b => b.textContent === 'Confirmar').click());
   await page.waitForFunction(() => document.body.textContent.includes('Asignación cerrada'));
-  assert.deepEqual(requests.filter(r => r.route === 'asignaciones').at(-1).body, { idGrupo: grupo.idGrupo, documento: '123', franjas: [ids[1]] });
+  assert.deepEqual(requests.filter(r => r.route === 'asignaciones/multiple').at(-1).body, { idGrupo: grupo.idGrupo, asignaciones: [{ documento: '123', franjas: [ids[1]] }] });
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Abrir asignación QA');
   vacio = true; await page.evaluate(() => window.qaMontar('asignacion', 2));
   await page.waitForFunction(() => document.body.textContent.includes('Ningún docente tiene núcleo'));

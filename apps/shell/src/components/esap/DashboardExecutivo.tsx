@@ -459,7 +459,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
 
   const modules = [
     { key: 'personas', label: 'Personas', icon: Users, color: '#3B82F6', sid: 'users-persons', health: stats.saludModulos?.personas, idx: 0,
-      kpis: [{ label:'Total', value: r.totalPersonas }, { label:'Usuarios Activos', value: r.totalUsuarios }, { label:'Tasa Actividad', value:`${(ef.tasaPersonasActivas||0).toFixed(0)}%` }],
+      kpis: [{ label:'Total', value: r.totalPersonas }, { label:'Usuarios Activos', value: r.usuariosActivos ?? r.totalUsuarios }, { label:'Tasa Actividad', value:`${(ef.tasaPersonasActivas||0).toFixed(0)}%` }],
       chart: generoData.length > 0 ? (<div><p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Género</p><MiniDonut data={generoData} size={80} inner={25} /></div>) : null,
     },
     { key: 'docentes', label: 'Registro Único Nacional Docente (RUND)', icon: BookOpen, color: '#0EA5E9', sid: 'banco-docentes-pta', health: stats.saludModulos?.docentes, idx: 1,
@@ -475,7 +475,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
       kpis: [{ label:'Territoriales', value: r.totalTerritoriales }, { label:'CETAPs', value: r.totalCetaps }, { label:'Prom CETAPs/Terr.', value: (ef.promedioCetapsPorTerritorial||0).toFixed(1) }],
     },
     { key: 'carpeta', label: 'Carpeta Digital', icon: FolderOpen, color: '#F59E0B', sid: 'carpeta-digital', health: stats.saludModulos?.carpetaDigital, idx: 3,
-      kpis: [{ label:'Carpetas', value: r.totalCarpetas }, { label:'Cobertura', value:`${(ef.tasaCarpetaCobertura||0).toFixed(0)}%` }],
+      kpis: [{ label:'Carpetas', value: r.totalCarpetas }, { label:'Documentos', value: r.totalDocumentos || 0 }, { label:'Cobertura', value:`${(ef.tasaCarpetaCobertura||0).toFixed(0)}%` }],
     },
     { key: 'programas', label: 'Programas Académicos', icon: GraduationCap, color: '#10B981', sid: 'programas-academicos', health: stats.saludModulos?.programas, idx: 4,
       kpis: [{ label:'Programas', value: r.totalProgramas }, { label:'Asignaturas', value: r.totalAsignaturas }, { label:'Prom Asig/Prog', value: (ef.promedioAsignaturasPorPrograma||0).toFixed(1) }],
@@ -491,8 +491,8 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
         ))}</div>
       ) : null,
     },
-    { key: 'pta', label: 'Plan Trabajo Académico', icon: ClipboardList, color: '#F97316', sid: 'pta', health: { score: stats.ptaPipeline?.total > 0 ? 70 : 50, estado: stats.ptaPipeline?.total > 0 ? 'bueno' : 'alerta', factores: stats.ptaPipeline?.total === 0 ? ['Sin PTAs creados'] : [] }, idx: 5,
-      kpis: [{ label:'PTAs', value: r.totalPTAs }, { label:'Aprobación', value:`${(ef.tasaPtaAprobacion||0).toFixed(0)}%` }],
+    { key: 'pta', label: 'Plan Trabajo Académico', icon: ClipboardList, color: '#F97316', sid: 'pta', health: stats.saludModulos?.pta || { score: stats.ptaPipeline?.total > 0 ? 70 : 50, estado: stats.ptaPipeline?.total > 0 ? 'bueno' : 'alerta', factores: stats.ptaPipeline?.total === 0 ? ['Sin PTAs creados'] : [] }, idx: 5,
+      kpis: [{ label:'PTAs', value: r.totalPTAs }, { label:'Evidencias', value: r.totalEvidencias || 0 }, { label:'Aprobación', value:`${(ef.tasaPtaAprobacion||0).toFixed(0)}%` }],
       chart: stats.ptaPipeline?.total > 0 ? (
         <div><p className="text-[9px] font-bold text-gray-400 uppercase mb-2">Pipeline PTA</p>
           <Pipeline total={stats.ptaPipeline.total} stages={[
@@ -503,7 +503,13 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
         </div>
       ) : null,
     },
-    { key: 'roles', label: 'Roles y Permisos', icon: Shield, color: '#6366F1', sid: 'roles-permissions', health: stats.saludModulos?.roles, idx: 6,
+    { key: 'programacion', label: 'Programación Académica', icon: Clock, color: '#0284C7', sid: 'programacion-academica', health: stats.saludModulos?.programacionAcademica || { score: 100, estado: 'optimo', factores: [] }, idx: 6,
+      kpis: [{ label:'Grupos', value: r.totalGrupos || 0 }, { label:'Franjas', value: r.totalFranjasHorarias || 0 }, { label:'Aulas', value: r.totalAulas || 0 }],
+    },
+    { key: 'infraestructura', label: 'Gestión de Infraestructura', icon: Building2, color: '#0D9488', sid: 'gestion-infraestructura', health: stats.saludModulos?.infraestructura || { score: 100, estado: 'optimo', factores: [] }, idx: 7,
+      kpis: [{ label:'Espacios Físicos', value: r.totalEspaciosFisicos || 0 }, { label:'Mantenimientos', value: r.totalSolicitudesMantenimiento || 0 }],
+    },
+    { key: 'roles', label: 'Roles y Permisos', icon: Shield, color: '#6366F1', sid: 'roles-administration', health: stats.saludModulos?.roles, idx: 8,
       kpis: [{ label:'Roles', value: r.totalRoles }, { label:'Sistema', value: stats.saludModulos?.roles?.sistema||0 }, { label:'Custom', value: stats.saludModulos?.roles?.personalizados||0 }],
       chart: stats.rolesDetalle?.length > 0 ? (
         <div className="space-y-1">{stats.rolesDetalle.slice(0,4).map((rol: any, i: number) => (
@@ -517,8 +523,8 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
         ))}</div>
       ) : null,
     },
-    { key: 'cert', label: 'Certificados', icon: Award, color: '#EC4899', sid: 'certificate-requests', health: stats.saludModulos?.certificados || { score: r.totalCertificados > 0 ? 80 : 0, estado: r.totalCertificados > 0 ? 'bueno' : 'critico', factores: [] }, idx: 7,
-      kpis: [{ label:'Total', value: r.totalCertificados }, { label:'Emisión', value:`${(ef.tasaCertEmision||0).toFixed(0)}%` }],
+    { key: 'cert', label: 'Certificados', icon: Award, color: '#EC4899', sid: 'certificados-laborales', health: stats.saludModulos?.certificados || { score: r.totalCertificados > 0 ? 80 : 0, estado: r.totalCertificados > 0 ? 'bueno' : 'critico', factores: [] }, idx: 9,
+      kpis: [{ label:'Total', value: r.totalCertificados }, { label:'Laborales', value: r.totalCertificadosLaborales || 0 }, { label:'Emisión', value:`${(ef.tasaCertEmision||0).toFixed(0)}%` }],
       chart: stats.certPipeline?.total > 0 ? (
         <Pipeline total={stats.certPipeline.total} stages={[
           { label:'Pendientes', value: stats.certPipeline.pendientes, color:'#F59E0B' },
@@ -526,7 +532,25 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
         ]} />
       ) : null,
     },
-    { key: 'audit', label: 'Auditoría y Control', icon: Activity, color: '#14B8A6', sid: 'audit', health: { score: 100, estado: 'optimo', factores: [] }, idx: 8,
+    { key: 'graduados', label: 'Graduados y Certificados de Grado', icon: GraduationCap, color: '#7C3AED', sid: 'graduates-verification', health: stats.saludModulos?.graduados || { score: 100, estado: 'optimo', factores: [] }, idx: 10,
+      kpis: [{ label:'Graduados', value: r.totalGraduados || 0 }, { label:'Cert. Grado', value: r.totalCertificadosGrado || 0 }],
+    },
+    { key: 'contratacion', label: 'Contratación', icon: FileCheck, color: '#2563EB', sid: 'contratacion', health: stats.saludModulos?.contratacion || { score: 100, estado: 'optimo', factores: [] }, idx: 11,
+      kpis: [{ label:'Procesos', value: r.totalProcesosContratacion || 0 }, { label:'Contratos', value: r.totalContratos || 0 }],
+    },
+    { key: 'viaticos', label: 'Viáticos y Comisiones', icon: Globe, color: '#D97706', sid: 'viaticos', health: stats.saludModulos?.viaticos || { score: 100, estado: 'optimo', factores: [] }, idx: 12,
+      kpis: [{ label:'Solicitudes', value: r.totalSolicitudesViaticos || 0 }, { label:'Comisionados', value: r.totalComisionadosViaticos || 0 }],
+    },
+    { key: 'gestionLegal', label: 'Gestión Legal', icon: FileText, color: '#4F46E5', sid: 'gestion-legal', health: stats.saludModulos?.gestionLegal || { score: 100, estado: 'optimo', factores: [] }, idx: 13,
+      kpis: [{ label:'Expedientes', value: r.totalExpedientesLegales || 0 }, { label:'Consultas', value: r.totalConsultasJuridicas || 0 }, { label:'Req. OC', value: r.totalRequerimientosOc || 0 }],
+    },
+    { key: 'controlDisciplinario', label: 'Control Disciplinario', icon: AlertOctagon, color: '#DC2626', sid: 'control-disciplinario', health: stats.saludModulos?.controlDisciplinario || { score: 100, estado: 'optimo', factores: [] }, idx: 14,
+      kpis: [{ label:'Procesos', value: r.totalProcesosDisciplinarios || 0 }, { label:'Noticias', value: r.totalNoticiasDisciplinarias || 0 }],
+    },
+    { key: 'controlInterno', label: 'Control Interno', icon: Target, color: '#059669', sid: 'control-interno', health: stats.saludModulos?.controlInterno || { score: 100, estado: 'optimo', factores: [] }, idx: 15,
+      kpis: [{ label:'Auditorías', value: r.totalAuditoriasInternas || 0 }, { label:'Hallazgos', value: r.totalHallazgosInternos || 0 }, { label:'Planes Mejora', value: r.totalPlanesMejoramiento || 0 }],
+    },
+    { key: 'audit', label: 'Auditoría y Control', icon: Activity, color: '#14B8A6', sid: 'audit', health: { score: 100, estado: 'optimo', factores: [] }, idx: 16,
       kpis: [{ label:'Logs', value: r.totalAuditLogs }, { label:'Alertas', value: r.totalAlertas }],
       chart: auditModuloData.length > 0 ? (
         <div><p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Actividad por Módulo</p><MiniDonut data={auditModuloData.slice(0,6)} size={80} inner={25} /></div>
@@ -638,7 +662,24 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
                   <span className={`mt-2 px-3 py-1 rounded-full text-[10px] font-bold ${sl(hs.estado).b} ${sl(hs.estado).t}`}>{sl(hs.estado).l}</span>
                   <div className="mt-4 w-full grid grid-cols-2 gap-2">
                     {Object.entries(stats.saludModulos || {}).map(([k, m]: [string, any]) => {
-                      const nameMap: Record<string,string> = { personas:'Personas', docentes:'Docentes', estructura:'Estructura', carpetaDigital:'Carpeta Dig.', programas:'Programas', roles:'Roles', certificados:'Certificados' };
+                      const nameMap: Record<string,string> = {
+                        personas:'Personas',
+                        docentes:'RUND Docentes',
+                        estructura:'Estructura',
+                        carpetaDigital:'Carpeta Dig.',
+                        programas:'Programas',
+                        pta:'PTA',
+                        roles:'Roles',
+                        certificados:'Certificados',
+                        graduados:'Graduados',
+                        programacionAcademica:'Prog. Académica',
+                        infraestructura:'Infraestructura',
+                        contratacion:'Contratación',
+                        viaticos:'Viáticos',
+                        gestionLegal:'Gestión Legal',
+                        controlDisciplinario:'Disciplinario',
+                        controlInterno:'Control Interno',
+                      };
                       const score = m.score || 0;
                       return (
                         <div key={k} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">

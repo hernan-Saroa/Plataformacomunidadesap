@@ -42,6 +42,7 @@ import { ReintegrosModule } from './modules/reintegros/reintegros.module';
 import { CommonModule } from './common/common.module';
 import { LegalizacionModule, LEGALIZACION_ENTITIES } from './modules/legalizacion/legalizacion.module';
 import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
+import { KlicModule } from './modules/klic/klic.module';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
     CommonModule,
     LegalizacionModule,
     PazYSalvoModule,
+    KlicModule,
   ],
   controllers: [AppController],
   providers: [

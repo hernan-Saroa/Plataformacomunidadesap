@@ -25,7 +25,7 @@ const fields: Record<string, string[]> = {
 /** Soportes de la codificación documental sin campo en RUND: opcionales y sin dato previo (espejo del backend). */
 export const RUND_STANDALONE_SUPPORTS = [
   'tarjeta_profesional', 'hoja_vida', 'diploma_bachiller', 'experiencia_docente', 'experiencia_laboral', 'experiencia_investigativa',
-  'productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida',
+  'productividad_academica', 'dominio_segunda_lengua', 'formacion_no_formal', 'estudio_hoja_vida', 'documento_no_valido',
 ];
 
 export function canUploadRundField(block: string, field: { tipoSoporte: string; revisionId?: string }, tarjeta: any): boolean {

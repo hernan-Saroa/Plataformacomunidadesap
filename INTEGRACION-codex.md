@@ -511,3 +511,76 @@ Pruebas de datos/catálogo: 14/14. Incluyen prioridad de las 28 decisiones sobre
 Esfuerzo estimado adicional de esta continuación: **2,5 h** (CSV/generador/pruebas 1,5 h; cobertura 0,5 h; consola, navegador y documentación 0,5 h). No incluye la entrega anterior ni es tiempo de reloj.
 
 Verificación final de esta continuación: MFE **51/51**, datos/catálogo **14/14**, navegador con API simulada correcto y build correcto. Vite detenido al terminar.
+
+## Bugs QA — preparación y contratos pendientes (12 de noviembre de 2026)
+
+Carpeta `Plataforma-pa-codex4`, rama `feature/pa/bugs-qa-codex`, base publicada `78a1644cd`. La carpeta anterior se dejó intacta, incluido su parche compartido sin commitear. Dependencias instaladas; el cambio de lockfile generado por la instalación no forma parte de la entrega.
+
+Auditoría: `esap/programacion/AUDITORIA-BUGS-QA-CODEX.md`. La instrucción exige leer primero los comentarios completos de Javier en las HU EFDS-1370, 1371, 1372 y 1941; se solicitó a Tomás acceso a Jira o una exportación. Aún no se implementaron ni se declaran resueltas subtareas. No se consultó ni escribió la base ni se iniciaron servicios reales.
+
+Para Claude, pendientes de publicar en origin:
+
+- EFDS-2430: creación y validación previa multidía, campos exactos, conflictos por día, atomicidad/resultado parcial y fuente de las horas actualizadas.
+- EFDS-2432: edición y eliminación de sesión, cuerpos/respuestas/errores y reglas según estado, especialmente APROBADA.
+- EFDS-2434: candidatos disponibles y bloqueados con motivo, contrato del reparto de varias franjas/docentes y resultado de asignación parcial o atómica.
+- EFDS-2429: diagnóstico del programa ofertado solo en Sede Central y campos que permiten explicarlo; distinguir ese caso de una falla de consulta.
+
+EFDS-2428 también afecta el detalle montado en `ProgramacionAcademicaModule.tsx`; Codex describirá el parche para Claude y no commiteará ese archivo compartido. EFDS-2427 autoriza solo la pantalla de periodos de Programas Académicos; el cambio se documentará para Julián. No se cambiará shell, permisos ni backend.
+
+Todas las subtareas siguen **no verificadas en condiciones de QA**. La matriz planificada incluye build/preview, es-CO/en-US, Bogotá/UTC y resoluciones 1920×1080, 1366×768, 1280×720 y móvil. Las simulaciones se basarán en contratos publicados, no en respuestas inventadas.
+
+## Bugs QA — entrega Codex (12 de noviembre de 2026)
+
+Se recibieron y leyeron los comentarios completos de Javier exportados por Tomás. Esto desbloquea la preparación anterior. Contratos: `origin/feature/pa/bugs-qa-claude` `3fe8ab542`, §38. Las reglas de devolución de §38.3 fueron aprobadas por Tomás en el chat. No se leyeron archivos de la carpeta de Claude.
+
+Reporte por subtarea, capturas, límites de QA y horas: `esap/programacion/REPORTE-BUGS-QA-CODEX.md`. Ocho correcciones de pantalla implementadas. EFDS-2435, configuración del PTA, permisos, auditoría, migraciones y backend quedan con Claude.
+
+- EFDS-2431: CampoHora24 en los cuatro campos que eran nativos; teclado y valores HH:mm independientes de idioma/zona.
+- EFDS-2428: PanelGrupos con portal, encabezado/pie fijos, X/Cerrar/Escape, foco, confirmación de borradores y bloqueo al guardar. Catálogo ya lo monta. Cambiar grupo reinicia el editor por key.
+- EFDS-2433: calendario de consulta contraíble, con docente/periodo/horas/tope siempre visibles.
+- EFDS-2427: Programas Académicos → Periodos solo consulta y enlace de mismo origen usando el `?module=` existente del shell. Sin nuevas URL de remoto. PA conserva creación regular y personalizada; comprobadas en build/preview. **Para Julián:** se retiraron de la pantalla de consulta las acciones de crear, editar, activar, cerrar/desactivar, importar y eliminar. Se conserva la consulta del detalle de programas y CETAP; los tests de escritura en ese punto se sustituyeron por tests de consulta. No se modificó ProgramasAcademicosModule ni el shell.
+- EFDS-2430/2432: lote/validación por día y edición/eliminación por §38; solo se envían en PATCH los campos cambiados. Confirmaciones separadas para eliminar y para quitar asignación/devolver concertación. Horas del servidor y errores sin cerrar el formulario. El guardado de la oferta del aula se difiere hasta confirmar la creación, nunca durante validar.
+- EFDS-2434: todos los candidatos, disponibles/bloqueados y motivos. Reparto por franjas y POST /asignaciones/multiple atómico; no invalidar con asignado:false. Se conserva la ruta compatible virtual sin horario.
+- EFDS-2429: `unicaSede`/`motivo` bajo el selector; errores explícitos de lista/diagnóstico, sin inferir territoriales ni bloquear la creación opcional sin oferta.
+
+### Único parche compartido pendiente: ProgramacionAcademicaModule.tsx (solo Claude)
+
+No edité ni commiteo este archivo. El acceso al horario desde el árbol todavía monta el contenedor antiguo; necesita el mismo PanelGrupos que ya usa SelectorCatalogo. Agregar:
+
+```tsx
+import { PanelGrupos } from './PanelGrupos';
+```
+
+Sustituir TODO el bloque final `{detalle && detalle.idGrupo && (...)}` (el contenedor antiguo role=dialog y su botón X) por:
+
+```tsx
+{detalle && detalle.idGrupo && (
+  <PanelGrupos
+    titulo={`Horario del grupo ${Number(detalle.grupo) || 1} · ${detalle.asignatura || detalle.programa || 'Grupo'}`}
+    onCerrar={() => setDetalle(null)}
+  >
+    <CalendarioHorario
+      key={detalle.idGrupo}
+      idGrupo={detalle.idGrupo}
+      numeroGrupo={Number(detalle.grupo) || 1}
+      nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
+      fechaInicioGrupo={detalle.fechaInicioGrupo}
+      fechaFinGrupo={detalle.fechaFinGrupo}
+    />
+  </PanelGrupos>
+)}
+```
+
+**No anidar el nuevo panel dentro del anterior:** duplicaría diálogo, foco y manejadores de cierre. Este parche es necesario para completar EFDS-2428 en el segundo acceso; no se considera aplicado por tenerlo escrito aquí. Respetar los datos adicionales de modalidad que Claude agregue al integrar.
+
+### Comprobaciones y despliegue
+
+- 74/74 pruebas del alcance. Build normal de PA y Programas correcto.
+- Build + preview del MFE real (`qa-remoto-produccion.browser.mjs`), aplicación real y assets de producción, sin TSX dev; APIs interceptadas.
+- Arnés adicional construido y servido con preview: 16 combinaciones de es-CO/en-US × Bogotá/UTC × cuatro resoluciones y dos grupos adicionales de escenarios (edición/devolución, eliminación, conflictos, reparto, periodos, error y vacío). Capturas y JSON en `apps/mfe-programacion-academica/tests/evidencia-qa/`.
+- Todas las subtareas: **no verificado en condiciones de QA remoto**. No hay acceso al despliegue ni se probó auditoría/persistencia con el backend real. El arnés no valida autorización de las cuentas reales. No se declara terminado remoto ni se cambia el estado de Jira.
+- El reporte identifica fallos de suites ajenas en la corrida conjunta y los errores transversales de TypeScript; no se presenta esa corrida como verde.
+- Desplegar las rutas, permisos, auditoría y migraciones de Claude junto a las pantallas. Reconstruir **ambos MFE**, publicar assets y remoteEntry juntos y renovar la caché de entradas según la política del ambiente. No hay variables ni datos locales para copiar. El enlace a PA usa el enrutamiento existente del shell; el shell no se modifica.
+- Completar QA real por rol, CETAP, validación por día, topes, devolución/aprobadas, horas, auditoría y exportaciones 24 h antes de cerrar las subtareas.
+
+Esfuerzo adicional estimado: **15,5 h**, desglosado por subtarea en el reporte (no tiempo de reloj). No hay cambios propios de .gitignore, package.json, lockfile, backend, migraciones ni shell. Push solo a `feature/pa/bugs-qa-codex`.

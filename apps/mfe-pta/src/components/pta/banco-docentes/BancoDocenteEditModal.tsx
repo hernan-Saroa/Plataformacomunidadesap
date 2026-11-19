@@ -10,6 +10,10 @@ import type { RundSuggestion } from './RundExtractionPanel';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';
 import { bancoDocentesColumnList } from '../../../utils/bancoDocentesWorkbook';
 import {
+  ETIQUETA_INFORMACION_ADICIONAL, ETIQUETA_INFORMACION_PRECARGADA, MAX_LONGITUD_TITULO, MAX_TITULOS_ADICIONALES_POR_NIVEL,
+  NIVELES_TITULO, armarTitulosAdicionales, titulosAdicionalesDe, type NivelTitulo,
+} from '../../../utils/titulosFormacion';
+import {
   MANUAL_DEDICACIONES,
   MANUAL_DOCUMENT_TYPES,
   MANUAL_VINCULACIONES,
@@ -66,6 +70,48 @@ function SectionHeader({ title, description }: { title: string; description?: st
     <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid rgba(148,163,184,0.15)' }}>
       <h4 style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', letterSpacing: '-0.01em' }}>{title}</h4>
       {description && <p style={{ margin: '3px 0 0', fontSize: '0.72rem', color: '#94a3b8', fontWeight: 400 }}>{description}</p>}
+    </div>
+  );
+}
+
+const PLACEHOLDER_TITULO: Record<NivelTitulo, string> = {
+  pregrado: 'Título de pregrado', especializacion: 'Título de especialización', maestria: 'Título de maestría',
+  doctorado: 'Título de doctorado', posDoctorado: 'Estancia posdoctoral',
+};
+const etiquetaTituloStyle = (adicional: boolean): React.CSSProperties => ({
+  alignSelf: 'flex-start', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+  background: adicional ? '#F5F3FF' : '#ECFDF5', color: adicional ? '#6D28D9' : '#047857',
+});
+
+/** RUND-003: el título del campo principal es la información precargada; aquí se agregan los demás del mismo nivel. */
+function TitulosAdicionalesEditor({ etiqueta, precargado, titulos, onChange, fieldStyle }: {
+  etiqueta: string; precargado: string; titulos: string[]; onChange: (titulos: string[]) => void; fieldStyle: React.CSSProperties;
+}) {
+  const nombre = etiqueta.toLowerCase();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {precargado.trim() && <span style={etiquetaTituloStyle(false)}>{ETIQUETA_INFORMACION_PRECARGADA}</span>}
+      {titulos.map((titulo, index) => (
+        <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={etiquetaTituloStyle(true)}>{ETIQUETA_INFORMACION_ADICIONAL}</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="wizard-field" style={{ ...fieldStyle, flex: 1 }} value={titulo} maxLength={MAX_LONGITUD_TITULO}
+              aria-label={`Título adicional de ${nombre} ${index + 1}`} placeholder={`Título adicional de ${nombre}`}
+              onChange={(e) => onChange(titulos.map((actual, i) => (i === index ? e.target.value : actual)))} />
+            <button type="button" aria-label={`Quitar título adicional de ${nombre} ${index + 1}`} title="Quitar título"
+              onClick={() => onChange(titulos.filter((_, i) => i !== index))}
+              style={{ border: '1px solid #E2E8F0', background: '#fff', borderRadius: 8, padding: '0 10px', cursor: 'pointer', color: '#64748B' }}>
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ))}
+      {titulos.length < MAX_TITULOS_ADICIONALES_POR_NIVEL && (
+        <button type="button" onClick={() => onChange([...titulos, ''])}
+          style={{ alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: '#4F46E5', fontSize: '0.72rem', fontWeight: 600 }}>
+          + Agregar título adicional de {nombre}
+        </button>
+      )}
     </div>
   );
 }
@@ -198,6 +244,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ManualDocenteErrors>({});
   const [supportFile, setSupportFile] = useState<File | null>(null);
+  const [titulosExtra, setTitulosExtra] = useState<Partial<Record<NivelTitulo, string[]>>>({});
   const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
   const [createdPhotoTarget, setCreatedPhotoTarget] = useState<string | null>(null);
   const [touchedSteps, setTouchedSteps] = useState<Set<number>>(new Set([0]));
@@ -298,6 +345,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
     }
     setFieldErrors({});
     setSupportFile(null);
+    setTitulosExtra(Object.fromEntries(NIVELES_TITULO.map(({ clave }) => [clave, titulosAdicionalesDe(docente?.titulos_adicionales, clave)])));
     if (suggestion) setActiveStep(['fechaNacimiento','genero','sexoBiologico'].includes(suggestion.campo) ? 3
       : ['pregrado','especializacion','maestria','doctorado','posDoctorado','perfilAcademico','nucleoTematico','investigacion'].includes(suggestion.campo) ? 1 : 0);
   }, [docente, periodoSeleccionado, suggestion]);
@@ -474,6 +522,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         maestria: form.maestria || null,
         doctorado: form.doctorado || null,
         posDoctorado: form.posDoctorado || null,
+        titulosAdicionales: armarTitulosAdicionales(titulosExtra, form),
         investigacion: form.investigacion || null,
         correoInstitucional: form.correoInstitucional.trim().toLowerCase(),
         correoAlternativo: form.correoAlternativo || null,
@@ -805,21 +854,16 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Títulos Obtenidos" description="Detalle de formación por nivel" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Pregrado" required error={fieldErrors.pregrado}>
-                        <input className="wizard-field" style={fieldStyle} value={form.pregrado} onChange={set('pregrado')} placeholder="Título de pregrado" maxLength={300} aria-invalid={Boolean(fieldErrors.pregrado)} />
-                      </FloatingField>
-                      <FloatingField label="Especialización">
-                        <input className="wizard-field" style={fieldStyle} value={form.especializacion} onChange={set('especializacion')} placeholder="Título de especialización" />
-                      </FloatingField>
-                      <FloatingField label="Maestría">
-                        <input className="wizard-field" style={fieldStyle} value={form.maestria} onChange={set('maestria')} placeholder="Título de maestría" />
-                      </FloatingField>
-                      <FloatingField label="Doctorado">
-                        <input className="wizard-field" style={fieldStyle} value={form.doctorado} onChange={set('doctorado')} placeholder="Título de doctorado" />
-                      </FloatingField>
-                      <FloatingField label="Posdoctorado">
-                        <input className="wizard-field" style={fieldStyle} value={form.posDoctorado} onChange={set('posDoctorado')} placeholder="Estancia posdoctoral" />
-                      </FloatingField>
+                      {NIVELES_TITULO.map(({ clave, etiqueta }) => (
+                        <div key={clave} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <FloatingField label={etiqueta} required={clave === 'pregrado'} error={clave === 'pregrado' ? fieldErrors.pregrado : undefined}>
+                            <input className="wizard-field" style={fieldStyle} value={form[clave]} onChange={set(clave)} placeholder={PLACEHOLDER_TITULO[clave]}
+                              maxLength={MAX_LONGITUD_TITULO} aria-invalid={clave === 'pregrado' ? Boolean(fieldErrors.pregrado) : undefined} />
+                          </FloatingField>
+                          <TitulosAdicionalesEditor etiqueta={etiqueta} precargado={form[clave]} titulos={titulosExtra[clave] || []} fieldStyle={fieldStyle}
+                            onChange={(titulos) => setTitulosExtra((actual) => ({ ...actual, [clave]: titulos }))} />
+                        </div>
+                      ))}
                     </div>
                   </div>
 

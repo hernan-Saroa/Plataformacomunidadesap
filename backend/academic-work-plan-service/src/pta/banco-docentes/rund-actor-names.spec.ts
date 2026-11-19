@@ -1,3 +1,4 @@
+import { EVIDENCE_TYPES } from './rund-evidence-workflow';
 import { resolveRundActorNames, rundActorName } from './rund-actor-names';
 import { RundDocumentosService } from './rund-documentos.service';
 import { BancoDocentesService } from './banco-docentes.service';
@@ -58,7 +59,7 @@ describe('Nombres de actores documentales RUND', () => {
   it('resuelve nombres en bloques, soportes y decisiones por fila sin afectar la separación de actores', async () => {
     const service = Object.create(BancoDocentesService.prototype) as any;
     service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
-    const blocks = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'].map(bloque => ({ bloque, cargado_por: author, revisado_por: reviewer }));
+    const blocks = Object.keys(EVIDENCE_TYPES).map(bloque => ({ bloque, cargado_por: author, revisado_por: reviewer }));
     service.dataSource = { query: jest.fn().mockResolvedValueOnce(blocks).mockResolvedValueOnce([
       { bloque: 'IDENTIDAD', cargado_por: author, revisiones_campos: { NOMBRE_COMPLETO: { revisadoPor: reviewer } } },
     ]).mockResolvedValueOnce([{ actor_id: author, nombre: 'Gestor Documental' }, { actor_id: reviewer, nombre: 'Revisora Académica' }]) };
@@ -67,16 +68,43 @@ describe('Nombres de actores documentales RUND', () => {
       revisado_por: reviewer, revisadoPorNombre: 'Revisora Académica' });
     expect(result[0].soportes[0]).toMatchObject({ cargado_por: author, cargadoPorNombre: 'Gestor Documental',
       revisiones_campos: { NOMBRE_COMPLETO: { revisadoPor: reviewer, revisadoPorNombre: 'Revisora Académica' } } });
-    expect(service.dataSource.query).toHaveBeenCalledTimes(3);
+    // Bloques, soportes y nombres, más una sola consulta para la configuración de carpetas del docente (sin consultas por fila).
+    expect(service.dataSource.query).toHaveBeenCalledTimes(4);
   });
 
   it('agrega el nombre a la trazabilidad sin reescribir registros históricos', async () => {
     const service = Object.create(BancoDocentesService.prototype) as any;
     service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
     const log = { id: 'log', actorId: author, accion: 'CARGAR_DOCUMENTO' };
-    service.auditLogRepo = { find: jest.fn().mockResolvedValue([log]) };
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue({ id: 'docente' }) };
+    service.auditLogRepo = { find: jest.fn().mockResolvedValueOnce([log]).mockResolvedValueOnce([]) };
     service.dataSource = { query: jest.fn().mockResolvedValue([{ actor_id: author, nombre: 'Gestor Documental' }]) };
-    expect(await service.getAuditoria('docente')).toEqual([{ ...log, actorNombre: 'Gestor Documental' }]);
+    expect(await service.getAuditoria('docente')).toEqual([{ ...log, cambios: [], actorNombre: 'Gestor Documental' }]);
     expect(log).not.toHaveProperty('actorNombre');
+    expect(log).not.toHaveProperty('cambios');
+  });
+
+  it('un docente inexistente responde 404 en lugar de un historial vacío', async () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    service.resolveDocenteId = jest.fn().mockResolvedValue('no-existe');
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    service.auditLogRepo = { find: jest.fn() };
+    await expect(service.getAuditoria('no-existe')).rejects.toThrow('no encontrado');
+    expect(service.auditLogRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('mantiene visibles las ediciones aunque haya muchas consultas sensibles más recientes', async () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue({ id: 'docente' }) };
+    const edit = { id: 'e', actorId: author, accion: 'EDITAR', createdAt: new Date('2026-11-10T10:00:00Z') };
+    const consult = { id: 'c', actorId: author, accion: 'CONSULTAR_DATOS_SENSIBLES', createdAt: new Date('2026-11-10T11:00:00Z') };
+    service.auditLogRepo = { find: jest.fn().mockResolvedValueOnce([edit]).mockResolvedValueOnce([consult]) };
+    service.dataSource = { query: jest.fn().mockResolvedValue([]) };
+    const rows = await service.getAuditoria('docente');
+    expect(rows.map((r: any) => r.id)).toEqual(['c', 'e']);
+    const [[actionsQuery], [consultQuery]] = service.auditLogRepo.find.mock.calls;
+    expect(actionsQuery.take).toBe(50);
+    expect(consultQuery.take).toBe(20);
   });
 });
