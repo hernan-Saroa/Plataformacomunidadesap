@@ -11,10 +11,18 @@ export interface CandidatoArea {
   /** Avisos que no bloquean, p. ej. «Sin situación administrativa registrada en el RUND». */
   avisos?: string[];
 }
+/** EFDS-2449: alerta redactada por el servidor cuando todos los candidatos están bloqueados. */
+export interface BloqueoTotal {
+  titulo: string;
+  accion: string;
+  motivosFrecuentes: { clave: string; cantidad: number; etiqueta: string }[];
+  resumen: string;
+}
 export interface CandidatosArea {
   horarioPorDefinir?: boolean;
   resumen?: { total: number; asignables: number; bloqueados: number };
   aviso?: string | null;
+  bloqueoTotal?: BloqueoTotal | null;
   grupo: string;
   franjas: { idFranja: string; diaSemana: string; horaInicio: string; horaFin: string; docenteActual: string | null }[];
   area: { codigo: string; nombre: string; nucleoAsignatura: string | null } | null;
