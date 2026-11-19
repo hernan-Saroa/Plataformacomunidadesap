@@ -329,7 +329,11 @@ export function FichaDelProceso({
         size="large"
         sinPadding
       >
+        {/* Con sinPadding el modal deja el scroll al contenido (overflow
+            hidden); sin este contenedor la lista de puestos se cortaba y no
+            había forma de llegar a los de abajo. */}
         {equipo ? (
+          <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
           <SoloLectura motivo={motivoDe(equipo === 'supervision' ? '8.2' : '3.3')}>
             {motivoDe(equipo === 'supervision' ? '8.2' : '3.3') ? (
               <AvisoSoloLectura motivo={motivoDe(equipo === 'supervision' ? '8.2' : '3.3')!} />
@@ -340,6 +344,7 @@ export function FichaDelProceso({
               <PanelRadicacion procesoId={procesoId} onCambio={onCambio} />
             )}
           </SoloLectura>
+          </div>
         ) : null}
       </Modal>
     </div>
