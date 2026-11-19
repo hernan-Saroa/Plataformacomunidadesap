@@ -16,14 +16,14 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles?.length) return true;
 
     const { user } = context.switchToHttp().getRequest();
-    if (!user) throw new ForbiddenException('Usuario no autenticado');
+    if (!user) throw new ForbiddenException('Tu sesión no está activa: vuelve a iniciar sesión');
 
     const userRoles = normalizeRoles(user.roles ?? user.role);
     const required = requiredRoles.map((r) => r.toUpperCase().trim());
 
     if (!required.some((role) => userRoles.includes(role))) {
       throw new ForbiddenException(
-        `No tienes permisos. Se requiere uno de los siguientes roles: ${requiredRoles.join(', ')}`,
+        `No tienes permiso para esta acción: solo la hacen los roles ${requiredRoles.join(', ')}`,
       );
     }
 

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Archive, Pencil, Plus } from 'lucide-react';
+import { AlertTriangle, Archive, Pencil, Plus, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ProblemaDePuestos, Puesto } from '../../types';
+import { ProblemaDePuestos, Puesto, RolConAlcance } from '../../types';
 import { campo } from '../shared/PiezasPanel';
 import { useDialogo } from '../shared/useDialogo';
 
@@ -26,6 +26,8 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [obligatorio, setObligatorio] = useState(false);
+  const [rolId, setRolId] = useState('');
+  const [roles, setRoles] = useState<RolConAlcance[]>([]);
   const dialogo = useDialogo();
 
   const leer = () =>
@@ -37,6 +39,15 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
       })
       .catch((e: any) => setError(e.message));
 
+  // Los roles solo hacen falta para elegir el del puesto: si no cargan, el
+  // resto de la pantalla sigue sirviendo.
+  useEffect(() => {
+    contratacionService
+      .alcanceRoles()
+      .then(setRoles)
+      .catch(() => setRoles([]));
+  }, []);
+
   useEffect(() => {
     leer();
   }, []);
@@ -46,12 +57,13 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
     setNombre(p?.nombre ?? '');
     setDescripcion(p?.descripcion ?? '');
     setObligatorio(p?.obligatorio ?? false);
+    setRolId(p?.rolId ?? '');
   };
 
   const guardar = async () => {
     setGuardando(true);
     try {
-      const datos = { nombre: nombre.trim(), descripcion: descripcion.trim() || null, obligatorio };
+      const datos = { nombre: nombre.trim(), descripcion: descripcion.trim() || null, obligatorio, rolId: rolId || null };
       if (editando === 'nuevo') await contratacionService.crearPuesto(datos);
       else if (editando) await contratacionService.actualizarPuesto(editando, datos);
       toast.success(editando === 'nuevo' ? `Se creó el puesto ${datos.nombre}` : 'Se guardó el puesto');
@@ -87,6 +99,34 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
     }
   };
 
+  const completar = async (p: Puesto) => {
+    const faltan = p.permisosDelRol?.faltan ?? [];
+    const ok = await dialogo.confirmar({
+      titulo: `Completar los permisos de ${p.rol?.nombre ?? 'el rol'}`,
+      descripcion: `Se le dará, en Permisos por etapa: ${faltan
+        .map((f) => `${f.accion} la ${f.numeral}`)
+        .join(', ')}. Solo se agrega lo que el puesto ${p.nombre} hace o aprueba; no se quita nada.`,
+      confirmar: 'Completar',
+    });
+    if (!ok) return;
+    setGuardando(true);
+    try {
+      const r = await contratacionService.completarPermisosDePuesto(p.id);
+      if (r.agregados.length) toast.success(`${r.rol ?? 'El rol'} ahora puede ${r.agregados.join(', ')}`);
+      if (r.pendientes.length) {
+        toast.warning(
+          `Falta el permiso ${r.pendientes.map((a) => `«${a}»`).join(' y ')} en la administración de roles de la plataforma`,
+        );
+      }
+      await leer();
+      onCambio?.();
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudieron completar los permisos');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   if (error) return <p className="text-xs text-red-600 m-0">{error}</p>;
   if (!puestos) return <p className="text-xs text-slate-400 m-0">Cargando los puestos…</p>;
 
@@ -110,6 +150,21 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
       <label className="flex items-center gap-2 text-xs text-slate-700">
         <input type="checkbox" checked={obligatorio} onChange={(e) => setObligatorio(e.target.checked)} />
         Obligatorio: si un proceso recibido lo tiene vacío, sale una alerta
+      </label>
+      <label className="block text-xs text-slate-700 space-y-1">
+        <span className="font-bold">Rol que lo ocupa</span>
+        <select value={rolId} onChange={(e) => setRolId(e.target.value)} aria-label="Rol del puesto" className={campo}>
+          <option value="">Sin rol</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.nombre}
+            </option>
+          ))}
+        </select>
+        <span className="block text-[11px] text-slate-500">
+          Sirve para ver qué permisos le faltan a ese rol y completarlos desde aquí. No limita a quién se puede
+          escoger.
+        </span>
       </label>
       <div className="flex items-center gap-2">
         <button
@@ -181,6 +236,39 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
                           .join(' · ')
                       : 'Ninguna actividad lo usa todavía.'}
                   </p>
+                  {p.rol ? (
+                    <p className="m-0 mt-1 text-[11px] text-slate-500">
+                      Rol: <span className="font-bold">{p.rol.nombre}</span>
+                      {p.permisosDelRol && !p.permisosDelRol.faltan.length && !p.permisosDelRol.sinPermisoGeneral.length
+                        ? ' · tiene todos los permisos del puesto'
+                        : null}
+                    </p>
+                  ) : null}
+                  {p.permisosDelRol && p.permisosDelRol.faltan.length > 0 ? (
+                    <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-700" aria-hidden />
+                      <p className="m-0 flex-1 min-w-0 text-[11px] text-amber-800 leading-relaxed">
+                        A {p.rol?.nombre} le falta {p.permisosDelRol.faltan.map((f) => `${f.accion} la ${f.numeral}`).join(', ')}.
+                        Sin eso, nadie con ese rol sale para este puesto.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={guardando}
+                        onClick={() => completar(p)}
+                        className="inline-flex items-center gap-1 flex-shrink-0 px-2 py-1 text-[11px] font-bold rounded-md bg-[#003DA5] text-white hover:bg-blue-800 disabled:opacity-50"
+                      >
+                        <Wand2 className="w-3 h-3" aria-hidden />
+                        Completar permisos
+                      </button>
+                    </div>
+                  ) : null}
+                  {p.permisosDelRol && p.permisosDelRol.sinPermisoGeneral.length > 0 ? (
+                    <p className="m-0 mt-1 text-[11px] text-red-700 leading-relaxed">
+                      {p.rol?.nombre} no tiene el permiso{' '}
+                      {p.permisosDelRol.sinPermisoGeneral.map((a) => `«${a}»`).join(' ni ')} en la administración de
+                      roles de la plataforma. Eso se da allá; desde aquí no se puede.
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="button"

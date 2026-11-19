@@ -3,6 +3,7 @@ import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 import { useRevisionProgramacion, invalidarProgramacion } from '../services/actualizacionProgramacion';
 import {
   getPeriodos, crearPeriodoPlataforma, getImpactoActivacion, activarPeriodoPlataforma,
+  getImpactoEliminacion, eliminarPeriodoPlataforma, type ImpactoEliminacion,
   type PeriodoPlataforma, type RespuestaPeriodos,
   type ImpactoActivacion,
 } from '../services/api/periodosApi';
@@ -62,6 +63,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
     | { tipo: 'excepcion'; id: string; idFranja: string }
     | { tipo: 'cierre'; periodo: PeriodoPlataforma }
     | { tipo: 'activacion'; id: string; impacto: ImpactoActivacion }
+    | { tipo: 'eliminacion'; impacto: ImpactoEliminacion }
     | null
   >(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -197,6 +199,27 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
     }
   };
 
+  // Bug QA 18-nov: eliminar un periodo. Primero se consulta el impacto y se muestra; el servidor decide si se puede.
+  const eliminar = async (id: string) => {
+    setAvisoAdmin('');
+    try {
+      const impacto = await getImpactoEliminacion(id);
+      if (!impacto.eliminable) { setAvisoAdmin(impacto.motivo || 'Este periodo no se puede eliminar.'); return; }
+      setConfirmacion({ tipo: 'eliminacion', impacto });
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo consultar qué se eliminaría.');
+    }
+  };
+  const confirmarEliminacion = async (impacto: ImpactoEliminacion) => {
+    try {
+      await eliminarPeriodoPlataforma(impacto.id);
+      setAvisoAdmin(`Periodo ${impacto.codigo} eliminado.`);
+      await recargar();
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo eliminar el periodo.');
+    }
+  };
+
   const confirmarActivacion = async (id: string) => {
     let activado = false;
     try {
@@ -218,6 +241,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       if (actual.tipo === 'excepcion') await excepcion(actual.id, actual.idFranja);
       if (actual.tipo === 'cierre') await cerrar(actual.periodo);
       if (actual.tipo === 'activacion') await confirmarActivacion(actual.id);
+      if (actual.tipo === 'eliminacion') await confirmarEliminacion(actual.impacto);
     } finally { setConfirmando(false); setConfirmacion(null); }
   };
 
@@ -253,9 +277,11 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       {confirmacion && (
         <ModalConfirmacion
           retornarFoco={disparadorConfirmacion.current}
-          titulo={confirmacion.tipo === 'activacion' ? `Activar periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'cierre' ? `Cerrar programación de ${confirmacion.periodo.codigo}` : 'Marcar franja como excepción'}
+          titulo={confirmacion.tipo === 'eliminacion' ? `Eliminar el periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'activacion' ? `Activar periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'cierre' ? `Cerrar programación de ${confirmacion.periodo.codigo}` : 'Marcar franja como excepción'}
           onCancelar={() => setConfirmacion(null)} onConfirmar={ejecutarConfirmacion} ocupado={confirmando}
-          advertencia={confirmacion.tipo === 'activacion'
+          advertencia={confirmacion.tipo === 'eliminacion'
+            ? 'Esta acción no se puede deshacer: se borra el periodo y todo lo que se programó en él.'
+            : confirmacion.tipo === 'activacion'
             ? (confirmacion.impacto.advertencia || 'La activación cambiará el estado de los periodos indicados.')
             : confirmacion.tipo === 'cierre'
               ? 'Esta acción no se puede deshacer. Después no se podrán crear grupos en esta programación.'
@@ -272,6 +298,19 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
               {activo && <p>El periodo activo actual <strong>{activo}</strong> {impacto.periodosAPlaneacion.includes(activo) ? 'pasará a planeación' : impacto.periodosACerrar.includes(activo) ? 'se cerrará' : 'dejará de estar activo'}.</p>}
               {impacto.periodosACerrar.length > 0 && <p>Se cerrarán: {impacto.periodosACerrar.join(', ')}.</p>}
               {impacto.periodosAPlaneacion.length > 0 && <p>Pasarán a planeación: {impacto.periodosAPlaneacion.join(', ')}.</p>}
+            </>;
+          })()}
+          {confirmacion.tipo === 'eliminacion' && (() => {
+            const i = confirmacion.impacto;
+            return <>
+              <p>Se eliminará el periodo <strong>{i.codigo}</strong> con todo lo que tiene:</p>
+              <ul className="list-disc space-y-1 pl-5" aria-label="Qué se elimina">
+                <li><strong>{i.ofertas}</strong> oferta(s) de programas por CETAP y {i.cetaps} activación(es) de CETAP</li>
+                <li><strong>{i.grupos}</strong> grupo(s) con <strong>{i.sesiones}</strong> sesión(es) y sus docentes asignados</li>
+                <li><strong>{i.concertaciones}</strong> concertación(es) de docencia</li>
+                {i.programas > 0 && <li>{i.programas} programa(s) creados para este periodo quedan sin periodo (no se borran)</li>}
+              </ul>
+              <p>No tiene PTA de docentes: por eso se puede eliminar.</p>
             </>;
           })()}
           {confirmacion.tipo === 'cierre' && <p>Se cerrará la programación del periodo <strong>{confirmacion.periodo.codigo}</strong>.</p>}
@@ -320,6 +359,15 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
                 </span>
                 {/* El PTA permite reactivar un periodo cerrado; el impacto se
                     confirma antes de cambiar el periodo activo. */}
+                {periodos?.permisos.crear && !o.esActivo && o.estadoPlataforma !== 'en_curso' && (
+                  <button
+                    type="button"
+                    onClick={(e) => { disparadorConfirmacion.current = e.currentTarget; eliminar(o.idPeriodo); }}
+                    className="px-2.5 py-1 rounded-lg border border-red-300 text-red-700 text-[11px] font-bold hover:bg-red-50 active:scale-95 transition-all"
+                  >
+                    Eliminar
+                  </button>
+                )}
                 {periodos?.permisos.activar && !o.esActivo && (
                   <button
                     type="button"

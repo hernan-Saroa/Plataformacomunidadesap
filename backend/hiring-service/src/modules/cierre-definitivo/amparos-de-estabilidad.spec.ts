@@ -8,6 +8,7 @@ describe('amparosParaCerrar (EFDS-1175)', () => {
     nombre: 'Estabilidad y calidad de la obra',
     numeroPoliza: 'POL-001',
     vigenciaHasta: '2025-01-31',
+    amparaTrasElContrato: true,
     ...parcial,
   });
 
@@ -36,7 +37,7 @@ describe('amparosParaCerrar (EFDS-1175)', () => {
    */
   it('deja cerrar de entrada un contrato sin amparos de estabilidad ni calidad', () => {
     const estado = amparosParaCerrar(
-      [amparo({ tipo: 'CUMPLIMIENTO', vigenciaHasta: '2030-01-01' })],
+      [amparo({ tipo: 'CUMPLIMIENTO', vigenciaHasta: '2030-01-01', amparaTrasElContrato: false })],
       HOY,
     );
 
@@ -57,6 +58,17 @@ describe('amparosParaCerrar (EFDS-1175)', () => {
 
     expect(estado.verificados).toHaveLength(2);
     expect(estado.puedeCerrar).toBe(false);
+  });
+
+  /** Un amparo creado desde Configuración cuenta si se marcó así (145). */
+  it('espera también a un amparo nuevo marcado como «ampara tras el contrato»', () => {
+    const estado = amparosParaCerrar(
+      [amparo({ tipo: 'GARANTIA_DE_SOFTWARE', nombre: 'Garantía de software', vigenciaHasta: '2028-01-01' })],
+      HOY,
+    );
+
+    expect(estado.puedeCerrar).toBe(false);
+    expect(estado.motivo).toContain('garantía de software');
   });
 
   /** Un amparo que vence hoy todavía ampara hoy. */

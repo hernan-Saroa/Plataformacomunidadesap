@@ -28,6 +28,13 @@ export class PuestoProceso {
   @Column({ type: 'int', default: 100 })
   orden: number;
 
+  /**
+   * El rol que suele ocupar el puesto (143). De referencia: no filtra a los
+   * candidatos ni da permisos; dice a qué rol completarle los que falten.
+   */
+  @Column({ name: 'rol_id', type: 'uuid', nullable: true })
+  rolId: string | null;
+
   /** Archivado y no borrado: los procesos viejos lo nombran. */
   @Column({ default: true })
   activo: boolean;

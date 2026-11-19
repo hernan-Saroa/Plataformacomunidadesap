@@ -16,6 +16,8 @@ import { RundDocumentStorageService } from './rund-document-storage.service';
 import { RundDocumentosService } from './rund-documentos.service';
 import { RundPtaConsultaController, RundPtaJwtGuard } from './rund-pta-consulta.controller';
 import { RundPtaConsultaService } from './rund-pta-consulta.service';
+import { RundHistorialAcademicoController } from './rund-historial-academico.controller';
+import { RundHistorialAcademicoService } from './rund-historial-academico.service';
 import { RundExtraccionService } from './rund-extraccion.service';
 import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
@@ -30,7 +32,7 @@ import { RundPhotosController } from './rund-photos.controller';
   imports: [
     TypeOrmModule.forFeature([DocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [RundPhotosController, RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundExtraccionController],
+  controllers: [RundPhotosController, RundNucleosController, BancoDocentesController, RundPtaConsultaController, RundHistorialAcademicoController, RundExtraccionController],
   providers: [
     RundPhotosService,
     BancoDocentesService,
@@ -39,6 +41,7 @@ import { RundPhotosController } from './rund-photos.controller';
     RundDocumentStorageService,
     RundDocumentosService,
     RundPtaConsultaService,
+    RundHistorialAcademicoService,
     RundPtaJwtGuard,
     RundExtraccionService,
     RundExtraccionNotificationsService,

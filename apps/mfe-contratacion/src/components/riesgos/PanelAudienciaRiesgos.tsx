@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoAudienciaRiesgos, EvidenciaFirmaOtp } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
+import { SiPuedeEditar } from '../shared/SoloLectura';
 import { Permitido } from '../shared/Permitido';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
@@ -175,6 +176,7 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
           )}
         </div>
 
+        <SiPuedeEditar>
         <button
           type="button"
           disabled={guardando}
@@ -184,6 +186,7 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
           <Undo2 className="w-3.5 h-3.5" />
           Anular y corregir
         </button>
+        </SiPuedeEditar>
       </Marco>
     );
   }

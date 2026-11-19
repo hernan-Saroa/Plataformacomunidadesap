@@ -26,13 +26,13 @@ export class EtapaCronogramaDto {
 
   @ApiPropertyOptional({ description: 'Desde cuándo (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de inicio debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de inicio debe tener el formato AAAA-MM-DD' })
   fechaInicio?: string | null;
 
   /** Sin fecha de fin la etapa queda sin programar y no alerta. */
   @ApiPropertyOptional({ description: 'Hasta cuándo debería estar cumplida (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de fin debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de fin debe tener el formato AAAA-MM-DD' })
   fechaFin?: string | null;
 
   @ApiPropertyOptional({ description: 'Observación sobre la etapa' })
@@ -99,13 +99,13 @@ export class ActividadCronogramaDto {
 
   @ApiPropertyOptional({ description: 'Desde cuándo (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de inicio debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de inicio debe tener el formato AAAA-MM-DD' })
   fechaInicio?: string | null;
 
   /** Sin fecha de fin la actividad queda sin programar y no alerta. */
   @ApiPropertyOptional({ description: 'Hasta cuándo (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de fin debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de fin debe tener el formato AAAA-MM-DD' })
   fechaFin?: string | null;
 
   /** Sin él, la anticipación general del cronograma (Parámetros de alertas). */

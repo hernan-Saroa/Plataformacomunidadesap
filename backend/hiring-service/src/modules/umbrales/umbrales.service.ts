@@ -42,7 +42,7 @@ export function convertirAPesos(
   // todo proceso superaría el tope y todo se volvería licitación pública.
   if (valorSmmlv === null || !Number.isFinite(valorSmmlv) || valorSmmlv <= 0) {
     throw new BadRequestException(
-      'No hay SMMLV registrado para el año del umbral; no se puede convertir a pesos',
+      'No hay salario mínimo (SMMLV) registrado para el año del umbral: regístralo primero para poder convertirlo a pesos',
     );
   }
 
@@ -406,7 +406,7 @@ export class UmbralesService {
       );
     }
     if (dto.limiteInferior === null && dto.limiteSuperior === null) {
-      throw new BadRequestException('El umbral necesita al menos un límite');
+      throw new BadRequestException('El umbral necesita al menos un límite: el inferior, el superior o los dos');
     }
     if (
       dto.limiteInferior !== null &&

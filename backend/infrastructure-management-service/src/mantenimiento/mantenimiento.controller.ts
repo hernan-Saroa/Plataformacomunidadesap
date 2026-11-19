@@ -47,6 +47,7 @@ import {
   RegistrarRevisionVoBoDto,
   VincularTramiteContractualDto,
   MarcarRequiereContratacionDto,
+  ConfirmarEmergenciaDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
@@ -853,6 +854,45 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.rechazarConformidadYReabrir(idSolicitud, dto, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // RF-INF-014: Alarmas y Notificaciones Multicanal (70% ANS y Emergencias Críticas)
+  // Declaradas ANTES de wildcard :id para evitar colisiones.
+  // ---------------------------------------------------------------------------
+  @Get('alertas/emergencias-pendientes')
+  @Public()
+  @ApiOperation({
+    summary: 'RF-INF-014: Listar solicitudes con Emergencia Crítica pendientes de confirmación/acuse por Coordinador GIM.',
+  })
+  @ApiResponse({ status: 200, description: 'Lista de emergencias críticas pendientes.' })
+  obtenerEmergenciasPendientes() {
+    return this.mantenimientoService.obtenerEmergenciasPendientes();
+  }
+
+  @Post('alertas/evaluar-70-ans')
+  @Public()
+  @ApiOperation({
+    summary: 'RF-INF-014: Barrido manual/batch de evaluación preventiva de 70% de SLA consumido.',
+  })
+  @ApiResponse({ status: 200, description: 'Resultado de la evaluación con total evaluadas y emitidas.' })
+  evaluarAlertas70ANS() {
+    return this.mantenimientoService.evaluarAlertas70ANS();
+  }
+
+  @Post(':idSolicitud/confirmar-emergencia')
+  @Public()
+  @ApiOperation({
+    summary: 'RF-INF-014: Coordinador GIM confirma acuse de recibo de Emergencia Crítica con notas de atención.',
+  })
+  @ApiResponse({ status: 200, description: 'Emergencia confirmada formalmente.' })
+  @ApiResponse({ status: 400, description: 'No es emergencia o ya estaba confirmada.' })
+  confirmarEmergenciaCritica(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: ConfirmarEmergenciaDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.confirmarEmergenciaCritica(idSolicitud, dto, req?.user);
   }
 
   // ---------------------------------------------------------------------------

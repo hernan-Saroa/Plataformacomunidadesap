@@ -20,11 +20,14 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { RiesgosModule } from '../riesgos/riesgos.module';
+import { CargasModule } from '../cargas/cargas.module';
 
 @Module({
   imports: [
     // La audiencia de riesgos obligatoria condiciona el cierre (EFDS-1153, 112).
     RiesgosModule,
+    // La oferta grande llega por partes y se registra con su carga (BUG-004).
+    CargasModule,
     TypeOrmModule.forFeature([
       RecepcionOfertas,
       Oferente,

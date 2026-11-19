@@ -368,6 +368,7 @@ describe('HU EFDS-1174 · publicación del acta y archivo del expediente (10.4)'
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-174-${CORRIDA}-${n}`,
         amparos: [
           {

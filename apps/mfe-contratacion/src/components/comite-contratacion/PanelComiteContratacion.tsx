@@ -76,8 +76,6 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
   const [fecha, setFecha] = useState('');
   const [decision, setDecision] = useState<DecisionComite>('APROBADO');
   const [texto, setTexto] = useState('');
-  /** Qué hay que validar, cuando el comité aprueba pero reabre algo. */
-  const [validacion, setValidacion] = useState('');
   const [numerales, setNumerales] = useState<string[]>([]);
   const [acta, setActa] = useState<File | null>(null);
 
@@ -102,7 +100,6 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
       setEstado(r);
       setRegistrando(false);
       setTexto('');
-      setValidacion('');
       setNumerales([]);
       setActa(null);
       toast.success(exito);
@@ -153,27 +150,21 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
   // El texto que pide cada desenlace. Aprobar sin más no pide ninguno, y por
   // eso el campo desaparece en vez de quedarse vacío y opcional.
   const pideTexto = decision !== 'APROBADO';
-  const aprueba = decision === 'APROBADO' || decision === 'APROBADO_CON_CONDICIONES';
   /**
    * Reabrir actividades anteriores ya cerradas (EFDS-2068).
    *
-   * Obligatorio al observar —una devolución sin nada editable donde aplicarla
-   * no sirve de nada— y opcional al aprobar, que es el comité avalando el
-   * proceso pero pidiendo que le validen un punto. Al rechazar no se ofrece:
-   * el proceso queda negado y no hay nada que corregir dentro de él.
+   * Solo al observar, y ahí es obligatorio: una devolución sin nada editable
+   * donde aplicarla no sirve de nada. Al aprobar no se ofrece —si el comité
+   * aprobó es que todo está bien, y la 3.1 no se vuelve a abrir— y al rechazar
+   * tampoco: el proceso queda negado y no hay nada que corregir dentro de él.
    */
-  const puedeReabrir = decision !== 'RECHAZADO' && estado.reabribles.length > 0;
-  const exigeNumerales = decision === 'OBSERVADO';
+  const puedeReabrir = decision === 'OBSERVADO' && estado.reabribles.length > 0;
   const marcados = puedeReabrir ? numerales : [];
-  // Una aprobación que reabre algo tiene que decir qué validar: si no, esa
-  // actividad le llega a su responsable devuelta y sin motivo.
-  const pideValidacion = aprueba && marcados.length > 0;
   // El acta no se exige: tarda hasta diez días y no frena el proceso (113).
   const completo =
     !!fecha &&
     (!pideTexto || texto.trim().length >= 10) &&
-    (!pideValidacion || validacion.trim().length >= 10) &&
-    (!exigeNumerales || marcados.length > 0);
+    (decision !== 'OBSERVADO' || marcados.length > 0);
 
   const alternar = (numeral: string) =>
     setNumerales((previos) =>
@@ -287,6 +278,13 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
         />
       )}
 
+      {ultima?.decision === 'APROBADO_CON_CONDICIONES' && (
+        <Aviso tono="aviso" titulo="Hay condiciones por atender">
+          El proceso fue aprobado con condiciones. Se deberán atender las observaciones registradas
+          antes de continuar con las actividades afectadas.
+        </Aviso>
+      )}
+
       {observado && (
         <Aviso tono="aviso" titulo="El comité devolvió los documentos">
           Hay que atender las observaciones de fondo y volver a llevarlo a comité. Al registrar la
@@ -357,6 +355,13 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
             <option value="OBSERVADO">Observado: devuelve los documentos</option>
             <option value="RECHAZADO">Rechazado: el proceso no sale al mercado</option>
           </select>
+          {/* Cada desenlace dice qué pasa al registrarlo (AJU-004 de QA, 14/11). */}
+          {decision === 'APROBADO_CON_CONDICIONES' && (
+            <Aviso tono="aviso" titulo="El proceso sigue, con condiciones">
+              El proceso fue aprobado con condiciones. Se deberán atender las observaciones
+              registradas antes de continuar con las actividades afectadas.
+            </Aviso>
+          )}
           {decision === 'RECHAZADO' && (
             <Aviso tono="aviso" titulo="El rechazo termina el proceso">
               La actividad queda negada y el proceso también: no admite corregir y volver a comité.
@@ -403,13 +408,7 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
           {puedeReabrir && (
             <fieldset className="border-0 p-0 m-0">
               <legend className="block text-xs font-bold text-gray-600 p-0">
-                {exigeNumerales ? (
-                  <>
-                    A qué actividades vuelve el proceso <span className="text-red-600">*</span>
-                  </>
-                ) : (
-                  'Reabrir para validación (opcional)'
-                )}
+                A qué actividades vuelve el proceso <span className="text-red-600">*</span>
               </legend>
               <div className="mt-1.5 space-y-1.5">
                 {estado.reabribles.map((numeral) => (
@@ -429,31 +428,9 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
                 ))}
               </div>
               <p className="text-[11px] text-slate-500 m-0 mt-1.5">
-                {exigeNumerales
-                  ? 'Cada una se reabre para que quien la trabajó la corrija y la vuelva a enviar. Sin esto, las observaciones no tendrían dónde aplicarse: las actividades ya estaban aprobadas.'
-                  : 'El proceso sigue su curso, pero las actividades que marques vuelven a manos de quien las trabajó para que las validen.'}
+                Cada una se reabre para que quien la trabajó la corrija y la vuelva a enviar. Sin esto, las observaciones no tendrían dónde aplicarse: las actividades ya estaban aprobadas.
               </p>
             </fieldset>
-          )}
-
-          {/* Una aprobación que reabre algo tiene que decir qué validar: la
-              actividad le llega a su responsable devuelta, y sin esto no sabría
-              por qué. */}
-          {pideValidacion && (
-            <>
-              <label htmlFor="comite-validacion" className="block text-xs font-bold text-gray-600">
-                Qué hay que validar <span className="text-red-600">*</span>
-              </label>
-              <textarea
-                id="comite-validacion"
-                rows={2}
-                value={validacion}
-                disabled={guardando}
-                onChange={(e) => setValidacion(e.target.value)}
-                placeholder="Confirmar que el valor estimado del análisis del sector sigue vigente…"
-                className={campo}
-              />
-            </>
           )}
 
           <SelectorArchivo
@@ -481,14 +458,10 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
                           ...(decision === 'APROBADO_CON_CONDICIONES'
                             ? { condiciones: texto.trim() }
                             : {}),
-                          // Observar y rechazar guardan lo que el comité
-                          // objetó; una aprobación que reabre algo guarda ahí
-                          // mismo qué hay que validar.
+                          // Observar y rechazar guardan lo que el comité objetó.
                           ...(decision === 'OBSERVADO' || decision === 'RECHAZADO'
                             ? { observaciones: texto.trim() }
-                            : pideValidacion
-                              ? { observaciones: validacion.trim() }
-                              : {}),
+                            : {}),
                           ...(marcados.length ? { numeralesReabrir: marcados } : {}),
                           firma: firmaOtp,
                         },

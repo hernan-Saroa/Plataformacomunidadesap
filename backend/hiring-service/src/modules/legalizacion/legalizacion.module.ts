@@ -6,7 +6,7 @@ import { LegalizacionController } from './legalizacion.controller';
 
 import { Contrato } from '../../entities/contrato.entity';
 import { Garantia } from '../../entities/garantia.entity';
-import { Amparo, TipoAmparo } from '../../entities/amparo.entity';
+import { Amparo, TipoAmparo, TipoPoliza } from '../../entities/amparo.entity';
 import { AfiliacionArl } from '../../entities/afiliacion-arl.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -22,6 +22,7 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
       Garantia,
       Amparo,
       TipoAmparo,
+      TipoPoliza,
       AfiliacionArl,
       Proceso,
       ProcesoActividad,

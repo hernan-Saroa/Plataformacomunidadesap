@@ -109,6 +109,11 @@ export class CreateMantenimientoDto {
   @IsOptional()
   prioridad?: string;
 
+  @ApiPropertyOptional({ example: false, description: 'RF-INF-014: Indica si la solicitud se cataloga como emergencia crítica con riesgo estructural o humano' })
+  @IsBoolean()
+  @IsOptional()
+  esEmergenciaCritica?: boolean;
+
   // ===== EFDS-1735..1739 Fase 3: Bien Asignado a Funcionario =====
   @ApiPropertyOptional({ example: false, description: 'Indica si el mantenimiento afecta un bien asignado a un funcionario específico.' })
   @IsOptional()
@@ -544,4 +549,14 @@ export class MarcarRequiereContratacionDto {
   @IsOptional()
   @IsString()
   insumosRequeridos?: string;
+}
+
+export class ConfirmarEmergenciaDto {
+  @ApiPropertyOptional({
+    example: 'Se activó cuadrilla inmediata de mitigación y se aisló el área.',
+    description: 'Notas u observaciones del acuse de recibo de la emergencia por parte del Coordinador GIM.',
+  })
+  @IsOptional()
+  @IsString()
+  notas?: string;
 }

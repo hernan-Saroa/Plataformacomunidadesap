@@ -49,7 +49,7 @@ export class DesignarSupervisorDto {
   email: string;
 
   @ApiProperty({ description: 'Fecha del acto administrativo (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de designación debe tener el formato AAAA-MM-DD' })
   fechaDesignacion: string;
 
   /**
