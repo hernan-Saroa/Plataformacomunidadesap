@@ -191,7 +191,7 @@ Sirve para probar el interruptor sin tocar el periodo principal. Probado contra 
 - En la selección de días, el miércoles es **«MI»** (antes «X»).
 
 ### 11.4 Reconstruir y verificar
-- Reconstruir: `academic-schedule-service` (migraciones 081/082 y EFDS-2448) y el MFE `mfe-programacion-academica`. Además lo de la §10 si no se desplegó aún.
+- Reconstruir: `academic-schedule-service` (migraciones 081/082 y EFDS-2448) y el MFE `mfe-programacion-academica`. Además lo de la §10 si no se desplegó aún. (El shell trae un cambio de una línea en `offlineCache.ts` que solo afecta las pruebas; no hace falta reconstruirlo por esto.)
 - Verificación (3 minutos):
   1. Log de `db-migrate`: aparecen los `NOTICE: 082:` y **ningún** `ERROR`. Si sale «CONSERVADO», ese periodo viejo tiene datos ligados al PTA y se queda a propósito.
   2. Programación Académica → Periodos: ya no aparecen los periodos viejos retirados (2026-INT, 2026-2…) en «Periodos anteriores al modelo único».
