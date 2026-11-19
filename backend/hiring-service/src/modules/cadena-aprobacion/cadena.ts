@@ -206,7 +206,10 @@ export function motivoParaNoDecidir(args: {
   const mias = previas.filter((d) => esLaMisma(d, quien.personaId, usuarioId));
 
   // Con TODOS, cada persona aprueba una vez: dos aprobaciones suyas no son dos personas.
-  if (accion === 'APROBAR' && mias.some((d) => d.escalon === escalon.orden && d.decision === 'APROBADO')) {
+  // Y quien ya aprobó su escalón tampoco devuelve ni niega en la misma ronda:
+  // su decisión ya está tomada y contradecirla la dejaría con dos votos
+  // (BUG-005 de QA, 17/11). Los demás del escalón siguen con sus acciones.
+  if (mias.some((d) => d.escalon === escalon.orden && d.decision === 'APROBADO')) {
     // Informativo, no un error: su aprobación sí quedó (AJU-003 de QA, 14/11).
     return 'Tu aprobación ya fue registrada correctamente. El proceso continuará una vez los demás responsables del escalón completen sus aprobaciones.';
   }

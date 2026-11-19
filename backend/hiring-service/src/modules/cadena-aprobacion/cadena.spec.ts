@@ -155,6 +155,18 @@ describe('cadena de aprobación', () => {
     it('lo que decidió otra persona no le estorba', () => {
       expect(motivo({ previas: [aprobo(1, 'persona-7')] })).toBeNull();
     });
+
+    // BUG-005 de QA (17/11): con TODOS, quien ya aprobó seguía viendo «Devolver».
+    it('quien ya aprobó su escalón no devuelve ni niega en la misma ronda', () => {
+      const todos = { ...escalon, reglaDecision: 'TODOS' as const, acciones: ['APROBAR' as const, 'DEVOLVER' as const, 'NEGAR' as const] };
+      expect(motivo({ escalon: todos, previas: [aprobo(2)], accion: 'DEVOLVER' })).toMatch(/ya fue registrada/);
+      expect(motivo({ escalon: todos, previas: [aprobo(2)], accion: 'NEGAR' })).toMatch(/ya fue registrada/);
+    });
+
+    it('los demás del escalón siguen pudiendo devolver', () => {
+      const todos = { ...escalon, reglaDecision: 'TODOS' as const };
+      expect(motivo({ escalon: todos, previas: [aprobo(2, 'persona-7')], accion: 'DEVOLVER' })).toBeNull();
+    });
   });
 
   describe('escalonCompleto', () => {
