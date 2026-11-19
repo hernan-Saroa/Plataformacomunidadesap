@@ -307,6 +307,7 @@ export class LegalizacionService {
         );
       }
 
+      let nombrePoliza: string | null = null;
       if (dto.tipoPoliza) {
         const tipo = await em
           .getRepository(TipoPoliza)
@@ -316,8 +317,9 @@ export class LegalizacionService {
             `El tipo de póliza ${dto.tipoPoliza} no existe en el catálogo o fue retirado`,
           );
         }
+        nombrePoliza = tipo.nombre;
       }
-      await this.validarAmparos(em, dto, dto.tipoPoliza);
+      const nombresAmparo = await this.validarAmparos(em, dto, dto.tipoPoliza);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
@@ -361,6 +363,7 @@ export class LegalizacionService {
           aseguradora: dto.aseguradora,
           numeroPoliza: dto.numeroPoliza,
           tipoPoliza: dto.tipoPoliza ?? null,
+          tipoPolizaNombre: nombrePoliza,
           documentoId: doc.id,
           estado: aprobadaEnSecop ? ('APROBADA' as const) : ('CARGADA' as const),
           cargadaPor: acceso.userName,
@@ -380,6 +383,7 @@ export class LegalizacionService {
           em.create(Amparo, {
             garantiaId: garantia.id,
             tipo: a.tipo,
+            tipoNombre: nombresAmparo.get(a.tipo) ?? null,
             valorAsegurado: a.valorAsegurado,
             vigenciaDesde: a.vigenciaDesde,
             vigenciaHasta: a.vigenciaHasta,
@@ -423,7 +427,7 @@ export class LegalizacionService {
       }
 
       const existentes = await em.getRepository(Amparo).find({ where: { garantiaId } });
-      await this.validarAmparos(em, {
+      const nombresAmparo = await this.validarAmparos(em, {
         amparos: [
           ...existentes.map((a) => ({
             tipo: a.tipo,
@@ -433,12 +437,13 @@ export class LegalizacionService {
           })),
           dto,
         ],
-      } as CargarGarantiaDto, garantia.tipoPoliza);
+      } as CargarGarantiaDto, garantia.tipoPoliza, new Set(existentes.map((a) => a.tipo)));
 
       await em.save(
         em.create(Amparo, {
           garantiaId,
           tipo: dto.tipo,
+          tipoNombre: nombresAmparo.get(dto.tipo) ?? null,
           valorAsegurado: dto.valorAsegurado,
           vigenciaDesde: dto.vigenciaDesde,
           vigenciaHasta: dto.vigenciaHasta,
@@ -609,7 +614,11 @@ export class LegalizacionService {
     em: EntityManager,
     dto: CargarGarantiaDto,
     tipoPoliza?: string | null,
-  ) {
+    /** Los que la póliza ya tiene registrados: no se les exige estar activos. */
+    yaRegistrados: Set<string> = new Set(),
+  ): Promise<Map<string, string>> {
+    /** El nombre de cada amparo, para guardarlo con el registro. */
+    const nombres = new Map<string, string>();
     // Las garantías registradas antes de la 145 no tienen tipo: a esas no se
     // les exige que el amparo corresponda.
     let poliza: TipoPoliza | null = null;
@@ -636,20 +645,25 @@ export class LegalizacionService {
         );
       }
 
+      const previo = yaRegistrados.has(amparo.tipo);
       const tipo = await em
         .getRepository(TipoAmparo)
-        .findOne({ where: { codigo: amparo.tipo, activo: true } });
+        .findOne({ where: previo ? { codigo: amparo.tipo } : { codigo: amparo.tipo, activo: true } });
       if (!tipo) {
+        if (previo) continue;
         throw new BadRequestException(
           `El amparo ${amparo.tipo} no existe en el catálogo o está inactivo`,
         );
       }
+      nombres.set(tipo.codigo, tipo.nombre);
+      if (previo) continue;
       if (poliza && tipo.tiposPoliza?.length && !tipo.tiposPoliza.includes(poliza.codigo)) {
         throw new BadRequestException(
           `El amparo de ${tipo.nombre.toLowerCase()} no se ofrece en ${poliza.nombre.toLowerCase()}`,
         );
       }
     }
+    return nombres;
   }
 
   /**
@@ -792,6 +806,9 @@ export class LegalizacionService {
     const nombresPoliza = new Map(
       (await em.getRepository(TipoPoliza).find()).map((t) => [t.codigo, t.nombre]),
     );
+    const nombresAmparo = new Map(
+      (await em.getRepository(TipoAmparo).find()).map((t) => [t.codigo, t.nombre]),
+    );
 
     const salida = [] as any[];
     for (const garantia of garantias) {
@@ -806,8 +823,9 @@ export class LegalizacionService {
         aseguradora: garantia.aseguradora,
         numeroPoliza: garantia.numeroPoliza,
         tipoPoliza: garantia.tipoPoliza,
+        // El nombre con que se registró (AJU-002); el del catálogo, para las viejas.
         tipoPolizaNombre: garantia.tipoPoliza
-          ? (nombresPoliza.get(garantia.tipoPoliza) ?? garantia.tipoPoliza)
+          ? (garantia.tipoPolizaNombre ?? nombresPoliza.get(garantia.tipoPoliza) ?? garantia.tipoPoliza)
           : null,
         estado: garantia.estado,
         cargadaPor: garantia.cargadaPor,
@@ -817,6 +835,7 @@ export class LegalizacionService {
         fechaAprobacionSecop: garantia.fechaAprobacionSecop,
         amparos: amparos.map((a) => ({
           tipo: a.tipo,
+          tipoNombre: a.tipoNombre ?? nombresAmparo.get(a.tipo) ?? a.tipo,
           valorAsegurado: a.valorAsegurado,
           vigenciaDesde: a.vigenciaDesde,
           vigenciaHasta: a.vigenciaHasta,

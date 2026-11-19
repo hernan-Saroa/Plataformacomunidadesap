@@ -13,7 +13,7 @@ import {
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstadoParticipacion,
-  PuestosDelProceso, EstudioPrevio } from '../../types';
+  PuestosDelProceso, EstudioPrevio, RevisionEstudioPrevio } from '../../types';
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
@@ -536,6 +536,29 @@ export function DetalleProceso({
     };
   }, [procesoId, tokenExpediente]);
 
+  /*
+   * Las observaciones de la última devolución de la 3.1, para la franja: quien
+   * recibe el estudio de vuelta debe leer qué corregir sin abrir el historial.
+   * Solo se piden mientras el área lo tiene (BORRADOR tras la cadena, DEVUELTO
+   * tras la radicación).
+   */
+  const [devolucion, setDevolucion] = useState<RevisionEstudioPrevio | null>(null);
+  const estadoDelEstudio = datos?.estado ?? null;
+  useEffect(() => {
+    if (estadoDelEstudio !== 'BORRADOR' && estadoDelEstudio !== 'DEVUELTO') {
+      setDevolucion(null);
+      return;
+    }
+    let vigente = true;
+    contratacionService
+      .revisiones(procesoId)
+      .then((rs) => vigente && setDevolucion(rs.find((r) => r.decision === 'DEVUELTO') ?? null))
+      .catch(() => vigente && setDevolucion(null));
+    return () => {
+      vigente = false;
+    };
+  }, [procesoId, tokenExpediente, estadoDelEstudio]);
+
   // Se abre sola al entrar, no en cada refresco: una vez el gestor ha elegido,
   // mandar la pantalla de vuelta a la actividad en curso sería quitarle lo que
   // estaba mirando. Va aquí arriba, con el resto de los efectos y antes de las
@@ -939,6 +962,15 @@ export function DetalleProceso({
             onIr={trabajarEn}
             onRevisar={onRevisar}
             plazos={plazos.get(procesoId) ?? []}
+            devolucion={
+              situacion.numeral === '3.1' && situacion.momento === 'redaccion' && devolucion?.observaciones
+                ? {
+                    observaciones: devolucion.observaciones,
+                    por: devolucion.revisadoPor,
+                    fecha: devolucion.createdAt,
+                  }
+                : null
+            }
           />
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
@@ -1198,9 +1230,10 @@ export function DetalleProceso({
                 devuelta={fueDevuelta}
                 recargarToken={tokenExpediente}
                 onRevisar={onRevisar}
+                onIrA={trabajarEn}
                 // Solo si la modalidad tiene adendas: es a donde salta la 6.1
                 // para extender el cierre (EFDS-1155).
-                onIrA={adendas ? trabajarEn : undefined}
+                hayAdendas={!!adendas}
               />
             </div>
 

@@ -20,6 +20,14 @@ export class Amparo {
   @Column({ length: 60 })
   tipo: string;
 
+  /**
+   * El nombre del amparo cuando se registró (AJU-002 de QA, 17/11). El
+   * catálogo se edita desde Configuración, y la póliza tiene que seguir
+   * diciendo lo que cubría aunque el tipo se renombre o se retire.
+   */
+  @Column({ name: 'tipo_nombre', type: 'varchar', length: 200, nullable: true })
+  tipoNombre: string | null;
+
   @Column({
     name: 'valor_asegurado',
     type: 'numeric',

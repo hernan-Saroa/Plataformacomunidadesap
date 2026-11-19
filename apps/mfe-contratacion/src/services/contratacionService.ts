@@ -36,6 +36,7 @@ import {
   EstadoContratoProceso,
   DatosContrato,
   DatosFirma,
+  DatosFirmas,
   DatosGarantia,
   AmparoDeGarantia,
   DatosArl,
@@ -789,6 +790,28 @@ export const contratacionService = {
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/firmar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Registra una o las dos firmas con una sola evidencia (AJU-001). */
+  firmarContratoVarias: (
+    procesoId: string,
+    datos: DatosFirmas,
+    evidencia: File,
+    firma?: EvidenciaFirmaOtp,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
+
+    return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/firmar-varias`, {
       method: 'POST',
       body: cuerpo,
     });

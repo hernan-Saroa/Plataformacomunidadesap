@@ -99,8 +99,9 @@ const iconoBoton =
  * después en la pestaña de Aprobación de cada actividad que la necesite. Así no
  * hay que reconstruir la misma cadena actividad por actividad.
  *
- * Cambiar una cadena solo afecta los envíos siguientes: lo que ya está en
- * revisión sigue con la cadena con la que se envió.
+ * Lo que ya está en revisión sigue con quién decide cada escalón cuando se
+ * envió, pero las acciones de los escalones que aún no deciden (aprobar,
+ * devolver, negar) se actualizan al guardar (BUG-006 de QA, 17/11).
  */
 export function CadenasDeAprobacion() {
   const { tiene } = useAlcance();
@@ -312,7 +313,7 @@ function EditorCadena({
         escalones: b.escalones.map(({ clave: _c, nombres: _n, ...e }) => e),
       });
       toast.success(b.id ? 'Cadena actualizada' : 'Cadena creada', {
-        description: b.id ? 'Aplica a los envíos desde ahora; lo que está en revisión sigue igual.' : undefined,
+        description: b.id ? 'Aplica a los envíos desde ahora. En lo que está en revisión solo cambian las acciones de los escalones que aún no deciden.' : undefined,
       });
       onGuardada();
     } catch (e: any) {

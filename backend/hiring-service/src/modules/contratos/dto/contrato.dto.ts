@@ -176,6 +176,50 @@ export class FirmarContratoDto {
   firma?: FirmaOtpDto;
 }
 
+/**
+ * Las dos firmas —o una— con una sola evidencia (AJU-001 de QA, 17/11).
+ *
+ * Cada parte va con su nombre: la que no se nombra no firma en este registro.
+ * Campos planos y no una lista porque viajan en multipart con el archivo.
+ */
+export class FirmarVariasDto {
+  @ApiPropertyOptional({ description: 'Nombre de quien firma por el ordenador del gasto' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  ordenadorNombre?: string;
+
+  @ApiPropertyOptional({ description: 'Documento de quien firma por el ordenador del gasto' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  ordenadorDocumento?: string;
+
+  @ApiPropertyOptional({ description: 'Nombre de quien firma por el contratista' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  contratistaNombre?: string;
+
+  @ApiPropertyOptional({ description: 'Documento de quien firma por el contratista' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  contratistaDocumento?: string;
+
+  /** La del acto: un solo documento firmado, una sola fecha. */
+  @ApiProperty({ description: 'Fecha de la firma (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de la firma debe tener el formato AAAA-MM-DD' })
+  fechaFirma: string;
+
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @FirmaDelMultipart()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
 export class RechazarContratoDto {
   @ApiProperty({ description: 'Nombre de quien rechaza en representación del proponente' })
   @IsString()

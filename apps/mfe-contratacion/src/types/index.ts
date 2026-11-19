@@ -2229,6 +2229,15 @@ export interface DatosFirma {
   fechaFirma: string;
 }
 
+/** Las partes que firman con una sola evidencia (AJU-001): la que no se nombra no firma. */
+export interface DatosFirmas {
+  ordenadorNombre?: string;
+  ordenadorDocumento?: string;
+  contratistaNombre?: string;
+  contratistaDocumento?: string;
+  fechaFirma: string;
+}
+
 export interface TipologiaContrato {
   codigo: string;
   nombre: string;
@@ -2321,6 +2330,8 @@ export interface TipoPolizaCatalogo {
 
 export interface AmparoDeGarantia {
   tipo: string;
+  /** El nombre con que se registró, aunque el catálogo cambie después (AJU-002). */
+  tipoNombre?: string;
   valorAsegurado: number;
   vigenciaDesde: string;
   vigenciaHasta: string;

@@ -27,6 +27,7 @@ import { AlcanceService } from '../../auth/alcance.service';
 import {
   AceptarContratoDto,
   FirmarContratoDto,
+  FirmarVariasDto,
   GenerarContratoDto,
   RechazarContratoDto,
 } from './dto/contrato.dto';
@@ -35,6 +36,13 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 8.1 de la matriz: la elaboración del contrato. */
 export const NUMERAL_CONTRATO = '8.1';
+
+/** Una parte que firma, con quién firmó por ella. */
+interface Firmante {
+  parte: 'ORDENADOR' | 'CONTRATISTA';
+  nombre: string;
+  documento: string | null;
+}
 
 /**
  * Qué respuestas admite un contrato según su estado.
@@ -513,6 +521,55 @@ export class ContratosService {
     hash: string,
     acceso: HiringAccess,
   ) {
+    return this.registrarFirmas(
+      procesoId,
+      [{ parte: dto.parte, nombre: dto.firmanteNombre, documento: dto.firmanteDocumento ?? null }],
+      dto.fechaFirma,
+      dto.firma,
+      evidencia,
+      hash,
+      acceso,
+    );
+  }
+
+  /**
+   * Registra las firmas de una o de las dos partes con **una sola evidencia**
+   * (AJU-001 de QA, 17/11).
+   *
+   * Cuando el contrato firmado por las dos partes es un mismo documento, pedir
+   * el archivo una vez por firmante era cargarlo dos veces. Se guarda un solo
+   * documento en el expediente y las dos firmas apuntan a él. Si cada parte
+   * tiene su propio soporte, se sigue registrando una a la vez con `firmar`.
+   */
+  async firmarVarias(
+    procesoId: string,
+    dto: FirmarVariasDto,
+    evidencia: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    const firmantes: Firmante[] = [];
+    if (dto.ordenadorNombre?.trim()) {
+      firmantes.push({ parte: 'ORDENADOR', nombre: dto.ordenadorNombre.trim(), documento: dto.ordenadorDocumento ?? null });
+    }
+    if (dto.contratistaNombre?.trim()) {
+      firmantes.push({ parte: 'CONTRATISTA', nombre: dto.contratistaNombre.trim(), documento: dto.contratistaDocumento ?? null });
+    }
+    if (!firmantes.length) {
+      throw new BadRequestException('Indica al menos una parte que firma, con el nombre de quien firma');
+    }
+    return this.registrarFirmas(procesoId, firmantes, dto.fechaFirma, dto.firma, evidencia, hash, acceso);
+  }
+
+  private async registrarFirmas(
+    procesoId: string,
+    firmantes: Firmante[],
+    fechaFirma: string,
+    firmaOtp: FirmaOtpDto | undefined,
+    evidencia: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContrato(procesoId, em);
 
@@ -529,7 +586,7 @@ export class ContratosService {
       // registra la del contratista, que no tiene cuenta —editar la 8.1—,
       // pero no puede firmar por la entidad.
       if (
-        dto.parte === 'ORDENADOR' &&
+        firmantes.some((f) => f.parte === 'ORDENADOR') &&
         !(await this.alcance.puedeEn(acceso, 'decidir', NUMERAL_CONTRATO))
       ) {
         throw new ForbiddenException(
@@ -541,15 +598,17 @@ export class ContratosService {
         .getRepository(FirmaContrato)
         .find({ where: { contratoId: contrato.id } });
 
-      if (yaFirmadas.some((f) => f.parte === dto.parte)) {
-        throw new ConflictException(
-          dto.parte === 'ORDENADOR'
-            ? 'El ordenador del gasto ya firmó este contrato'
-            : 'El contratista ya firmó este contrato',
-        );
+      for (const f of firmantes) {
+        if (yaFirmadas.some((y) => y.parte === f.parte)) {
+          throw new ConflictException(
+            f.parte === 'ORDENADOR'
+              ? 'El ordenador del gasto ya firmó este contrato'
+              : 'El contratista ya firmó este contrato',
+          );
+        }
       }
 
-      this.validarFecha(dto.fechaFirma);
+      this.validarFecha(fechaFirma);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
@@ -558,29 +617,35 @@ export class ContratosService {
         em,
         expediente.id,
         `Contrato ${contrato.numero} · firma ${
-          dto.parte === 'ORDENADOR' ? 'del ordenador del gasto' : 'del contratista'
+          firmantes.length > 1
+            ? 'del ordenador del gasto y del contratista'
+            : firmantes[0].parte === 'ORDENADOR'
+              ? 'del ordenador del gasto'
+              : 'del contratista'
         }`,
         evidencia,
         hash,
         acceso,
       );
 
-      await em.save(
-        em.create(FirmaContrato, {
-          contratoId: contrato.id,
-          parte: dto.parte,
-          firmanteNombre: dto.firmanteNombre,
-          firmanteDocumento: dto.firmanteDocumento ?? null,
-          // Quién firmó y quién lo anotó son dos datos distintos: el gestor
-          // registra la firma del contratista con su evidencia.
-          registradaPor: acceso.userName,
-          fechaFirma: dto.fechaFirma,
-          evidenciaDocumentoId: doc.id,
-          hashDocumento: hash,
-        } as Partial<FirmaContrato>),
-      );
+      for (const f of firmantes) {
+        await em.save(
+          em.create(FirmaContrato, {
+            contratoId: contrato.id,
+            parte: f.parte,
+            firmanteNombre: f.nombre,
+            firmanteDocumento: f.documento,
+            // Quién firmó y quién lo anotó son dos datos distintos: el gestor
+            // registra la firma del contratista con su evidencia.
+            registradaPor: acceso.userName,
+            fechaFirma,
+            evidenciaDocumentoId: doc.id,
+            hashDocumento: hash,
+          } as Partial<FirmaContrato>),
+        );
+      }
 
-      const partes = [...yaFirmadas.map((f) => f.parte), dto.parte];
+      const partes = [...yaFirmadas.map((f) => f.parte), ...firmantes.map((f) => f.parte)];
 
       if (estaSuscrito(partes)) {
         contrato.estado = 'PERFECCIONADO';
@@ -602,16 +667,19 @@ export class ContratosService {
         await em.save(contrato);
       }
 
-      await this.marcarActividad(em, procesoId, acceso, dto.firma);
+      await this.marcarActividad(em, procesoId, acceso, firmaOtp);
 
-      await this.traza(em, procesoId, contrato.id, 'FIRMAR', acceso, {
-        actividad: NUMERAL_CONTRATO,
-        numero: contrato.numero,
-        parte: dto.parte,
-        firmante: dto.firmanteNombre,
-        fechaFirma: dto.fechaFirma,
-        perfeccionado: estaSuscrito(partes),
-      });
+      for (const f of firmantes) {
+        await this.traza(em, procesoId, contrato.id, 'FIRMAR', acceso, {
+          actividad: NUMERAL_CONTRATO,
+          numero: contrato.numero,
+          parte: f.parte,
+          firmante: f.nombre,
+          fechaFirma,
+          evidenciaCompartida: firmantes.length > 1,
+          perfeccionado: estaSuscrito(partes),
+        });
+      }
     });
 
     return this.estado(procesoId, acceso);

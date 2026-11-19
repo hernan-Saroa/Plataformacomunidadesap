@@ -178,7 +178,7 @@ export function SelectorPersona({
             />
           </div>
 
-          <ul role="listbox" className="max-h-52 overflow-y-auto m-0 p-0 list-none">
+          <ul role="listbox" className="max-h-60 overflow-y-auto m-0 p-0 list-none">
             {cargando && <li className="px-3 py-2 text-[11.5px] text-gray-400">Buscando…</li>}
 
             {error && (

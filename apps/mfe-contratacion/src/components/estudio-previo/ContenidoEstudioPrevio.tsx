@@ -230,8 +230,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
         </div>
       )}
 
-      {/* Observaciones de la última devolución */}
-      {datos.estado === 'BORRADOR' && ultimaDevolucion && (
+      {/* Observaciones de la última devolución. La de la cadena deja la 3.1 en
+          BORRADOR, pero la que hace quien la recibe en la radicación la deja
+          en DEVUELTO: con solo BORRADOR esa primera devolución no se veía. */}
+      {(datos.estado === 'BORRADOR' || datos.estado === 'DEVUELTO') && ultimaDevolucion && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 flex items-start gap-2.5">
           <RotateCcw className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
           <div className="min-w-0">

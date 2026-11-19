@@ -481,7 +481,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                         <CalendarClock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
                         <div className="min-w-0 flex-1">
                           <p className="text-[11.5px] font-bold text-slate-700 m-0 break-words">
-                            {nombreAmparo(a.tipo)} · {pesos.format(a.valorAsegurado)}
+                            {a.tipoNombre ?? nombreAmparo(a.tipo)} · {pesos.format(a.valorAsegurado)}
                           </p>
                           <p className="text-[11px] text-slate-500 m-0 mt-0.5">
                             Vigente del {fechaLarga(a.vigenciaDesde)} al {fechaLarga(a.vigenciaHasta)}

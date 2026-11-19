@@ -166,6 +166,28 @@ describe('PanelTraslado · actividades 6.4 a 6.6', () => {
     expect(screen.getByText(/Adjuntar la evidencia de la publicación y el traslado/)).toBeInTheDocument();
   });
 
+  // BUG-002 de QA (17/11): anulado el informe, desde la 6.5 no se podía crear
+  // el nuevo y nada decía que se hace en la 6.4.
+  it('desde la 6.5, sin informe trasladado, lleva a la 6.4 en vez de ofrecer el formulario', async () => {
+    servicio.traslado.mockResolvedValue(
+      traslado({
+        informe: null,
+        puedeTrasladar: true,
+        anulados: [{ ...informe({ estado: 'ANULADO' as any }), motivoAnulacion: 'Error de cálculo' } as any],
+      }),
+    );
+    servicio.subsanaciones.mockResolvedValue(
+      subsanaciones({ trasladado: false, venceEl: null, enTermino: false, subsanaciones: [] }),
+    );
+    const irA = vi.fn();
+    render(<PanelTraslado procesoId="p-1" numeral="6.5" onIrA={irA} />);
+
+    expect(await screen.findByText('El informe se anuló')).toBeInTheDocument();
+    expect(screen.queryByText('Publicación y traslado del informe preliminar')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /Ir a la 6.4/ }));
+    expect(irA).toHaveBeenCalledWith('6.4');
+  });
+
   it('cuenta las ofertas recibidas, no las habilitadas', async () => {
     render(<PanelTraslado procesoId="p-1" />);
 
