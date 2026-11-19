@@ -102,6 +102,22 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
     }
   };
 
+  /*
+   * Cada asignación avisa hacia arriba: la cabecera del proceso («Falta
+   * asignar…»), el riel y la bandeja leen de la participación, y sin esto
+   * seguían diciendo que faltaban puestos hasta recargar la página.
+   */
+  const alCambiarPuestos = (datos: DatosPuestos) => {
+    const completo = (d: DatosPuestos | null) =>
+      !!d && d.puestos.length > 0 && d.puestos.every((p) => p.ocupante && !p.problema);
+    const antes = completo(puestos);
+    setPuestos(datos);
+    if (!antes && completo(datos)) {
+      toast.success('Quedaron asignados todos los puestos: el proceso ya tiene quién lo lleve y quién lo revise.');
+    }
+    onCambio?.();
+  };
+
   if (cargando) {
     return (
       <Marco>
@@ -195,7 +211,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
                 }${vacios && conProblema ? '; ' : ''}${
                   conProblema ? (conProblema === 1 ? '1 puesto necesita atención' : `${conProblema} puestos necesitan atención`) : ''
                 }.${puestos?.puedeAsignar ? '' : ` Los asigna ${contratacion.nombre}.`}`,
-          children: <PuestosDelProceso procesoId={procesoId} datos={puestos!} onCambio={setPuestos} />,
+          children: <PuestosDelProceso procesoId={procesoId} datos={puestos!} onCambio={alCambiarPuestos} />,
         };
 
   return (
