@@ -61,11 +61,11 @@ describe('DecisionEstudioPrevio', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /Aprobar y pasar al siguiente/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Cargar correcciones y pasar al siguiente escalón/ }));
     const concepto = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
     const visto = new File(['y'], 'visto-bueno.docx', { type: 'application/msword' });
     await userEvent.upload(screen.getByLabelText('Documentos con las correcciones'), [concepto, visto]);
-    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Pasar al siguiente escalón' }));
 
     expect(aprobar).toHaveBeenCalledWith('p-1', undefined, undefined);
     expect(subir).toHaveBeenNthCalledWith(1, 'p-1', '3.1', concepto);

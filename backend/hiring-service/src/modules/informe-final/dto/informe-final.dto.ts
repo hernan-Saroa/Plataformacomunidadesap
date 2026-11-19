@@ -20,7 +20,7 @@ import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma
  */
 export class ElaborarInformeFinalDto {
   @ApiProperty({ description: 'Fecha del informe (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha del informe debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del informe debe tener el formato AAAA-MM-DD' })
   fechaElaboracion: string;
 
   /**
@@ -56,7 +56,7 @@ export class AgregarEntregableDto {
   /** Nula cuando el entregable se pacto y no se cumplio. */
   @ApiPropertyOptional({ description: 'Cuándo se recibió (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de entrega debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de entrega debe tener el formato AAAA-MM-DD' })
   fechaEntrega?: string;
 
   @ApiPropertyOptional({ description: 'Observación sobre el entregable' })

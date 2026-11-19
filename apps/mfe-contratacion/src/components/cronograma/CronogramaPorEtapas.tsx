@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarRange, Check, Pencil } from 'lucide-react';
+import { CalendarRange, Check, Pencil, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -46,6 +46,10 @@ function comoVa(e: EtapaCronograma): string {
  * Cumplida no se marca: se deriva del avance del proceso (aprobó algo de una
  * etapa posterior, o terminó). Una marca a mano sería una alerta que sigue
  * sonando porque alguien olvidó quitarla.
+ *
+ * Desde la 144 no se muestran las seis etapas: salen las que la modalidad
+ * tiene por defecto (Configuración → Cronograma) y las que ya tienen fecha; el
+ * resto se agrega desde el desplegable.
  */
 export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
   const [cronograma, setCronograma] = useState<Cronograma | null>(null);
@@ -53,6 +57,10 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [borrador, setBorrador] = useState<Borrador>({});
+  /** Las etapas que salen por defecto según la modalidad (144). */
+  const [predeterminadas, setPredeterminadas] = useState<number[]>([]);
+  /** Las que se ven mientras se edita: las de entrada y las que se agreguen. */
+  const [visibles, setVisibles] = useState<number[]>([]);
 
   useEffect(() => {
     contratacionService
@@ -62,7 +70,13 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
         setError(null);
       })
       .catch((err: any) => setError(err.message));
+    contratacionService
+      .predeterminadoDelProceso(procesoId)
+      .then((p) => setPredeterminadas(p?.etapas ?? []))
+      .catch(() => setPredeterminadas([]));
   }, [procesoId]);
+
+  const deEntrada = (e: EtapaCronograma) => !!e.fechaFin || predeterminadas.includes(e.etapa);
 
   const empezar = () => {
     if (!cronograma) return;
@@ -74,11 +88,18 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
         ]),
       ),
     );
+    setVisibles(cronograma.etapas.filter(deEntrada).map((e) => e.etapa));
     setEditando(true);
   };
 
   const cambiar = (etapa: number, campoFecha: 'fechaInicio' | 'fechaFin', valor: string) =>
     setBorrador((b) => ({ ...b, [etapa]: { ...b[etapa], [campoFecha]: valor } }));
+
+  /** Quitarla del formulario la deja sin fechas: deja de alertar al guardar. */
+  const quitar = (etapa: number) => {
+    setVisibles((v) => v.filter((x) => x !== etapa));
+    setBorrador((b) => ({ ...b, [etapa]: { fechaInicio: '', fechaFin: '' } }));
+  };
 
   /** Lo que el servidor rechazaría, dicho antes de enviarlo. */
   const problema = Object.entries(borrador)
@@ -126,6 +147,10 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
   if (!cronograma) return null;
 
   const programadas = cronograma.etapas.filter((e) => e.fechaFin).length;
+  const mostradas = editando
+    ? cronograma.etapas.filter((e) => visibles.includes(e.etapa))
+    : cronograma.etapas.filter(deEntrada);
+  const porAgregar = cronograma.etapas.filter((e) => !visibles.includes(e.etapa));
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 space-y-3">
@@ -144,11 +169,13 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
         </div>
       </div>
 
-      {!editando && programadas === 0 ? (
-        <p className="text-xs text-slate-500 m-0">Ninguna etapa tiene fechas todavía.</p>
+      {mostradas.length === 0 ? (
+        <p className="text-xs text-slate-500 m-0">
+          {editando ? 'Agrega las etapas que quieras programar.' : 'Ninguna etapa tiene fechas todavía.'}
+        </p>
       ) : (
         <ul className="space-y-1.5 m-0 p-0 list-none">
-          {cronograma.etapas.map((e) => (
+          {mostradas.map((e) => (
             <li
               key={e.etapa}
               className={`rounded-lg border px-3 py-2 ${editando ? TONO.SIN_FECHA : TONO[e.estado]}`}
@@ -182,6 +209,14 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
                         style={{ width: 150 }}
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => quitar(e.etapa)}
+                      aria-label={`Quitar la etapa ${e.etapa} del cronograma`}
+                      className="text-xs font-bold text-slate-500 hover:text-red-700 inline-flex items-center gap-1"
+                    >
+                      <X className="w-3.5 h-3.5" /> Quitar
+                    </button>
                   </div>
                 ) : e.fechaFin ? (
                   <p className="text-xs m-0">
@@ -199,6 +234,28 @@ export function CronogramaPorEtapas({ procesoId, onCambio }: Props) {
 
       {editando ? (
         <div className="space-y-2">
+          {porAgregar.length ? (
+            <label className="text-xs text-slate-500 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5 text-[#003DA5]" />
+              <select
+                aria-label="Agregar una etapa al cronograma"
+                value=""
+                onChange={(ev) => {
+                  const etapa = Number(ev.target.value);
+                  if (etapa) setVisibles((v) => [...v, etapa].sort((a, b) => a - b));
+                }}
+                className={campo}
+                style={{ maxWidth: 360 }}
+              >
+                <option value="">Agregar una etapa…</option>
+                {porAgregar.map((e) => (
+                  <option key={e.etapa} value={e.etapa}>
+                    Etapa {e.etapa} · {e.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {problema ? <p className="text-xs text-red-700 m-0">{problema}</p> : null}
           <p className="text-xs text-slate-500 m-0">
             Deja el fin vacío en las etapas que no quieras programar: no alertan.

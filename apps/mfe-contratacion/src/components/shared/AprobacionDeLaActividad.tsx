@@ -301,9 +301,21 @@ export function AprobacionDeLaActividad({
                   aria-label="Observaciones de la aprobación"
                   className={campo}
                 />
-                <ElegirSoportes archivos={soportes} onCambio={setSoportes} />
+                {/* Las correcciones solo en un escalón intermedio, que las carga
+                    y pasa al siguiente. En la aprobación definitiva no hay nada
+                    que corregir: el campo ahí confundía (AJU-006 de QA, 14/11).
+                    Corregir es devolver, y la devolución sí lleva adjuntos. */}
+                {siguiente ? (
+                  <ElegirSoportes
+                    archivos={soportes}
+                    onCambio={setSoportes}
+                    etiqueta="Correcciones o documentos de tu revisión (opcional)"
+                  />
+                ) : null}
                 <p className="text-[11px] text-slate-500 m-0">
-                  Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.
+                  {siguiente
+                    ? 'Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.'
+                    : 'Lo que escribas queda en el historial de la revisión, con tu nombre.'}
                 </p>
                 <div className="flex flex-col gap-1.5">
                   <button
@@ -319,7 +331,7 @@ export function AprobacionDeLaActividad({
                     disabled={a.guardando}
                   >
                     <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                    {siguiente ? 'Confirmar y pasar al siguiente' : 'Confirmar la aprobación'}
+                    {siguiente ? 'Pasar al siguiente escalón' : 'Confirmar la aprobación'}
                   </button>
                   <button
                     type="button"
@@ -417,7 +429,7 @@ export function AprobacionDeLaActividad({
                     }
                   >
                     <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                    {siguiente ? 'Aprobar y pasar al siguiente' : 'Aprobar'}
+                    {siguiente ? 'Cargar correcciones y pasar al siguiente escalón' : 'Aprobar'}
                   </button>
                 ) : null}
                 {puede('DEVOLVER') ? (

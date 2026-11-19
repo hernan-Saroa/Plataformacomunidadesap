@@ -124,18 +124,39 @@ export class ObservacionesController {
 
   @Post(':observacionId/responder')
   @Puede('editar', '5.6')
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      MAX_ARCHIVOS,
+      opcionesDeCarga(
+        [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
+        'Solo se admiten archivos PDF, Word, Excel o imágenes PNG y JPG',
+      ),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Responder una observación',
     description:
-      'Se pide siempre si la observación modificó el pliego: es lo que justifica una adenda posterior.',
+      'Respuesta a un solo interesado, con hasta diez archivos opcionales. Si modificó el pliego es informativo.',
   })
-  responder(
+  async responder(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Param('observacionId', ParseUUIDPipe) observacionId: string,
     @Body() dto: ResponderObservacionDto,
+    @UploadedFiles() files: any[],
     @Req() req: any,
   ) {
-    return this.service.responder(procesoId, observacionId, dto, getHiringAccess(req));
+    return this.conArchivos(files ?? [], (soportes) =>
+      this.service.responder(
+        procesoId,
+        observacionId,
+        dto,
+        getHiringAccess(req),
+        'PROYECTO',
+        soportes,
+      ),
+    );
   }
 
   @Post('cerrar')

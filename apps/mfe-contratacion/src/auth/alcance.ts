@@ -193,6 +193,44 @@ export function useAlcance() {
 }
 
 /**
+ * Las acciones que, además de editar, se ejercen dentro del panel de la actividad.
+ *
+ * Sale de los `@Puede` del backend: en estas actividades el trabajo mismo se
+ * hace con `decidir` o `aprobar` —designar el comité evaluador, avalar la
+ * cuenta de cobro—, y no solo en la revisión. Quien las tenga trabaja el
+ * panel aunque no tenga `editar`. En el resto, aprobar y decidir se ejercen en
+ * la revisión, y el panel es de quien edita.
+ *
+ * Si se agrega un endpoint de panel con otra acción, va aquí también: si no,
+ * a quien solo tenga esa acción se le esconderían los botones que le tocan.
+ */
+export const ACCIONES_EN_EL_PANEL: Record<string, AccionAlcance[]> = {
+  '6.2': ['decidir'],
+  '7.3': ['decidir'],
+  '8.1': ['decidir'],
+  '8.2': ['decidir'],
+  '8.4': ['aprobar'],
+  '9.3': ['decidir'],
+  '9.4': ['aprobar', 'decidir'],
+  '9.5': ['aprobar', 'decidir'],
+  '10.3': ['decidir'],
+  '10.4': ['decidir'],
+  'INC.2': ['decidir'],
+  PAA: ['aprobar'],
+  'PAA.R': ['decidir'],
+};
+
+/**
+ * Si quien mira solo puede consultar la actividad: ninguna de las acciones con
+ * que se trabaja su panel. Aprobar o decidir en la revisión no cuenta, porque
+ * eso se hace en la pantalla de revisión y no aquí.
+ */
+export function soloPuedeVer(numeral: string, puedeAqui: typeof puedeEn = puedeEn): boolean {
+  const acciones: AccionAlcance[] = ['editar', ...(ACCIONES_EN_EL_PANEL[numeral] ?? [])];
+  return !acciones.some((accion) => puedeAqui(accion, numeral));
+}
+
+/**
  * Si quien mira solo mueve presupuesto: la Dirección Financiera.
  *
  * Ve el recorrido recortado a lo suyo: el RP, los pagos y el cierre. Se decide

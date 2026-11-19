@@ -379,6 +379,7 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-176-${CORRIDA}-${n}`,
         amparos: [
           {

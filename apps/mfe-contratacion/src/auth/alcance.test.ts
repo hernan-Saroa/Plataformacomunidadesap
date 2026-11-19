@@ -7,6 +7,7 @@ import {
   olvidarAlcance,
   puede,
   puedeEn,
+  soloPuedeVer,
   tieneTransversal,
 } from './alcance';
 import { AlcanceVista } from '../types';
@@ -162,5 +163,43 @@ describe('cambio de sesión', () => {
     entrar('andres');
 
     expect(puedeEn('editar', '3.5')).toBe(true);
+  });
+});
+
+/** Quién solo consulta una actividad: no tiene ninguna acción con que se trabaja su panel. */
+describe('soloPuedeVer', () => {
+  afterEach(() => olvidarAlcance());
+  const con = (alcances: AlcanceVista[]) => fijarAlcance({ alcances, transversales: [] });
+
+  it('solo ver: sí', () => {
+    con([{ accion: 'ver', lugar: 'E4' }]);
+    expect(soloPuedeVer('4.2')).toBe(true);
+  });
+
+  it('quien edita trabaja el panel', () => {
+    con([{ accion: 'editar', lugar: '4.2' }]);
+    expect(soloPuedeVer('4.2')).toBe(false);
+  });
+
+  it('quien solo aprueba en la revisión no trabaja el panel', () => {
+    con([{ accion: 'aprobar', lugar: '4.2' }, { accion: 'decidir', lugar: '5.1' }]);
+    expect(soloPuedeVer('4.2')).toBe(true);
+    expect(soloPuedeVer('5.1')).toBe(true);
+  });
+
+  it('donde el panel se trabaja con decidir o aprobar, quien las tiene no queda en solo ver', () => {
+    con([
+      { accion: 'decidir', lugar: '6.2' },
+      { accion: 'aprobar', lugar: 'E9' },
+    ]);
+    expect(soloPuedeVer('6.2')).toBe(false);
+    expect(soloPuedeVer('9.4')).toBe(false);
+    // Aprobar en la 9.3 no sirve: ahí el panel se trabaja con decidir.
+    expect(soloPuedeVer('9.3')).toBe(true);
+  });
+
+  it('sin el alcance leído no esconde nada', () => {
+    olvidarAlcance();
+    expect(soloPuedeVer('4.2')).toBe(false);
   });
 });

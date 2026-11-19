@@ -271,8 +271,10 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                       {estudio.revision?.acciones &&
                       !estudio.revision.acciones.includes('APROBAR') &&
                       estudio.revision.espera ? (
-                        <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 m-0">
-                          No puedes aprobar: {estudio.revision.espera}
+                        // Informativo y no de advertencia: casi siempre es que ya
+                        // aprobó y espera a los demás del escalón (AJU-003).
+                        <p className="text-[12px] text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 m-0">
+                          {estudio.revision.espera}
                         </p>
                       ) : null}
                       <DecisionEstudioPrevio

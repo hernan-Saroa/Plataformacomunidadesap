@@ -51,7 +51,7 @@ export class CrearUmbralDto {
     example: '2027-01-01',
   })
   @IsOptional()
-  @IsISO8601({ strict: true }, { message: 'La vigencia debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La vigencia debe tener formato AAAA-MM-DD' })
   vigenciaDesde?: string;
 }
 

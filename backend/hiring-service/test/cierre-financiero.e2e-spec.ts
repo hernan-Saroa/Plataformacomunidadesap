@@ -359,6 +359,7 @@ describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-173-${CORRIDA}-${n}`,
         amparos: [
           {

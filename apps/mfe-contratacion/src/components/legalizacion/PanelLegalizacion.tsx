@@ -48,7 +48,7 @@ const pesos = new Intl.NumberFormat('es-CO', {
   maximumFractionDigits: 0,
 });
 
-const GARANTIA_VACIA = { aseguradora: '', numeroPoliza: '' };
+const GARANTIA_VACIA = { tipoPoliza: '', aseguradora: '', numeroPoliza: '' };
 const AMPARO_VACIO = { tipo: '', valorAsegurado: '', vigenciaDesde: '', vigenciaHasta: '' };
 const ARL_VACIA = {
   afiliadoPor: 'CONTRATISTA' as DatosArl['afiliadoPor'],
@@ -137,6 +137,23 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
       }
       return limpio;
     });
+  };
+
+  /**
+   * Los amparos que se ofrecen en un tipo de póliza (145). Sin tipo —las
+   * pólizas registradas antes— se ofrecen todos.
+   */
+  const amparosDelTipo = (tipoPoliza?: string | null) =>
+    (estado?.tiposAmparo ?? []).filter(
+      (t) => !tipoPoliza || !t.tiposPoliza?.length || t.tiposPoliza.includes(tipoPoliza),
+    );
+
+  /** Al cambiar el tipo se sueltan los amparos que en él no se ofrecen. */
+  const elegirTipoPoliza = (tipoPoliza: string) => {
+    setGarantia((p) => ({ ...p, tipoPoliza }));
+    const validos = new Set(amparosDelTipo(tipoPoliza).map((t) => t.codigo));
+    setAmparos((lista) => lista.filter((a) => validos.has(a.tipo)));
+    setAmparo((a) => (a.tipo && !validos.has(a.tipo) ? { ...a, tipo: '' } : a));
   };
 
   const limpiarGarantia = () => {
@@ -245,6 +262,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
         await contratacionService.cargarGarantia(
           procesoId,
           {
+            tipoPoliza: garantia.tipoPoliza,
             aseguradora: garantia.aseguradora.trim(),
             numeroPoliza: garantia.numeroPoliza.trim(),
             amparos,
@@ -424,6 +442,11 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                       <p className="text-[12.5px] font-bold text-slate-800 m-0 break-words">
                         Póliza {g.numeroPoliza} · {g.aseguradora}
                       </p>
+                      {g.tipoPolizaNombre ? (
+                        <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 break-words">
+                          {g.tipoPolizaNombre}
+                        </p>
+                      ) : null}
                       <span
                         className={`inline-block mt-1 px-2 py-0.5 rounded-full border text-[11px] font-bold ${COLOR_ESTADO[g.estado]}`}
                       >
@@ -501,7 +524,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                   {g.estado !== 'RECHAZADA' && estado.puedeCargar && !creando ? (
                     ampliando === g.id ? (
                       <FormularioAmparo
-                        tipos={estado.tiposAmparo}
+                        tipos={amparosDelTipo(g.tipoPoliza)}
                         amparo={amparo}
                         campoAmparo={campoAmparo}
                         onEditar={editarAmparo}
@@ -545,6 +568,25 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
               ) : !creando ? null : (
                 <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
                   <p className="text-[12.5px] font-bold text-slate-800 m-0">Nueva póliza</p>
+
+                  <div>
+                    <label htmlFor="gar-tipo" className="block text-xs font-bold text-gray-600 mb-1.5">
+                      Tipo de póliza <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      id="gar-tipo"
+                      value={garantia.tipoPoliza}
+                      onChange={(e) => elegirTipoPoliza(e.target.value)}
+                      className={campo}
+                    >
+                      <option value="">Elige el tipo de póliza</option>
+                      {(estado.tiposPoliza ?? []).map((t) => (
+                        <option key={t.codigo} value={t.codigo}>
+                          {t.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
@@ -617,7 +659,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                         className={campoAmparo('tipo')}
                       >
                         <option value="">Elige la cobertura</option>
-                        {estado.tiposAmparo.map((t) => (
+                        {amparosDelTipo(garantia.tipoPoliza).map((t) => (
                           <option key={t.codigo} value={t.codigo}>
                             {t.nombre}
                           </option>
@@ -708,6 +750,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                       icono={<ShieldCheck className="w-3.5 h-3.5" />}
                       disabled={
                         guardando ||
+                        !garantia.tipoPoliza ||
                         !garantia.aseguradora.trim() ||
                         !garantia.numeroPoliza.trim() ||
                         amparos.length === 0 ||

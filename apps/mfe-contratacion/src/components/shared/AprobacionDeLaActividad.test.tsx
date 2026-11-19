@@ -466,7 +466,7 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
       'decision',
     );
 
-    expect(await screen.findByRole('button', { name: /Aprobar y pasar al siguiente/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Cargar correcciones y pasar al siguiente escalón/ })).toBeInTheDocument();
     expect(screen.getByText(/sigue el escalón 3/)).toBeInTheDocument();
     expect(screen.getByText(/escalón 2 de 3: Coordinador/)).toBeInTheDocument();
   });
@@ -480,6 +480,19 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
     expect(await screen.findByRole('button', { name: /^Aprobar$/ })).toBeInTheDocument();
   });
 
+  it('en la aprobación definitiva no ofrece adjuntar correcciones (AJU-006)', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER'], 3) }),
+      'decision',
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Aprobar$/ }));
+
+    expect(screen.getByRole('button', { name: /Confirmar la aprobación/ })).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.queryByText(/correcciones/i)).toBeNull();
+  });
+
   it('al aprobar deja escribir observaciones y adjuntar soportes (113)', async () => {
     montar(
       estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
@@ -488,12 +501,12 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
     const aprobar = vi.spyOn(contratacionService, 'aprobarActividad').mockResolvedValue({} as never);
     const subir = vi.spyOn(contratacionService, 'subirSoporteDevolucion').mockResolvedValue({} as never);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Aprobar y pasar al siguiente/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Cargar correcciones y pasar al siguiente escalón/ }));
     await userEvent.type(screen.getByLabelText(/Observaciones de la aprobación/), 'Revisado el pliego, sin reparos');
     const archivo = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await userEvent.upload(input, archivo);
-    await userEvent.click(screen.getByRole('button', { name: /Confirmar y pasar al siguiente/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Pasar al siguiente escalón/ }));
 
     await waitFor(() =>
       expect(aprobar).toHaveBeenCalledWith(PROCESO, '5.9', 'Revisado el pliego, sin reparos', undefined),
@@ -506,7 +519,7 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
       estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
       'decision',
     );
-    await screen.findByRole('button', { name: /Aprobar/ });
+    await screen.findByRole('button', { name: /pasar al siguiente escalón/ });
     expect(screen.queryByRole('button', { name: /^Negar/ })).toBeNull();
     unmount();
 
@@ -555,11 +568,11 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
       estado({
         estado: 'EN_REVISION',
         acciones: [],
-        motivo: 'Ya aprobaste otro escalón de esta ronda: este lo tiene que decidir otra persona',
+        motivo: 'Ya aprobaste un escalón anterior de esta revisión. Este paso lo debe aprobar otra persona: debes esperar a que lo haga.',
         ronda: ronda([]),
       }),
     );
 
-    expect(await screen.findByText(/Ya aprobaste otro escalón/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ya aprobaste un escalón anterior/)).toBeInTheDocument();
   });
 });

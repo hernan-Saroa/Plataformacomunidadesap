@@ -26,17 +26,17 @@ export class CambioCronogramaAdendaDto {
   /** La etapa (5 a 10), el numeral de la actividad del flujo o el id de una propia. */
   @ApiProperty({ description: 'Etapa, numeral o id de la actividad propia' })
   @IsString()
-  @IsNotEmpty({ message: 'Falta qué etapa o actividad mueve la adenda' })
+  @IsNotEmpty({ message: 'Indica qué etapa o actividad mueve la adenda' })
   @MaxLength(60)
   clave: string;
 
   @ApiPropertyOptional({ description: 'Nueva fecha de inicio (YYYY-MM-DD); sin ella se conserva la que tenía' })
   @IsOptional()
-  @IsDateString({}, { message: 'La nueva fecha de inicio va en formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La nueva fecha de inicio va en formato AAAA-MM-DD' })
   fechaInicio?: string | null;
 
   @ApiProperty({ description: 'Nueva fecha de fin (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La nueva fecha de fin va en formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La nueva fecha de fin va en formato AAAA-MM-DD' })
   fechaFin: string;
 }
 
@@ -104,7 +104,7 @@ export class EmitirAdendaDto {
 export class PublicarAdendaDto {
   /** La de publicación real, no la del registro: es cuando la adenda rige. */
   @ApiProperty({ description: 'Fecha en que se publicó la adenda (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato AAAA-MM-DD' })
   fechaPublicacion: string;
 
   /** Solo si la 5.13 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */

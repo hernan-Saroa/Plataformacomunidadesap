@@ -172,7 +172,7 @@ export class AprobarModificacionDto {
   numero: string;
 
   @ApiProperty({ description: 'Fecha de suscripción (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato AAAA-MM-DD' })
   fechaSuscripcion: string;
 
   /** Solo si la 9.5 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
@@ -230,7 +230,7 @@ export class ExpedirRespaldoDto {
   valor: number;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato AAAA-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Vigencia fiscal a la que se imputa' })
@@ -253,7 +253,7 @@ export class RechazarRespaldoDto {
 /** Registro de la publicacion de la modificacion en SECOP II (RF-MOD-05). */
 export class PublicarModificacionDto {
   @ApiProperty({ description: 'Fecha real de la publicación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato AAAA-MM-DD' })
   fechaPublicacion: string;
 
   @ApiPropertyOptional({ description: 'Número con el que quedó publicada' })

@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Check, FileText, Lock, Paperclip } from 'lucide-react';
 
-import { useSoloLectura } from './SoloLectura';
+import { useSoloLectura, useSoloVer } from './SoloLectura';
 import { useLugarDeDecision } from './LugarDeDecision';
 
 /**
@@ -16,6 +16,18 @@ function useBloqueo(decision?: boolean): string | null {
   const soloLectura = useSoloLectura();
   const { enLaRevision } = useLugarDeDecision();
   return decision && enLaRevision ? null : soloLectura;
+}
+
+/**
+ * Si la pieza que escribe no se muestra: quien mira solo puede ver la actividad.
+ *
+ * Mismo criterio que `useBloqueo` con las decisiones: en la revisión, la de
+ * decidir sí se pinta, porque ahí la decide quien tiene `aprobar` o `decidir`.
+ */
+export function useOcultaPorPermiso(decision?: boolean): boolean {
+  const soloVer = useSoloVer();
+  const { enLaRevision } = useLugarDeDecision();
+  return soloVer && !(decision && enLaRevision);
 }
 
 /**
@@ -156,6 +168,8 @@ export const Boton = ({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode; decision?: boolean }) => {
   const soloLectura = useBloqueo(decision);
+  // Sin permiso de editar no se ofrece: un botón apagado invita a pedir que lo enciendan.
+  if (useOcultaPorPermiso(decision)) return null;
 
   return (
     <button
@@ -179,6 +193,8 @@ export const BotonSecundario = ({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode; decision?: boolean }) => {
   const soloLectura = useBloqueo(decision);
+  // Sin permiso de editar no se ofrece: un botón apagado invita a pedir que lo enciendan.
+  if (useOcultaPorPermiso(decision)) return null;
 
   return (
     <button
@@ -241,6 +257,7 @@ export const SelectorArchivo = ({
   const input = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
   const soloLectura = useBloqueo(decision);
+  const oculto = useOcultaPorPermiso(decision);
 
   const elegir = (elegido: File | null) => {
     if (!elegido) return;
@@ -258,6 +275,9 @@ export const SelectorArchivo = ({
     setError(null);
     onElegir(elegido);
   };
+
+  // Sin permiso de editar, cargar un archivo no es una opción.
+  if (oculto) return null;
 
   return (
     <div
