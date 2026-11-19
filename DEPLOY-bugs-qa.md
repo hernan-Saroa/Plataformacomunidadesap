@@ -198,3 +198,30 @@ Sirve para probar el interruptor sin tocar el periodo principal. Probado contra 
   3. Validación de Cruces: el histórico sale en 0.
   4. PTA → el periodo 2026-1 y sus PTA siguen igual.
   5. Un grupo sin sesiones → «Guardar periodo» muestra «No se guardó el periodo del grupo: falta al menos una sesión en el horario.» Con una sesión y las dos fechas, guarda.
+
+## 12. Quinta entrega (19 de nov): alerta cuando nadie se puede asignar (EFDS-2449) y vinculaciones vencidas del RUND
+
+### 12.1 EFDS-2449 (reportado por Javier en EFDS-1939)
+- Cuando **todos** los candidatos de un grupo están bloqueados, el modal «Asignar docente» muestra una alerta roja con: que no se puede asignar a nadie, qué hacer y los motivos más frecuentes con su conteo. Ejemplo: «Ningún docente del área «X» se puede asignar a este grupo. Revise la vinculación de los docentes en el RUND o habilite docentes del área. Motivos más frecuentes: 3 con la vinculación vencida, 1 con cruce de horario.» El motivo de cada docente sigue en su tarjeta.
+- La alerta la redacta el **servidor** (`GET /asignaciones/candidatos` trae `bloqueoTotal` y el mismo texto en `aviso`), así que es igual en cualquier pantalla. Cada docente cuenta una vez por categoría. Si algún candidato se puede asignar, no hay alerta.
+- Reconstruir: `academic-schedule-service` y el MFE `mfe-programacion-academica`. Sin migraciones ni variables nuevas.
+
+### 12.2 «Vinculación vencida» NO es un error del sistema: es el RUND sin actualizar
+La regla de vinculación (RN-10: el ciclo del grupo debe caer dentro de la vinculación del docente) **es correcta y no se cambió**. Si a un ocasional le sale «El grupo termina el 2026-06-12, después del fin de vinculación del docente (2025-12-15)», el sistema está funcionando: lo que falta es cargar el RUND de 2026 para ese docente.
+
+Comprobado el 19-nov-2026 sobre el RUND de QA (consulta de solo lectura, conteos agregados; no se guardó ningún dato personal):
+
+| Dato (RUND de QA) | Conteo |
+|---|---|
+| Docentes en el RUND | 791 |
+| Por carga: 2025-1 / 2025-2 / 2026-1 / sin dato | 256 / 260 / 270 / 5 |
+| Ocasionales | 370 |
+| Ocasionales con vinculación 2025 (1 ene → 15 dic 2025) | 236 (118 cargados en 2025-1 y 118 en 2025-2) |
+| Ocasionales con vinculación 2026 (hasta dic 2026) | 123 (122 cargados en 2026-1) |
+| Docentes con la vinculación ya vencida al 19-nov-2026 | 316 de 791: 243 ocasionales, 65 en periodo de prueba, 4 especiales, 2 visitantes, 1 carrera 2, 1 de cátedra |
+
+- **Es el RUND de 2025, no solo el de 2025-1**: las vinculaciones que terminan en diciembre de 2025 vienen de las cargas 2025-1 y 2025-2 por igual. El RUND de 2026-1 sí está cargado, pero solo para 270 de los 791 docentes: los otros 236 ocasionales siguen con su contrato de 2025. Los 65 de periodo de prueba también son de cargas 2025 (terminaron entre jul-2025 y jul-2026).
+- Los docentes de carrera con vinculación indefinida (sin fecha de fin) no se ven afectados.
+- **Qué hacer:** cargar el RUND de 2026 de los docentes que faltan (carga masiva del RUND, Banco de docentes del PTA). Cuando cada docente tenga su vinculación 2026, deja de salir el bloqueo. No hay nada que corregir en Programación Académica.
+- **Cómo verificar después de cargar:** abrir el modal de asignación de un grupo de 2026-1; el resumen de la alerta ya no debe decir «con la vinculación vencida» para esos docentes.
+- **No reportar como defecto** «no puedo asignar a un ocasional porque su vinculación venció» mientras su RUND siga siendo el de 2025.

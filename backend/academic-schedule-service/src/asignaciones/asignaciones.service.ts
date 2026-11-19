@@ -16,6 +16,7 @@ import { DocenciaService } from '../docencia/docencia.service.js';
 import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
 import { tomaDeFranjasHabilitada } from '../portal-docente/flujo-docente.js';
 import { areaDelGrupo, docentesDelArea, motivoDeArea, nucleosDeDocentes } from './area-docente.js';
+import { bloqueoTotal, type BloqueoTotal } from './bloqueo-total.js';
 import { ESTADOS_EN_CURSO } from '../concertacion/concertacion.service.js';
 import { esSinAula } from '../grupos/grupo.entity.js';
 
@@ -97,6 +98,11 @@ export interface ResultadoCandidatos {
   resumen: { total: number; asignables: number; bloqueados: number };
   /** Informativo: hay docentes pero todos bloqueados. NO oculta la lista (la pantalla la muestra con sus motivos). */
   aviso: string | null;
+  /**
+   * EFDS-2449: solo cuando hay candidatos y TODOS están bloqueados. Que no se puede asignar a nadie,
+   * qué hacer y los motivos más frecuentes con su conteo. `aviso` trae el mismo título y acción en texto.
+   */
+  bloqueoTotal: BloqueoTotal | null;
   /** SOLO cuando no hay lista posible (sin área o ningún docente del área). Con lista, va en `aviso`. */
   mensaje: string | null;
 }
@@ -601,6 +607,7 @@ export class AsignacionesService {
       sugerido: null,
       resumen: { total: 0, asignables: 0, bloqueados: 0 },
       aviso: null,
+      bloqueoTotal: null,
       mensaje: null,
     };
     if (!area) {
@@ -646,9 +653,12 @@ export class AsignacionesService {
     const resumen = { total: candidatos.length, asignables: aptos.length, bloqueados: candidatos.length - aptos.length };
     if (!aptos.length) {
       // EFDS-2434: la lista se entrega completa; el texto es un AVISO, no un `mensaje` que oculte los docentes.
+      // EFDS-2449: y la alerta redactada aquí, para que sea igual en cualquier pantalla.
+      const alerta = bloqueoTotal(candidatos, area.nombre)!;
       return {
         ...base, candidatos, resumen,
-        aviso: `Los ${candidatos.length} docente(s) del área «${area.nombre}» tienen algún bloqueo: revise el motivo de cada uno.`,
+        bloqueoTotal: alerta,
+        aviso: `${alerta.titulo} ${alerta.accion}`,
       };
     }
 
