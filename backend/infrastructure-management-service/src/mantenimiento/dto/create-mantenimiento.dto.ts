@@ -472,6 +472,52 @@ export class AsignarTecnicoPayload {
   @ApiPropertyOptional({ example: false, description: 'Indica si requiere proceso de contratación o compras centralizadas.' })
   @IsOptional()
   requiereContratacion?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ['CUADRILLA_CENTRAL_COMISION', 'PROVEEDOR_LOCAL_CONTRATADO', 'PERSONAL_PLANTA_TERRITORIAL'],
+    example: 'CUADRILLA_CENTRAL_COMISION',
+    description: 'Modalidad de ejecución para solicitudes en Direcciones Territoriales / CETAP (RF-INF-013).',
+  })
+  @IsOptional()
+  @IsIn(['CUADRILLA_CENTRAL_COMISION', 'PROVEEDOR_LOCAL_CONTRATADO', 'PERSONAL_PLANTA_TERRITORIAL'])
+  modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+
+  @ApiPropertyOptional({ example: 'Servicios Integrales de Urabá S.A.S.', description: 'Razón social del contratista local' })
+  @IsOptional()
+  @IsString()
+  proveedorLocalNombre?: string;
+
+  @ApiPropertyOptional({ example: '901.234.567-8', description: 'NIT del proveedor o contratista local' })
+  @IsOptional()
+  @IsString()
+  proveedorLocalNit?: string;
+
+  @ApiPropertyOptional({ example: 'OC-2026-0891 / Contrato DT-ANT-042', description: 'Número de contrato u orden de compra local' })
+  @IsOptional()
+  @IsString()
+  ordenCompraContratoLocal?: string;
+}
+
+export class RegistrarVoBoCierreDtDto {
+  @ApiPropertyOptional({ example: true, description: 'VoBo de cierre técnico aprobado (true) u observado (false) por la Dirección Territorial.' })
+  @IsOptional()
+  @IsBoolean()
+  aprobado?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'VoBo de cierre técnico aprobado (true) u observado (false) (alias).' })
+  @IsOptional()
+  @IsBoolean()
+  voboCierreDtAprobado?: boolean;
+
+  @ApiPropertyOptional({ example: 'Trabajos ejecutados y recibidos a satisfacción en sede CETAP.', description: 'Observaciones del VoBo de cierre territorial.' })
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
+
+  @ApiPropertyOptional({ example: 'Trabajos ejecutados y recibidos a satisfacción en sede CETAP.', description: 'Observaciones del VoBo de cierre territorial (alias).' })
+  @IsOptional()
+  @IsString()
+  voboCierreDtObservaciones?: string;
 }
 
 export class RegistrarRevisionVoBoDto {

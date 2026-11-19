@@ -6,12 +6,14 @@ import {
   UpdateDateColumn,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
 } from 'typeorm';
 import { EspacioFisico } from '../espacios/espacio.entity.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
+import { SolicitudEjecucionTerritorial } from './solicitud-ejecucion-territorial.entity.js';
 
 @Entity({ name: 'solicitud_mantenimiento', schema: 'infrastructure-management' })
 export class SolicitudMantenimiento {
@@ -421,4 +423,7 @@ export class SolicitudMantenimiento {
 
   @OneToMany(() => SolicitudValoracion, (v) => v.solicitud, { nullable: true })
   valoraciones?: SolicitudValoracion[];
+
+  @OneToOne(() => SolicitudEjecucionTerritorial, (t) => t.solicitud, { nullable: true, cascade: true })
+  ejecucionTerritorial?: SolicitudEjecucionTerritorial;
 }
