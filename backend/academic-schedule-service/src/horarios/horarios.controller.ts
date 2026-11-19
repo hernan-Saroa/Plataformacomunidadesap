@@ -66,11 +66,11 @@ export class HorariosController {
     return { success: true, data: await this.horarios.eliminarSesion(id, { confirmarDevolucion: confirmar === 'true' }, { idUser: idUserDe(req) }) };
   }
 
-  /** PUT /horarios/grupo/:id/periodo — ciclo de clases del grupo. */
+  /** PUT /horarios/grupo/:id/periodo — ciclo de clases del grupo (EFDS-2448: exige fechas y una sesión). */
   @Put('grupo/:id/periodo')
   @EscrituraEn({ grupo: { param: 'id' } }, { exigeNivel: true })
   async periodo(@Param('id', ParseUUIDPipe) id: string, @Body() body: PeriodoGrupoDto) {
-    return { success: true, data: await this.horarios.definirPeriodo(id, body) };
+    return { success: true, data: await this.horarios.guardarPeriodoDelGrupo(id, body) };
   }
 
   /** GET /horarios/grupo/:id/horas — programadas vs requeridas (§1.3). */

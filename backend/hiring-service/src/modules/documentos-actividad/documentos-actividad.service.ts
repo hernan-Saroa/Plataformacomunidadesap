@@ -485,7 +485,7 @@ export class DocumentosActividadService {
 
       // Un expediente archivado no recibe documentos (EFDS-1174).
       const expediente = await exigirExpedienteAbierto(m, procesoId);
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       // Qué versión del formato estaba vigente al diligenciarlo: el requisito
       // cita el código, el documento recuerda la versión (migración 063).
@@ -594,7 +594,7 @@ export class DocumentosActividadService {
   async retirar(procesoId: string, documentoId: string, acceso: HiringAccess) {
     return this.dataSource.transaction(async (em) => {
       const expediente = await exigirExpedienteAbierto(em, procesoId);
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const documento = await em.getRepository(Documento).findOne({
         where: { id: documentoId, expedienteId: expediente.id },
@@ -605,7 +605,7 @@ export class DocumentosActividadService {
       // es la copia de lo que se envió, y sin ella la revisión no prueba nada.
       if (documento.tipo !== 'ADJUNTO') {
         throw new BadRequestException(
-          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+          'Este registro no es un adjunto sino la copia de lo que se envió a revisión: no se retira ni se reemplaza',
         );
       }
 
@@ -638,7 +638,41 @@ export class DocumentosActividadService {
         archivo: documento.archivoNombreOriginal ?? documento.nombre,
       });
 
-      await em.getRepository(Documento).remove(documento);
+      // El soporte del CDP queda apuntado desde hiring.cdp: retirarlo daba un
+      // error 500 por la llave foránea (BUG-001 de QA, 14/11). Con la 4.2 en
+      // manos de quien la envió se suelta el vínculo y el CDP queda «sin
+      // soporte», que la 4.2 ya sabe ofrecer cargar; en revisión o aprobada,
+      // es la evidencia de lo que se decidió y no se quita.
+      const [cargue] = await em.query(
+        `SELECT pa.estado
+           FROM hiring.cdp c
+           JOIN hiring.proceso_actividades pa ON pa.proceso_id = c.proceso_id AND pa.numeral = '4.2'
+          WHERE c.documento_id = $1`,
+        [documento.id],
+      );
+      if (cargue && (cargue.estado === 'EN_REVISION' || cargue.estado === 'APROBADO')) {
+        throw new ConflictException(
+          cargue.estado === 'APROBADO'
+            ? 'Es el soporte del CDP ya aprobado: no se retira del expediente'
+            : 'Es el soporte del CDP y la 4.2 está en revisión: retírala de aprobación para cambiarlo',
+        );
+      }
+      await em.query(
+        'UPDATE hiring.cdp SET documento_id = NULL, updated_at = now() WHERE documento_id = $1',
+        [documento.id],
+      );
+
+      try {
+        await em.getRepository(Documento).remove(documento);
+      } catch (err: any) {
+        // Otro registro que lo cite: se dice en vez de devolver un 500.
+        if (err?.code === '23503') {
+          throw new ConflictException(
+            'Este documento está citado por otro registro del proceso y no se puede retirar',
+          );
+        }
+        throw err;
+      }
 
       return { retirado: true };
     });
@@ -726,7 +760,7 @@ export class DocumentosActividadService {
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 
@@ -788,7 +822,7 @@ export class DocumentosActividadService {
       const deNegativa = ultima?.decision === 'NEGADO';
       if (!ultima || !esSuya) {
         throw new ConflictException(
-          'El soporte lo adjunta quien decidió la actividad, sobre su última decisión',
+          'El soporte solo lo adjunta quien tomó la última decisión sobre la actividad',
         );
       }
       // El estudio previo devuelto vuelve a borrador; lo demás queda DEVUELTO.
@@ -796,12 +830,12 @@ export class DocumentosActividadService {
       // última decisión, nadie ha actuado después sobre lo que se decidió.
       if (ultima.decision === 'DEVUELTO' && actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
         throw new ConflictException(
-          'La actividad ya se corrigió y se volvió a enviar: el soporte llegaría tarde',
+          'La actividad ya se corrigió y se volvió a enviar: ya no se adjunta soporte a la decisión anterior',
         );
       }
 
       const expediente = await exigirExpedienteAbierto(m, procesoId);
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const documento = await m.save(
         m.create(Documento, {

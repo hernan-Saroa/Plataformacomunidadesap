@@ -6,10 +6,13 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+
+import { EsNit } from '../../../validacion/nit';
 
 export class FijarPlazoOfertasDto {
   /**
@@ -39,10 +42,10 @@ export class RegistrarOferenteDto {
   @MaxLength(200)
   nombre: string;
 
-  @ApiProperty({ description: 'NIT o documento de identidad del oferente' })
+  /** Con su dígito de verificación, que se comprueba (BUG-003 de QA, 14/11). */
+  @ApiProperty({ description: 'NIT del oferente con guion y dígito de verificación', example: '900123456-8' })
   @IsString()
-  @IsNotEmpty({ message: 'Indica el NIT o documento del oferente' })
-  @MaxLength(40)
+  @EsNit()
   identificacion: string;
 
   /**
@@ -74,4 +77,15 @@ export class RegistrarOferenteDto {
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor de la oferta debe ser un número' })
   @Min(0, { message: 'El valor de la oferta no puede ser negativo' })
   valorOfertado?: number;
+
+  /**
+   * La carga por partes con el soporte, en vez del archivo en la misma petición (BUG-004).
+   *
+   * Una oferta de 200 MB se sube antes, por partes y con su avance; al
+   * registrar solo viaja este id.
+   */
+  @ApiPropertyOptional({ description: 'Id de la carga por partes que trae el soporte' })
+  @IsOptional()
+  @IsUUID('4', { message: 'La carga del soporte no es válida' })
+  cargaId?: string;
 }

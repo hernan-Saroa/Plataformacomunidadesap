@@ -375,6 +375,7 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-175-${CORRIDA}-${n}`,
         amparos: [
           {

@@ -517,13 +517,13 @@ export class AprobacionService {
 
   private async exigirActividad(em: EntityManager, procesoId: string, numeral: string) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
     if (!actividad) {
-      throw new NotFoundException(`La actividad ${numeral} no está instanciada en el proceso`);
+      throw new NotFoundException(`El proceso no tiene la actividad ${numeral}`);
     }
     if (actividad.estado === 'NO_APLICA') {
       throw new ConflictException('Esta actividad no aplica a la modalidad del proceso');

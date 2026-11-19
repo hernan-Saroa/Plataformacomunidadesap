@@ -2,6 +2,7 @@ import React from 'react';
 import { CampoFormulario } from '../../types';
 import { SelectorPersona } from './SelectorPersona';
 import { SelectorDependencia } from './SelectorDependencia';
+import { CAMPOS_PLAZO_EN_DIAS, plazoEnMeses } from '../shared/fechas';
 
 /**
  * Campos que nombran a un funcionario. Va por codigo y no por tipo porque
@@ -250,6 +251,13 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
       </label>
 
       {control()}
+
+      {/* El plazo en días, también en meses mientras se escribe (AJU-002). */}
+      {CAMPOS_PLAZO_EN_DIAS.includes(campo.codigo) && plazoEnMeses(valor) && (
+        <span className="text-[10.5px] text-slate-500 leading-snug">
+          {Number(valor).toLocaleString('es-CO')} días: {plazoEnMeses(valor)}
+        </span>
+      )}
 
       {error && (
         <span id={`${id}-error`} role="alert" className="text-[10.5px] font-bold text-red-600">

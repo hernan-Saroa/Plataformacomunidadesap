@@ -32,7 +32,7 @@ export class PublicarContratoDto {
 
   /** La real, no la del registro: es la que cuenta para el plazo. */
   @ApiProperty({ description: 'Fecha real de la publicación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato AAAA-MM-DD' })
   fechaPublicacion: string;
 
   @ApiPropertyOptional({ description: 'Número del proceso en SECOP II' })

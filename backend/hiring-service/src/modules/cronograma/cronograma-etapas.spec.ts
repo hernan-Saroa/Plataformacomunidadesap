@@ -54,7 +54,7 @@ describe('validarEtapas', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('una etapa no viene dos veces', () => {
+  it('una etapa no aparece dos veces', () => {
     expect(() =>
       validarEtapas([
         { etapa: 8, fechaFin: '2027-01-10' },

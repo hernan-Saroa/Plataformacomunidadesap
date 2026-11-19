@@ -35,6 +35,8 @@ const DIAS = [
   { valor: 'SABADO', corto: 'Sáb', largo: 'Sábado' },
   { valor: 'DOMINGO', corto: 'Dom', largo: 'Domingo' },
 ] as const;
+/** Letra de cada día en la selección de días (EFDS-2448: «MI» para el miércoles, no «X»). */
+const LETRA_DIA = ['L', 'M', 'MI', 'J', 'V', 'S', 'D'] as const;
 
 /** Ventana visible del día. Las sesiones se ubican por minutos dentro de ella. */
 const HORA_DESDE = 6;
@@ -137,6 +139,7 @@ function CalendarioGrupoEditable({
   const revisionHorario = useRevisionProgramacion('horarios');
   const revisionAulas = useRevisionProgramacion('aulas');
   const [avisoPeriodo, setAvisoPeriodo] = useState('');
+  const [alertaPeriodo, setAlertaPeriodo] = useState(false);
   const [ofertaGrupo, setOfertaGrupo] = useState<string | null>(null);
   const [errorAulas, setErrorAulas] = useState('');
 
@@ -319,15 +322,29 @@ function CalendarioGrupoEditable({
 
   const guardarPeriodo = async () => {
     if (cicloCargado !== idGrupo || guardandoCiclo) return;
+    // EFDS-2448: sin las dos fechas del ciclo o sin al menos una sesión no se guarda nada; se
+    // avisa con el motivo. El servidor aplica la misma regla (grupo virtual o a distancia:
+    // el horario es opcional, solo se exigen las fechas).
+    const faltan = [
+      !fechaInicio && 'la fecha de inicio del ciclo',
+      !fechaFin && 'la fecha de fin del ciclo',
+      !virtual && sesiones.length === 0 && 'al menos una sesión en el horario',
+    ].filter(Boolean) as string[];
+    if (faltan.length) {
+      const lista = faltan.length === 1 ? faltan[0] : `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}`;
+      setAlertaPeriodo(true);
+      setAvisoPeriodo(`No se guardó el periodo del grupo: falta ${lista}.`);
+      return;
+    }
     setGuardandoCiclo(true);
     setAvisoPeriodo('');
+    setAlertaPeriodo(false);
     try {
-      await definirPeriodoGrupo(idGrupo, {
-        fechaInicio: fechaInicio || null,
-        fechaFin: fechaFin || null,
-      });
+      await definirPeriodoGrupo(idGrupo, { fechaInicio, fechaFin });
+      setCicloPersistido(`${fechaInicio}|${fechaFin}`);
       setAvisoPeriodo('Periodo guardado.');
     } catch (e: any) {
+      setAlertaPeriodo(true);
       setAvisoPeriodo(e?.message || 'No se pudo guardar el periodo.');
     } finally {
       setGuardandoCiclo(false);
@@ -405,7 +422,10 @@ function CalendarioGrupoEditable({
           style={{ background: '#003DA5' }}>
           Guardar periodo
         </button>
-        {avisoPeriodo && <span className="text-xs font-medium text-slate-500">{avisoPeriodo}</span>}
+        {avisoPeriodo && (alertaPeriodo
+          ? <span role="alert" className="text-xs font-semibold rounded-lg px-3 py-2"
+              style={{ color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d' }}>{avisoPeriodo}</span>
+          : <span className="text-xs font-medium text-slate-500">{avisoPeriodo}</span>)}
       </div>
 
       {error && !nueva && (
@@ -579,7 +599,7 @@ function CalendarioGrupoEditable({
 
             {edicionBloqueada && <p role="note" className="m-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">La sesión está aprobada. Debe reabrirse antes de modificarla o eliminarla.</p>}
             <fieldset disabled={guardando || edicionBloqueada} className="min-w-0 px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {nueva.idFranja ? <label className="flex flex-col gap-1.5">Día<select value={nueva.diaSemana} onChange={e => setNueva({ ...nueva, diaSemana: e.target.value })}>{DIAS.map(d => <option key={d.valor} value={d.valor}>{d.largo}</option>)}</select></label> : <fieldset style={{ gridColumn: '1 / -1' }}><legend className="text-xs font-bold">Días</legend><div className="flex flex-wrap gap-2 mt-2">{DIAS.map((d,i) => <button key={d.valor} type="button" aria-label={d.largo} aria-pressed={(nueva.dias ?? []).includes(d.valor)} onClick={() => setNueva({ ...nueva, dias: (nueva.dias ?? []).includes(d.valor) ? nueva.dias?.filter(v => v !== d.valor) : [...(nueva.dias ?? []), d.valor] })} className={`rounded-lg border px-3 py-2 font-bold ${(nueva.dias ?? []).includes(d.valor) ? 'bg-blue-100 border-blue-500 text-blue-900' : ''}`}>{['L','M','X','J','V','S','D'][i]}</button>)}<button type="button" onClick={() => setNueva({ ...nueva, dias: DIAS.map(d => d.valor) })} className="rounded-lg border px-3 py-2">Todos</button></div></fieldset>}
+              {nueva.idFranja ? <label className="flex flex-col gap-1.5">Día<select value={nueva.diaSemana} onChange={e => setNueva({ ...nueva, diaSemana: e.target.value })}>{DIAS.map(d => <option key={d.valor} value={d.valor}>{d.largo}</option>)}</select></label> : <fieldset style={{ gridColumn: '1 / -1' }}><legend className="text-xs font-bold">Días</legend><div className="flex flex-wrap gap-2 mt-2">{DIAS.map((d,i) => <button key={d.valor} type="button" aria-label={d.largo} aria-pressed={(nueva.dias ?? []).includes(d.valor)} onClick={() => setNueva({ ...nueva, dias: (nueva.dias ?? []).includes(d.valor) ? nueva.dias?.filter(v => v !== d.valor) : [...(nueva.dias ?? []), d.valor] })} className={`rounded-lg border px-3 py-2 font-bold ${(nueva.dias ?? []).includes(d.valor) ? 'bg-blue-100 border-blue-500 text-blue-900' : ''}`}>{LETRA_DIA[i]}</button>)}<button type="button" onClick={() => setNueva({ ...nueva, dias: DIAS.map(d => d.valor) })} className="rounded-lg border px-3 py-2">Todos</button></div></fieldset>}
               <label className="flex flex-col gap-1.5">
                 <span className="text-[0.62rem] font-bold text-slate-500 uppercase">Inicio</span>
                 <CampoHora24 aria-label="Inicio" value={nueva.horaInicio}

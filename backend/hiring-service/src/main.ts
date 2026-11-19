@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { errorDeValidacion } from './validacion/mensajes-validacion';
 
 async function bootstrap() {
   const logger = new Logger('HiringServiceBootstrap');
@@ -19,6 +20,7 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: false,
       transform: true,
+      exceptionFactory: errorDeValidacion,
     }),
   );
 

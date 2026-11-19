@@ -370,7 +370,7 @@ export class ContratosService {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -552,7 +552,7 @@ export class ContratosService {
       this.validarFecha(dto.fechaFirma);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -648,7 +648,7 @@ export class ContratosService {
   async exigirContrato(procesoId: string, em?: EntityManager) {
     const contrato = await this.contratoVigente(procesoId, em);
     if (!contrato) {
-      throw new NotFoundException('El proceso no tiene contrato generado');
+      throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
     }
     return contrato;
   }
@@ -821,7 +821,7 @@ export class ContratosService {
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

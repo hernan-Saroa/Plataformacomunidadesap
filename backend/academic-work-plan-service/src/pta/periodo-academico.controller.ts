@@ -23,6 +23,26 @@ import { PtaService } from './pta.service';
 import { efectoDeActivar } from './periodo-activacion';
 import { fechaCivil, fechaCivilGuardada } from './fecha-periodo';
 import { PtaPermissionsService } from './auth/pta-permissions.service';
+import { eliminarTodoDelPeriodo, impactoEliminacion, type ImpactoEliminacion } from './periodo-eliminacion';
+
+/** Auditoría del borrado en el audit-service (POST /logs); si no responde, queda en el log y el borrado ya se hizo. */
+async function auditarEliminacionPeriodo(idUser: string, impacto: ImpactoEliminacion): Promise<void> {
+  const base = process.env.AUDIT_SERVICE_URL || 'http://audit-service:3011';
+  const ruta = `/pta/api/v1/periodos-academicos/${impacto.id}`;
+  try {
+    const res = await fetch(`${base}/logs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: 'DELETE', url: ruta, path: ruta, module: 'academic-work-plan', submodule: 'periodos',
+        action: 'eliminar_periodo', statusCode: 200, responseTimeMs: 0, entityName: 'PeriodoAcademico', entityId: impacto.id,
+        previousData: impacto, newData: { eliminado: true, usuario: idUser },
+      }),
+    });
+    if (!res.ok) throw new Error(`audit-service respondió ${res.status}`);
+  } catch (e: any) {
+    console.error(`[periodos] No se pudo auditar la eliminación de ${impacto.codigo}: ${e?.message ?? e}`);
+  }
+}
 
 /** Permiso propio de activar un periodo extraordinario (migración 672, EFDS-2346). */
 export const PERMISO_ACTIVAR_EXTRAORDINARIO = 'pta.periodos.activar_extraordinario';
@@ -378,37 +398,58 @@ export class PeriodoAcademicoController {
     }
   }
 
-  /** Solo el superusuario elimina periodos (jamás el activo ni uno con información asociada). */
-  @Roles('SUPER_ADMIN', 'super_admin')
-  @Delete(':id')
-  async remove(@Param('id') id: string) {
+  /**
+   * GET /periodos-academicos/:id/impacto-eliminacion — qué se borraría y si se puede (bug QA
+   * 18-nov: «no deja eliminar periodos»). Solo lectura; la pantalla lo muestra antes de confirmar.
+   */
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
+  @Get(':id/impacto-eliminacion')
+  async impactoEliminar(@Param('id') id: string, @Req() req: any) {
+    await this.exigirGestionarPeriodos(req, 'eliminar');
     const period = await this.repo.findOne({ where: { id } });
-    if (!period) {
-      throw new NotFoundException('Periodo académico no encontrado.');
-    }
+    if (!period) throw new NotFoundException('Periodo académico no encontrado.');
+    return impactoEliminacion(this.repo.manager, { id: String(period.id), codigo: period.codigo, estado: period.estado });
+  }
 
-    if (period.estado === 'en_curso') {
-      throw new BadRequestException('No se puede eliminar el periodo académico activo.');
-    }
-    const usage = await this.getPeriodUsage(period.id, period.codigo);
-    if (usage.total > 0) {
-      throw new ConflictException(
-        `No se puede eliminar ${period.codigo}: tiene ${usage.ofertas} ofertas, `
-        + `${usage.cetaps} CETAP y ${usage.ptas} PTA asociados.`,
-      );
-    }
+  /**
+   * DELETE /periodos-academicos/:id — lo elimina quien crea periodos (antes, solo el superusuario).
+   * Nunca el periodo en curso ni uno con PTA de docentes. Si no los tiene, se va TODO lo del
+   * periodo (catálogo, programación, concertaciones) en una sola transacción: ver periodo-eliminacion.ts.
+   */
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Req() req: any) {
+    const idUser = await this.exigirGestionarPeriodos(req, 'eliminar');
+    const period = await this.repo.findOne({ where: { id } });
+    if (!period) throw new NotFoundException('Periodo académico no encontrado.');
 
-    try {
-      await this.repo.remove(period);
-    } catch (error) {
+    const impacto = await this.repo.manager.transaction(async (m) => {
+      // Se vuelve a medir DENTRO de la transacción: lo que se valida es lo que se borra.
+      const i = await impactoEliminacion(m, { id: String(period.id), codigo: period.codigo, estado: period.estado });
+      if (!i.eliminable) throw new ConflictException(i.motivo);
+      await eliminarTodoDelPeriodo(m, String(period.id));
+      return i;
+    }).catch((error) => {
+      if (error instanceof ConflictException) throw error;
       this.rethrowDatabaseError(error, period.codigo);
-    }
+    });
+    await auditarEliminacionPeriodo(idUser, impacto!);
     return {
       success: true,
       id,
       codigo: period.codigo,
+      impacto,
       message: `Periodo ${period.codigo} eliminado correctamente.`,
     };
+  }
+
+  /** Crear y eliminar periodos exigen el mismo permiso (EFDS-2427). Devuelve el id del usuario. */
+  private async exigirGestionarPeriodos(req: any, accion: 'crear' | 'eliminar'): Promise<string> {
+    const idUser = String(req?.user?.userId ?? req?.user?.sub ?? '');
+    if (!(await this.permisos.userHasAnyPermission(idUser, PERMISOS_CREAR_PERIODO))) {
+      throw new ForbiddenException(`Para ${accion} periodos se requiere el permiso «Programación — Crear y gestionar periodos académicos».`);
+    }
+    return idUser;
   }
 
   /**

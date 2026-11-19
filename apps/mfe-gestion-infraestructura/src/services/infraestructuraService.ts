@@ -231,6 +231,14 @@ export interface SolicitudMantenimiento {
   voboObservaciones?: string | null;
   voboUsuarioId?: string | null;
   voboFecha?: string | null;
+  // ----- RF-INF-014: Alarma 70% ANS y Emergencias Críticas -----
+  alerta70Emitida?: boolean;
+  fechaAlerta70?: string | null;
+  esEmergenciaCritica?: boolean;
+  emergenciaConfirmada?: boolean;
+  emergenciaConfirmadaPor?: string | null;
+  fechaConfirmacionEmergencia?: string | null;
+  notasConfirmacionEmergencia?: string | null;
 }
 
 export interface ConformidadConfig {
@@ -2579,6 +2587,50 @@ export const infraestructuraService = {
     const data = await res.json();
     notificarEventoFrontend('VALORACION_GUARDADA', idSolicitud, payload);
     return data;
+  },
+
+  // ----- RF-INF-014: Alarma 70% ANS y Emergencias Críticas -----
+  async confirmarEmergenciaCritica(
+    idSolicitud: string,
+    payload: { notas?: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/confirmar-emergencia`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.ok) {
+      let m = 'Error al confirmar la emergencia crítica';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('EMERGENCIA_CONFIRMADA', idSolicitud, payload);
+    return data;
+  },
+
+  async obtenerEmergenciasPendientes(): Promise<SolicitudMantenimiento[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/alertas/emergencias-pendientes`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async evaluarAlertas70ANS(): Promise<{ evaluadas: number; alertasEmitidas: number; ids: string[] }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/alertas/evaluar-70-ans`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      throw new Error('Error al evaluar alertas de 70% ANS.');
+    }
+    return res.json();
   },
 };
 

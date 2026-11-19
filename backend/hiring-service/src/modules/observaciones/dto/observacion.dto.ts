@@ -43,7 +43,7 @@ export class RegistrarObservacionDto {
     example: '2026-08-14',
   })
   @IsOptional()
-  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaPresentacion?: string;
 
   @ApiPropertyOptional({ description: 'Asunto, si se quiere distinguir' })
@@ -80,12 +80,13 @@ export class ResponderObservacionDto {
   /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
+  // Llega por multipart junto con los archivos de la respuesta.
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
 }
 
-/** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
 /** Una sola respuesta para todos los interesados pendientes (127). */
 export class ResponderTodasDto {
   @ApiPropertyOptional({ description: 'Nota sobre el documento de respuestas' })

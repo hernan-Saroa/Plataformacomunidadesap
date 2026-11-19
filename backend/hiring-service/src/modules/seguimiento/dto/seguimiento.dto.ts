@@ -29,16 +29,16 @@ export class CargarSeguimientoDto {
 
   /** La del soporte, no la del registro: un informe de enero es de enero. */
   @ApiProperty({ description: 'Fecha del soporte (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha del soporte debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del soporte debe tener el formato AAAA-MM-DD' })
   fechaSoporte: string;
 
   @ApiPropertyOptional({ description: 'Inicio del periodo que cubre (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'El inicio del periodo debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'El inicio del periodo debe tener el formato AAAA-MM-DD' })
   periodoDesde?: string;
 
   @ApiPropertyOptional({ description: 'Fin del periodo que cubre (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'El fin del periodo debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'El fin del periodo debe tener el formato AAAA-MM-DD' })
   periodoHasta?: string;
 }

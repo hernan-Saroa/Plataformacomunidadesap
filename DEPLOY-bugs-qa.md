@@ -153,3 +153,48 @@ Sirve para probar el interruptor sin tocar el periodo principal. Probado contra 
   2. **Puente docente–área cargado** (sección 3). Cubre pregrado.
   3. **Posgrado:** las asignaturas de especialización/maestría tienen área «Programa: …» y ningún docente la tiene. Falta el insumo de la ESAP (qué docentes dictan cada programa de posgrado) para cargarlo al puente.
 - Roles de prueba (ver INTEGRACION-claude.md §41.1): programar = `PROGRAMADOR_PREGRADO/POSGRADO`; asignar y enviar a revisión = `PROGRAMADOR_DOCENTE_*`; revisar = `REVISOR_DOCENCIA_*`; aprobar = `APROBADOR_DOCENCIA` o `JEFATURA_TERRITORIAL`; todo = `ADMIN_PROGRAMACION`.
+
+## 10. Tercera entrega (18 de nov): asignar un docente en varios grupos, eliminar periodos y quitar los datos semilla
+
+- ⚠️ **La limpieza de datos semilla de esta entrega se CORRIGIÓ en la §11** (la 081 quedó sin efecto y la reemplaza la 082, que no toca el PTA). Seguir la §11 para la migración, el respaldo y la verificación.
+- **Reconstruir:** `academic-work-plan-service` (eliminar periodos), `academic-schedule-service` (solo trae la migración) y el MFE `mfe-programacion-academica`.
+- **Verificación (2 minutos):**
+  1. y 2. Los datos semilla y el histórico: ver la verificación de la §11.
+  3. Cada periodo que no está en curso tiene el botón **«Eliminar»**: muestra qué se borraría y pide confirmar. El periodo en curso y uno con PTA de docentes no se eliminan (el sistema dice por qué).
+  4. Asignar a un docente que ya tiene un grupo, en otro grupo de su misma área: se asigna.
+
+## 11. Cuarta entrega (18 de nov, noche): limpieza de datos semilla sin tocar el PTA (EFDS-2447), respaldo del histórico y EFDS-2448
+
+### 11.1 Migraciones (con `./deploy.<amb>.sh db-migrate`)
+- `081_retirar_datos_semilla.sql` **quedó sin efecto** (`SELECT 1`). Su primera versión borraba en `academic_work_plan.docencia_concertada`, una tabla del PTA, y fallaba por llave foránea si un grupo viejo ya estaba en un periodo del PTA. **Si en algún ambiente ya corrió la versión vieja, avisar**: no se esperan daños (la ejecución vieja falla entera o no encuentra nada), pero hay que mirar el log de ese ambiente.
+- `082_retirar_datos_semilla_sin_tocar_pta.sql` (**nueva**, la que limpia). Solo escribe en el esquema `academic-schedule`:
+  - Retira los 5 periodos viejos SEMBRADOS (`2026-1`, `2026-2`, `2026-V1`, `2026-V2`, `2026-INT` de `periodo_programacion`), cada uno con sus grupos, sesiones, asignaciones, recesos, concertaciones y su equivalencia; el grupo DEMO, y la programación histórica (575 filas).
+  - **No toca nada del PTA**: ni `periodo_academico` (el 2026-1 del PTA es real), ni PTA, ni `docencia_concertada`. Un periodo viejo que tenga **algo ligado al PTA** (un grupo ya reapuntado a un periodo del PTA, o una concertación con decisión de docencia registrada en el PTA) **se conserva entero** y el log lo dice: `NOTICE: 082: periodo viejo 2026-1 CONSERVADO: …`. Los periodos viejos creados por usuarios tampoco se tocan.
+  - Idempotente. Deja en el log cuántas filas quitó de cada cosa (`NOTICE: 082: …`). **Copiar esos NOTICE en el ticket.**
+  - Prueba con el SQL real (en transacción que se revierte): `backend/academic-schedule-service/src/periodos/datos-semilla.agregado.spec.ts`.
+
+### 11.2 Respaldo de la programación histórica y cómo volver a cargarla
+- Respaldo (en el repo): `backend/academic-schedule-service/db/respaldos/programacion_historica.datos.sql` (575 filas, tal como quedaban tras las migraciones 022 y 025).
+- Comando (idempotente, **por defecto en modo prueba**: informa y no guarda nada):
+  ```bash
+  # en el servidor, desde la raíz del repo
+  backend/academic-schedule-service/db/respaldos/recargar-historico.sh superapp-db-qa             # PRUEBA
+  backend/academic-schedule-service/db/respaldos/recargar-historico.sh superapp-db-qa --aplicar   # carga
+  ```
+  Imprime `Programación histórica: antes N filas · después 575 (2026-1: … · 2026-V1: …)` y `MODO PRUEBA: nada se guardó` o `APLICADO`. Correrlo otra vez no duplica nada. Recalcula la sugerencia de asignatura contra el catálogo de ese ambiente (regla de la 025). Solo escribe en `"academic-schedule".programacion_historica`.
+- **No se corre en el despliegue**: solo si el negocio pide volver a ver los «cruces del histórico».
+
+### 11.3 EFDS-2448 (reportado por Javier en EFDS-1368)
+- «Guardar periodo» del grupo (Catálogo → grupo → horario) **no guarda** si falta alguna fecha del ciclo o si el grupo no tiene al menos una sesión: muestra una alerta con el motivo y no guarda nada. La regla está en el servidor (`PUT /horarios/grupo/:id/periodo` responde 400 con el motivo), no solo en la pantalla.
+- Grupo **virtual o a distancia**: su horario es opcional (lo define el docente), así que solo se exigen las dos fechas.
+- La carga desde Excel y «reutilizar periodo» no cambian (fijan el ciclo antes de crear las sesiones).
+- En la selección de días, el miércoles es **«MI»** (antes «X»).
+
+### 11.4 Reconstruir y verificar
+- Reconstruir: `academic-schedule-service` (migraciones 081/082 y EFDS-2448) y el MFE `mfe-programacion-academica`. Además lo de la §10 si no se desplegó aún. (El shell trae un cambio de una línea en `offlineCache.ts` que solo afecta las pruebas; no hace falta reconstruirlo por esto.)
+- Verificación (3 minutos):
+  1. Log de `db-migrate`: aparecen los `NOTICE: 082:` y **ningún** `ERROR`. Si sale «CONSERVADO», ese periodo viejo tiene datos ligados al PTA y se queda a propósito.
+  2. Programación Académica → Periodos: ya no aparecen los periodos viejos retirados (2026-INT, 2026-2…) en «Periodos anteriores al modelo único».
+  3. Validación de Cruces: el histórico sale en 0.
+  4. PTA → el periodo 2026-1 y sus PTA siguen igual.
+  5. Un grupo sin sesiones → «Guardar periodo» muestra «No se guardó el periodo del grupo: falta al menos una sesión en el horario.» Con una sesión y las dos fechas, guarda.
