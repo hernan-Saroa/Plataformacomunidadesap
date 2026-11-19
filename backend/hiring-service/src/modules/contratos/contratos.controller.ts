@@ -19,6 +19,7 @@ import { ContratosService } from './contratos.service';
 import {
   AceptarContratoDto,
   FirmarContratoDto,
+  FirmarVariasDto,
   GenerarContratoDto,
   RechazarContratoDto,
 } from './dto/contrato.dto';
@@ -138,6 +139,46 @@ export class ContratosController {
     const ruta = join(STORAGE_PATH, file.filename);
     try {
       return await this.service.firmar(
+        procesoId,
+        dto,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+  @Post('firmar-varias')
+  @Puede(['editar', 'decidir'], '8.1')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'La evidencia de la firma se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Actividad 8.1 · Registrar las firmas de las partes con una sola evidencia',
+    description:
+      'Una evidencia para las partes que se nombran (AJU-001). Cuando firman las dos el contrato queda perfeccionado.',
+  })
+  async firmarVarias(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: FirmarVariasDto,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Adjunta la evidencia de la firma: sin respaldo el registro no sirve de prueba',
+      );
+    }
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.firmarVarias(
         procesoId,
         dto,
         file,

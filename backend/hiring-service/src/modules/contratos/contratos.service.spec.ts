@@ -1,6 +1,7 @@
 import {
   actividadCumplida,
   AdjudicacionVigente,
+  ContratosService,
   contradiceElActo,
   estaSuscrito,
   evaluarAdjudicacion,
@@ -207,5 +208,46 @@ describe('estado LEGALIZADO', () => {
   it('no admite respuestas del proponente', () => {
     expect(puedeResponder('LEGALIZADO', 'ACEPTAR')).toBe(false);
     expect(puedeResponder('LEGALIZADO', 'RECHAZAR')).toBe(false);
+  });
+});
+
+/**
+ * AJU-001 de QA (17/11): las dos firmas con una sola evidencia. Aquí solo se
+ * prueba que se arme la lista de firmantes; el registro es el de siempre.
+ */
+describe('firmarVarias', () => {
+  const servicio = Object.create(ContratosService.prototype) as ContratosService;
+  const registrar = jest.fn().mockResolvedValue('estado');
+  (servicio as any).registrarFirmas = registrar;
+  const archivo = { filename: 'f.pdf' } as any;
+  const acceso = { userName: 'gestor' } as any;
+
+  beforeEach(() => registrar.mockClear());
+
+  it('registra las dos partes con un solo documento', async () => {
+    await servicio.firmarVarias(
+      'p-1',
+      { ordenadorNombre: ' Ordenadora ', contratistaNombre: 'Representante', fechaFirma: '2026-11-18' },
+      archivo,
+      'h',
+      acceso,
+    );
+    expect(registrar).toHaveBeenCalledTimes(1);
+    expect(registrar.mock.calls[0][1]).toEqual([
+      { parte: 'ORDENADOR', nombre: 'Ordenadora', documento: null },
+      { parte: 'CONTRATISTA', nombre: 'Representante', documento: null },
+    ]);
+  });
+
+  it('la parte que no se nombra no firma', async () => {
+    await servicio.firmarVarias('p-1', { contratistaNombre: 'Representante', fechaFirma: '2026-11-18' }, archivo, 'h', acceso);
+    expect(registrar.mock.calls[0][1].map((f: any) => f.parte)).toEqual(['CONTRATISTA']);
+  });
+
+  it('sin ninguna parte no hay nada que registrar', async () => {
+    await expect(
+      servicio.firmarVarias('p-1', { ordenadorNombre: '  ', fechaFirma: '2026-11-18' }, archivo, 'h', acceso),
+    ).rejects.toThrow(/al menos una parte/);
+    expect(registrar).not.toHaveBeenCalled();
   });
 });

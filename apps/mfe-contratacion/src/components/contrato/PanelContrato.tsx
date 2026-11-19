@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import {
   DatosContrato,
-  DatosFirma,
+  DatosFirmas,
   EstadoContratoProceso,
   EvidenciaFirmaOtp,
   ParteFirmante,
@@ -41,12 +41,15 @@ const pesos = new Intl.NumberFormat('es-CO', {
 });
 
 /**
- * La parte arranca en la del ordenador, pero el `select` solo ofrece las que
- * siguen pendientes: el servidor dice cuáles son y la pantalla no las adivina.
+ * Las partes que firman en este registro, cada una con quién firmó por ella, y
+ * una sola fecha y una sola evidencia para todas (AJU-001 de QA, 17/11): si el
+ * contrato firmado es un mismo documento, se carga una vez. Las partes que se
+ * ofrecen son las pendientes: el servidor dice cuáles y la pantalla no las
+ * adivina.
  */
 const FIRMA_VACIA = {
-  parte: 'ORDENADOR' as ParteFirmante,
-  firmanteNombre: '',
+  partes: [] as ParteFirmante[],
+  nombres: { ORDENADOR: '', CONTRATISTA: '' } as Record<ParteFirmante, string>,
   fechaFirma: hoyEnBogota(),
 };
 
@@ -182,21 +185,33 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
     setFirmando(false);
   };
 
-  const cambiarFirma = (clave: keyof typeof FIRMA_VACIA, valor: string) =>
-    setFirma((previo) => ({ ...previo, [clave]: valor }));
+  const alternarParte = (parte: ParteFirmante) =>
+    setFirma((previo) => ({
+      ...previo,
+      partes: previo.partes.includes(parte)
+        ? previo.partes.filter((p) => p !== parte)
+        : [...previo.partes, parte],
+    }));
+
+  const nombrar = (parte: ParteFirmante, nombre: string) =>
+    setFirma((previo) => ({ ...previo, nombres: { ...previo.nombres, [parte]: nombre } }));
+
+  const firmaCompleta =
+    firma.partes.length > 0 &&
+    firma.partes.every((p) => firma.nombres[p].trim()) &&
+    !!firma.fechaFirma &&
+    !!evidencia;
 
   const registrarFirma = async (firmaOtpEvidencia?: EvidenciaFirmaOtp) => {
-    if (!evidencia) return;
+    if (!evidencia || !firma.partes.length) return;
 
-    const cuerpo: DatosFirma = {
-      parte: firma.parte,
-      firmanteNombre: firma.firmanteNombre.trim(),
-      fechaFirma: firma.fechaFirma,
-    };
+    const cuerpo: DatosFirmas = { fechaFirma: firma.fechaFirma };
+    if (firma.partes.includes('ORDENADOR')) cuerpo.ordenadorNombre = firma.nombres.ORDENADOR.trim();
+    if (firma.partes.includes('CONTRATISTA')) cuerpo.contratistaNombre = firma.nombres.CONTRATISTA.trim();
 
     setGuardando(true);
     try {
-      const respuesta = await contratacionService.firmarContrato(
+      const respuesta = await contratacionService.firmarContratoVarias(
         procesoId,
         cuerpo,
         evidencia,
@@ -494,77 +509,94 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             <Boton
               icono={<PenLine className="w-3.5 h-3.5" />}
               onClick={() => {
-                // Se abre en la primera parte que falta, no en una fija: si el
-                // contratista ya firmó, ofrecer «ordenador» por defecto sería
-                // proponer la única opción que no queda.
-                setFirma({ ...FIRMA_VACIA, parte: estado.partesPendientes[0] });
+                // Se abre con todas las partes que faltan marcadas: lo común es
+                // que las dos firmen el mismo documento. El contratista llega
+                // con el nombre que tiene el contrato.
+                setFirma({
+                  ...FIRMA_VACIA,
+                  fechaFirma: hoyEnBogota(),
+                  partes: [...estado.partesPendientes],
+                  nombres: { ORDENADOR: '', CONTRATISTA: contrato.contratista?.nombre ?? '' },
+                });
                 setFirmando(true);
               }}
             >
-              Registrar la firma de {ETIQUETA_PARTE[estado.partesPendientes[0]].toLowerCase()}
+              {estado.partesPendientes.length > 1
+                ? 'Registrar las firmas'
+                : `Registrar la firma de ${ETIQUETA_PARTE[estado.partesPendientes[0]].toLowerCase()}`}
             </Boton>
           ) : null}
 
           {estado.puedeFirmar && firmando ? (
             <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-3">
+              <fieldset className="m-0 p-0 border-0 space-y-2">
+                <legend className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Quiénes firman <span className="text-red-600">*</span>
+                </legend>
+                {estado.partesPendientes.map((parte) => {
+                  const marcada = firma.partes.includes(parte);
+                  return (
+                    <div key={parte} className="rounded-lg border border-gray-200 bg-white px-3 py-2 space-y-2">
+                      <label className="flex items-center gap-2 text-[13px] font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={marcada}
+                          onChange={() => alternarParte(parte)}
+                        />
+                        {ETIQUETA_PARTE[parte]}
+                      </label>
+                      {marcada ? (
+                        <div>
+                          <label
+                            htmlFor={`firma-nombre-${parte}`}
+                            className="block text-xs font-bold text-gray-600 mb-1"
+                          >
+                            Nombre del firmante <span className="text-red-600">*</span>
+                          </label>
+                          <input
+                            id={`firma-nombre-${parte}`}
+                            type="text"
+                            value={firma.nombres[parte]}
+                            onChange={(e) => nombrar(parte, e.target.value)}
+                            className={campo}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {estado.partesPendientes.length > 1 ? (
+                  <p className="text-xs text-slate-500 m-0">
+                    Si cada parte firmó un documento distinto, desmarca una y registra cada firma con
+                    su propio soporte.
+                  </p>
+                ) : null}
+              </fieldset>
+
               <div>
                 <label
-                  htmlFor="firma-parte"
+                  htmlFor="firma-fecha"
                   className="block text-xs font-bold text-gray-600 mb-1.5"
                 >
-                  Quién firma <span className="text-red-600">*</span>
+                  Fecha de la firma <span className="text-red-600">*</span>
                 </label>
-                <select
-                  id="firma-parte"
-                  value={firma.parte}
-                  onChange={(e) => cambiarFirma('parte', e.target.value)}
+                <input
+                  id="firma-fecha"
+                  type="date"
+                  value={firma.fechaFirma}
+                  onChange={(e) => setFirma((previo) => ({ ...previo, fechaFirma: e.target.value }))}
                   className={campo}
-                >
-                  {estado.partesPendientes.map((parte) => (
-                    <option key={parte} value={parte}>
-                      {ETIQUETA_PARTE[parte]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label
-                    htmlFor="firma-nombre"
-                    className="block text-xs font-bold text-gray-600 mb-1.5"
-                  >
-                    Nombre del firmante <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="firma-nombre"
-                    type="text"
-                    value={firma.firmanteNombre}
-                    onChange={(e) => cambiarFirma('firmanteNombre', e.target.value)}
-                    className={campo}
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="firma-fecha"
-                    className="block text-xs font-bold text-gray-600 mb-1.5"
-                  >
-                    Fecha de la firma <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="firma-fecha"
-                    type="date"
-                    value={firma.fechaFirma}
-                    onChange={(e) => cambiarFirma('fechaFirma', e.target.value)}
-                    className={campo}
-                  />
-                </div>
+                />
               </div>
 
               <SelectorArchivo
                 id="firma-evidencia"
-                etiqueta="Evidencia de la firma"
-                ayuda="El documento firmado o el soporte del acto. Sin respaldo el registro no sirve de prueba."
+                etiqueta={firma.partes.length > 1 ? 'Evidencia de las firmas' : 'Evidencia de la firma'}
+                ayuda={
+                  firma.partes.length > 1
+                    ? 'Un solo documento para las dos partes: el contrato firmado o el soporte del acto.'
+                    : 'El documento firmado o el soporte del acto. Sin respaldo el registro no sirve de prueba.'
+                }
                 archivo={evidencia}
                 onElegir={setEvidencia}
               />
@@ -572,18 +604,16 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
               <div className="flex flex-wrap gap-2">
                 <Boton
                   icono={<PenLine className="w-3.5 h-3.5" />}
-                  disabled={
-                    guardando || !firma.firmanteNombre.trim() || !firma.fechaFirma || !evidencia
-                  }
+                  disabled={guardando || !firmaCompleta}
                   onClick={() =>
-                    // La segunda firma es la que cierra la 8.1: si la actividad
-                    // exige firma OTP, se pide ahí y no en la primera.
-                    estado?.partesPendientes.length === 1
+                    // El registro que completa las firmas es el que cierra la
+                    // 8.1: si la actividad exige firma OTP, se pide ahí.
+                    estado?.partesPendientes.every((p) => firma.partes.includes(p))
                       ? firmaOtp.conFirma(registrarFirma)
                       : registrarFirma()
                   }
                 >
-                  Registrar la firma
+                  {firma.partes.length > 1 ? 'Registrar las firmas' : 'Registrar la firma'}
                 </Boton>
                 <BotonSecundario
                   icono={<Undo2 className="w-3.5 h-3.5" />}
