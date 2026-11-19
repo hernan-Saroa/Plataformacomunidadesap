@@ -27,6 +27,10 @@ export class Garantia {
   @Column({ name: 'tipo_poliza', type: 'varchar', length: 60, nullable: true })
   tipoPoliza: string | null;
 
+  /** El nombre del tipo de póliza cuando se registró (AJU-002 de QA, 17/11). */
+  @Column({ name: 'tipo_poliza_nombre', type: 'varchar', length: 200, nullable: true })
+  tipoPolizaNombre: string | null;
+
   /** La póliza como documento; aprobar sin verla no tendría sentido. */
   @Column({ name: 'documento_id' })
   documentoId: string;

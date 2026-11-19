@@ -2330,6 +2330,8 @@ export interface TipoPolizaCatalogo {
 
 export interface AmparoDeGarantia {
   tipo: string;
+  /** El nombre con que se registró, aunque el catálogo cambie después (AJU-002). */
+  tipoNombre?: string;
   valorAsegurado: number;
   vigenciaDesde: string;
   vigenciaHasta: string;
