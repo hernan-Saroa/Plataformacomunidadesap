@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { CamposDelFormulario } from './CamposDelFormulario';
+import { FormatoDelPaa } from './FormatoDelPaa';
 import { RegionesPaa } from './RegionesPaa';
 import { VigenciasYVersiones } from './VigenciasYVersiones';
 
@@ -8,6 +9,7 @@ const SECCIONES = [
   { clave: 'versiones' as const, etiqueta: 'Documentos y versiones' },
   { clave: 'regiones' as const, etiqueta: 'Regiones' },
   { clave: 'campos' as const, etiqueta: 'Campos del formulario' },
+  { clave: 'formato' as const, etiqueta: 'Formato del archivo' },
 ];
 
 type Seccion = (typeof SECCIONES)[number]['clave'];
@@ -48,6 +50,7 @@ export function PlanDeAdquisiciones() {
       {seccion === 'versiones' && <VigenciasYVersiones />}
       {seccion === 'regiones' && <RegionesPaa />}
       {seccion === 'campos' && <CamposDelFormulario />}
+      {seccion === 'formato' && <FormatoDelPaa />}
     </div>
   );
 }

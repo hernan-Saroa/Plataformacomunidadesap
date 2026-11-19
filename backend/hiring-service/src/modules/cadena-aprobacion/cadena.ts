@@ -106,7 +106,7 @@ export function validarEscalones(entrada: unknown): { escalones: EscalonConfigur
     const accionRara = acciones.find((a) => !ACCIONES.includes(a));
     if (accionRara) problemas.push(`El escalón ${n} tiene una acción que no existe: ${accionRara}`);
     if (!acciones.includes('APROBAR')) {
-      problemas.push(`El escalón ${n} tiene que poder aprobar: sin eso la cadena no tiene salida`);
+      problemas.push(`El escalón ${n} tiene que poder aprobar: si no, la actividad nunca podría quedar aprobada`);
     }
     // Con TODOS, cada miembro tiene que ser alguien concreto: una persona
     // nombrada o quien ocupe un puesto en el proceso. Un rol o un papel no
@@ -207,7 +207,8 @@ export function motivoParaNoDecidir(args: {
 
   // Con TODOS, cada persona aprueba una vez: dos aprobaciones suyas no son dos personas.
   if (accion === 'APROBAR' && mias.some((d) => d.escalon === escalon.orden && d.decision === 'APROBADO')) {
-    return 'Ya aprobaste este escalón: falta que aprueben los demás';
+    // Informativo, no un error: su aprobación sí quedó (AJU-003 de QA, 14/11).
+    return 'Tu aprobación ya fue registrada correctamente. El proceso continuará una vez los demás responsables del escalón completen sus aprobaciones.';
   }
 
   if (
@@ -215,7 +216,7 @@ export function motivoParaNoDecidir(args: {
     !permiteMismoAprobador &&
     mias.some((d) => d.escalon !== escalon.orden && d.decision === 'APROBADO')
   ) {
-    return 'Ya aprobaste otro escalón de esta ronda: este lo tiene que decidir otra persona';
+    return 'Ya aprobaste un escalón anterior de esta revisión. Este paso lo debe aprobar otra persona: debes esperar a que lo haga.';
   }
 
   return null;

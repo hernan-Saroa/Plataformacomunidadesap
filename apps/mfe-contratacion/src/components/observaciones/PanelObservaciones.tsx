@@ -161,7 +161,7 @@ export function PanelObservaciones({ procesoId, onCambio, pliego = 'PROYECTO' }:
                 observacion={observacion}
                 puedeResponder={estado.puedeGestionar}
                 trabajando={trabajando}
-                onResponder={(datos) =>
+                onResponder={(datos, archivos) =>
                   firma.conFirma((firmaOtp) =>
                     ejecutar(
                       () =>
@@ -171,6 +171,7 @@ export function PanelObservaciones({ procesoId, onCambio, pliego = 'PROYECTO' }:
                           datos,
                           firmaOtp,
                           ruta,
+                          archivos,
                         ),
                       'Observación respondida',
                     ),
@@ -357,12 +358,15 @@ function Observacion({
   trabajando: boolean;
   onResponder: (
     datos: { respuesta: string; modificoPliego?: boolean },
+    archivos: File[],
   ) => Promise<boolean> | boolean | undefined;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [respuesta, setRespuesta] = useState('');
   /** Informativo (127): null si no se dice. */
   const [modifico, setModifico] = useState<boolean | null>(null);
+  const [archivos, setArchivos] = useState<File[]>([]);
+  const archivosRespuesta = observacion.respuestaSoportesIds?.length ?? 0;
 
   const respondida = observacion.respondidaAt !== null;
 
@@ -430,6 +434,14 @@ function Observacion({
           <p className="text-xs text-slate-700 m-0 leading-relaxed whitespace-pre-line">
             {observacion.respuesta}
           </p>
+          {archivosRespuesta > 0 && (
+            <p className="text-xs text-slate-500 m-0 flex items-center gap-1.5">
+              <Paperclip className="w-3.5 h-3.5" />
+              {archivosRespuesta === 1
+                ? 'Un archivo de respuesta, en el expediente'
+                : `${archivosRespuesta} archivos de respuesta, en el expediente`}
+            </p>
+          )}
           <p className="text-xs text-slate-500 m-0">
             {observacion.respondidaPor ?? 'Sin registrar'} ·{' '}
             {observacion.respondidaAt ? momento(observacion.respondidaAt) : ''} ·{' '}
@@ -462,19 +474,29 @@ function Observacion({
               <SiNo nombre={`modifico-${observacion.id}`} valor={modifico} onCambio={setModifico} />
             </fieldset>
 
+            <ArchivosVarios
+              archivos={archivos}
+              onCambio={setArchivos}
+              texto="Archivos de la respuesta a este interesado (opcional, hasta 10)"
+            />
+
             <div className="flex items-center gap-2">
               <Boton
                 disabled={trabajando || !respuesta.trim()}
                 onClick={async () => {
                   // Solo se cierra si la respuesta pasó: si falló, lo escrito
                   // debe seguir ahí para reintentar.
-                  const ok = await onResponder({
-                    respuesta: respuesta.trim(),
-                    modificoPliego: modifico ?? undefined,
-                  });
+                  const ok = await onResponder(
+                    {
+                      respuesta: respuesta.trim(),
+                      modificoPliego: modifico ?? undefined,
+                    },
+                    archivos,
+                  );
                   if (ok) {
                     setRespuesta('');
                     setModifico(null);
+                    setArchivos([]);
                     setAbierto(false);
                   }
                 }}

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { contratacionService } from '../../services/contratacionService';
 import { DocumentoExpediente, Expediente } from '../../types';
-import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
+import { DocumentoVisible, VisorDocumento, sePuedeVer } from '../shared/VisorDocumento';
 import { ETAPAS } from './Etapas';
 
 /** Numeral del estudio previo (3.1): solo sus adjuntos admiten retirarse desde aquí. */
@@ -304,6 +304,7 @@ export function ExpedienteDelProceso({ procesoId, editable, actividades, recarga
         )}
         {doc.descargaUrl && (
           <>
+            {sePuedeVer(doc.mimeType, doc.nombre) && (
             <button
               type="button"
               onClick={() =>
@@ -319,6 +320,7 @@ export function ExpedienteDelProceso({ procesoId, editable, actividades, recarga
             >
               <Eye className="w-4 h-4" />
             </button>
+            )}
             <a
               href={contratacionService.urlDescarga(doc.descargaUrl)}
               className="shrink-0 p-1.5 rounded-lg text-[#003DA5] hover:bg-white"

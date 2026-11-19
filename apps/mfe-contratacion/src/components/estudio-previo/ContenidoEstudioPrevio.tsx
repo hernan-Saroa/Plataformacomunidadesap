@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Ban,
   ClipboardCheck,
+  Eye,
 } from 'lucide-react';
 
 import { useEstudioPrevio } from '../../hooks/useEstudioPrevio';
@@ -28,6 +29,7 @@ import { CdpDelEstudioPrevio } from './CdpDelEstudioPrevio';
 import { DatosDelPaa } from './DatosDelPaa';
 import { usarAprobacion } from '../shared/usarAprobacion';
 import { useFirma } from '../shared/useFirma';
+import { useSoloVer } from '../shared/SoloLectura';
 
 interface Props {
   procesoId: string;
@@ -53,6 +55,8 @@ interface Props {
 const NUMERAL = '3.1';
 
 export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props) {
+  /** Quien solo puede ver la 3.1 no guarda ni envía. */
+  const soloVer = useSoloVer();
   const {
     datos,
     valores,
@@ -472,6 +476,12 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
               </button>
             )}
           </>
+        ) : soloVer ? (
+          // Sin permiso de editar la 3.1 no se ofrece guardar ni enviar.
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-slate-600">
+            <Eye className="w-3.5 h-3.5" />
+            Solo puedes ver el estudio previo
+          </span>
         ) : (
           <>
             <button

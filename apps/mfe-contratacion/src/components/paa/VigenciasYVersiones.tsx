@@ -3,11 +3,13 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Flag, MapPin, Upload } fr
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DocumentoPaa, VigenciaPaa } from '../../types';
+import { ArchivoPaaRechazadoError, DocumentoPaa, VigenciaPaa } from '../../types';
 import { Modal } from '../shared/Modal';
 import { Permitido } from '../shared/Permitido';
 import { useDialogo } from '../shared/useDialogo';
 import { DetalleVersion } from './DetalleVersion';
+import { ErroresDelArchivo } from './ErroresDelArchivo';
+import { BotonFormatoPaa } from './FormatoDelPaa';
 import { ESTADO_VERSION, fechaCorta } from './formato';
 
 const CLASE_CAMPO =
@@ -37,6 +39,8 @@ export function VigenciasYVersiones() {
   /** El formulario de carga: abierto con el año propuesto, o cerrado. */
   const [carga, setCarga] = useState<{ anio: string; archivo: File | null } | null>(null);
   const [cargando, setCargando] = useState(false);
+  /** El archivo que no se pudo ni guardar como versión: se muestra con todo su detalle. */
+  const [rechazo, setRechazo] = useState<{ archivo: string; error: ArchivoPaaRechazadoError } | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
 
   const leer = (elegir?: string) =>
@@ -89,7 +93,12 @@ export function VigenciasYVersiones() {
       await leer(version.documento.id);
       setAbierta(version.id);
     } catch (err: any) {
-      toast.error('No se pudo cargar el archivo', { description: err.message });
+      if (err instanceof ArchivoPaaRechazadoError) {
+        setRechazo({ archivo: carga.archivo.name, error: err });
+        setCarga(null);
+      } else {
+        toast.error('No se pudo cargar el archivo', { description: err.message });
+      }
     } finally {
       setCargando(false);
     }
@@ -311,6 +320,11 @@ export function VigenciasYVersiones() {
       >
         {carga && (
           <div className="space-y-3">
+            <p className="m-0 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-slate-700">
+              El Excel debe venir con los valores en palabras (Enero, Meses, Sí, Contratación directa) y cada descripción
+              debe empezar por el prefijo de su región, como «META 1 - …».{' '}
+              <BotonFormatoPaa texto="Ver el formato" />
+            </p>
             <div>
               <label htmlFor="paa-archivo" className="block text-xs font-bold text-gray-600 mb-1">
                 Archivo del PAA (.xlsx)
@@ -339,6 +353,25 @@ export function VigenciasYVersiones() {
                 Si el territorio no tenía ese año, se abre sin ser el vigente: lo declaras vigente después de activar su versión.
               </p>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={rechazo !== null}
+        onClose={() => setRechazo(null)}
+        title="El archivo no se cargó"
+        description={rechazo ? `${rechazo.archivo} · ${rechazo.error.message}` : undefined}
+        size="xlarge"
+        icon={<AlertTriangle className="w-5 h-5" />}
+      >
+        {rechazo && (
+          <div className="space-y-3">
+            <p className="m-0 text-xs text-gray-600">
+              No quedó guardado como versión: sin saber de qué territorio es, no hay PAA donde dejarlo. Corrige el archivo
+              según la guía y cárgalo de nuevo.
+            </p>
+            <ErroresDelArchivo errores={rechazo.error.hallazgos} advertencias={rechazo.error.advertencias} />
           </div>
         )}
       </Modal>

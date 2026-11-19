@@ -26,7 +26,7 @@ export class CerrarFinancieramenteDto {
   referenciaPagoFinal: string;
 
   @ApiProperty({ description: 'Fecha del pago final (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha del pago final debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del pago final debe tener el formato AAAA-MM-DD' })
   fechaPagoFinal: string;
 
   @ApiPropertyOptional({ description: 'Observaciones del cierre financiero' })

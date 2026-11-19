@@ -339,6 +339,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
+        tipoPoliza: 'CUMPLIMIENTO_ENTIDADES_ESTATALES',
         numeroPoliza: `POL-170-${CORRIDA}-${n}`,
         amparos: [
           {

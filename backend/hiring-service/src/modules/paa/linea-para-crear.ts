@@ -44,7 +44,7 @@ export async function lineaParaCrear(em: EntityManager, lineaId: string): Promis
 
   if (version.estado !== 'ACTIVA') {
     throw new ConflictException(
-      `La línea ${linea.codigo} es de la versión ${version.numero}, que ya no es la activa. Vuelva a buscarla: puede haber cambiado.`,
+      `La línea ${linea.codigo} es de la versión ${version.numero}, que ya no es la activa. Vuelve a buscarla: puede haber cambiado.`,
     );
   }
   if (!vigencia.vigente) {

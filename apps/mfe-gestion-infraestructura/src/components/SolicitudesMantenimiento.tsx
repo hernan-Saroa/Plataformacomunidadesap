@@ -207,6 +207,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
   const [filtroResponsable, setFiltroResponsable] = useState<string>('TODOS');
   const [filtroContratacion, setFiltroContratacion] = useState<string>('TODAS');
+  const [filtroTerritorial, setFiltroTerritorial] = useState<string>('TODAS');
+  const [ambitoTerritorial, setAmbitoTerritorial] = useState<any>(null);
   const [busquedaTexto, setBusquedaTexto] = useState<string>('');
   const [paginaActual, setPaginaActual] = useState<number>(1);
 
@@ -218,16 +220,28 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     );
   }, [mantenimientos]);
 
+  const opcionesTerritoriales = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const m of mantenimientos || []) {
+      if (m.idDireccionTerritorial && m.direccionTerritorialNombre) {
+        map.set(Number(m.idDireccionTerritorial), m.direccionTerritorialNombre);
+      }
+    }
+    return Array.from(map.entries()).map(([id, nombre]) => ({ id, nombre }));
+  }, [mantenimientos]);
+
   useEffect(() => {
     let cancelado = false;
     const cargar = async () => {
-      const [estados, prioridades] = await Promise.all([
+      const [estados, prioridades, ambito] = await Promise.all([
         infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
         infraestructuraService.getCatalogo('PRIORIDAD'),
+        infraestructuraService.getAmbitoTerritorial(),
       ]);
       if (cancelado) return;
       setCatalogoEstado(estados);
       setCatalogoPrioridad(prioridades);
+      setAmbitoTerritorial(ambito);
     };
     cargar();
     return () => { cancelado = true; };
@@ -344,13 +358,17 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         String(m.espacioFisico || '').toLowerCase().includes(q)
       );
 
-      return estadoOk && prioridadOk && asignacionOk && contratacionOk && busquedaOk;
+      const territorialOk =
+        filtroTerritorial === 'TODAS' ||
+        String(m.idDireccionTerritorial) === filtroTerritorial;
+
+      return estadoOk && prioridadOk && asignacionOk && contratacionOk && territorialOk && busquedaOk;
     });
-  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, opcionesResponsableMap]);
+  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, filtroTerritorial, busquedaTexto, opcionesResponsableMap]);
 
   useEffect(() => {
     setPaginaActual(1);
-  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, lista.length]);
+  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, filtroTerritorial, busquedaTexto, lista.length]);
 
   const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / PAGE_SIZE_SOLICITUDES));
 
@@ -436,6 +454,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     filtroPrioridad !== 'TODAS' ||
     filtroResponsable !== 'TODOS' ||
     filtroContratacion !== 'TODAS' ||
+    filtroTerritorial !== 'TODAS' ||
     Boolean(busquedaTexto.trim());
 
   const toggleExpandir = (id: string) => {
@@ -693,6 +712,28 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
+        {/* Banner de Bandeja Territorial Descentralizada (RF-INF-013) */}
+        {!ambitoTerritorial?.esCentral && ambitoTerritorial?.nombreTerritorial && (
+          <div className="mb-4 flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-50 to-amber-500/5 border border-amber-300 text-amber-950 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black tracking-wide flex items-center gap-2">
+                  <span>BANDEJA TERRITORIAL DESCENTRALIZADA</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-black uppercase tracking-wider border border-amber-300">
+                    {ambitoTerritorial.nombreTerritorial}
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Visualización y gestión técnica circunscrita a la sede y CETAPs de tu Dirección Territorial (RF-INF-013 / RF-INF-005).
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!vistaLoading && lista.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-3">
             {/* EFDS-2373: Buscador libre de texto y radicado */}
@@ -718,7 +759,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             </div>
 
             <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className={`flex-1 grid grid-cols-1 sm:grid-cols-2 ${ambitoTerritorial?.esCentral ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3`}>
                 <label className="block">
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Estado</span>
                   <select
@@ -778,6 +819,23 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     <option value="MENOR">Mantenimiento Menor</option>
                   </select>
                 </label>
+                {ambitoTerritorial?.esCentral && (
+                  <label className="block">
+                    <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Territorial</span>
+                    <select
+                      value={filtroTerritorial}
+                      onChange={(e) => setFiltroTerritorial(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    >
+                      <option value="TODAS">Todas las DT</option>
+                      {opcionesTerritoriales.map((it) => (
+                        <option key={it.id} value={String(it.id)}>
+                          {it.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <div className="flex items-center justify-between lg:justify-end gap-2">
                 <span className="text-xs text-slate-500">
@@ -791,6 +849,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       setFiltroPrioridad('TODAS');
                       setFiltroResponsable('TODOS');
                       setFiltroContratacion('TODAS');
+                      setFiltroTerritorial('TODAS');
                       setBusquedaTexto('');
                     }}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"

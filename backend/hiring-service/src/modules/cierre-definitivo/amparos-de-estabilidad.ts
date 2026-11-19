@@ -1,4 +1,4 @@
-import { AMPAROS_DE_ESTABILIDAD, AmparoVerificado } from '../../entities/cierre-contrato.entity';
+import { AmparoVerificado } from '../../entities/cierre-contrato.entity';
 
 /** Un amparo de una garantía aprobada, tal como lo ve esta regla. */
 export interface AmparoParaCierre {
@@ -7,6 +7,11 @@ export interface AmparoParaCierre {
   numeroPoliza: string;
   /** YYYY-MM-DD. */
   vigenciaHasta: string;
+  /**
+   * Si sigue amparando después de liquidado el contrato (estabilidad, calidad).
+   * Sale del catálogo de tipos de amparo (145): antes era una lista fija.
+   */
+  amparaTrasElContrato: boolean;
 }
 
 export interface EstadoDeAmparos {
@@ -29,8 +34,9 @@ export interface EstadoDeAmparos {
  * Es la regla que decide el cierre definitivo (RF-LIQ-05), y tiene dos aristas
  * que conviene tener a la vista:
  *
- * **Solo miran los de estabilidad y calidad.** Cumplimiento, anticipo, salarios
- * y responsabilidad civil se agotan con el contrato; esperar a que venzan para
+ * **Solo miran los de estabilidad y calidad**, es decir, los que el catálogo
+ * marca como «ampara tras el contrato». Cumplimiento, anticipo, salarios y
+ * responsabilidad civil se agotan con el contrato; esperar a que venzan para
  * cerrarlo en firme retrasaría el cierre sin proteger nada.
  *
  * **Un contrato sin ninguno de esos amparos se puede cerrar de entrada.** Los de
@@ -48,9 +54,7 @@ export function amparosParaCerrar(
   amparos: AmparoParaCierre[],
   hoy: string,
 ): EstadoDeAmparos {
-  const deEstabilidad = amparos.filter((a) =>
-    (AMPAROS_DE_ESTABILIDAD as readonly string[]).includes(a.tipo),
-  );
+  const deEstabilidad = amparos.filter((a) => a.amparaTrasElContrato);
 
   const verificados: AmparoVerificado[] = deEstabilidad
     .map((a) => ({
