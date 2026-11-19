@@ -329,6 +329,17 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [mostrarModalHistorico, setMostrarModalHistorico] = useState<boolean>(false);
   const [toastModal, setToastModal] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
 
+  // RF-INF-013: Modalidad del Ejecutor Territorial y VoBo DT
+  const [modalidadEjecutor, setModalidadEjecutor] = useState<'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL'>('CUADRILLA_CENTRAL_COMISION');
+  const [proveedorLocalNombre, setProveedorLocalNombre] = useState<string>('');
+  const [proveedorLocalNit, setProveedorLocalNit] = useState<string>('');
+  const [ordenCompraContratoLocal, setOrdenCompraContratoLocal] = useState<string>('');
+  const [mostrarModalVoBoCierreDt, setMostrarModalVoBoCierreDt] = useState<boolean>(false);
+  const [voboCierreDtDecision, setVoboCierreDtDecision] = useState<boolean>(true);
+  const [voboCierreDtObservaciones, setVoboCierreDtObservaciones] = useState<string>('');
+  const [enviandoVoBoCierreDt, setEnviandoVoBoCierreDt] = useState<boolean>(false);
+  const [errorVoBoCierreDt, setErrorVoBoCierreDt] = useState<string>('');
+
   // EFDS-2354: Marcar Requiere Contratación / Compra Externa directamente por Técnico o Coordinador
   const [mostrarModalMarcarContratacion, setMostrarModalMarcarContratacion] = useState<boolean>(false);
   const [marcarMotivoContratacion, setMarcarMotivoContratacion] = useState<string>('');
@@ -556,6 +567,14 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setMostrarModalConfirmarRecepcion(false);
       setMostrarModalVerificarInsumos(false);
       setErrorVerifInsumos('');
+      setModalidadEjecutor('CUADRILLA_CENTRAL_COMISION');
+      setProveedorLocalNombre('');
+      setProveedorLocalNit('');
+      setOrdenCompraContratoLocal('');
+      setMostrarModalVoBoCierreDt(false);
+      setVoboCierreDtDecision(true);
+      setVoboCierreDtObservaciones('');
+      setErrorVoBoCierreDt('');
       return;
     }
     const cargar = async () => {
@@ -609,6 +628,17 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           setClasificacionMantenimiento('MENOR');
         }
         setRequiereContratacion(!!d?.requiereContratacion);
+        if (d?.ejecucionTerritorial) {
+          setModalidadEjecutor(d.ejecucionTerritorial.modalidadEjecutorTerritorial || 'CUADRILLA_CENTRAL_COMISION');
+          setProveedorLocalNombre(d.ejecucionTerritorial.proveedorLocalNombre || '');
+          setProveedorLocalNit(d.ejecucionTerritorial.proveedorLocalNit || '');
+          setOrdenCompraContratoLocal(d.ejecucionTerritorial.ordenCompraContratoLocal || '');
+        } else {
+          setModalidadEjecutor('CUADRILLA_CENTRAL_COMISION');
+          setProveedorLocalNombre('');
+          setProveedorLocalNit('');
+          setOrdenCompraContratoLocal('');
+        }
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
         setRemisiones(Array.isArray(rems) ? rems : []);
         setValoraciones(Array.isArray(vals) ? vals : []);
@@ -986,15 +1016,36 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return false;
   })();
 
+  // RF-INF-013: Identifica si la solicitud corresponde a ámbito territorial regional (fuera de Bogotá)
+  const esSolicitudTerritorial = useMemo(() => {
+    if (!detalle) return false;
+    // Si tiene CETAP asignado o nombre de CETAP, siempre es sede regional fuera de Bogotá
+    if (detalle.idCetap || detalle.cetapNombre) return true;
+    // Si idDireccionTerritorial es mayor a 1 (1 = Sede Central Bogotá)
+    if (detalle.idDireccionTerritorial && Number(detalle.idDireccionTerritorial) > 1) return true;
+    // Si el nombre territorial no es Central ni Bogotá
+    if (detalle.direccionTerritorialNombre && !detalle.direccionTerritorialNombre.toUpperCase().includes('CENTRAL')) return true;
+    // Si tiene ejecución territorial registrada previamente como proveedor local o personal DT
+    if (detalle.ejecucionTerritorial?.modalidadEjecutorTerritorial && detalle.ejecucionTerritorial.modalidadEjecutorTerritorial !== 'CUADRILLA_CENTRAL_COMISION') return true;
+    // Por defecto, si tiene idSede o pertenece a Sede Central, NO es territorial
+    return false;
+  }, [detalle]);
+
   const aprobarYAsignarHandler = async () => {
     if (!idSolicitud || !detalle) return;
     const areaTI = esAreaTI;
+    const esTerritorial = esSolicitudTerritorial;
+    const esProveedorLocal = esTerritorial && modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO';
     const codTec = tecnicoManualSeleccionado || sugerencia?.sugerido?.codigo || '';
-    if (!areaTI && !codTec) {
+    if (!areaTI && !esProveedorLocal && !codTec) {
       setToastModal({ tipo: 'err', texto: 'Debes seleccionar un técnico para aprobar y asignar. Usa "Sugerir técnico" o elige uno manualmente.' });
       return;
     }
-    const tecnicoItem = !areaTI
+    if (esProveedorLocal && !proveedorLocalNombre.trim()) {
+      setToastModal({ tipo: 'err', texto: 'Debes ingresar el nombre o razón social del contratista o proveedor local regional.' });
+      return;
+    }
+    const tecnicoItem = !areaTI && !esProveedorLocal
       ? (tecnicosCatalogo.find((t) => t.codigo === codTec) ?? sugerencia?.sugerido ?? null)
       : null;
     const idTecnicoAsignado = tecnicoItem?.metadata?.idUserAuth ?? tecnicoItem?.id_user_auth ?? null;
@@ -1002,11 +1053,15 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     setEjecutandoAprobar(true);
     try {
       const payload: any = {
-        tecnicoCodigo: areaTI ? undefined : codTec,
-        idTecnicoAsignado: areaTI ? undefined : (idTecnicoAsignado || undefined),
+        tecnicoCodigo: areaTI || esProveedorLocal ? undefined : codTec,
+        idTecnicoAsignado: areaTI || esProveedorLocal ? undefined : (idTecnicoAsignado || undefined),
         observaciones: aprobacionObservaciones.trim() || undefined,
         clasificacionMantenimiento,
-        requiereContratacion: clasificacionMantenimiento === 'MAYOR',
+        requiereContratacion: clasificacionMantenimiento === 'MAYOR' || requiereContratacion,
+        modalidadEjecutorTerritorial: esTerritorial ? modalidadEjecutor : undefined,
+        proveedorLocalNombre: esProveedorLocal ? proveedorLocalNombre.trim() : undefined,
+        proveedorLocalNit: esProveedorLocal ? proveedorLocalNit.trim() : undefined,
+        ordenCompraContratoLocal: esProveedorLocal ? ordenCompraContratoLocal.trim() : undefined,
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
       if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
@@ -1016,7 +1071,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         if (areaTI) {
           setToastModal({ tipo: 'ok', texto: 'Solicitud TECNOLÓGICA APROBADA. Confirmación de recepción enviada a Oficina TI.' });
         } else {
-          const nombre = res?.responsableAsignado || tecnicoItem?.nombre || codTec;
+          const nombre = res?.responsableAsignado || (esProveedorLocal ? proveedorLocalNombre : (tecnicoItem?.nombre || codTec));
           setToastModal({ tipo: 'ok', texto: `Solicitud APROBADA y ASIGNADA a ${nombre}. Estado actualizado.` });
         }
       }
@@ -1243,6 +1298,37 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorVoBo(err?.message || 'No se pudo registrar el Visto Bueno.');
     } finally {
       setEjecutandoVoBo(false);
+    }
+  };
+
+  const registrarVoBoCierreDtHandler = async () => {
+    if (!idSolicitud || !detalle) return;
+    if (!voboCierreDtDecision && (!voboCierreDtObservaciones.trim() || voboCierreDtObservaciones.trim().length < 5)) {
+      setErrorVoBoCierreDt('Debe ingresar las observaciones de la Dirección Territorial (mínimo 5 caracteres).');
+      return;
+    }
+    setEnviandoVoBoCierreDt(true);
+    setErrorVoBoCierreDt('');
+    try {
+      await infraestructuraService.registrarVoBoCierreDt(idSolicitud, {
+        aprobado: voboCierreDtDecision,
+        voboCierreDtAprobado: voboCierreDtDecision,
+        observaciones: voboCierreDtObservaciones.trim() || undefined,
+        voboCierreDtObservaciones: voboCierreDtObservaciones.trim() || undefined,
+      });
+      setToastModal({
+        tipo: 'ok',
+        texto: voboCierreDtDecision
+          ? 'VoBo de Cierre Técnico Territorial emitido como Aprobado.'
+          : 'VoBo de Cierre Técnico Territorial registrado con observaciones.',
+      });
+      setMostrarModalVoBoCierreDt(false);
+      await recargarDetalle();
+      await onCambioExitoso?.();
+    } catch (err: any) {
+      setErrorVoBoCierreDt(err?.message || 'No se pudo registrar el VoBo de Cierre Territorial.');
+    } finally {
+      setEnviandoVoBoCierreDt(false);
     }
   };
 
@@ -2694,12 +2780,101 @@ const puedeCerrarTecnicamente = Boolean(
                                 </div>
                               )}
 
+                              {/* Modalidad del Ejecutor Territorial (RF-INF-013) */}
+                              {esSolicitudTerritorial && (
+                                <div className="rounded-xl border border-amber-200/90 bg-amber-50/60 p-3 space-y-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-900">
+                                      Modalidad del Ejecutor Territorial (RF-INF-013)
+                                    </span>
+                                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                      {detalle.direccionTerritorialNombre || 'Dirección Territorial'}
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalidadEjecutor('CUADRILLA_CENTRAL_COMISION')}
+                                      className={`px-2.5 py-2 rounded-xl text-xs font-bold border text-left transition-all flex flex-col justify-between ${
+                                        modalidadEjecutor === 'CUADRILLA_CENTRAL_COMISION'
+                                          ? 'bg-amber-100/90 border-amber-500 text-amber-950 ring-2 ring-amber-300'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <span className="font-bold text-[11px]">Cuadrilla Central</span>
+                                      <span className="text-[10px] text-slate-500 font-normal">Comisión UMI central</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalidadEjecutor('PROVEEDOR_LOCAL_CONTRATADO')}
+                                      className={`px-2.5 py-2 rounded-xl text-xs font-bold border text-left transition-all flex flex-col justify-between ${
+                                        modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO'
+                                          ? 'bg-amber-100/90 border-amber-500 text-amber-950 ring-2 ring-amber-300'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <span className="font-bold text-[11px]">Proveedor Local</span>
+                                      <span className="text-[10px] text-slate-500 font-normal">Contratista regional</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalidadEjecutor('PERSONAL_PLANTA_TERRITORIAL')}
+                                      className={`px-2.5 py-2 rounded-xl text-xs font-bold border text-left transition-all flex flex-col justify-between ${
+                                        modalidadEjecutor === 'PERSONAL_PLANTA_TERRITORIAL'
+                                          ? 'bg-amber-100/90 border-amber-500 text-amber-950 ring-2 ring-amber-300'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <span className="font-bold text-[11px]">Personal Propio DT</span>
+                                      <span className="text-[10px] text-slate-500 font-normal">Planta territorial</span>
+                                    </button>
+                                  </div>
+
+                                  {modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO' && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-amber-200/60">
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre / Razón Social *</label>
+                                        <input
+                                          type="text"
+                                          value={proveedorLocalNombre}
+                                          onChange={(e) => setProveedorLocalNombre(e.target.value)}
+                                          placeholder="Ej: Mantenimientos del Norte S.A.S."
+                                          className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">NIT del Proveedor</label>
+                                        <input
+                                          type="text"
+                                          value={proveedorLocalNit}
+                                          onChange={(e) => setProveedorLocalNit(e.target.value)}
+                                          placeholder="Ej: 900.123.456-7"
+                                          className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Orden Compra / Contrato Local</label>
+                                        <input
+                                          type="text"
+                                          value={ordenCompraContratoLocal}
+                                          onChange={(e) => setOrdenCompraContratoLocal(e.target.value)}
+                                          placeholder="Ej: OC-2026-0891"
+                                          className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                             </div>
 
                             {/* Selección de Técnico / Responsable de Diagnóstico */}
                             <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
                               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                {clasificacionMantenimiento === 'MAYOR'
+                                {modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO' && esSolicitudTerritorial
+                                  ? 'Ejecutor Asignado (Proveedor Local)'
+                                  : clasificacionMantenimiento === 'MAYOR'
                                   ? 'Responsable Diagnóstico Mayor (Coordinación GIM / Grupo Obras)'
                                   : sugerencia
                                   ? 'Reasignación manual (opcional)'
@@ -2709,19 +2884,27 @@ const puedeCerrarTecnicamente = Boolean(
                                 <select
                                   value={tecnicoManualSeleccionado}
                                   onChange={(e) => setTecnicoManualSeleccionado(e.target.value)}
-                                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-xs font-semibold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
-                                  disabled={cargandoTecnicos}
+                                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-xs font-semibold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-500"
+                                  disabled={cargandoTecnicos || (modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO' && Boolean(detalle?.idDireccionTerritorial || detalle?.idCetap))}
                                 >
-                                  <option value="">
-                                    {clasificacionMantenimiento === 'MAYOR'
-                                      ? '— Seleccione responsable para diagnóstico (P5/P3) —'
-                                      : `— Seleccione técnico ${sugerencia ? '(sobrescribe sugerencia)' : ''} —`}
-                                  </option>
-                                  {tecnicosFiltrados.map((t) => (
-                                    <option key={t.codigo} value={t.codigo}>
-                                      [{t.codigo}] {t.nombreDisplay || t.nombre} {t.metadata?.roleCod ? `(Perfil ${t.metadata.roleCod})` : ''} · Carga {t.cargaVigente ?? 0}
+                                  {modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO' && (detalle?.idDireccionTerritorial || detalle?.idCetap) ? (
+                                    <option value="">
+                                      — Ejecución directa por Proveedor Local Contratado ({proveedorLocalNombre || 'Pendiente de nombre'}) —
                                     </option>
-                                  ))}
+                                  ) : (
+                                    <>
+                                      <option value="">
+                                        {clasificacionMantenimiento === 'MAYOR'
+                                          ? '— Seleccione responsable para diagnóstico (P5/P3) —'
+                                          : `— Seleccione técnico ${sugerencia ? '(sobrescribe sugerencia)' : ''} —`}
+                                      </option>
+                                      {tecnicosFiltrados.map((t) => (
+                                        <option key={t.codigo} value={t.codigo}>
+                                          [{t.codigo}] {t.nombreDisplay || t.nombre} {t.metadata?.roleCod ? `(Perfil ${t.metadata.roleCod})` : ''} · Carga {t.cargaVigente ?? 0}
+                                        </option>
+                                      ))}
+                                    </>
+                                  )}
                                 </select>
                                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                               </div>
@@ -3201,6 +3384,60 @@ const puedeCerrarTecnicamente = Boolean(
                       )}
                     </div>
                   </div>
+                  )}
+
+                  {/* ===== VoBo de Cierre Técnico por Dirección Territorial (RF-INF-013 / RF-INF-005) ===== */}
+                  {(esSolicitudTerritorial || Boolean(detalle.ejecucionTerritorial?.voboCierreDtFecha)) && (
+                    <div
+                      className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/30 p-4 space-y-3 shadow-sm mt-5"
+                      style={{ marginTop: '1.25rem' }}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-200 shadow-sm shrink-0">
+                            <ShieldCheck className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                                VoBo de Cierre Técnico Territorial (DT)
+                              </span>
+                              {detalle.ejecucionTerritorial?.voboCierreDtAprobado !== null && detalle.ejecucionTerritorial?.voboCierreDtAprobado !== undefined ? (
+                                <span className={`px-2 py-0.5 text-[10px] font-black rounded-full border ${
+                                  detalle.ejecucionTerritorial.voboCierreDtAprobado
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                                }`}>
+                                  {detalle.ejecucionTerritorial.voboCierreDtAprobado ? 'VoBo DT Aprobado' : 'VoBo DT con Observaciones'}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                  Pendiente de VoBo DT
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              {detalle.ejecucionTerritorial?.voboCierreDtFecha
+                                ? `Emitido el ${formatearFecha(detalle.ejecucionTerritorial.voboCierreDtFecha)} por ${detalle.ejecucionTerritorial.voboCierreDtUsuario || 'DT'}${detalle.ejecucionTerritorial.voboCierreDtObservaciones ? `: "${detalle.ejecucionTerritorial.voboCierreDtObservaciones}"` : ''}`
+                                : 'Conformidad técnica y visto bueno final de la Dirección Territorial / CETAP sobre los trabajos ejecutados.'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVoboCierreDtDecision(true);
+                            setVoboCierreDtObservaciones(detalle.ejecucionTerritorial?.voboCierreDtObservaciones || '');
+                            setErrorVoBoCierreDt('');
+                            setMostrarModalVoBoCierreDt(true);
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all shrink-0"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {detalle.ejecucionTerritorial?.voboCierreDtFecha ? 'Actualizar VoBo DT' : 'Emitir VoBo DT'}
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   
@@ -5186,6 +5423,188 @@ const puedeCerrarTecnicamente = Boolean(
                         <>
                           <BadgeCheck className="w-3.5 h-3.5" /> {voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}
                     </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal de Registro de VoBo de Cierre Técnico Territorial DT (RF-INF-013 / RF-INF-005) */}
+            {mostrarModalVoBoCierreDt && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget && !enviandoVoBoCierreDt) {
+                    setMostrarModalVoBoCierreDt(false);
+                    setErrorVoBoCierreDt('');
+                  }
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 520,
+                    maxHeight: 'calc(100% - 24px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 16,
+                    border: '1px solid #fcd34d',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    style={{ flexShrink: 0 }}
+                    className="flex items-start justify-between gap-4 p-5 border-b border-amber-100 bg-amber-50/80 rounded-t-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-amber-100">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-slate-900 tracking-tight">
+                            VoBo de Cierre Técnico Territorial (DT)
+                          </h3>
+                          <span className="font-mono text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-300">
+                            {detalle?.consecutivo}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1">
+                          Conformidad y recibido técnico por parte de la Dirección Territorial / CETAP.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarModalVoBoCierreDt(false);
+                        setErrorVoBoCierreDt('');
+                      }}
+                      disabled={enviandoVoBoCierreDt}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                      aria-label="Cerrar modal de VoBo DT"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                    className="p-5 space-y-4"
+                  >
+                    {errorVoBoCierreDt && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600 mt-0.5" />
+                        <span>{errorVoBoCierreDt}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                        Concepto Técnico de la Dirección Territorial
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setVoboCierreDtDecision(true)}
+                          className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                            voboCierreDtDecision
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-200'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black">VoBo Conforme / Aprobado</span>
+                            {voboCierreDtDecision && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                          </div>
+                          <span className="text-[10px] text-slate-500">
+                            Los trabajos o bienes recibidos satisfacen las necesidades técnicas en la territorial.
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVoboCierreDtDecision(false)}
+                          className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                            !voboCierreDtDecision
+                              ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-200'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black">Con Observaciones</span>
+                            {!voboCierreDtDecision && <AlertCircle className="w-4 h-4 text-amber-600" />}
+                          </div>
+                          <span className="text-[10px] text-slate-500">
+                            Presenta reparos, pendientes de entrega o inconformidades en el CETAP o sede.
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                        Observaciones y Concepto DT {voboCierreDtDecision ? '(opcional)' : '(obligatorio)'}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={voboCierreDtObservaciones}
+                        onChange={(e) => setVoboCierreDtObservaciones(e.target.value)}
+                        placeholder={
+                          voboCierreDtDecision
+                            ? 'Detalles de satisfacción, acta de entrega territorial o notas de conformidad...'
+                            : 'Especifique los defectos, faltantes o motivos por los que no se aprueba el cierre...'
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-500 resize-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2.5 rounded-b-2xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarModalVoBoCierreDt(false);
+                        setErrorVoBoCierreDt('');
+                      }}
+                      disabled={enviandoVoBoCierreDt}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-white transition-all disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={registrarVoBoCierreDtHandler}
+                      disabled={enviandoVoBoCierreDt}
+                      className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60"
+                    >
+                      {enviandoVoBoCierreDt ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-3.5 h-3.5" /> {voboCierreDtDecision ? "Confirmar VoBo DT Aprobado" : "Registrar VoBo DT con Observaciones"}
+                        </>
                       )}
                     </button>
                   </div>
