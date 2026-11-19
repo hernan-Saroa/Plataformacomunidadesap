@@ -1198,9 +1198,10 @@ export function DetalleProceso({
                 devuelta={fueDevuelta}
                 recargarToken={tokenExpediente}
                 onRevisar={onRevisar}
+                onIrA={trabajarEn}
                 // Solo si la modalidad tiene adendas: es a donde salta la 6.1
                 // para extender el cierre (EFDS-1155).
-                onIrA={adendas ? trabajarEn : undefined}
+                hayAdendas={!!adendas}
               />
             </div>
 

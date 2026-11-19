@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   Download,
   Megaphone,
@@ -39,6 +40,10 @@ import { useDialogo } from '../shared/useDialogo';
 interface Props {
   procesoId: string;
   onCambio?: () => void;
+  /** La actividad desde la que se abrió el panel (6.4, 6.5 o 6.6). */
+  numeral?: string;
+  /** Lleva a otra actividad del proceso, para volver a la 6.4. */
+  onIrA?: (numeral: string) => void;
 }
 
 const NUMERAL_TRASLADO = '6.4';
@@ -72,7 +77,7 @@ const ETIQUETA_TIPO: Record<TipoSubsanacion, string> = {
  * comité rectifica después, este informe no cambia. Es la pieza que el oferente
  * recibió.
  */
-export function PanelTraslado({ procesoId, onCambio }: Props) {
+export function PanelTraslado({ procesoId, onCambio, numeral = NUMERAL_TRASLADO, onIrA }: Props) {
   const dialogo = useDialogo();
   const firmaTraslado = useFirma(NUMERAL_TRASLADO, 'Trasladar el informe de evaluación');
   const firmaCierre = useFirma(NUMERAL_SUBSANACIONES, 'Cerrar el traslado');
@@ -331,7 +336,35 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
       {informe && <ResumenInforme informe={informe} />}
 
-      {traslado.puedeTrasladar && (
+      {/*
+        * El informe nuevo nace en la 6.4. Desde la 6.5 o la 6.6 —que dependen
+        * de ella y quedan bloqueadas mientras no se traslade— el formulario no
+        * se podía usar y no decía por qué (BUG-002 de QA, 17/11): se dice y se
+        * lleva a la 6.4, que es donde queda la relación con el informe.
+        */}
+      {traslado.puedeTrasladar && numeral !== NUMERAL_TRASLADO && (
+        <Aviso
+          tono="aviso"
+          titulo={traslado.anulados.length > 0 ? 'El informe se anuló' : 'El informe todavía no se ha trasladado'}
+        >
+          <span className="block">
+            El nuevo informe se publica y se traslada en la actividad 6.4. Cuando se traslade,
+            aquí se registran las subsanaciones y observaciones contra él.
+          </span>
+          {onIrA ? (
+            <button
+              type="button"
+              onClick={() => onIrA(NUMERAL_TRASLADO)}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-[#003DA5] text-white hover:opacity-90"
+            >
+              Ir a la 6.4 a trasladar el nuevo informe
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          ) : null}
+        </Aviso>
+      )}
+
+      {traslado.puedeTrasladar && numeral === NUMERAL_TRASLADO && (
         <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
           <p className="text-[12.5px] font-bold text-slate-800 m-0">
             Publicación y traslado del informe preliminar

@@ -92,6 +92,11 @@ interface Props {
   onRevisar?: (numeral: string) => void;
   /** Abre otra actividad del proceso; sin él, el panel no ofrece el salto. */
   onIrA?: (numeral: string) => void;
+  /**
+   * Si la modalidad tiene adendas (5.13). Sin ellas la 6.1 no ofrece ir a
+   * extender el cierre, aunque el salto a otras actividades sí exista.
+   */
+  hayAdendas?: boolean;
 }
 
 /**
@@ -114,6 +119,7 @@ export function PanelDeLaActividad({
   recargarToken,
   onRevisar,
   onIrA,
+  hayAdendas = true,
 }: Props) {
   return (
     <>
@@ -147,14 +153,14 @@ export function PanelDeLaActividad({
         <PanelOfertas
           procesoId={procesoId}
           onCambio={onCambio}
-          onIrAAdendas={onIrA ? () => onIrA(NUMERAL_ADENDAS) : undefined}
+          onIrAAdendas={onIrA && hayAdendas ? () => onIrA(NUMERAL_ADENDAS) : undefined}
         />
       ) : numeral === NUMERAL_COMITE ? (
         <PanelComite procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_EVALUACION ? (
         <PanelEvaluacion procesoId={procesoId} onCambio={onCambio} />
       ) : numeral && NUMERALES_TRASLADO.includes(numeral) ? (
-        <PanelTraslado procesoId={procesoId} onCambio={onCambio} />
+        <PanelTraslado procesoId={procesoId} onCambio={onCambio} numeral={numeral} onIrA={onIrA} />
       ) : numeral && NUMERALES_ADJUDICACION.includes(numeral) ? (
         <PanelAdjudicacion procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
