@@ -204,6 +204,26 @@ describe('PanelCdp · ya cargado', () => {
     expect(datos).toMatchObject({ numero: 'CDP-13', valor: 2_000_000, rubro: 'A-02' });
     expect(archivo).toBeNull();
   });
+
+  it('al retirar la 4.2 de aprobación ofrece corregir sin recargar la página (BUG-001, QA 20/11)', async () => {
+    const expedido = { cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true };
+    const leer = vi
+      .spyOn(contratacionService, 'respaldoCdp')
+      .mockResolvedValueOnce(respaldo({ ...expedido, puedeCorregir: false }) as never)
+      .mockResolvedValueOnce(respaldo({ ...expedido, puedeCorregir: true }) as never);
+
+    const { rerender } = render(
+      <PanelCdp numeral="4.2" procesoId="p-1" valorEstimado={2_000_000} recargarToken={0} />,
+    );
+    await screen.findByText('CDP CDP-12 cargado');
+    expect(screen.queryByRole('button', { name: /Corregir el CDP/ })).toBeNull();
+
+    // «Retirar de aprobación» vive fuera del panel y avisa subiendo el token.
+    rerender(<PanelCdp numeral="4.2" procesoId="p-1" valorEstimado={2_000_000} recargarToken={1} />);
+
+    expect(await screen.findByRole('button', { name: /Corregir el CDP/ })).toBeInTheDocument();
+    expect(leer).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('frenteAlEstimado', () => {

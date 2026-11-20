@@ -146,6 +146,7 @@ export function PanelDeLaActividad({
           procesoId={procesoId}
           valorEstimado={valorEstimado}
           onCambio={onCambio}
+          recargarToken={recargarToken}
         />
       ) : numeral === NUMERAL_ADENDAS ? (
         <PanelAdendas procesoId={procesoId} onCambio={onCambio} />

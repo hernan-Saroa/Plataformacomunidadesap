@@ -17,6 +17,11 @@ interface Props {
   procesoId: string;
   valorEstimado?: number | null;
   onCambio?: () => void;
+  /**
+   * Sube cuando cambia algo fuera del panel, como retirar la 4.2 de aprobación.
+   * Sin él, «Corregir el CDP» no aparecía hasta recargar la página (BUG-001).
+   */
+  recargarToken?: number;
 }
 
 const formatoPesos = new Intl.NumberFormat('es-CO', {
@@ -71,7 +76,7 @@ export function frenteAlEstimado(
  * área solo carga el certificado que la Dirección Financiera ya expidió. Si lo
  * cargó desde el estudio previo, la 4.2 se cerró sola y aquí solo se consulta.
  */
-export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
+export function PanelCdp({ procesoId, valorEstimado, onCambio, recargarToken }: Props) {
   const firma = useFirma(NUMERAL_CARGUE, 'Cargue del CDP');
   const dialogo = useDialogo();
   const [respaldo, setRespaldo] = useState<EstadoRespaldo | null>(null);
@@ -125,7 +130,7 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
 
   useEffect(() => {
     cargar();
-  }, [procesoId]);
+  }, [procesoId, recargarToken]);
 
   const ejecutar = async (accion: () => Promise<unknown>, exito: string) => {
     setTrabajando(true);
@@ -141,7 +146,8 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
     }
   };
 
-  if (cargando) {
+  // Solo la primera vez: al releer con datos ya en pantalla, el panel no se vacía.
+  if (cargando && !respaldo) {
     return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
   }
   if (!respaldo) {
