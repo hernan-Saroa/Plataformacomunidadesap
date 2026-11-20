@@ -810,7 +810,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           const expandido = !!expandidos[m.idSolicitud];
           const estadoRechazada = String(m.estado || '').toUpperCase() === 'RECHAZADA';
           const sla = clasificarSLA(m.fechaLimiteAtencion);
-          const estadoFinalizado = ['CERRADA', 'COMPLETADA', 'CERRADA_SIN_ATENCION'].includes(String(m.estado || '').toUpperCase());
+          const estadoFinalizado = ['CERRADA', 'COMPLETADA', 'CERRADA_SIN_ATENCION', 'CERRADA_SIN_RESPUESTA'].includes(String(m.estado || '').toUpperCase());
           const esVencida = !estadoFinalizado && !estadoRechazada && sla.clase === 'vencido';
           return (
             <div
@@ -1013,6 +1013,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     >
                       <PackageX className="w-3.5 h-3.5 text-rose-600" />
                       Cerrada por falta de insumos
+                    </span>
+                  ) : String(m.estado || '').toUpperCase() === 'CERRADA_SIN_RESPUESTA' ? (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-700 border-slate-300 shadow-sm"
+                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario (RF-INF-008)"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                      Cerrada – Sin respuesta
                     </span>
                   ) : (
                     <span

@@ -224,9 +224,9 @@ export const GestionInfraestructuraModule: React.FC = () => {
   useEffect(() => {
     if (loading) return;
     const tabsOrden = [
+      { clave: 'mantenimiento', puede: puedeVerMantenimiento },
       { clave: 'espacios', puede: puedeVerEspacios },
       { clave: 'sedes', puede: puedeVerSedes },
-      { clave: 'mantenimiento', puede: puedeVerMantenimiento },
       { clave: 'categorias', puede: puedeVerCategorias },
       { clave: 'parametros', puede: puedeVerParametros },
       { clave: 'reportes', puede: puedeVerReportes },
@@ -347,6 +347,21 @@ export const GestionInfraestructuraModule: React.FC = () => {
 
       {/* Navegación por Pestañas */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-px overflow-x-auto">
+        {puedeVerMantenimiento && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('mantenimiento')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'mantenimiento'
+                ? 'border-amber-600 text-amber-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            Radicación de Solicitudes ({mantenimientos.length})
+          </button>
+        )}
+
         {puedeVerEspacios && (
           <button
             type="button"
@@ -374,21 +389,6 @@ export const GestionInfraestructuraModule: React.FC = () => {
           >
             <Building2 className="w-4 h-4" />
             Sedes Territoriales ({sedes.length})
-          </button>
-        )}
-
-        {puedeVerMantenimiento && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('mantenimiento')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
-              activeTab === 'mantenimiento'
-                ? 'border-amber-600 text-amber-600 bg-white shadow-sm'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-            }`}
-          >
-            <Wrench className="w-4 h-4" />
-            Mantenimiento ({mantenimientos.length})
           </button>
         )}
 

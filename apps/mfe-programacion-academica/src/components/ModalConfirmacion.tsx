@@ -43,7 +43,7 @@ export function ModalConfirmacion({ titulo, children, advertencia, onCancelar, o
   }, []);
 
   return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-[2px]" style={{ backgroundColor: 'rgba(15,23,42,.6)', zIndex: 1000 }} onMouseDown={(e) => { if (e.target === e.currentTarget && !ocupado) onCancelar(); }}>
+    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-[2px]" style={{ backgroundColor: 'rgba(15,23,42,.6)', zIndex: 1100 }} onMouseDown={(e) => { if (e.target === e.currentTarget && !ocupado) onCancelar(); }}>
       <section ref={panel} role="alertdialog" aria-modal="true" aria-labelledby={tituloId} aria-describedby={contenidoId}
         className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div className="h-1.5 bg-[#003DA5]" />

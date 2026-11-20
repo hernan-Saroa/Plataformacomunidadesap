@@ -5,6 +5,8 @@ import { pedirJson } from './catalogoApi';
 export interface GrupoVirtualDocente {
   idGrupo: string;
   numeroGrupo: number;
+  /** 'virtual' o 'distancia' (065): las dos funcionan igual. */
+  modalidad?: 'virtual' | 'distancia';
   codigoAsignatura: string;
   asignatura: string;
   programa: string;

@@ -50,8 +50,13 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
   });
   afterAll(async () => { if (client) await client.end().catch(() => {}); });
 
+  const ds = (): any => {
+    const d: any = { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) };
+    d.transaction = (cb: (m: any) => Promise<any>) => cb(d); // ya estamos dentro de BEGIN
+    return d;
+  };
   const servicio = (permisos: string[], approvesAll = false) => new DocenciaDecisionesService(
-    { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) } as any,
+    ds(),
     { resolveForUser: async () => ({ approvesAll, permissions: new Set(permisos) }) } as any,
   );
 
@@ -73,7 +78,8 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
     const aprobacionesAntes = await contarAprobaciones();
     const r = await servicio(['pta.approve.academica.pregrado']).registrar('u2', decision());
     // Apagada en el PTA (variable sin definir): solo registra, no aplica.
-    expect(r).toEqual({ registrada: true, aplicada: false, estadoAplicacion: null });
+    // EFDS-2435: apagada, se registra y queda PENDIENTE de aplicarse (no es un error ni se reintenta).
+    expect(r).toEqual({ registrada: true, aplicada: false, estadoAplicacion: 'pendiente_interoperabilidad_apagada', motivo: 'interoperabilidad_apagada' });
     const fila = (await client!.query(
       `SELECT nivel, horas::float AS horas, aplicada_en, jsonb_array_length(firmas) AS firmas
          FROM academic_work_plan.docencia_concertada WHERE id_concertacion = $1`, [decision().idConcertacion])).rows[0];
@@ -108,7 +114,7 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
        RETURNING id_user::text AS id`, [idPerson])).rows[0].id;
     // Solo 'apr' puede aprobar en el PTA; el docente no.
     const svc = (aprobadorPuede: boolean) => new DocenciaDecisionesService(
-      { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) } as any,
+      ds(),
       { resolveForUser: async (u: string) => ({ approvesAll: false,
         permissions: new Set(u === 'apr' && aprobadorPuede ? ['pta.approve.academica.pregrado'] : []) }) } as any,
     );

@@ -340,6 +340,36 @@ export class MantenimientoController {
     return this.mantenimientoService.updateVoBoConfig(body);
   }
 
+  @Get('parametros/conformidad-config')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1737 / RF-INF-008: Consultar configuración parametrizable de plazo y cierre automático de conformidad.',
+  })
+  getConformidadConfig() {
+    return this.mantenimientoService.getConformidadConfig();
+  }
+
+  @Patch('parametros/conformidad-config')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1737 / RF-INF-008: Actualizar configuración parametrizable de plazo y cierre automático de conformidad.',
+  })
+  actualizarConformidadConfig(@Body() body: any, @Req() req: any) {
+    return this.mantenimientoService.updateConformidadConfig(body, req?.user);
+  }
+
+  @Get('conformidad/pendientes')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1737 / RF-INF-008: Listar solicitudes en estado COMPLETADA pendientes de confirmación con estado de vencimiento.',
+  })
+  listarPendientesConformidad() {
+    return this.mantenimientoService.listarSolicitudesPendientesConformidad();
+  }
+
   // ---------------------------------------------------------------------------
   // EFDS-1733 / EFDS-174X: Técnicos mantenimiento
   // OPCIÓN A (DECISIÓN FINAL): Source of Truth = auth-service roles P3/P4.
@@ -781,14 +811,15 @@ export class MantenimientoController {
   // Declaradas ANTES de wildcard :id para evitar colisiones.
   // ---------------------------------------------------------------------------
   @Post('ejecutar-cierres-sin-respuesta')
+  @Public()
   @ApiOperation({
     summary:
-      'EFDS-1737: Cierre automático de todas las COMPLETADAS cuyo plazo de conformidad venció. Resultado: CERRADA_SIN_ATENCION. Guardia roles SUPER_ADMIN/GESTOR. Devuelve {actualizadas, ids}.',
+      'EFDS-1737 / RF-INF-008: Cierre automático batch de todas las COMPLETADAS cuyo plazo de conformidad venció. Resultado: CERRADA_SIN_RESPUESTA. Guardia roles SUPER_ADMIN/GESTOR. Devuelve {actualizadas, ids, consecutivos, configUsada}.',
   })
-  @ApiResponse({ status: 200, description: 'Proceso batch ejecutado. Retorna N y lista de IDs afectados.' })
+  @ApiResponse({ status: 200, description: 'Proceso batch ejecutado. Retorna N y lista de IDs y consecutivos afectados.' })
   @ApiResponse({ status: 403, description: 'Rol no permitido.' })
   ejecutarCierresSinRespuesta(@Req() req: any) {
-    return this.mantenimientoService.ejecutarCierresSinRespuestaVencidos(req?.user);
+    return this.mantenimientoService.ejecutarCierresSinRespuestaVencidos(req?.user, true);
   }
 
   @Post(':idSolicitud/conformidad/confirmar')

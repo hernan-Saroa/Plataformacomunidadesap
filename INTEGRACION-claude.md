@@ -1309,3 +1309,222 @@ Reporte de QA: al crear grupos de una asignatura no cargan los CETAP. Trabajado 
 - Ahora ambos archivos encienden la concertación (corte 2026-1, sobreescribible con variables de entorno del servidor) y fijan las URL entre servicios. Dev y prod no se tocaron.
 - El menú muestra «Concertación de la docencia» también apagada, con el motivo, en vez de desaparecer.
 - Para que tome efecto hay que **recrear** los contenedores `academic-schedule-service` y `academic-work-plan-service` del ambiente (`docker compose -f docker-compose.<amb>.yml up -d academic-schedule-service academic-work-plan-service`) y desplegar el MFE de Programación Académica.
+
+## 37. Concertación siempre encendida, modalidad a distancia, grupos y horario (nov-2026)
+
+- **Concertación encendida por defecto en todos los ambientes.** `concertacionHabilitada()` (PA) y `habilitadaLocal()` (PTA) ya no exigen `PROG_CONCERTACION_HABILITADA=true`: solo `false` la apaga. Sin `PROG_CONCERTACION_DESDE_PERIODO`, el corte es `2026-1` (`CORTE_POR_DEFECTO`); mal escrito, apagada. No depende de que el compose del ambiente traiga las variables.
+- **Un solo camino:** el menú ya no muestra «Aprobación territorial» (EFDS-1939). «Concertación de la docencia» aparece SIEMPRE, también al superusuario sin nada que concertar y aun si la configuración no responde (el panel dice por qué).
+- **Modalidad «a distancia»** (migración PA 065): funciona igual que la virtual — sin aula, sesiones mediadas por tecnología, horario opcional que define el docente. `esSinAula()` / `SQL_MODALIDADES_SIN_AULA` en `grupo.entity.ts` reemplazan las comparaciones con `'virtual'`.
+- **Aulas de la Sede Central** (065): estaban amarradas al código `CET-0288`; en QA la Sede Central es `CET-0001` y ningún aula salía válida. La migración las re-vincula al CETAP llamado exactamente «Sede Central» de la territorial SC, solo si es único (si no, avisa y no adivina).
+- **Crear grupos:** sin buscador de CETAP ni selector general; la oferta se elige en cada grupo («Guardar grupo»). Si hay UNA sola oferta posible, los grupos nuevos quedan en ella. Botón «Asignar horario» por grupo. Un grupo eliminado ya no queda abierto («Grupo no encontrado»).
+- **Horario:** botón «Agregar sesión» y clic/arrastre en la rejilla abren un MODAL centrado (día, horas, modalidad de la sesión, aula); funciona con ratón y táctil (un toque abre el modal) y la rejilla se desplaza en horizontal en pantallas pequeñas.
+
+## 38. Bugs de QA (EFDS-2427 … 2435) — contratos para Codex
+
+> Rama `feature/pa/bugs-qa-claude`. Estos contratos se escriben ANTES de construir; Codex construye las pantallas contra ellos. Respuestas envueltas como siempre en `{ success, data }`. Errores: 400 validación, 403 permiso, 404 no existe, 409 regla de estado (con `message` legible y `code` estable).
+
+### 38.1 · EFDS-2434 — Candidatos con bloqueados y motivos
+
+`GET /programacion-academica/api/v1/asignaciones/candidatos?grupo=<uuid>&franjas=<uuid>,<uuid>` (sin cambios de ruta).
+
+```jsonc
+{
+  "grupo": "uuid", "horarioPorDefinir": false,
+  "franjas": [{ "idFranja": "uuid", "diaSemana": "MARTES", "horaInicio": "08:00", "horaFin": "10:00", "docenteActual": "Nombre" | null }],
+  "area": { "codigo": "AF-04", "nombre": "Finanzas Públicas", "nucleoAsignatura": "…" } | null,
+  "candidatos": [{                       // TODOS los docentes del área: aptos Y bloqueados
+    "documento": "…", "nombre": "…", "vinculacion": "Ocasional", "perfil": "…", "titulos": { … }, "nucleos": [ … ],
+    "origenArea": "rund" | "puente", "horasProgramadas": 96, "horasImpacto": 32, "tope": 304, "cruce": false,
+    "asignable": false,
+    "motivos": [{                        // vacío si asignable
+      "tipo": "CRUCE" | "TOPE" | "AREA" | "VINCULACION" | "SITUACION" | "ESCALAFON",   // NUEVO, estable para la pantalla
+      "regla": "RN-07",                  // código de negocio, como hoy
+      "mensaje": "El docente ya tiene una franja ocupada el martes de 08:00 a 10:00",
+      "detalle": { "diaSemana": "MARTES", "horaInicio": "08:00", "horaFin": "10:00" } | null   // NUEVO: solo CRUCE
+    }],
+    "avisos": ["…"]
+  }],
+  "resumen": { "total": 3, "asignables": 0, "bloqueados": 3 },   // NUEVO
+  "sugerido": { … } | null,
+  "aviso": "Los 3 docentes del área «Finanzas Públicas» tienen algún bloqueo: revise el motivo de cada uno." | null,  // NUEVO, informativo
+  "mensaje": "La asignatura no tiene área de formación…" | null   // SOLO cuando no hay lista posible (sin área / ningún docente del área)
+}
+```
+
+- **Cambio de semántica:** hoy «todos bloqueados» llega en `mensaje` y la pantalla oculta la lista (por eso Javier ve «Hay 3 docentes…» sin docentes). Desde ahora va en `aviso` y `candidatos` trae a todos. `mensaje` ≠ null ⇒ no hay lista que mostrar.
+- `detalle` de un CRUCE dice día y hora, nunca qué asignatura ni qué programa ocupa la franja (RN-07, confidencialidad).
+
+### 38.2 · EFDS-2434 — Asignación múltiple (varios docentes en un grupo, una operación)
+
+`POST /programacion-academica/api/v1/asignaciones/multiple`
+
+```jsonc
+// petición
+{ "idGrupo": "uuid", "asignaciones": [
+    { "documento": "79242932", "franjas": ["uuid-lunes", "uuid-martes"] },
+    { "documento": "12127386", "franjas": ["uuid-jueves"] } ] }
+// 200 si TODO pasa
+{ "asignado": true, "resultados": [{ "documento": "79242932", "franjas": [ … ], "avisos": [] }] }
+// 200 con asignado=false si ALGO falla: no se aplica NADA
+{ "asignado": false, "errores": [{ "documento": "12127386", "motivos": [ /* formato de 38.1 */ ] }] }
+```
+
+- Una franja no puede ir en dos pares (400). Las franjas deben ser del grupo (400).
+- Se valida TODO junto, incluido el cruce ENTRE los pares de la misma petición y el tope sumando lo que la petición le carga a cada docente. Una sola transacción: todo o nada.
+- `POST /asignaciones` de un solo docente sigue igual (compatibilidad).
+- El mismo docente en otro grupo se permite si no hay cruce ni pasa el tope (ya era así). Si se bloquea, el motivo lo dice (38.1).
+
+### 38.3 · EFDS-2432 — Editar y eliminar una sesión
+
+`PATCH /programacion-academica/api/v1/horarios/:idFranja`
+
+```jsonc
+// petición (solo los campos que cambian)
+{ "diaSemana": "JUEVES", "horaInicio": "08:00", "horaFin": "10:00", "tipoSesion": "presencial", "aulaCodigo": "108",
+  "confirmarDevolucion": false }
+// 200
+{ "franja": { … }, "horas": { "programadas": 62, "requeridas": 64, "semanas": 16, "excede": false },
+  "concertacionDevuelta": "uuid" | null }
+```
+
+`DELETE /programacion-academica/api/v1/horarios/:idFranja?confirmarDevolucion=true|false` → `{ "eliminado": true, "horas": { … }, "concertacionDevuelta": "uuid" | null }`
+
+Mismas validaciones que crear: forma (múltiplos de 5 min, fin > inicio), choque intra-grupo, choque del aula, aula del CETAP de la oferta, grupo virtual/a distancia sin aula, periodo no cerrado.
+
+**Reglas por estado (PROPUESTA, a confirmar por Tomás):**
+
+| Estado de la franja / concertación del docente | Editar / eliminar |
+|---|---|
+| `PROGRAMADO`, `DEVUELTA`, o `PUBLICADA` sin docente | Libre (auditado) |
+| `TOMADA` (un docente la tomó) | 409 `FRANJA_TOMADA` salvo `confirmarDevolucion=true`: se edita y la franja queda sin docente |
+| Franja en una concertación `ENVIADA`, `REVISADA` o `POR_ACEPTAR` | 409 `EN_CONCERTACION` salvo `confirmarDevolucion=true`: se edita y la concertación pasa a `DEVUELTA` con comentario automático |
+| `APROBADA` o concertación `ACEPTADA` (ya aplicada al PTA) | 409 `CONCERTACION_ACEPTADA`: no se edita; hay que reabrir |
+
+El 409 trae `{ code, message, concertacion: { id, docente, estado } | null }` para que la pantalla pida la confirmación.
+
+### 38.4 · EFDS-2430 — Varios días en una sola operación
+
+`POST /programacion-academica/api/v1/horarios/lote/validar` — no guarda nada.
+
+```jsonc
+// petición
+{ "idGrupo": "uuid", "dias": ["LUNES", "MIERCOLES", "VIERNES"], "horaInicio": "18:00", "horaFin": "20:00",
+  "tipoSesion": "presencial", "aulaCodigo": "108" }
+// 200
+{ "valido": false, "dias": [
+    { "diaSemana": "LUNES", "ok": true, "conflictos": [] },
+    { "diaSemana": "MIERCOLES", "ok": false, "conflictos": [{ "tipo": "INTRA_GRUPO" | "AULA" | "FORMA", "mensaje": "…" }] } ],
+  "horas": { "programadasDespues": 96, "requeridas": 64, "excede": true } }
+```
+
+`POST /programacion-academica/api/v1/horarios/lote` — misma petición. Si algún día tiene conflicto: 409 con el mismo cuerpo de `validar` y NO se crea ninguna. Si todo pasa: `{ "creadas": [ … ], "horas": { … } }`. Todo o nada.
+
+### 38.5 · EFDS-2429 — Motivo de la oferta CETAP
+
+`GET /programacion-academica/api/v1/grupos/ofertas-cetap/estado?asignatura=&periodo=` (existe, §34) gana un caso:
+
+```jsonc
+{ …campos de hoy…, "unicaSede": true,
+  "motivo": "Según la oferta cargada para 2027-1, «Administración Pública - Diurno» solo se dicta en Sede Central." }
+```
+
+`unicaSede = true` cuando el programa tiene exactamente una oferta activa en el periodo; la pantalla muestra el `motivo` bajo el selector. Si la consulta falla, la pantalla dice que no se pudo consultar (no un selector mudo).
+
+### 38.6 · EFDS-2427 — Crear periodos
+
+- `POST /pta/api/v1/periodos-academicos` exige el permiso **`programacion-academica.periodos.gestionar`** (o `programacion-academica.all`). Sin él: 403 «La creación de periodos se hace desde Programación Académica».
+- Se siembra en una migración y se da a `ADMIN_PROGRAMACION` y `SUPER_ADMIN`. **`GESTION_PROFESORAL` deja de poder crear** (es lo que pide el bug).
+- Programas Académicos (Julián Rojas) → Periodos queda en consulta, con un enlace a Programación Académica. Lo hace Codex; el cambio se documenta para Julián.
+
+### 38.7 · EFDS-2435 — Interoperabilidad con el PTA (pantalla del PTA: mía)
+
+- Estado en `academic_work_plan."ConfiguracionSistema"`, clave `interoperabilidad_programacion`, valor `{ "habilitada": bool, "desdePeriodo": "2026-1" }`. Una sola fuente: Programación Académica lee la misma fila.
+- `GET /pta/api/v1/configuracion/interoperabilidad` → `{ habilitada, desdePeriodo, origen: "base" | "variable_entorno" | "por_defecto", concertacionesEnCurso }`.
+- `PUT /pta/api/v1/configuracion/interoperabilidad` `{ habilitada, desdePeriodo, confirmacion: true }` — permiso `pta.backoffice.config_reglas`. Audita valor anterior y nuevo en el servicio de auditoría existente.
+- `GET /programacion-academica/api/v1/concertacion/configuracion` no cambia de forma (lee la misma fuente).
+
+## 39. Interoperabilidad PTA ↔ Programación Académica (EFDS-2435) — lo construido
+
+- **Fuente única:** `academic_work_plan."ConfiguracionSistema"`, clave `interoperabilidad_programacion`, valor `{habilitada, desdePeriodo, motivo, cambiadoPor, cambiadoEn, origenInicial}`. Ambos servicios leen esa fila. `PROG_CONCERTACION_HABILITADA` solo la **siembra** si no existe (`INSERT … WHERE NOT EXISTS`; sin variable = apagado). PA **ya no usa** la variable (si está definida, avisa en el log).
+- **PTA:** `pta/interoperabilidad.ts` (lectura/siembra), `interoperabilidad.service.ts` (cambio, impacto, aplicar pendientes, auditoría en `audit-service` `POST /logs`), `interoperabilidad.controller.ts`: `GET/PUT /pta/api/v1/configuracion/interoperabilidad`, permiso `pta.backoffice.interoperabilidad` (migración 690). PUT `{habilitada, desdePeriodo?, motivo(≥10), confirmacion:true}` → `{config, resultado|null, impacto}`; `resultado={aplicadas, conflicto, omitidas, errores[]}` solo al encender.
+- **Apagado:** el PTA no hace NINGUNA petición a PA (el corte sale de la misma fila; `configuracionProgramacion()` y su 503 se eliminaron). `regimen` = `actual`. La decisión aceptada se registra como `pendiente_interoperabilidad_apagada` (respuesta `{aplicada:false, estadoAplicacion, motivo:'interoperabilidad_apagada'}`; PA lo guarda en `aplicacion_pta`, sin 409 ni reintentos).
+- **Docencia manual no se pisa:** un PTA con docencia manual y sin docencia de programación queda en régimen `actual`; su decisión queda `pendiente_conflicto_docencia_manual`. (Cambio frente a EFDS-2315, que quitaba lo manual al aplicar.)
+- **PA:** `concertacionHabilitada()` es siempre `true`; `GET /concertacion/configuracion` devuelve además `interoperabilidadPta:{habilitada}`; la bandeja muestra el aviso cuando está apagada. Registra su configuración efectiva al arrancar.
+- **Pantalla:** PTA → Configuración → pestaña «Interoperabilidad» (`TabInteroperabilidad.tsx`), modal de confirmación con impacto y motivo; mensajes de Docencia Directa en `PTAForm.tsx`.
+- **Contratos de §38 construidos tal como están:** candidatos (`resumen`, `aviso`, motivos con `tipo`/`detalle`), `POST /asignaciones/multiple`, `PATCH/DELETE /horarios/:id` (reglas por estado), `POST /horarios/lote[/validar]`, `unicaSede`+`motivo`, permiso `programacion-academica.periodos.gestionar` (migración PA 080; `POST /periodos-academicos` da 403 sin él).
+
+## 40. Decisiones tomadas por mi cuenta en la ronda final
+
+1. El PTA **no pregunta a PA** si está encendida (una sola fuente en la base): desaparece el 503 «PA no responde»; la salida de contingencia es apagar el interruptor.
+2. El estado, quién, cuándo y por qué van **dentro del `valor` jsonb** (sin columnas ni tabla nuevas). La migración 690 solo crea el permiso; la **691** repone la llave única de `ConfiguracionSistema` si un ambiente restaurado la perdió (la local no la tenía: por eso la siembra no usa `ON CONFLICT` y se autodepura si dos réplicas insertan a la vez).
+3. Permiso `pta.backoffice.interoperabilidad` → SUPER_ADMIN y roles que ya tienen `pta.backoffice.config_reglas`.
+4. `programacion-academica.periodos.gestionar` → ADMIN_PROGRAMACION y SUPER_ADMIN; GESTION_PROFESORAL pierde crear periodos (pedido de 2427).
+5. Compose: dev/qa/pre `PROG_CONCERTACION_HABILITADA=true`, prod `"false"`; se declararon explícitas (sin cambiar valores) `PROG_NUCLEO_PUENTE=suma`, `PROG_SIN_DATO_ASIGNABLE=true`, `PROG_PORTAL_TOMA_FRANJAS=false`, `PROG_MOCK_FIRMA_OTP=true`, `PTA_MOCK_FIRMA_OTP=true`, `AUDIT_SERVICE_URL` del PTA (el fallback `localhost:3011` pasó a `audit-service:3011`).
+6. Editar/eliminar una sesión **asignada** (en el flujo nuevo toda franja con docente es `TOMADA`) pide confirmación y la deja **sin docente** (y quita `asignacion_docente` del grupo), tal como §38.3.
+7. Auditoría que falla (audit-service caído) **no revierte** el cambio: queda en el log del servicio.
+8. Datos de PA para QA: copias en `db/data/programacion-academica/` (puente y catálogo) + `scripts/cargar-datos-programacion.sh` (prueba por defecto). Los originales de `esap/programacion` no se tocaron.
+9. **Defecto en pantallas de Codex corregido (solo se vio con el shell real):** el panel de grupos (`PanelGrupos`, z-index 900) quedaba **debajo de la barra lateral del shell (999)** y tapaba la columna LUN del calendario. Ahora 1000; los modales internos (`CalendarioHorario`, `ModalConfirmacion`) 1100.
+10. Defecto **preexistente** (no de esta ronda): `audit.create_monthly_partition()` precrea la partición del mes siguiente **dentro** del INSERT y falla («cannot CREATE TABLE … PARTITION OF … used by active queries») si esa partición no existe: el audit-service responde 500 hasta que exista. En la base de prueba se creó `request_logs_2026_12`. **Henrry debe confirmar que QA/prod tienen creada la partición del mes siguiente** (ver DEPLOY).
+11. Defecto **preexistente**: las migraciones del repo no crean `auth.dependencias`, `auth.dependencias_cargos` ni `auth.personas.id_dependencia/id_tercero` (el login del auth-service falla en una base nueva). En la base desechable se completaron con el DDL local; los ambientes salen de restauraciones y no lo notan.
+12. **Regla de trabajo (incidente del 13 de nov):** nada de enlaces (junctions/symlinks) de `node_modules` en worktrees, ni `git worktree remove --force` sobre uno que los tenga: en Windows el borrado **siguió los enlaces y vació el `node_modules` real y ~4.056 archivos rastreados** del árbol principal (se restauró con `git restore .` + `npm install` + `git restore package-lock.json`; ningún commit se perdió). Para comparar contra un commit: `git show <commit>:<ruta>` (o `git diff <commit> -- <ruta>`), sin crear worktrees con enlaces.
+13. `skills-lock.json` quedó una vez en un commit de la rama (`git add -A` mal acotado) y se quitó en el commit siguiente. Contenido revisado: solo un hash público de una skill (`akillness/jeo-skills`); nada sensible, **no se reescribe el historial**. El archivo sigue sin rastrear en el árbol de trabajo.
+14. Lockfile raíz desincronizado con los `package.json` de los workspaces (`npm ci` falla; faltan `@esap-mfe/chatbot`, `@esap-mfe/gestion-infraestructura`, `vitest`, `jsdom`…). Los Dockerfile de frontend usan `npm install`, ningún CI usa `npm ci` en la raíz: **no se tocó**; queda pendiente para los equipos dueños (ver DEPLOY §8).
+15. Pendiente para los dueños de **auth**: las migraciones del repo no crean `auth.dependencias`, `auth.dependencias_cargos` ni `auth.personas.id_dependencia/id_tercero` (punto 11). Pendiente para los dueños de **auditoría**: la función `audit.create_monthly_partition()` (punto 10); en DEPLOY es el PASO 0.
+16. Camino de prueba de EFDS-2435 en QA con un periodo **extraordinario** semestral: probado (DEPLOY §7). Advertencia verificada: `save` sin `id` reescribe el borrador de otro periodo del mismo docente (defecto del PTA anterior a esta ronda).
+
+### PUBLICADO
+
+**PUBLICADO el 13 de noviembre de 2026 en `micro-frontend`: merge `37ebc3c21`** (`6c2e935a7..37ebc3c21`, `merge --no-ff` de `feature/pa/bugs-qa`; sin rebase ni force). Compuertas 1–6 pasadas (ver el reporte final). Pendiente de Henrry: DEPLOY-bugs-qa.md, empezando por el PASO 0 (partición de auditoría).
+
+## 41. Plantilla de Excel de la programación y reutilizar un periodo anterior (rama `feature/pa/plantilla-y-reutilizar`)
+
+**Qué hay.** Dos funciones nuevas en Programación Académica, sin migraciones ni variables nuevas, y con los permisos que ya existen.
+
+**A. Carga de grupos, horarios y docentes por plantilla de Excel.**
+- Modelo: la hoja «PROGRAMACIÓN» del Excel con que la ESAP arma hoy la programación (`PROGRAMACIÓN ACADEMICA 2026_1.xlsx`): **una fila por sesión**; las filas con la misma asignatura, oferta y número de grupo son un grupo. Columnas con **códigos del sistema** (`CODIGO_ASIGNATURA`, `CETAP`, `DOCUMENTO_DOCENTE`), no nombres: el Excel actual identifica la asignatura por plan + nombre, que no es único (ver la conciliación del catálogo de la ronda 3B). **No se importa el Excel viejo tal cual**: emparejarlo por nombre sería adivinar.
+- La pantalla genera la plantilla (`exceljs`, carga diferida) con hojas de referencia (ASIGNATURAS que la persona puede programar, CETAP con oferta en el periodo, LEEME) y lee el archivo; **el servidor valida todo**: `GET /carga-programacion/referencia?periodo=`, `POST /carga-programacion/validar {idPeriodo, filas}` (recorre la carga completa y **revierte**), `POST /carga-programacion` (**todo o nada**: 409 `CARGA_CON_ERRORES` con el reporte por fila si hay un solo error).
+- Pasa por los **mismos servicios** que la pantalla (crear grupo, crear sesión, asignación múltiple), dentro de **una transacción** (`carga-programacion/transaccion.ts`: servicios ligados al EntityManager + SAVEPOINT por paso). Lo que el archivo usa dos veces (aula, docente a la misma hora, dos sesiones del mismo grupo) choca igual que si ya estuviera en la base.
+- Permisos: programar el nivel de cada asignatura; si la fila trae docente, además asignar en ese nivel (RN-08). Escritura anclada al periodo (periodo cerrado → 409).
+- Decisiones: (1) un grupo **existente** recibe sesiones y docentes, pero sus datos (modalidad, cupo, CETAP, fechas) no se cambian: se avisa. (2) Grupo **nuevo sin fechas** → toma las del periodo y se avisa (sin ciclo, la vinculación del docente no se puede verificar y la asignación se rechazaría). (3) Docentes del grupo en **una** asignación múltiple (todo o nada del grupo, EFDS-2434). (4) Máximo 3.000 filas. (5) Auditoría `cargar_programacion_plantilla`.
+- Pantalla: Programación → barra del periodo → **«Cargar desde Excel»** (3 pasos: descargar plantilla, subir y validar, cargar).
+
+**B. Reutilizar los datos de un periodo anterior.**
+- `POST /periodos/:id/reutilizar/validar` y `POST /periodos/:id/reutilizar` `{ idPeriodoOrigen, alcance }`, alcance `catalogo` | `catalogo_grupos` | `catalogo_grupos_docentes`. Permiso `programacion-academica.periodos.gestionar` (o `.all`).
+- `catalogo`: copia `oferta_cetap_programa` (activas) y `periodo_cetap` que falten en el destino (sin `ON CONFLICT`: la llave única puede faltar en ambientes restaurados).
+- `+ grupos`: mismo número, oferta, modalidad, cupo, CETAP (la oferta **del periodo nuevo**) y sesiones (día, hora, tipo, aula). Fechas corridas **semanas completas** (se conserva el día de la semana) y recortadas al periodo nuevo. Sesiones nacen `PROGRAMADO`; nada de la concertación se copia. Si el CETAP no tiene oferta en el periodo nuevo, el grupo va sin CETAP y sin aula (aviso).
+- `+ docentes`: el mismo docente por sesión, por la **asignación múltiple de siempre** (área, vinculación, situación, tope, cruces). Si un docente ya no cumple, ese grupo queda **sin docente** y el reporte dice por qué: no se fuerza nada.
+- **Todo o nada** para catálogo, grupos y sesiones; las asignaciones de docentes son por grupo (un bloqueo no detiene la copia, se reporta). Lo que ya existe en el destino no se toca: se puede repetir. Solo los niveles que la persona programa (y asigna, para docentes). Auditoría `reutilizar_periodo`.
+- Pantalla: Periodos → tarjeta del periodo → **«Reutilizar datos de otro periodo»**; y en **Crear periodo**, «Reutilizar datos de (opcional)» + «Qué reutilizar»: al crear, se abre la copia **ya revisada** para confirmar.
+
+**Verificación.** PA: 318 pruebas (9 nuevas de normalización). MFE PA: 83 (12 nuevas: plantilla ida y vuelta, los dos paneles). Extremo a extremo contra base nueva en contenedores detrás del gateway: 36/36 (los tres alcances, idempotencia, plantilla con errores por fila, todo o nada, cruces dentro del archivo, permisos 403, auditoría). Script: `e2e-carga.mjs` (scratchpad de la sesión; crea el periodo 2027-1: **solo en una base desechable**).
+
+**Hallazgos de entorno (no de código).**
+- vitest de los MFE desde Git Bash con la ruta `c:\` (minúscula): carga dos copias de sí mismo y todas las pruebas fallan con `reading 'on'`. Correr desde PowerShell.
+- `VITE_API_URL=/services` en Git Bash se convierte en `C:/Program Files/Git/services` (conversión de rutas de MSYS): **los builds de frontend se hacen desde PowerShell** (o con `MSYS_NO_PATHCONV=1`). El build local del 13 de nov estaba afectado (no se publicó; los Dockerfile construyen dentro de Linux y no tienen el problema).
+
+### 41.1 Verificación por rol, arreglos visuales y diagnóstico de QA (16 de nov de 2026)
+
+**Qué ve y qué puede cada rol** (base creada solo con migraciones; cuentas sin superusuario; 48 comprobaciones por API + recorrido en navegador):
+
+| Rol | Menú de Programación Académica | Puede | Se le niega (403) |
+|---|---|---|---|
+| ADMIN_PROGRAMACION | Todo | Crear periodos, reutilizar, programar, asignar | — |
+| PROGRAMADOR_PREGRADO / _POSGRADO | Todo | Grupos, horarios, plantilla sin docentes (su nivel) | Asignar docentes, crear periodos, reutilizar, revisar |
+| PROGRAMADOR_DOCENTE_PREGRADO / _POSGRADO | Programación General, Disponibilidad Docente, Concertación | Asignar docentes y **enviar a revisión** | Crear grupos, editar horario, periodos |
+| REVISOR_DOCENCIA_PREGRADO / _POSGRADO | Solo «Concertación de la docencia» | Revisar y firmar | Aprobar, programar, enviar |
+| APROBADOR_DOCENCIA, JEFATURA_TERRITORIAL | Solo «Concertación de la docencia» | Aprobar y firmar | Revisar, programar |
+| DOCENTE | Portal → «Mi Programación Académica» | Aceptar y firmar o reportar novedad | Backoffice |
+
+- La antigua «Aprobación territorial» **no existe** en el código actual: quien revisa o aprueba ve «Concertación de la docencia». Lo que se vio en QA era el despliegue anterior.
+- El aviso «La concertación de la docencia está apagada en este ambiente» tampoco existe ya: la concertación está siempre disponible y solo el interruptor del PTA decide si lo aceptado llega al PTA.
+
+**Arreglos de esta fecha** (commit `517f7f6b3`): calendario del grupo (el bloque de una hora salía cortado y estrecho: las clases `text-[0.62rem]`, `top-0.5`, `right-0.5` y `right-1` no existen en la hoja de estilos del shell → estilos en línea); menú en el orden del flujo; botones «Confirmar» y «Guardar periodo de corte…» del interruptor (salían invisibles: `bg-slate-900` no existe en el CSS del MFE del PTA). **Regla:** el MFE de Programación no tiene hoja propia (usa la del shell) y el del PTA tiene la suya; una clase de Tailwind que nadie más use puede no existir. Comprobar en el navegador contra `document.styleSheets`, no contra los archivos.
+
+**Diagnóstico de QA, solo lectura (16 nov).** QA sigue con el despliegue anterior (404 en `/pta/api/v1/configuracion/interoperabilidad` y en `/carga-programacion/referencia`). Con ese despliegue, `GET /asignaciones/candidatos` responde así en los grupos reales de 2026-1:
+- `ASIG-00001` (Desarrollo y Gestión Territorial): 28 candidatos. Funciona.
+- `ASIG-00003` (Finanzas Públicas): 3 docentes del área, **los tres bloqueados por RN-10**: su vinculación en el RUND de QA terminó el 2025-12-17 y el grupo termina el 2026-11-30. Es dato del RUND de QA (vinculaciones de 2025), no un defecto.
+- `ASIG-00409` (Especialización en Proyectos de Desarrollo, Cartagena): área «Programa: Proyectos de Desarrollo (Especialización)», **ningún docente** con núcleo en esa área. El puente docente–área (`db/data/programacion-academica/puente_docente_area.csv`) solo trae planes de **pregrado** (AP, APT, EP); para posgrado falta que la ESAP diga qué docentes dictan cada programa.
+
+### PUBLICADO (segunda entrega)
+
+**PUBLICADO el 16 de noviembre de 2026 en `micro-frontend`: merge `5aaaf1f02`** (`merge --no-ff` de `feature/pa/plantilla-y-reutilizar`, con lo último de `micro-frontend` ya integrado; sin rebase ni force). Trae la plantilla de Excel, reutilizar periodo, los arreglos visuales y §41/§41.1. Pendiente de Henrry: DEPLOY-bugs-qa.md completo (PASO 0 y §9). **QA no está desplegado todavía con nada de esto.**

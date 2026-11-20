@@ -8,6 +8,8 @@ import {
 } from '../services/api/periodosApi';
 import { CargaAsignaturasPeriodo } from './CargaAsignaturasPeriodo';
 import { ModalConfirmacion } from './ModalConfirmacion';
+import { OPCIONES_ALCANCE, ReutilizarPeriodo } from './ReutilizarPeriodo';
+import type { AlcanceReutilizacion } from '../services/api/cargaProgramacionApi';
 
 import {
   getConsumoPorOferta,
@@ -44,6 +46,9 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
   const [sufijoPers, setSufijoPers] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [avisoAdmin, setAvisoAdmin] = useState('');
+  // Reutilizar los datos de otro periodo: al crear uno nuevo (opcional) o desde la tarjeta de un periodo.
+  const [reusoNuevo, setReusoNuevo] = useState<{ origen: string; alcance: AlcanceReutilizacion }>({ origen: '', alcance: 'catalogo' });
+  const [reutilizar, setReutilizar] = useState<{ id: string; origen?: string; alcance?: AlcanceReutilizacion; revisar?: boolean } | null>(null);
 
   // NUEVA-1 (EFDS-1937) — Publicación de la programación por periodo. El estado
   // por periodo se consulta y se refresca tras publicar/retirar.
@@ -164,7 +169,14 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       const actualizados = await recargar();
       const periodoCreado = actualizados.periodos.find((p) => personalizado ? p.codigo === codigoPers : (p.anio === nuevo.anio && p.semestre === nuevo.semestre));
       if (personalizado) { setNombrePers(''); setSufijoPers(''); setPersonalizado(false); }
-      setImportarId(periodoCreado?.idPeriodo ?? null);
+      if (periodoCreado && reusoNuevo.origen) {
+        // Se abre la copia ya revisada: la persona ve qué se copiaría y confirma.
+        setReutilizar({ id: periodoCreado.idPeriodo, origen: reusoNuevo.origen, alcance: reusoNuevo.alcance, revisar: true });
+        setImportarId(null);
+        setReusoNuevo({ origen: '', alcance: 'catalogo' });
+      } else {
+        setImportarId(periodoCreado?.idPeriodo ?? null);
+      }
       setNuevo({ ...nuevo, fechaInicio: '', fechaFin: '' });
     } catch (err: any) {
       setAvisoAdmin(creado
@@ -413,6 +425,18 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
               {importarId === o.idPeriodo && periodos?.permisos.importar && o.programable && (
                 <CargaAsignaturasPeriodo periodo={o} alTerminar={() => setAvisoAdmin(`Catálogo de ${o.codigo} actualizado.`)} />
               )}
+              {periodos?.permisos.crear && o.programable && (
+                <button type="button" onClick={() => setReutilizar(reutilizar?.id === o.idPeriodo ? null : { id: o.idPeriodo })}
+                  className="block text-xs font-bold text-[#003DA5] underline">
+                  {reutilizar?.id === o.idPeriodo ? 'Ocultar reutilizar' : 'Reutilizar datos de otro periodo'}
+                </button>
+              )}
+              {reutilizar?.id === o.idPeriodo && periodos && (
+                <ReutilizarPeriodo key={`${o.idPeriodo}-${reutilizar.origen ?? ''}-${reutilizar.alcance ?? ''}`} destino={o} periodos={periodos.periodos}
+                  origenInicial={reutilizar.origen} alcanceInicial={reutilizar.alcance} revisarAlAbrir={reutilizar.revisar}
+                  onCerrar={() => setReutilizar(null)}
+                  alTerminar={(r) => setAvisoAdmin(`Datos de ${r.origen.codigo} copiados en ${r.destino.codigo}.`)} />
+              )}
             </div>
           ))}
         </div>
@@ -482,6 +506,30 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
           </label>
           </div>
         </div>
+        {(periodos?.periodos.length ?? 0) > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase">Reutilizar datos de (opcional)</span>
+              <select aria-label="Reutilizar datos de otro periodo" value={reusoNuevo.origen}
+                onChange={(e) => setReusoNuevo({ ...reusoNuevo, origen: e.target.value })}
+                className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="">No reutilizar: empezar vacío</option>
+                {periodos!.periodos.map((p) => <option key={p.idPeriodo} value={p.idPeriodo}>{p.codigo}</option>)}
+              </select>
+            </label>
+            {reusoNuevo.origen && (
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">Qué reutilizar</span>
+                <select aria-label="Qué reutilizar" value={reusoNuevo.alcance}
+                  onChange={(e) => setReusoNuevo({ ...reusoNuevo, alcance: e.target.value as AlcanceReutilizacion })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                  {OPCIONES_ALCANCE.map((o) => <option key={o.valor} value={o.valor}>{o.titulo}</option>)}
+                </select>
+                <span className="text-[11px] text-slate-500">{OPCIONES_ALCANCE.find((o) => o.valor === reusoNuevo.alcance)?.detalle} Antes de copiar verá qué se copiaría.</span>
+              </label>
+            )}
+          </div>
+        )}
         {avisoAdmin && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
             {avisoAdmin}
