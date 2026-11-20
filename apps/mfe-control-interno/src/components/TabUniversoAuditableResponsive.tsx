@@ -411,6 +411,15 @@ export function TabUniversoAuditableResponsive({
           {p.macroproceso && (
             <p className="text-[10px] text-gray-400 mt-0.5">{p.macroproceso}</p>
           )}
+          {(p as any)._evaluacionRiesgo?.vigenciaOrigen && (
+            // Unidad copiada del universo de la vigencia anterior al crear el plan (EFDS-2450)
+            <span
+              title="Copiada del universo auditable de la vigencia anterior al crear el Plan Anual"
+              style={{ display: 'inline-block', marginTop: 4, padding: '1px 6px', borderRadius: 9999, fontSize: 10, fontWeight: 600, background: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE' }}
+            >
+              Heredada de {(p as any)._evaluacionRiesgo.vigenciaOrigen}
+            </span>
+          )}
         </div>
       )
     },
@@ -675,7 +684,7 @@ export function TabUniversoAuditableResponsive({
     return (
       <MobileCard
         title={proceso.nombre || 'Sin nombre'}
-        subtitle={`${proceso.codigo || 'S/C'} • ${proceso.macroproceso || 'Sin macroproceso'}`}
+        subtitle={`${proceso.codigo || 'S/C'} • ${proceso.macroproceso || 'Sin macroproceso'}${(proceso as any)._evaluacionRiesgo?.vigenciaOrigen ? ` • Heredada de ${(proceso as any)._evaluacionRiesgo.vigenciaOrigen}` : ''}`}
       >
         <div className="space-y-2 mb-4">
           <MobileCardRow

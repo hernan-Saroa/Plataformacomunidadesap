@@ -318,8 +318,60 @@ export class PlanAnual5RolesService {
       console.error('[PlanAnual5RolesService.create] Error al crear notificaciones:', notifError);
     }
 
+    // El universo auditable de la vigencia anterior pasa a la nueva como punto de partida (EFDS-2450)
+    const universoHeredado = await this.heredarUniversoAuditable(createDto.año);
+
     // Recargar con relaciones (los roles ya vienen ordenados por rol_numero desde el template)
-    return this.findOne(savedPlan.id);
+    const creado = await this.findOne(savedPlan.id);
+    (creado as any).universoHeredado = universoHeredado;
+    return creado;
+  }
+
+  /**
+   * Copia el universo auditable activo de la vigencia anterior a la nueva (EFDS-2450).
+   * Se copia igual, columna por columna; solo cambian la vigencia y la fecha de corte (un año después),
+   * y cada copia guarda su vigencia y evaluación de origen. Son filas nuevas, así que editar la
+   * vigencia nueva no toca la anterior. Si la vigencia nueva ya tiene universo no copia nada
+   * (no duplica al volver a crear un borrador). Un error aquí no impide crear el plan.
+   */
+  private async heredarUniversoAuditable(
+    vigencia: number,
+  ): Promise<{ desde: number | null; copiadas: number; yaTenia: boolean; error?: boolean }> {
+    const anterior = vigencia - 1;
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const [{ total }] = await manager.query(
+          `SELECT count(*)::int AS total FROM control_interno.evaluacion_proceso WHERE vigencia = $1 AND activo = true`,
+          [vigencia],
+        );
+        if (total > 0) {
+          return { desde: null, copiadas: 0, yaTenia: true };
+        }
+
+        // Todas las columnas de la tabla menos las que cambian en la copia
+        const columnas: Array<{ column_name: string }> = await manager.query(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'control_interno' AND table_name = 'evaluacion_proceso'
+              AND column_name NOT IN ('id', 'vigencia', 'fecha_corte', 'vigencia_origen', 'evaluacion_origen_id', 'created_at', 'updated_at')
+            ORDER BY ordinal_position`,
+        );
+        const lista = columnas.map((c) => `"${c.column_name}"`).join(', ');
+
+        const copiadas: Array<{ id: string }> = await manager.query(
+          `INSERT INTO control_interno.evaluacion_proceso
+             (id, ${lista}, vigencia, fecha_corte, vigencia_origen, evaluacion_origen_id, created_at, updated_at)
+           SELECT gen_random_uuid(), ${lista}, $1, (fecha_corte + interval '1 year')::date, vigencia, id, now(), now()
+             FROM control_interno.evaluacion_proceso
+            WHERE vigencia = $2 AND activo = true
+           RETURNING id`,
+          [vigencia, anterior],
+        );
+        return { desde: copiadas.length > 0 ? anterior : null, copiadas: copiadas.length, yaTenia: false };
+      });
+    } catch (error) {
+      console.error(`[PlanAnual5RolesService] No se pudo heredar el universo auditable de ${anterior} a ${vigencia}:`, error);
+      return { desde: null, copiadas: 0, yaTenia: false, error: true };
+    }
   }
 
   /**
