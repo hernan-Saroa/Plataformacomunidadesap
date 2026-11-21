@@ -124,4 +124,65 @@ describe('BancoDocentesRolesGuard', () => {
     const guard = new BancoDocentesRolesGuard(reflector as any, db as any);
     await expect(guard.canActivate(contextFor({ roles: ['GESTION_PROFESORAL'] }).context)).rejects.toThrow(ForbiddenException);
   });
+
+  describe('docente consulta su propio perfil (la dedicación editada no llegaba al PTA)', () => {
+    const ROUTE_ROLES = ['DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN'];
+    const ROUTE_PERMISSIONS = ['banco-docentes.rund.view', 'banco-docentes.rund.manage'];
+    const guardFor = (roles: string[] | undefined, permissions: string[] | undefined, db: any) => new BancoDocentesRolesGuard(
+      { getAllAndOverride: jest.fn((key: string) => (key === 'rundPermissions' ? permissions : roles)) } as any, db as any);
+
+    it('autoriza al rol Docente aunque su rol no tenga permisos RUND asignados', async () => {
+      const db = { query: jest.fn().mockResolvedValue([]) };
+      const { context } = contextFor({ roles: ['DOCENTE'] });
+      await expect(guardFor(ROUTE_ROLES, ROUTE_PERMISSIONS, db).canActivate(context)).resolves.toBe(true);
+    });
+
+    it('normaliza el código del rol Docente', async () => {
+      const db = { query: jest.fn().mockResolvedValue([]) };
+      const { context } = contextFor({ roles: [{ code: ' docente ' }] });
+      await expect(guardFor(ROUTE_ROLES, ROUTE_PERMISSIONS, db).canActivate(context)).resolves.toBe(true);
+    });
+
+    it('sigue autorizando al docente si no se pueden consultar los permisos', async () => {
+      const db = { query: jest.fn().mockRejectedValue(new Error('DB no disponible')) };
+      const { context } = contextFor({ roles: ['DOCENTE'] });
+      await expect(guardFor(ROUTE_ROLES, ROUTE_PERMISSIONS, db).canActivate(context)).resolves.toBe(true);
+    });
+
+    it('no abre rutas que no declaran el rol Docente', async () => {
+      const db = { query: jest.fn().mockResolvedValue([]) };
+      const { context } = contextFor({ roles: ['DOCENTE'] });
+      const gestion = ['GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin'];
+      for (const permissions of [['banco-docentes.rund.validate'], ['banco-docentes.rund.manage'], ['banco-docentes.rund.edit']]) {
+        await expect(guardFor(gestion, permissions, db).canActivate(context)).rejects.toThrow(ForbiddenException);
+      }
+    });
+
+    it('no concede nada a otros roles que no sean Docente en esas rutas', async () => {
+      const db = { query: jest.fn().mockResolvedValue([]) };
+      for (const role of ['ADMIN', 'GESTION_PROFESORAL', 'ESTUDIANTE', 'RUND_CONSULTA_PERSONALIZADO']) {
+        const { context } = contextFor({ roles: [role] });
+        await expect(guardFor(ROUTE_ROLES, ROUTE_PERMISSIONS, db).canActivate(context)).rejects.toThrow(ForbiddenException);
+      }
+    });
+
+    it('un usuario sin roles no entra aunque la ruta declare Docente', async () => {
+      const db = { query: jest.fn().mockResolvedValue([]) };
+      for (const user of [{ roles: [] }, { roles: undefined }, {}]) {
+        await expect(guardFor(ROUTE_ROLES, ROUTE_PERMISSIONS, db).canActivate(contextFor(user).context)).rejects.toThrow(ForbiddenException);
+      }
+    });
+
+    it('un usuario sin autenticar sigue rechazado', async () => {
+      const db = { query: jest.fn() };
+      const context = { getHandler: jest.fn(), getClass: jest.fn(), switchToHttp: () => ({ getRequest: () => ({}) }) } as any;
+      await expect(guardFor(ROUTE_ROLES, ROUTE_PERMISSIONS, db).canActivate(context)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('conserva la regla granular: retirar el permiso a un administrador con rol funcional lo sigue bloqueando', async () => {
+      const db = { query: jest.fn().mockResolvedValue([{ code: 'banco-docentes.rund.documents.manage' }]) };
+      const { context } = contextFor({ roles: ['GESTION_PROFESORAL'] });
+      await expect(guardFor(['GESTION_PROFESORAL'], ['banco-docentes.rund.validate'], db).canActivate(context)).rejects.toThrow(ForbiddenException);
+    });
+  });
 });

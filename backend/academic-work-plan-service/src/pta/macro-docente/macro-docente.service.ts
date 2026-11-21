@@ -1,7 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { PlanTrabajoAcademicoEntity } from '../entities/plan-trabajo-academico.entity';
 import { DocenteEntity } from '../entities/docente.entity';
 import { PersonaEntity } from '../entities/persona.entity';
@@ -9,6 +9,7 @@ import { ProgramaEntity } from '../entities/programa.entity';
 import { RundAccesoExternoEntity } from '../entities/rund-acceso-externo.entity';
 import { RundMacroDocenteConsultaLogEntity } from '../entities/rund-macro-docente-consulta-log.entity';
 import { PtaNotificationsService } from '../notifications/pta-notifications.service';
+import { cargarPersonasDocentes } from './macro-docente-personas';
 
 /** Ruta pública (a través del API Gateway) del endpoint de consulta externa. */
 const RUTA_PUBLICA_MACRO_DOCENTE = '/pta/api/v1/pta/macro-docente';
@@ -93,6 +94,7 @@ export class MacroDocenteService {
     @InjectRepository(RundMacroDocenteConsultaLogEntity)
     private readonly consultaLogRepo: Repository<RundMacroDocenteConsultaLogEntity>,
     private readonly notifications: PtaNotificationsService,
+    @Optional() @InjectDataSource() private readonly dataSource?: DataSource,
   ) {}
 
   /**
@@ -157,8 +159,11 @@ export class MacroDocenteService {
       ? await this.docenteRepo.find({ where: { id: In(docenteIds) } })
       : [];
     const personaIds = [...new Set(docentes.map((d) => d.personaId).filter(Boolean))];
-    const personas = personaIds.length
-      ? await this.personaRepo.find({ where: { id: In(personaIds) } })
+    // Fuente vigente: auth.personas. La tabla antigua Persona queda solo como respaldo para registros previos.
+    const personasAuth = await cargarPersonasDocentes(this.dataSource, personaIds);
+    const personaIdsLegado = personaIds.filter((id) => !personasAuth.has(String(id)));
+    const personas = personaIdsLegado.length
+      ? await this.personaRepo.find({ where: { id: In(personaIdsLegado) } })
       : [];
     const personaMap = new Map(personas.map((p) => [p.id, p]));
 
@@ -168,14 +173,16 @@ export class MacroDocenteService {
     >();
     for (const docente of docentes) {
       const persona = personaMap.get(docente.personaId);
+      const personaAuth = personasAuth.get(String(docente.personaId));
       const nombreCompleto = coalesceString(
+        personaAuth?.nombreCompleto,
         [persona?.primer_nombre, persona?.segundo_nombre, persona?.primer_apellido, persona?.segundo_apellido]
           .filter(Boolean)
           .join(' '),
       );
       docenteMap.set(docente.id, {
         nombreCompleto,
-        documento: coalesceString(persona?.identificacion),
+        documento: coalesceString(personaAuth?.documento, persona?.identificacion),
         nucleoTematico: coalesceString(docente.nucleoTematico),
       });
     }
