@@ -340,8 +340,10 @@ export class PlanAnual5RolesService {
     const anterior = vigencia - 1;
     try {
       return await this.dataSource.transaction(async (manager) => {
+        // Ya tiene universo si hay unidades activas o si ya se heredó antes (aunque luego las inactivaran)
         const [{ total }] = await manager.query(
-          `SELECT count(*)::int AS total FROM control_interno.evaluacion_proceso WHERE vigencia = $1 AND activo = true`,
+          `SELECT count(*)::int AS total FROM control_interno.evaluacion_proceso
+            WHERE vigencia = $1 AND (activo = true OR vigencia_origen IS NOT NULL)`,
           [vigencia],
         );
         if (total > 0) {
