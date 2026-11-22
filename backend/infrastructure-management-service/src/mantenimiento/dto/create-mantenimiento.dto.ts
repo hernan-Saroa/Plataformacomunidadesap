@@ -452,9 +452,13 @@ export class TecnicoUmiFromAuthDto {
 }
 
 export class AsignarTecnicoPayload {
-  @ApiProperty({ example: 'a1b2c3d4-1234-5678-9abc-def012345678' })
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-1234-5678-9abc-def012345678',
+    description: 'UUID del técnico asignado (auth.user). Opcional si modalidadEjecutorTerritorial es PROVEEDOR_LOCAL_CONTRATADO.',
+  })
+  @IsOptional()
   @IsUUID('4')
-  idTecnicoAsignado: string;
+  idTecnicoAsignado?: string;
 
   @ApiPropertyOptional({ example: 'Ing. Porky', deprecated: true, description: 'Deprecated: display legacy se calcula desde JOIN persona. Ignorado si envian idTecnicoAsignado valido.' })
   @IsOptional()

@@ -160,17 +160,28 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         setCargandoSedes(true);
         setCargandoCatalogos(true);
         setCargandoDependencias(true);
-        const [listadoSedes, tm, pr, cs, deps, terrData] = await Promise.all([
+        const [listadoSedes, tm, pr, cs, deps, terrData, ambito] = await Promise.all([
           infraestructuraService.getSedesAlcanceUMI(),
           infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
           infraestructuraService.getDependenciasCatalogo(),
           infraestructuraService.getTerritorialesConCetaps(),
+          infraestructuraService.getAmbitoTerritorial(),
         ]);
         setSedesAlcance(listadoSedes);
         if (terrData && Array.isArray(terrData.direccionesTerritoriales)) {
           setDireccionesTerritoriales(terrData.direccionesTerritoriales);
+          // Pre-seleccionar la territorial del usuario si pertenece a una Dirección Territorial regional
+          if (ambito && !ambito.esCentral && ambito.idDireccionTerritorial) {
+            const dtMatch = terrData.direccionesTerritoriales.find(
+              (t: any) => Number(t.id) === Number(ambito.idDireccionTerritorial),
+            );
+            if (dtMatch) {
+              setAmbitoUbicacion('TERRITORIAL');
+              setIdDireccionTerritorial(String(dtMatch.id));
+            }
+          }
         }
         setCatalogoCS(cs.length > 0 ? cs : []);
         setDependencias(Array.isArray(deps) && deps.length > 0 ? deps : []);

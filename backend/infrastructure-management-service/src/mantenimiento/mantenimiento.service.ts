@@ -444,6 +444,16 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
           );
           CREATE INDEX IF NOT EXISTS idx_solicitud_ejecucion_territorial_solicitud ON "infrastructure-management".solicitud_ejecucion_territorial(id_solicitud);
+
+          -- 3. Asegurar roles explícitos 5.2 (Radicador, Coordinador DT, Responsable CETAP)
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'role') THEN
+            INSERT INTO auth.role (id, code, name, description, category, icon, color, "type", is_active, requires_2fa, created_by, updated_by, created_at, updated_at)
+            VALUES
+              (gen_random_uuid(), 'RADICADOR_INFRA', 'Radicador', 'Radica solicitudes en nombre de su área a través del formulario de la Super App y consulta su estado (ERS v0.2 Numeral 5.2).', 'funcional', 'file-plus', 'sky', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now()),
+              (gen_random_uuid(), 'COORDINADOR_ADMINISTRATIVO_DT', 'Coordinador Administrativo DT', 'Enlace territorial / Asignador territorial: recibe, asigna, valida cierre y escala solicitudes de su Dirección Territorial (ERS v0.2 Numeral 5.2).', 'funcional', 'map-pin', 'amber', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now()),
+              (gen_random_uuid(), 'RESPONSABLE_CETAP', 'Responsable CETAP', 'Radica y hace seguimiento a las solicitudes de infraestructura del CETAP municipal (ERS v0.2 Numeral 5.2).', 'funcional', 'building', 'emerald', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now())
+            ON CONFLICT (code) DO NOTHING;
+          END IF;
         END $$;
       `);
       this.notifLogger.log('Esquema de valoración y ejecución territorial asegurado automáticamente.');
@@ -640,10 +650,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     };
 
     const rolesSet = new Set((user.roles || []).map(normRole).filter(Boolean));
-    const esJefatura =
-      rolesSet.has('JEFATURA_TERRITORIAL') ||
-      rolesSet.has('COORDINADOR_ADMINISTRATIVO_DT') ||
-      rolesSet.has('DIRECTOR_TERRITORIAL');
+    const esJefatura = rolesSet.has('COORDINADOR_ADMINISTRATIVO_DT');
 
     const ROLES_CENTRALES = [
       'SUPER_ADMIN',
@@ -774,10 +781,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     this.loggerFindAll.log(`  ambitoTerritorial=${JSON.stringify(ambito)}`);
 
     const esSUPER_ADMIN = userRolesNorm.has('SUPER_ADMIN');
-    const esRolTerritorial =
-      userRolesNorm.has('JEFATURA_TERRITORIAL') ||
-      userRolesNorm.has('COORDINADOR_ADMINISTRATIVO_DT') ||
-      userRolesNorm.has('DIRECTOR_TERRITORIAL');
+    const esRolTerritorial = userRolesNorm.has('COORDINADOR_ADMINISTRATIVO_DT');
     const bypassBandejaGeneralPorRol =
       esSUPER_ADMIN ||
       userRolesNorm.has('ADMIN') ||
@@ -3306,6 +3310,19 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
     }
 
+    // RF-INF-013: Coordinador Administrativo DT puede operar y supervisar solicitudes de su propia Dirección Territorial
+    if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) {
+      const ambito = await this.resolverAmbitoTerritorial(user);
+      if (
+        ambito.idDireccionTerritorial &&
+        solicitud.idDireccionTerritorial &&
+        Number(ambito.idDireccionTerritorial) === Number(solicitud.idDireccionTerritorial)
+      ) {
+        const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+        return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre || 'Proveedor Local / DT' };
+      }
+    }
+
     const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
     if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
       if (String(user.userId || '').toLowerCase() === idTecnicoAsignado.toLowerCase()) {
@@ -3341,6 +3358,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
   ): Promise<void> {
     if (Number(solicitud.idCategoria) !== 48) return;
     if (this.usuarioEsSuperAdminOAsignador(user)) return;
+    const roles = (user?.roles || []).map((r) => String(r).toUpperCase());
+    if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) return;
 
     const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
     if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
