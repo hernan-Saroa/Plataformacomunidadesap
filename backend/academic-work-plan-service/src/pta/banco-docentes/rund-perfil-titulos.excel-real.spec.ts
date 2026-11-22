@@ -88,9 +88,16 @@ describeConArchivo('Deducción de títulos sobre la plantilla real', () => {
     expect(d.adicionales.pregrado?.some(titulo => mismoTitulo(titulo, segundo))).toBe(true);
   });
 
-  it('a lo sumo 2 filas quedan con títulos sin clasificar (los errores de digitación de la plantilla)', () => {
+  it('solo quedan sin clasificar los errores de digitación y los estudios en curso de la plantilla', () => {
     const sinClasificar = filas.flatMap(({ perfil, celdas }) => deducirTitulosAdicionales(perfil, celdas).sinClasificar);
-    expect(sinClasificar.length).toBeLessThanOrEqual(2);
+    expect(sinClasificar.length).toBeLessThanOrEqual(3);
     expect(sinClasificar).toEqual(expect.arrayContaining(['Posgrado en Cultura de la Paz', 'Porfesional en Ciencia Política y Gobierno']));
+    // "Candidata a Doctora…" es un estudio en curso: no se registra como título de doctorado.
+    expect(sinClasificar.some(titulo => /candidata a doctora/i.test(titulo))).toBe(true);
+  });
+
+  it('reconoce la gran mayoría de los títulos del perfil (cobertura del clasificador)', () => {
+    const total = filas.reduce((suma, { perfil, celdas }) => suma + deducirTitulosAdicionales(perfil, celdas).reconocidos, 0);
+    expect(total).toBeGreaterThan(800);
   });
 });

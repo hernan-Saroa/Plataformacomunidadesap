@@ -22,7 +22,8 @@ import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity'
 import { auditCambios, singleFieldAuditValues } from './rund-audit-cambios';
 import { clearsObservaciones, countsAsFieldChange } from './rund-campo-vacio';
 import { leerAuditoriaRund } from './rund-auditoria-lectura';
-import { DEDICACION_LABELS, resolveDedicacionDisplay } from './rund-dedicacion';
+import { DEDICACION_LABELS, resolveDedicacionDisplay } from './rund-dedicacion';
+
 import { cambiosDeCreacion, columnasCargaModificadas, describirCambio } from './rund-audit-detalle';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
@@ -2276,7 +2277,8 @@ export class BancoDocentesService implements OnModuleInit {
             camposModificados: action === 'insert'
               ? ['num_identificacion', ...Object.keys(docenteData)]
               : [...personaChangedFields, ...changedFields],
-            cambios: profileChanges,
+            cambios: profileChanges,
+
             ...(columnasCarga.length ? { columnasCargaModificadas: columnasCarga } : {}),
           },
         });
@@ -2324,6 +2326,8 @@ export class BancoDocentesService implements OnModuleInit {
         territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
         titulosDeducidos: deduccionTitulos?.deducidos ?? 0,
+        titulosReconocidos: deduccionTitulos?.reconocidos ?? 0,
+        perfilSinTitulos: deduccionTitulos ? deduccionTitulos.reconocidos === 0 && deduccionTitulos.sinClasificar.length === 0 : false,
         titulosSinClasificar: deduccionTitulos?.sinClasificar ?? [],
         welcomeEmail: { sent: false, skipped: !authUserCreated },
         message: action === 'insert' ? 'Docente creado correctamente.' : action === 'unchanged' ? 'Docente ya existe sin cambios.' : 'Docente actualizado correctamente.',
@@ -2572,6 +2576,8 @@ export class BancoDocentesService implements OnModuleInit {
       updated: finalResults.filter((r) => r.action === 'update').length,
       unchanged: finalResults.filter((r) => r.action === 'unchanged').length,
       titulosDeducidos: finalResults.reduce((total, r) => total + (r.titulosDeducidos || 0), 0),
+      titulosReconocidos: finalResults.reduce((total, r) => total + (r.titulosReconocidos || 0), 0),
+      filasSinTitulosEnPerfil: finalResults.filter((r) => r.perfilSinTitulos).length,
       titulosSinClasificar: finalResults.reduce((total, r) => total + (r.titulosSinClasificar?.length || 0), 0),
       errors: finalErrors.length,
       results: finalResults,

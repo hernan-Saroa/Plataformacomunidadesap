@@ -761,7 +761,14 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                 ))}
               </div>
 
-              <AvisoTitulosDeducidos deducidos={result?.data?.titulosDeducidos} sinClasificar={result?.data?.titulosSinClasificar} />
+              <AvisoTitulosDeducidos
+                reconocidos={result?.data?.titulosReconocidos}
+                deducidos={result?.data?.titulosDeducidos}
+                sinClasificar={result?.data?.titulosSinClasificar}
+                filasSinTitulos={result?.data?.filasSinTitulosEnPerfil}
+                filasConError={result?.data?.errors}
+                detalle={(result?.data?.results || []).map((fila: any) => ({ fila: fila.sourceRowNumber, nombre: fila.fullName, titulos: fila.titulosSinClasificar || [] }))}
+              />
 
               {/* Vista previa de docentes válidos ("correctos") */}
               {previewValidos.length > 0 && (
