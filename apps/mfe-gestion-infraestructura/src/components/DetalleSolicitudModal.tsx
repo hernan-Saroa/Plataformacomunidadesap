@@ -1630,8 +1630,27 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return [...asigs].reverse().find((a: any) => a?.accion === 'CIERRE_POR_FALTA_DE_INSUMOS') || null;
   }, [esCerradaPorFaltaInsumos, detalle?.asignaciones]);
   // Estados pre-aprobación y finales declarados a nivel de módulo
-  const sesionUmiDetalle = useMemo(() => obtenerSesionUMI(), []);
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const sesionUmiDetalle = sesionUmi;
   const tienePerm = (codigo: string) => hasPerm(sesionUmiDetalle, codigo);
+  const rolesNormConformidad = useMemo(() => {
+    const raw = (sesionUmi?.roles ?? []) as unknown as Array<any>;
+    const set = new Set<string>();
+    for (const r of raw) {
+      if (!r) continue;
+      if (typeof r === 'string') {
+        const n = r.trim().toUpperCase();
+        if (n) set.add(n);
+      } else if (typeof r === 'object') {
+        const c = r.code || r.codigo || r.role || r.rol || r.name;
+        if (typeof c === 'string') {
+          const n = c.trim().toUpperCase();
+          if (n) set.add(n);
+        }
+      }
+    }
+    return set;
+  }, [sesionUmi]);
 
   const puedeAprobarAsignarUMI =
     detalle &&
@@ -1677,7 +1696,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     detalle &&
     !esAreaTI &&
     ['ASIGNADA', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
-    (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'));
+    (
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.close_with_evidence') ||
+      tienePerm('infraestructura.solicitud.execute_assigned') ||
+      rolesNormConformidad.has('COORDINADOR_ADMINISTRATIVO_DT')
+    );
 
   const esMantenimientoMayor = Boolean(
     String(detalle?.clasificacionMantenimiento || '').toUpperCase() === 'MAYOR' ||
@@ -1735,25 +1759,6 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // ---------------------------------------------------------------------------
   // EFDS-1737 L17 + CP-05 + CP-10/11: actor conformidad = (a) SOLICITANTE ORIGINAL match exacto, OR (b) SUPER_ADMIN / ADMIN_FUNCIONAL bypass.
   // NUNCA P2 (assign), NUNCA P3/P4 TECNICOS, NUNCA P7 CALIDAD. Guardia UI = backend hace 403 real.
-  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
-  const rolesNormConformidad = useMemo(() => {
-    const raw = (sesionUmi?.roles ?? []) as unknown as Array<any>;
-    const set = new Set<string>();
-    for (const r of raw) {
-      if (!r) continue;
-      if (typeof r === 'string') {
-        const n = r.trim().toUpperCase();
-        if (n) set.add(n);
-      } else if (typeof r === 'object') {
-        const c = r.code || r.codigo || r.role || r.rol || r.name;
-        if (typeof c === 'string') {
-          const n = c.trim().toUpperCase();
-          if (n) set.add(n);
-        }
-      }
-    }
-    return set;
-  }, [sesionUmi]);
   const esSolicitanteOriginalDeEstaSolicitud = useMemo(() => {
     if (!detalle) return false;
     const userIdActual = String(sesionUmi.userId || '').trim().toLowerCase();
@@ -1827,6 +1832,39 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     )
   );
 
+  const puedeEmitirVoBoCierreDt = useMemo(() => {
+    if (!detalle) return false;
+    if (!esSolicitudTerritorial && !detalle.ejecucionTerritorial?.voboCierreDtFecha) return false;
+    if (esSolicitanteOriginalDeEstaSolicitud) return false;
+
+    const esCentralAsignador = Boolean(
+      tienePerm('infraestructura.solicitud.assign') ||
+      tienePerm('infraestructura.solicitud.approve') ||
+      tienePerm('infraestructura.admin') ||
+      esAdminFuncionalInfra ||
+      rolesNormConformidad.has('COORDINADOR_INFRAESTRUCTURA') ||
+      rolesNormConformidad.has('P5') ||
+      rolesNormConformidad.has('ANALISTA_ASIGNADOR_UMI') ||
+      rolesNormConformidad.has('P2') ||
+      rolesNormConformidad.has('SUPER_ADMIN')
+    );
+
+    const esRolTerritorial = Boolean(
+      rolesNormConformidad.has('COORDINADOR_ADMINISTRATIVO_DT') ||
+      rolesNormConformidad.has('COORDINADOR_TERRITORIAL') ||
+      rolesNormConformidad.has('ENLACE_TERRITORIAL')
+    );
+
+    return esCentralAsignador || esRolTerritorial;
+  }, [
+    detalle,
+    esSolicitudTerritorial,
+    esSolicitanteOriginalDeEstaSolicitud,
+    tienePerm,
+    esAdminFuncionalInfra,
+    rolesNormConformidad,
+  ]);
+
   const ultimaRevisionTecnica = useMemo(() => {
     if (!Array.isArray((detalle as any)?.asignaciones)) return null;
     const revs = (detalle as any).asignaciones.filter(
@@ -1875,6 +1913,7 @@ const puedeCerrarTecnicamente = Boolean(
     (
       esAdminFuncionalInfra ||
       esResponsableTecnicoAsignado ||
+      rolesNormConformidad.has('COORDINADOR_ADMINISTRATIVO_DT') ||
       tienePerm('infraestructura.solicitud.cierre_tecnico') ||
       tienePerm('infraestructura.solicitud.close_with_evidence')
     )
@@ -2785,7 +2824,7 @@ const puedeCerrarTecnicamente = Boolean(
                                 <div className="rounded-xl border border-amber-200/90 bg-amber-50/60 p-3 space-y-2.5">
                                   <div className="flex items-center justify-between">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-amber-900">
-                                      Modalidad del Ejecutor Territorial (RF-INF-013)
+                                      Modalidad del Ejecutor Territorial
                                     </span>
                                     <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
                                       {detalle.direccionTerritorialNombre || 'Dirección Territorial'}
@@ -3423,19 +3462,21 @@ const puedeCerrarTecnicamente = Boolean(
                             </p>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setVoboCierreDtDecision(true);
-                            setVoboCierreDtObservaciones(detalle.ejecucionTerritorial?.voboCierreDtObservaciones || '');
-                            setErrorVoBoCierreDt('');
-                            setMostrarModalVoBoCierreDt(true);
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all shrink-0"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          {detalle.ejecucionTerritorial?.voboCierreDtFecha ? 'Actualizar VoBo DT' : 'Emitir VoBo DT'}
-                        </button>
+                        {puedeEmitirVoBoCierreDt && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVoboCierreDtDecision(true);
+                              setVoboCierreDtObservaciones(detalle.ejecucionTerritorial?.voboCierreDtObservaciones || '');
+                              setErrorVoBoCierreDt('');
+                              setMostrarModalVoBoCierreDt(true);
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all shrink-0"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {detalle.ejecucionTerritorial?.voboCierreDtFecha ? 'Actualizar VoBo DT' : 'Emitir VoBo DT'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -4687,7 +4728,7 @@ const puedeCerrarTecnicamente = Boolean(
                           Redistribuir / Reasignar técnico
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
-                          <span className="font-bold text-indigo-700">RF-INF-005 AC-01 / D10:</span> Cambia el técnico asignado. Si el estado actual es RECIBIDA o RECHAZADA → automáticamente pasa a <strong>ASIGNADA</strong>. Si ya está ASIGNADA, EN_ANÁLISIS o EN_PROGRESO → mantiene el estado y solo cambia el responsable.
+                          <span className="font-bold text-indigo-700">Reasignación:</span> Cambia el técnico asignado. Si el estado actual es RECIBIDA o RECHAZADA → automáticamente pasa a <strong>ASIGNADA</strong>. Si ya está ASIGNADA, EN_ANÁLISIS o EN_PROGRESO → mantiene el estado y solo cambia el responsable.
                         </p>
                       </div>
                     </div>
@@ -5823,7 +5864,7 @@ const puedeCerrarTecnicamente = Boolean(
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Motivo de Cierre por Falta de Insumos</h3>
-                  <p className="text-[11px] text-rose-700 font-medium">Requerimiento EFDS-1735 · Solicitud #{detalle?.consecutivo}</p>
+                  <p className="text-[11px] text-rose-700 font-medium">Solicitud #{detalle?.consecutivo}</p>
                 </div>
               </div>
               <button
@@ -5869,7 +5910,7 @@ const puedeCerrarTecnicamente = Boolean(
                   Causa / Justificación formal registrada
                 </label>
                 <div className="p-3.5 rounded-xl bg-white border border-rose-200 text-xs text-slate-900 font-medium leading-relaxed shadow-sm">
-                  {detalle?.motivoRechazo || trazaCierreInsumos?.motivo || 'Cierre técnico por falta de disponibilidad de insumos (EFDS-1735)'}
+                  {detalle?.motivoRechazo || trazaCierreInsumos?.motivo || 'Cierre técnico por falta de disponibilidad de insumos'}
                 </div>
               </div>
 
@@ -5913,7 +5954,7 @@ const puedeCerrarTecnicamente = Boolean(
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Cierre por Falta de Insumos</h3>
-                  <p className="text-[11px] text-rose-700 font-medium">Requerimiento EFDS-1735 · Solicitud #{detalle?.consecutivo}</p>
+                  <p className="text-[11px] text-rose-700 font-medium">Solicitud #{detalle?.consecutivo}</p>
                 </div>
               </div>
               <button
@@ -5988,7 +6029,7 @@ const puedeCerrarTecnicamente = Boolean(
                 ) : (
                   <>
                     <PackageX className="w-3.5 h-3.5 text-white" />
-                    <span style={{ color: '#ffffff' }}>Confirmar Cierre por Falta de Insumos (EFDS-1735)</span>
+                    <span style={{ color: '#ffffff' }}>Confirmar Cierre por Falta de Insumos</span>
               </>
                 )}
               </button>
@@ -5997,7 +6038,7 @@ const puedeCerrarTecnicamente = Boolean(
         </div>
       )}
 
-      {/* Modal Marcar Requiere Contratación (EFDS-2354) */}
+      {/* Modal Marcar Requiere Contratación */}
       {mostrarModalMarcarContratacion && (
         <div
           style={{
@@ -6033,7 +6074,7 @@ const puedeCerrarTecnicamente = Boolean(
                     Requerimiento de Contratación / Compra
                   </h3>
                   <p className="text-xs text-rose-700 font-semibold">
-                    EFDS-2354 · Notificación y seguimiento UMI
+                    Notificación y seguimiento de adquisición UMI
                   </p>
                 </div>
               </div>
