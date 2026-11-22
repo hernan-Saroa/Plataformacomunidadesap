@@ -689,7 +689,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     Circuito de Emergencias Críticas Activo
                   </h4>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-200 text-red-900 border border-red-300">
-                    RF-INF-014
+                    Prioridad Crítica
                   </span>
                 </div>
                 <p className="text-xs text-red-800 mt-1">
@@ -712,22 +712,24 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
-        {/* Banner de Bandeja Territorial Descentralizada (RF-INF-013) */}
+        {/* Banner de Bandeja Territorial Descentralizada */}
         {!ambitoTerritorial?.esCentral && ambitoTerritorial?.nombreTerritorial && (
-          <div className="mb-4 flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-50 to-amber-500/5 border border-amber-300 text-amber-950 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
-                <MapPin className="w-5 h-5" />
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-50/80 to-transparent border border-amber-200/80 shadow-xs gap-3">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/90 text-white flex items-center justify-center shadow-xs shrink-0 ring-4 ring-amber-100">
+                <MapPin className="w-5 h-5 text-amber-50" />
               </div>
               <div>
-                <div className="text-xs font-black tracking-wide flex items-center gap-2">
-                  <span>BANDEJA TERRITORIAL DESCENTRALIZADA</span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-black uppercase tracking-wider border border-amber-300">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h4 className="text-xs sm:text-sm font-bold text-amber-950 tracking-tight">
+                    Bandeja Territorial Descentralizada
+                  </h4>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
                     {ambitoTerritorial.nombreTerritorial}
                   </span>
                 </div>
-                <p className="text-[11px] text-amber-800 mt-0.5">
-                  Visualización y gestión técnica circunscrita a la sede y CETAPs de tu Dirección Territorial (RF-INF-013 / RF-INF-005).
+                <p className="text-xs text-amber-800/90 mt-0.5 font-medium">
+                  Gestión y seguimiento de solicitudes circunscritas a las sedes y CETAPs de tu jurisdicción territorial.
                 </p>
               </div>
             </div>
@@ -815,7 +817,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   >
                     <option value="TODAS">Todas las solicitudes</option>
                     <option value="REQUIERE_CONTRATACION">Requiere Contratación</option>
-                    <option value="OBRA_MAYOR">Obra Mayor (EFDS-2353)</option>
+                    <option value="OBRA_MAYOR">Obra Mayor</option>
                     <option value="MENOR">Mantenimiento Menor</option>
                   </select>
                 </label>
@@ -957,7 +959,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       ) : (
                         <span
                           className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-xs animate-pulse"
-                          title="Emergencia crítica pendiente de confirmación formal por Coordinación GIM (RF-INF-014)"
+                          title="Emergencia crítica pendiente de confirmación formal por Coordinación GIM"
                         >
                           <AlertTriangle className="w-3 h-3 text-white" />
                           Emergencia Crítica
@@ -967,7 +969,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     {m.alerta70Emitida && !esVencida && sla.clase !== 'vencido' && !estadoFinalizado && (
                       <span
                         className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-500 text-white shadow-xs"
-                        title="Alerta preventiva: Solicitud en umbral del 70% ANS - Requiere intervención antes de vencer (RF-INF-014)"
+                        title="Alerta preventiva: Solicitud en umbral del 70% de tiempo de atención - Requiere intervención antes de vencer"
                       >
                         <Clock className="w-3 h-3 text-white" />
                         Alerta 70% ANS
@@ -1119,7 +1121,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   {String(m.estado || '').toUpperCase() === 'CERRADA_SIN_ATENCION' ? (
                     <span
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-rose-50 text-rose-800 border-rose-300 shadow-sm"
-                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento (EFDS-1735)"
+                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento"
                     >
                       <PackageX className="w-3.5 h-3.5 text-rose-600" />
                       Cerrada por falta de insumos
@@ -1127,7 +1129,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   ) : String(m.estado || '').toUpperCase() === 'CERRADA_SIN_RESPUESTA' ? (
                     <span
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-700 border-slate-300 shadow-sm"
-                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario (RF-INF-008)"
+                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario"
                     >
                       <Clock className="w-3.5 h-3.5 text-slate-500" />
                       Cerrada – Sin respuesta
