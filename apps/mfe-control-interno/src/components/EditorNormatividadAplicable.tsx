@@ -21,7 +21,8 @@ const MIN_DESCRIPCION = 5;
 
 const COLOR_TIPO: Record<TipoNorma, { backgroundColor: string; color: string }> = {
   general: { backgroundColor: '#EDE9FE', color: '#5B21B6' },
-  especifica: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
+  // Ámbar para que se distinga de la general sobre la tarjeta morada
+  especifica: { backgroundColor: '#FEF3C7', color: '#92400E' },
 };
 
 const claseCampo = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white';
@@ -289,7 +290,8 @@ export function EditorNormatividadAplicable({ normas, onChange }: Props) {
             }
           }}
           placeholder="Descripción de la norma"
-          className="flex-1"
+          // En pantallas angostas pasa a su propia línea en vez de quedar apretada
+          style={{ flex: '1 1 240px', minWidth: 0 }}
         />
         <div className="w-36">{selectorTipo(nueva.tipo, (tipo) => setNueva({ ...nueva, tipo }))}</div>
         <Button
