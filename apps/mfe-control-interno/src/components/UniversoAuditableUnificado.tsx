@@ -269,6 +269,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
           decisionFinal: ev.decisionFinal,
           vigencia: ev.vigencia,
           fechaCorte: ev.fechaCorte,
+          vigenciaOrigen: ev.vigenciaOrigen ?? null,
           auditableCalculado,
           auditableManual,
         } as any,
