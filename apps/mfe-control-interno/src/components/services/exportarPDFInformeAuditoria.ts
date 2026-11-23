@@ -526,7 +526,8 @@ export async function exportarPDFInformeAuditoria(
       : new Date().toLocaleDateString('es-CO');
 
   const añoActual = new Date().getFullYear();
-  // Año del Plan Anual: prioridad al campo explícito, luego metadata del plan, luego año de la fecha inicio
+  // Año del Plan Anual: prioridad al campo explícito, luego metadata del plan, luego año de la fecha inicio.
+  // El oficio cita este año y no el de hoy, como el asunto (EFDS-2455)
   const planAnualAño: number =
     auditoria.planAnualAño
     || (auditoria as any).programaAnualMetadata?.año
@@ -620,7 +621,7 @@ export async function exportarPDFInformeAuditoria(
 
     const parrafosCuerpo = tipo === 'final'
       ? [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           `La ${unidad} tiene plazo hasta el ${plazoPronunc}, para formular un plan de mejora el cual debe contener acciones con el objetivo de subsanar la(s) causa(s) raíz de los hallazgos formalizados.`,
           '',
@@ -631,7 +632,7 @@ export async function exportarPDFInformeAuditoria(
         ].join('\n')
       : tipo === 'ejecutivo'
       ? [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           'Este documento resume los resultados definitivos y la evaluación del sistema de control interno del proceso auditado.',
           '',
@@ -641,7 +642,7 @@ export async function exportarPDFInformeAuditoria(
           'Jefe Oficina de Control Interno',
         ].join('\n')
       : [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           `Así mismo, la ${unidad} tiene plazo hasta el ${plazoPronunc}, para que se pronuncie frente a cada uno de los hallazgos y recomendaciones incluidas en el informe preliminar, allegando los soportes y evidencias respectivos, con el objetivo que los hallazgos sean levantados o en su defecto declarada su firmeza.`,
           '',
