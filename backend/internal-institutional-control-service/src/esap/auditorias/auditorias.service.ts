@@ -4634,6 +4634,8 @@ export class AuditoriasService {
         email: p.email || '',
         cargo: p.rolOcig || 'Auditor',
         rolCode: p.rolOcig || '',
+        // El equipo auditor se filtra por cualquiera de sus roles, no solo el principal (EFDS-2452)
+        rolesAdicionales: p.rolesAdicionales || [],
         especialidad: p.especialidades?.join(', ') || 'General',
         especialidades: p.especialidades || [],
         puedeSerLider: p.puedeSerLider || false,

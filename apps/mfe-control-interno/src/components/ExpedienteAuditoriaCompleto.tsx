@@ -95,6 +95,7 @@ import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
 import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
+import { ROL_OCI_AUDITOR, rolesOciDe } from '../config/roles-ocig-operativos';
 import { exportarPDFInformeEjecutivo } from './services/exportarPDFInformeCierreEjecutivo';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, type ConfiguracionDocumento } from './services/pdfESAPHeader';
 import { estructuraService } from '../../services/estructuraService';
@@ -2322,11 +2323,14 @@ function TabGeneral({
           const nombre = p.nombreCompleto ||
             (p.persona ? `${p.persona.nombre || ''} ${p.persona.apellido || ''}`.trim() : '') ||
             p.nombre || '';
+          // Todos sus roles OCI, no solo el principal (EFDS-2452)
+          const rolesOci = rolesOciDe({ rolOcig: p.rolOcig, rolesAdicionales: p.rolesAdicionales });
           return {
             ...p,
             _idPersona: personaId,
             _nombre: nombre,
-            _cargo: p.cargo || p.rol || p.rolOcig || 'Profesional OCI',
+            _cargo: p.cargo || p.rol || rolesOci.join(' · ') || 'Profesional OCI',
+            _rolesOci: rolesOci,
             _email: p.email || p.persona?.email || '',
           };
         })
@@ -2396,7 +2400,8 @@ function TabGeneral({
       );
       const personaId = prof?._idPersona || prof?.idTercero || selectedEquipoProfId;
       const nombre = prof?._nombre || 'Auditor';
-      const cargo = prof?._cargo || 'Auditor';
+      // Si entre sus roles está Auditor, entra al equipo como auditor aunque su principal sea otro (EFDS-2452)
+      const cargo = prof?._rolesOci?.includes(ROL_OCI_AUDITOR) ? ROL_OCI_AUDITOR : (prof?._cargo || 'Auditor');
       const email = prof?._email || '';
 
       const nuevoMiembro = {
