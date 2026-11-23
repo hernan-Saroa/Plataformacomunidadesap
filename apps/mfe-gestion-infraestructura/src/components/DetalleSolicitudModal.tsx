@@ -2362,6 +2362,32 @@ const puedeCerrarTecnicamente = Boolean(
                     </div>
                   )}
 
+                  {/* EFDS-2436 / RF-INF-011: Banner de Mantenimiento Preventivo Programado */}
+                  {detalle.tipoMantenimiento === 'PREVENTIVO' && (
+                    <div className="rounded-2xl border border-sky-300 bg-sky-50/80 p-4 shadow-sm text-sky-950">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                          <Clock className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-200 text-sky-900 border-sky-300">
+                              Mantenimiento Preventivo Programado
+                            </span>
+                            {detalle.fechaProgramada && (
+                              <span className="text-[11px] font-bold text-sky-800">
+                                Fecha de atención: {formatearFecha(detalle.fechaProgramada)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs mt-1.5 leading-relaxed text-sky-900">
+                            Esta orden preventiva cuenta con programación anticipada dentro de la ventana máxima de 15 días calendario. Recorre el ciclo regular de asignación técnica, valoración en campo, ejecución con evidencias y cierre formal.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* RF-INF-014: Circuito de Emergencias Críticas */}
                   {detalle.esEmergenciaCritica && (
                     <div className={`rounded-2xl border p-4 shadow-sm animate-in fade-in ${detalle.emergenciaConfirmada ? 'border-emerald-300 bg-emerald-50/70 text-emerald-950' : 'border-red-400 bg-red-50 text-red-950'}`}>
@@ -4483,8 +4509,13 @@ const puedeCerrarTecnicamente = Boolean(
                                           <User className="w-3 h-3 text-slate-400" />
                                           <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
                                           <span className="font-semibold text-slate-700">
-                                            {entry.usuario_email || 'Sistema'}
+                                            {entry.usuario_nombre ? `${entry.usuario_nombre} (${entry.usuario_email || 'Sistema'})` : (entry.usuario_email || 'Sistema')}
                                           </span>
+                                          {entry.usuario_cargo && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold">
+                                              Cargo: {entry.usuario_cargo}
+                                            </span>
+                                          )}
                                           {entry.usuario_id && (
                                             <span className="text-slate-400 font-mono text-[10px]" title={String(entry.usuario_id)}>
                                               id·{String(entry.usuario_id).slice(0, 8)}

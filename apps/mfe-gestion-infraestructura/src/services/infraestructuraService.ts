@@ -561,6 +561,7 @@ export interface CreateMantenimientoPayload {
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
   idCategoria?: number;
   idSubcategoria?: number;
+  fechaProgramada?: string;
   // ===== Fase 3 =====
   esBienAsignadoFuncionario?: boolean;
   nombreFuncionarioBienAsignado?: string;
@@ -612,6 +613,7 @@ export interface AprobarAsignarPayload {
   proveedorLocalNombre?: string | null;
   proveedorLocalNit?: string | null;
   ordenCompraContratoLocal?: string | null;
+  fechaProgramada?: string | null;
 }
 
 export interface RechazarPayload {
