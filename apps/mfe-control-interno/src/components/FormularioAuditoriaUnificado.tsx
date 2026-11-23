@@ -3418,62 +3418,7 @@ function Paso5ObjetivosCriterios({
             </div>
           </div>
 
-          {/* Criterios de Auditoría */}
-          <div>
-            <h4 className="font-bold text-gray-900 mb-3">Criterios de Auditoría</h4>
-            
-            {formData.criteriosAuditoria.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {formData.criteriosAuditoria.map((criterio, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200"
-                  >
-                    <CheckSquare className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 flex-1">{criterio}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        onChange(
-                          'criteriosAuditoria',
-                          formData.criteriosAuditoria.filter((_, i) => i !== index)
-                        );
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Input
-                value={criterioTemporal}
-                onChange={(e) => setCriterioTemporal(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onAgregarCriterio();
-                  }
-                }}
-                placeholder="Ej: Cumplimiento de procedimientos internos"
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={onAgregarCriterio}
-                disabled={criterioTemporal.trim().length < 5}
-                style={{ backgroundColor: '#003DA5' }}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Agregar
-              </Button>
-            </div>
-          </div>
+          {/* Sin "Criterios de auditoría": la OCI no los maneja en la planeación; el marco va en el alcance (EFDS-2454) */}
 
           {/* Normatividad Aplicable */}
           <div>
