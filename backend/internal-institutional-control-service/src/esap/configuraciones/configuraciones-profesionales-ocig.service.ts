@@ -3,6 +3,8 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  OnModuleInit,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -22,11 +24,26 @@ import {
 } from './roles-ocig-operativos.constants';
 
 @Injectable()
-export class ConfiguracionesProfesionalesOCIGService {
+export class ConfiguracionesProfesionalesOCIGService implements OnModuleInit {
+  private readonly logger = new Logger(ConfiguracionesProfesionalesOCIGService.name);
+
   constructor(
     @InjectRepository(ConfiguracionProfesionalOCIG)
     private configRepository: Repository<ConfiguracionProfesionalOCIG>,
   ) {}
+
+  // Columna de roles adicionales (EFDS-2452, migración 696). Se asegura aquí para que la
+  // lista de profesionales no falle en un ambiente donde la migración aún no se haya aplicado.
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.configRepository.query(
+        `ALTER TABLE control_interno.configuracion_profesionales_ocig
+           ADD COLUMN IF NOT EXISTS roles_adicionales text[] NOT NULL DEFAULT '{}'`,
+      );
+    } catch (error) {
+      this.logger.warn('No se pudo asegurar la columna roles_adicionales de profesionales OCI:', error);
+    }
+  }
 
   /**
    * Obtener todas las configuraciones de profesionales OCIG
@@ -106,6 +123,10 @@ export class ConfiguracionesProfesionalesOCIGService {
         // Reactivar y actualizar la configuración existente
         existe.activo = true;
         existe.rolOcig = this.validarRolOcigOperativo(createDto.rolOcig);
+        existe.rolesAdicionales = this.validarRolesAdicionales(
+          createDto.rolesAdicionales,
+          existe.rolOcig,
+        );
         if (createDto.especialidades) {
           existe.especialidades = createDto.especialidades;
         }
@@ -128,9 +149,11 @@ export class ConfiguracionesProfesionalesOCIGService {
       );
     }
 
+    const rolOcig = this.validarRolOcigOperativo(createDto.rolOcig);
     const config = this.configRepository.create({
       idTercero: createDto.idTercero,
-      rolOcig: this.validarRolOcigOperativo(createDto.rolOcig),
+      rolOcig,
+      rolesAdicionales: this.validarRolesAdicionales(createDto.rolesAdicionales, rolOcig),
       especialidades: createDto.especialidades,
       capacidadMaximaAuditorias: createDto.capacidadMaximaAuditorias ?? 4,
       horasMensualesDisponibles: createDto.horasMensualesDisponibles ?? 150,
@@ -167,6 +190,18 @@ export class ConfiguracionesProfesionalesOCIGService {
     // Actualizar campos
     if (updateDto.rolOcig !== undefined) {
       config.rolOcig = this.validarRolOcigOperativo(updateDto.rolOcig);
+    }
+    // Si llegan, reemplazan a los anteriores; si no, se conservan sin repetir el principal (EFDS-2452)
+    const rolPrincipal = normalizarRolOcigOperativo(config.rolOcig);
+    if (updateDto.rolesAdicionales !== undefined) {
+      config.rolesAdicionales = this.validarRolesAdicionales(
+        updateDto.rolesAdicionales,
+        rolPrincipal,
+      );
+    } else {
+      config.rolesAdicionales = (config.rolesAdicionales ?? []).filter(
+        (rol) => normalizarRolOcigOperativo(rol) !== rolPrincipal,
+      );
     }
     if (updateDto.especialidades !== undefined) {
       if (updateDto.especialidades.length === 0) {
@@ -285,6 +320,31 @@ export class ConfiguracionesProfesionalesOCIGService {
       );
     }
     return normalizado;
+  }
+
+  /**
+   * Roles además del principal (EFDS-2452): cada uno se valida igual que el principal,
+   * sin repetidos y sin el principal.
+   */
+  private validarRolesAdicionales(roles: string[] | undefined, rolPrincipal: string): string[] {
+    const resultado: string[] = [];
+    for (const rol of roles ?? []) {
+      if (!String(rol ?? '').trim()) continue;
+      const normalizado = this.validarRolOcigOperativo(rol);
+      if (normalizado !== rolPrincipal && !resultado.includes(normalizado)) {
+        resultado.push(normalizado);
+      }
+    }
+    return resultado;
+  }
+
+  /** Rol principal y adicionales, normalizados y sin repetidos. */
+  private rolesDe(config: ConfiguracionProfesionalOCIG): string[] {
+    const principal = normalizarRolOcigOperativo(config.rolOcig);
+    const adicionales = (config.rolesAdicionales ?? [])
+      .map((rol) => normalizarRolOcigOperativo(rol))
+      .filter((rol) => rol !== principal);
+    return [principal, ...Array.from(new Set(adicionales))];
   }
 
   /**
@@ -463,7 +523,8 @@ export class ConfiguracionesProfesionalesOCIGService {
         INNER JOIN auth.personas p ON p.id_person = cfg.id_tercero::uuid
         INNER JOIN auth."user" u ON u.id_person = p.id_person
         WHERE cfg.activo = true
-          AND cfg.rol_ocig = ANY($1::text[])
+          -- El rol puede ser el principal o uno adicional (EFDS-2452)
+          AND (cfg.rol_ocig = ANY($1::text[]) OR cfg.roles_adicionales && $1::text[])
           AND u.is_active = true
           AND p.nom_largo IS NOT NULL
       `;
@@ -636,6 +697,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         id: config.id,
         idTercero: config.idTercero,
         rolOcig: normalizarRolOcigOperativo(config.rolOcig),
+        rolesAdicionales: this.rolesDe(config).slice(1),
         especialidades: config.especialidades,
         capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
         horasMensualesDisponibles: config.horasMensualesDisponibles,

@@ -302,6 +302,7 @@ export class NotificacionesService implements OnModuleInit {
    * id_user de los Jefes OCIG: los profesionales activos que la oficina tiene configurados con
    * ese rol en Configuración de Profesionales OCI. El permiso de activar el plan no sirve para
    * distinguirlos porque lo comparten todos los roles operativos de la OCI.
+   * El rol puede ser el principal o uno adicional del profesional (EFDS-2452).
    */
   async obtenerJefesOcig(): Promise<string[]> {
     try {
@@ -310,7 +311,7 @@ export class NotificacionesService implements OnModuleInit {
          FROM control_interno.configuracion_profesionales_ocig c
          INNER JOIN auth."user" u ON u.id_person::text = c.id_tercero::text AND u.is_active = true
          WHERE c.activo = true
-           AND c.rol_ocig = ANY($1::text[])`,
+           AND (c.rol_ocig = ANY($1::text[]) OR c.roles_adicionales && $1::text[])`,
         [variantesRolOcigOperativo(ROL_OCIG_JEFE)],
       );
       return (rows || []).map((r: { id_user: string }) => String(r.id_user));

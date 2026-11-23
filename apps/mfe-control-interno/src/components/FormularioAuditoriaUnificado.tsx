@@ -45,6 +45,7 @@ import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/ap
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso, type DisponibilidadEquipoAuditorResponse } from '../services/api/controlInternoService';
 import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { cumpleConAlgunRolOci } from '../config/roles-ocig-operativos';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
 import { evaluacionProgramable } from '../utils/auditableEvaluacion';
@@ -243,6 +244,8 @@ interface AuditorOption {
   id: string;
   nombre: string;
   cargo: string;
+  /** Roles además del principal (cargo), p. ej. el Jefe OCI que también audita (EFDS-2452) */
+  rolesAdicionales?: string[];
 }
 
 const ROLES_DECRETO_648 = [
@@ -634,7 +637,8 @@ export function FormularioAuditoriaUnificado({
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor'
+              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+              rolesAdicionales: Array.isArray(config.rolesAdicionales) ? config.rolesAdicionales : [],
             }));
           setAuditoresDisponibles(auditores);
         } else {
@@ -2915,10 +2919,10 @@ function Paso3EquipoAuditor({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el jefe OCI / supervisor...</option>
-              {/* Solo el rol Jefe OCI (EFDS-2197); al editar se conserva el ya asignado */}
+              {/* Solo el rol Jefe OCI (EFDS-2197), principal o adicional (EFDS-2452); al editar se conserva el ya asignado */}
               {auditores
                 .filter(a =>
-                  REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor(a.cargo) ||
+                  cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor) ||
                   a.id === formData.supervisorAsignado
                 )
                 .map(auditor => (
@@ -2937,11 +2941,11 @@ function Paso3EquipoAuditor({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
-              {/* Solo el rol Auditor (EFDS-2197); al editar se conserva el ya asignado */}
+              {/* Solo el rol Auditor (EFDS-2197), principal o adicional (EFDS-2452); al editar se conserva el ya asignado */}
               {auditores
                 .filter(a =>
                   a.id !== formData.supervisorAsignado &&
-                  (REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo) ||
+                  (cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria) ||
                     a.id === formData.auditorLider)
                 )
                 .map(auditor => (
@@ -2961,8 +2965,8 @@ function Paso3EquipoAuditor({
               {auditores.filter(a =>
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
-                // Solo el rol Auditor (EFDS-2197); al editar se conservan los ya elegidos
-                (REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo) ||
+                // Solo el rol Auditor (EFDS-2197), principal o adicional (EFDS-2452); al editar se conservan los ya elegidos
+                (cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor) ||
                   isAuditorEnEquipo(a))
               ).map(auditor => {
                 const seleccionado = isAuditorEnEquipo(auditor);
