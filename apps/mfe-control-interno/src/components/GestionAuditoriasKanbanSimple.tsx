@@ -1142,6 +1142,7 @@ export function GestionAuditoriasKanbanSimple() {
         tipo: aud.tipo,
         prioridad: aud.prioridad,
         areaObjetivo: aud.areaObjetivo,
+        alcance: (aud as any).alcance || '', // EFDS-2453
         permiteCambiarObjetivos: aud.permiteCambiarObjetivos,
         equipoAuditores: aud.equipoAuditores,
         criterios: aud.criterios, // ✅ Incluir criterios del backend
