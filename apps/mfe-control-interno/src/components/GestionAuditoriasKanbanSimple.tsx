@@ -3313,7 +3313,8 @@ export function GestionAuditoriasKanbanSimple() {
                 semanasExcluidas: data.semanasExcluidas ?? [],
                 // Objetivos y Criterios
                 objetivos: data.objetivos,
-                criterios: data.criteriosAuditoria,
+                // Sin criterios: el formulario ya no los muestra y la lista no los trae, así que se
+                // enviaban vacíos y el backend borraba los registrados antes del cambio (EFDS-2454)
                 // Responsables
                 responsable: data.responsableArea?.nombre || '',
                 responsableAreaNombre: data.responsableArea?.nombre || '',
