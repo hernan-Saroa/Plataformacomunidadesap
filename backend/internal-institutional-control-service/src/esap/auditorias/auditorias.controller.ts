@@ -45,7 +45,16 @@ import { ControlInternoPermissions as CIP } from '../../common/permissions.const
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtService } from '@nestjs/jwt';
-import { CleanUploadFileNameInterceptor } from '../../common/interceptors/clean-upload-filename.interceptor';
+
+/**
+ * multer entrega el nombre del archivo leído como latin1 ("versiÃ³n"): se vuelve a UTF-8 para que
+ * el documento y el adjunto del correo conserven las tildes (EFDS-2455). Si no era UTF-8, se deja.
+ */
+function nombreArchivoSubido(archivo: { originalname?: string }): string {
+  const original = String(archivo.originalname || '').trim();
+  const utf8 = Buffer.from(original, 'latin1').toString('utf8');
+  return utf8.includes('�') ? original : utf8;
+}
 
 /** El informe preliminar se genera en Word, el auditor lo termina y sube el Word o un PDF (EFDS-2455). */
 const TIPOS_INFORME_PRELIMINAR: Record<string, string> = {
@@ -882,8 +891,6 @@ export class AuditoriasController {
         cb(null, true);
       },
     }),
-    // Va después de multer: el interceptor global corre antes de que exista req.file y las tildes del nombre llegaban dañadas
-    CleanUploadFileNameInterceptor,
   )
   async generarInformePreliminar(
     @Param('id') id: string,
@@ -943,7 +950,7 @@ export class AuditoriasController {
     // Word o PDF: se conservan el nombre y la extensión con que lo subió el auditor (EFDS-2455)
     const extension = extname(informe.originalname || '').toLowerCase();
     const tipo = TIPOS_INFORME_PRELIMINAR[extension] ?? TIPOS_INFORME_PRELIMINAR['.pdf'];
-    const nombre = String(informe.originalname || '').trim() || `Informe_Preliminar_${auditoriaId}${extension || '.pdf'}`;
+    const nombre = nombreArchivoSubido(informe) || `Informe_Preliminar_${auditoriaId}${extension || '.pdf'}`;
     const adjunto: AdjuntoCorreo = {
       filename: nombre,
       contentBase64: Buffer.from(informe.buffer).toString('base64'),
