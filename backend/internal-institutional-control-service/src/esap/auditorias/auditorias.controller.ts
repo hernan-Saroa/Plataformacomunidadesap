@@ -45,6 +45,22 @@ import { ControlInternoPermissions as CIP } from '../../common/permissions.const
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtService } from '@nestjs/jwt';
+import { CleanUploadFileNameInterceptor } from '../../common/interceptors/clean-upload-filename.interceptor';
+
+/** El informe preliminar se genera en Word, el auditor lo termina y sube el Word o un PDF (EFDS-2455). */
+const TIPOS_INFORME_PRELIMINAR: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+
+/** Que el contenido sea de verdad lo que dice la extensión: un PDF empieza por %PDF y un .docx es un ZIP. */
+function contenidoCorrespondeAExtension(archivo: { originalname?: string; buffer: Buffer }): boolean {
+  const extension = extname(archivo.originalname || '').toLowerCase();
+  const inicio = Buffer.from(archivo.buffer).subarray(0, 4).toString('latin1');
+  if (extension === '.pdf') return inicio === '%PDF';
+  if (extension === '.docx') return inicio === 'PK\u0003\u0004';
+  return false;
+}
 
 @Controller('auditorias')
 export class AuditoriasController {
@@ -835,20 +851,52 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /auditorias/:id/informe-preliminar/datos
+   * Jefe de la OCI que firma y nivel del proceso auditado, para el formato EM-FO-003 (EFDS-2455)
+   */
+  @Get(':id/informe-preliminar/datos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  datosInformePreliminar(@Param('id') id: string) {
+    return this.auditoriasService.datosInformePreliminar(id);
+  }
+
+  /**
    * POST /auditorias/:id/informe-preliminar/generar
-   * Genera informe preliminar y notifica al área (actualiza hallazgos a NOTIFICADO)
+   * Recibe el informe preliminar que terminó el auditor (Word o PDF) y notifica al área
+   * (actualiza hallazgos a NOTIFICADO e inicia los 5 días hábiles de controversia)
    */
   @Post(':id/informe-preliminar/generar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  // El PDF llega en la misma petición: quien puede generar el informe no necesita además
+  // El archivo llega en la misma petición: quien puede generar el informe no necesita además
   // el permiso de subir documentos para que quede guardado y adjunto (EFDS-2350)
-  @UseInterceptors(FileInterceptor('informe', { storage: memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('informe', {
+      storage: memoryStorage(),
+      limits: { fileSize: 50 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!TIPOS_INFORME_PRELIMINAR[extname(file.originalname || '').toLowerCase()]) {
+          return cb(new BadRequestException('El informe preliminar debe ser un archivo Word (.docx) o PDF.'), false);
+        }
+        cb(null, true);
+      },
+    }),
+    // Va después de multer: el interceptor global corre antes de que exista req.file y las tildes del nombre llegaban dañadas
+    CleanUploadFileNameInterceptor,
+  )
   async generarInformePreliminar(
     @Param('id') id: string,
     @Req() req: any,
     @UploadedFile() informe?: any,
   ) {
+    // Se notifica con el informe que subió el auditor; sin él no se avisa a nadie (EFDS-2455)
+    if (!informe?.buffer?.length) {
+      throw new BadRequestException('Adjunte el informe preliminar en Word (.docx) o PDF para notificar al área auditada.');
+    }
+    if (!contenidoCorrespondeAExtension(informe)) {
+      throw new BadRequestException('El archivo no es un Word (.docx) o PDF válido.');
+    }
     const user = req.user || this.extractUserFromToken(req);
     const adjuntos = await this.guardarInformePreliminar(id, informe, user);
     const { count, total, areaNotificada, motivoNoNotificada } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId, {
@@ -886,17 +934,20 @@ export class AuditoriasController {
   }
 
   /**
-   * Guarda el PDF del informe preliminar entre los documentos de la auditoría (etapa Comunicación)
-   * y lo deja listo para adjuntarlo al correo del área auditada (EFDS-2350). Si no llegó, el correo
-   * sale sin adjunto; si no se pudo guardar, igual se adjunta.
+   * Guarda el informe preliminar entre los documentos de la auditoría (etapa Comunicación)
+   * y lo deja listo para adjuntarlo al correo del área auditada (EFDS-2350). Si no se pudo
+   * guardar, igual se adjunta.
    */
   private async guardarInformePreliminar(auditoriaId: string, informe: any, user: any): Promise<AdjuntoCorreo[]> {
     if (!informe?.buffer?.length) return [];
-    const nombre = /\.pdf$/i.test(informe.originalname || '') ? informe.originalname : `Informe_Preliminar_${auditoriaId}.pdf`;
+    // Word o PDF: se conservan el nombre y la extensión con que lo subió el auditor (EFDS-2455)
+    const extension = extname(informe.originalname || '').toLowerCase();
+    const tipo = TIPOS_INFORME_PRELIMINAR[extension] ?? TIPOS_INFORME_PRELIMINAR['.pdf'];
+    const nombre = String(informe.originalname || '').trim() || `Informe_Preliminar_${auditoriaId}${extension || '.pdf'}`;
     const adjunto: AdjuntoCorreo = {
       filename: nombre,
       contentBase64: Buffer.from(informe.buffer).toString('base64'),
-      contentType: informe.mimetype || 'application/pdf',
+      contentType: tipo,
     };
     try {
       const ruta = this.documentosService.generarRutaArchivo(nombre, auditoriaId, EtapaDocumento.COMUNICACION);

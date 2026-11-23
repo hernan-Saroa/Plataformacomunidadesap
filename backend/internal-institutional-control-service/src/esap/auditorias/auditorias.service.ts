@@ -22,6 +22,7 @@ import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kan
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
+import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -4910,6 +4911,53 @@ export class AuditoriasService {
     } catch (error) {
       console.error(`[AuditoriasService.crearNotificacionesAuditoriaEditada] ❌ Error:`, error.message);
     }
+  }
+
+  /**
+   * Datos del formato EM-FO-003 que la pantalla del auditor no puede consultar por sí misma
+   * (EFDS-2455): quién firma como Jefe de la OCI, según Configuración de Profesionales OCI
+   * (cuya consulta pide un permiso de configuración), y el nivel del proceso auditado, que
+   * es el tipo del proceso auditable con el mismo nombre.
+   */
+  async datosInformePreliminar(id: string): Promise<{ jefeOci: string | null; nivelProceso: string | null }> {
+    if (!this.isValidUUID(id)) throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+
+    let jefeOci: string | null = null;
+    try {
+      const filas = await this.auditoriaRepository.query(
+        `SELECT TRIM(p.nom_largo) AS nombre
+         FROM control_interno.configuracion_profesionales_ocig c
+         INNER JOIN auth.personas p ON p.id_person::text = c.id_tercero::text
+         WHERE c.activo = true
+           AND c.rol_ocig = ANY($1::text[])
+           AND COALESCE(TRIM(p.nom_largo), '') <> ''
+         ORDER BY c.fecha_asignacion DESC, c.updated_at DESC
+         LIMIT 1`,
+        [variantesRolOcigOperativo(ROL_OCIG_JEFE)],
+      );
+      jefeOci = filas?.[0]?.nombre || null;
+    } catch (error) {
+      console.error('[AuditoriasService.datosInformePreliminar] Jefe OCI:', (error as Error).message);
+    }
+
+    let nivelProceso: string | null = null;
+    const normalizar = (s: unknown) =>
+      String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const proceso = normalizar(auditoria.procesoAuditado || auditoria.nombre);
+    if (proceso) {
+      try {
+        const procesos: { nombre: string; tipo: string }[] = await this.auditoriaRepository.query(
+          `SELECT nombre, tipo FROM control_interno.proceso_auditable WHERE activo = true`,
+        );
+        nivelProceso = procesos.find((p) => normalizar(p.nombre) === proceso)?.tipo || null;
+      } catch (error) {
+        console.error('[AuditoriasService.datosInformePreliminar] Nivel del proceso:', (error as Error).message);
+      }
+    }
+
+    return { jefeOci, nivelProceso };
   }
 
   public async obtenerJefesControlInterno(): Promise<string[]> {
