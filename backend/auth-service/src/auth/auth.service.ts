@@ -399,6 +399,43 @@ export class AuthService {
         ? ['*']
         : permissionCodes;
 
+    const cargoNombre = user.person?.cargo?.nomCargo || user.person?.cargo?.nombre_cargo || null;
+    const cargoCodigo = user.person?.cargo?.codCargo || user.person?.cargo?.codigo_cargo || null;
+
+    // EFDS-2440 (RF-INF-015): La política preventiva de 90 días aplica a las cuentas institucionales
+    // por cargo de Infraestructura (cuentas genéricas operativas) o a cualquier cuenta con clave temporal.
+    // Los usuarios transversales convencionales (estudiantes, docentes, otros módulos) no se ven afectados globalmente.
+    const INFRA_GENERIC_ROLES = [
+      'ADMINISTRADOR_FUNCIONAL_INFRA',
+      'ANALISTA_ASIGNADOR_UMI',
+      'TECNICO_ELECTRICO_ESPECIALIZADO',
+      'TECNICO_UMI_MULTIPROPOSITO',
+      'RADICADOR_INFRA',
+      'CONSULTA_CALIDAD_INFRA',
+      'COORDINADOR_ADMINISTRATIVO_DT',
+      'RESPONSABLE_CETAP',
+    ];
+    const isInfraAccount =
+      rolesCodes.some((rc: string) => INFRA_GENERIC_ROLES.includes(rc)) ||
+      Boolean(
+        cargoCodigo &&
+          (cargoCodigo.startsWith('COORD-') ||
+            cargoCodigo.endsWith('-UMI') ||
+            cargoCodigo.endsWith('-INFRA') ||
+            cargoCodigo === 'RESP-CETAP'),
+      );
+
+    const now = new Date();
+    const changedAt = user.password_changed_at
+      ? new Date(user.password_changed_at)
+      : (user.created_at ? new Date(user.created_at) : now);
+    const diffDays = Math.floor((now.getTime() - changedAt.getTime()) / (1000 * 60 * 60 * 24));
+    const isExpired = Boolean(user.password_temp) || (isInfraAccount && diffDays >= 90);
+    const daysRemaining = isInfraAccount ? Math.max(0, 90 - diffDays) : null;
+    const passwordExpirationReason = user.password_temp
+      ? 'TEMPORARY_ROTATION'
+      : (isInfraAccount && diffDays >= 90 ? 'EXPIRED_90_DAYS' : null);
+
     const payload = {
       sub: user.id_user,
       username: user.username,
@@ -408,6 +445,7 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
+      cargo: cargoCodigo || undefined,
       // permissions: permissionCodes, // Se quita porque al momento de generar el JWT sale error: "Parse Error: Header overflow"
     };
 
@@ -460,6 +498,12 @@ export class AuthService {
         fullName,
         roles: user.roles,
         person: user.person,
+        cargo: cargoNombre,
+        cargoCodigo,
+        passwordExpired: isExpired,
+        daysUntilPasswordExpiration: daysRemaining,
+        passwordExpirationReason,
+        passwordChangedAt: user.password_changed_at || user.created_at || null,
         modules,
         permissions: permissionCodes,
       },

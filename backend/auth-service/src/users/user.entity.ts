@@ -29,6 +29,9 @@ export class User {
   @Column({ default: false })
   password_temp: boolean;
 
+  @Column({ name: 'password_changed_at', type: 'timestamptz', nullable: true })
+  password_changed_at?: Date | null;
+
   @Column({ type: 'numeric', precision: 6, scale: 0, nullable: true })
   token: string | null;
 

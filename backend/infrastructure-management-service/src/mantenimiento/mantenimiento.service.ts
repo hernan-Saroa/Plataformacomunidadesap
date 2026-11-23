@@ -1134,6 +1134,55 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         'Clasificación TECNOLÓGICA NO puede quedar radicada como responsabilidad de UMI. Area debe ser TI.',
       );
     }
+
+    // EFDS-2436 / RF-INF-011: Validación de mantenimiento preventivo y ventana máxima de 15 días a futuro
+    const esPreventivo = String(dto.tipoMantenimiento || '').toUpperCase() === 'PREVENTIVO';
+    let fechaProgramadaResuelta: string | null = null;
+    if (esPreventivo) {
+      if (!dto.fechaProgramada || !String(dto.fechaProgramada).trim()) {
+        throw new BadRequestException(
+          'Para solicitudes de mantenimiento preventivo, la fecha programada de atención es obligatoria (máximo 15 días hacia el futuro).',
+        );
+      }
+      const rawFecha = String(dto.fechaProgramada).trim();
+      const datePart = rawFecha.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length !== 3) {
+        throw new BadRequestException('La fecha programada debe tener un formato válido (YYYY-MM-DD).');
+      }
+      const [year, month, day] = parts.map(Number);
+      const fechaProg = new Date(year, month - 1, day, 12, 0, 0);
+      if (isNaN(fechaProg.getTime())) {
+        throw new BadRequestException('La fecha programada proporcionada no es una fecha válida.');
+      }
+
+      const hoyInicio = new Date();
+      hoyInicio.setHours(0, 0, 0, 0);
+
+      const maxFuturo15Dias = new Date(hoyInicio);
+      maxFuturo15Dias.setDate(maxFuturo15Dias.getDate() + 15);
+      maxFuturo15Dias.setHours(23, 59, 59, 999);
+
+      const progDateOnly = new Date(year, month - 1, day, 0, 0, 0);
+
+      if (progDateOnly < hoyInicio) {
+        throw new BadRequestException(
+          'La fecha programada de mantenimiento preventivo no puede ser anterior a la fecha actual.',
+        );
+      }
+      if (progDateOnly > maxFuturo15Dias) {
+        throw new BadRequestException(
+          'La fecha programada de mantenimiento preventivo no puede superar el límite máximo de 15 días calendario a futuro.',
+        );
+      }
+      fechaProgramadaResuelta = datePart;
+
+      // Si no se especificó categoría y es preventivo, asociar por defecto a CS_008 (Revisión y Mantenimiento Preventivo Equipos Críticos)
+      if (!dto.idCategoria) {
+        dto.idCategoria = 54;
+      }
+    }
+
     if (dto.tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(Number(dto.idCategoria))) {
       throw new BadRequestException(
         'La categoría de servicio es obligatoria para radicar solicitudes de atención física.',
@@ -1202,6 +1251,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       salon: dto.salon,
       ubicacionDetalle: dto.ubicacionDetalle,
       tipoMantenimiento: dto.tipoMantenimiento,
+      fechaProgramada: fechaProgramadaResuelta as any,
       tipoAtencion: dto.tipoAtencion,
       areaResponsableActual: areaResp,
       remisiones: remisionesIniciales,
@@ -2647,7 +2697,9 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       motivo: args.motivo ?? null,
       observaciones: args.observaciones ?? null,
       usuario_id: args.user.userId ?? null,
+      usuario_nombre: args.user.name ?? null,
       usuario_email: args.user.email ?? null,
+      usuario_cargo: args.user.cargo ?? null,
       usuario_roles: Array.isArray(args.user.roles) ? args.user.roles.join(',') : null,
     };
     if (args.clasificacionMantenimiento !== undefined) {
@@ -2834,6 +2886,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       proveedorLocalNombre?: string | null;
       proveedorLocalNit?: string | null;
       ordenCompraContratoLocal?: string | null;
+      fechaProgramada?: string | null;
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
@@ -2956,6 +3009,28 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
+    }
+
+    if (args.fechaProgramada && String(args.fechaProgramada).trim()) {
+      const rawFecha = String(args.fechaProgramada).trim();
+      const datePart = rawFecha.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length === 3) {
+        const [year, month, day] = parts.map(Number);
+        const hoyInicio = new Date();
+        hoyInicio.setHours(0, 0, 0, 0);
+        const max15Dias = new Date(hoyInicio);
+        max15Dias.setDate(max15Dias.getDate() + 15);
+        max15Dias.setHours(23, 59, 59, 999);
+        const progDate = new Date(year, month - 1, day, 0, 0, 0);
+        if (progDate < hoyInicio) {
+          throw new BadRequestException('La fecha programada no puede ser anterior a la fecha actual.');
+        }
+        if (progDate > max15Dias) {
+          throw new BadRequestException('La fecha programada no puede superar el límite máximo de 15 días calendario a futuro.');
+        }
+        solicitud.fechaProgramada = datePart;
+      }
     }
 
     // Persistir modalidad de ejecución territorial si aplica (RF-INF-013)

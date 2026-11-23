@@ -38,16 +38,28 @@ export class UsersService {
   async findByUsername(username: string): Promise<User | null> {
     return this.userRepo.findOne({
       where: { username },
-      relations: ['person', 'roles', 'roles.permissions']
+      relations: [
+        'person',
+        'person.dependencia',
+        'person.cargo',
+        'roles',
+        'roles.permissions',
+      ],
     });
   }
 
   async findByEmail(email: string): Promise<User | null> {
     return this.userRepo.findOne({
       where: {
-        person: { email }
+        person: { email },
       },
-      relations: ['person', 'roles', 'roles.permissions']
+      relations: [
+        'person',
+        'person.dependencia',
+        'person.cargo',
+        'roles',
+        'roles.permissions',
+      ],
     });
   }
 
@@ -793,6 +805,8 @@ export class UsersService {
     }
 
     user.password_hash = await bcrypt.hash(newPassword, 10);
+    user.password_temp = false;
+    user.password_changed_at = new Date();
     await this.userRepo.save(user);
   }
 
@@ -803,6 +817,8 @@ export class UsersService {
     }
 
     user.password_hash = await bcrypt.hash(newPassword, 10);
+    user.password_temp = false;
+    user.password_changed_at = new Date();
     await this.userRepo.save(user);
   }
 
@@ -1467,6 +1483,8 @@ export class UsersService {
     }
 
     user.password_hash = await bcrypt.hash(newPassword, 10);
+    user.password_temp = false;
+    user.password_changed_at = new Date();
     await this.userRepo.save(user);
   }
 }
