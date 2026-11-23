@@ -1,7 +1,7 @@
 /**
  * Vista del informe preliminar en Word y confirmación antes de notificar (EFDS-2455).
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Download, Eye, Send, AlertTriangle, FileText } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
@@ -25,12 +25,12 @@ export const ModalVistaInformeWord: React.FC<{
   onDescargar: () => void;
   onClose: () => void;
 }> = ({ blob, nombreArchivo, onDescargar, onClose }) => {
-  const contenedorRef = useRef<HTMLDivElement>(null);
+  // Ref con estado: el contenido del diálogo se monta después del primer efecto
+  const [contenedor, setContenedor] = useState<HTMLDivElement | null>(null);
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'error'>('cargando');
 
   useEffect(() => {
     let cancelado = false;
-    const contenedor = contenedorRef.current;
     if (!contenedor) return;
     contenedor.innerHTML = '';
     setEstado('cargando');
@@ -52,7 +52,7 @@ export const ModalVistaInformeWord: React.FC<{
     return () => {
       cancelado = true;
     };
-  }, [blob]);
+  }, [blob, contenedor]);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -73,18 +73,18 @@ export const ModalVistaInformeWord: React.FC<{
         </div>
         <div className="flex-1 overflow-auto relative">
           {estado === 'cargando' && (
-            <div className="flex flex-col items-center justify-center gap-4 h-full text-gray-400 bg-gray-50">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50">
               <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-gray-900 animate-spin flex-shrink-0" />
               <p className="font-medium text-sm">Preparando la vista previa...</p>
             </div>
           )}
           {estado === 'error' && (
-            <div className="flex flex-col items-center justify-center gap-2 h-full text-gray-600 bg-gray-50">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-gray-600 bg-gray-50">
               <AlertTriangle className="w-8 h-8 text-yellow-600" />
               <p className="font-medium text-sm">No se pudo mostrar la vista previa. Descargue el Word para revisarlo.</p>
             </div>
           )}
-          <div ref={contenedorRef} className="docx-preview-content w-full" data-testid="vista-informe-preliminar-word" />
+          <div ref={setContenedor} className="docx-preview-content w-full" data-testid="vista-informe-preliminar-word" />
         </div>
       </DialogContent>
     </Dialog>
