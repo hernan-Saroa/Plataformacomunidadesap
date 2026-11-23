@@ -70,6 +70,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { normasATexto } from './services/normatividad';
 import { renderAsync } from 'docx-preview';
 import { notificationsService } from '../../services/api/notificationsService';
 
@@ -792,7 +793,8 @@ export function ExpedienteAuditoriaCompleto({
           checklistCompletados: data.checklistCompletados || {},
         };
         if(auditoriaBackend.normatividadAplicable?.length == 0) {
-          auditoriaBackend.normatividadAplicable = data.programaAnualMetadata.normatividadAplicable || []
+          // En la metadata la norma puede venir como objeto con tipo: aquí se muestra como texto (EFDS-2451)
+          auditoriaBackend.normatividadAplicable = normasATexto(data.programaAnualMetadata?.normatividadAplicable)
         }
         if(auditoriaBackend.riesgosIdentificados?.length == 0) {
           auditoriaBackend.riesgosIdentificados = data.programaAnualMetadata.riesgosIdentificados || []
