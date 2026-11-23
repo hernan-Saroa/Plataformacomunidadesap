@@ -39,6 +39,7 @@ import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/envi
 import { VisorOnlyOffice } from './VisorOnlyOffice';
 import { onlyOfficePuedeAbrir } from './services/onlyofficeVisor';
 import { esAuditoriaTerritorial, nombreDireccionTerritorial, nombreUnidadAuditada } from './services/unidadAuditada';
+import { agruparNormasPorTipo, textoNorma } from './services/normatividad';
 
 
 // ====================================
@@ -169,8 +170,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     nombre: auditoria.nombre,
     proceso: auditoria.proceso,
     auditorLider: auditorLiderNombre,
-    radicado: (auditoria as any).radicado,
-    fechaOficio: informe?.fecha,
+    // Sin radicado ni fecha de radicación: los pone el aplicativo de correspondencia (EFDS-2455)
     destinatarioNombre: responsableAuditado,
     destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || (auditoria as any).responsableArea?.cargo || 'Director(a) Territorial',
     // A quién se audita: en las auditorías de una territorial el oficio la nombra
@@ -253,7 +253,13 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     // Campos opcionales del API
     objetivo: (auditoria as any).objetivo,
     alcance: (auditoria as any).alcance,
-    marcoNormativo: (auditoria as any).marcoNormativo,
+    // Solo las normas registradas en la auditoría, separadas por su tipo (EFDS-2455)
+    marcoNormativo: (() => {
+      const { generales, especificas } = agruparNormasPorTipo(
+        (auditoria as any).normatividadAplicable ?? (auditoria as any).programaAnualMetadata?.normatividadAplicable,
+      );
+      return { generales: generales.map(textoNorma), especificas: especificas.map(textoNorma) };
+    })(),
     contextoGeneral: (auditoria as any).contextoGeneral,
     descripcionUnidad: (auditoria as any).descripcionUnidad,
     reuniones: reuniones,
@@ -659,6 +665,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
               : audData.territorial,
           }),
           ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
+          // Normatividad registrada en el paso 5 de la auditoría, para el marco normativo (EFDS-2455)
+          ...(Array.isArray(audData.programaAnualMetadata?.normatividadAplicable) && {
+            normatividadAplicable: audData.programaAnualMetadata.normatividadAplicable,
+          }),
           ...(audData.focos && { focos: audData.focos }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
@@ -768,7 +778,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
     let auditoriaFinal = { ...auditoriaBase };
 
     toast.loading('Generando contenido del informe...', { id: toastId });
-    let informeFinalTmp = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
+    let informeFinalTmp = { ...informePreliminar };
     try {
       const contenidoIA = await generarContenidoInformeIA(
         auditoriaBase,
@@ -3418,9 +3428,8 @@ const ModalPreviewInforme: React.FC<{
 
     const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informe);
 
-    const informeParaPDF = tipo === 'preliminar' && auditoria.hallazgos?.length
-      ? { ...informe, foliosAnexos: Math.max(10, auditoria.hallazgos.length * 3) }
-      : informe;
+    // Los folios del anexo los cuenta el PDF con sus páginas reales (EFDS-2455)
+    const informeParaPDF = informe;
 
     return { auditoriaBase, informeParaPDF, hallazgosParaPDF };
   };
