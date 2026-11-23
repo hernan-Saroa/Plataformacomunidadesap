@@ -64,6 +64,14 @@ export class CreateMantenimientoDto {
   @MaxLength(50)
   tipoMantenimiento: string;
 
+  @ApiPropertyOptional({
+    example: '2026-11-28',
+    description: 'RF-INF-011 (EFDS-2436): Fecha programada para mantenimiento preventivo. Obligatoria cuando tipoMantenimiento es PREVENTIVO (máximo 15 días calendario hacia el futuro).',
+  })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
+
   @ApiProperty({
     example: 'FISICA',
     description: 'Clasificación OBLIGATORIA EFDS-1731. FISICA = UMI (plomería, cerrajería). TECNOLOGICA = TI (HDMI, cómputo, impresora).',
@@ -500,6 +508,11 @@ export class AsignarTecnicoPayload {
   @IsOptional()
   @IsString()
   ordenCompraContratoLocal?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-28', description: 'RF-INF-011: Fecha programada de ejecución (máximo 15 días a futuro)' })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
 }
 
 export class RegistrarVoBoCierreDtDto {

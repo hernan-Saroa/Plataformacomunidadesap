@@ -57,6 +57,7 @@ import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { AuthUser } from '../auth/types.js';
+import { requirePermission } from '../auth/permissions.helper.js';
 
 const MAX_SIZE_20MB = 20 * 1024 * 1024;
 const MIMES_PERMITIDOS =
@@ -85,6 +86,7 @@ const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
       username: actual.username != null ? String(actual.username) : undefined,
       email: actual.email != null ? String(actual.email) : undefined,
       name: actual.name != null ? String(actual.name) : undefined,
+      cargo: actual.cargo != null ? String(actual.cargo) : (req?.headers?.['x-user-cargo'] ? String(req.headers['x-user-cargo']) : undefined),
       roles: Array.isArray(actual.roles) ? actual.roles.map(String).filter(Boolean) : [],
       permissions: actual.permissions,
       codigoTecnico: actual.codigoTecnico != null ? String(actual.codigoTecnico).trim() : undefined,
@@ -95,6 +97,7 @@ const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
   const headerEmail = req?.headers?.['x-user-email'];
   const headerUsername = req?.headers?.['x-user-username'];
   const headerName = req?.headers?.['x-user-name'];
+  const headerCargo = req?.headers?.['x-user-cargo'];
   if (headerUserId == null && headerEmail == null && headerUsername == null) {
     return undefined;
   }
@@ -104,6 +107,7 @@ const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
     username: headerUsername != null ? String(headerUsername) : undefined,
     email: headerEmail != null ? String(headerEmail) : undefined,
     name: headerName != null ? String(headerName) : undefined,
+    cargo: headerCargo != null ? String(headerCargo) : undefined,
     roles: parseCsvHeader(req?.headers?.['x-user-roles'] ?? req?.headers?.['x-user-role']),
     permissions: parseCsvHeader(req?.headers?.['x-user-permissions']),
     codigoTecnico:
@@ -220,10 +224,9 @@ export class MantenimientoController {
   }
 
   @Post('categorias-servicio')
-  @Public()
   @ApiOperation({
     summary:
-      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). El orden se autoasigna si no se envía. Si el código se repite devuelve 409 Conflict.',
+      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). Exclusivo Coordinador GIM. Si el código se repite devuelve 409 Conflict.',
   })
   crearCategoriaServicio(
     @Body()
@@ -235,15 +238,17 @@ export class MantenimientoController {
       isActivo?: boolean;
       color?: string;
     },
+    @Req() req: any,
   ) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.crearCategoriaServicio(body);
   }
 
   @Patch('categorias-servicio/:id')
-  @Public()
   @ApiOperation({
     summary:
-      'Actualizar una categoría de servicio por id. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
+      'Actualizar una categoría de servicio por id. Exclusivo Coordinador GIM. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
   })
   actualizarCategoriaServicio(
     @Param('id', ParseIntPipe) idCatalogo: number,
@@ -256,25 +261,30 @@ export class MantenimientoController {
       isActivo?: boolean;
       color?: string;
     },
+    @Req() req: any,
   ) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.actualizarCategoriaServicio(idCatalogo, body);
   }
 
   @Patch('categorias-servicio/:id/toggle')
-  @Public()
   @ApiOperation({
-    summary: 'Toggle rápido activar/desactivar una categoría de servicio. Devuelve el item actualizado.',
+    summary: 'Toggle rápido activar/desactivar una categoría de servicio. Exclusivo Coordinador GIM. Devuelve el item actualizado.',
   })
-  toggleCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+  toggleCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number, @Req() req: any) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.toggleCategoriaServicio(idCatalogo);
   }
 
   @Delete('categorias-servicio/:id')
-  @Public()
   @ApiOperation({
-    summary: 'Eliminar una categoría de servicio por id. Devuelve eliminado:true si se borró correctamente.',
+    summary: 'Eliminar una categoría de servicio por id. Exclusivo Coordinador GIM. Devuelve eliminado:true si se borró correctamente.',
   })
-  eliminarCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+  eliminarCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number, @Req() req: any) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.eliminarCategoriaServicio(idCatalogo);
   }
 
@@ -303,9 +313,11 @@ export class MantenimientoController {
   @Patch('parametros/tiempo-respuesta')
   @ApiOperation({
     summary:
-      'EFDS-1733-bis: Actualizar parámetro tiempo-respuesta POR CATEGORÍA. Body requiere {idCategoria (47..54), dias (1..3)}. Fuera rango BadRequest 400.',
+      'EFDS-1733-bis: Actualizar parámetro tiempo-respuesta POR CATEGORÍA. Exclusivo Coordinador GIM. Body requiere {idCategoria (47..54), dias (1..3)}. Fuera rango BadRequest 400.',
   })
-  actualizarParametroTiempoRespuesta(@Body() body: { idCategoria: number; dias: number }) {
+  actualizarParametroTiempoRespuesta(@Body() body: { idCategoria: number; dias: number }, @Req() req: any) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.SLA_CRU', user);
     return this.mantenimientoService.actualizarParametroTiempoRespuesta(
       Number(body?.idCategoria),
       Number(body?.dias),
@@ -324,7 +336,7 @@ export class MantenimientoController {
   @Patch('parametros/reglas-escalamiento/:idRegla')
   @ApiOperation({
     summary:
-      'EFDS-1733: Actualizar una regla de escalamiento. Principal uso: ligar un técnico al regla_001 eléctrica. body.tecnicoCodigo = string o null para desligar.',
+      'EFDS-1733: Actualizar una regla de escalamiento. Exclusivo Coordinador GIM. Principal uso: ligar un técnico al regla_001 eléctrica. body.tecnicoCodigo = string o null para desligar.',
   })
   actualizarReglaEscalamiento(
     @Param('idRegla', ParseIntPipe) idRegla: number,
@@ -334,7 +346,10 @@ export class MantenimientoController {
       isActivo?: boolean;
       metadata?: Record<string, any>;
     },
+    @Req() req: any,
   ) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.SLA_CRU', user);
     return this.mantenimientoService.actualizarReglaEscalamiento(idRegla, body);
   }
 

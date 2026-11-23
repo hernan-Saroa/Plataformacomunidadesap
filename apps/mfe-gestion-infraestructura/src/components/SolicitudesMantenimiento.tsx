@@ -978,6 +978,12 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       {m.tipoMantenimiento}
                     </span>
+                    {m.tipoMantenimiento === 'PREVENTIVO' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-100 text-sky-800 border-sky-300">
+                        <Clock className="w-3 h-3 text-sky-600" />
+                        Preventivo {m.fechaProgramada ? `(Prog: ${m.fechaProgramada})` : ''}
+                      </span>
+                    )}
                     {m.clasificacionMantenimiento === 'MAYOR' && (
                       <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-purple-100 text-purple-800 border-purple-300">
                         Obra Mayor
