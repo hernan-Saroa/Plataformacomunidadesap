@@ -42,6 +42,7 @@ import {
 } from './modales';
 
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
+import { normasATexto } from './services/normatividad';
 import { InicioAuditoriaWizardWorldClass } from './InicioAuditoriaWizardWorldClass';
 import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
 import { LoadingSpinner, CardLoading } from '@esap-mfe/shared-ui/loading-spinner';
@@ -1579,7 +1580,9 @@ export function GestionAuditoriasKanbanSimple() {
         presupuestoEstimado: data.presupuestoEstimado,
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
-        normatividadAplicable: data.normatividadAplicable || [],
+        // El DTO solo acepta texto y no la guarda: la norma con su tipo va en la metadata (EFDS-2451)
+        normatividadAplicable: normasATexto(data.normatividadAplicable),
+        programaAnualMetadata: { normatividadAplicable: data.normatividadAplicable || [] },
         riesgosIdentificados: data.riesgosIdentificados || [],
         controlesAplicar: data.controlesAplicar || [],
         auditorLiderId: data.auditorLider || undefined,
