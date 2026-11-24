@@ -26,6 +26,10 @@ export class JuridicaEmailService {
     private readonly storageService: StorageService,
   ) {}
 
+  onModuleInit() {
+    this.logger.log(`Traslados: ambiente=${process.env.MAIL_ENVIRONMENT || 'sin configurar'} judicial=${process.env.JURIDICA_EMAIL || 'sin configurar'}`);
+  }
+
   /**
    * Envía correo a la oficina de jurídica usando el notifications-service.
    * POST http://notifications-service:3009/api/v1/emails/send
@@ -49,7 +53,11 @@ export class JuridicaEmailService {
     },
     adjuntos: EmailAdjunto[] = [],
   ): Promise<boolean> {
-    const destinatario = process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co';
+    const destinatario = process.env.JURIDICA_EMAIL?.trim();
+    if (!destinatario) {
+      this.logger.error(`Proceso ${processId}: JURIDICA_EMAIL sin configurar; correo omitido`);
+      return false;
+    }
     // Soporte para ambos nombres de variable de entorno
     const notificationsUrl =
       process.env.NOTIFICATIONS_SERVICE_URL ||
@@ -126,7 +134,7 @@ export class JuridicaEmailService {
     `;
 
     try {
-      await firstValueFrom(
+      const response = await firstValueFrom(
         this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
           to: destinatario,
           subject: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
@@ -137,6 +145,10 @@ export class JuridicaEmailService {
         }),
       );
 
+      if (response.data?.sent !== true) {
+        this.logger.warn(`Proceso ${processId}: notificación omitida (${response.data?.motivo || response.status})`);
+        return false;
+      }
       this.logger.log(
         `Correo enviado a jurídica para proceso ${processId} vía notifications-service (${adjuntos.length} adjunto(s))`,
       );
@@ -153,7 +165,7 @@ export class JuridicaEmailService {
       this.logger.error(
         `Error al enviar correo para proceso ${processId}: ${JSON.stringify(errorDetails, null, 2)}`,
       );
-      console.error('[JuridicaEmailService] Full error object:', error);
+
       return false;
     }
   }
@@ -587,9 +599,9 @@ export class JuridicaEmailService {
         asunto: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
         remitente: {
           nombre: datosConsolidados.enviadoPorNombre || datosConsolidados.profesionalResponsable || 'Control Interno Disciplinario',
-          email: datosConsolidados.enviadoPorEmail || datosConsolidados.profesionalEmail || 'disciplinario@esap.edu.co',
+          email: datosConsolidados.enviadoPorEmail || datosConsolidados.profesionalEmail,
         },
-        destinatario: process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co',
+        ambiente: process.env.MAIL_ENVIRONMENT,
         fechaEnvio: new Date().toISOString(),
         datosConsolidados,
         documentos,
@@ -606,12 +618,12 @@ export class JuridicaEmailService {
       );
 
       this.logger.log(
-        `Transferencia a Gestión Legal exitosa para proceso ${datosConsolidados.radicado}: ${JSON.stringify(resp?.data)}`,
+        `Transferencia a Gestión Legal del proceso ${processId} (${datosConsolidados.radicado}): HTTP ${resp.status}, ${documentos.length} documento(s)`,
       );
       return true;
     } catch (error: any) {
       this.logger.warn(
-        `No se pudo sincronizar directamente con legal-management-service (${legalUrl}): ${error?.message}. Se preserva el flujo principal.`,
+        `Falló el traslado del proceso ${processId} (${datosConsolidados.radicado}) a Gestión Legal: ${error?.message}`,
       );
       return false;
     }

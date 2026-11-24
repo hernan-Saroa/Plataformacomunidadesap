@@ -1,3 +1,4 @@
+import { MODULO_NOTIFICACIONES } from '../services/notification-client.service';
 import {
   Controller,
   Post,
@@ -1292,6 +1293,7 @@ export class ProcessController {
     ].map(u => (u || '').replace(/\/+$/, ''))));
 
     const emailPayload = {
+      modulo: MODULO_NOTIFICACIONES,
       to: email,
       subject,
       text: `Se remite adjunto el FUID (EI-FO-003) de: ${listaRadicados}.${mensaje ? ` Mensaje: ${mensaje}` : ''}`,
@@ -2075,6 +2077,7 @@ export class ProcessController {
       for (const remindersBaseUrl of uniqueBases) {
         try {
           const emailPayload: any = {
+            modulo: MODULO_NOTIFICACIONES,
             to: dto.emailDestinatario,
             subject: subjectFinal,
             text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
@@ -2335,6 +2338,7 @@ export class ProcessController {
        const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
 
        const emailPayload = {
+         modulo: MODULO_NOTIFICACIONES,
          to: emailData.to,
          subject: emailData.subject,
          text: emailData.body,

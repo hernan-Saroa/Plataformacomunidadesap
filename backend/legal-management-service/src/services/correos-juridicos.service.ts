@@ -80,6 +80,8 @@ export interface DocumentoTransferenciaDisciplinaria {
 }
 
 export interface TransferenciaDisciplinariaDto {
+    ambiente: string;
+    remitente?: { email?: string; nombre?: string };
     processId: string;
     radicado: string;
     asunto?: string;
@@ -363,6 +365,10 @@ export class CorreosJuridicosService {
      * Ver docs/CONFIGURACION_CORREOS_CENTRO_COMUNICACIONES.md
      */
     private esRemitenteExcluido(email: any, buzonAccount: string): boolean {
+        // El traslado disciplinario ya entra por la transferencia directa con sus documentos.
+        // Ningún mensaje del transporte automático debe crear una segunda comunicación.
+        if (email.internetMessageHeaders?.some((header: { name: string }) =>
+            header.name.toLowerCase() === 'x-esap-environment')) return true;
         // Notificaciones de la plataforma redirigidas (EMAIL_REDIRECT_TO) a esta misma cuenta:
         // llegan a la bandeja de entrada y, si notificaciones y buzón son la misma cuenta, el
         // remitente coincide con el buzón y no se podría excluir por remitente. Se detectan por
@@ -1547,6 +1553,10 @@ export class CorreosJuridicosService {
     async registrarTransferenciaDisciplinaria(
         dto: TransferenciaDisciplinariaDto,
     ): Promise<{ correo: CorreoJuridico; adjuntos: AdjuntoCorreo[] }> {
+        const judicial = process.env.JURIDICA_EMAIL;
+        if (!judicial || !process.env.MAIL_ENVIRONMENT || dto.ambiente !== process.env.MAIL_ENVIRONMENT) {
+            throw new BadRequestException('Buzón judicial sin configurar o ambiente del traslado incorrecto');
+        }
         const fs = require('fs');
         const path = require('path');
         const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
@@ -1560,8 +1570,8 @@ export class CorreosJuridicosService {
         // Buscar si ya existe una comunicación para este proceso
         let correo = await this.correoRepo.findOne({
             where: [
-                { asunto: Like(`%${dto.radicado}%`) },
-                { procesoIdSugerido: dto.radicado },
+                { graphMessageId: `DISC_TRANSFER_${dto.processId}` },
+                { graphMessageId: Like(`DISC_TRANSFER_${dto.processId}_%`), procesoIdSugerido: dto.radicado },
             ],
             order: { fechaRecepcion: 'DESC' },
         });
@@ -1570,11 +1580,11 @@ export class CorreosJuridicosService {
 
         if (!correo) {
             correo = this.correoRepo.create({
-                graphMessageId: `DISC_TRANSFER_${dto.processId}_${Date.now()}`,
+                graphMessageId: `DISC_TRANSFER_${dto.processId}`,
                 asunto: asuntoFinal,
-                remitenteEmail: dto.remitenteEmail || 'control.disciplinario@esap.edu.co',
-                remitenteNombre: dto.remitenteNombre || 'Control Interno Disciplinario',
-                destinatarios: JSON.stringify([process.env.LEGAL_EMAIL_ACCOUNT || 'juridica@esap.edu.co']),
+                remitenteEmail: dto.remitente?.email || dto.remitenteEmail || '',
+                remitenteNombre: dto.remitente?.nombre || dto.remitenteNombre || 'Control Interno Disciplinario',
+                destinatarios: JSON.stringify([judicial]),
                 fechaRecepcion: new Date(),
                 cuerpoHtml: dto.cuerpoHtml || undefined,
                 cuerpoTexto: `Traslado a Oficina Jurídica del Proceso Disciplinario ${dto.radicado}.`,
@@ -1582,7 +1592,7 @@ export class CorreosJuridicosService {
                 leido: false,
                 archivado: false,
                 urgente: false,
-                buzon: 'CORREOS',
+                buzon: 'JUDICIAL',
                 tipo: 'CORREO',
                 categoria: 'Pliego de Cargos',
                 moduloSugerido: 'JUZGAMIENTO_DISCIPLINARIO',
@@ -1593,8 +1603,10 @@ export class CorreosJuridicosService {
             correo = await this.correoRepo.save(correo);
             await this.registrarAccion(correo.id, 'RECIBIDO', `Traslado de proceso disciplinario ${dto.radicado} registrado`);
         } else {
-            if (hasDocs && !correo.tieneAdjuntos) {
-                correo.tieneAdjuntos = true;
+            if (correo.buzon !== 'JUDICIAL' || (hasDocs && !correo.tieneAdjuntos)) {
+                correo.buzon = 'JUDICIAL';
+                correo.destinatarios = JSON.stringify([judicial]);
+                correo.tieneAdjuntos = correo.tieneAdjuntos || hasDocs;
                 if (dto.cuerpoHtml && !correo.cuerpoHtml) correo.cuerpoHtml = dto.cuerpoHtml;
                 await this.correoRepo.save(correo);
             }

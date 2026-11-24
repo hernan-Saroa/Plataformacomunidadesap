@@ -302,6 +302,8 @@ services:
       dockerfile: Dockerfile
     container_name: internal-disciplinary-control-service-prod
     environment:
+      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      MAIL_ENVIRONMENT: prod
       NODE_ENV: production
       PORT: 3005
       TZ: America/Bogota
@@ -416,6 +418,8 @@ services:
       dockerfile: Dockerfile
     container_name: legal-management-service-prod
     environment:
+      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      MAIL_ENVIRONMENT: prod
       NODE_ENV: production
       PORT: 3008
 
@@ -462,6 +466,8 @@ services:
       dockerfile: Dockerfile
     container_name: notifications-service-prod
     environment:
+      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      MAIL_ENVIRONMENT: prod
       NODE_ENV: production
       PORT: 3009
 
@@ -481,7 +487,6 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
-      EMAIL_REDIRECT_TO: ""
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
