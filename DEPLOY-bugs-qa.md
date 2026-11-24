@@ -226,6 +226,34 @@ Comprobado el 19-nov-2026 sobre el RUND de QA (consulta de solo lectura, conteos
 - **Cómo verificar después de cargar:** abrir el modal de asignación de un grupo de 2026-1; el resumen de la alerta ya no debe decir «con la vinculación vencida» para esos docentes.
 - **No reportar como defecto** «no puedo asignar a un ocasional porque su vinculación venció» mientras su RUND siga siendo el de 2025.
 
+## EFDS-2238 · Traslados de Disciplinario a Judiciales
+
+Desplegar juntas las imágenes de Disciplinario, Notificaciones y Gestión Legal y recrear sus contenedores con el Compose del ambiente. La transferencia interna lleva el ambiente y los documentos. Legal la guarda en Judiciales incluso cuando Graph está apagado. La base de Legal y su volumen de adjuntos deben pertenecer al ambiente.
+
+| Ambiente | MAIL_ENVIRONMENT | JURIDICA_EMAIL en los tres servicios | MAIL_TEST_INBOX en Notificaciones | Transporte |
+| --- | --- | --- | --- | --- |
+| Local | local | judicial@local.invalid | avisos@local.invalid | Mailpit local |
+| Dev | dev | judicial@dev.invalid | avisos@dev.invalid | Mailpit de dev |
+| QA | qa | judicial@qa.invalid | avisos@qa.invalid | Mailpit de QA |
+| PRE | pre | judicial@pre.invalid | avisos@pre.invalid | Mailpit de PRE |
+| Producción | prod | cuenta institucional autorizada en LEGAL_EMAIL_ACCOUNT_JUDICIAL | vacío | proveedor institucional |
+
+En pruebas, Notificaciones usa `EMAIL_PROVIDER=smtp`, `SMTP_HOST=mailpit`, `SMTP_PORT=1025`, usuario y contraseña vacíos y remitente `notificaciones@<ambiente>.invalid`. Cada proyecto y su red tienen un capturador independiente. Los avisos generales conservan su destinatario lógico en `X-ESAP-Original-To`. El asunto y la cabecera `X-ESAP-Environment` identifican el ambiente. Retirar el desvío legado `EMAIL_REDIRECT_TO`. La interfaz del capturador contiene documentos de prueba y queda dentro de la red del proyecto.
+
+Para sincronizar correspondencia externa, usar cuentas Graph exclusivas del ambiente. En las variables de despliegue definir, por ejemplo, `QA_LEGAL_EMAIL_ACCOUNT_JUDICIAL` y `QA_LEGAL_EMAIL_ACCOUNT_CORREOS`. Para dev, PRE o local sustituir el prefijo por `DEV_`, `PRE_` o `LOCAL_`. Compose las entrega a Legal como `LEGAL_EMAIL_ACCOUNT_JUDICIAL` y `LEGAL_EMAIL_ACCOUNT_CORREOS`. Se pueden dejar vacías para probar solo los traslados. Producción usa esas variables sin prefijo, con el remitente y las credenciales de su proveedor habitual.
+
+### Diagnóstico del proceso 126 para Henrry
+
+1. Identificar las imágenes que atendieron el proceso 126 el 26 de octubre. Correlacionar radicado e identificador interno en los registros de ese día, teniendo en cuenta la zona horaria. La configuración actual solo describe el contenedor actual.
+2. En Disciplinario QA, verificar `MAIL_ENVIRONMENT=qa`, `JURIDICA_EMAIL=judicial@qa.invalid`, `LEGAL_MANAGEMENT_SERVICE_URL=http://legal-management-service-qa:3008` y `NOTIFICATIONS_SERVICE_URL=http://notifications-service-qa:3009`. Buscar cierre, traslado directo y resultado del envío. El cierre por sí solo no acredita la entrega.
+3. En Notificaciones, verificar la fila QA y el transporte anteriores. Comprobar si el evento `PLIEGO_CARGOS_TRASLADO_JURIDICA` estaba habilitado para correo. Revisar adicionales por rol, buzón de desvío, recepción de la solicitud y respuesta. Un 202 indica omisión o desvío. Para el envío efectivo comprobar la aceptación SMTP y el identificador del mensaje. Consultar solo las variables indicadas o la línea de arranque.
+4. En Gestión Legal, verificar ambiente, destino judicial, base y volumen de QA. Buscar la transferencia, el buzón grabado y el número de documentos. En la versión anterior buscar también en **Correos**. Los registros históricos mezclados requieren conciliación por proceso y ambiente antes de moverlos.
+5. Con expedientes de prueba, aprobar un auto, asignar profesional, radicar una noticia y aprobar un pliego. Comprobar los destinatarios de los avisos en Mailpit. Pulsar **Enviar a Jurídica** una vez. Debe aparecer un único mensaje para Judiciales en el capturador de QA y una sola comunicación en **Centro de Comunicaciones → Judiciales**, con los documentos descargables. Buscar el mismo radicado en PRE y verificar que está ausente.
+
+**No verificado en condiciones de QA.** Se validaron los Compose dev, QA, PRE y producción. Docker Desktop falló al iniciar WSL y no se pudo ejecutar el recorrido en contenedores. La atribución del incidente del 26 de octubre sigue dependiendo de los registros de QA.
+
+El ensayo local con los controladores y el proxy compilados devolvió 201 al traslado con PDF, 201 a la asignación y 202 al intento de mandar la asignación a Judiciales. Se usó SMTP en loopback. El Compose alternativo local que extiende el frontend también presenta una referencia previa a la red no declarada del chatbot; el Compose local de solo backend valida.
+
 ## 13. EFDS-2336 · La territorial del PTA mostraba un nombre equivocado en preproducción
 
 ### 13.1 Qué cambia

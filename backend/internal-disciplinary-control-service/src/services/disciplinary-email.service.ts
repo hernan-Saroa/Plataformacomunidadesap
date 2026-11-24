@@ -197,7 +197,8 @@ export class DisciplinaryEmailService {
           subject,
           html,
           ...(text ? { text } : {}),
-          ...(evento ? { modulo: MODULO_NOTIFICACIONES, evento } : {}),
+          modulo: MODULO_NOTIFICACIONES,
+          evento,
         }),
       );
       this.logger.log(`Email enviado exitosamente a ${to}`);

@@ -32,6 +32,7 @@ export interface GraphEmail {
     bodyPreview: string;
     hasAttachments: boolean;
     isRead: boolean;
+    internetMessageHeaders?: Array<{ name: string; value: string }>;
     internetMessageId?: string;
     conversationId?: string;
 }
@@ -48,19 +49,18 @@ export class MicrosoftGraphService {
     // Cuenta del buzón JUDICIAL (la única configurada hoy). El default mantiene el
     // comportamiento actual; para producción se setea LEGAL_EMAIL_ACCOUNT_JUDICIAL.
     private readonly judicialAccount =
-        process.env.LEGAL_EMAIL_ACCOUNT_JUDICIAL ||
-        process.env.LEGAL_EMAIL_ACCOUNT ||
-        'desarrollo.ccd@esap.edu.co';
+        process.env.LEGAL_EMAIL_ACCOUNT_JUDICIAL || process.env.LEGAL_EMAIL_ACCOUNT || '';
 
     // Cuenta del buzón CORREOS. Vacía hasta que exista la segunda cuenta:
     // basta con setear LEGAL_EMAIL_ACCOUNT_CORREOS para activarla (ready to replace).
     private readonly correosAccount = process.env.LEGAL_EMAIL_ACCOUNT_CORREOS || '';
 
     // Cuenta por defecto para envíos/lecturas sin buzón explícito (la judicial).
-    private readonly emailAccount =
-        process.env.LEGAL_EMAIL_ACCOUNT_JUDICIAL ||
-        process.env.LEGAL_EMAIL_ACCOUNT ||
-        'desarrollo.ccd@esap.edu.co';
+    private readonly emailAccount = this.judicialAccount;
+
+    onModuleInit() {
+        this.logger.log(`Centro de Comunicaciones: ambiente=${process.env.MAIL_ENVIRONMENT || 'sin configurar'} traslado=${process.env.JURIDICA_EMAIL || 'sin configurar'} Graph Judicial=${this.judicialAccount || 'sin configurar'} Graph Correos=${this.correosAccount || 'sin configurar'}`);
+    }
 
     /** Buzones configurados (solo los que tienen cuenta definida). */
     getMailboxes(): Array<{ buzon: 'JUDICIAL' | 'CORREOS'; address: string }> {
@@ -133,7 +133,7 @@ export class MicrosoftGraphService {
                     .api(`/users/${mailbox}/mailFolders/inbox/messages`)
                     .top(limit)
                     .orderby('receivedDateTime desc')
-                    .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
+                    .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId,internetMessageHeaders')
                     .get();
             }
 
