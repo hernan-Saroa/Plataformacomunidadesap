@@ -64,6 +64,7 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
 }) => {
   const [tab, setTab] = useState<TabActiva>('tiempo');
   const [toast, setToast] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [guardadoExitosoId, setGuardadoExitosoId] = useState<number | null>(null);
 
   // Tab Tiempo
   const [cargandoParam, setCargandoParam] = useState(true);
@@ -154,28 +155,28 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
     try {
       const filas = await infraestructuraService.listarParametrosTiempoPorCategoria();
       const arrRaw = Array.isArray(filas) ? filas : [];
-      const mapaRecibidos = new Map<number, CatalogoItem>();
-      arrRaw.forEach((p) => {
-        const idCat = Number((p.metadata as any)?.idCategoria ?? 0);
-        if (idCat >= 47 && idCat <= 54) mapaRecibidos.set(idCat, p);
-      });
       const final: CatalogoItem[] = [];
       const mapaDias: Record<number, number> = {};
-      for (let idCat = 47; idCat <= 54; idCat++) {
-        if (mapaRecibidos.has(idCat)) {
-          const p = mapaRecibidos.get(idCat)!;
+
+      if (arrRaw.length > 0) {
+        arrRaw.forEach((p) => {
           final.push(p);
           const meta = (p.metadata ?? {}) as any;
+          const idCat = Number(meta.idCategoria ?? p.idCatalogo ?? 0);
           const actual = Number(meta.actual ?? 2);
-          mapaDias[idCat] = Math.max(1, Math.min(3, Number.isFinite(actual) ? actual : 2));
-        } else {
+          if (idCat > 0) {
+            mapaDias[idCat] = Math.max(1, Math.min(3, Number.isFinite(actual) ? actual : 2));
+          }
+        });
+      } else {
+        for (let idCat = 47; idCat <= 54; idCat++) {
           const info = MAPA_CS_DEFAULT[idCat] || { cod: `CS_${String(idCat).padStart(3, '0')}`, nombre: `Categoría ${idCat}` };
           const temp = {
             idCatalogo: -idCat,
             catalogo: 'PARAMETRO_UMI',
             codigo: `TIEMPO_RESP_DIAS_CAT_${String(idCat).padStart(2, '0')}`,
-            nombre: `Tiempo respuesta ${info.nombre} (días 1..3) · Fallback local (ejecutar mig 010_02)`,
-            descripcion: 'Fallback local IN-MEMORY: backend no devolvió este parámetro. Al guardar se crea en DB.',
+            nombre: `Tiempo respuesta ${info.nombre} (días 1..3)`,
+            descripcion: 'Parámetro SLA',
             orden: 100 + (idCat - 46),
             isActivo: true,
             metadata: {
@@ -183,7 +184,6 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
               codCategoriaCS: info.cod,
               nombreCategoriaCS: info.nombre,
               min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES',
-              __flag: 'FALLBACK_FE_MIG_010_02_PENDIENTE',
             },
           } as CatalogoItem;
           final.push(temp);
@@ -211,15 +211,22 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
       const idCat = Math.trunc(Number(idCategoria));
       const metaSaved = ((result as any)?.metadata ?? {}) as any;
       const actualSaved = Number(metaSaved.actual ?? dias);
+      setGuardadoExitosoId(idCat);
+      setTimeout(() => {
+        setGuardadoExitosoId((cur) => (cur === idCat ? null : cur));
+      }, 4000);
       setParamsTiempo((prev) => {
         const next = [...prev];
-        const idx = next.findIndex((x) => Number(((x as any).metadata ?? {}).idCategoria) === idCat);
+        const idx = next.findIndex((x) => {
+          const m = (x.metadata ?? {}) as any;
+          return Number(m.idCategoria ?? x.idCatalogo) === idCat;
+        });
         if (idx >= 0) next[idx] = result as CatalogoItem;
         return next;
       });
       setDiasPorCategoria((prev) => ({ ...prev, [idCat]: Math.max(1, Math.min(3, actualSaved)) }));
-      const cat = (result as any)?.metadata?.nombreCategoriaCS || `Categoría ${idCategoria}`;
-      setToast({ tipo: 'ok', texto: `${cat}: tiempo respuesta actualizado a ${dias} día${dias === 1 ? '' : 's'}.` });
+      const cat = metaSaved.nombreCategoriaCS || (result as any)?.nombre || `Categoría ${idCategoria}`;
+      setToast({ tipo: 'ok', texto: `${cat}: tiempo de respuesta guardado correctamente en ${actualSaved} día${actualSaved === 1 ? '' : 's'} (${actualSaved * 24}h).` });
       await cargarTiempo();
     } catch (err: any) {
       setToast({ tipo: 'err', texto: err?.message || 'Error guardando parámetro categoría.' });
@@ -548,9 +555,20 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
   };
 
   const ToastGlobal = toast ? (
-    <div className={`fixed top-4 right-4 z-[95] max-w-sm px-4 py-2.5 rounded-xl text-sm font-black border shadow-lg animate-in slide-in-from-top fade-in ${toast.tipo === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-pink-50 border-pink-300 text-pink-700'}`}>
-      {toast.tipo === 'ok' ? '✅  ' : '❌  '}
-      {toast.texto}
+    <div
+      role="status"
+      className={`fixed top-5 right-5 z-[9999] max-w-md px-4 py-3 rounded-xl text-xs md:text-sm font-bold border shadow-xl flex items-center gap-2.5 animate-in slide-in-from-top fade-in ${
+        toast.tipo === 'ok'
+          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-500/10'
+          : 'bg-red-50 border-red-300 text-red-900 shadow-red-500/10'
+      }`}
+    >
+      {toast.tipo === 'ok' ? (
+        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+      ) : (
+        <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+      )}
+      <span className="leading-snug">{toast.texto}</span>
     </div>
   ) : null;
 
@@ -661,7 +679,7 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                     const codCS = String(meta.codCategoriaCS ?? `CS_${String(idCat).padStart(3, '0')}`);
                     const nombreCS = String(meta.nombreCategoriaCS ?? `Categoría ${idCat}`);
                     const dias = Number(diasPorCategoria[idCat] ?? meta.actual ?? 2);
-                    const esElectrica = idCat === 48;
+                    const esElectrica = idCat === 48 || codCS === 'CS_002';
                     const guardando = guardandoTiempoIds.has(idCat);
                     const preview = slaPreviewPorDias(dias);
                     return (
@@ -738,6 +756,12 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                                 })}
                               </div>
                             </div>
+                            {guardadoExitosoId === idCat && (
+                              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 animate-in fade-in">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                Guardado ({dias} día{dias === 1 ? '' : 's'})
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={() => guardarTiempoPorCategoria(idCat)}
@@ -831,16 +855,20 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                       ? ((r.metadata as any).idsCategorias as number[])
                       : [];
                     const idCat = Number((r.metadata as any)?.idCategoria || 0);
+                    const codigoDisplay =
+                      reglaTipo === 'ESPECIALIZACION' || r.codigo.includes('ELECTRICAS')
+                        ? (idCat ? `REG_001_CATEGORIA_${idCat}_ELECTRICAS` : r.codigo)
+                        : r.codigo;
                     const categoriasLabel =
-                      idCat > 0
-                        ? `idCategoria = ${idCat}`
+                      reglaTipo === 'ESPECIALIZACION' || r.codigo.includes('ELECTRICAS')
+                        ? `CS_002 · Eléctricas y Electrónicas (idCategoria = ${idCat || '—'})`
                         : idsCats.length
-                        ? `idsCategorias = [${idsCats.join(', ')}]`
+                        ? `Otras categorías generales (idsCategorias = [${idsCats.join(', ')}])`
                         : '—';
                     return (
                       <tr key={r.idCatalogo} className="hover:bg-slate-50">
                         <td className="px-4 py-3 text-slate-500 font-mono text-xs">{r.orden}</td>
-                        <td className="px-4 py-3 font-mono text-slate-900 font-semibold text-xs">{r.codigo}</td>
+                        <td className="px-4 py-3 font-mono text-slate-900 font-semibold text-xs">{codigoDisplay}</td>
                         <td className="px-4 py-3 text-slate-900 font-semibold">
                           <div>{r.nombre}</div>
                           <div className="text-[11px] mt-0.5 text-slate-500 leading-relaxed">
@@ -1472,20 +1500,32 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-2">
-                  {[
-                    { id: 47, cod: 'CS_001', nombre: 'Cerrajería y Carpintería' },
-                    { id: 48, cod: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
-                    { id: 49, cod: 'CS_003', nombre: 'Adecuación de Espacios' },
-                    { id: 50, cod: 'CS_004', nombre: 'Plomería y Fontanería' },
-                    { id: 51, cod: 'CS_005', nombre: 'Obras Menores e Infraestructura' },
-                    { id: 52, cod: 'CS_006', nombre: 'Zonas Exteriores y Jardinería' },
-                    { id: 53, cod: 'CS_007', nombre: 'Traslados de Mobiliario' },
-                    { id: 54, cod: 'CS_008', nombre: 'Equipos Críticos (Preventivo)' },
-                  ].map((cat) => {
-                    const seleccionada = Array.isArray(voboConfig.categoriasVoBoObligatorio) && voboConfig.categoriasVoBoObligatorio.includes(cat.id);
+                  {(paramsTiempo && paramsTiempo.length > 0
+                    ? paramsTiempo.map((p) => {
+                        const m = (p.metadata ?? {}) as any;
+                        return {
+                          id: Number(m.idCategoria ?? p.idCatalogo),
+                          cod: String(m.codCategoriaCS ?? p.codigo),
+                          nombre: String(m.nombreCategoriaCS ?? p.nombre),
+                        };
+                      })
+                    : [
+                        { id: 47, cod: 'CS_001', nombre: 'Cerrajería y Carpintería' },
+                        { id: 48, cod: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
+                        { id: 49, cod: 'CS_003', nombre: 'Adecuación de Espacios' },
+                        { id: 50, cod: 'CS_004', nombre: 'Plomería y Fontanería' },
+                        { id: 51, cod: 'CS_005', nombre: 'Obras Menores e Infraestructura' },
+                        { id: 52, cod: 'CS_006', nombre: 'Zonas Exteriores y Jardinería' },
+                        { id: 53, cod: 'CS_007', nombre: 'Traslados de Mobiliario' },
+                        { id: 54, cod: 'CS_008', nombre: 'Equipos Críticos (Preventivo)' },
+                      ]
+                  ).map((cat) => {
+                    const seleccionada =
+                      (Array.isArray(voboConfig.categoriasVoBoObligatorio) && voboConfig.categoriasVoBoObligatorio.includes(cat.id)) ||
+                      (Array.isArray(voboConfig.categoriasCodigosVoBoObligatorio) && voboConfig.categoriasCodigosVoBoObligatorio.includes(cat.cod));
                     return (
                       <label
-                        key={cat.id}
+                        key={`${cat.id}-${cat.cod}`}
                         className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer select-none transition-all ${
                           seleccionada
                             ? 'bg-indigo-50/60 border-indigo-300 ring-1 ring-indigo-200 text-indigo-900'
@@ -1497,14 +1537,18 @@ export const AdminParametrosUMI: React.FC<{ readOnly?: boolean }> = ({
                           disabled={readOnly || voboConfig.requiereVoBoGlobal}
                           checked={seleccionada}
                           onChange={(e) => {
-                            const cur = Array.isArray(voboConfig.categoriasVoBoObligatorio) ? [...voboConfig.categoriasVoBoObligatorio] : [];
-                            let next: number[];
+                            const curIds = Array.isArray(voboConfig.categoriasVoBoObligatorio) ? [...voboConfig.categoriasVoBoObligatorio] : [];
+                            const curCods = Array.isArray(voboConfig.categoriasCodigosVoBoObligatorio) ? [...voboConfig.categoriasCodigosVoBoObligatorio] : [];
+                            let nextIds: number[];
+                            let nextCods: string[];
                             if (e.target.checked) {
-                              next = Array.from(new Set([...cur, cat.id]));
+                              nextIds = Array.from(new Set([...curIds, cat.id]));
+                              nextCods = Array.from(new Set([...curCods, cat.cod]));
                             } else {
-                              next = cur.filter((id) => id !== cat.id);
+                              nextIds = curIds.filter((id) => id !== cat.id);
+                              nextCods = curCods.filter((cod) => cod !== cat.cod);
                             }
-                            setVoboConfig({ ...voboConfig, categoriasVoBoObligatorio: next });
+                            setVoboConfig({ ...voboConfig, categoriasVoBoObligatorio: nextIds, categoriasCodigosVoBoObligatorio: nextCods });
                           }}
                           className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
                         />

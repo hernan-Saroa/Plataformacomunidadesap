@@ -268,9 +268,41 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [clasificacionMantenimiento, setClasificacionMantenimiento] = useState<'MENOR' | 'MAYOR'>('MENOR');
   const [requiereContratacion, setRequiereContratacion] = useState<boolean>(false);
 
-// EFDS-2353: Filtrado reactivo de técnicos según clasificación Menor vs Mayor
+  const csListaCompleta = (catalogoCS && catalogoCS.length > 0) ? catalogoCS : catalogoCSLocal;
+  const esCategoriaElectricas48 = useMemo(() => {
+    if (Number(detalle?.idCategoria) === 48) return true;
+    if (detalle?.idCategoria != null && Array.isArray(csListaCompleta)) {
+      const cat = csListaCompleta.find((c) => Number(c.idCatalogo) === Number(detalle.idCategoria));
+      if (cat) {
+        const cod = String(cat.codigo || '').toUpperCase();
+        const nom = String(cat.nombre || '').toLowerCase();
+        return cod === 'CS_002' || nom.includes('eléctric');
+      }
+    }
+    const catNom = String(detalle?.categoriaServicio || (detalle as any)?.categoriaNombre || '').toLowerCase();
+    return catNom.includes('eléctric') || catNom.includes('cs_002');
+  }, [detalle?.idCategoria, detalle?.categoriaServicio, csListaCompleta]);
+
+// EFDS-2353 / EFDS-1733: Filtrado reactivo de técnicos según categoría y clasificación Menor vs Mayor
   const tecnicosFiltrados = useMemo(() => {
     if (!Array.isArray(tecnicosCatalogo)) return [];
+    // Si la categoría es eléctrica (CS_002), se exige obligatoriamente un técnico eléctrico especializado (P3)
+    if (esCategoriaElectricas48) {
+      const elecList = tecnicosCatalogo.filter((t) => {
+        const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+        const cod = String(t.codigo || '').toUpperCase();
+        const espList = Array.isArray(t.metadata?.especialidades) ? t.metadata.especialidades : [];
+        return (
+          rol === 'P3' ||
+          rol === 'TECNICO_ELECTRICO_ESPECIALIZADO' ||
+          cod.includes('P3') ||
+          espList.includes('CS_002') ||
+          cod.startsWith('TEC-ELEC') ||
+          cod.startsWith('TEC-ELC')
+        );
+      });
+      return elecList.length > 0 ? elecList : tecnicosCatalogo;
+    }
     if (clasificacionMantenimiento === 'MAYOR') {
       const mayorList = tecnicosCatalogo.filter((t) => {
         const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
@@ -1707,9 +1739,25 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     String(detalle?.clasificacionMantenimiento || '').toUpperCase() === 'MAYOR' ||
     clasificacionMantenimiento === 'MAYOR'
   );
-  // Filtrado para modal de redistribución (EFDS-2353/2354)
+  // Filtrado para modal de redistribución (EFDS-2353/2354 / EFDS-1733)
   const tecnicosRedistFiltrados = useMemo(() => {
     if (!Array.isArray(tecnicosCatalogo)) return [];
+    if (esCategoriaElectricas48) {
+      const elecList = tecnicosCatalogo.filter((t) => {
+        const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+        const cod = String(t.codigo || '').toUpperCase();
+        const espList = Array.isArray(t.metadata?.especialidades) ? t.metadata.especialidades : [];
+        return (
+          rol === 'P3' ||
+          rol === 'TECNICO_ELECTRICO_ESPECIALIZADO' ||
+          cod.includes('P3') ||
+          espList.includes('CS_002') ||
+          cod.startsWith('TEC-ELEC') ||
+          cod.startsWith('TEC-ELC')
+        );
+      });
+      return elecList.length > 0 ? elecList : tecnicosCatalogo;
+    }
     if (esMantenimientoMayor) {
       const mayorList = tecnicosCatalogo.filter((t) => {
         const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
@@ -1733,12 +1781,11 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       );
     });
     return menorList.length > 0 ? menorList : tecnicosCatalogo;
-  }, [tecnicosCatalogo, esMantenimientoMayor]);
+  }, [tecnicosCatalogo, esMantenimientoMayor, esCategoriaElectricas48]);
 
   const puedeConfirmarRecepcionMateriales =
     detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS' &&
     (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all') || tienePerm('infraestructura.solicitud.execute_assigned') || tienePerm('infraestructura.solicitud.cierre_tecnico'));
-  const esCategoriaElectricas48 = Number(detalle?.idCategoria) === 48;
   // (EFDS-1735 AC-10, AC-12, AC-13) - quien puede confirmar recepcion materiales:
   // 1) P2/P5/P7 Assign / View_all (Encargado / Admin Funcional / Calidad) - principal ERS
   // 2) Tecnico con rol cierre_tecnico / execute_assigned (casos bodega entrega directa, frecuente ESAP) - UX pragmático
@@ -2956,6 +3003,12 @@ const puedeCerrarTecnicamente = Boolean(
 
                             {/* Selección de Técnico / Responsable de Diagnóstico */}
                             <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                              {esCategoriaElectricas48 && (
+                                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-900 text-[11px] font-bold">
+                                  <Zap className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                  <span>Categoría CS_002 (Eléctricas): Asignación restringida obligatoriamente a Técnicos Especializados (Perfil P3).</span>
+                                </div>
+                              )}
                               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
                                 {modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO' && esSolicitudTerritorial
                                   ? 'Ejecutor Asignado (Proveedor Local)'
