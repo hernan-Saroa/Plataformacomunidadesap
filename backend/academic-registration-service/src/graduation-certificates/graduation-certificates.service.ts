@@ -539,35 +539,51 @@ export class GraduationCertificatesService {
       if (byDiploma) return byDiploma;
     }
 
+    const graduationDate = this.normalizeDateString(
+      record.graduationDate || '',
+    );
+    const programName = this.normalizeName(record.programName || '');
     const numRegistro = this.toNullableText(record.numRegistro);
     const numFolio = this.toNullableText(record.numFolio);
     const numLibro = this.toNullableText(record.numLibro);
+    const hasDetailedRegistration = Boolean(numRegistro && (numLibro || numFolio));
     if (numRegistro || numFolio || numLibro) {
       const byRegistration = candidates.find(
         (graduate) =>
           (!numRegistro ||
             String(graduate.numRegistro || '').trim() === numRegistro) &&
           (!numFolio || String(graduate.numFolio || '').trim() === numFolio) &&
-          (!numLibro || String(graduate.numLibro || '').trim() === numLibro),
+          (!numLibro || String(graduate.numLibro || '').trim() === numLibro) &&
+          // Una referencia parcial (p. ej. solo libro) necesita coincidir
+          // también con los datos académicos disponibles del título.
+          (hasDetailedRegistration ||
+            ((!programName ||
+              this.normalizeName(graduate.programName || '') === programName) &&
+              (!graduationDate ||
+                this.normalizeDateString(graduate.graduationDate) === graduationDate))),
       );
       if (byRegistration) return byRegistration;
     }
 
-    const graduationDate = this.normalizeDateString(
-      record.graduationDate || '',
-    );
-    const programName = this.normalizeName(record.programName || '');
-    if (graduationDate && programName) {
-      const byProgramAndDate = candidates.find(
-        (graduate) =>
-          this.normalizeDateString(graduate.graduationDate) ===
-            graduationDate &&
-          this.normalizeName(graduate.programName || '') === programName,
+    if (programName) {
+      const byProgram = candidates.filter(
+        (graduate) => this.normalizeName(graduate.programName || '') === programName,
       );
-      if (byProgramAndDate) return byProgramAndDate;
+      // La unicidad de documento/programa permite actualizar una fecha
+      // corregida sin crear otro registro del mismo título.
+      if (byProgram.length === 1) return byProgram[0];
+      if (graduationDate) {
+        const byProgramAndDate = byProgram.find(
+          (graduate) =>
+            this.normalizeDateString(graduate.graduationDate) === graduationDate,
+        );
+        if (byProgramAndDate) return byProgramAndDate;
+      }
     }
 
-    return candidates.length === 1 ? candidates[0] : null;
+    // El documento identifica a la persona, no a uno de sus títulos. Si no
+    // hay una coincidencia académica, se debe conservar el título existente.
+    return null;
   }
 
   private buildGraduatePayloadFromOracle(
