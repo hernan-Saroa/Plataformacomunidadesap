@@ -1618,7 +1618,7 @@ RN-10 es correcta. Medido el 19-nov-2026 en el RUND de QA (solo lectura, conteos
 - **Disciplinario y Gestión Legal compilados:** en producción sin buzón no arrancan (código 1, con el mensaje); con buzón, arrancan (6/6).
 
 ### 46.5 Compuertas
-- Disciplinario 116/116; Notificaciones 89/89 (las 80 de Codex + las nuevas); PTA 2174 (+1 omitida de siempre); builds de los cuatro en verde. Gestión Legal 517/528: las **11 fallas** (`app.controller`, `consultas-juridicas.service`, `correos-sync.scheduler`) fallan igual en el commit base `2cf8fd358` (11/25 en esas suites, comprobado de nuevo): previas, aceptadas.
+- Disciplinario 116/116; Notificaciones 89/89 (las 80 de Codex + las nuevas); PTA 2178 (+1 omitida de siempre, con los 2 commits que entraron a micro-frontend durante la integración); builds de los cuatro en verde. Gestión Legal 517/528: las **11 fallas** (`app.controller`, `consultas-juridicas.service`, `correos-sync.scheduler`) fallan igual en el commit base `2cf8fd358` (11/25 en esas suites, comprobado de nuevo): previas, aceptadas.
 - Compose: dev, QA, PRE, producción y `backend` validan. `docker-compose.local.yml` ya no validaba antes de Codex (red `superapp-net-prod` no declarada).
 - Capturadores: `mailpit` (`axllent/mailpit:v1.22.3`) en dev, QA y PRE, sin puertos publicados; producción no lleva.
 - Claves: el diff de la integración no agrega secretos (contraseñas SMTP vacías, direcciones `.invalid`); los `.env` de los servicios están en `.gitignore`.
