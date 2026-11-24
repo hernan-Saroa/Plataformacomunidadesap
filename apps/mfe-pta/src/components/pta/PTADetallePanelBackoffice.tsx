@@ -21,7 +21,7 @@ import { getPTADecisionPermissions, getCatalogoTerritoriales, type PTADecisionPe
 import { canDecidePtaComponent } from './shared/ptaDecisionPermissions';
 import { getPtaDecisionReference, isOlderPtaWorkflow, mergePtaDecisionRows, mergePtaTerritorialRows } from './shared/ptaWorkflowSync';
 import { scopedTerritorialProgress, territorialProgressStatus, mergeTerritorialProgress } from './shared/ptaTerritorialProgress';
-import { getApprovalTerritorialLabel, getTerritorialDisplayName, toTerritorialReference } from './shared/ptaTerritorialDisplay';
+import { claveTerritorial, resolverTerritorial, territorialDeLaDecision, toTerritorialReference, TERRITORIAL_NO_IDENTIFICADA } from './shared/ptaTerritorialDisplay';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { getPtaResearchData } from '../../utils/ptaResearch';
 import { DocenciaCrucesAlert } from './shared/DocenciaCrucesAlert';
@@ -214,7 +214,7 @@ type ParTerritorial = { territorialId: string; nivel: PTANivelDocencia };
 
 /** Etiqueta legible de un par, para botones y mensajes. */
 function etiquetaPar(t: { territorialNombre?: string | null; territorialId: string; nivel: string }, resolveName: (value: any) => string | null): string {
-  const territorial = resolveName(t) || 'Territorial no disponible';
+  const territorial = resolveName(t) || TERRITORIAL_NO_IDENTIFICADA;
   return `${territorial} · ${t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado'}`;
 }
 
@@ -836,12 +836,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }).catch(() => {});
     return () => { cancelado = true; };
   }, []);
-  const referenciasTerritoriales = useMemo(() => [
-    ...catalogoTerritoriales,
-    ...[pta, ...(Array.isArray(pta.asignaturas) ? pta.asignaturas : []),
-      ...aprobacionTerritorial, ...revisionTerritorial, ...aprobacionesJefatura].map(toTerritorialReference),
-  ], [catalogoTerritoriales, pta, aprobacionTerritorial, revisionTerritorial, aprobacionesJefatura]);
-  const nombreTerritorial = useCallback((value: any) => getTerritorialDisplayName(value, referenciasTerritoriales), [referenciasTerritoriales]);
+  // EFDS-2336: una sola función y SOLO el catálogo del ambiente. Antes se buscaba también en el propio
+  // PTA y en sus asignaturas, y un id sin correspondencia caía en otro valor (ver ptaTerritorialDisplay).
+  const nombreTerritorial = useCallback((value: any) => resolverTerritorial(claveTerritorial(value), catalogoTerritoriales), [catalogoTerritoriales]);
 
   const { rules } = usePTARules();
 
@@ -934,6 +931,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const revisionDelParCompleta = (par: ParTerritorial) => revisionCargada && scopedTerritorialProgress(
     revisionTerritorial, pta.componentes_revision_usuario || [], [par], revisionGeneralTerritorial,
   )[0]?.estado === 'revisado';
+  // EFDS-2336: qué territorial muestra cada tarjeta de decisión. Docencia/Complementarias (Territorial): la de
+  // sus pares (donde se dictan las asignaturas); los demás componentes: la del docente, y el rótulo lo dice.
+  const territorialDeDecision = (approval: any) => territorialDeLaDecision(
+    approval,
+    approval?.componente === 'academica_territorial' && aprobacionesTerritorialesPropias.length
+      ? aprobacionesTerritorialesPropias : aprobacionTerritorial,
+    catalogoTerritoriales,
+    pta,
+  );
   const aprobacionesPersonales = componentesAprobacion.map(row => {
     if (row.componente !== 'academica_territorial' || !aprobacionesTerritorialesPropias.length) return row;
     const estadoPersonal = territorialProgressStatus(aprobacionesTerritorialesPropias, 'aprobado');
@@ -2475,7 +2481,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     outline: esSuyo ? `1px solid ${pillColors.color}` : undefined,
                   }}
                 >
-                  {nombreTerritorial(t) || 'Territorial no disponible'} · {nivelLabel}: {estadoLabel}
+                  {nombreTerritorial(t)} · {nivelLabel}: {estadoLabel}
                 </span>
               );
             })}
@@ -2506,8 +2512,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 <strong style={{ color: '#7F1D1D' }}>{approval.aprobadorRol || 'Aprobador'}</strong>
               </div>
               <div>
-                <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Territorial</span>
-                <strong style={{ color: '#7F1D1D' }}>{getApprovalTerritorialLabel(approval, pta, referenciasTerritoriales)}</strong>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>{territorialDeDecision(approval).rotulo}</span>
+                <strong style={{ color: '#7F1D1D', overflowWrap: 'anywhere' }}>{territorialDeDecision(approval).valor}</strong>
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
@@ -2612,8 +2618,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 <strong style={{ color: '#14532D' }}>{approval.aprobadorRol || 'Aprobador'}</strong>
               </div>
               <div>
-                <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Territorial</span>
-                <strong style={{ color: '#14532D' }}>{getApprovalTerritorialLabel(approval, pta, referenciasTerritoriales)}</strong>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>{territorialDeDecision(approval).rotulo}</span>
+                <strong style={{ color: '#14532D', overflowWrap: 'anywhere' }}>{territorialDeDecision(approval).valor}</strong>
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
@@ -2750,7 +2756,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                               color: visualT.color, background: visualT.bg, border: `1px solid ${visualT.border}`,
                             }}
                           >
-                            {nombreTerritorial(t) || 'Territorial no disponible'} · {nivelLabel}: {visualT.label}
+                            {nombreTerritorial(t)} · {nivelLabel}: {visualT.label}
                           </span>
                         );
                       })}
@@ -3953,7 +3959,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem' }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: color }} />
                           <span style={{ flex: 1, color: '#374151' }}>
-                            {nombreTerritorial(toTerritorialReference(a)) || 'Territorial no disponible'}
+                            {nombreTerritorial(toTerritorialReference(a))}
                           </span>
                           <span style={{ fontWeight: 600, color }}>
                             {decision === 'aprobado' ? '✓ Aprobado'

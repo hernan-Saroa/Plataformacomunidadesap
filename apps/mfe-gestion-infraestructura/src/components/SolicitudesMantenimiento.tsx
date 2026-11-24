@@ -207,6 +207,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
   const [filtroResponsable, setFiltroResponsable] = useState<string>('TODOS');
   const [filtroContratacion, setFiltroContratacion] = useState<string>('TODAS');
+  const [filtroTerritorial, setFiltroTerritorial] = useState<string>('TODAS');
+  const [ambitoTerritorial, setAmbitoTerritorial] = useState<any>(null);
   const [busquedaTexto, setBusquedaTexto] = useState<string>('');
   const [paginaActual, setPaginaActual] = useState<number>(1);
 
@@ -218,16 +220,28 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     );
   }, [mantenimientos]);
 
+  const opcionesTerritoriales = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const m of mantenimientos || []) {
+      if (m.idDireccionTerritorial && m.direccionTerritorialNombre) {
+        map.set(Number(m.idDireccionTerritorial), m.direccionTerritorialNombre);
+      }
+    }
+    return Array.from(map.entries()).map(([id, nombre]) => ({ id, nombre }));
+  }, [mantenimientos]);
+
   useEffect(() => {
     let cancelado = false;
     const cargar = async () => {
-      const [estados, prioridades] = await Promise.all([
+      const [estados, prioridades, ambito] = await Promise.all([
         infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
         infraestructuraService.getCatalogo('PRIORIDAD'),
+        infraestructuraService.getAmbitoTerritorial(),
       ]);
       if (cancelado) return;
       setCatalogoEstado(estados);
       setCatalogoPrioridad(prioridades);
+      setAmbitoTerritorial(ambito);
     };
     cargar();
     return () => { cancelado = true; };
@@ -344,13 +358,17 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         String(m.espacioFisico || '').toLowerCase().includes(q)
       );
 
-      return estadoOk && prioridadOk && asignacionOk && contratacionOk && busquedaOk;
+      const territorialOk =
+        filtroTerritorial === 'TODAS' ||
+        String(m.idDireccionTerritorial) === filtroTerritorial;
+
+      return estadoOk && prioridadOk && asignacionOk && contratacionOk && territorialOk && busquedaOk;
     });
-  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, opcionesResponsableMap]);
+  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, filtroTerritorial, busquedaTexto, opcionesResponsableMap]);
 
   useEffect(() => {
     setPaginaActual(1);
-  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, lista.length]);
+  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, filtroTerritorial, busquedaTexto, lista.length]);
 
   const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / PAGE_SIZE_SOLICITUDES));
 
@@ -436,6 +454,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     filtroPrioridad !== 'TODAS' ||
     filtroResponsable !== 'TODOS' ||
     filtroContratacion !== 'TODAS' ||
+    filtroTerritorial !== 'TODAS' ||
     Boolean(busquedaTexto.trim());
 
   const toggleExpandir = (id: string) => {
@@ -670,7 +689,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     Circuito de Emergencias Críticas Activo
                   </h4>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-200 text-red-900 border border-red-300">
-                    RF-INF-014
+                    Prioridad Crítica
                   </span>
                 </div>
                 <p className="text-xs text-red-800 mt-1">
@@ -693,6 +712,30 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
+        {/* Banner de Bandeja Territorial Descentralizada */}
+        {!ambitoTerritorial?.esCentral && ambitoTerritorial?.nombreTerritorial && (
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-50/80 to-transparent border border-amber-200/80 shadow-xs gap-3">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/90 text-white flex items-center justify-center shadow-xs shrink-0 ring-4 ring-amber-100">
+                <MapPin className="w-5 h-5 text-amber-50" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h4 className="text-xs sm:text-sm font-bold text-amber-950 tracking-tight">
+                    Bandeja Territorial Descentralizada
+                  </h4>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
+                    {ambitoTerritorial.nombreTerritorial}
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800/90 mt-0.5 font-medium">
+                  Gestión y seguimiento de solicitudes circunscritas a las sedes y CETAPs de tu jurisdicción territorial.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!vistaLoading && lista.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-3">
             {/* EFDS-2373: Buscador libre de texto y radicado */}
@@ -718,7 +761,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             </div>
 
             <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className={`flex-1 grid grid-cols-1 sm:grid-cols-2 ${ambitoTerritorial?.esCentral ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3`}>
                 <label className="block">
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Estado</span>
                   <select
@@ -774,10 +817,27 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   >
                     <option value="TODAS">Todas las solicitudes</option>
                     <option value="REQUIERE_CONTRATACION">Requiere Contratación</option>
-                    <option value="OBRA_MAYOR">Obra Mayor (EFDS-2353)</option>
+                    <option value="OBRA_MAYOR">Obra Mayor</option>
                     <option value="MENOR">Mantenimiento Menor</option>
                   </select>
                 </label>
+                {ambitoTerritorial?.esCentral && (
+                  <label className="block">
+                    <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Territorial</span>
+                    <select
+                      value={filtroTerritorial}
+                      onChange={(e) => setFiltroTerritorial(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    >
+                      <option value="TODAS">Todas las DT</option>
+                      {opcionesTerritoriales.map((it) => (
+                        <option key={it.id} value={String(it.id)}>
+                          {it.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <div className="flex items-center justify-between lg:justify-end gap-2">
                 <span className="text-xs text-slate-500">
@@ -791,6 +851,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       setFiltroPrioridad('TODAS');
                       setFiltroResponsable('TODOS');
                       setFiltroContratacion('TODAS');
+                      setFiltroTerritorial('TODAS');
                       setBusquedaTexto('');
                     }}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
@@ -898,7 +959,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       ) : (
                         <span
                           className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-xs animate-pulse"
-                          title="Emergencia crítica pendiente de confirmación formal por Coordinación GIM (RF-INF-014)"
+                          title="Emergencia crítica pendiente de confirmación formal por Coordinación GIM"
                         >
                           <AlertTriangle className="w-3 h-3 text-white" />
                           Emergencia Crítica
@@ -908,7 +969,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     {m.alerta70Emitida && !esVencida && sla.clase !== 'vencido' && !estadoFinalizado && (
                       <span
                         className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-500 text-white shadow-xs"
-                        title="Alerta preventiva: Solicitud en umbral del 70% ANS - Requiere intervención antes de vencer (RF-INF-014)"
+                        title="Alerta preventiva: Solicitud en umbral del 70% de tiempo de atención - Requiere intervención antes de vencer"
                       >
                         <Clock className="w-3 h-3 text-white" />
                         Alerta 70% ANS
@@ -917,6 +978,12 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       {m.tipoMantenimiento}
                     </span>
+                    {m.tipoMantenimiento === 'PREVENTIVO' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-100 text-sky-800 border-sky-300">
+                        <Clock className="w-3 h-3 text-sky-600" />
+                        Preventivo {m.fechaProgramada ? `(Prog: ${m.fechaProgramada})` : ''}
+                      </span>
+                    )}
                     {m.clasificacionMantenimiento === 'MAYOR' && (
                       <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-purple-100 text-purple-800 border-purple-300">
                         Obra Mayor
@@ -1060,7 +1127,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   {String(m.estado || '').toUpperCase() === 'CERRADA_SIN_ATENCION' ? (
                     <span
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-rose-50 text-rose-800 border-rose-300 shadow-sm"
-                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento (EFDS-1735)"
+                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento"
                     >
                       <PackageX className="w-3.5 h-3.5 text-rose-600" />
                       Cerrada por falta de insumos
@@ -1068,7 +1135,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   ) : String(m.estado || '').toUpperCase() === 'CERRADA_SIN_RESPUESTA' ? (
                     <span
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-700 border-slate-300 shadow-sm"
-                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario (RF-INF-008)"
+                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario"
                     >
                       <Clock className="w-3.5 h-3.5 text-slate-500" />
                       Cerrada – Sin respuesta

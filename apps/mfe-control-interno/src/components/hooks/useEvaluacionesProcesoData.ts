@@ -75,6 +75,8 @@ export interface EvaluacionProcesoUI {
   prioridadRegla?: number;
   auditableCalculado?: boolean;
   auditableManual?: boolean | null;
+  /** Vigencia de la que se heredó al crear el Plan Anual (EFDS-2450) */
+  vigenciaOrigen?: number | null;
   // Meta
   activo: boolean;
   createdAt: string;
@@ -124,6 +126,7 @@ function mapBackendToUI(backend: EvaluacionProceso): EvaluacionProcesoUI {
     prioridadRegla: backend.prioridadRegla,
     auditableCalculado: backend.auditableCalculado,
     auditableManual: backend.auditableManual ?? null,
+    vigenciaOrigen: (backend as any).vigenciaOrigen ?? null,
     activo: backend.activo,
     createdAt: backend.createdAt,
     updatedAt: backend.updatedAt,

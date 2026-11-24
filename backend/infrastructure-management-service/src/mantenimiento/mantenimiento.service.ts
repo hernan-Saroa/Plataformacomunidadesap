@@ -3,7 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto, ConfirmarEmergenciaDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto, ConfirmarEmergenciaDto, RegistrarVoBoCierreDtDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -12,6 +12,7 @@ import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
+import { SolicitudEjecucionTerritorial } from './solicitud-ejecucion-territorial.entity.js';
 import { MantenimientoHistorico } from './mantenimiento-historico.entity.js';
 import { StorageService } from './storage.service.js';
 import { NotificationClientService, SendNotificationDto } from '../common/notification-client.service.js';
@@ -320,6 +321,16 @@ const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
   modalidadVoBo: 'UN_ACTOR',
 };
 
+export interface AmbitoTerritorialUsuario {
+  esCentral: boolean;
+  idDireccionTerritorial: number | null;
+  nombreTerritorial: string | null;
+  codigoTerritorial: string | null;
+  rolPrincipal?: string;
+  esJefaturaTerritorial: boolean;
+  puedeAsignarEnTerritorial: boolean;
+}
+
 @Injectable()
 export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   private readonly notifLogger = new Logger(`${MantenimientoService.name}.notificaciones`);
@@ -345,18 +356,110 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     private readonly notificaciones?: NotificationClientService,
     @Optional() @InjectRepository(MantenimientoHistorico)
     private readonly historicoRepo?: Repository<MantenimientoHistorico>,
+    @Optional() @InjectRepository(SolicitudEjecucionTerritorial)
+    private readonly ejecucionTerritorialRepo?: Repository<SolicitudEjecucionTerritorial>,
   ) {}
 
   private getHistoricoRepo(): Repository<MantenimientoHistorico> {
     return this.historicoRepo || this.dataSource.getRepository(MantenimientoHistorico);
   }
 
+  private getEjecucionTerritorialRepo(): Repository<SolicitudEjecucionTerritorial> {
+    return this.ejecucionTerritorialRepo || this.dataSource.getRepository(SolicitudEjecucionTerritorial);
+  }
+
   async onModuleInit(): Promise<void> {
     try {
+      await this.asegurarEsquemaValoracionYDescentralizacion();
       await this.asegurarSeedTiemposPorCategoria();
       await this.cargarParametroCache();
     } catch {}
     this.iniciarWorkerCierreAutomatico();
+  }
+
+  private async asegurarEsquemaValoracionYDescentralizacion(): Promise<void> {
+    try {
+      await this.dataSource.query(`
+        DO $$
+        BEGIN
+          -- 1. Permitir nulos al iniciar visita de valoración técnica en campo
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'estado_al_finalizar' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN estado_al_finalizar DROP NOT NULL;
+          END IF;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'diagnostico' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN diagnostico DROP NOT NULL;
+          END IF;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'alcance_identificado' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN alcance_identificado DROP NOT NULL;
+          END IF;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'fecha_fin_valoracion' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN fecha_fin_valoracion DROP NOT NULL;
+          END IF;
+
+          -- 2. Asegurar existencia de tabla satélite de ejecución territorial (RF-INF-013)
+          CREATE TABLE IF NOT EXISTS "infrastructure-management".solicitud_ejecucion_territorial (
+            id_ejecucion_territorial UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            id_solicitud UUID NOT NULL UNIQUE REFERENCES "infrastructure-management".solicitud_mantenimiento(id_solicitud) ON DELETE CASCADE,
+            modalidad_ejecutor_territorial VARCHAR(40) NOT NULL DEFAULT 'CUADRILLA_CENTRAL_COMISION',
+            proveedor_local_nombre VARCHAR(200) NULL,
+            proveedor_local_nit VARCHAR(50) NULL,
+            orden_compra_contrato_local VARCHAR(100) NULL,
+            vobo_cierre_dt_aprobado BOOLEAN NULL,
+            vobo_cierre_dt_usuario_id UUID NULL,
+            vobo_cierre_dt_usuario VARCHAR(150) NULL,
+            vobo_cierre_dt_fecha TIMESTAMPTZ NULL,
+            vobo_cierre_dt_observaciones TEXT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          );
+          CREATE INDEX IF NOT EXISTS idx_solicitud_ejecucion_territorial_solicitud ON "infrastructure-management".solicitud_ejecucion_territorial(id_solicitud);
+
+          -- 3. Asegurar roles explícitos 5.2 (Radicador, Coordinador DT, Responsable CETAP)
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'role') THEN
+            INSERT INTO auth.role (id, code, name, description, category, icon, color, "type", is_active, requires_2fa, created_by, updated_by, created_at, updated_at)
+            VALUES
+              (gen_random_uuid(), 'RADICADOR_INFRA', 'Radicador', 'Radica solicitudes en nombre de su área a través del formulario de la Super App y consulta su estado (ERS v0.2 Numeral 5.2).', 'funcional', 'file-plus', 'sky', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now()),
+              (gen_random_uuid(), 'COORDINADOR_ADMINISTRATIVO_DT', 'Coordinador Administrativo DT', 'Enlace territorial / Asignador territorial: recibe, asigna, valida cierre y escala solicitudes de su Dirección Territorial (ERS v0.2 Numeral 5.2).', 'funcional', 'map-pin', 'amber', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now()),
+              (gen_random_uuid(), 'RESPONSABLE_CETAP', 'Responsable CETAP', 'Radica y hace seguimiento a las solicitudes de infraestructura del CETAP municipal (ERS v0.2 Numeral 5.2).', 'funcional', 'building', 'emerald', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now())
+            ON CONFLICT (code) DO NOTHING;
+          END IF;
+        END $$;
+      `);
+      this.notifLogger.log('Esquema de valoración y ejecución territorial asegurado automáticamente.');
+    } catch (err: any) {
+      this.notifLogger.warn(`Aseguramiento automático de esquema omitido: ${err?.message || err}`);
+    }
   }
 
   onModuleDestroy(): void {
@@ -522,6 +625,114 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     return fallbackLegacy || userHasPermission(PERMISO_VER_BANDEJA_GENERAL, user);
   }
 
+  async resolverAmbitoTerritorial(user?: AuthUser | null): Promise<AmbitoTerritorialUsuario> {
+    const fallback: AmbitoTerritorialUsuario = {
+      esCentral: true,
+      idDireccionTerritorial: null,
+      nombreTerritorial: null,
+      codigoTerritorial: null,
+      esJefaturaTerritorial: false,
+      puedeAsignarEnTerritorial: false,
+    };
+
+    if (!user || !user.userId) {
+      return fallback;
+    }
+
+    const normRole = (s: any) => {
+      if (s === null || s === undefined) return '';
+      if (typeof s === 'string') return s.trim().toUpperCase();
+      if (typeof s === 'object') {
+        const cands = [s.code, s.codigo, s.role, s.rol, s.name, s.nombre, s.key];
+        for (const c of cands) if (typeof c === 'string') { const n = c.trim().toUpperCase(); if (n) return n; }
+      }
+      return '';
+    };
+
+    const rolesSet = new Set((user.roles || []).map(normRole).filter(Boolean));
+    const esJefatura = rolesSet.has('COORDINADOR_ADMINISTRATIVO_DT');
+
+    const ROLES_CENTRALES = [
+      'SUPER_ADMIN',
+      'ADMIN',
+      'GESTOR_MANTENIMIENTO',
+      'ADMINISTRADOR_FUNCIONAL',
+      'ADMINISTRADOR_FUNCIONAL_INFRA',
+      'COORDINADOR_INFRAESTRUCTURA',
+      'ANALISTA_ASIGNADOR_UMI',
+      'UMI',
+      'INFRAESTRUCTURA',
+      'CONSULTA_CALIDAD_INFRA',
+    ];
+    const tieneRolCentral = ROLES_CENTRALES.some((r) => rolesSet.has(r));
+
+    let dtId: number | null = null;
+    let dtCodigo: string | null = null;
+    let dtNombre: string | null = null;
+
+    try {
+      const qJefatura = `
+        SELECT jt.id_direccion_territorial AS id, dt.codigo, dt.nombre
+          FROM "academic-schedule".jefatura_territorial jt
+          JOIN academic_work_plan.direccion_territorial dt ON dt.id = jt.id_direccion_territorial
+         WHERE jt.id_user = $1::uuid
+         LIMIT 1
+      `;
+      const resJef = await this.dataSource.query(qJefatura, [user.userId]);
+      if (resJef && resJef.length > 0 && resJef[0].id) {
+        dtId = Number(resJef[0].id);
+        dtCodigo = resJef[0].codigo ? String(resJef[0].codigo) : null;
+        dtNombre = resJef[0].nombre ? String(resJef[0].nombre) : null;
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!dtId) {
+      try {
+        const qPersona = `
+          SELECT p.id_seccional, s.cod_seccional, s.nom_seccional,
+                 dt.id AS dt_id, dt.codigo AS dt_codigo, dt.nombre AS dt_nombre
+            FROM auth."user" u
+            JOIN auth.personas p ON p.id_person = u.id_person
+            LEFT JOIN auth.seccionales s ON s.id_seccional = p.id_seccional
+            LEFT JOIN academic_work_plan.direccion_territorial dt
+              ON (dt.id = p.id_seccional OR UPPER(dt.codigo) = UPPER(s.cod_seccional))
+           WHERE u.id_user = $1::uuid
+           LIMIT 1
+        `;
+        const resPer = await this.dataSource.query(qPersona, [user.userId]);
+        if (resPer && resPer.length > 0) {
+          const r = resPer[0];
+          if (r.dt_id) {
+            dtId = Number(r.dt_id);
+            dtCodigo = r.dt_codigo ? String(r.dt_codigo) : (r.cod_seccional ? String(r.cod_seccional) : null);
+            dtNombre = r.dt_nombre ? String(r.dt_nombre) : (r.nom_seccional ? String(r.nom_seccional) : null);
+          } else if (r.id_seccional) {
+            dtId = Number(r.id_seccional);
+            dtCodigo = r.cod_seccional ? String(r.cod_seccional) : null;
+            dtNombre = r.nom_seccional ? String(r.nom_seccional) : null;
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const esSedeCentral = dtId === 1 || dtCodigo === 'SC' || dtCodigo === 'SCENT';
+    const esCentral = (tieneRolCentral && !esJefatura) || esSedeCentral || !dtId;
+
+    return {
+      esCentral,
+      idDireccionTerritorial: dtId,
+      nombreTerritorial: dtNombre,
+      codigoTerritorial: dtCodigo,
+      rolPrincipal: Array.from(rolesSet)[0] || undefined,
+      esJefaturaTerritorial: esJefatura,
+      puedeAsignarEnTerritorial: esJefatura || tieneRolCentral || userHasPermission(PERMISO_ASIGNAR_SOLICITUD, user),
+    };
+  }
+
   private readonly loggerFindAll = new Logger('MantenimientoFindAll');
   async findAll(
     estado?: string,
@@ -529,6 +740,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     incluirTI: boolean = false,
     idCategoria?: number,
     user?: AuthUser | null,
+    filtrosTerritoriales?: { idDireccionTerritorial?: number; idCetap?: number },
   ): Promise<SolicitudMantenimiento[]> {
     this.loggerFindAll.log(`==== INICIO findAll ====`);
     this.loggerFindAll.log(`  incluirTI=${String(incluirTI)}, estado=${String(estado || 'undef')}, idCategoria=${String(idCategoria || 'undef')}`);
@@ -540,7 +752,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       .leftJoinAndSelect('solicitud.sede', 'sede')
       .leftJoinAndSelect('solicitud.espacio', 'espacio')
       .leftJoinAndSelect('espacio.bloque', 'bloque')
-      .leftJoinAndSelect('solicitud.evidencias', 'evidencias');
+      .leftJoinAndSelect('solicitud.evidencias', 'evidencias')
+      .leftJoinAndSelect('solicitud.ejecucionTerritorial', 'ejecucionTerritorial');
 
     if (estado) {
       query.andWhere('solicitud.estado = :estado', { estado });
@@ -564,7 +777,11 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     const userRolesNorm = new Set((user?.roles || []).map(normRole).filter(Boolean));
     this.loggerFindAll.log(`  userRolesNorm=${JSON.stringify([...userRolesNorm])}`);
 
+    const ambito = await this.resolverAmbitoTerritorial(user);
+    this.loggerFindAll.log(`  ambitoTerritorial=${JSON.stringify(ambito)}`);
+
     const esSUPER_ADMIN = userRolesNorm.has('SUPER_ADMIN');
+    const esRolTerritorial = userRolesNorm.has('COORDINADOR_ADMINISTRATIVO_DT');
     const bypassBandejaGeneralPorRol =
       esSUPER_ADMIN ||
       userRolesNorm.has('ADMIN') ||
@@ -574,7 +791,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       userRolesNorm.has('COORDINADOR_INFRAESTRUCTURA') ||
       userRolesNorm.has('UMI') ||
       userRolesNorm.has('INFRAESTRUCTURA') ||
-      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI');
+      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI') ||
+      esRolTerritorial;
     const bypassRemitidasTIPorRol =
       esSUPER_ADMIN ||
       userRolesNorm.has('ADMIN') ||
@@ -612,6 +830,27 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     } else {
       query.andWhere("solicitud.areaResponsableActual IN (:...areasUMI)", { areasUMI: ['UMI', 'PENDIENTE'] });
       this.loggerFindAll.log(`  APLICADO FILTRO: areaResponsableActual IN (UMI, PENDIENTE)`);
+    }
+
+    // Segregacion Territorial (RF-INF-013 / RF-INF-005):
+    if (!ambito.esCentral && ambito.idDireccionTerritorial) {
+      query.andWhere('solicitud.idDireccionTerritorial = :dtUsuario', {
+        dtUsuario: ambito.idDireccionTerritorial,
+      });
+      this.loggerFindAll.log(`  SEGREGACION TERRITORIAL APLICADA: dtUsuario=${ambito.idDireccionTerritorial} (${ambito.nombreTerritorial})`);
+    } else if (ambito.esCentral) {
+      if (filtrosTerritoriales?.idDireccionTerritorial) {
+        query.andWhere('solicitud.idDireccionTerritorial = :dtFiltro', {
+          dtFiltro: Number(filtrosTerritoriales.idDireccionTerritorial),
+        });
+        this.loggerFindAll.log(`  FILTRO CENTRAL DT APLICADO: idDt=${filtrosTerritoriales.idDireccionTerritorial}`);
+      }
+      if (filtrosTerritoriales?.idCetap) {
+        query.andWhere('solicitud.idCetap = :cetapFiltro', {
+          cetapFiltro: Number(filtrosTerritoriales.idCetap),
+        });
+        this.loggerFindAll.log(`  FILTRO CENTRAL CETAP APLICADO: idCetap=${filtrosTerritoriales.idCetap}`);
+      }
     }
 
     if (!puedeVerTodo) {
@@ -811,7 +1050,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   async findById(id: string): Promise<any> {
     const solicitud = await this.mantenimientoRepo.findOne({
       where: { idSolicitud: id },
-      relations: ['sede', 'espacio', 'espacio.bloque', 'evidencias'],
+      relations: ['sede', 'espacio', 'espacio.bloque', 'evidencias', 'ejecucionTerritorial'],
     });
     if (!solicitud) {
       throw new NotFoundException(`Solicitud de mantenimiento ${id} no encontrada`);
@@ -895,6 +1134,55 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         'Clasificación TECNOLÓGICA NO puede quedar radicada como responsabilidad de UMI. Area debe ser TI.',
       );
     }
+
+    // EFDS-2436 / RF-INF-011: Validación de mantenimiento preventivo y ventana máxima de 15 días a futuro
+    const esPreventivo = String(dto.tipoMantenimiento || '').toUpperCase() === 'PREVENTIVO';
+    let fechaProgramadaResuelta: string | null = null;
+    if (esPreventivo) {
+      if (!dto.fechaProgramada || !String(dto.fechaProgramada).trim()) {
+        throw new BadRequestException(
+          'Para solicitudes de mantenimiento preventivo, la fecha programada de atención es obligatoria (máximo 15 días hacia el futuro).',
+        );
+      }
+      const rawFecha = String(dto.fechaProgramada).trim();
+      const datePart = rawFecha.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length !== 3) {
+        throw new BadRequestException('La fecha programada debe tener un formato válido (YYYY-MM-DD).');
+      }
+      const [year, month, day] = parts.map(Number);
+      const fechaProg = new Date(year, month - 1, day, 12, 0, 0);
+      if (isNaN(fechaProg.getTime())) {
+        throw new BadRequestException('La fecha programada proporcionada no es una fecha válida.');
+      }
+
+      const hoyInicio = new Date();
+      hoyInicio.setHours(0, 0, 0, 0);
+
+      const maxFuturo15Dias = new Date(hoyInicio);
+      maxFuturo15Dias.setDate(maxFuturo15Dias.getDate() + 15);
+      maxFuturo15Dias.setHours(23, 59, 59, 999);
+
+      const progDateOnly = new Date(year, month - 1, day, 0, 0, 0);
+
+      if (progDateOnly < hoyInicio) {
+        throw new BadRequestException(
+          'La fecha programada de mantenimiento preventivo no puede ser anterior a la fecha actual.',
+        );
+      }
+      if (progDateOnly > maxFuturo15Dias) {
+        throw new BadRequestException(
+          'La fecha programada de mantenimiento preventivo no puede superar el límite máximo de 15 días calendario a futuro.',
+        );
+      }
+      fechaProgramadaResuelta = datePart;
+
+      // Si no se especificó categoría y es preventivo, asociar por defecto a CS_008 (Revisión y Mantenimiento Preventivo Equipos Críticos)
+      if (!dto.idCategoria) {
+        dto.idCategoria = 54;
+      }
+    }
+
     if (dto.tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(Number(dto.idCategoria))) {
       throw new BadRequestException(
         'La categoría de servicio es obligatoria para radicar solicitudes de atención física.',
@@ -963,6 +1251,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       salon: dto.salon,
       ubicacionDetalle: dto.ubicacionDetalle,
       tipoMantenimiento: dto.tipoMantenimiento,
+      fechaProgramada: fechaProgramadaResuelta as any,
       tipoAtencion: dto.tipoAtencion,
       areaResponsableActual: areaResp,
       remisiones: remisionesIniciales,
@@ -1946,7 +2235,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     const solicitud = await this.findById(idSolicitud);
     if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
 
-    const vr = this.validarRolesAsignador(user);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
     if (!vr.permitido && !per.puede) {
       throw new ForbiddenException('No tiene permisos para registrar la revisión técnica de la valoración.');
@@ -2297,20 +2586,64 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   // Guard clause D6: solo SUPER_ADMIN o GESTOR_MANTENIMIENTO pueden ejecutar.
   // Histórico: pushAsignacion añade entry al JSONB asignaciones[] sin overw.
   // ---------------------------------------------------------------------------
-  private validarRolesAsignador(user: AuthUser | null | undefined): { permitido: boolean; errorMsg?: string } {
+  private async validarRolesAsignador(
+    user: AuthUser | null | undefined,
+    solicitud?: SolicitudMantenimiento | null,
+  ): Promise<{ permitido: boolean; errorMsg?: string; ambito: AmbitoTerritorialUsuario }> {
+    const ambito = await this.resolverAmbitoTerritorial(user);
     if (!user || !Array.isArray(user.roles) || user.roles.length === 0) {
-      return { permitido: false, errorMsg: 'Usuario autenticado requerido para aprobar/rechazar/redistribuir solicitudes UMI.' };
+      return {
+        permitido: false,
+        errorMsg: 'Usuario autenticado requerido para aprobar/rechazar/redistribuir solicitudes UMI.',
+        ambito,
+      };
     }
-    try {
-      requirePermission(PERMISO_ASIGNAR_SOLICITUD, user);
-      return { permitido: true };
-    } catch (err: any) {
-      const msg =
-        (err?.message && typeof err.message === 'string')
-          ? err.message
-          : 'Permiso insuficiente. Requiere permiso infraestructura.solicitud.assign para aprobar, rechazar o redistribuir solicitudes UMI.';
-      return { permitido: false, errorMsg: msg };
+
+    const normRole = (s: any) => {
+      if (s === null || s === undefined) return '';
+      if (typeof s === 'string') return s.trim().toUpperCase();
+      if (typeof s === 'object') {
+        const cands = [s.code, s.codigo, s.role, s.rol, s.name, s.nombre, s.key];
+        for (const c of cands) if (typeof c === 'string') { const n = c.trim().toUpperCase(); if (n) return n; }
+      }
+      return '';
+    };
+    const userRolesNorm = new Set((user.roles || []).map(normRole).filter(Boolean));
+
+    const tienePermisoCentral =
+      userHasPermission(PERMISO_ASIGNAR_SOLICITUD, user) ||
+      userRolesNorm.has('SUPER_ADMIN') ||
+      userRolesNorm.has('GESTOR_MANTENIMIENTO') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI');
+
+    if (tienePermisoCentral) {
+      return { permitido: true, ambito };
     }
+
+    // Delegacion territorial (RF-INF-013):
+    // Coordinador Administrativo DT o Jefatura Territorial puede gestionar solicitudes de su propia territorial
+    if (ambito.esJefaturaTerritorial && ambito.idDireccionTerritorial) {
+      if (solicitud && solicitud.idDireccionTerritorial) {
+        if (Number(solicitud.idDireccionTerritorial) === Number(ambito.idDireccionTerritorial)) {
+          return { permitido: true, ambito };
+        } else {
+          return {
+            permitido: false,
+            errorMsg: `No tiene autorización para gestionar solicitudes de otra Dirección Territorial (solicitud DT: ${solicitud.idDireccionTerritorial}, usuario DT: ${ambito.idDireccionTerritorial}).`,
+            ambito,
+          };
+        }
+      }
+      return { permitido: true, ambito };
+    }
+
+    return {
+      permitido: false,
+      errorMsg: 'Permiso insuficiente. Requiere rol de gestión central UMI o Jefatura Territorial autorizada para su sede regional.',
+      ambito,
+    };
   }
 
   private pushAsignacion(
@@ -2364,7 +2697,9 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       motivo: args.motivo ?? null,
       observaciones: args.observaciones ?? null,
       usuario_id: args.user.userId ?? null,
+      usuario_nombre: args.user.name ?? null,
       usuario_email: args.user.email ?? null,
+      usuario_cargo: args.user.cargo ?? null,
       usuario_roles: Array.isArray(args.user.roles) ? args.user.roles.join(',') : null,
     };
     if (args.clasificacionMantenimiento !== undefined) {
@@ -2547,14 +2882,20 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       observaciones?: string | null;
       clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
       requiereContratacion?: boolean;
+      modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+      proveedorLocalNombre?: string | null;
+      proveedorLocalNit?: string | null;
+      ordenCompraContratoLocal?: string | null;
+      fechaProgramada?: string | null;
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
-    const vr = this.validarRolesAsignador(user);
+    const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
-    const solicitud = await this.findById(idSolicitud);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+    const esProveedorLocal = args.modalidadEjecutorTerritorial === 'PROVEEDOR_LOCAL_CONTRATADO';
     const idTecnicoIdent = String(
       (args.idTecnicoAsignado && String(args.idTecnicoAsignado).trim()) || (args.tecnicoCodigo || '').trim() || '',
     ).trim();
@@ -2582,7 +2923,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    if (!esTI && !idTecnicoIdent) {
+    if (!esTI && !esProveedorLocal && !idTecnicoIdent) {
       throw new BadRequestException('Identificador técnico obligatorio para asignar. Enviar idTecnicoAsignado (UUID auth P3/P4) o tecnicoCodigo legacy.');
     }
 
@@ -2609,6 +2950,25 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         tecnicoNombreDisplay: null,
         idTecnicoAsignado: null,
         motivo: 'Confirmación de recepción de la remisión por la Oficina TI. Flujo interno TIC a partir de este punto.',
+        observaciones: args.observaciones ?? null,
+        clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+        requiereContratacion: solicitud.requiereContratacion,
+        user: user as AuthUser,
+      });
+    } else if (esProveedorLocal) {
+      solicitud.estado = 'ASIGNADA';
+      solicitud.responsableAsignado = args.proveedorLocalNombre
+        ? `Proveedor Local · ${args.proveedorLocalNombre}`
+        : 'Proveedor Local Contratado';
+      solicitud.idTecnicoAsignado = undefined;
+      solicitud.motivoRechazo = undefined;
+
+      this.pushAsignacion(solicitud, {
+        accion: 'APROBADA_Y_ASIGNADA',
+        tecnicoCodigo: null,
+        tecnicoNombreDisplay: args.proveedorLocalNombre || 'Proveedor Local',
+        idTecnicoAsignado: null,
+        motivo: `Asignación a proveedor local contratado (RF-INF-013): ${args.proveedorLocalNombre || 'S/N'}${args.ordenCompraContratoLocal ? ` - Contrato/OC: ${args.ordenCompraContratoLocal}` : ''}`,
         observaciones: args.observaciones ?? null,
         clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
         requiereContratacion: solicitud.requiereContratacion,
@@ -2649,6 +3009,54 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
+    }
+
+    if (args.fechaProgramada && String(args.fechaProgramada).trim()) {
+      const rawFecha = String(args.fechaProgramada).trim();
+      const datePart = rawFecha.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length === 3) {
+        const [year, month, day] = parts.map(Number);
+        const hoyInicio = new Date();
+        hoyInicio.setHours(0, 0, 0, 0);
+        const max15Dias = new Date(hoyInicio);
+        max15Dias.setDate(max15Dias.getDate() + 15);
+        max15Dias.setHours(23, 59, 59, 999);
+        const progDate = new Date(year, month - 1, day, 0, 0, 0);
+        if (progDate < hoyInicio) {
+          throw new BadRequestException('La fecha programada no puede ser anterior a la fecha actual.');
+        }
+        if (progDate > max15Dias) {
+          throw new BadRequestException('La fecha programada no puede superar el límite máximo de 15 días calendario a futuro.');
+        }
+        solicitud.fechaProgramada = datePart;
+      }
+    }
+
+    // Persistir modalidad de ejecución territorial si aplica (RF-INF-013)
+    if (solicitud.idDireccionTerritorial || args.modalidadEjecutorTerritorial) {
+      try {
+        const ejecRepo = this.getEjecucionTerritorialRepo();
+        let ejec = await ejecRepo.findOne({ where: { idSolicitud: solicitud.idSolicitud } });
+        if (!ejec) {
+          ejec = ejecRepo.create({
+            idSolicitud: solicitud.idSolicitud,
+            modalidadEjecutorTerritorial: args.modalidadEjecutorTerritorial || 'CUADRILLA_CENTRAL_COMISION',
+            proveedorLocalNombre: args.proveedorLocalNombre || null,
+            proveedorLocalNit: args.proveedorLocalNit || null,
+            ordenCompraContratoLocal: args.ordenCompraContratoLocal || null,
+          });
+        } else {
+          if (args.modalidadEjecutorTerritorial) ejec.modalidadEjecutorTerritorial = args.modalidadEjecutorTerritorial;
+          if (args.proveedorLocalNombre !== undefined) ejec.proveedorLocalNombre = args.proveedorLocalNombre;
+          if (args.proveedorLocalNit !== undefined) ejec.proveedorLocalNit = args.proveedorLocalNit;
+          if (args.ordenCompraContratoLocal !== undefined) ejec.ordenCompraContratoLocal = args.ordenCompraContratoLocal;
+        }
+        await ejecRepo.save(ejec);
+        solicitud.ejecucionTerritorial = ejec;
+      } catch (errEjec: any) {
+        this.loggerFindAll.warn(`No se pudo persistir ejecucion territorial: ${errEjec?.message || errEjec}`);
+      }
     }
 
     const saved = await this.mantenimientoRepo.save(solicitud);
@@ -2701,13 +3109,12 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     body: { aprobado?: boolean; voboAprobado?: boolean; observaciones?: string | null; voboObservaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
+    const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     const aprobadoFinal = body.aprobado !== undefined ? Boolean(body.aprobado) : (body.voboAprobado !== undefined ? Boolean(body.voboAprobado) : true);
     const observacionesFinal = body.observaciones ?? body.voboObservaciones ?? null;
-
-    const solicitud = await this.findById(idSolicitud);
     solicitud.requiereVoBo = true;
     solicitud.voboAprobado = aprobadoFinal;
     solicitud.voboObservaciones = observacionesFinal;
@@ -2746,14 +3153,58 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     return saved;
   }
 
+  async registrarVoBoCierreDt(
+    idSolicitud: string,
+    dto: RegistrarVoBoCierreDtDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
+
+    const ambito = await this.resolverAmbitoTerritorial(user);
+    if (!ambito.esCentral) {
+      if (!ambito.idDireccionTerritorial || Number(ambito.idDireccionTerritorial) !== Number(solicitud.idDireccionTerritorial)) {
+        throw new ForbiddenException('Solo la Dirección Territorial correspondiente puede registrar el VoBo de cierre.');
+      }
+    }
+
+    const ejecRepo = this.getEjecucionTerritorialRepo();
+    let ejec = await ejecRepo.findOne({ where: { idSolicitud: solicitud.idSolicitud } });
+    if (!ejec) {
+      ejec = ejecRepo.create({
+        idSolicitud: solicitud.idSolicitud,
+        modalidadEjecutorTerritorial: 'CUADRILLA_CENTRAL_COMISION',
+      });
+    }
+
+    const aprobadoVal = dto.aprobado !== undefined ? Boolean(dto.aprobado) : Boolean(dto.voboCierreDtAprobado);
+    const observacionesVal = (dto.observaciones || dto.voboCierreDtObservaciones || '').trim() || null;
+
+    ejec.voboCierreDtAprobado = aprobadoVal;
+    ejec.voboCierreDtUsuarioId = user?.userId || null;
+    ejec.voboCierreDtUsuario = (user?.name || user?.email || 'Usuario DT').trim();
+    ejec.voboCierreDtFecha = new Date();
+    ejec.voboCierreDtObservaciones = observacionesVal;
+
+    await ejecRepo.save(ejec);
+    solicitud.ejecucionTerritorial = ejec;
+
+    this.pushAsignacion(solicitud, {
+      accion: aprobadoVal ? 'VOBO_VALORACION_APROBADO' : 'VOBO_VALORACION_OBSERVADO',
+      motivo: `VoBo de Cierre Técnico DT (${dto.aprobado ? 'CONFORME' : 'CON OBSERVACIONES'}): ${dto.observaciones || 'Sin observaciones'}`,
+      tecnicoNombreDisplay: ejec.voboCierreDtUsuario,
+      user: user as AuthUser,
+    });
+
+    await this.mantenimientoRepo.save(solicitud);
+    return solicitud;
+  }
+
   async rechazar(
     idSolicitud: string,
     args: { motivo: string; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
-
     const motivo = (args.motivo || '').trim();
     if (motivo.length === 0) {
       throw new BadRequestException('Motivo de rechazo es obligatorio y no puede estar vacío.');
@@ -2763,6 +3214,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     }
 
     const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
 
     // EFDS-1734: Rechazo solo tiene sentido pre-aprobación.
@@ -2810,10 +3263,9 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     args: { tecnicoCodigo?: string; idTecnicoAsignado?: string; motivoRedistribucion?: string | null; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
-
     const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     // EFDS-1734: Redistribuir se permite solo cuando la solicitud no está cerrada/rechazada/remitida.
     const ESTADOS_NO_PERMITIDOS = [
@@ -2933,6 +3385,19 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
     }
 
+    // RF-INF-013: Coordinador Administrativo DT puede operar y supervisar solicitudes de su propia Dirección Territorial
+    if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) {
+      const ambito = await this.resolverAmbitoTerritorial(user);
+      if (
+        ambito.idDireccionTerritorial &&
+        solicitud.idDireccionTerritorial &&
+        Number(ambito.idDireccionTerritorial) === Number(solicitud.idDireccionTerritorial)
+      ) {
+        const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+        return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre || 'Proveedor Local / DT' };
+      }
+    }
+
     const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
     if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
       if (String(user.userId || '').toLowerCase() === idTecnicoAsignado.toLowerCase()) {
@@ -2968,6 +3433,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
   ): Promise<void> {
     if (Number(solicitud.idCategoria) !== 48) return;
     if (this.usuarioEsSuperAdminOAsignador(user)) return;
+    const roles = (user?.roles || []).map((r) => String(r).toUpperCase());
+    if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) return;
 
     const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
     if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
@@ -3516,9 +3983,9 @@ ${insumosDesc ? `<p><strong>Materiales relacionados:</strong> ${insumosDesc}</p>
     dto: ConfirmarRecepcionInsumosDto,
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     if (solicitud.estado !== 'EN_ESPERA_DE_INSUMOS') {
       throw new ConflictException(
         `Solo se puede confirmar recepción de insumos en estado EN_ESPERA_DE_INSUMOS. Estado actual: ${solicitud.estado}`,
@@ -4397,7 +4864,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     forceBatch = false,
   ): Promise<{ actualizadas: number; ids: string[]; consecutivos: string[]; configUsada: ConformidadConfigData }> {
     if (user) {
-      const vr = this.validarRolesAsignador(user);
+      const vr = await this.validarRolesAsignador(user);
       if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     }
     const config = await this.getConformidadConfig();
@@ -6451,10 +6918,10 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
+    const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
-    const solicitud = await this.findById(idSolicitud);
     const proceso = String(body.procesoContractual || '').trim() || 'Gestión / Avance Contractual';
 
     const radicado = body.radicadoOrfeo ? String(body.radicadoOrfeo).trim() : null;

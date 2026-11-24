@@ -830,6 +830,8 @@ export class HallazgosService {
             totalHallazgos: todos,
             plazoDiasHabiles: 5,
             ...(opciones?.urlPlataforma ? { urlPlataforma: opciones.urlPlataforma } : {}),
+            // Nombre del informe que subió el auditor, para saber cuál se notificó (EFDS-2455)
+            ...(opciones?.adjuntos?.length ? { informePreliminar: opciones.adjuntos.map((a) => a.filename) } : {}),
           },
           // El informe preliminar va adjunto al correo del área auditada (EFDS-2350)
           adjuntos: opciones?.adjuntos,

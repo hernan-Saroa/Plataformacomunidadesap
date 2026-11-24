@@ -239,6 +239,31 @@ export interface SolicitudMantenimiento {
   emergenciaConfirmadaPor?: string | null;
   fechaConfirmacionEmergencia?: string | null;
   notasConfirmacionEmergencia?: string | null;
+  // ----- RF-INF-013: Descentralización y Ejecución Territorial -----
+  ejecucionTerritorial?: SolicitudEjecucionTerritorial | null;
+}
+
+export interface SolicitudEjecucionTerritorial {
+  idSolicitud: string;
+  modalidadEjecutorTerritorial: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+  proveedorLocalNombre?: string | null;
+  proveedorLocalNit?: string | null;
+  ordenCompraContratoLocal?: string | null;
+  voboCierreDtAprobado?: boolean | null;
+  voboCierreDtUsuarioId?: string | null;
+  voboCierreDtUsuario?: string | null;
+  voboCierreDtFecha?: string | null;
+  voboCierreDtObservaciones?: string | null;
+}
+
+export interface AmbitoTerritorialUsuario {
+  esCentral: boolean;
+  idDireccionTerritorial: number | null;
+  nombreTerritorial: string | null;
+  codigoTerritorial: string | null;
+  rolPrincipal?: string;
+  esJefaturaTerritorial: boolean;
+  puedeAsignarEnTerritorial: boolean;
 }
 
 export interface ConformidadConfig {
@@ -536,6 +561,7 @@ export interface CreateMantenimientoPayload {
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
   idCategoria?: number;
   idSubcategoria?: number;
+  fechaProgramada?: string;
   // ===== Fase 3 =====
   esBienAsignadoFuncionario?: boolean;
   nombreFuncionarioBienAsignado?: string;
@@ -583,6 +609,11 @@ export interface AprobarAsignarPayload {
   observaciones?: string | null;
   clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
   requiereContratacion?: boolean;
+  modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+  proveedorLocalNombre?: string | null;
+  proveedorLocalNit?: string | null;
+  ordenCompraContratoLocal?: string | null;
+  fechaProgramada?: string | null;
 }
 
 export interface RechazarPayload {
@@ -760,6 +791,10 @@ const FE_LEGACY_MAP: Record<string, string[]> = {
     'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
     'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
     'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  COORDINADOR_ADMINISTRATIVO_DT: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
   ],
   P3: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
   P2: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
@@ -1152,13 +1187,22 @@ export const infraestructuraService = {
     }
   },
 
-  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string; idCategoria?: number }): Promise<SolicitudMantenimiento[]> {
+  async getMantenimientos(params?: {
+    incluirTI?: boolean;
+    estado?: string;
+    prioridad?: string;
+    idCategoria?: number;
+    idDireccionTerritorial?: number;
+    idCetap?: number;
+  }): Promise<SolicitudMantenimiento[]> {
     try {
       const q = new URLSearchParams();
       if (params?.incluirTI === true) q.append('incluirTI', 'true');
       if (params?.estado) q.append('estado', params.estado);
       if (params?.prioridad) q.append('prioridad', params.prioridad);
       if (Number.isInteger(params?.idCategoria)) q.append('idCategoria', String(params?.idCategoria));
+      if (params?.idDireccionTerritorial) q.append('idDireccionTerritorial', String(params.idDireccionTerritorial));
+      if (params?.idCetap) q.append('idCetap', String(params.idCetap));
       const qs = q.toString() ? ('?' + q.toString()) : '';
       const res = await fetch(`${API_BASE_URL}/mantenimiento${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
@@ -1167,6 +1211,25 @@ export const infraestructuraService = {
       console.warn('[infraestructuraService] getMantenimientos falló, retornando []:', err);
       return [];
     }
+  },
+
+  async getAmbitoTerritorial(): Promise<AmbitoTerritorialUsuario> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/auth/ambito-territorial`, {
+        credentials: 'include',
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('[infraestructuraService] getAmbitoTerritorial falló:', err);
+    }
+    return {
+      esCentral: true,
+      idDireccionTerritorial: null,
+      nombreTerritorial: null,
+      codigoTerritorial: null,
+      esJefaturaTerritorial: false,
+      puedeAsignarEnTerritorial: false,
+    };
   },
 
   async getRemisiones(idSolicitud: string): Promise<Array<Record<string, any>>> {
@@ -2065,6 +2128,34 @@ export const infraestructuraService = {
     }
     const data = await res.json();
     notificarEventoFrontend('VOBO_VALORACION', idSolicitud, payload);
+    return data;
+  },
+
+  async registrarVoBoCierreDt(
+    idSolicitud: string,
+    payload: {
+      aprobado?: boolean;
+      voboCierreDtAprobado?: boolean;
+      observaciones?: string;
+      voboCierreDtObservaciones?: string;
+    },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/vobo-cierre-dt`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al registrar VoBo de cierre por Dirección Territorial';
+      try {
+        const b = await res.json();
+        if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
+      } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('VOBO_CIERRE_DT', idSolicitud, payload);
     return data;
   },
 

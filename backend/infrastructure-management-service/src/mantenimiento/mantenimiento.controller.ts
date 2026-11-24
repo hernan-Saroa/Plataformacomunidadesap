@@ -48,6 +48,8 @@ import {
   VincularTramiteContractualDto,
   MarcarRequiereContratacionDto,
   ConfirmarEmergenciaDto,
+  AsignarTecnicoPayload,
+  RegistrarVoBoCierreDtDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
@@ -55,6 +57,7 @@ import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { AuthUser } from '../auth/types.js';
+import { requirePermission } from '../auth/permissions.helper.js';
 
 const MAX_SIZE_20MB = 20 * 1024 * 1024;
 const MIMES_PERMITIDOS =
@@ -83,6 +86,7 @@ const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
       username: actual.username != null ? String(actual.username) : undefined,
       email: actual.email != null ? String(actual.email) : undefined,
       name: actual.name != null ? String(actual.name) : undefined,
+      cargo: actual.cargo != null ? String(actual.cargo) : (req?.headers?.['x-user-cargo'] ? String(req.headers['x-user-cargo']) : undefined),
       roles: Array.isArray(actual.roles) ? actual.roles.map(String).filter(Boolean) : [],
       permissions: actual.permissions,
       codigoTecnico: actual.codigoTecnico != null ? String(actual.codigoTecnico).trim() : undefined,
@@ -93,6 +97,7 @@ const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
   const headerEmail = req?.headers?.['x-user-email'];
   const headerUsername = req?.headers?.['x-user-username'];
   const headerName = req?.headers?.['x-user-name'];
+  const headerCargo = req?.headers?.['x-user-cargo'];
   if (headerUserId == null && headerEmail == null && headerUsername == null) {
     return undefined;
   }
@@ -102,6 +107,7 @@ const obtenerUsuarioOpcionalDesdeRequest = (req: any): AuthUser | undefined => {
     username: headerUsername != null ? String(headerUsername) : undefined,
     email: headerEmail != null ? String(headerEmail) : undefined,
     name: headerName != null ? String(headerName) : undefined,
+    cargo: headerCargo != null ? String(headerCargo) : undefined,
     roles: parseCsvHeader(req?.headers?.['x-user-roles'] ?? req?.headers?.['x-user-role']),
     permissions: parseCsvHeader(req?.headers?.['x-user-permissions']),
     codigoTecnico:
@@ -161,6 +167,8 @@ export class MantenimientoController {
   @ApiQuery({ name: 'prioridad', required: false })
   @ApiQuery({ name: 'idCategoria', required: false, description: 'Filtrar por categoria servicio EFDS-1732 (idCatalogo CATEGORIA_SERVICIO, 47..54 = CS_001..CS_008)' })
   @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
+  @ApiQuery({ name: 'idDireccionTerritorial', required: false, description: 'Filtro por Dirección Territorial (para usuarios con visibilidad central).' })
+  @ApiQuery({ name: 'idCetap', required: false, description: 'Filtro por CETAP municipal (para usuarios con visibilidad central).' })
   @ApiResponse({ status: 401, description: 'JWT o headers x-user-id/x-user-roles faltantes' })
   @ApiResponse({ status: 403, description: 'Permisos insuficientes' })
   findAll(
@@ -168,11 +176,24 @@ export class MantenimientoController {
     @Query('prioridad') prioridad?: string,
     @Query('incluirTI') incluirTI?: string,
     @Query('idCategoria') idCategoria?: string,
+    @Query('idDireccionTerritorial') idDireccionTerritorial?: string,
+    @Query('idCetap') idCetap?: string,
     @Req() req?: any,
   ) {
     const incluir = String(incluirTI || '').toLowerCase() === 'true';
     const idCatParsed = (idCategoria && idCategoria.trim() !== '' && Number.isInteger(+idCategoria)) ? Number(idCategoria) : undefined;
-    return this.mantenimientoService.findAll(estado, prioridad, incluir, idCatParsed, req?.user || null);
+    const filtrosTerritoriales = {
+      idDireccionTerritorial: (idDireccionTerritorial && idDireccionTerritorial.trim() !== '' && !isNaN(+idDireccionTerritorial)) ? Number(idDireccionTerritorial) : undefined,
+      idCetap: (idCetap && idCetap.trim() !== '' && !isNaN(+idCetap)) ? Number(idCetap) : undefined,
+    };
+    return this.mantenimientoService.findAll(estado, prioridad, incluir, idCatParsed, req?.user || null, filtrosTerritoriales);
+  }
+
+  @Get('auth/ambito-territorial')
+  @ApiOperation({ summary: 'Obtener el ámbito territorial y permisos regionales del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Ámbito territorial resuelto del usuario' })
+  getAmbitoTerritorial(@Req() req: any) {
+    return this.mantenimientoService.resolverAmbitoTerritorial(req?.user || null);
   }
 
   @Get('mis-solicitudes')
@@ -203,10 +224,9 @@ export class MantenimientoController {
   }
 
   @Post('categorias-servicio')
-  @Public()
   @ApiOperation({
     summary:
-      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). El orden se autoasigna si no se envía. Si el código se repite devuelve 409 Conflict.',
+      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). Exclusivo Coordinador GIM. Si el código se repite devuelve 409 Conflict.',
   })
   crearCategoriaServicio(
     @Body()
@@ -218,15 +238,17 @@ export class MantenimientoController {
       isActivo?: boolean;
       color?: string;
     },
+    @Req() req: any,
   ) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.crearCategoriaServicio(body);
   }
 
   @Patch('categorias-servicio/:id')
-  @Public()
   @ApiOperation({
     summary:
-      'Actualizar una categoría de servicio por id. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
+      'Actualizar una categoría de servicio por id. Exclusivo Coordinador GIM. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
   })
   actualizarCategoriaServicio(
     @Param('id', ParseIntPipe) idCatalogo: number,
@@ -239,25 +261,30 @@ export class MantenimientoController {
       isActivo?: boolean;
       color?: string;
     },
+    @Req() req: any,
   ) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.actualizarCategoriaServicio(idCatalogo, body);
   }
 
   @Patch('categorias-servicio/:id/toggle')
-  @Public()
   @ApiOperation({
-    summary: 'Toggle rápido activar/desactivar una categoría de servicio. Devuelve el item actualizado.',
+    summary: 'Toggle rápido activar/desactivar una categoría de servicio. Exclusivo Coordinador GIM. Devuelve el item actualizado.',
   })
-  toggleCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+  toggleCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number, @Req() req: any) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.toggleCategoriaServicio(idCatalogo);
   }
 
   @Delete('categorias-servicio/:id')
-  @Public()
   @ApiOperation({
-    summary: 'Eliminar una categoría de servicio por id. Devuelve eliminado:true si se borró correctamente.',
+    summary: 'Eliminar una categoría de servicio por id. Exclusivo Coordinador GIM. Devuelve eliminado:true si se borró correctamente.',
   })
-  eliminarCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+  eliminarCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number, @Req() req: any) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.CATEGORIES_CRU', user);
     return this.mantenimientoService.eliminarCategoriaServicio(idCatalogo);
   }
 
@@ -286,9 +313,11 @@ export class MantenimientoController {
   @Patch('parametros/tiempo-respuesta')
   @ApiOperation({
     summary:
-      'EFDS-1733-bis: Actualizar parámetro tiempo-respuesta POR CATEGORÍA. Body requiere {idCategoria (47..54), dias (1..3)}. Fuera rango BadRequest 400.',
+      'EFDS-1733-bis: Actualizar parámetro tiempo-respuesta POR CATEGORÍA. Exclusivo Coordinador GIM. Body requiere {idCategoria (47..54), dias (1..3)}. Fuera rango BadRequest 400.',
   })
-  actualizarParametroTiempoRespuesta(@Body() body: { idCategoria: number; dias: number }) {
+  actualizarParametroTiempoRespuesta(@Body() body: { idCategoria: number; dias: number }, @Req() req: any) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.SLA_CRU', user);
     return this.mantenimientoService.actualizarParametroTiempoRespuesta(
       Number(body?.idCategoria),
       Number(body?.dias),
@@ -307,7 +336,7 @@ export class MantenimientoController {
   @Patch('parametros/reglas-escalamiento/:idRegla')
   @ApiOperation({
     summary:
-      'EFDS-1733: Actualizar una regla de escalamiento. Principal uso: ligar un técnico al regla_001 eléctrica. body.tecnicoCodigo = string o null para desligar.',
+      'EFDS-1733: Actualizar una regla de escalamiento. Exclusivo Coordinador GIM. Principal uso: ligar un técnico al regla_001 eléctrica. body.tecnicoCodigo = string o null para desligar.',
   })
   actualizarReglaEscalamiento(
     @Param('idRegla', ParseIntPipe) idRegla: number,
@@ -317,7 +346,10 @@ export class MantenimientoController {
       isActivo?: boolean;
       metadata?: Record<string, any>;
     },
+    @Req() req: any,
   ) {
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    requirePermission('INFRAESTRUCTURA.PARAM.SLA_CRU', user);
     return this.mantenimientoService.actualizarReglaEscalamiento(idRegla, body);
   }
 
@@ -541,24 +573,32 @@ export class MantenimientoController {
   @Post(':idSolicitud/aprobar-asignar')
   @ApiOperation({
     summary:
-      'EFDS-1734 RF-INF-005 AC-01: Aprobar una solicitud. Si areaResponsableActual = TI: confirma recepción remisión a Oficina TI (tecnicoCodigo OPCIONAL). Si UMI: asigna técnico obligatorio y pasa estado ASIGNADA. Limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+      'EFDS-1734 RF-INF-005 AC-01: Aprobar una solicitud. Asigna técnico o modalidad de ejecutor territorial y pasa estado ASIGNADA.',
   })
   @ApiResponse({ status: 200, description: 'Solicitud aprobada. Histórico auditoría actualizado.' })
   @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente o faltante en flujo UMI físico.' })
-  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente.' })
   aprobarYAsignar(
     @Param('idSolicitud') idSolicitud: string,
-    @Body()
-    body: {
-      tecnicoCodigo?: string | null;
-      idTecnicoAsignado?: string | null;
-      observaciones?: string | null;
-      clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
-      requiereContratacion?: boolean;
-    },
+    @Body() body: AsignarTecnicoPayload,
     @Req() req: any,
   ) {
     return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/vobo-cierre-dt')
+  @ApiOperation({
+    summary:
+      'RF-INF-013 / RF-INF-005: Registrar Visto Bueno (VoBo) de cierre técnico por parte de la Dirección Territorial.',
+  })
+  @ApiResponse({ status: 200, description: 'VoBo DT registrado exitosamente.' })
+  @ApiResponse({ status: 403, description: 'No autorizado para emitir VoBo sobre esta Dirección Territorial.' })
+  registrarVoBoCierreDt(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() body: RegistrarVoBoCierreDtDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.registrarVoBoCierreDt(idSolicitud, body, req?.user);
   }
 
   @Post(':idSolicitud/vobo-revision')

@@ -737,6 +737,18 @@ describe('CorreosJuridicosService', () => {
     });
 
     describe('Integración con Control Interno Disciplinario (Expediente Electrónico)', () => {
+        it.each(['qa', 'pre'])('omite el transporte automático de %s al sincronizar Graph', async ambiente => {
+            mockGraphService.getEmailsPage.mockResolvedValue({
+                emails: [{ id: 'automatico', subject: 'Auto aprobado', internetMessageHeaders: [
+                    { name: 'X-ESAP-Environment', value: ambiente },
+                ] }], nextLink: null,
+            });
+            const result = await service.syncInbox();
+            expect(result.synced).toBe(0);
+            expect(result.errors).toBe(0);
+            expect(mockCorreoRepo.save).not.toHaveBeenCalled();
+        });
+
         it('registrarTransferenciaDisciplinaria: debe registrar correo y adjuntos desde transferencia directa', async () => {
             mockCorreoRepo.findOne.mockResolvedValue(null);
             mockCorreoRepo.create.mockImplementation((d: any) => d);
@@ -748,6 +760,7 @@ describe('CorreosJuridicosService', () => {
                 ]);
 
             const dto = {
+                ambiente: 'qa',
                 processId: 'proc-123',
                 radicado: 'RAD-DISC-2026-001',
                 asunto: '[PLIEGO DE CARGOS] Proceso RAD-DISC-2026-001 - Traslado a Oficina Jurídica',
@@ -767,7 +780,17 @@ describe('CorreosJuridicosService', () => {
                 ],
             };
 
-            const result = await service.registrarTransferenciaDisciplinaria(dto);
+            const previousEnv = process.env;
+            process.env = { ...previousEnv, MAIL_ENVIRONMENT: 'qa', JURIDICA_EMAIL: 'judicial@qa.invalid' };
+            const result = await (async () => {
+                try {
+                    await expect(service.registrarTransferenciaDisciplinaria({ ...dto, ambiente: 'dev' })).rejects.toThrow('ambiente');
+                    return await service.registrarTransferenciaDisciplinaria(dto);
+                } finally {
+                    process.env = previousEnv;
+                }
+            })();
+            expect(result.correo.buzon).toBe('JUDICIAL');
 
             expect(result.correo).toBeDefined();
             expect(result.correo.asunto).toContain('RAD-DISC-2026-001');

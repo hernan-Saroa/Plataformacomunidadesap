@@ -353,7 +353,11 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor'
+              // Se muestran todos sus roles, no solo el principal (EFDS-2452)
+              cargo: [
+                config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+                ...(Array.isArray(config.rolesAdicionales) ? config.rolesAdicionales : []),
+              ].join(' · ')
             }));
           setAuditoresDisponibles(auditores);
 

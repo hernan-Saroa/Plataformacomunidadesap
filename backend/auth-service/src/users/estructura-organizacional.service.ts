@@ -134,12 +134,15 @@ export class EstructuraOrganizacionalService {
           SELECT 1
             FROM academic_work_plan.cetap catalog_cetap
            WHERE catalog_cetap.codigo = sede.cod_sede
+              OR UPPER(catalog_cetap.nombre) = UPPER(sede.nom_sede)
+              OR UPPER(sede.nom_sede) LIKE '%' || UPPER(catalog_cetap.nombre) || '%'
         )
         OR EXISTS (
           SELECT 1
             FROM auth.sede_cetap_mapping mapping
            WHERE mapping.id_sede = sede.id_sede
         )
+        OR sede.id_seccional IS NOT NULL
       )`);
     }
 
@@ -172,12 +175,15 @@ export class EstructuraOrganizacionalService {
           SELECT 1
             FROM academic_work_plan.cetap catalog_cetap
            WHERE catalog_cetap.codigo = sede.cod_sede
+              OR UPPER(catalog_cetap.nombre) = UPPER(sede.nom_sede)
+              OR UPPER(sede.nom_sede) LIKE '%' || UPPER(catalog_cetap.nombre) || '%'
         )
         OR EXISTS (
           SELECT 1
             FROM auth.sede_cetap_mapping mapping
            WHERE mapping.id_sede = sede.id_sede
         )
+        OR sede.id_seccional IS NOT NULL
       )`);
     }
     return query.orderBy('sede.nom_sede', 'ASC').getMany();
@@ -202,14 +208,16 @@ export class EstructuraOrganizacionalService {
           SELECT 1
             FROM academic_work_plan.direccion_territorial catalog_dt
            WHERE catalog_dt.codigo = seccional.cod_seccional
+              OR UPPER(catalog_dt.nombre) = UPPER(seccional.nom_seccional)
+              OR UPPER(seccional.nom_seccional) LIKE '%' || UPPER(catalog_dt.nombre) || '%'
+              OR UPPER(catalog_dt.nombre) LIKE '%' || REPLACE(UPPER(seccional.nom_seccional), 'SECCIONAL ', '') || '%'
         )
         OR EXISTS (
           SELECT 1
             FROM auth.sedes mapped_sede
-            INNER JOIN auth.sede_cetap_mapping mapping
-                    ON mapping.id_sede = mapped_sede.id_sede
            WHERE mapped_sede.id_seccional = seccional.id_seccional
         )
+        OR seccional.id_seccional <= 18
       )`);
     }
     return query.orderBy('seccional.nom_seccional', 'ASC').getMany();
@@ -696,10 +704,9 @@ export class EstructuraOrganizacionalService {
                OR EXISTS (
                     SELECT 1
                       FROM auth.sedes mapped_sede
-                      INNER JOIN auth.sede_cetap_mapping mapping
-                              ON mapping.id_sede = mapped_sede.id_sede
                      WHERE mapped_sede.id_seccional = sec.id_seccional
-                  )) AS total_seccionales,
+                  )
+               OR sec.id_seccional <= 18) AS total_seccionales,
           (SELECT COUNT(DISTINCT sede.id_sede)
              FROM auth.sedes sede
             WHERE EXISTS (
@@ -711,7 +718,8 @@ export class EstructuraOrganizacionalService {
                     SELECT 1
                       FROM auth.sede_cetap_mapping mapping
                      WHERE mapping.id_sede = sede.id_sede
-                  )) AS total_sedes,
+                  )
+               OR sede.id_seccional IS NOT NULL) AS total_sedes,
           (SELECT COALESCE(SUM(sede.capacidad_estudiantes), 0)
              FROM auth.sedes sede
             WHERE EXISTS (

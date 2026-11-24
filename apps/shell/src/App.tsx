@@ -860,6 +860,11 @@ export default function App() {
         permissions,
         module,
         hasBothSystemsAccess: hasBoth,
+        cargo: (user as any)?.cargo || (user?.person as any)?.cargo?.nombre_cargo || null,
+        cargoCodigo: (user as any)?.cargoCodigo || (user?.person as any)?.cargo?.codigo_cargo || null,
+        passwordExpired: Boolean((user as any)?.passwordExpired),
+        daysUntilPasswordExpiration: (user as any)?.daysUntilPasswordExpiration,
+        passwordExpirationReason: (user as any)?.passwordExpirationReason,
       });
       setUsuarioActual({
         id: user?.id || user?.person?.id || (user as any)?.userId || 'unknown',

@@ -474,3 +474,81 @@ describe('MacroDocenteService - logConsulta (fail-open vs. fail-closed)', () => 
     expect(consultaLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ tipoConsulta: 'MACRO_DOCENTE', totalResultados: 3 }));
   });
 });
+
+/**
+ * EFDS-1364 v2 — el Macro Docente no mostraba datos en QA: pta.estado se escribe como
+ * 'Aprobado', 'Finalizado', 'Terminado' o 'En Firme' y el IN era sensible a mayúsculas.
+ */
+describe('MacroDocenteService - estados firmes en cualquier grafía (EFDS-1364 v2)', () => {
+  it('incluye las grafías reales que escribe el flujo del PTA en el filtro de estado', async () => {
+    const { repo, qb } = ptaRepoWithRows([]);
+    const service = buildService({ ptaRepo: repo });
+
+    await service.getHistorial({ periodo: '2026-2' });
+
+    const [clausula, parametros] = qb.where.mock.calls[0];
+    expect(clausula).toBe('pta.estado IN (:...estados)');
+    expect(parametros.estados).toEqual(expect.arrayContaining([
+      'Aprobado', 'APROBADO', 'En Firme', 'EN_FIRME', 'EN FIRME',
+      'Finalizado', 'Terminado', 'Radicado', 'RADICADO', 'En Ejecución', 'EN_EJECUCION',
+    ]));
+    // Un borrador nunca debe entrar al historial oficial.
+    expect(parametros.estados).not.toContain('BORRADOR');
+    expect(parametros.estados).not.toContain('Borrador');
+  });
+});
+
+describe('MacroDocenteService - getOpciones (EFDS-1364 v2)', () => {
+  function serviceConPtas(ptas: any[], periodosRaw: Array<{ periodo: string | null }>) {
+    const getRawMany = jest.fn().mockResolvedValue(periodosRaw);
+    const qbPeriodos = {
+      select: jest.fn().mockReturnThis(),
+      distinct: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getRawMany,
+    };
+    const qbHistorial = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(ptas),
+    };
+    const ptaRepo = fakeRepo({ createQueryBuilder: jest.fn().mockReturnValueOnce(qbPeriodos).mockReturnValue(qbHistorial) });
+    const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'doc-1', personaId: 'per-1', nucleoTematico: 'Gestión Pública' }]) });
+    return { service: buildService({ ptaRepo, docenteRepo }), qbHistorial };
+  }
+
+  const pta = {
+    docenteId: 'doc-1',
+    periodo: '2026-2',
+    estado: 'En Firme',
+    datosEstructurados: {
+      asignaturas: [
+        { codigo: 'A1', nombre: 'Uno', horas: 10, programa_nombre: 'Programa B', territorial_nombre: 'Cali', cetap_nombre: 'CETAP 2' },
+        { codigo: 'A2', nombre: 'Dos', horas: 10, programa_nombre: 'Programa A', territorial_nombre: 'Bogotá', cetap_nombre: 'CETAP 1' },
+        { codigo: 'A3', nombre: 'Tres', horas: 10, programa_nombre: 'Programa A', territorial_nombre: 'Bogotá', cetap_nombre: 'CETAP 1' },
+      ],
+    },
+  };
+
+  it('sin docente ni período devuelve solo los períodos (del más reciente al más antiguo), sin recorrer el histórico', async () => {
+    const { service, qbHistorial } = serviceConPtas([pta], [{ periodo: '2025-1' }, { periodo: '2026-2' }, { periodo: null }, { periodo: '2025-1' }]);
+
+    const result = await service.getOpciones({});
+
+    expect(result).toEqual({ periodos: ['2026-2', '2025-1'], territoriales: [], cetaps: [], programas: [], nucleosTematicos: [] });
+    expect(qbHistorial.getMany).not.toHaveBeenCalled();
+  });
+
+  it('acotado a un período devuelve los valores distintos y ordenados de cada filtro', async () => {
+    const { service } = serviceConPtas([pta], [{ periodo: '2026-2' }]);
+
+    const result = await service.getOpciones({ periodo: '2026-2' });
+
+    expect(result.periodos).toEqual(['2026-2']);
+    expect(result.territoriales).toEqual(['Bogotá', 'Cali']);
+    expect(result.cetaps).toEqual(['CETAP 1', 'CETAP 2']);
+    expect(result.programas).toEqual(['Programa A', 'Programa B']);
+    expect(result.nucleosTematicos).toEqual(['Gestión Pública']);
+  });
+});

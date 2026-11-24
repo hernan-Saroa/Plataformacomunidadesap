@@ -152,4 +152,17 @@ describe('RUND — varios títulos en la misma columna TITULO_<NIVEL>', () => {
     expect(segunda.adicionales).toEqual(primera.adicionales);
     expect(segunda.deducidos).toBe(0);
   });
+  describe('reconocidos (aviso de la carga masiva)', () => {
+    it('cuenta los títulos reconocidos aunque ya estén todos en las columnas TITULO_* (plantilla real)', () => {
+      const r = deducirTitulosAdicionales(PERFILES.politica, { pregrado: 'Abogado', maestria: 'Magíster en Ciencia Política', doctorado: 'Doctor en Ciencia Política' });
+      expect(r.reconocidos).toBe(3);
+      expect(r.deducidos).toBe(0);
+      expect(r.sinClasificar).toEqual([]);
+    });
+    it('nombres que no son títulos: 0 reconocidos y todos sin clasificar', () => {
+      const r = deducirTitulosAdicionales('Juan, Pedro, Maria', { pregrado: 'Abogado' });
+      expect(r.reconocidos).toBe(0);
+      expect(r.sinClasificar).toEqual(['Juan', 'Pedro', 'Maria']);
+    });
+  });
 });

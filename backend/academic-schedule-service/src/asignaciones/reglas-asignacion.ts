@@ -23,10 +23,14 @@ export const ESCALAFON_MAESTRIA = ['asociado', 'titular'] as const;
 /** Tipo estable del motivo (EFDS-2434): la pantalla decide con él, no con el texto. */
 export type TipoMotivo = 'SITUACION' | 'ESCALAFON' | 'VINCULACION' | 'CRUCE' | 'TOPE' | 'AREA';
 
+/** Causa fina de un motivo de VINCULACION (EFDS-2449): la regla es la misma, solo se distingue para el resumen. */
+export type CausaVinculacion = 'VENCIDA' | 'AUN_NO_INICIA' | 'GRUPO_SIN_PERIODO';
+
 export interface MotivoRechazo {
   regla: string;
   mensaje: string;
   tipo?: TipoMotivo;
+  causa?: CausaVinculacion;
   /** Solo CRUCE: día y hora de la franja ocupada (nunca qué asignatura ni qué programa, RN-07). */
   detalle?: { diaSemana: string; horaInicio: string; horaFin: string } | null;
 }
@@ -105,10 +109,11 @@ export function cumpleEscalafonParaMaestria(
 export function periodoDentroDeVinculacion(
   grupo: Pick<GrupoParaAsignar, 'fechaInicio' | 'fechaFin'>,
   docente: Pick<DocenteParaAsignar, 'vinculacionDesde' | 'vinculacionHasta'>,
-): { cumple: boolean; motivo: string | null } {
+): { cumple: boolean; motivo: string | null; causa?: CausaVinculacion } {
   if (!grupo.fechaInicio || !grupo.fechaFin) {
     return {
       cumple: false,
+      causa: 'GRUPO_SIN_PERIODO',
       motivo: 'El grupo no tiene definido su periodo de clases, así que no se puede '
         + 'verificar que caiga dentro de la vinculación del docente',
     };
@@ -116,6 +121,7 @@ export function periodoDentroDeVinculacion(
   if (docente.vinculacionDesde && grupo.fechaInicio < docente.vinculacionDesde) {
     return {
       cumple: false,
+      causa: 'AUN_NO_INICIA',
       motivo: `El grupo inicia el ${grupo.fechaInicio}, antes de la vinculación del `
         + `docente (${docente.vinculacionDesde})`,
     };
@@ -124,6 +130,7 @@ export function periodoDentroDeVinculacion(
   if (docente.vinculacionHasta && grupo.fechaFin > docente.vinculacionHasta) {
     return {
       cumple: false,
+      causa: 'VENCIDA',
       motivo: `El grupo termina el ${grupo.fechaFin}, después del fin de vinculación `
         + `del docente (${docente.vinculacionHasta})`,
     };
@@ -203,7 +210,7 @@ export function evaluarAsignacion(
 
   const periodo = periodoDentroDeVinculacion(grupo, docente);
   if (!periodo.cumple) {
-    motivos.push({ regla: 'RN-10', tipo: 'VINCULACION', mensaje: periodo.motivo! });
+    motivos.push({ regla: 'RN-10', tipo: 'VINCULACION', causa: periodo.causa, mensaje: periodo.motivo! });
   }
 
   const cruce = buscarCruceTransversal(grupo.franjas, franjasOcupadas, grupo.idGrupo, {

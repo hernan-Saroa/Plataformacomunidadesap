@@ -57,7 +57,13 @@ export function AsignacionAreaModal({ grupo, asignatura, cerrar, retornarFoco }:
     {apto?.avisos?.length ? <p role="status" className="bg-amber-50 text-amber-900 p-3 rounded-lg">Al confirmar con {apto.nombre}: {apto.avisos.join('. ')}.</p> : null}
     {error && <p role="alert" className="whitespace-pre-wrap text-red-700">{error}</p>}
     {datos && <><p><strong>Área:</strong> {datos.area?.nombre ?? 'Sin área de formación'}</p>
-      {datos.aviso && <p role="status" className="rounded-lg bg-amber-50 p-3">{datos.aviso}</p>}
+      {datos.bloqueoTotal
+        ? <section role="alert" aria-label="Ningún docente se puede asignar" className="rounded-lg p-3 space-y-1" style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#7f1d1d' }}>
+            <p className="font-bold">{datos.bloqueoTotal.titulo}</p>
+            <p>{datos.bloqueoTotal.accion}</p>
+            {datos.bloqueoTotal.motivosFrecuentes.length > 0 && <p><strong>Motivos más frecuentes:</strong> {datos.bloqueoTotal.resumen}</p>}
+          </section>
+        : datos.aviso && <p role="status" className="rounded-lg bg-amber-50 p-3">{datos.aviso}</p>}
       {datos.mensaje ? <p role="status" className="bg-amber-50 p-3 rounded-lg">{datos.mensaje}</p> : <>
         {datos.sugerido && <aside className="border border-blue-200 bg-blue-50 rounded-lg p-3"><strong>Sugerido: {datos.sugerido.nombre}</strong><ul>{datos.sugerido.razones.map(r => <li key={r}>{r}</li>)}</ul></aside>}
         <label className="block">Buscar por cédula o nombre<input value={busqueda} onChange={e => { setBusqueda(e.target.value); setElegido(''); }} className="block border rounded-lg p-2 w-full" /></label>

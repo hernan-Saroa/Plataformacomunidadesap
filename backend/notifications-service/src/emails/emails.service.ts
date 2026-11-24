@@ -1,3 +1,4 @@
+import { isEmail } from 'class-validator';
 import { BadRequestException, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { ClientSecretCredential } from '@azure/identity';
 import { Client } from '@microsoft/microsoft-graph-client';
@@ -57,7 +58,13 @@ type EmailPayload = {
   text: string;
   html?: string;
   attachments?: EmailAttachment[];
+  evento?: string;
+  modulo?: string;
+  headers?: Record<string, string>;
 };
+
+const BUZON_DE_PRUEBA = /^[a-z0-9._+-]+@(?:[a-z0-9-]+\.)+invalid$/i;
+const EVENTOS_JUDICIALES = new Set(['PLIEGO_CARGOS_TRASLADO_JURIDICA']);
 
 type EmailProvider = 'smtp' | 'microsoft_graph';
 
@@ -69,12 +76,29 @@ export class EmailsService {
 
   constructor(@Optional() private readonly compuerta?: CompuertaService) {}
 
+  onModuleInit() {
+    const env = process.env;
+    // EFDS-2238: sin configuración de buzones no sale ningún correo. Se avisa al ARRANCAR, no en cada
+    // envío; y en producción el servicio NO arranca: un despliegue que falla se nota, un correo que no
+    // llega, no.
+    const problema = this.problemaDeBuzones();
+    if (problema) {
+      const mensaje = `Falta la configuración de buzones: no se enviarán correos (${problema})`;
+      this.logger.error(mensaje);
+      if (env.MAIL_ENVIRONMENT === 'prod') throw new Error(`${mensaje}. Defina LEGAL_EMAIL_ACCOUNT_JUDICIAL en .env.prod (DEPLOY-bugs-qa.md, EFDS-2238, PASO 0).`);
+    }
+    this.logger.log(`Correo ambiente=${env.MAIL_ENVIRONMENT || 'sin configurar'} servidor=${this.getConfiguredProvider() === 'smtp' ? env.SMTP_HOST || 'sin configurar' : 'Microsoft Graph'} judicial=${env.JURIDICA_EMAIL || 'sin configurar'} pruebas=${env.MAIL_TEST_INBOX || 'sin configurar'}`);
+  }
+
   /**
    * Correo de un evento de la plataforma (EFDS-2406): antes de salir pasa por
    * la configuración de notificaciones. Sin `evento` es un correo del sistema
    * (clave, contraseña, OTP) y sale siempre.
    */
   async enviarSiPermitido(data: SendEmailDto): Promise<ResultadoCorreo> {
+    if (this.esJudicialReservado(data.to, data.evento, data.modulo)) {
+      return { sent: false, omitida: true, motivo: 'destino_judicial_reservado', modulo: data.modulo || '', evento: data.evento || '' };
+    }
     let decisionPermitida: Decision | null = null;
     if (data.evento && this.compuerta) {
       const decision = await this.compuerta.evaluar({
@@ -85,7 +109,7 @@ export class EmailsService {
         titulo: data.subject,
       });
       if (!decision.permitido) {
-        if (decision.desvio) {
+        if (decision.desvio && !this.esJudicialReservado(decision.desvio, undefined, decision.modulo)) {
           await this.enviarDesviado({
             decision,
             destinatario: data.to,
@@ -143,11 +167,12 @@ export class EmailsService {
       for (const adicional of adicionales) {
         const correo = (adicional?.email || '').trim();
         const clave = correo.toLowerCase();
-        if (!correo || !correo.includes('@') || vistos.has(clave)) continue;
+        if (!isEmail(correo) || vistos.has(clave) || this.esJudicialReservado(correo, undefined, decision.modulo)) continue;
         vistos.add(clave);
         try {
           if (!(await this.compuerta!.reservarCopiaCorreo(decision.modulo, decision.clave, huella, correo))) continue;
           await this.sendEmail({
+            modulo: decision.modulo,
             to: correo,
             subject: data.subject,
             text: `${nota}\n\n${data.text || ''}`,
@@ -172,7 +197,7 @@ export class EmailsService {
   async enviarDesviado(aviso: AvisoDesviado): Promise<void> {
     const { decision } = aviso;
     const buzon = decision.desvio;
-    if (!buzon) return;
+    if (!buzon || this.esJudicialReservado(buzon, undefined, decision.modulo)) return;
     const nombreModulo = decision.modulo_nombre || decision.modulo;
     const causa =
       decision.motivo === 'modulo_inactivo'
@@ -188,6 +213,7 @@ export class EmailsService {
       `<strong>Aviso desviado.</strong> ${escaparHtml(nota)}</div>`;
 
     await this.sendEmail({
+      modulo: decision.modulo,
       to: buzon,
       subject: `[Desviado · ${nombreModulo} · ${decision.clave}] ${aviso.asunto}`,
       text: `${nota}\n\n${aviso.texto || ''}`,
@@ -206,7 +232,7 @@ export class EmailsService {
 
   private getSmtpConfig(): SmtpConfig | null {
     const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
-    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+    if (!SMTP_HOST || !SMTP_PORT || !SMTP_FROM || (process.env.MAIL_ENVIRONMENT === 'prod' && (!SMTP_USER || !SMTP_PASS))) {
       this.logger.warn('SMTP no configurado. Variables requeridas: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM');
       return null;
     }
@@ -214,8 +240,8 @@ export class EmailsService {
     return {
       host: SMTP_HOST,
       port: Number(SMTP_PORT),
-      user: SMTP_USER,
-      pass: SMTP_PASS,
+      user: SMTP_USER || '',
+      pass: SMTP_PASS || '',
       from: SMTP_FROM,
     };
   }
@@ -226,10 +252,7 @@ export class EmailsService {
         host: config.host,
         port: config.port,
         secure: config.port === 465,
-        auth: {
-          user: config.user,
-          pass: config.pass,
-        },
+        auth: config.user ? { user: config.user, pass: config.pass } : undefined,
         tls: {
           rejectUnauthorized: false,
         },
@@ -295,52 +318,52 @@ export class EmailsService {
     return this.graphClient;
   }
 
-  private parseEmailRedirectConfig(): { redirectEmail: string; environmentName: string } | null {
-    const raw = (process.env.EMAIL_REDIRECT_TO || '').trim();
-    if (!raw) return null;
+  private esJudicialReservado(to: string, evento?: string, modulo?: string): boolean {
+    return modulo === 'control-disciplinario' && to.trim().toLowerCase() === process.env.JURIDICA_EMAIL?.trim().toLowerCase()
+      && !EVENTOS_JUDICIALES.has(evento || '');
+  }
 
-    // Soporta formato compuesto: "PRE;desarrollo.ccd@esap.edu.co" o "PRE|correo@..."
-    if (raw.includes(';') || raw.includes('|')) {
-      const separator = raw.includes(';') ? ';' : '|';
-      const parts = raw.split(separator).map((p) => p.trim());
-      if (parts.length >= 2 && parts[0] && parts[1]) {
-        return {
-          environmentName: parts[0].toUpperCase(),
-          redirectEmail: parts[1],
-        };
-      }
+  /**
+   * EFDS-2238 — configuración de buzones. Es la MISMA regla al arrancar (onModuleInit) y en cada envío
+   * (sendMail): si falla, no sale NINGÚN correo. Devuelve qué falta, o null si está completa.
+   * Fuera de producción exige además el capturador de pruebas (dominio .invalid) y SMTP, para que un
+   * ambiente de pruebas nunca escriba a un buzón real.
+   */
+  problemaDeBuzones(): string | null {
+    const environment = process.env.MAIL_ENVIRONMENT;
+    const judicial = process.env.JURIDICA_EMAIL?.trim().toLowerCase();
+    const testInbox = process.env.MAIL_TEST_INBOX?.trim().toLowerCase();
+    if (!environment || !['dev', 'qa', 'pre', 'prod', 'local'].includes(environment)) {
+      return `MAIL_ENVIRONMENT inválido o ausente («${environment || ''}»; se espera dev, qa, pre, prod o local)`;
     }
-
-    // Si solo viene el correo directo sin prefijo de ambiente
-    return {
-      redirectEmail: raw,
-      environmentName: 'NULL',
-    };
+    if (!judicial || !isEmail(judicial)) return 'JURIDICA_EMAIL ausente o no es una dirección de correo';
+    if (environment === 'prod') return null;
+    if (!testInbox || !BUZON_DE_PRUEBA.test(testInbox)) return 'MAIL_TEST_INBOX ausente o no es un buzón de prueba (.invalid)';
+    if (!BUZON_DE_PRUEBA.test(judicial)) return 'JURIDICA_EMAIL debe ser un buzón de prueba (.invalid) fuera de producción';
+    if (judicial === testInbox) return 'JURIDICA_EMAIL y MAIL_TEST_INBOX no pueden ser el mismo buzón';
+    if (this.getConfiguredProvider() !== 'smtp') return 'fuera de producción el correo sale solo por SMTP al capturador (EMAIL_PROVIDER=smtp)';
+    return null;
   }
 
   private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
-    const redirectConfig = this.parseEmailRedirectConfig();
-
-    if (redirectConfig && redirectConfig.redirectEmail.length > 0) {
-      const { redirectEmail, environmentName } = redirectConfig;
-      const originalRecipient = payload.to;
-      this.logger.log(`[Redirección][${environmentName}] Redirigiendo correo de <${originalRecipient}> a <${redirectEmail}>`);
-      
-      payload.to = redirectEmail;
-      payload.subject = `[Redirigido — Ambiente ${environmentName} de: ${originalRecipient}] ${payload.subject}`;
-      
-      if (payload.html) {
-        payload.html = `
-          <div style="background-color: #ffe4e6; border: 1px solid #fda4af; padding: 12px; margin-bottom: 20px; font-family: sans-serif; color: #9f1239; border-radius: 6px;">
-            <strong>[Correo Redirigido — Ambiente ${environmentName}]</strong> Este mensaje fue enviado originalmente a: <code>${originalRecipient}</code> (Entorno de pruebas ${environmentName}).
-          </div>
-          ${payload.html}
-        `;
-      }
-      if (payload.text) {
-        payload.text = `[Correo Redirigido — Ambiente ${environmentName} a: ${redirectEmail} - Destinatario original: ${originalRecipient}]\n\n${payload.text}`;
-      }
+    const environment = process.env.MAIL_ENVIRONMENT as string;
+    const judicial = process.env.JURIDICA_EMAIL?.trim().toLowerCase();
+    const testInbox = process.env.MAIL_TEST_INBOX?.trim().toLowerCase();
+    const production = environment === 'prod';
+    const problema = this.problemaDeBuzones();
+    if (problema) {
+      this.logger.error(`Envío cancelado: falta la configuración de buzones (${problema}). Revise MAIL_ENVIRONMENT, JURIDICA_EMAIL, MAIL_TEST_INBOX y EMAIL_PROVIDER`);
+      throw new BadRequestException('Configuración de buzones incompleta o insegura');
     }
+    if (this.esJudicialReservado(payload.to, payload.evento, payload.modulo)) {
+      throw new BadRequestException('Destino judicial reservado al traslado del expediente');
+    }
+    payload.headers = { 'X-ESAP-Environment': environment };
+    if (!production && payload.to.trim().toLowerCase() !== judicial) {
+      payload.headers['X-ESAP-Original-To'] = payload.to;
+      payload.to = testInbox!;
+    }
+    payload.subject = `[${environment.toUpperCase()}] ${payload.subject}`;
 
     const provider = this.getConfiguredProvider();
 
@@ -360,6 +383,7 @@ export class EmailsService {
     const transporter = await this.getTransporter(config);
     const info = await transporter.sendMail({
       from: config.from,
+      headers: payload.headers,
       to: payload.to,
       subject: payload.subject,
       text: payload.text,
@@ -400,6 +424,7 @@ export class EmailsService {
     const message = {
       message: {
         subject: payload.subject,
+        internetMessageHeaders: Object.entries(payload.headers || {}).map(([name, value]) => ({ name, value })),
         body: {
           contentType: payload.html ? 'HTML' : 'Text',
           content: payload.html || payload.text,
@@ -559,6 +584,8 @@ export class EmailsService {
             </td></tr></table>
           </div>
         `,
+      evento: data.evento,
+      modulo: data.modulo,
       attachments: this.decodeAttachments(data.attachments),
     };
 

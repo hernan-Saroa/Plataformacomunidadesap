@@ -607,7 +607,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   const mockUser = {
     name: userName,
-    role: (userData?.roles?.[0] || usuario?.rol || 'Administrador') as string,
+    role: ((userData as any)?.cargo || userData?.roles?.[0] || usuario?.rol || 'Administrador') as string,
     email: currentUser.email,
     avatar: undefined,
     initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -1044,6 +1044,29 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 currentSystem="backoffice"
                 centroAyudaActivo={activeModules.length === 0 || activeModules.some((module) => module.code === 'centro-ayuda')}
               />
+            )}
+
+            {Boolean((userData as any)?.passwordExpired) && (
+              <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center justify-between text-xs text-amber-900 shadow-sm z-30">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                  <span className="font-bold uppercase tracking-wider text-[11px] bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded">
+                    Seguridad institucional
+                  </span>
+                  <span>
+                    {(userData as any)?.passwordExpirationReason === 'TEMPORARY_ROTATION'
+                      ? 'Tu contraseña actual es provisional/temporal. Por política institucional de seguridad, debes actualizarla.'
+                      : 'Tu contraseña institucional ha cumplido el ciclo de rotación preventiva de 90 días. Actualízala para continuar.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleViewProfile}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-xs transition shadow-sm shrink-0"
+                >
+                  Cambiar contraseña ahora
+                </button>
+              </div>
             )}
 
             {/* Module Content - Contenedor con scroll vertical óptimo */}

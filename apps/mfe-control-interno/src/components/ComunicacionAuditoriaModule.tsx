@@ -39,6 +39,8 @@ import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/envi
 import { VisorOnlyOffice } from './VisorOnlyOffice';
 import { onlyOfficePuedeAbrir } from './services/onlyofficeVisor';
 import { esAuditoriaTerritorial, nombreDireccionTerritorial, nombreUnidadAuditada } from './services/unidadAuditada';
+import { agruparNormasPorTipo, textoNorma } from './services/normatividad';
+import { ModalVistaInformeWord, ModalConfirmarNotificacionInforme, descargarArchivo } from './InformePreliminarWord';
 
 
 // ====================================
@@ -169,8 +171,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     nombre: auditoria.nombre,
     proceso: auditoria.proceso,
     auditorLider: auditorLiderNombre,
-    radicado: (auditoria as any).radicado,
-    fechaOficio: informe?.fecha,
+    // Sin radicado ni fecha de radicación: los pone el aplicativo de correspondencia (EFDS-2455)
     destinatarioNombre: responsableAuditado,
     destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || (auditoria as any).responsableArea?.cargo || 'Director(a) Territorial',
     // A quién se audita: en las auditorías de una territorial el oficio la nombra
@@ -253,7 +254,13 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     // Campos opcionales del API
     objetivo: (auditoria as any).objetivo,
     alcance: (auditoria as any).alcance,
-    marcoNormativo: (auditoria as any).marcoNormativo,
+    // Solo las normas registradas en la auditoría, separadas por su tipo (EFDS-2455)
+    marcoNormativo: (() => {
+      const { generales, especificas } = agruparNormasPorTipo(
+        (auditoria as any).normatividadAplicable ?? (auditoria as any).programaAnualMetadata?.normatividadAplicable,
+      );
+      return { generales: generales.map(textoNorma), especificas: especificas.map(textoNorma) };
+    })(),
     contextoGeneral: (auditoria as any).contextoGeneral,
     descripcionUnidad: (auditoria as any).descripcionUnidad,
     reuniones: reuniones,
@@ -369,6 +376,13 @@ export const ComunicacionAuditoriaModule: React.FC<{
   // Aquí solo se conserva el modal de DECISIÓN, que sí es del auditor.
   const [modalDecisionHallazgoId, setModalDecisionHallazgoId] = useState<string | null>(null);
   const [modalPreview, setModalPreview] = useState<{ tipo: string; abierto: boolean }>({ tipo: '', abierto: false });
+  // Informe preliminar en Word (EFDS-2455): se genera sin notificar; se notifica al subir el definitivo
+  const [borradorWord, setBorradorWord] = useState<{ blob: Blob; nombreArchivo: string } | null>(null);
+  const [vistaWordAbierta, setVistaWordAbierta] = useState(false);
+  const [generandoWord, setGenerandoWord] = useState(false);
+  const [archivoPorNotificar, setArchivoPorNotificar] = useState<File | null>(null);
+  const [notificandoInforme, setNotificandoInforme] = useState(false);
+  const [informeNotificado, setInformeNotificado] = useState<{ id: string; nombre?: string } | null>(null);
   /** Tras "Finalizar y Pasar a Seguimiento" se mantiene el mismo modal y se muestran secciones 5 y 6 */
   const [pasamosASeguimiento, setPasamosASeguimiento] = useState(false);
   /** Planes/acciones para verificación OCI (Sección 5). Se recargan al registrar verificación. */
@@ -505,7 +519,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
         return { causas, efectos };
       };
       const h = (hallazgosData || []).map((x: any) => {
-        const { causas, efectos } = parseCausaEfecto(x.observacionesControversia);
+        // Causa y efecto se guardan en sus propias columnas; el texto de la controversia queda solo para los registros viejos (EFDS-2455)
+        const anteriores = parseCausaEfecto(x.observacionesControversia);
+        const causas = x.causa?.trim() ? [x.causa.trim()] : anteriores.causas;
+        const efectos = x.efecto?.trim() ? [x.efecto.trim()] : anteriores.efectos;
         const recs = Array.isArray(x.recomendaciones) ? x.recomendaciones : (x.recomendaciones ? [x.recomendaciones] : []);
         return {
         id: x.id,
@@ -589,6 +606,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
         const docs = await controlInternoService.getDocumentosByAuditoria(id);
         if (Array.isArray(docs)) {
           setAuditoria(prev => prev ? { ...prev, totalDocumentos: docs.length, documentosCargados: docs.length } : null);
+          // El último informe preliminar subido es el que se notificó al área (EFDS-2455)
+          const informes = docs
+            .filter((d: any) => String(d.tipoDocumento || d.tipo || '').toLowerCase() === 'informe_preliminar')
+            .sort((a: any, b: any) => String(b.createdAt || b.fechaSubida || '').localeCompare(String(a.createdAt || a.fechaSubida || '')));
+          setInformeNotificado(informes[0] ? { id: informes[0].id, nombre: informes[0].nombre || informes[0].nombreArchivo } : null);
         }
       } catch (err) {
         console.warn('Error al cargar documentos para conteo:', err);
@@ -659,6 +681,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
               : audData.territorial,
           }),
           ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
+          // Normatividad registrada en el paso 5 de la auditoría, para el marco normativo (EFDS-2455)
+          ...(Array.isArray(audData.programaAnualMetadata?.normatividadAplicable) && {
+            normatividadAplicable: audData.programaAnualMetadata.normatividadAplicable,
+          }),
           ...(audData.focos && { focos: audData.focos }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
@@ -750,70 +776,82 @@ export const ComunicacionAuditoriaModule: React.FC<{
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  // Arma el contenido del PDF del informe preliminar (lo usan la descarga y el adjunto del correo, EFDS-2350)
-  const prepararPDFPreliminar = useCallback(async (toastId: string) => {
-    const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
-    let hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
-      codigo: h.codigo,
-      titulo: h.titulo,
-      gravedad: h.gravedad,
-      descripcion: h.descripcion || '',
-      criterioIncumplido: h.criterioIncumplido,
-      causas: h.causas,
-      efectos: h.efectos,
-      recomendaciones: h.recomendaciones,
-    }));
-
-    const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informePreliminar);
-    let auditoriaFinal = { ...auditoriaBase };
-
-    toast.loading('Generando contenido del informe...', { id: toastId });
-    let informeFinalTmp = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
-    try {
-      const contenidoIA = await generarContenidoInformeIA(
-        auditoriaBase,
-        hallazgosParaPDF,
-        (msg) => toast.loading(msg, { id: toastId })
-      );
-      auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
-      if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
-        hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
-      }
-      if (!informePreliminar.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
-        informeFinalTmp = { ...informeFinalTmp, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
-      }
-    } catch {
-      /* sin contenido IA se usa el de la auditoría */
+  // Informe preliminar (EFDS-2455): "Generar" llena el formato EM-FO-003 en Word para que el
+  // auditor lo revise y lo termine; no notifica a nadie ni cambia el estado de los hallazgos.
+  const handleGenerarInformeWord = useCallback(async () => {
+    if (!useAPI) {
+      toast.info('El informe en Word se genera con los datos de una auditoría registrada.');
+      return;
     }
-    return { auditoriaFinal, informeFinalTmp, hallazgosParaPDF };
-  }, [auditoria, informePreliminar]);
-
-  const handleDescargarPDFPreliminar = useCallback(async () => {
-    if (!informePreliminar.generado) return;
-    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-    const { auditoriaFinal, informeFinalTmp, hallazgosParaPDF } = await prepararPDFPreliminar('pdf-gen');
-    toast.loading('Descargando PDF...', { id: 'pdf-gen' });
-    await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinalTmp, hallazgosParaPDF);
-    toast.dismiss('pdf-gen');
-  }, [informePreliminar.generado, prepararPDFPreliminar]);
-
-  // Arma el PDF del informe preliminar para enviarlo con "Generar": el backend lo guarda en los
-  // documentos de la auditoría y lo adjunta al correo del área auditada. Viaja en la misma petición
-  // para no depender del permiso de subir documentos (EFDS-2350). Si falla, se genera igual, sin adjunto.
-  const armarPDFPreliminar = useCallback(async (): Promise<File | undefined> => {
+    setGenerandoWord(true);
+    toast.loading('Generando el informe preliminar en Word...', { id: 'informe-word' });
     try {
-      const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-      const { auditoriaFinal, informeFinalTmp, hallazgosParaPDF } = await prepararPDFPreliminar('inf-prel');
-      toast.loading('Preparando el informe para el correo del área auditada...', { id: 'inf-prel' });
-      const blob = await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinalTmp, hallazgosParaPDF, 'blob');
-      return new File([blob], `Informe_Preliminar_${auditoria.codigo || id}.pdf`, { type: 'application/pdf' });
+      const { generarInformePreliminarWord } = await import('./services/informeWordEM-FO-003');
+      const generado = await generarInformePreliminarWord(id);
+      setBorradorWord(generado);
+      setVistaWordAbierta(true);
+      toast.success('Informe generado. Revíselo, descárguelo y complételo en Word; el área auditada aún no ha sido notificada.', { id: 'informe-word', duration: 7000 });
     } catch (err: any) {
-      console.warn('[Comunicación] No se pudo preparar el PDF del informe preliminar para el correo:', err?.message);
-      return undefined;
+      console.error('[Comunicación] Error generando el informe preliminar en Word:', err);
+      toast.error(err?.message || 'No se pudo generar el informe preliminar', { id: 'informe-word' });
     } finally {
-      toast.dismiss('inf-prel');
+      setGenerandoWord(false);
     }
-  }, [prepararPDFPreliminar, auditoria.codigo, id]);
+  }, [useAPI, id]);
+
+  const handleDescargarWord = useCallback(() => {
+    if (borradorWord) descargarArchivo(borradorWord.blob, borradorWord.nombreArchivo);
+  }, [borradorWord]);
+
+  /** Revisa el archivo elegido y pide confirmación antes de notificar. */
+  const handleElegirInformeFinal = useCallback((archivo: File | undefined) => {
+    if (!archivo) return;
+    if (!/\.(docx|pdf)$/i.test(archivo.name)) {
+      toast.error('El informe debe ser un archivo Word (.docx) o PDF.');
+      return;
+    }
+    if (archivo.size > 50 * 1024 * 1024) {
+      toast.error('El informe supera el tamaño máximo de 50 MB.');
+      return;
+    }
+    setArchivoPorNotificar(archivo);
+  }, []);
+
+  // Solo al subir el informe que terminó el auditor se notifica al área auditada y empieza el plazo
+  const handleNotificarInformePreliminar = useCallback(async () => {
+    if (!archivoPorNotificar) return;
+    setNotificandoInforme(true);
+    try {
+      const res = await controlInternoService.generarInformePreliminar(id, archivoPorNotificar);
+      toast.success(res?.mensaje || 'Informe preliminar notificado');
+      if (res?.areaNotificada === false) {
+        // No se pudo avisar al área auditada: se dice por qué, para corregirlo y volver a notificar (EFDS-2350)
+        toast.error(`No se notificó al área auditada: ${res.motivoNoNotificada || 'motivo desconocido'}.`, { duration: 12000 });
+      }
+      setArchivoPorNotificar(null);
+      setBorradorWord(null);
+      setInformePreliminar(prev => ({ ...prev, generado: true }));
+      await cargarDatos();
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo subir el informe preliminar');
+    } finally {
+      setNotificandoInforme(false);
+    }
+  }, [archivoPorNotificar, id, cargarDatos]);
+
+  const handleDescargarInformeNotificado = useCallback(async () => {
+    if (!informeNotificado) {
+      toast.info('No se encontró el informe preliminar entre los documentos de la auditoría.');
+      return;
+    }
+    try {
+      const res = await fetch(urlDocumento(informeNotificado.id, 'download'), { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(`Error ${res.status} al descargar el informe`);
+      descargarArchivo(await res.blob(), informeNotificado.nombre || 'Informe_Preliminar');
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo descargar el informe preliminar');
+    }
+  }, [informeNotificado]);
 
   const handleDescargarPDFFinal = useCallback(async () => {
     if (!informeFinal.generado) return;
@@ -863,29 +901,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
     }
   }, [auditoria, hallazgos, informeFinal]);
 
-  const handleGenerarInformePreliminar = useCallback(async () => {
-    if (useAPI) {
-      try {
-        const informe = await armarPDFPreliminar();
-        const res = await controlInternoService.generarInformePreliminar(id, informe);
-        toast.success(res?.mensaje || 'Informe preliminar generado');
-        if (res?.areaNotificada === false) {
-          // No se pudo avisar al área auditada: se dice por qué, para corregirlo y volver a notificar (EFDS-2350)
-          toast.error(`No se notificó al área auditada: ${res.motivoNoNotificada || 'motivo desconocido'}.`, { duration: 12000 });
-        } else if (!res?.informeAdjunto) {
-          toast.warning('El correo al área auditada salió sin el PDF adjunto; pueden consultarlo en la plataforma.');
-        }
-        setInformePreliminar(prev => ({ ...prev, generado: true }));
-        await cargarDatos();
-      } catch (err: any) {
-        toast.error(err?.message || 'Error al generar');
-      }
-    } else {
-      setInformePreliminar(prev => ({ ...prev, generado: true }));
-      toast.success('Informe Preliminar generado (demo)');
-    }
-  }, [useAPI, id, cargarDatos, armarPDFPreliminar]);
-
   const handleGenerarInformeFinal = useCallback(async () => {
     if (estadoComunicacion?.hayControversiasPendientes) {
       toast.error('No se puede generar el Informe Final mientras existan controversias pendientes de decisión');
@@ -920,10 +935,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
       onRegisterActions({
         generarInforme: async () => {
           if (seccionActual === 1) {
+            // Antes de notificar solo se genera el Word; después se descarga el que se notificó (EFDS-2455)
             if (!informePreliminar.generado) {
-              await handleGenerarInformePreliminar();
+              await handleGenerarInformeWord();
             } else {
-              await handleDescargarPDFPreliminar();
+              await handleDescargarInformeNotificado();
             }
             return true;
           } else if (seccionActual === 3) {
@@ -942,8 +958,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
     seccionActual,
     informePreliminar.generado,
     informeFinal.generado,
-    handleGenerarInformePreliminar,
-    handleDescargarPDFPreliminar,
+    handleGenerarInformeWord,
+    handleDescargarInformeNotificado,
     handleGenerarInformeFinal,
     handleDescargarPDFFinal,
     onRegisterActions
@@ -1350,11 +1366,16 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 auditoria={{ ...auditoria, hallazgos }}
                 informe={informePreliminar}
                 setInforme={setInformePreliminar}
-                onGenerar={handleGenerarInformePreliminar}
-                onPreview={() => setModalPreview({ tipo: 'preliminar', abierto: true })}
-                onDescargarPDF={handleDescargarPDFPreliminar}
+                onGenerarWord={handleGenerarInformeWord}
+                generandoWord={generandoWord}
+                hayBorradorWord={!!borradorWord}
+                onVerWord={() => setVistaWordAbierta(true)}
+                onDescargarWord={handleDescargarWord}
+                onElegirInformeFinal={handleElegirInformeFinal}
+                notificando={notificandoInforme}
+                informeNotificado={informeNotificado}
+                onDescargarInformeNotificado={handleDescargarInformeNotificado}
                 loading={loading}
-                puedeGenerar={!informePreliminar.generado}
                 embedded={embedded}
               />
             )}
@@ -1614,6 +1635,25 @@ export const ComunicacionAuditoriaModule: React.FC<{
           />
         )}
 
+        {/* INFORME PRELIMINAR EN WORD (EFDS-2455) */}
+        {vistaWordAbierta && borradorWord && (
+          <ModalVistaInformeWord
+            blob={borradorWord.blob}
+            nombreArchivo={borradorWord.nombreArchivo}
+            onDescargar={handleDescargarWord}
+            onClose={() => setVistaWordAbierta(false)}
+          />
+        )}
+        {archivoPorNotificar && (
+          <ModalConfirmarNotificacionInforme
+            archivo={archivoPorNotificar}
+            responsable={(auditoria as any).responsableUnidad || (auditoria as any).responsableUnidadAuditada}
+            enviando={notificandoInforme}
+            onConfirmar={handleNotificarInformePreliminar}
+            onClose={() => setArchivoPorNotificar(null)}
+          />
+        )}
+
         {/* MODAL PREVIEW */}
         {modalPreview.abierto && (
           <ModalPreviewInforme
@@ -1640,13 +1680,21 @@ const SeccionInformePreliminar: React.FC<{
   auditoria: Auditoria;
   informe: InformePreliminar;
   setInforme: React.Dispatch<React.SetStateAction<InformePreliminar>>;
-  onGenerar: () => void;
-  onPreview: () => void;
-  onDescargarPDF?: () => void;
+  /** Llena el formato EM-FO-003 en Word; no notifica (EFDS-2455) */
+  onGenerarWord: () => void;
+  generandoWord?: boolean;
+  hayBorradorWord?: boolean;
+  onVerWord: () => void;
+  onDescargarWord: () => void;
+  /** Archivo que terminó el auditor: al confirmarlo se notifica al área auditada */
+  onElegirInformeFinal: (archivo: File | undefined) => void;
+  notificando?: boolean;
+  informeNotificado?: { id: string; nombre?: string } | null;
+  onDescargarInformeNotificado: () => void;
   loading?: boolean;
-  puedeGenerar?: boolean;
   embedded?: boolean;
-}> = ({ auditoria, informe, setInforme, onGenerar, onPreview, onDescargarPDF, loading, puedeGenerar = true, embedded = false }) => {
+}> = ({ auditoria, informe, onGenerarWord, generandoWord, hayBorradorWord, onVerWord, onDescargarWord, onElegirInformeFinal, notificando, informeNotificado, onDescargarInformeNotificado, loading, embedded = false }) => {
+  const inputInformeRef = useRef<HTMLInputElement>(null);
   return (
     <div className="space-y-4">
       {/* Banner: Informe ya terminado */}
@@ -1871,34 +1919,89 @@ const SeccionInformePreliminar: React.FC<{
         </CardSIGL>
       )}
 
-      {/* Acciones */}
-      <div className="flex flex-wrap gap-3 justify-end">
-        <Button variant="outline" size="sm" onClick={onPreview} disabled={!informe.generado} className="font-medium">
-          <Eye className="w-4 h-4 mr-2" />
-          Vista Previa
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!informe.generado}
-          onClick={onDescargarPDF}
-          className="font-medium"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Descargar PDF
-        </Button>
-        {!informe.generado && (
-          <Button
-            size="sm"
-            onClick={onGenerar}
-            disabled={!puedeGenerar || loading}
-            className="font-medium bg-green-600 hover:bg-green-700 text-white"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Generar Informe Preliminar y Notificar al Área
+      {/* Informe preliminar en el formato EM-FO-003 (EFDS-2455): se genera en Word, el auditor lo
+          termina fuera del sistema y solo al subir el definitivo se notifica al área auditada */}
+      {!informe.generado ? (
+        <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
+          <div className={embedded ? 'p-4' : 'p-6'} data-testid="pasos-informe-preliminar">
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-700" />
+              Informe preliminar — formato EM-FO-003 v03
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
+                <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-semibold text-gray-700 flex-shrink-0">1</div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-semibold text-gray-900">Generar el informe</h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Llena el formato con lo registrado en la auditoría. No notifica a nadie ni cambia el estado de los hallazgos; puede volver a generarlo las veces que necesite.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button size="sm" onClick={onGenerarWord} disabled={loading || generandoWord || notificando} className="font-medium bg-[#003DA5] hover:bg-[#002D7A] text-white" data-testid="btn-generar-informe-word">
+                      <FileText className="w-4 h-4 mr-2" />
+                      {generandoWord ? 'Generando...' : hayBorradorWord ? 'Volver a generar' : 'Generar informe'}
+                    </Button>
+                    {hayBorradorWord && (
+                      <>
+                        <Button variant="outline" size="sm" onClick={onVerWord} className="font-medium">
+                          <Eye className="w-4 h-4 mr-2" />
+                          Vista previa
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={onDescargarWord} className="font-medium" data-testid="btn-descargar-informe-word">
+                          <Download className="w-4 h-4 mr-2" />
+                          Descargar Word (.docx)
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
+                <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-semibold text-gray-700 flex-shrink-0">2</div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-semibold text-gray-900">Completarlo en Word</h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Diligencie lo resaltado en amarillo (objetivo y riesgo del proceso, lo evidenciado, la evaluación del control interno y la fecha de la carta de representación) y ajuste lo que haga falta.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
+                <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-semibold text-gray-700 flex-shrink-0">3</div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-semibold text-gray-900">Subir el informe final y notificar</h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Suba el informe terminado en Word (.docx) o PDF. Al confirmarlo se notifica al área auditada con el archivo adjunto y empiezan a correr los 5 días hábiles de controversia.
+                  </p>
+                  <input
+                    ref={inputInformeRef}
+                    type="file"
+                    accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="hidden"
+                    data-testid="input-informe-preliminar-final"
+                    onChange={(e) => {
+                      onElegirInformeFinal(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button size="sm" onClick={() => inputInformeRef.current?.click()} disabled={loading || notificando} className="font-medium bg-green-600 hover:bg-green-700 text-white" data-testid="btn-subir-informe-preliminar">
+                      <Upload className="w-4 h-4 mr-2" />
+                      {notificando ? 'Notificando...' : 'Subir informe final y notificar al área'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardSIGL>
+      ) : (
+        <div className="flex flex-wrap gap-3 justify-end">
+          <Button variant="outline" size="sm" onClick={onDescargarInformeNotificado} disabled={!informeNotificado} className="font-medium" title={informeNotificado?.nombre}>
+            <Download className="w-4 h-4 mr-2" />
+            Descargar informe notificado
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3418,9 +3521,8 @@ const ModalPreviewInforme: React.FC<{
 
     const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informe);
 
-    const informeParaPDF = tipo === 'preliminar' && auditoria.hallazgos?.length
-      ? { ...informe, foliosAnexos: Math.max(10, auditoria.hallazgos.length * 3) }
-      : informe;
+    // Los folios del anexo los cuenta el PDF con sus páginas reales (EFDS-2455)
+    const informeParaPDF = informe;
 
     return { auditoriaBase, informeParaPDF, hallazgosParaPDF };
   };
