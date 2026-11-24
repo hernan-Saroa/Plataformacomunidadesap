@@ -142,6 +142,7 @@ export interface ReporteGestionPercepcionServicio {
   porDistribucion: DistribucionCalificacion;
   porCategoria: ConsolidadoCalificacionItem[];
   porTecnico: ConsolidadoCalificacionItem[];
+  porArea: ConsolidadoCalificacionItem[];
 }
 export interface ReporteGestionRollupGeograficoItem {
   idSede: string | null;
@@ -5094,11 +5095,14 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         break;
       }
       case 'area': {
-        qb.addSelect('CAST(s.id_area_solicitante AS TEXT)', 'idGrupo').addSelect(
-          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), s.id_area_solicitante, :fallbackSinArea)`,
+        qb.addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), CAST(s.id_area_solicitante AS TEXT), :fallbackSinArea)`,
+          'idGrupo',
+        ).addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), CAST(s.id_area_solicitante AS TEXT), :fallbackSinArea)`,
           'nombreGrupo',
         ).setParameter('fallbackSinArea', '(sin área solicitante)');
-        qb.groupBy('s.id_area_solicitante').addGroupBy('s.nombre_area_solicitante');
+        qb.groupBy('s.nombre_area_solicitante').addGroupBy('s.id_area_solicitante');
         break;
       }
       case 'global': {
@@ -5440,10 +5444,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     let global: ConsolidadoCalificacionItem[] = [];
     let porCategoriaCons: ConsolidadoCalificacionItem[] = [];
     let porTecnicoCons: ConsolidadoCalificacionItem[] = [];
+    let porAreaCons: ConsolidadoCalificacionItem[] = [];
     try {
       global = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'global' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porCategoriaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'categoria' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porTecnicoCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'tecnico' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
+      porAreaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'area' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
     } catch (err) {
       console.error('[reporte-gestion] Error al cargar percepcionServicio:', err?.message || err);
     }
@@ -5456,6 +5462,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       porDistribucion: dist,
       porCategoria: porCategoriaCons || [],
       porTecnico: porTecnicoCons || [],
+      porArea: porAreaCons || [],
     };
 
     // ---- F. rollupGeografico por sede + piso ----
@@ -5711,6 +5718,10 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     wsPer.addRow({ seccion: '---', grupo: 'Por Técnico', cant: '', prom: '', notas: 'Detalle consolidado por técnico' });
     for (const t of reporte.percepcionServicio.porTecnico) {
       wsPer.addRow({ seccion: 'Por técnico', grupo: t.nombreGrupo, cant: t.numeroCalificaciones, prom: t.promedio, notas: `Código ${String(t.idGrupo)}` });
+    }
+    wsPer.addRow({ seccion: '---', grupo: 'Por Área Solicitante', cant: '', prom: '', notas: 'Detalle consolidado por área solicitante' });
+    for (const a of reporte.percepcionServicio.porArea || []) {
+      wsPer.addRow({ seccion: 'Por área solicitante', grupo: a.nombreGrupo, cant: a.numeroCalificaciones, prom: a.promedio, notas: `Área: ${String(a.idGrupo || a.nombreGrupo)}` });
     }
 
     // ================== HOJA 6: Detalle_Casos_Atendidos ==================
