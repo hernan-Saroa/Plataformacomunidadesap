@@ -584,3 +584,24 @@ Sustituir TODO el bloque final `{detalle && detalle.idGrupo && (...)}` (el conte
 - Completar QA real por rol, CETAP, validación por día, topes, devolución/aprobadas, horas, auditoría y exportaciones 24 h antes de cerrar las subtareas.
 
 Esfuerzo adicional estimado: **15,5 h**, desglosado por subtarea en el reporte (no tiempo de reloj). No hay cambios propios de .gitignore, package.json, lockfile, backend, migraciones ni shell. Push solo a `feature/pa/bugs-qa-codex`.
+
+## LISTO EFDS-2238 · Integración de Judiciales
+
+**Commit de implementación `ef82970fb`**, rama `feature/legal/efds-2238`, basada en `origin/micro-frontend` (`4c82b79da`). Claude integra. Desplegar conjuntamente los tres servicios y su Compose. Ver la sección EFDS-2238 de `DEPLOY-bugs-qa.md`.
+
+| Evento de Disciplinario | Antes | Después |
+| --- | --- | --- |
+| Enviar a Jurídica | Correo al destino configurado o fijo en código. La transferencia directa se registraba en Correos. | Un envío a Judiciales con sus adjuntos. La transferencia se registra en Judiciales del mismo ambiente. |
+| Auto aprobado | Profesional y radicadores según el flujo, sujetos al desvío general y a las copias configuradas. | Conservan sus avisos. Judiciales queda excluido. |
+| Asignación | Profesional elegido en el asistente, con avisos a radicadores cuando corresponde. | Mismos destinatarios funcionales. La dirección judicial se excluye también de los envíos sin clave de evento. |
+| Noticia radicada | Jefatura OCID y adicionales según configuración. | Jefatura y adicionales legítimos. |
+| Pliego aprobado | Radicadores del flujo; aprobar y trasladar son acciones distintas. | Aviso de aprobación a los radicadores. Solo el traslado explícito lleva el expediente a Judiciales. |
+| Copias por rol y desvío | Se enviaban como mensajes separados, sin excluir la cuenta judicial. | Se excluye Judiciales y se mantienen las demás reglas de distribución. |
+
+El ejemplo de configuración apuntaba el desvío general y Judiciales al mismo buzón. El Centro sincroniza la bandeja de entrada mediante Graph y persiste una copia en la base de Legal. También recibe el expediente por transferencia HTTP directa. Los Compose dev, QA y PRE reutilizaban los mismos nombres de variable sin exigir cuentas diferentes. La coincidencia de las cuentas en los contenedores históricos queda por confirmar. Las listas amplias de radicadores activos y de adicionales por rol se conservan para revisión funcional independiente.
+
+Para QA se corrigieron tres rutas de fallo observables en el código: el buzón de la transferencia, la aceptación de un 202 como prueba de entrega y el prefijo que consume el gateway al reenviar el correo. La consulta de los registros del proceso 126 del 26 de octubre corresponde a Henrry. La revisión de los archivos locales de los microservicios se limitó a la configuración de correo, sin copiar credenciales.
+
+**Evidencia local.** Compilaron Disciplinario, Notificaciones, Gestión Legal y gateway. Pasaron las suites seleccionadas de Disciplinario (38 casos), Legal (56) y Notificaciones (25). La prueba de mutación falló al volver a reservar la copia judicial de una noticia radicada y pasó al restablecer la exclusión. En el ensayo HTTP con el gateway y los controladores compilados, el capturador SMTP en loopback recibió el traslado con PDF y la asignación ordinaria. Intentar dirigir esa asignación a Judiciales devolvió 202 y no generó un tercer mensaje. La persistencia de la bandeja y la lectura de Graph se probaron con repositorios y páginas simulados.
+
+**Pendiente de verificación en contenedores.** Docker Desktop no logró iniciar WSL. Compose validó dev, QA, PRE y producción, incluidos los overlays de imágenes para QA, PRE y producción, y el proyecto local de solo backend. El Compose local que extiende el frontend presenta una referencia previa a una red no declarada del chatbot. No se accedió a QA ni a PRE. **No verificado en condiciones de QA.** Pendiente de Henrry el ensayo posterior al despliegue con expediente nuevo y la comprobación de los registros históricos.
