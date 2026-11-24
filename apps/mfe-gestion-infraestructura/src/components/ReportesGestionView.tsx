@@ -688,6 +688,13 @@ export const ReportesGestionView: React.FC = () => {
                           <td className="p-2 text-right tabular-nums">{c.promedio.toFixed(2)}</td>
                         </tr>
                       ))}
+                      {reporte.percepcionServicio.porArea?.map((c) => (
+                        <tr key={`area-${String(c.idGrupo)}`} className="border-t border-slate-100">
+                          <td className="p-2 text-slate-800"><span className="text-[10px] text-emerald-600 font-bold mr-1">ÁREA</span>{c.nombreGrupo}</td>
+                          <td className="p-2 text-right tabular-nums">{c.numeroCalificaciones}</td>
+                          <td className="p-2 text-right tabular-nums">{c.promedio.toFixed(2)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
