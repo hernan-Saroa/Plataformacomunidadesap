@@ -238,7 +238,17 @@ const isCertificateNotAvailableError = (error: any) =>
     .toLowerCase()
     .includes("certificado de grado");
 
-const showRequestErrorToast = (error: any, title: string) => {
+const getGraduateSearchErrorMessage = (error: any): string => {
+  if (isCertificateNotAvailableError(error)) {
+    return CERTIFICATE_NOT_AVAILABLE_MESSAGE;
+  }
+  if (!error?.status || error.status >= 500) {
+    return "No fue posible consultar los registros académicos en este momento. Los datos del formulario se conservan. Intente enviar la solicitud nuevamente en unos minutos.";
+  }
+  return error?.message || "No fue posible verificar los datos. Intente nuevamente.";
+};
+
+const showRequestErrorToast = (error: any, title: string, description?: string) => {
   if (isCertificateNotAvailableError(error)) {
     toast.info("Certificado no disponible", {
       description: error?.message || CERTIFICATE_NOT_AVAILABLE_MESSAGE,
@@ -247,7 +257,7 @@ const showRequestErrorToast = (error: any, title: string) => {
   }
 
   toast.error(title, {
-    description: error?.message || "Por favor, intente nuevamente",
+    description: description || error?.message || "Por favor, intente nuevamente",
   });
 };
 
@@ -291,6 +301,7 @@ export function PublicTitleVerification({
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [graduateSearchError, setGraduateSearchError] = useState("");
   const [isConfirmingSelection, setIsConfirmingSelection] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] =
     useState<VerificationCertificate | null>(null);
@@ -479,6 +490,7 @@ export function PublicTitleVerification({
   };
 
   const clearMatchSuggestions = () => {
+    setGraduateSearchError("");
     setMatchSuggestions([]);
     setSelectedSuggestionId("");
     setShowManualReviewDialog(false);
@@ -1045,6 +1057,7 @@ export function PublicTitleVerification({
       return;
     }
 
+    setGraduateSearchError("");
     setIsGenerating(true);
 
     try {
@@ -1075,7 +1088,9 @@ export function PublicTitleVerification({
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
-      showRequestErrorToast(error, "Error al verificar los datos");
+      const message = getGraduateSearchErrorMessage(error);
+      setGraduateSearchError(message);
+      showRequestErrorToast(error, "Error al verificar los datos", message);
     } finally {
       setIsGenerating(false);
     }
@@ -1090,6 +1105,7 @@ export function PublicTitleVerification({
       return;
     }
 
+    setGraduateSearchError("");
     setManualReviewReason("no_matches");
     setShowManualReviewDialog(false);
     setMissingTitleBaseRecord(null);
@@ -1126,7 +1142,9 @@ export function PublicTitleVerification({
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
-      showRequestErrorToast(error, "Error al verificar los datos");
+      const message = getGraduateSearchErrorMessage(error);
+      setGraduateSearchError(message);
+      showRequestErrorToast(error, "Error al verificar los datos", message);
     } finally {
       setIsGenerating(false);
     }
@@ -2934,6 +2952,18 @@ export function PublicTitleVerification({
 
                 {/* Submit Button Premium */}
                 {/* Submit Footer - World Class */}
+                {graduateSearchError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"
+                  >
+                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" aria-hidden="true" />
+                    <div>
+                      <p className="text-sm font-semibold">No se pudo completar la búsqueda</p>
+                      <p className="mt-1 text-sm">{graduateSearchError}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <Button

@@ -6,6 +6,8 @@ import {
   UnprocessableEntityException,
   Logger,
   InternalServerErrorException,
+  HttpException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, In, Raw, Repository } from 'typeorm';
@@ -1001,6 +1003,58 @@ export class GraduationCertificatesService {
     };
   }
 
+  private async executeGraduateLookupStep<T>(
+    stage: 'mysql_sync' | 'oracle_sync' | 'local_lookup',
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      if (error instanceof HttpException && error.getStatus() < 500) {
+        throw error;
+      }
+
+      const databaseError = error as {
+        code?: unknown;
+        errorNum?: unknown;
+        driverError?: { code?: unknown };
+      } | null;
+      const rawCode = databaseError?.driverError?.code ?? databaseError?.code;
+      const code =
+        typeof rawCode === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(rawCode)
+          ? rawCode
+          : 'UNKNOWN';
+      // No registrar el documento, parámetros SQL ni mensajes del driver,
+      // que pueden contener datos personales o credenciales de conexión.
+      const stackFrames = error instanceof Error
+        ? error.stack?.split('\n').filter((line) => /^\s+at /.test(line)).join('\n')
+        : undefined;
+      this.logger.error(
+        `[buscar-coincidencias] stage=${stage} code=${code}`,
+        stackFrames,
+      );
+
+      const message =
+        'No fue posible consultar los registros académicos en este momento. Intente nuevamente en unos minutos.';
+      const connectionUnavailable =
+        [
+          'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN',
+          'PROTOCOL_CONNECTION_LOST', 'ER_CON_COUNT_ERROR', '53300', '57P01',
+          '08001', '08006', 'ORA-12170', 'ORA-12541', 'ORA-12543',
+          'NJS-500', 'NJS-501', 'NJS-511',
+        ].includes(code) ||
+        [12170, 12541, 12543].includes(Number(databaseError?.errorNum));
+
+      if (
+        connectionUnavailable ||
+        (error instanceof HttpException && error.getStatus() === 503)
+      ) {
+        throw new ServiceUnavailableException(message);
+      }
+      throw new InternalServerErrorException(message);
+    }
+  }
+
   /**
    * AUTOSERVICIO: Buscar coincidencias por documento y similitud de nombre
    */
@@ -1025,15 +1079,20 @@ export class GraduationCertificatesService {
       updated: 0,
       unchanged: 0,
     };
-    const mysqlSync =
-      await this.syncGraduatesFromMysqlByIdNumber(documentNumber);
+    const mysqlSync = await this.executeGraduateLookupStep('mysql_sync', () =>
+      this.syncGraduatesFromMysqlByIdNumber(documentNumber),
+    );
     let oracleSync = disabledSync;
 
     if (!mysqlSync.found) {
-      oracleSync = await this.syncGraduatesFromOracleByIdNumber(documentNumber);
+      oracleSync = await this.executeGraduateLookupStep('oracle_sync', () =>
+        this.syncGraduatesFromOracleByIdNumber(documentNumber),
+      );
     }
 
-    const graduates = await this.findActiveGraduatesByIdNumber(documentNumber);
+    const graduates = await this.executeGraduateLookupStep('local_lookup', () =>
+      this.findActiveGraduatesByIdNumber(documentNumber),
+    );
     const fuente = mysqlSync.found
       ? 'mysql'
       : oracleSync.found
