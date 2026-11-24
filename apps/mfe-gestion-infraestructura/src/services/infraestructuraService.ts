@@ -488,6 +488,7 @@ export interface ReporteGestionPorCategoriaItem {
   codigoCategoria?: string | null;
   nombreCategoria: string;
   radicados: number;
+  porcentaje?: number;
   completados: number;
   enCurso: number;
   vencidos: number;
