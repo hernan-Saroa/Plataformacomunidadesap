@@ -519,6 +519,7 @@ export interface ReporteGestionPercepcionServicio {
   porDistribucion: DistribucionCalificacion;
   porCategoria: ConsolidadoCalificacionItem[];
   porTecnico: ConsolidadoCalificacionItem[];
+  porArea?: ConsolidadoCalificacionItem[];
 }
 export interface ReporteGestionRollupGeograficoItem {
   idSede: string | null;
