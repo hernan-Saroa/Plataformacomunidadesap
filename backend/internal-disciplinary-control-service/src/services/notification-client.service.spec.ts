@@ -33,7 +33,12 @@ describe('Control Disciplinario - identidad para la configuración de notificaci
     expect(cuerpos[0]).toMatchObject({ to: 'a@esap.edu.co', modulo: 'control-disciplinario', evento: 'PROCESO_REASIGNADO' });
     expect(cuerpos[1]).toMatchObject({ to: 'b@esap.edu.co', modulo: 'control-disciplinario', evento: 'PROCESO_REASIGNADO_ANTERIOR' });
     expect(cuerpos[2]).toMatchObject({ to: 'c@esap.edu.co', text: 'texto', modulo: 'control-disciplinario', evento: 'REASIGNACION_APROBADA' });
-    expect(cuerpos[3]).toEqual({ to: 'd@esap.edu.co', subject: 'Asunto', html: '<p>x</p>' });
+    // EFDS-2238: todo correo de Control Disciplinario se identifica con su módulo, también el genérico SIN
+    // evento, para que Notificaciones no lo deje llegar al buzón de Judiciales. Sigue siendo correo del
+    // sistema: sin `evento` no pasa por la configuración de notificaciones (lo prueba notifications-service,
+    // efds-2238-reglas.spec.ts). Igualdad estricta: sin evento y con el módulo, nada más.
+    expect(cuerpos[3]).toEqual({ to: 'd@esap.edu.co', subject: 'Asunto', html: '<p>x</p>', modulo: 'control-disciplinario', evento: undefined });
+    expect('evento' in cuerpos[3] && cuerpos[3].evento !== undefined).toBe(false);
   });
 
   it('el aviso masivo por correo reparte el mismo evento a cada destinatario', async () => {
