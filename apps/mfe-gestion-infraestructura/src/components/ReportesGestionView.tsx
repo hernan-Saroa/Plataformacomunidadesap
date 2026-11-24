@@ -455,7 +455,7 @@ export const ReportesGestionView: React.FC = () => {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Volumen por categoría (Radicados vs Completados)</h3>
-                <p className="text-xs text-slate-500">Barra inline de porcentaje · máximo local por categoría</p>
+                <p className="text-xs text-slate-500">Barra inline · Casos y porcentaje de participación por categoría</p>
               </div>
               <div className="flex items-center gap-4 text-[11px]">
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-indigo-500" /> Radicados</span>
@@ -464,15 +464,17 @@ export const ReportesGestionView: React.FC = () => {
             </div>
             <div className="space-y-2">
               {reporte.porCategoria.map((c) => {
+                const totalGral = totalRadicados?.valorActual || 1;
+                const pctCat = c.porcentaje != null ? c.porcentaje : (totalGral > 0 ? ((c.radicados || 0) / totalGral) * 100 : 0);
                 const maxLocal = Math.max(1, c.radicados || 0);
                 const wRad = ((c.radicados || 0) / maxLocal) * 100;
                 const wCompl = ((c.completados || 0) / maxLocal) * 100;
                 return (
                   <div key={String(c.idCategoria ?? c.nombreCategoria)} className="grid grid-cols-12 items-center gap-2 text-xs">
-                    <div className="col-span-3 font-semibold text-slate-700 truncate">
+                    <div className="col-span-3 font-semibold text-slate-700 truncate" title={`${c.codigoCategoria ?? ''} ${c.nombreCategoria}`}>
                       {c.codigoCategoria ?? ''} {c.nombreCategoria}
                     </div>
-                    <div className="col-span-8 flex flex-col gap-1">
+                    <div className="col-span-7 flex flex-col gap-1">
                       <div className="h-2 bg-slate-50 rounded overflow-hidden">
                         <div className="h-full bg-indigo-500" style={{ width: `${wRad}%` }} />
                       </div>
@@ -480,7 +482,12 @@ export const ReportesGestionView: React.FC = () => {
                         <div className="h-full bg-emerald-500" style={{ width: `${wCompl}%` }} />
                       </div>
                     </div>
-                    <div className="col-span-1 text-right text-slate-500 tabular-nums">{c.radicados}</div>
+                    <div className="col-span-2 text-right text-slate-600 tabular-nums font-medium flex items-center justify-end gap-1.5">
+                      <span>{c.radicados}</span>
+                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                        {pctCat.toFixed(1)}%
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -504,6 +511,7 @@ export const ReportesGestionView: React.FC = () => {
                     <tr className="text-left text-slate-600">
                       <th className="p-2 font-semibold">Nombre</th>
                       <th className="p-2 font-semibold text-right">Rad</th>
+                      <th className="p-2 font-semibold text-right">% Total</th>
                       <th className="p-2 font-semibold text-right">Compl</th>
                       <th className="p-2 font-semibold text-right">Curso</th>
                       <th className="p-2 font-semibold text-right">Venc</th>
@@ -512,31 +520,38 @@ export const ReportesGestionView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {reporte.porCategoria.map((c) => (
-                      <tr key={String(c.idCategoria ?? c.nombreCategoria)} className="border-t border-slate-100 hover:bg-slate-50/60">
-                        <td className="p-2 text-slate-800 font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                            <span className="truncate">{c.codigoCategoria ? `${c.codigoCategoria} · ` : ''}{c.nombreCategoria}</span>
-                          </div>
-                        </td>
-                        <td className="p-2 text-right tabular-nums">{c.radicados}</td>
-                        <td className="p-2 text-right tabular-nums text-emerald-700">{c.completados}</td>
-                        <td className="p-2 text-right tabular-nums text-amber-700">{c.enCurso}</td>
-                        <td className="p-2 text-right tabular-nums text-rose-700">{c.vencidos}</td>
-                        <td className="p-2 text-right tabular-nums font-medium text-slate-700">Prom. {c.promedioCalificacion.toFixed(2)} / 5</td>
-                        <td className="p-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => abrirDetalleCategoria(c)}
-                            className="text-[11px] px-2 py-1 rounded-md border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold inline-flex items-center gap-1"
-                          >
-                            {catExpandida === (c.idCategoria ?? c.nombreCategoria) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                            Detalle
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {reporte.porCategoria.map((c) => {
+                      const totalGral = totalRadicados?.valorActual || 1;
+                      const pctCat = c.porcentaje != null ? c.porcentaje : (totalGral > 0 ? ((c.radicados || 0) / totalGral) * 100 : 0);
+                      return (
+                        <tr key={String(c.idCategoria ?? c.nombreCategoria)} className="border-t border-slate-100 hover:bg-slate-50/60">
+                          <td className="p-2 text-slate-800 font-medium">
+                            <div className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                              <span className="truncate">{c.codigoCategoria ? `${c.codigoCategoria} · ` : ''}{c.nombreCategoria}</span>
+                            </div>
+                          </td>
+                          <td className="p-2 text-right tabular-nums font-medium">{c.radicados}</td>
+                          <td className="p-2 text-right tabular-nums font-bold text-indigo-700">
+                            <span className="bg-indigo-50 px-1.5 py-0.5 rounded text-[11px]">{pctCat.toFixed(1)}%</span>
+                          </td>
+                          <td className="p-2 text-right tabular-nums text-emerald-700">{c.completados}</td>
+                          <td className="p-2 text-right tabular-nums text-amber-700">{c.enCurso}</td>
+                          <td className="p-2 text-right tabular-nums text-rose-700">{c.vencidos}</td>
+                          <td className="p-2 text-right tabular-nums font-medium text-slate-700">Prom. {c.promedioCalificacion.toFixed(2)} / 5</td>
+                          <td className="p-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => abrirDetalleCategoria(c)}
+                              className="text-[11px] px-2 py-1 rounded-md border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold inline-flex items-center gap-1"
+                            >
+                              {catExpandida === (c.idCategoria ?? c.nombreCategoria) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              Detalle
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
