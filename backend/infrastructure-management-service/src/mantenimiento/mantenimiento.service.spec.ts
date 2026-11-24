@@ -1202,6 +1202,59 @@ describe('[EFDS-1733] AC-01 Categoría CS_002 Eléctricas (id=48) ESPECIALIZACI�
     expect(typeof r.advertencia).toBe('string');
     expect(r.advertencia!.length).toBeGreaterThan(10);
   });
+
+  it('EFDS-1733 QA: idCategoria=33 (código CS_002 en ambiente QA) resuelve ESPECIALIZACION obligatoria dinámicamente', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-QA-ELEC',
+          idCategoria: 33, // ID dinámico de QA
+          areaResponsableActual: 'UMI',
+        }),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })),
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          const where = w?.where || w;
+          if (where?.catalogo === 'CATEGORIA_SERVICIO' && where?.idCatalogo === 33) {
+            return { idCatalogo: 33, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002', nombre: 'Eléctricas y Electrónicas' };
+          }
+          if (where?.catalogo === 'REGLA_ESCALAMIENTO' && where?.codigo === 'REG_001_CATEGORIA_48_ELECTRICAS') {
+            return {
+              idCatalogo: 70,
+              catalogo: 'REGLA_ESCALAMIENTO',
+              codigo: 'REG_001_CATEGORIA_48_ELECTRICAS',
+              metadata: { tecnicoCodigo: 'TEC-ELC-001', codCategoriaCS: 'CS_002', idCategoria: 33 },
+              isActivo: true,
+            };
+          }
+          return null;
+        }),
+        find: jest.fn().mockImplementation((w: any) => {
+          const where = w?.where || w;
+          if (where?.catalogo === 'CATEGORIA_SERVICIO') {
+            return [{ idCatalogo: 33, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002', nombre: 'Eléctricas' }];
+          }
+          if (where?.catalogo === 'TECNICO_MANTENIMIENTO') {
+            return [
+              { idCatalogo: 80, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-ELC-001', nombre: 'Carlos Electricista', isActivo: true, metadata: { roleCod: 'P3' } },
+              { idCatalogo: 81, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-MULTI-001', nombre: 'Técnico Multipropósito', isActivo: true, metadata: { roleCod: 'P4' } },
+            ];
+          }
+          return [];
+        }),
+      } as any,
+    });
+    const r = await s.sugerirAsignacion('SOL-QA-ELEC');
+    expect(r.regla).toBe('ESPECIALIZACION');
+    expect(r.obligatorio).toBe(true);
+    expect(r.idCategoria).toBe(33);
+    expect(r.sugerido?.codigo).toBe('TEC-ELC-001');
+  });
 });
 
 // ---------------------------------------------------------------------------

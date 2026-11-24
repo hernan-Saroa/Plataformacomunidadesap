@@ -588,7 +588,82 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     return Array.from(aliases);
   }
 
+  // Caches en memoria para resolución dinámica de categorías y SLAs (EFDS-1733)
+  private categoriaCachePorId = new Map<number, CatalogoItem>();
+  private categoriaCachePorCodigo = new Map<string, CatalogoItem>();
+  private paramCacheTiempoPorCodigo = new Map<string, number>();
+
+  private async resolverCategoria(idCategoria: number | null | undefined): Promise<CatalogoItem | null> {
+    if (!Number.isInteger(idCategoria as any) || Number(idCategoria) <= 0) return null;
+    const idCat = Math.trunc(Number(idCategoria));
+    if (this.categoriaCachePorId.has(idCat)) {
+      return this.categoriaCachePorId.get(idCat)!;
+    }
+    try {
+      const cat = await this.catalogoRepo.findOne({
+        where: { catalogo: 'CATEGORIA_SERVICIO', idCatalogo: idCat },
+      });
+      if (cat) {
+        this.categoriaCachePorId.set(idCat, cat);
+        if (cat.codigo) this.categoriaCachePorCodigo.set(cat.codigo.toUpperCase(), cat);
+        return cat;
+      }
+    } catch {}
+    return null;
+  }
+
+  private async esCategoriaElectrica(idCategoria: number | null | undefined): Promise<boolean> {
+    if (!idCategoria) return false;
+    const idCat = Math.trunc(Number(idCategoria));
+    if (idCat === 48) return true; // Retrocompatibilidad con seeds dev históricos
+    const cat = await this.resolverCategoria(idCat);
+    if (!cat) return false;
+    const cod = String(cat.codigo || '').toUpperCase();
+    const nom = String(cat.nombre || '').toLowerCase();
+    return cod === 'CS_002' || nom.includes('eléctric');
+  }
+
   private async asegurarSeedTiemposPorCategoria(): Promise<void> {
+    try {
+      const categoriasReales = await this.catalogoRepo.find({
+        where: { catalogo: 'CATEGORIA_SERVICIO', isActivo: true },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
+      });
+      if (categoriasReales && categoriasReales.length > 0) {
+        for (const c of categoriasReales) {
+          const cod = this.codigoParamTiempoCat(c.idCatalogo);
+          const exists = await this.catalogoRepo.findOne({
+            where: { catalogo: PARAMETRO_UMI, codigo: cod },
+          });
+          if (exists) continue;
+          try {
+            const seed = this.catalogoRepo.create({
+              catalogo: PARAMETRO_UMI,
+              codigo: cod,
+              nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
+              descripcion: `Seed automático dinámico para categoría ${c.codigo} (${c.nombre}).`,
+              orden: 100 + (c.orden || 1),
+              isActivo: true,
+              metadata: {
+                idCategoria: c.idCatalogo,
+                codCategoriaCS: c.codigo,
+                nombreCategoriaCS: c.nombre,
+                min: 1,
+                max: 3,
+                default: 2,
+                actual: 2,
+                unidad: 'DIAS_NATURALES',
+                modificadoPor: 'DYNAMIC_SEED_EFDS_1733',
+                fechaModificacion: new Date().toISOString(),
+              },
+            });
+            await this.catalogoRepo.save(seed as any);
+          } catch {}
+        }
+        return;
+      }
+    } catch {}
+
     const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
       { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
       { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
@@ -1687,132 +1762,219 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
   private aplicarCacheConDefaults(row: CatalogoItem | undefined | null, idCategoria: number): number {
     let actual = 2;
+    let codCS: string | undefined;
     if (row && row.metadata && typeof row.metadata === 'object') {
       const metaActual = Number((row.metadata as any).actual);
       actual = this.clampDias(isFinite(metaActual) ? metaActual : 2);
+      codCS = (row.metadata as any).codCategoriaCS;
     }
     this.paramCacheTiempoPorCategoria.set(Math.trunc(Number(idCategoria)), actual);
+    if (codCS) {
+      this.paramCacheTiempoPorCodigo.set(String(codCS).toUpperCase(), actual);
+    }
     return actual;
   }
 
   async listarParametrosTiempoPorCategoria(): Promise<CatalogoItem[]> {
-    const rows = await this.catalogoRepo
-      .createQueryBuilder('c')
-      .where('c.catalogo = :cat', { cat: PARAMETRO_UMI })
-      .andWhere('c.codigo LIKE :pref', { pref: PREFIX_TIEMPO_CAT + '%' })
-      .orderBy('c.orden', 'ASC')
-      .addOrderBy('c.idCatalogo', 'ASC')
-      .getMany();
-
-    if (rows && rows.length > 0) {
-      for (const r of rows) {
-        const idCat = Number(r.metadata && typeof r.metadata === 'object' ? (r.metadata as any).idCategoria : null);
-        if (Number.isInteger(idCat)) this.aplicarCacheConDefaults(r, idCat);
-      }
-      return rows;
-    }
-    // Fallback: si la migración 010_02 NO se ejecutó (no hay data), creamos los 8 on-the-fly
-    const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
-      { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
-      { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
-      { id_cat: 49, cod_cs: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3 },
-      { id_cat: 50, cod_cs: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4 },
-      { id_cat: 51, cod_cs: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores', orden: 5 },
-      { id_cat: 52, cod_cs: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería', orden: 6 },
-      { id_cat: 53, cod_cs: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7 },
-      { id_cat: 54, cod_cs: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos', orden: 8 },
-    ];
-    const creados: CatalogoItem[] = [];
-    for (const c of catalogo8) {
-      const seed = this.catalogoRepo.create({
-        catalogo: PARAMETRO_UMI,
-        codigo: this.codigoParamTiempoCat(c.id_cat),
-        nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
-        orden: 100 + c.orden,
-        isActivo: true,
-        metadata: this.metadataTiempoDefaults(c.id_cat),
+    // 1. Intentar cargar las categorías de servicio reales del ambiente
+    let categoriasServicio: CatalogoItem[] = [];
+    try {
+      categoriasServicio = await this.catalogoRepo.find({
+        where: { catalogo: 'CATEGORIA_SERVICIO' },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
       });
-      try {
-        const saved = await this.catalogoRepo.save(seed as any);
-        creados.push(saved as CatalogoItem);
-        this.aplicarCacheConDefaults(saved as any, c.id_cat);
-      } catch {
-        // ignore dup (race)
-        const found = await this.catalogoRepo.findOne({
-          where: { catalogo: PARAMETRO_UMI, codigo: this.codigoParamTiempoCat(c.id_cat) },
-        });
-        if (found) {
-          creados.push(found as CatalogoItem);
-          this.aplicarCacheConDefaults(found as any, c.id_cat);
-        }
-      }
-    }
-    // Fallback doble: si creados.length < 8 (por save fallo / restriccion / race no dup), hacemos REFRESH find de nuevo,
-    // y si sigue <8 generamos 8 IN-MEMORY sin persistir para garantizar al UI 8 categorías renderizadas.
-    // El usuario al Guardar una categoría (PATCH) SÍ persiste correctamente el item individual (obtenerParametroTiempo sí crea OK).
-    if (creados.length < 8) {
-      const refrescados = await this.catalogoRepo
+    } catch {}
+
+    // Si no existen categorías de servicio (ej. unit tests sin mock completo de catálogo)
+    if (!categoriasServicio || categoriasServicio.length === 0) {
+      const rows = await this.catalogoRepo
         .createQueryBuilder('c')
         .where('c.catalogo = :cat', { cat: PARAMETRO_UMI })
         .andWhere('c.codigo LIKE :pref', { pref: PREFIX_TIEMPO_CAT + '%' })
         .orderBy('c.orden', 'ASC')
         .addOrderBy('c.idCatalogo', 'ASC')
         .getMany();
-      if (refrescados && refrescados.length >= 8) return refrescados;
-      const creadosMap = new Map<string, CatalogoItem>();
-      for (const x of [...(refrescados || []), ...creados]) {
-        if (x?.codigo) creadosMap.set(String(x.codigo), x);
+
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          const idCat = Number(r.metadata && typeof r.metadata === 'object' ? (r.metadata as any).idCategoria : null);
+          if (Number.isInteger(idCat)) this.aplicarCacheConDefaults(r, idCat);
+        }
+        return rows;
       }
+      // Fallback: 8 por defecto dev
+      const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
+        { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
+        { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
+        { id_cat: 49, cod_cs: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3 },
+        { id_cat: 50, cod_cs: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4 },
+        { id_cat: 51, cod_cs: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores', orden: 5 },
+        { id_cat: 52, cod_cs: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería', orden: 6 },
+        { id_cat: 53, cod_cs: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7 },
+        { id_cat: 54, cod_cs: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos', orden: 8 },
+      ];
+      const creados: CatalogoItem[] = [];
       for (const c of catalogo8) {
-        const cod = this.codigoParamTiempoCat(c.id_cat);
-        if (!creadosMap.has(cod)) {
-          const temp = this.catalogoRepo.create({
-            catalogo: PARAMETRO_UMI,
-            codigo: cod,
-            nombre: `Tiempo respuesta ${c.nombre} (días 1..3) · IN-MEMORY FALLBACK ejecutar migración 010_02`,
-            descripcion: 'Generado on-the-fly IN-MEMORY (fallback) por EFDS-1733-bis. Al dar GUARDAR se persiste; se recomienda ejecutar la migración 010_02 para el seed permanente.',
-            orden: 100 + c.orden,
-            isActivo: true,
-            metadata: { ...this.metadataTiempoDefaults(c.id_cat), __flag: 'FALLBACK_MEM_PENDING_MIG_010_02' },
+        const seed = this.catalogoRepo.create({
+          catalogo: PARAMETRO_UMI,
+          codigo: this.codigoParamTiempoCat(c.id_cat),
+          nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
+          orden: 100 + c.orden,
+          isActivo: true,
+          metadata: this.metadataTiempoDefaults(c.id_cat),
+        });
+        try {
+          const saved = await this.catalogoRepo.save(seed as any);
+          creados.push(saved as CatalogoItem);
+          this.aplicarCacheConDefaults(saved as any, c.id_cat);
+        } catch {
+          const found = await this.catalogoRepo.findOne({
+            where: { catalogo: PARAMETRO_UMI, codigo: this.codigoParamTiempoCat(c.id_cat) },
           });
-          creadosMap.set(cod, temp as CatalogoItem);
-          creados.push(temp as CatalogoItem);
-          this.aplicarCacheConDefaults(temp as any, c.id_cat);
+          if (found) {
+            creados.push(found as CatalogoItem);
+            this.aplicarCacheConDefaults(found as any, c.id_cat);
+          }
         }
       }
+      return creados;
     }
-    creados.sort((a, b) => {
-      const ia = Number((a.metadata as any)?.idCategoria ?? 99);
-      const ib = Number((b.metadata as any)?.idCategoria ?? 99);
+
+    // 2. Sincronización dinámica con las categorías de servicio reales del ambiente (QA: 32..39, Local: 24..31, etc.)
+    const paramsExistentes = await this.catalogoRepo.find({
+      where: { catalogo: PARAMETRO_UMI },
+    });
+
+    const resultado: CatalogoItem[] = [];
+
+    for (const cat of categoriasServicio) {
+      const idCat = cat.idCatalogo;
+      const codCS = String(cat.codigo || '').toUpperCase();
+      const nomCS = cat.nombre;
+
+      // Buscar si ya existe parámetro para esta categoría (por código CS o por id o código legacy)
+      let param = paramsExistentes.find((p) => {
+        const md = (p.metadata && typeof p.metadata === 'object' ? p.metadata : {}) as any;
+        return (
+          md.codCategoriaCS === codCS ||
+          md.idCategoria === idCat ||
+          p.codigo === this.codigoParamTiempoCat(idCat) ||
+          p.codigo === `TIEMPO_RESP_DIAS_${codCS}` ||
+          (codCS === 'CS_001' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_47') ||
+          (codCS === 'CS_002' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_48') ||
+          (codCS === 'CS_003' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_49') ||
+          (codCS === 'CS_004' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_50') ||
+          (codCS === 'CS_005' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_51') ||
+          (codCS === 'CS_006' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_52') ||
+          (codCS === 'CS_007' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_53') ||
+          (codCS === 'CS_008' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_54')
+        );
+      });
+
+      if (!param) {
+        param = this.catalogoRepo.create({
+          catalogo: PARAMETRO_UMI,
+          codigo: this.codigoParamTiempoCat(idCat),
+          nombre: `Tiempo respuesta ${nomCS} (días naturales 1..3)`,
+          descripcion: `Tiempo de respuesta SLA para la categoría ${codCS} (${nomCS}).`,
+          orden: 100 + (cat.orden || 1),
+          isActivo: true,
+          metadata: {
+            idCategoria: idCat,
+            codCategoriaCS: codCS,
+            nombreCategoriaCS: nomCS,
+            min: 1,
+            max: 3,
+            default: 2,
+            actual: 2,
+            unidad: 'DIAS_NATURALES',
+            modificadoPor: 'DYNAMIC_SYNC_EFDS_1733',
+            fechaModificacion: new Date().toISOString(),
+          },
+        }) as CatalogoItem;
+        try {
+          param = await this.catalogoRepo.save(param as any);
+        } catch {}
+      } else {
+        // Sincronizar metadata con el ID y datos reales de esta BD
+        const md = (param.metadata && typeof param.metadata === 'object' ? param.metadata : {}) as any;
+        let modificado = false;
+        if (md.idCategoria !== idCat) {
+          md.idCategoria = idCat;
+          modificado = true;
+        }
+        if (md.codCategoriaCS !== codCS) {
+          md.codCategoriaCS = codCS;
+          modificado = true;
+        }
+        if (md.nombreCategoriaCS !== nomCS) {
+          md.nombreCategoriaCS = nomCS;
+          modificado = true;
+        }
+        if (modificado) {
+          param.metadata = md;
+          try {
+            await this.catalogoRepo.save(param as any);
+          } catch {}
+        }
+      }
+
+      if (param) {
+        const diasActual = this.aplicarCacheConDefaults(param, idCat);
+        if (codCS) {
+          this.paramCacheTiempoPorCodigo.set(codCS, diasActual);
+        }
+        resultado.push(param);
+      }
+    }
+
+    resultado.sort((a, b) => {
+      const ia = Number((a.metadata as any)?.idCategoria ?? (a.idCatalogo ?? 99));
+      const ib = Number((b.metadata as any)?.idCategoria ?? (b.idCatalogo ?? 99));
       return ia - ib;
     });
-    return creados;
+
+    return resultado;
   }
 
   async obtenerParametroTiempoRespuesta(idCategoria?: number): Promise<CatalogoItem> {
     const idCat = Number(idCategoria);
-    const tieneIdCatValido = Number.isInteger(idCat) && idCat >= 47 && idCat <= 54;
-    if (tieneIdCatValido) {
-      const cod = this.codigoParamTiempoCat(idCat);
-      let row = await this.catalogoRepo.findOne({ where: { catalogo: PARAMETRO_UMI, codigo: cod } });
+    if (Number.isInteger(idCat) && idCat > 0) {
+      const allParams = await this.catalogoRepo.find({
+        where: { catalogo: PARAMETRO_UMI },
+      });
+      let row = allParams.find((p) => {
+        const md = (p.metadata && typeof p.metadata === 'object' ? p.metadata : {}) as any;
+        return (
+          md.idCategoria === idCat ||
+          p.codigo === this.codigoParamTiempoCat(idCat) ||
+          (idCat === 48 && p.codigo === 'TIEMPO_RESP_DIAS_CAT_48')
+        );
+      });
       if (!row) {
+        const cat = await this.resolverCategoria(idCat);
+        const cod = this.codigoParamTiempoCat(idCat);
         const seed = this.catalogoRepo.create({
           catalogo: PARAMETRO_UMI,
           codigo: cod,
-          nombre: `Tiempo respuesta (CATEGORÍA ${idCat})`,
-          descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733-bis).',
-          orden: 100 + (idCat - 46),
+          nombre: `Tiempo respuesta (${cat?.nombre || 'CATEGORÍA ' + idCat})`,
+          descripcion: 'Creado on-demand por obtenerParametroTiempoRespuesta.',
+          orden: 100 + idCat,
           isActivo: true,
-          metadata: this.metadataTiempoDefaults(idCat),
+          metadata: {
+            ...this.metadataTiempoDefaults(idCat),
+            idCategoria: idCat,
+            codCategoriaCS: cat?.codigo || `CS_${String(idCat).padStart(3, '0')}`,
+            nombreCategoriaCS: cat?.nombre || `Categoría ${idCat}`,
+          },
         });
-        row = await this.catalogoRepo.save(seed);
+        row = (await this.catalogoRepo.save(seed as any)) as unknown as CatalogoItem;
       }
       this.aplicarCacheConDefaults(row as any, idCat);
-      return row;
+      return row as CatalogoItem;
     }
+
     // Fallback si NO se envía idCategoria (legacy): leemos el param global
-    // TIEMPO_RESPUESTA_DIAS si existe, sino retornamos un objeto IN-MEMORY
-    // (NO persistimos desde aquí para no confundir con params por categoría).
     const globalRow = await this.catalogoRepo.findOne({
       where: { catalogo: PARAMETRO_UMI, codigo: COD_TIEMPO_GLOBAL },
     });
@@ -1825,7 +1987,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       isActivo: true,
       metadata: {
         tipo: 'FALLBACK_LEGACY',
-        nota: 'Use listarParametrosTiempoPorCategoria para consultar los 8 parámetros por categoría (RF-INF-004 L104 EFDS-1733-bis).',
+        nota: 'Use listarParametrosTiempoPorCategoria para consultar los parámetros por categoría.',
         min: 1, max: 3, default: 2, actual: this.paramCacheGlobalFallback, unidad: 'DIAS_NATURALES',
       },
     });
@@ -1834,10 +1996,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
   async actualizarParametroTiempoRespuesta(idCategoria: number | undefined, dias: number): Promise<CatalogoItem> {
     const idCat = Math.trunc(Number(idCategoria));
-    if (!Number.isInteger(idCat) || idCat < 47 || idCat > 54) {
-      throw new BadRequestException(
-        'Parámetro tiempo-respuesta ahora POR CATEGORÍA (EFDS-1733-bis HUECO 1). Indique idCategoria en rango [47..54].',
-      );
+    if (!Number.isInteger(idCat) || idCat <= 0) {
+      throw new BadRequestException('Indique un idCategoria numérico válido.');
     }
     if (!Number.isInteger(dias)) {
       throw new BadRequestException('Los días del tiempo de respuesta deben ser un número entero.');
@@ -1845,35 +2005,69 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     if (dias < 1 || dias > 3) {
       throw new BadRequestException('Tiempo de respuesta: fuera de rango. Rango permitido 1 a 3 días naturales.');
     }
-    const cod = this.codigoParamTiempoCat(idCat);
-    let row = await this.catalogoRepo.findOne({ where: { catalogo: PARAMETRO_UMI, codigo: cod } });
+
+    // Validar que idCategoria pertenezca a una categoría existente o al conjunto oficial de categorías
+    const categoriasServicio = await this.catalogoRepo.find({
+      where: { catalogo: 'CATEGORIA_SERVICIO' },
+    });
+    const idsValidos = new Set<number>([47, 48, 49, 50, 51, 52, 53, 54]);
+    for (const c of categoriasServicio) {
+      if (Number.isInteger(c.idCatalogo)) idsValidos.add(c.idCatalogo);
+    }
+    if (!idsValidos.has(idCat)) {
+      throw new BadRequestException(
+        `Parámetro tiempo-respuesta: idCategoria #${idCat} no corresponde a ninguna categoría de servicio válida (fuera de rango).`,
+      );
+    }
+
+    const allParams = await this.catalogoRepo.find({
+      where: { catalogo: PARAMETRO_UMI },
+    });
+
+    let row = allParams.find((p) => {
+      const md = (p.metadata && typeof p.metadata === 'object' ? p.metadata : {}) as any;
+      return (
+        md.idCategoria === idCat ||
+        p.codigo === this.codigoParamTiempoCat(idCat) ||
+        (idCat === 48 && p.codigo === 'TIEMPO_RESP_DIAS_CAT_48')
+      );
+    });
+
     if (!row) {
+      const cat = await this.resolverCategoria(idCat);
+      const cod = this.codigoParamTiempoCat(idCat);
       const seed = this.catalogoRepo.create({
         catalogo: PARAMETRO_UMI,
         codigo: cod,
-        nombre: `Tiempo respuesta (CATEGORÍA ${idCat})`,
-        descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733-bis).',
-        orden: 100 + (idCat - 46),
+        nombre: `Tiempo respuesta (${cat?.nombre || 'CATEGORÍA ' + idCat})`,
+        descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733).',
+        orden: 100 + idCat,
         isActivo: true,
-        metadata: this.metadataTiempoDefaults(idCat),
+        metadata: {
+          ...this.metadataTiempoDefaults(idCat),
+          idCategoria: idCat,
+          codCategoriaCS: cat?.codigo || `CS_${String(idCat).padStart(3, '0')}`,
+          nombreCategoriaCS: cat?.nombre || `Categoría ${idCat}`,
+        },
       });
-      row = await this.catalogoRepo.save(seed);
+      row = (await this.catalogoRepo.save(seed as any)) as unknown as CatalogoItem;
     }
-    row.metadata = {
-      ...((row.metadata && typeof row.metadata === 'object') ? row.metadata : {}),
+
+    const itemRow = row as CatalogoItem;
+    const codCS = (itemRow.metadata as any)?.codCategoriaCS;
+    itemRow.metadata = {
+      ...((itemRow.metadata && typeof itemRow.metadata === 'object') ? itemRow.metadata : {}),
+      idCategoria: idCat,
       actual: Math.trunc(Number(dias)),
       fechaModificacion: new Date().toISOString(),
       modificadoPor: 'PATCH_PANEL_ADMIN_PARAMETROS_UMI',
-      marcaAgua: 'EFDS_1733_BIS__FIX_CAP1_OK__CODIGO_NUEVO_CARGADO__V2_' + Date.now(),
+      marcaAgua: 'EFDS_1733__FIX_DYNAMIC_CAT_' + Date.now(),
     };
-    const saved = await this.catalogoRepo.save(row);
+    const saved = (await this.catalogoRepo.save(itemRow as any)) as unknown as CatalogoItem;
     this.aplicarCacheConDefaults(saved, idCat);
-    console.log('\n==============================================================');
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] idCategoria=', idCat, 'dias=', dias);
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] row.codigo=', saved.codigo, 'idCatalogo=', saved.idCatalogo);
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] metadata.actual=', (saved.metadata as any)?.actual, 'modificadoPor=', (saved.metadata as any)?.modificadoPor);
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] SI VES ESTE LOG EN TERMINAL => NEST CARGO EL NUEVO CODIGO (NO idCatalogo 80)');
-    console.log('==============================================================\n');
+    if (codCS) {
+      this.paramCacheTiempoPorCodigo.set(String(codCS).toUpperCase(), Math.trunc(Number(dias)));
+    }
     return saved;
   }
 
@@ -1882,6 +2076,12 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       const idCat = Math.trunc(Number(idCategoria));
       const cached = this.paramCacheTiempoPorCategoria.get(idCat);
       if (Number.isInteger(cached as any)) return this.clampDias(Number(cached));
+
+      const catCached = this.categoriaCachePorId.get(idCat);
+      if (catCached && catCached.codigo) {
+        const cachedByCode = this.paramCacheTiempoPorCodigo.get(String(catCached.codigo).toUpperCase());
+        if (Number.isInteger(cachedByCode as any)) return this.clampDias(Number(cachedByCode));
+      }
     }
     return this.clampDias(this.paramCacheGlobalFallback);
   }
@@ -2131,10 +2331,63 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   // EFDS-1733: Reglas escalamiento
   // ---------------------------------------------------------------------------
   async listarReglasEscalamiento(): Promise<CatalogoItem[]> {
-    return this.catalogoRepo.find({
+    const reglas = await this.catalogoRepo.find({
       where: { catalogo: REGLA_ESCALAMIENTO },
       order: { orden: 'ASC', idCatalogo: 'ASC' },
     });
+
+    try {
+      const categorias = await this.catalogoRepo.find({
+        where: { catalogo: 'CATEGORIA_SERVICIO' },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
+      });
+      if (categorias && categorias.length > 0) {
+        const catElec = categorias.find((c) => String(c.codigo).toUpperCase() === 'CS_002');
+        const otrasCats = categorias.filter((c) => String(c.codigo).toUpperCase() !== 'CS_002');
+
+        for (const r of reglas) {
+          const md = (r.metadata && typeof r.metadata === 'object' ? r.metadata : {}) as any;
+          let changed = false;
+
+          if (
+            r.codigo.startsWith('REG_001_CATEGORIA_') ||
+            r.codigo.includes('ELECTRICAS') ||
+            md.regla === 'ESPECIALIZACION'
+          ) {
+            if (catElec) {
+              const nuevoCodigo = `REG_001_CATEGORIA_${catElec.idCatalogo}_ELECTRICAS`;
+              if (r.codigo !== nuevoCodigo) {
+                r.codigo = nuevoCodigo;
+                changed = true;
+              }
+              if (md.idCategoria !== catElec.idCatalogo) {
+                md.idCategoria = catElec.idCatalogo;
+                md.codCategoriaCS = 'CS_002';
+                changed = true;
+              }
+            }
+          } else if (
+            r.codigo === 'REG_002_EQUIDAD_OTRAS_7_CATEGORIAS' ||
+            md.regla === 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR'
+          ) {
+            const idsEsperados = otrasCats.map((c) => c.idCatalogo);
+            if (JSON.stringify(md.idsCategorias) !== JSON.stringify(idsEsperados)) {
+              md.idsCategorias = idsEsperados;
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            r.metadata = md;
+            try {
+              await this.catalogoRepo.save(r as any);
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+
+    return reglas;
   }
 
   async actualizarReglaEscalamiento(
@@ -2149,9 +2402,27 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         (it.metadata as any).tecnicoCodigo = null;
         (it.metadata as any).tecnicoNombreDisplay = null;
       } else {
-        const tec = await this.catalogoRepo.findOne({
-          where: { catalogo: TECNICO_MANTENIMIENTO, codigo: data.tecnicoCodigo },
-        });
+        const codigoBuscado = String(data.tecnicoCodigo).trim();
+        // 1. Buscar en lista completa de técnicos (catalogo_item + auth virtual P3/P4)
+        const todosTecnicos = await this.listarTecnicos(false);
+        let tec = todosTecnicos.find(
+          (t) => String(t.codigo).trim().toUpperCase() === codigoBuscado.toUpperCase(),
+        );
+        // 2. Fallback en catalogoRepo directo
+        if (!tec) {
+          tec = (await this.catalogoRepo.findOne({
+            where: { catalogo: TECNICO_MANTENIMIENTO, codigo: codigoBuscado },
+          })) as any;
+        }
+        if (!tec) {
+          tec = (await this.catalogoRepo
+            .createQueryBuilder('c')
+            .where('c.catalogo = :cat AND UPPER(TRIM(c.codigo)) = :cod', {
+              cat: TECNICO_MANTENIMIENTO,
+              cod: codigoBuscado.toUpperCase(),
+            })
+            .getOne()) as any;
+        }
         if (!tec) throw new BadRequestException(`Técnico ${data.tecnicoCodigo} no existe.`);
         (it.metadata as any).tecnicoCodigo = tec.codigo;
         (it.metadata as any).tecnicoNombreDisplay = tec.nombre;
@@ -2526,7 +2797,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    if (idCategoria === 48) {
+    const esElectrica = await this.esCategoriaElectrica(idCategoria);
+    if (esElectrica) {
       // CS_002 Eléctricas y Electrónicas → regla 001 ESPECIALIZACION OBLIGATORIA
       regla = 'ESPECIALIZACION';
       obligatorio = true;
@@ -2535,9 +2807,12 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       // y tiene un tecnicoCodigo que aún matchea con opciones (para data antigua).
       let sugeridoP3: (CatalogoItem & { cargaVigente: number }) | null = null;
       const p3Activos = opciones.filter((t) => {
-        const roleCod = (t.metadata as any)?.roleCod ?? null;
-        const esLegacyP3 = !!((t.metadata as any)?.especialidades || []).includes('CS_002');
-        return roleCod === 'P3' || esLegacyP3;
+        const roleCod = String((t.metadata as any)?.roleCod ?? (t as any).roleCod ?? '').toUpperCase();
+        const codUpper = String(t.codigo || '').toUpperCase();
+        const espList = (t.metadata as any)?.especialidades || (t as any).especialidades || [];
+        const esP3 = roleCod === 'P3' || codUpper.includes('P3');
+        const esLegacyP3 = espList.includes('CS_002') || codUpper.startsWith('TEC-ELEC') || codUpper.startsWith('TEC-ELC');
+        return esP3 || esLegacyP3;
       });
       if (p3Activos.length > 0) {
         const sorted = [...p3Activos].sort((a, b) => {
@@ -2565,7 +2840,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       } else {
         sugerido = sugeridoP3;
       }
-      return { regla, idCategoria, sugerido, obligatorio, opciones, advertencia };
+      return { regla, idCategoria, sugerido, obligatorio, opciones: p3Activos.length > 0 ? p3Activos : opciones, advertencia };
     }
 
     // AC-02 Resto 7 categorías o idCategoria sin configurar: EQUIDAD
@@ -2985,8 +3260,16 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       if (tec.idTecnicoAsignado) solicitud.idTecnicoAsignado = tec.idTecnicoAsignado;
       solicitud.motivoRechazo = undefined;
 
-      if (Number(solicitud.idCategoria) === 48) {
-        const esP3 = String(tec.roleCod || '').toUpperCase() === 'P3';
+      if (await this.esCategoriaElectrica(solicitud.idCategoria)) {
+        const roleCod = String(tec.roleCod || '').toUpperCase();
+        const codUpper = String(tec.codigo || '').toUpperCase();
+        const espList = Array.isArray((tec as any).metadata?.especialidades) ? (tec as any).metadata.especialidades : [];
+        const esP3 =
+          roleCod === 'P3' ||
+          codUpper.includes('P3') ||
+          espList.includes('CS_002') ||
+          codUpper.startsWith('TEC-ELEC') ||
+          codUpper.startsWith('TEC-ELC');
         if (!esP3) {
           const regla001 = await this.catalogoRepo.findOne({
             where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
@@ -3441,7 +3724,7 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     per: { puede: boolean; tecnicoCodigo?: string | null; tecnicoNombre?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<void> {
-    if (Number(solicitud.idCategoria) !== 48) return;
+    if (!(await this.esCategoriaElectrica(solicitud.idCategoria))) return;
     if (this.usuarioEsSuperAdminOAsignador(user)) return;
     const roles = (user?.roles || []).map((r) => String(r).toUpperCase());
     if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) return;
@@ -3457,7 +3740,10 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
 
     const tecnicoAsignadoCodigo = per.tecnicoCodigo;
     if (!tecnicoAsignadoCodigo) return;
-    const ID_CS_002 = 48;
+    const catElec = await this.catalogoRepo.findOne({
+      where: { catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002' },
+    });
+    const ID_CS_002 = catElec?.idCatalogo ?? 48;
     const tecnico = await this.catalogoRepo.findOne({
       where: { catalogo: TECNICO_MANTENIMIENTO, codigo: tecnicoAsignadoCodigo, isActivo: true },
     });
@@ -3473,11 +3759,13 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       const categoriasExcluidasIds = Array.isArray(md.categoriasExcluidasIds)
         ? (md.categoriasExcluidasIds as any[]).map((x) => Number(x))
         : [];
-      if (categoriasExcluidasIds.includes(ID_CS_002)) {
+      if (categoriasExcluidasIds.includes(ID_CS_002) || categoriasExcluidasIds.includes(48)) {
         tecnicoEsElectricoValido = false;
       } else if (
         categoriasPermitidasIds.includes(ID_CS_002) ||
+        categoriasPermitidasIds.includes(48) ||
         especialidadesIds.includes(ID_CS_002) ||
+        especialidadesIds.includes(48) ||
         tecnico.codigo.toUpperCase().startsWith('TEC-ELEC') ||
         tecnico.codigo.toUpperCase().startsWith('TEC-ELC')
       ) {
@@ -3486,16 +3774,33 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     }
     if (tecnicoEsElectricoValido) return;
 
-    const regla001 = await this.catalogoRepo.findOne({
-      where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
-    });
+    let regla001: any = null;
+    if (typeof this.catalogoRepo?.find === 'function') {
+      const reglas = await this.catalogoRepo.find({ where: { catalogo: REGLA_ESCALAMIENTO } });
+      regla001 = (reglas || []).find(
+        (r) =>
+          r.codigo.startsWith('REG_001') ||
+          r.codigo.includes('ELECTRICAS') ||
+          (r.metadata as any)?.regla === 'ESPECIALIZACION',
+      );
+    }
+    if (!regla001 && typeof this.catalogoRepo?.findOne === 'function') {
+      regla001 = await this.catalogoRepo.findOne({
+        where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+      });
+      if (!regla001) {
+        regla001 = await this.catalogoRepo.findOne({
+          where: { catalogo: REGLA_ESCALAMIENTO },
+        });
+      }
+    }
     const esp =
       regla001?.metadata && typeof regla001.metadata === 'object'
         ? String((regla001.metadata as any).tecnicoCodigo || '').trim()
         : '';
     if (esp && tecnicoAsignadoCodigo === esp) return;
     throw new ForbiddenException(
-      'La categoría CS_002 Eléctricas requiere el técnico especializado configurado en la regla 001.',
+      'La categoría CS_002 Eléctricas requiere obligatoriamente un técnico especializado (Perfil P3).',
     );
   }
 
@@ -3646,8 +3951,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     if (!['BAJO', 'MEDIO', 'ALTO'].includes(dto.nivelRiesgo || '')) {
       throw new BadRequestException("Nivel de riesgo inválido. Use 'BAJO', 'MEDIO' o 'ALTO'.");
     }
-    const esElectrico = Number(solicitud.idCategoria) === 48;
-    if (esElectrico && dto.requiereApagadoElectrico === null || dto.requiereApagadoElectrico === undefined) {
+    const esElectrico = await this.esCategoriaElectrica(solicitud.idCategoria);
+    if (esElectrico && (dto.requiereApagadoElectrico === null || dto.requiereApagadoElectrico === undefined)) {
       throw new BadRequestException(
         'Para CS_002 Eléctricas debe marcar si requiere apagado/aislamiento eléctrico.',
       );
@@ -5868,6 +6173,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       53: { codigo: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes' },
       54: { codigo: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos' },
     };
+    try {
+      const catsDb = await this.catalogoRepo.find({ where: { catalogo: 'CATEGORIA_SERVICIO' } });
+      for (const c of catsDb) {
+        catMap[c.idCatalogo] = { codigo: c.codigo, nombre: c.nombre };
+      }
+    } catch {}
 
     // =========================================================================
     // HOJA 1: Datos consolidados (Estructura Planner + Campos Enriquecidos ESAP)
