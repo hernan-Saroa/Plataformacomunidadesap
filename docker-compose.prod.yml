@@ -302,7 +302,7 @@ services:
       dockerfile: Dockerfile
     container_name: internal-disciplinary-control-service-prod
     environment:
-      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}
       MAIL_ENVIRONMENT: prod
       NODE_ENV: production
       PORT: 3005
@@ -418,7 +418,7 @@ services:
       dockerfile: Dockerfile
     container_name: legal-management-service-prod
     environment:
-      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}
       MAIL_ENVIRONMENT: prod
       NODE_ENV: production
       PORT: 3008
@@ -466,7 +466,7 @@ services:
       dockerfile: Dockerfile
     container_name: notifications-service-prod
     environment:
-      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}
       MAIL_ENVIRONMENT: prod
       NODE_ENV: production
       PORT: 3009

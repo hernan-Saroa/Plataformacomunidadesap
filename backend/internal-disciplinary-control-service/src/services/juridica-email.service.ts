@@ -17,6 +17,20 @@ const MAX_ADJUNTOS_BYTES = 20 * 1024 * 1024;
 // Timeout para descargar un adjunto alojado en una URL externa.
 const DESCARGA_EXTERNA_TIMEOUT_MS = 15000;
 
+/**
+ * EFDS-2238 — lo que necesita el traslado a Judiciales para salir: el ambiente (Gestión Legal rechaza un
+ * traslado de otro ambiente) y el buzón judicial (Notificaciones no envía sin él). Devuelve qué falta o null.
+ */
+export function problemaDeTraslado(env: NodeJS.ProcessEnv = process.env): string | null {
+  const ambiente = env.MAIL_ENVIRONMENT?.trim();
+  if (!ambiente || !['dev', 'qa', 'pre', 'prod', 'local'].includes(ambiente)) {
+    return `MAIL_ENVIRONMENT inválido o ausente («${ambiente || ''}»; se espera dev, qa, pre, prod o local)`;
+  }
+  const judicial = env.JURIDICA_EMAIL?.trim();
+  if (!judicial || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(judicial)) return 'JURIDICA_EMAIL ausente o no es una dirección de correo';
+  return null;
+}
+
 @Injectable()
 export class JuridicaEmailService {
   private readonly logger = new Logger(JuridicaEmailService.name);
@@ -27,6 +41,14 @@ export class JuridicaEmailService {
   ) {}
 
   onModuleInit() {
+    // EFDS-2238: sin buzón judicial, «Enviar a Jurídica» no llega a Judiciales (enviarCorreoJuridica lo
+    // omite). Se avisa al ARRANCAR y, en producción, el servicio no arranca: que se note en el despliegue.
+    const problema = problemaDeTraslado();
+    if (problema) {
+      const mensaje = `Falta la configuración de buzones: «Enviar a Jurídica» no llegará a Judiciales (${problema})`;
+      this.logger.error(mensaje);
+      if (process.env.MAIL_ENVIRONMENT === 'prod') throw new Error(`${mensaje}. Defina LEGAL_EMAIL_ACCOUNT_JUDICIAL en .env.prod (DEPLOY-bugs-qa.md, EFDS-2238, PASO 0).`);
+    }
     this.logger.log(`Traslados: ambiente=${process.env.MAIL_ENVIRONMENT || 'sin configurar'} judicial=${process.env.JURIDICA_EMAIL || 'sin configurar'}`);
   }
 

@@ -59,6 +59,18 @@ export class MicrosoftGraphService {
     private readonly emailAccount = this.judicialAccount;
 
     onModuleInit() {
+        // EFDS-2238: sin ambiente o sin buzón judicial, Gestión Legal rechaza los traslados de Disciplinario
+        // (registrarTransferenciaDisciplinaria). Se avisa al ARRANCAR y, en producción, no arranca.
+        const ambiente = process.env.MAIL_ENVIRONMENT?.trim();
+        const judicial = process.env.JURIDICA_EMAIL?.trim();
+        const problema = !ambiente || !['dev', 'qa', 'pre', 'prod', 'local'].includes(ambiente)
+            ? `MAIL_ENVIRONMENT inválido o ausente («${ambiente || ''}»)`
+            : !judicial || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(judicial) ? 'JURIDICA_EMAIL ausente o no es una dirección de correo' : null;
+        if (problema) {
+            const mensaje = `Falta la configuración de buzones: no se recibirán traslados de Disciplinario en Judiciales (${problema})`;
+            this.logger.error(mensaje);
+            if (ambiente === 'prod') throw new Error(`${mensaje}. Defina LEGAL_EMAIL_ACCOUNT_JUDICIAL en .env.prod (DEPLOY-bugs-qa.md, EFDS-2238, PASO 0).`);
+        }
         this.logger.log(`Centro de Comunicaciones: ambiente=${process.env.MAIL_ENVIRONMENT || 'sin configurar'} traslado=${process.env.JURIDICA_EMAIL || 'sin configurar'} Graph Judicial=${this.judicialAccount || 'sin configurar'} Graph Correos=${this.correosAccount || 'sin configurar'}`);
     }
 

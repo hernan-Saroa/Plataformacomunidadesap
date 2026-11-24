@@ -228,6 +228,50 @@ Comprobado el 19-nov-2026 sobre el RUND de QA (consulta de solo lectura, conteos
 
 ## EFDS-2238 · Traslados de Disciplinario a Judiciales
 
+### EFDS-2238 · PASO 0 — antes de desplegar (variables por ambiente)
+
+**Por qué importa:** si falta la configuración de buzones, Notificaciones **no envía ningún correo** (tampoco claves ni códigos) y «Enviar a Jurídica» no llega a Judiciales. Por eso, en **producción** Notificaciones, Disciplinario y Gestión Legal **no arrancan** sin ella (un despliegue que falla se nota); en dev, QA y PRE arrancan pero dejan el error en el log.
+
+| Ambiente | Archivo del servidor | Qué definir antes de desplegar | Ejemplo (sin secretos) |
+|---|---|---|---|
+| Producción | `.env.prod` (lo carga `deploy.prod.sh`) | **`LEGAL_EMAIL_ACCOUNT_JUDICIAL`** = el buzón judicial institucional que lee el Centro de Comunicaciones. Si no está, el Compose usa `LEGAL_EMAIL_ACCOUNT` (el mismo respaldo que ya usa Gestión Legal para leer ese buzón). Los tres servicios lo reciben como `JURIDICA_EMAIL`. **Antes de este cambio Disciplinario enviaba a `juridica@esap.edu.co`, fijo en el código: confirmar con Jurídica qué dirección es el buzón de Judiciales y poner esa.** Lo demás del correo de producción no cambia (`EMAIL_PROVIDER`, `SMTP_*` o `AZURE_*`, como hoy). | `LEGAL_EMAIL_ACCOUNT_JUDICIAL=buzon-judicial@dominio-institucional` |
+| PRE / QA / dev | `.env.pre` / `.env.qa` / `.env.dev` | **Nada obligatorio.** El Compose fija `MAIL_ENVIRONMENT`, `JURIDICA_EMAIL=judicial@<amb>.invalid`, `MAIL_TEST_INBOX=avisos@<amb>.invalid` y SMTP al capturador del ambiente. Opcional: `<AMB>_LEGAL_EMAIL_ACCOUNT_JUDICIAL` y `<AMB>_LEGAL_EMAIL_ACCOUNT_CORREOS` **solo** con cuentas Graph exclusivas de ese ambiente, **nunca** el buzón de producción; vacías = el Centro no sincroniza correo externo y recibe solo los traslados. Retirar `EMAIL_REDIRECT_TO`: ya no se lee. | `QA_LEGAL_EMAIL_ACCOUNT_JUDICIAL=` (vacío) |
+
+**Comprobar antes de levantar producción** (no muestra secretos, solo las direcciones):
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod config | grep -E "JURIDICA_EMAIL|MAIL_ENVIRONMENT"
+# Deben salir 3 JURIDICA_EMAIL con la dirección (no vacíos) y 3 MAIL_ENVIRONMENT: prod
+```
+
+**Si el despliegue no arranca:**
+```bash
+docker logs notifications-service-prod 2>&1 | grep "Falta la configuración de buzones"
+docker logs internal-disciplinary-control-service-prod 2>&1 | grep "Falta la configuración de buzones"
+docker logs legal-management-service-prod 2>&1 | grep "Falta la configuración de buzones"
+```
+El mensaje dice qué falta (por ejemplo «JURIDICA_EMAIL ausente o no es una dirección de correo»). Corregir `.env.prod` y recrear **los tres** contenedores. En QA/dev/PRE el mismo mensaje aparece al arrancar si algo quedó mal, aunque el servicio siga arriba: revisarlo siempre después de desplegar.
+
+### EFDS-2238 · Servicios nuevos: capturadores de correo
+
+| Ambiente | Servicio | Imagen | Puertos | Notas |
+|---|---|---|---|---|
+| dev, QA, PRE | `mailpit` (uno por proyecto, en la red del ambiente) | `axllent/mailpit:v1.22.3` (se descarga de Docker Hub al desplegar) | **ninguno publicado** | Notificaciones le entrega por SMTP (`mailpit:1025`). Cada ambiente tiene el suyo: no se mezclan. |
+| Producción | **ninguno** | — | — | Producción usa el proveedor institucional de siempre. |
+
+- Levantarlo con el resto: `./deploy.<amb>.sh up` (o `docker compose -f docker-compose.<amb>.yml --env-file .env.<amb> up -d mailpit`).
+- **Ver los correos capturados** (no hay puerto publicado, a propósito: contienen documentos de prueba):
+  `docker exec notifications-service-<amb> wget -qO- http://mailpit:8025/api/v1/messages` (lista JSON con destinatarios y asuntos). Para la interfaz web, un túnel SSH al servidor hacia ese contenedor.
+- **Cambio para quien prueba:** en dev, QA y PRE los avisos **ya no llegan a buzones reales**; quedan en el capturador del ambiente (destinatario original en `X-ESAP-Original-To`, asunto con `[QA]`, `[PRE]`…). Avisar a Aura y al equipo de pruebas.
+
+### EFDS-2238 · Verificación posterior en QA — OBLIGATORIA
+
+**No verificado en contenedores.** Se probó con el servicio real de Notificaciones corriendo por terminal y un capturador SMTP local, pero no con el Compose de QA. Esta verificación es **obligatoria** antes de dar por bueno el despliegue en QA:
+1. Logs de arranque de los tres servicios en QA: **ninguna** línea «Falta la configuración de buzones», y la línea de configuración muestra `ambiente=qa` y `judicial=judicial@qa.invalid`.
+2. Con un expediente de prueba: aprobar un auto, asignar profesional, radicar una noticia y aprobar un pliego → en el capturador de QA **ningún** mensaje para `judicial@qa.invalid`; los avisos aparecen desviados a `avisos@qa.invalid` con su `X-ESAP-Original-To`.
+3. Pulsar **Enviar a Jurídica** una vez → **un** mensaje para `judicial@qa.invalid` con los documentos adjuntos, asunto con `[QA]`, y **una** comunicación en **Centro de Comunicaciones → Judiciales** de QA con los documentos descargables.
+4. En el Centro de Comunicaciones de **PRE** ese radicado **no** aparece.
+5. Ningún correo de QA llegó a una dirección real (todos los destinatarios del capturador terminan en `.invalid`).
+
 Desplegar juntas las imágenes de Disciplinario, Notificaciones y Gestión Legal y recrear sus contenedores con el Compose del ambiente. La transferencia interna lleva el ambiente y los documentos. Legal la guarda en Judiciales incluso cuando Graph está apagado. La base de Legal y su volumen de adjuntos deben pertenecer al ambiente.
 
 | Ambiente | MAIL_ENVIRONMENT | JURIDICA_EMAIL en los tres servicios | MAIL_TEST_INBOX en Notificaciones | Transporte |

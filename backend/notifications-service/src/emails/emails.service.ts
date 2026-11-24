@@ -78,6 +78,15 @@ export class EmailsService {
 
   onModuleInit() {
     const env = process.env;
+    // EFDS-2238: sin configuración de buzones no sale ningún correo. Se avisa al ARRANCAR, no en cada
+    // envío; y en producción el servicio NO arranca: un despliegue que falla se nota, un correo que no
+    // llega, no.
+    const problema = this.problemaDeBuzones();
+    if (problema) {
+      const mensaje = `Falta la configuración de buzones: no se enviarán correos (${problema})`;
+      this.logger.error(mensaje);
+      if (env.MAIL_ENVIRONMENT === 'prod') throw new Error(`${mensaje}. Defina LEGAL_EMAIL_ACCOUNT_JUDICIAL en .env.prod (DEPLOY-bugs-qa.md, EFDS-2238, PASO 0).`);
+    }
     this.logger.log(`Correo ambiente=${env.MAIL_ENVIRONMENT || 'sin configurar'} servidor=${this.getConfiguredProvider() === 'smtp' ? env.SMTP_HOST || 'sin configurar' : 'Microsoft Graph'} judicial=${env.JURIDICA_EMAIL || 'sin configurar'} pruebas=${env.MAIL_TEST_INBOX || 'sin configurar'}`);
   }
 
@@ -314,16 +323,36 @@ export class EmailsService {
       && !EVENTOS_JUDICIALES.has(evento || '');
   }
 
-  private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
+  /**
+   * EFDS-2238 — configuración de buzones. Es la MISMA regla al arrancar (onModuleInit) y en cada envío
+   * (sendMail): si falla, no sale NINGÚN correo. Devuelve qué falta, o null si está completa.
+   * Fuera de producción exige además el capturador de pruebas (dominio .invalid) y SMTP, para que un
+   * ambiente de pruebas nunca escriba a un buzón real.
+   */
+  problemaDeBuzones(): string | null {
     const environment = process.env.MAIL_ENVIRONMENT;
     const judicial = process.env.JURIDICA_EMAIL?.trim().toLowerCase();
     const testInbox = process.env.MAIL_TEST_INBOX?.trim().toLowerCase();
+    if (!environment || !['dev', 'qa', 'pre', 'prod', 'local'].includes(environment)) {
+      return `MAIL_ENVIRONMENT inválido o ausente («${environment || ''}»; se espera dev, qa, pre, prod o local)`;
+    }
+    if (!judicial || !isEmail(judicial)) return 'JURIDICA_EMAIL ausente o no es una dirección de correo';
+    if (environment === 'prod') return null;
+    if (!testInbox || !BUZON_DE_PRUEBA.test(testInbox)) return 'MAIL_TEST_INBOX ausente o no es un buzón de prueba (.invalid)';
+    if (!BUZON_DE_PRUEBA.test(judicial)) return 'JURIDICA_EMAIL debe ser un buzón de prueba (.invalid) fuera de producción';
+    if (judicial === testInbox) return 'JURIDICA_EMAIL y MAIL_TEST_INBOX no pueden ser el mismo buzón';
+    if (this.getConfiguredProvider() !== 'smtp') return 'fuera de producción el correo sale solo por SMTP al capturador (EMAIL_PROVIDER=smtp)';
+    return null;
+  }
+
+  private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
+    const environment = process.env.MAIL_ENVIRONMENT as string;
+    const judicial = process.env.JURIDICA_EMAIL?.trim().toLowerCase();
+    const testInbox = process.env.MAIL_TEST_INBOX?.trim().toLowerCase();
     const production = environment === 'prod';
-    if (!environment || !['dev', 'qa', 'pre', 'prod', 'local'].includes(environment)
-      || !judicial || !isEmail(judicial) || (!production && (!testInbox || !BUZON_DE_PRUEBA.test(testInbox)
-      || !BUZON_DE_PRUEBA.test(judicial) || judicial === testInbox
-      || this.getConfiguredProvider() !== 'smtp'))) {
-      this.logger.error('Envío cancelado: revise MAIL_ENVIRONMENT, JURIDICA_EMAIL, MAIL_TEST_INBOX y EMAIL_PROVIDER');
+    const problema = this.problemaDeBuzones();
+    if (problema) {
+      this.logger.error(`Envío cancelado: falta la configuración de buzones (${problema}). Revise MAIL_ENVIRONMENT, JURIDICA_EMAIL, MAIL_TEST_INBOX y EMAIL_PROVIDER`);
       throw new BadRequestException('Configuración de buzones incompleta o insegura');
     }
     if (this.esJudicialReservado(payload.to, payload.evento, payload.modulo)) {

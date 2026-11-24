@@ -1594,3 +1594,35 @@ RN-10 es correcta. Medido el 19-nov-2026 en el RUND de QA (solo lectura, conteos
 - Resto de suites con su cambio: Notificaciones 80/80; Disciplinario 111/112 (la de arriba); Gestión Legal 514/525 — las 11 fallas (`app.controller`, `consultas-juridicas.service`, `correos-sync.scheduler`) fallan igual en `micro-frontend` sin Codex: son previas. Builds de los tres servicios en verde.
 - Entorno: en Notificaciones y Disciplinario faltaba el binario de Windows de `unrs-resolver` (jest 30 no resolvía `ts-jest`); se instaló con `--no-save`, sin tocar `package.json` ni lockfiles. Gestión Legal se corre con `npm test` (tiene `jest.config.js` y clave `jest`).
 - Codex declara también «no verificado en condiciones de QA» y «pendiente de verificación en contenedores». Su rama queda tal cual; la integración local está en la rama `integracion/efds-2336-con-2238` (no publicada).
+
+## 46. Integración de EFDS-2238 (Codex): traslados de Disciplinario a Judiciales (rama `integracion/efds-2238`)
+
+**PUBLICADO** en `micro-frontend` el 24-nov-2026 (merge `--no-ff` de `integracion/efds-2238`; integra `ef82970fb` + `3d4309336` de Codex y los ajustes de esta sección). **No verificado en contenedores** (sin base nueva: el cambio no trae migraciones); la verificación posterior en QA de DEPLOY («EFDS-2238 · Verificación posterior en QA — OBLIGATORIA») es requisito antes de dar por bueno el despliegue en QA.
+
+### 46.1 Qué se integró
+- `origin/feature/legal/efds-2238` seguía en `3d4309336`: **es la misma versión que se integró el 23-nov**, no una posterior. Se rehizo la integración desde `micro-frontend` (`2cf8fd358`); único conflicto en `DEPLOY-bugs-qa.md` (las dos secciones se conservaron).
+
+### 46.2 La prueba de Disciplinario (`notification-client.service.spec.ts`): actualizada, con justificación
+- **Qué fallaba:** «los correos de reasignación y el genérico llevan su evento; sin evento es correo del sistema». Con el cambio de Codex, `DisciplinaryEmailService.sendEmail` sin evento envía `{ to, subject, html, modulo: 'control-disciplinario', evento: undefined }`; la prueba exigía el cuerpo sin `modulo`.
+- **Por qué se actualizó (y no se revirtió el código):** la regla de negocio «sin evento es correo del sistema y sale siempre» la define Notificaciones (`enviarSiPermitido`: la configuración solo se evalúa `if (data.evento && this.compuerta)`), y **sigue vigente** con `modulo` presente: sin evento no hay compuerta, ni copias por rol, ni desvío. Lo único que cambia con `modulo` es la **excepción intencional** que pide el bug: un correo de Control Disciplinario sin evento (o con un evento que no es el traslado) **no sale hacia el buzón de Judiciales** (`esJudicialReservado` exige `modulo === 'control-disciplinario'`). La aserción vieja comprobaba la regla a través de un indicio (la ausencia de `modulo`), que quedó obsoleto. Revertir el `modulo` habría reabierto el problema 1 del bug (correos de más a Judiciales).
+- **Cómo quedó (no se debilitó):** la aserción sigue siendo igualdad estricta, con el cuerpo nuevo completo. La regla se prueba ahora donde vive: `notifications-service/src/emails/efds-2238-reglas.spec.ts` — sin evento y con `modulo` sale sin pasar por la configuración; sin evento hacia Judiciales no sale; el traslado (`PLIEGO_CARGOS_TRASLADO_JURIDICA`) sí; otro evento de Disciplinario hacia Judiciales no.
+
+### 46.3 Producción: que falte la configuración se note
+- **Antes:** con buzones incompletos Notificaciones cancelaba **cada** envío (todos, también claves y OTP) con un error por correo, pero arrancaba normal; Disciplinario omitía el traslado con un error y seguía. En producción, eso es un fallo silencioso.
+- **Ahora:** `EmailsService.problemaDeBuzones()` es la **misma** regla al arrancar y en cada envío (no hay chequeo más estricto al arrancar que el que ya bloqueaba el envío). Al arrancar: error «Falta la configuración de buzones: no se enviarán correos (qué falta)»; si `MAIL_ENVIRONMENT=prod`, **el servicio no arranca**. Igual en Disciplinario (`problemaDeTraslado`, `JuridicaEmailService.onModuleInit`) y en Gestión Legal (`MicrosoftGraphService.onModuleInit`, que rechaza traslados sin ambiente o sin buzón). Sin `MAIL_ENVIRONMENT` no se sabe si es producción: avisa, no tumba. `MAIL_ENVIRONMENT` lo fija cada Compose (`prod` en producción).
+- **`docker-compose.prod.yml`:** `JURIDICA_EMAIL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}` en los tres servicios (antes solo `LEGAL_EMAIL_ACCOUNT_JUDICIAL`, que podía quedar vacío en silencio). Es el mismo respaldo que Gestión Legal ya usaba para leer el buzón judicial (`microsoft-graph.service.ts`), así Disciplinario escribe al buzón que el Centro lee. Validado con `docker compose config` y con valores de ejemplo. Las direcciones reales viven en `.env.prod` del servidor, no en el repo.
+- Pruebas: Notificaciones 9 (`efds-2238-reglas.spec.ts`), Disciplinario 4 (`juridica-email.arranque.spec.ts`), Gestión Legal 3 (`microsoft-graph.arranque.spec.ts`). Mutación: quitar el «no arranca» de producción hace caer una prueba.
+
+### 46.4 Verificación con los servicios reales (por terminal, base local)
+- **Notificaciones compilada** (`node dist/main.js`) con la configuración de QA y un capturador SMTP local: 14/14. Producción sin buzón → termina con código 1 y el mensaje; QA arranca; aprobación de auto y correo genérico hacia Judiciales → 202 `destino_judicial_reservado`, nada en el capturador; el traslado con PDF → 201, **un** mensaje para `judicial@qa.invalid`, con el adjunto, asunto `[QA]` y `X-ESAP-Environment: qa`; un aviso a una dirección real → desviado a `avisos@qa.invalid` con `X-ESAP-Original-To`; ningún destinatario fuera de `.invalid`.
+- **Disciplinario y Gestión Legal compilados:** en producción sin buzón no arrancan (código 1, con el mensaje); con buzón, arrancan (6/6).
+
+### 46.5 Compuertas
+- Disciplinario 116/116; Notificaciones 89/89 (las 80 de Codex + las nuevas); PTA 2174 (+1 omitida de siempre); builds de los cuatro en verde. Gestión Legal 517/528: las **11 fallas** (`app.controller`, `consultas-juridicas.service`, `correos-sync.scheduler`) fallan igual en el commit base `2cf8fd358` (11/25 en esas suites, comprobado de nuevo): previas, aceptadas.
+- Compose: dev, QA, PRE, producción y `backend` validan. `docker-compose.local.yml` ya no validaba antes de Codex (red `superapp-net-prod` no declarada).
+- Capturadores: `mailpit` (`axllent/mailpit:v1.22.3`) en dev, QA y PRE, sin puertos publicados; producción no lleva.
+- Claves: el diff de la integración no agrega secretos (contraseñas SMTP vacías, direcciones `.invalid`); los `.env` de los servicios están en `.gitignore`.
+
+### 46.6 Previos, fuera de este cambio (reportados, no tocados)
+- `.env.shared` está versionado desde junio con `JWT_SECRET`, `JWT_REFRESH_SECRET` y `DB_PASS` con valor. Conviene sacarlo del repo y rotar esas claves (decisión de Tomás/Henrry).
+- Notificaciones publica el puerto 3009 en todos los Compose y `POST /api/v1/emails/send` no exige autenticación: cualquiera que alcance ese puerto puede pedir un envío. Conviene no publicarlo o protegerlo.
