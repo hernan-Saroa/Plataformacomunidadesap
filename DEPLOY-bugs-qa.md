@@ -225,3 +225,51 @@ Comprobado el 19-nov-2026 sobre el RUND de QA (consulta de solo lectura, conteos
 - **Qué hacer:** cargar el RUND de 2026 de los docentes que faltan (carga masiva del RUND, Banco de docentes del PTA). Cuando cada docente tenga su vinculación 2026, deja de salir el bloqueo. No hay nada que corregir en Programación Académica.
 - **Cómo verificar después de cargar:** abrir el modal de asignación de un grupo de 2026-1; el resumen de la alerta ya no debe decir «con la vinculación vencida» para esos docentes.
 - **No reportar como defecto** «no puedo asignar a un ocasional porque su vinculación venció» mientras su RUND siga siendo el de 2025.
+
+## 13. EFDS-2336 · La territorial del PTA mostraba un nombre equivocado en preproducción
+
+### 13.1 Qué cambia
+- **Solo el MFE `mfe-pta`.** Sin migraciones, sin variables nuevas, sin cambios de servidor. Reconstruir y publicar el MFE del PTA.
+- En la pestaña **Aprobación** de la ficha del docente, cada tarjeta de decisión dice ahora **de quién es la territorial que muestra**:
+
+| Tarjeta | Rótulo | Qué muestra |
+|---|---|---|
+| Componente Docencia (Territorial) | **Territorial de la docencia** | La territorial donde se dictan las asignaturas que se decidieron (el par territorial–nivel). Es la del aprobador territorial, no la del docente. |
+| Complementarias (Territorial) | **Territorial de las complementarias** | La de sus pares, igual que arriba. |
+| Docencia Pregrado / Posgrado, Investigación, Extensión, Complementarias | **Territorial del docente** | La territorial del docente (la del PTA). |
+
+- Si un identificador no tiene correspondencia **única** en el catálogo de territoriales del ambiente, se muestra **«Territorial no identificada»**. Nunca otro valor: ni la del docente, ni Sede Central, ni la primera de la lista.
+- La pestaña Trazabilidad no muestra territoriales (solo componentes, estados y quién decidió); no cambia.
+
+### 13.2 Por qué fallaba
+- Al aprobar, la pantalla guardaba como alcance de la decisión la **territorial del docente**, y la tarjeta de Docencia (Territorial) mostraba ese valor. En el caso del reporte, el docente es de **Cauca** y la docencia aprobada es de **Tolima** (la aprobó el aprobador de Tolima): la tarjeta decía «Cauca».
+- Si la decisión no traía territorial, la pantalla caía a la del docente (un valor por defecto escondido).
+- Además hay un problema de **datos** que la pantalla no puede resolver sola (ver 13.3).
+
+### 13.3 Pasos de datos (los hace el dueño de cada catálogo; Programación/PTA no los modifica)
+En los ambientes conviven catálogos de territoriales que no cruzan:
+- `auth.seccionales` trae **mezcladas** las filas heredadas (código CAU, TOL…) y las de Estructura Organizacional (DT-001…), con ids distintos.
+- La territorial del RUND (`Docente.territorialId`) a veces llega como **id de dependencia** (`auth.dependencias`), no como id de seccional.
+- Hay ids que existen **a la vez** en dos catálogos con significado distinto (en la base local: 6 entre seccionales y dependencias, 17 entre seccionales y `direccion_territorial`, y 50 docentes con su territorial en ese rango). Con un id así, cualquier pantalla puede mostrar un nombre válido pero equivocado.
+
+**Consulta de diagnóstico (solo lectura)**: `backend/academic-work-plan-service/db/diagnostico/efds-2336-territorial-docente.sql`. No es migración; no la corre `db-migrate`.
+```bash
+docker cp backend/academic-work-plan-service/db/diagnostico/efds-2336-territorial-docente.sql superapp-db-pre:/tmp/
+docker exec superapp-db-pre psql -U postgres -d esap_db -v cedula=<CEDULA DEL DOCENTE> -f /tmp/efds-2336-territorial-docente.sql
+# lo mismo en QA con superapp-db-qa
+```
+Muestra, para ese docente: su territorial del RUND y a qué resuelve en **cada** catálogo; sus PTA; las decisiones por componente con el alcance guardado; las decisiones por par (territorial de la docencia); la territorial de cada asignatura y la de su CETAP; y cuántos ids del ambiente son ambiguos. Sin nombres de personas.
+
+**Cómo leerla:**
+- Si en la sección 1 la territorial del docente resuelve en **dos** catálogos, o solo en `dependencias`: el dato del RUND no apunta a una seccional. Lo corrige quien carga el RUND / Estructura Organizacional (el id debe ser el de `auth.seccionales`).
+- Si en la sección 4 un `territorial_id` resuelve en dos catálogos: el par quedó con un id ambiguo. Reportarlo al equipo de `auth` / Estructura Organizacional con la salida de la consulta.
+- Si la tarjeta muestra «Territorial no identificada»: el id no está en el catálogo del ambiente (o está dos veces). Es dato, no pantalla: correr la consulta.
+
+### 13.4 Verificación posterior en PRE (2 minutos)
+1. Abrir el PTA del docente del reporte → pestaña **Aprobación** → tarjeta **Componente Docencia (Territorial)**.
+2. El rótulo dice **«Territorial de la docencia»** y el valor es la territorial de las asignaturas aprobadas (la del aprobador territorial: **Tolima** en el reporte), no la del docente.
+3. Las demás tarjetas dicen **«Territorial del docente»** con la territorial del docente.
+4. Si alguna dice «Territorial no identificada», correr la consulta de 13.3 con la cédula y enviar la salida.
+
+### 13.5 Hallazgo aparte, no corregido en esta entrega
+En la misma tarjeta, el campo **ROL** del aprobador decía «Docente» aunque quien aprobó es «Aprobador Docencia Territorial». El rol lo calcula la pantalla con 7 perfiles generales del PTA y los roles granulares (como «Aprobador Docencia Territorial») no tienen equivalente, así que caen en «Docente»; el servidor guarda lo que envía la pantalla. Corregirlo bien es que el servidor tome el rol del token (como ya hace con el nombre). Queda propuesto como ticket aparte.
