@@ -96,7 +96,7 @@ const sanitizePersonName = (value: string) =>
 
 const normalizeTextSpaces = (value: string) => value.trim().replace(/\s+/g, " ");
 
-const getNameLengthFeedback = (value: string, min: number, max: number) => {
+const getLengthFeedback = (value: string, min: number, max: number) => {
   const length = normalizeTextSpaces(value).length;
   const invalid = value.length > 0 && (length < min || length > max);
   const message = invalid
@@ -277,13 +277,16 @@ export function PublicTitleVerification({
   const [requesterType, setRequesterType] = useState<"empresa" | "graduado">(
     "graduado",
   );
-  const graduateNameFeedback = getNameLengthFeedback(
+  const graduateDocumentFeedback = getLengthFeedback(
+    graduateDocumentNumber, DOCUMENT_MIN_LENGTH, DOCUMENT_MAX_LENGTH,
+  );
+  const graduateNameFeedback = getLengthFeedback(
     graduateLastName, PERSON_NAME_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
   );
-  const companyNameFeedback = getNameLengthFeedback(
+  const companyNameFeedback = getLengthFeedback(
     requesterName, COMPANY_NAME_MIN_LENGTH, COMPANY_NAME_MAX_LENGTH,
   );
-  const contactPersonFeedback = getNameLengthFeedback(
+  const contactPersonFeedback = getLengthFeedback(
     contactPerson, PERSON_NAME_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
   );
 
@@ -2268,12 +2271,21 @@ export function PublicTitleVerification({
                           maxLength={DOCUMENT_MAX_LENGTH}
                           pattern={`[A-Za-z0-9]{${DOCUMENT_MIN_LENGTH},${DOCUMENT_MAX_LENGTH}}`}
                           placeholder="Ej: AB1234567"
-                          className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                          aria-describedby="graduateDocumentHelp"
+                          aria-invalid={graduateDocumentFeedback.invalid}
+                          className={`h-10 text-sm focus:ring-1 focus:ring-blue-500/20 ${
+                            graduateDocumentFeedback.invalid
+                              ? "border-red-400 focus:border-red-500"
+                              : "border-gray-300 focus:border-blue-500"
+                          }`}
                           required
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Entre {DOCUMENT_MIN_LENGTH} y {DOCUMENT_MAX_LENGTH}{" "}
-                          caracteres, únicamente letras y números.
+                        <p
+                          id="graduateDocumentHelp"
+                          aria-live="polite"
+                          className={`text-xs mt-1 ${graduateDocumentFeedback.invalid ? "text-red-600" : "text-gray-500"}`}
+                        >
+                          {graduateDocumentFeedback.message} Únicamente letras y números.
                         </p>
                       </div>
 
